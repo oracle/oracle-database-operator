@@ -62,8 +62,8 @@ Choose one of the following deployment options:
 
   **Build your own Oracle Database and Global Data Services Docker Images:**
    You can build these images using instructions provided on Oracle official GitHub Repositories:
-   [Oracle Global Data Services Image](https://github.com/oracle/db-sharding/tree/master/docker-based-sharding-deployment/dockerfiles)
-   [Oracle Database Image](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance)
+   * [Oracle Global Data Services Image](https://github.com/oracle/db-sharding/tree/master/docker-based-sharding-deployment/dockerfiles)
+   * [Oracle Database Image](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance)
 
 After the images are ready, push them to your Docker Images Repository, so that you can pull them during Oracle Database Sharding topology provisioning.
 
