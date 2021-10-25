@@ -29,9 +29,9 @@ NOTE:
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
   * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `shard_prov_clone_across_ads.yaml`.
-  * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../ORACLE_SHARDING_CONTROLLER_README.md#3-oracle-database-and-global-data-services-docker-images)
+  * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../README.md#3-oracle-database-and-global-data-services-docker-images)
 
-Use the file: [shard_prov_clone_across_ads.yaml](./doc/sharding/provisioning/shard_prov_clone_across_ads.yaml) for this use case as below:
+Use the file: [shard_prov_clone_across_ads.yaml](./shard_prov_clone_across_ads.yaml) for this use case as below:
 
 1. Deploy the `shard_prov_clone_across_ads.yaml` file:
     ```sh
