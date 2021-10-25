@@ -1,0 +1,41 @@
+domain: oracle.com
+layout:
+- go.kubebuilder.io/v2
+multigroup: true
+plugins:
+  go.sdk.operatorframework.io/v2-alpha: {}
+projectName: oracle-database-operator
+repo: github.com/oracle/oracle-database-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: AutonomousDatabase
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: SingleInstanceDatabase
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: ShardingDatabase
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+version: "3"

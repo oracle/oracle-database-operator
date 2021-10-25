@@ -1,0 +1,26 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabase
+metadata:
+  name: autonomousdatabase-sample
+spec:
+  details:
+    # Update compartmentOCID with your compartment OCID.
+    compartmentOCID: ocid1.compartment...
+    # The dbName must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy.
+    dbName: NewADB
+    displayName: NewADB
+    cpuCoreCount: 1
+    adminPassword:
+      # The Name of the K8s secret where you want to hold the password of the ADMIN account. Comment out k8sSecretName and uncomment ociSecretOCID if you pass the admin password using OCI Secret.
+      k8sSecretName: admin-password
+      # The OCID of the OCI Secret that holds the password of the ADMIN account. It should start with ocid1.vaultsecret... .
+      # ociSecretOCID: ocid1.vaultsecret...
+    dataStorageSizeInTBs: 1
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey
