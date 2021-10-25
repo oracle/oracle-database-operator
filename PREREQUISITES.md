@@ -30,4 +30,4 @@ If you intent to use `OraOperator` to handle Oracle Database Single Instance lif
 
 ### Prerequites for Sharded Databases (SHARDING)  
 
- If you intent to use OraOperator to handle the lifecycle of Oracle Database deployed with Oracle Sharding, then read [Sharded Database Prerequisites](./doc/sharding/ORACLE_SHARDING_CONTROLLER_README.md#prerequsites-for-running-oracle-sharding-database-controller)
+ If you intent to use OraOperator to handle the lifecycle of Oracle Database deployed with Oracle Sharding, then read [Sharded Database Prerequisites](./doc/sharding/README.md#prerequsites-for-running-oracle-sharding-database-controller)
