@@ -1,12 +1,12 @@
-# Oracle Database Operator for Kubernetes
+# Managing Oracle Single Instance Databases with Oracle Database Operator for Kubernetes
 
 Oracle Database Operator for Kubernetes (the operator) includes the Single Instance Database Controller that enables provisioning, cloning, and patching of Oracle Single Instance Databases on Kubernetes. The following sections explain the setup and functionality of the operator
 
-* [Prerequisites](ORACLE_SIDB_CONTROLLER_README.md#prerequisites-and-setup)
-* [Kind SingleInstanceDatabase](ORACLE_SIDB_CONTROLLER_README.md#kind-singleinstancedatabase)
-* [Provision New Database](ORACLE_SIDB_CONTROLLER_README.md#provision-new-database)
-* [Clone Existing Database](ORACLE_SIDB_CONTROLLER_README.md#clone-existing-database)
-* [Patch/Rollback Database](ORACLE_SIDB_CONTROLLER_README.md#patchrollback-database)
+* [Prerequisites](README.md#prerequisites)
+* [Kind SingleInstanceDatabase Resource](README.md#kind-singleinstancedatabase-resource)
+* [Provision New Database](README.md#provision-new-database)
+* [Clone Existing Database](README.md#clone-existing-database)
+* [Patch/Rollback Database](README.md#patchrollback-database)
 
 
 ## Prerequisites
@@ -21,7 +21,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
   
   For the use cases detailed below a sample .yaml file is available at
   * Enterprise, Standard Editions
-  [config/samples/singleinstancedatabase.yaml](config/samples/singleinstancedatabase.yaml)
+  [config/samples/singleinstancedatabase.yaml](./../../config/samples/singleinstancedatabase.yaml)
 
   **Note:** The `adminPassword` field of the above `singleinstancedatabase.yaml` yaml contains a secret for Single Instance Database creation (Provisioning a new database or cloning an existing database). This secret gets deleted after the database pod becomes ready for security reasons.  
 
@@ -244,7 +244,7 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   
 * ### Out of Place
   
-  Clone your source database using the method of [cloning existing database](ORACLE_SIDB_OPERATOR_README.md#clone-existing-database) and specify a new release version/image for the
+  Clone your source database using the method of [cloning existing database](README.md#clone-existing-database) and specify a new release version/image for the
   cloned database. Use this method to enusure there are no patching related issues impacting your database performance/functionality
   
 * ### Datapatch status
