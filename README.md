@@ -92,9 +92,9 @@ For more details, see [Oracle Database Operator Installation Instrunctions](./do
 
 The quickstarts are designed for specific database configurations, including:
 
-* [Oracle Autonomous Database](./doc/adb/ORACLE_ADB_CONTROLLER_README.md)
-* [Oracle Database Single Instance configuration](./doc/sidb/ORACLE_SIDB_CONTROLLER_README.md)
-* [Oracle Database configured with Oracle Sharding](./doc/sharding/ORACLE_SHARDING_CONTROLLER_README.md)
+* [Oracle Autonomous Database](./doc/adb/README.md)
+* [Oracle Database Single Instance configuration](./doc/sidb/README.md)
+* [Oracle Database configured with Oracle Sharding](./doc/sharding/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases. 
 
