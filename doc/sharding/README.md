@@ -43,7 +43,7 @@ To create a Sharding Topology, complete the steps in the following sections belo
 * A Cloud-based Kubernetes cluster, such as [OCI on Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) or  
 * An On-Premises Kubernetes Cluster, such as [Oracle Linux Cloud Native Environment (OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) cluster.
 
-To use Oracle Sharding Database Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Release Status Section](../../../README.md#requirements).
+To use Oracle Sharding Database Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Release Status Section](../../README.md#release-status).
 
 ### 2. Deploy Oracle Database Operator
 
@@ -85,7 +85,7 @@ You can either download the images and push them to your Docker Images Repositor
 
 ### 5. Create a Kubernetes secret for the database installation owner for the database Sharding Deployment
 
-Create a Kubernetes secret named `db-user-pass` using these steps: [Create Kubernetes Secret](./doc/sharding/provisioning/create_kubernetes_secret_for_db_user.md)
+Create a Kubernetes secret named `db-user-pass` using these steps: [Create Kubernetes Secret](./provisioning/create_kubernetes_secret_for_db_user.md)
 
 After you have the above prerequsites completed, you can proceed to the next section for your environment to provision the Oracle Database Sharding Topology.
 
@@ -93,19 +93,19 @@ After you have the above prerequsites completed, you can proceed to the next sec
 
 Deploy Oracle Database sharding topology on your Cloud based Kubernetes cluster. In this example, the deployment uses the YAML file based on `OCI OKE` cluster. There are multiple use case possible for deploying the Oracle Database sharding topology.
 
-[1. Provisioning Oracle Database sharding topology without Database Gold Image](./doc/sharding/provisioning/provisioning_without_db_gold_image.md)  
-[2. Provisioning Oracle Database sharding topology with additional control on resources like Memory and CPU allocated to Pods](./doc/sharding/provisioning/provisioning_with_control_on_resources.md)  
-[3. Provisioning a Persistent Volume having an Oracle Database Gold Image](./doc/sharding/provisioning/provisioning_persistent_volume_having_db_gold_image.md)  
-[4. Provisioning Oracle Database sharding topology by cloning database from your own Database Gold Image in the same Availability Domain(AD)](./doc/sharding/provisioning/provisioning_by_cloning_db_gold_image_in_same_ad.md)  
-[5. Provisioning Oracle Database sharding topology by cloning database from your own Database Gold Image across Availability Domains(ADs)](./doc/sharding/provisioning/provisioning_by_cloning_db_from_gold_image_across_ads.md)  
-[6. Provisioning Oracle Database sharding topology and send Notification using OCI Notification Service](./doc/sharding/provisioning/provisioning_with_notification_using_oci_notification.md)  
-[7. Scale Out - Add Shards to an existing Oracle Database Sharding Topology](./doc/sharding/provisioning/scale_out_add_shards.md)  
-[8. Scale In - Delete an existing Shard from a working Oracle Database sharding topology](./doc/sharding/provisioning/scale_in_delete_an_existing_shard.md)  
+[1. Provisioning Oracle Database sharding topology without Database Gold Image](./provisioning/provisioning_without_db_gold_image.md)  
+[2. Provisioning Oracle Database sharding topology with additional control on resources like Memory and CPU allocated to Pods](./provisioning/provisioning_with_control_on_resources.md)  
+[3. Provisioning a Persistent Volume having an Oracle Database Gold Image](./provisioning/provisioning_persistent_volume_having_db_gold_image.md)  
+[4. Provisioning Oracle Database sharding topology by cloning database from your own Database Gold Image in the same Availability Domain(AD)](./provisioning/provisioning_by_cloning_db_gold_image_in_same_ad.md)  
+[5. Provisioning Oracle Database sharding topology by cloning database from your own Database Gold Image across Availability Domains(ADs)](./provisioning/provisioning_by_cloning_db_from_gold_image_across_ads.md)  
+[6. Provisioning Oracle Database sharding topology and send Notification using OCI Notification Service](./provisioning/provisioning_with_notification_using_oci_notification.md)  
+[7. Scale Out - Add Shards to an existing Oracle Database Sharding Topology](./provisioning/scale_out_add_shards.md)  
+[8. Scale In - Delete an existing Shard from a working Oracle Database sharding topology](./provisioning/scale_in_delete_an_existing_shard.md)  
 
 ## Connecting to Shard Databases
 
-After the Oracle Database Sharding Topology has been provisioned using the Sharding Controller in Oracle Database Kubernetes Operator, you can follow the steps in this document to connect to the Sharded Database or to the individual Shards: [Database Connectivity](./doc/sharding/provisioning/database_connection.md)
+After the Oracle Database Sharding Topology has been provisioned using the Sharding Controller in Oracle Database Kubernetes Operator, you can follow the steps in this document to connect to the Sharded Database or to the individual Shards: [Database Connectivity](./provisioning/database_connection.md)
 
 ## Debugging and Troubleshooting
 
-To debug the Oracle Database Sharding Topology provisioned using the Sharding Controller of Oracle Database Kubernetes Operator, follow this document: [Debugging and troubleshooting](./doc/sharding/provisioning/debugging.md)
+To debug the Oracle Database Sharding Topology provisioned using the Sharding Controller of Oracle Database Kubernetes Operator, follow this document: [Debugging and troubleshooting](./provisioning/debugging.md)
