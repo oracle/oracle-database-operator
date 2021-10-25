@@ -28,9 +28,8 @@ To create a Sharding Topology, complete the steps in the following sections belo
 
 1. [Prerequsites for running Oracle Sharding Database Controller](#prerequsites-for-running-oracle-sharding-database-controller)
 2. [Provisioning Sharding Topology in a Cloud based Kubernetes Cluster (OKE in this case)](#provisioning-sharding-topology-in-a-cloud-based-kubernetes-cluster-oke-in-this-case)
-3. [Provisioning Sharding Topology in an On-Premise Kubernetes Cluster (OLCNE in this case)](#provisioning-sharding-topology-in-an-on-premise-kubernetes-cluster-olcne-in-this-case)
-4. [Connecting to Shard Databases](#connecting-to-shard-databases)
-5. [Debugging and Troubleshooting](#debugging-and-troubleshooting)
+3. [Connecting to Shard Databases](#connecting-to-shard-databases)
+4. [Debugging and Troubleshooting](#debugging-and-troubleshooting)
 
 **Note** Before proceeding to the next section, you must complete the instructions given in each section, based on your enviornment, before proceeding to next section.
 
