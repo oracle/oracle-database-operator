@@ -1,0 +1,21 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabase
+metadata:
+  name: autonomousdatabase-sample
+spec:
+  details:
+    autonomousDatabaseOCID: ocid1.autonomousdatabase...
+    # Your database's OPCU core count
+    cpuCoreCount: 2
+    # Your database's storage size in TB
+    dataStorageSizeInTBs: 2
+    # Enable/Disable auto scaling for your database
+    isAutoScalingEnabled: true
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey

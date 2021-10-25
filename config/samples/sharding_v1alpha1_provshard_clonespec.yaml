@@ -1,0 +1,73 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: sharding.oracle.com/v1alpha1
+kind: ProvShard
+metadata:
+  name: provshard-sample
+  namespace: sample-shard
+spec:
+ shard:
+    - name:  shard1
+      storageSizeInGb: 50
+      nodeSelector:
+        failure-domain.beta.kubernetes.io/zone: "PHX-AD-1"
+    - name: shard2
+      storageSizeInGb: 50
+      nodeSelector:
+        failure-domain.beta.kubernetes.io/zone: "PHX-AD-1"
+    - name: shard3
+      storageSizeInGb: 50
+      nodeSelector:
+        failure-domain.beta.kubernetes.io/zone: "PHX-AD-1"
+    - name: shard4
+      storageSizeInGb: 50
+      nodeSelector:
+        failure-domain.beta.kubernetes.io/zone: "PHX-AD-1"
+ catalog:
+    - name: catalog
+      storageSizeInGb: 50
+      nodeSelector:
+        failure-domain.beta.kubernetes.io/zone: "PHX-AD-1"
+ gsm:
+    - name: gsm1
+      storageSizeInGb: 50
+      replicas: 1
+      envVars:
+        - name:  "BASE_DIR"
+          value: "/opt/oracle/scripts/setup"
+        - name:  "SCRIPT_NAME"
+          value: "main.py"
+        - name:  "EXECUTOR"
+          value: "/bin/python"
+      nodeSelector:
+        failure-domain.beta.kubernetes.io/zone: "PHX-AD-1"
+    - name: gsm2
+      storageSizeInGb: 50
+      replicas: 1
+      envVars:
+        - name:  "BASE_DIR"
+          value: "/opt/oracle/scripts/setup"
+        - name:  "SCRIPT_NAME"
+          value: "main.py"
+        - name:  "EXECUTOR"
+          value: "/bin/python"
+      nodeSelector:
+        failure-domain.beta.kubernetes.io/zone: "PHX-AD-1"
+ storageClass: oci
+ dbImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:21.3.0-ee
+ gsmImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-gsm:21.3.0
+ scriptsLocation: /mnt/stage/sharding/scripts
+ secret: db-user-pass
+ isExternalSvc: false
+ isClone: True
+ isDeleteOraPvc: True
+ namespace: sample-shard
+ stagePvcName: pv-stage-vol-claim
+ nsConfigMap: onsconfigmap
+ nsSecret: my-secret
+ pvAnnotations:
+   volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1.phx.abyhqljrrmuodpfn3jevjr4kksaaubyjnusykgthfsahi4eazyppiuhbtwwa
+ pvMatchLabels:
+   failure-domain.beta.kubernetes.io/zone: "PHX-AD-1" 

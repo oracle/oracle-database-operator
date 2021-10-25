@@ -1,0 +1,185 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.1
+  creationTimestamp: null
+  name: autonomousdatabases.database.oracle.com
+spec:
+  group: database.oracle.com
+  names:
+    kind: AutonomousDatabase
+    listKind: AutonomousDatabaseList
+    plural: autonomousdatabases
+    shortNames:
+    - adb
+    - adbs
+    singular: autonomousdatabase
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.displayName
+      name: Display Name
+      type: string
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .status.isDedicated
+      name: Dedicated
+      type: string
+    - jsonPath: .status.cpuCoreCount
+      name: OCPUs
+      type: integer
+    - jsonPath: .status.dataStorageSizeInTBs
+      name: Storage (TB)
+      type: integer
+    - jsonPath: .status.dbWorkload
+      name: Workload Type
+      type: string
+    - jsonPath: .status.timeCreated
+      name: Created
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: AutonomousDatabase is the Schema for the autonomousdatabases
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: 'AutonomousDatabaseSpec defines the desired state of AutonomousDatabase
+              Important: Run "make" to regenerate code after modifying this file'
+            properties:
+              details:
+                description: AutonomousDatabaseDetails defines the detail information
+                  of AutonomousDatabase, corresponding to oci-go-sdk/database/AutonomousDatabase
+                properties:
+                  adminPassword:
+                    properties:
+                      k8sSecretName:
+                        type: string
+                      ociSecretOCID:
+                        type: string
+                    type: object
+                  autonomousDatabaseOCID:
+                    type: string
+                  compartmentOCID:
+                    type: string
+                  cpuCoreCount:
+                    type: integer
+                  dataStorageSizeInTBs:
+                    type: integer
+                  dbName:
+                    type: string
+                  dbVersion:
+                    type: string
+                  dbWorkload:
+                    description: 'AutonomousDatabaseDbWorkloadEnum Enum with underlying
+                      type: string'
+                    enum:
+                    - OLTP
+                    - DW
+                    - AJD
+                    - APEX
+                    type: string
+                  displayName:
+                    type: string
+                  freeformTags:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  isAutoScalingEnabled:
+                    type: boolean
+                  isDedicated:
+                    type: boolean
+                  lifecycleState:
+                    description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying
+                      type: string'
+                    type: string
+                  nsgOCIDs:
+                    items:
+                      type: string
+                    type: array
+                  privateEndpoint:
+                    type: string
+                  privateEndpointIP:
+                    type: string
+                  privateEndpointLabel:
+                    type: string
+                  subnetOCID:
+                    type: string
+                  wallet:
+                    properties:
+                      name:
+                        type: string
+                      password:
+                        properties:
+                          k8sSecretName:
+                            type: string
+                          ociSecretOCID:
+                            type: string
+                        type: object
+                    type: object
+                type: object
+              hardLink:
+                default: false
+                type: boolean
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+            required:
+            - details
+            type: object
+          status:
+            description: AutonomousDatabaseStatus defines the observed state of AutonomousDatabase
+            properties:
+              cpuCoreCount:
+                type: integer
+              dataStorageSizeInTBs:
+                type: integer
+              dbWorkload:
+                description: 'AutonomousDatabaseDbWorkloadEnum Enum with underlying
+                  type: string'
+                type: string
+              displayName:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
+                type: string
+              isDedicated:
+                type: string
+              lifecycleState:
+                description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying
+                  type: string'
+                type: string
+              timeCreated:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

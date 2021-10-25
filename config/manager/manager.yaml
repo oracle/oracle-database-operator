@@ -1,0 +1,46 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+  labels:
+    control-plane: controller-manager
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+    spec:
+      imagePullSecrets:
+        - name: container-registry-secret
+      containers:
+      - command:
+        - /manager
+        args:
+        - --enable-leader-election
+        image: controller:latest
+        imagePullPolicy: Always
+        name: manager
+        resources:
+          limits:
+            cpu: 400m
+            memory: 400Mi
+          requests:
+            cpu: 400m
+            memory: 400Mi
+      terminationGracePeriodSeconds: 10

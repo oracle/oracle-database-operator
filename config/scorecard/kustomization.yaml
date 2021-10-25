@@ -1,0 +1,20 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+resources:
+- bases/config.yaml
+patchesJson6902:
+- path: patches/basic.config.yaml
+  target:
+    group: scorecard.operatorframework.io
+    version: v1alpha3
+    kind: Configuration
+    name: config
+- path: patches/olm.config.yaml
+  target:
+    group: scorecard.operatorframework.io
+    version: v1alpha3
+    kind: Configuration
+    name: config
+# +kubebuilder:scaffold:patchesJson6902

@@ -1,0 +1,41 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: SingleInstanceDatabase
+metadata:
+  name: singleinstancedatabase-sample
+  namespace: default
+spec:
+  
+  ## Use only alphanumeric characters for sid
+  sid: ORCL1
+  
+  ## A source database ref to clone from, leave empty to create a fresh database
+  cloneFrom: ""
+
+  ## Should refer to SourceDB secret
+  ## Secret containing SIDB password mapped to secretKey 
+  ## This secret will be deleted after creation of the database unless keepSecret is set to true
+  adminPassword:
+    secretName: 
+    secretKey:
+    keepSecret: false
+
+  ## Database image details
+  ## Database can be patched out of place by updating the RU version/image
+  ## Major version changes are not supported
+  image:
+    pullFrom:
+    pullSecrets:
+
+  ## size : Minimum size of pvc | class : PVC storage Class
+  ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  persistence:
+    size: 100Gi
+    storageClass: ""
+    accessMode: "ReadWriteMany"
+
+  ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
+  replicas: 1
