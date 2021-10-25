@@ -12,7 +12,7 @@ To provide access, choose **one of the following approaches**:
 
 ### Authorized with API Key Authentication
 
-By default, all pods in the Oracle Container Engine for Kubernetes (OKE) are able to access the instance principal certificates, so that the operator calls OCI REST endpoints without any extra step. If you're using OKE, then please proceed to the [Oracle Autonomous Database document](./doc/adb/ORACLE_ADB_CONTROLLER_README.md).
+By default, all pods in the Oracle Container Engine for Kubernetes (OKE) are able to access the instance principal certificates, so that the operator calls OCI REST endpoints without any extra step. If you're using OKE, then please proceed to the installation.
 If the operator is deployed in a third-party Kubernetes cluster, then the credentials of the Oracle Cloud Infrastructure (OCI) user are needed. The operator reads these credentials from a ConfigMap and a Secret.
 
 Oracle recommends using the helper script `set_ocicredentials.sh` in the root directory of the repository; This script will generate a ConfigMap and a Secret with the OCI credentials. By default, the script parses the **DEFAULT** profile in `~/.oci/config`. The default names of the ConfigMap and the Secret are, respectively: `oci-cred` and `oci-privatekey`.
@@ -97,4 +97,4 @@ To set up Instance Principle authorization:
     Allow dynamic-group <your-dynamic-group> to manage autonomous-database-family in compartment <your-compartment>
     ```
 
-At this stage, the operator has been granted sufficient permissions to call OCI services. You can now proceed to the the installation.
+At this stage, the operator has been granted sufficient permissions to call OCI services. You can now proceed to the installation.
