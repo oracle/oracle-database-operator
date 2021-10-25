@@ -2,11 +2,11 @@
 
 Oracle Database Operator for Kubernetes (the operator) includes the Single Instance Database Controller that enables provisioning, cloning, and patching of Oracle Single Instance Databases on Kubernetes. The following sections explain the setup and functionality of the operator
 
-* [Prerequisites](README.md#prerequisites)
-* [Kind SingleInstanceDatabase Resource](README.md#kind-singleinstancedatabase-resource)
-* [Provision New Database](README.md#provision-new-database)
-* [Clone Existing Database](README.md#clone-existing-database)
-* [Patch/Rollback Database](README.md#patchrollback-database)
+* [Prerequisites](#prerequisites)
+* [Kind SingleInstanceDatabase Resource](#kind-singleinstancedatabase-resource)
+* [Provision New Database](#provision-new-database)
+* [Clone Existing Database](#clone-existing-database)
+* [Patch/Rollback Database](#patchrollback-database)
 
 
 ## Prerequisites
