@@ -12,7 +12,6 @@ After the operator is deployed, choose either one of the following operations to
 After you create the resource, you can use the operator to perform the following tasks:
 
 * [Scale the OCPU core count or storage](#scale-the-ocpu-core-count-or-storage) an Autonomous Database
-* [Enable/Disable auto scaling](#enabledisable-auto-scaling) of an Autonomous Database
 * [Rename](#rename) an Autonomous Database
 * [Manage ADMIN database user password](#manage-admin-passsword) of an Autonomous Database
 * [Download instance credentials (wallets)](#download-wallets) of an Autonomous Database
