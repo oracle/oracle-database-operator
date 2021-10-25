@@ -1,4 +1,4 @@
-# Oracle Sharding Database Controller
+# Using Oracle Sharding with Oracle Database Operator for Kubernetes
 
 Oracle Sharding distributes segments of a data set across many databases (shards) on different computers, either on-premises or in cloud. Sharding enables globally distributed, linearly scalable, multimodel databases. It requires no specialized hardware or software. Oracle Sharding does all this while rendering the strong consistency, full power of SQL, support for structured and unstructured data, and the Oracle Database ecosystem. It meets data sovereignty requirements, and supports applications that require low latency and high availability.
 
