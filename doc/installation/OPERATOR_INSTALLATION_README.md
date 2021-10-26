@@ -57,17 +57,9 @@ If you encounter an issue with these steps, then refer to the more detailed step
 Clone the [oracle-database-operator](https://github.com/oracle/oracle-database-operator) on your local machine
 
 ## Review and modify the Cloned Repository
-Make changes as needed to the repository. 
+Make changes as needed to the repository.
 
-If you want to run the operator locally outside the cluster, then run the following steps:
-
-  ```sh
-    cd oracle-database-operator
-    make generate
-    make manifests
-    make install run
-  ```
-If you want to run the operator inside the cluster, then run the following steps:
+## Build and push the Operator image
 
   ```sh
   cd oracle-database-operator
