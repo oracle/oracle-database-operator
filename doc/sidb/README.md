@@ -21,7 +21,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
   
   For the use cases detailed below a sample .yaml file is available at
   * Enterprise, Standard Editions
-  [config/samples/singleinstancedatabase.yaml](./../../config/samples/singleinstancedatabase.yaml)
+  [config/samples/sidb/singleinstancedatabase.yaml](./../../config/samples/sidb/singleinstancedatabase.yaml)
 
   **Note:** The `adminPassword` field of the above `singleinstancedatabase.yaml` yaml contains a secret for Single Instance Database creation (Provisioning a new database or cloning an existing database). This secret gets deleted after the database pod becomes ready for security reasons.  
 
@@ -118,7 +118,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
  Creating a new database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections. 
  
   ```sh
-$ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
+$ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
    
   Healthy
 ```
@@ -131,7 +131,7 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   respectively in the following command
 
   ```sh
-  $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.connectString}}
+  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.connectString}"
 
     144.25.10.119:1521/ORCL
   ```
@@ -139,7 +139,7 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   The Oracle Database inside the container also has Oracle Enterprise Manager Express configured. To access OEM Express, start the browser and follow the URL:
 
   ```sh
-  $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.oemExpressUrl}}
+  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.oemExpressUrl}"
 
     https://144.25.10.119:5500/em
   ```
@@ -150,7 +150,7 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   kubectl apply or edit/patch commands . Enable archiveLog before turning ON flashBack . Turn OFF flashBack before disabling the archiveLog
 
   ```sh
-  $ kubectl --type merge -p '{"spec":{"forceLog": true}}' patch singleinstancedatabase/sidb-sample
+  $ kubectl patch singleinstancedatabase sidb-sample --type merge -p '{"spec":{"forceLog": true}}' 
 
     singleinstancedatabase.database.oracle.com/sidb-sample patched
   ```
@@ -253,11 +253,11 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   and current release update version using the following commands
 
   ```sh
-  $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.datafilesPatched}}
+  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.datafilesPatched}"
 
     true
     
-  $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.releaseUpdate}
+  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.releaseUpdate}"
 
     19.3.0.0.0 (29517242)
   ```
