@@ -49,17 +49,6 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   kubectl apply -f https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml
   ```
 
-* ### Create Operator Image Pull Secrets
-  
-  Sign into [https://container-registry.oracle.com/](https://container-registry.oracle.com/) and accept the license agreement for the Operator image.
-
-  Create an image pull secret for Oracle Container Registry:
-
-  ```sh
-    kubectl create namespace oracle-database-operator-system
-    kubectl create secret docker-registry container-registry-secret -n oracle-database-operator-system --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<oracle-sso-password>' --docker-email='<oracle-sso-email-address>'
-  ```
-
 ## Quick Install of the Operator
 
   To install the operator in the cluster quickly, you can use a single [oracle-database-operator.yaml](https://github.com/oracle/oracle-database-operator/blob/main/oracle-database-operator.yaml) file. Operator pod replicas are set to a default of 3 for High Availability, which can be scaled up and down.
@@ -120,7 +109,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 
   Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods,services,PVCs, and so on) are deleted. However, the CRD deletion stops responding, because the CRD instances have finalizers that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
 
-* ### Retain the CRDs and APIservices
+* ### Retaining the CRDs and APIservices
 
   To delete the operator deployment and retain the CRDs, run the following commands:
 
