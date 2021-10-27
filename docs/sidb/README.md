@@ -237,12 +237,11 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
   
   Patched Oracle Docker images can be built using this [patching extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching)
 
-* ### In Place Resources or Objects
+* ### Patching
 
-  Edit the `.yaml` file of the database resourece/object and specify a new release update for release or image attributes. The database pods will be restarted
-  with the new release update image. For minimum downtime, ensure that you have mutiple replicas of the database pods running.
+  Edit the `singleinstancedatabase.yaml` file of the database resource/object and specify a new release update for release or image attributes and apply the `singleinstancedatabase.yaml` file. The database pods will be restarted with the new release update image. For minimum downtime, ensure that you have mutiple replicas of the database pods running.
   
-* ### Out of Place
+* ### Clone and Patch
   
   Clone your source database using the method of [cloning existing database](README.md#clone-existing-database) and specify a new release version/image for the
   cloned database. Use this method to enusure there are no patching related issues impacting your database performance/functionality
