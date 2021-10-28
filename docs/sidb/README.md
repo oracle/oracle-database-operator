@@ -24,6 +24,8 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
   **Note:** The `adminPassword` field of the above `singleinstancedatabase.yaml` yaml contains a secret for Single Instance Database creation (Provisioning a new database or cloning an existing database). This secret gets deleted after the database pod becomes ready for security reasons.  
 
+  More info on creating Kubernetes Secret available at [https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/)
+
 * ### List Databases
 
   ```sh
