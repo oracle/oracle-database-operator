@@ -40,7 +40,7 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
     kubectl create secret generic admin-password --from-literal=admin-password='password_here'
     ```
 
-3. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/autonomousdatabase_create.yaml`](./../../config/samples/autonomousdatabase_create.yaml)
+3. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
     | `spec.details.compartmentOCID` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the compartment of the Autonomous Database. | Yes |
@@ -83,7 +83,7 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
 4. Apply the yaml:
 
     ```sh
-    kubectl apply -f config/samples/autonomousdatabase_create.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_create.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample created
     ```
 
@@ -104,7 +104,7 @@ Other than provisioning a database, you can bind to an existing database in your
 
     ![adb-id-2](/images/adb/adb-id-2.png)
 
-3. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/autonomousdatabase_bind.yaml`](./../../config/samples/autonomousdatabase_bind.yaml)
+3. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_bind.yaml`](./../../config/samples/adb/autonomousdatabase_bind.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
     | `spec.details.autonomousDatabaseOCID` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the Autonomous Database you want to bind (create a reference) in your cluster. | Yes |
@@ -129,7 +129,7 @@ Other than provisioning a database, you can bind to an existing database in your
 4. Apply the yaml.
 
     ```sh
-    kubectl apply -f config/samples/autonomousdatabase_bind.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_bind.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample created
     ```
 
@@ -139,7 +139,7 @@ Other than provisioning a database, you can bind to an existing database in your
 
 Users can scale up or scale down the Oracle Autonomous Database OCPU core count or storage by updating the `cpuCoreCount` and `dataStorageSizeInTBs` parameters. The `isAutoScalingEnabled` indicates whether auto scaling is enabled. Here is an example of scaling the CPU count and storage size (TB) up to 2 and turning off the auto-scaling by updating the `autonomousdatabase-sample` custom resource.
 
-1. An example YAML file is available here: [config/samples/autonomousdatabase_scale.yaml](./../../config/samples/autonomousdatabase_scale.yaml)
+1. An example YAML file is available here: [config/samples/adb/autonomousdatabase_scale.yaml](./../../config/samples/adb/autonomousdatabase_scale.yaml)
 
     ```yaml
     ---
@@ -161,7 +161,7 @@ Users can scale up or scale down the Oracle Autonomous Database OCPU core count 
 2. Apply the change using `kubectl`.
 
     ```sh
-    kubectl apply -f config/samples/autonomousdatabase_scale.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_scale.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -171,7 +171,7 @@ Users can scale up or scale down the Oracle Autonomous Database OCPU core count 
 
 You can rename the database by changing the values of the `dbName` and `displayName`, as follows:
 
-1. An example YAML file is available here: [config/samples/autonomousdatabase_rename.yaml](./../../config/samples/autonomousdatabase_rename.yaml)
+1. An example YAML file is available here: [config/samples/adb/autonomousdatabase_rename.yaml](./../../config/samples/adb/autonomousdatabase_rename.yaml)
 
     ```yaml
     ---
@@ -195,7 +195,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 2. Apply the change using `kubectl`.
 
     ```sh
-    kubectl apply -f config/samples/autonomousdatabase_rename.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_rename.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -213,7 +213,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     \* The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.
 
-2. Update the example [config/samples/autonomousdatabase_change_admin_password.yaml](./../../config/samples/autonomousdatabase_change_admin_password.yaml)
+2. Update the example [config/samples/adb/autonomousdatabase_change_admin_password.yaml](./../../config/samples/adb/autonomousdatabase_change_admin_password.yaml)
 
     ```yaml
     ---
@@ -236,7 +236,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 3. Apply the YAML.
 
     ```sh
-    kubectl apply -f config/samples/autonomousdatabase_change_admin_password.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_change_admin_password.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -256,7 +256,7 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
 
     \* The password must be at least 8 characters long and must include at least 1 letter and either 1 numeric character or 1 special character.
 
-2. Update the example [config/samples/autonomousdatabase_wallet.yaml](./../../config/samples/autonomousdatabase_wallet.yaml)
+2. Update the example [config/samples/adb/autonomousdatabase_wallet.yaml](./../../config/samples/adb/autonomousdatabase_wallet.yaml)
 
     ```yaml
     ---
@@ -282,7 +282,7 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
 3. Apply the YAML
 
     ```sh
-    kubectl apply -f config/samples/autonomousdatabase_wallet.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_wallet.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
    ```
 
@@ -309,7 +309,7 @@ Here's a list of the values you can set for `lifecycleState`:
 * `STOPPED`: to stop the database
 * `TERMINATED`: to terminate the database
 
-1. A sample .yaml file is available here: [config/samples/autonomousdatabase_stop_start_terminate.yaml](./../../config/samples/autonomousdatabase_stop_start_terminate.yaml)
+1. A sample .yaml file is available here: [config/samples/adb/autonomousdatabase_stop_start_terminate.yaml](./../../config/samples/adb/autonomousdatabase_stop_start_terminate.yaml)
 
     ```yaml
     ---
@@ -329,7 +329,7 @@ Here's a list of the values you can set for `lifecycleState`:
 2. Apply the change to stop the database.
 
     ```sh
-    kubectl apply -f config/samples/autonomousdatabase_stop_start_terminate.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_stop_start_terminate.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -341,7 +341,7 @@ The `hardLink` defines the behavior when the resource is deleted from the cluste
 
 Follow the steps to delete the resource and terminate the Autonomous Database.
 
-1. Use the example [autonomousdatabase_delete_resource.yaml](./../../config/samples/autonomousdatabase_delete_resource.yaml) which sets the attribute `hardLink` to true.
+1. Use the example [autonomousdatabase_delete_resource.yaml](./../../config/samples/adb/autonomousdatabase_delete_resource.yaml) which sets the attribute `hardLink` to true.
 
     ```yaml
     ---
@@ -361,7 +361,7 @@ Follow the steps to delete the resource and terminate the Autonomous Database.
 2. Apply the yaml
 
     ```sh
-    kubectl apply -f config/samples/autonomousdatabase_delete_resource.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_delete_resource.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 

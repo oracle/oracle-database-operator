@@ -8,7 +8,6 @@ Oracle Database Operator for Kubernetes (the operator) includes the Single Insta
 * [Clone Existing Database](#clone-existing-database)
 * [Patch/Rollback Database](#patchrollback-database)
 
-
 ## Prerequisites
 
 Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISITES.md).
@@ -21,9 +20,11 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
   
   For the use cases detailed below a sample .yaml file is available at
   * Enterprise, Standard Editions
-  [config/samples/singleinstancedatabase.yaml](./../../config/samples/singleinstancedatabase.yaml)
+  [config/samples/sidb/singleinstancedatabase.yaml](./../../config/samples/sidb/singleinstancedatabase.yaml)
 
   **Note:** The `adminPassword` field of the above `singleinstancedatabase.yaml` yaml contains a secret for Single Instance Database creation (Provisioning a new database or cloning an existing database). This secret gets deleted after the database pod becomes ready for security reasons.  
+
+  More info on creating Kubernetes Secret available at [https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/)
 
 * ### List Databases
 
@@ -118,7 +119,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
  Creating a new database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections. 
  
   ```sh
-$ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
+$ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
    
   Healthy
 ```
@@ -131,7 +132,7 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   respectively in the following command
 
   ```sh
-  $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.connectString}}
+  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.connectString}"
 
     144.25.10.119:1521/ORCL
   ```
@@ -139,7 +140,7 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   The Oracle Database inside the container also has Oracle Enterprise Manager Express configured. To access OEM Express, start the browser and follow the URL:
 
   ```sh
-  $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.oemExpressUrl}}
+  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.oemExpressUrl}"
 
     https://144.25.10.119:5500/em
   ```
@@ -150,7 +151,7 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   kubectl apply or edit/patch commands . Enable archiveLog before turning ON flashBack . Turn OFF flashBack before disabling the archiveLog
 
   ```sh
-  $ kubectl --type merge -p '{"spec":{"forceLog": true}}' patch singleinstancedatabase/sidb-sample
+  $ kubectl patch singleinstancedatabase sidb-sample --type merge -p '{"spec":{"forceLog": true}}' 
 
     singleinstancedatabase.database.oracle.com/sidb-sample patched
   ```
@@ -233,19 +234,17 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   
 ## Patch/Rollback Database
 
-  Databases running in your cluster and managed by this operator can be patched or rolled back between release updates of the same major release. To patch databases, specify an image of the higher release update, and to roll back, specify an image of the lower release update. 
+  Databases running in your cluster and managed by this operator can be patched or rolled back between release updates of the same major release. To patch databases, specify an image of the higher release update, and to roll back, specify an image of the lower release update.
   
   Patched Oracle Docker images can be built using this [patching extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching)
 
-* ### In Place Resources or Objects
+* ### Patch existing Database
 
-  Edit the `.yaml` file of the database resourece/object and specify a new release update for release or image attributes. The database pods will be restarted
-  with the new release update image. For minimum downtime, ensure that you have mutiple replicas of the database pods running.
+  Edit and apply the `singleinstancedatabase.yaml` file of the database resource/object by specifying a new release update for image attributes. The database pods will be restarted with the new release update image. For minimum downtime, ensure that you have mutiple replicas of the database pods running.
   
-* ### Out of Place
+* ### Clone and Patch Database
   
-  Clone your source database using the method of [cloning existing database](README.md#clone-existing-database) and specify a new release version/image for the
-  cloned database. Use this method to enusure there are no patching related issues impacting your database performance/functionality
+  Clone your source database using the method of [cloning existing database](README.md#clone-existing-database) and specify a new release image for the cloned database. Use this method to enusure there are no patching related issues impacting your database performance/functionality
   
 * ### Datapatch status
 
@@ -253,11 +252,11 @@ $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.status}}
   and current release update version using the following commands
 
   ```sh
-  $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.datafilesPatched}}
+  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.datafilesPatched}"
 
     true
     
-  $ kubectl get singleinstancedatabase/sidb-sample --template={{.status.releaseUpdate}
+  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.releaseUpdate}"
 
     19.3.0.0.0 (29517242)
   ```
