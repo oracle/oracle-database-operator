@@ -112,6 +112,7 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 
 // +kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases/status,verbs=update;patch
+// +kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabaseBackups,verbs=get;list;create;update;delete
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=create;get;list;update
 // +kubebuilder:rbac:groups="",resources=configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
 
@@ -484,6 +485,21 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 			return ctrl.Result{}, nil
 		}
+	}
+
+	/*****************************************************
+	*	AutonomousDatabase Backups
+	*****************************************************/
+	if err := adbutil.CreateBackupResources(r.currentLogger, r.KubeClient, dbClient, adb); err != nil {
+		r.currentLogger.Error(err, "Fail to update Autonomous Database")
+
+		// Change the status to UNAVAILABLE
+		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
+		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+			return ctrl.Result{}, statusErr
+		}
+		// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
+		return ctrl.Result{}, nil
 	}
 
 	/*****************************************************

@@ -457,6 +457,42 @@ func DeleteAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) 
 	return
 }
 
+// ListAutonomousDatabaseBackups returns a list of Autonomous Database backups
+func ListAutonomousDatabaseBackups(dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) (resp database.ListAutonomousDatabaseBackupsResponse, err error) {
+	if adb.Spec.Details.AutonomousDatabaseOCID == nil {
+		return resp, nil
+	}
+
+	listBackupRequest := database.ListAutonomousDatabaseBackupsRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+	}
+
+	return dbClient.ListAutonomousDatabaseBackups(context.TODO(), listBackupRequest)
+}
+
+// CreateAutonomousDatabaseBackup creates an backup of Autonomous Database
+func CreateAutonomousDatabaseBackup(logger logr.Logger, dbClient database.DatabaseClient, adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (resp database.CreateAutonomousDatabaseBackupResponse, err error) {
+	logger.Info("Creating Autonomous Database backup " + adbBackup.Spec.DisplayName)
+
+	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
+		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
+			DisplayName:          &adbBackup.Spec.DisplayName,
+			AutonomousDatabaseId: &adbBackup.Spec.AutonomousDatabaseOCID,
+		},
+	}
+
+	return dbClient.CreateAutonomousDatabaseBackup(context.TODO(), createBackupRequest)
+}
+
+// GetAutonomousDatabaseBackup returns the response of GetAutonomousDatabaseBackupRequest
+func GetAutonomousDatabaseBackup(dbClient database.DatabaseClient, backupOCID *string) (resp database.GetAutonomousDatabaseBackupResponse, err error) {
+	getBackupRequest := database.GetAutonomousDatabaseBackupRequest{
+		AutonomousDatabaseBackupId: backupOCID,
+	}
+
+	return dbClient.GetAutonomousDatabaseBackup(context.TODO(), getBackupRequest)
+}
+
 func WaitUntilWorkCompleted(logger logr.Logger, workClient workrequests.WorkRequestClient, opcWorkRequestID *string) error {
 	if opcWorkRequestID == nil {
 		return nil
