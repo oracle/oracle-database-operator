@@ -36,62 +36,68 @@
 ** SOFTWARE.
  */
 
-package autonomousdatabase_backup
+package autonomousdatabase
 
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/go-logr/logr"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 )
 
-func UpdateAutonomousDatabaseBackupResource(logger logr.Logger, kubeClient client.Client, backup *dbv1alpha1.AutonomousDatabaseBackup) error {
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		curBackup := &dbv1alpha1.AutonomousDatabaseBackup{}
-
-		namespacedName := types.NamespacedName{
-			Namespace: backup.GetNamespace(),
-			Name:      backup.GetName(),
-		}
-
-		if err := kubeClient.Get(context.TODO(), namespacedName, curBackup); err != nil {
-			return err
-		}
-
-		curBackup.Spec = backup.Spec
-		return kubeClient.Update(context.TODO(), curBackup)
-	}); err != nil {
-		return err
+func newOwnerReference(owner client.Object) []metav1.OwnerReference {
+	ownerRef := []metav1.OwnerReference{
+		{
+			Kind:       owner.GetObjectKind().GroupVersionKind().Kind,
+			APIVersion: owner.GetObjectKind().GroupVersionKind().GroupVersion().String(),
+			Name:       owner.GetName(),
+			UID:        owner.GetUID(),
+		},
 	}
-
-	// Update status
-	if statusErr := UpdateStatus(kubeClient, backup); statusErr != nil {
-		return statusErr
-	}
-	logger.Info("Update local resource AutonomousDatabase successfully")
-
-	return nil
+	return ownerRef
 }
 
-// UpdateStatus sets the status subresource of AutonomousDatabaseBackup
-func UpdateStatus(kubeClient client.Client, adbBackup *dbv1alpha1.AutonomousDatabaseBackup) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		curBackup := &dbv1alpha1.AutonomousDatabaseBackup{}
+// func newOwnerReference(adb *dbv1alpha1.AutonomousDatabase) []metav1.OwnerReference {
+// 	ownerRef := []metav1.OwnerReference{
+// 		{
+// 			Kind:       adb.GroupVersionKind().Kind,
+// 			APIVersion: adb.APIVersion,
+// 			Name:       adb.Name,
+// 			UID:        types.UID(adb.UID),
+// 		},
+// 	}
+// 	return ownerRef
+// }
 
-		namespacedName := types.NamespacedName{
-			Namespace: adbBackup.GetNamespace(),
-			Name:      adbBackup.GetName(),
+func fetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseList, error) {
+	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
+	adbList := &dbv1alpha1.AutonomousDatabaseList{}
+
+	if err := kubeClient.List(context.TODO(), adbList, &client.ListOptions{Namespace: namespace}); err != nil {
+		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
+		// No need to change the since we don't know if we obtain the object.
+		if !apiErrors.IsNotFound(err) {
+			return adbList, err
 		}
+	}
 
-		if err := kubeClient.Get(context.TODO(), namespacedName, curBackup); err != nil {
-			return err
+	return adbList, nil
+}
+
+func fetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseBackupList, error) {
+	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
+	backupList := &dbv1alpha1.AutonomousDatabaseBackupList{}
+
+	if err := kubeClient.List(context.TODO(), backupList, &client.ListOptions{Namespace: namespace}); err != nil {
+		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
+		// No need to change the since we don't know if we obtain the object.
+		if !apiErrors.IsNotFound(err) {
+			return backupList, err
 		}
+	}
 
-		curBackup.Status = adbBackup.Status
-		return kubeClient.Status().Update(context.TODO(), curBackup)
-	})
+	return backupList, nil
 }

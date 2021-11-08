@@ -60,8 +60,8 @@ import (
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
-// SetStatus sets the status subresource of AutonomousDatabase
-func SetStatus(kubeClient client.Client, adb *dbv1alpha1.AutonomousDatabase) error {
+// UpdateAutonomousDatabaseStatus sets the status subresource of AutonomousDatabase
+func UpdateAutonomousDatabaseStatus(kubeClient client.Client, adb *dbv1alpha1.AutonomousDatabase) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		curADB := &dbv1alpha1.AutonomousDatabase{}
 
@@ -143,23 +143,14 @@ func getValidName(name string, usedNames map[string]bool) string {
 	return returnedName
 }
 
-func getOwnerReference(adb *dbv1alpha1.AutonomousDatabase) []metav1.OwnerReference {
-	ownerRef := []metav1.OwnerReference{
-		{
-			Kind:       adb.GroupVersionKind().Kind,
-			APIVersion: adb.APIVersion,
-			Name:       adb.Name,
-			UID:        types.UID(adb.UID),
-		},
-	}
-	return ownerRef
-}
-
 // CreateBackupResources creates the all the AutonomousDatabasBackups that appears in the ListAutonomousDatabaseBackups request
 // The backup object will not be created if it already exists.
 func CreateBackupResources(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) error {
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
-	backupList := &dbv1alpha1.AutonomousDatabaseBackupList{}
+	backupList, err := fetchAutonomousDatabaseBackups(kubeClient, adb.Namespace)
+	if err != nil {
+		return err
+	}
 
 	if err := kubeClient.List(context.TODO(), backupList, &client.ListOptions{Namespace: adb.Namespace}); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
@@ -191,9 +182,6 @@ func CreateBackupResources(logger logr.Logger, kubeClient client.Client, dbClien
 		return err
 	}
 
-	var ownerRef []metav1.OwnerReference
-	ownerRef = append(ownerRef, metav1.OwnerReference{Kind: adb.GroupVersionKind().Kind, APIVersion: adb.APIVersion, Name: adb.Name, UID: types.UID(adb.UID)})
-
 	for _, backupSummary := range resp.Items {
 		// Create the resource if the AutonomousDatabaseBackupOCID doesn't exist
 		_, ok := usedBackupOCIDs[*backupSummary.Id]
@@ -213,7 +201,7 @@ func CreateBackupResources(logger logr.Logger, kubeClient client.Client, dbClien
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace:       adb.GetNamespace(),
 					Name:            backupName,
-					OwnerReferences: getOwnerReference(adb),
+					OwnerReferences: newOwnerReference(adb),
 				},
 				Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
 					AutonomousDatabaseBackupOCID: *backupSummary.Id,
