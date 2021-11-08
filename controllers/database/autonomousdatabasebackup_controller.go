@@ -55,7 +55,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v45/workrequests"
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	backupUtil "github.com/oracle/oracle-database-operator/commons/autonomousdatabase_backup"
+	backupUtil "github.com/oracle/oracle-database-operator/commons/autonomousdatabase"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
@@ -84,13 +84,12 @@ func (r *AutonomousDatabaseBackupReconciler) eventFilterPredicate() predicate.Pr
 			newBackup := e.ObjectNew.DeepCopyObject().(*dbv1alpha1.AutonomousDatabaseBackup)
 
 			specChanged := reflect.DeepEqual(oldBackup.Spec, newBackup.Spec)
-			statusChanged := reflect.DeepEqual(oldBackup.Status, newBackup.Status)
-			if specChanged || statusChanged {
-				// Don't enqueue request
-				return false
+			if specChanged {
+				// Enqueue request
+				return true
 			}
-			// Enqueue request
-			return true
+			// Don't enqueue request
+			return false
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			// Do not trigger reconciliation when the real object is deleted from the cluster.
@@ -130,7 +129,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 
 		// Change the status to UNAVAILABLE
 		adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
-		if statusErr := backupUtil.UpdateStatus(r.KubeClient, adbBackup); statusErr != nil {
+		if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -142,7 +141,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 
 		// Change the status to UNAVAILABLE
 		adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
-		if statusErr := backupUtil.UpdateStatus(r.KubeClient, adbBackup); statusErr != nil {
+		if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -154,14 +153,15 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 
 		// Change the status to UNAVAILABLE
 		adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
-		if statusErr := backupUtil.UpdateStatus(r.KubeClient, adbBackup); statusErr != nil {
+		if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
 	}
 
 	/******************************************************************
-	 * Create a backup if the AutonomousDatabaseBackupOCID is empty
+	 * Create a backup if the AutonomousDatabaseBackupOCID is empty,
+	 * otherwise bind to an exisiting backup
 	 ******************************************************************/
 	if adbBackup.Spec.AutonomousDatabaseBackupOCID == "" {
 		resp, err := oci.CreateAutonomousDatabaseBackup(r.currentLogger, dbClient, adbBackup)
@@ -170,7 +170,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 
 			// Change the status to UNAVAILABLE
 			adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
-			if statusErr := backupUtil.UpdateStatus(r.KubeClient, adbBackup); statusErr != nil {
+			if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
@@ -179,7 +179,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 		// update the status
 		adbBackup.Status.AutonomousDatabaseBackupOCID = *resp.Id
 		adbBackup.Status.LifecycleState = resp.LifecycleState
-		backupUtil.UpdateStatus(r.KubeClient, adbBackup)
+		backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup)
 
 		// Wait until the work is done
 		if err := oci.WaitUntilWorkCompleted(r.currentLogger, workClient, resp.OpcWorkRequestId); err != nil {
@@ -187,7 +187,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 
 			// Change the status to UNAVAILABLE
 			adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
-			if statusErr := backupUtil.UpdateStatus(r.KubeClient, adbBackup); statusErr != nil {
+			if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
@@ -196,7 +196,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 		// Binding
 		// Add the Status.AutonomousDatabaseBackupOCID and update the status
 		adbBackup.Status.AutonomousDatabaseBackupOCID = adbBackup.Spec.AutonomousDatabaseBackupOCID
-		backupUtil.UpdateStatus(r.KubeClient, adbBackup)
+		backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup)
 	}
 
 	/******************************************************************
@@ -206,7 +206,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	if err != nil {
 		// Change the status to UNAVAILABLE
 		adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
-		if statusErr := backupUtil.UpdateStatus(r.KubeClient, adbBackup); statusErr != nil {
+		if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, err
@@ -214,7 +214,19 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 
 	adbBackup.UpdateStatusFromAutonomousDatabaseBackupResponse(resp)
 
-	backupUtil.UpdateStatus(r.KubeClient, adbBackup)
+	backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup)
+
+	/******************************************************************
+	* Update the ownerReference if the AutonomousDatabase is found
+	******************************************************************/
+	if err := backupUtil.SetOwnerAutonomousDatabase(r.currentLogger, r.KubeClient, adbBackup); err != nil {
+		// Change the status to UNAVAILABLE
+		adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
+		if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
+			return ctrl.Result{}, statusErr
+		}
+		return ctrl.Result{}, err
+	}
 
 	r.currentLogger.Info("AutonomousDatabaseBackup reconcile successfully")
 
