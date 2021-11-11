@@ -22,12 +22,12 @@ Note: You must provision persistent storage if you intend to deploy containerize
 
 ### Prerequites for Oracle Autonomous Database (ADB)
 
-If you intent to use `OraOperator` to handle Oracle Autonomous Database lifecycles, then read [Oracle Autonomous Database prerequisites](./docs/adb/ADB_PREREQUISITES.md)
+If you intent to use `OraOperator` to handle Oracle Autonomous Database lifecycles, then read [Oracle Autonomous Database prerequisites](./doc/adb/ADB_PREREQUISITES.md)
 
 ### Prerequites for Single Instance Databases (SIDB)
 
-If you intent to use `OraOperator` to handle Oracle Database Single Instance lifecycles, then read [Single Instance Database Prerequisites](./docs/sidb/SIDB_PREREQUISITES.md)
+If you intent to use `OraOperator` to handle Oracle Database Single Instance lifecycles, then read [Single Instance Database Prerequisites](./doc/sidb/SIDB_PREREQUISITES.md)
 
 ### Prerequites for Sharded Databases (SHARDING)  
 
- If you intent to use OraOperator to handle the lifecycle of Oracle Database deployed with Oracle Sharding, then read [Sharded Database Prerequisites](./docs/sharding/README.md#prerequsites-for-running-oracle-sharding-database-controller)
+ If you intent to use OraOperator to handle the lifecycle of Oracle Database deployed with Oracle Sharding, then read [Sharded Database Prerequisites](./doc/sharding/README.md#prerequsites-for-running-oracle-sharding-database-controller)

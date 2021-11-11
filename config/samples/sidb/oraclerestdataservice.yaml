@@ -1,0 +1,53 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: OracleRestDataService
+metadata:
+  name: oraclerestdataservice-sample
+spec:
+  
+  ## Database ref. This can be of kind SingleInstanceDatabase.
+  databaseRef: "singleinstancedatabase-sample"
+  
+  ## Secret containing databaseRef password mapped to secretKey. 
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  adminPassword:
+    secretName: 
+    secretKey:
+    keepSecret: false
+
+  ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  ordsPassword:
+    secretName: 
+    secretKey:
+    keepSecret: false
+
+  ## Secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
+  ## Mention a non-null string for apexPassword.secretName to configure APEX with ORDS.
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  apexPassword:
+    secretName: 
+    secretKey:
+    keepSecret: false
+
+  ## ORDS image details
+  ## Add 'database.api.enabled=true' entry to below file while building ORDS image.
+  ## https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/ords_params.properties.tmpl
+  image:
+    pullFrom:
+    pullSecrets:
+
+  ## Type of service  Applicable on cloud enviroments only.
+  ## if loadBalService: false, service type = "NodePort". else "LoadBalancer"
+  loadBalancer: false
+
+  ## PDB Schemas to be ORDS Enabled.
+  ## Schema will be created (if not exists) with username as schema and password as .spec.ordsPassword.
+  restEnableSchemas:
+  - schema:
+    enable: true
+    urlMapping:
+    pdb:

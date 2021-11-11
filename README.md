@@ -75,15 +75,15 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
 You should see that the operator is up and running, along with the shipped controllers.
 
-For more details, see [Oracle Database Operator Installation Instrunctions](./docs/installation/OPERATOR_INSTALLATION_README.md).
+For more details, see [Oracle Database Operator Installation Instrunctions](./doc/installation/OPERATOR_INSTALLATION_README.md).
 
 ## Getting Started with the Operator (Quickstart)
 
 The quickstarts are designed for specific database configurations, including:
 
-* [Oracle Autonomous Database](./docs/adb/README.md)
-* [Oracle Database Single Instance configuration](./docs/sidb/README.md)
-* [Oracle Database configured with Oracle Sharding](./docs/sharding/README.md)
+* [Oracle Autonomous Database](./doc/adb/README.md)
+* [Oracle Database Single Instance configuration](./doc/sidb/README.md)
+* [Oracle Database configured with Oracle Sharding](./doc/sharding/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases. 
 
