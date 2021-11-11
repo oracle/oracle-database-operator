@@ -7,6 +7,8 @@ Oracle Database Operator for Kubernetes (the operator) includes the Single Insta
 * [Provision New Database](#provision-new-database)
 * [Clone Existing Database](#clone-existing-database)
 * [Patch/Rollback Database](#patchrollback-database)
+* [Kind OracleRestDataService](#kind-oraclerestdataservice)
+* [REST Enable Database](#rest-enable-database)
 
 ## Prerequisites
 
