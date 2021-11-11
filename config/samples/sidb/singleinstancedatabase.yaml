@@ -41,6 +41,12 @@ spec:
   ## Enable/Disable ForceLogging
   forceLog: false
 
+  ## apex-latest.zip file should be present in the location '/opt/oracle/oradata'
+  ## Download using `wget https://download.oracle.com/otn_software/apex/apex-latest.zip`
+  ## use `kubectl cp <full/path/to/local/apex-latest.zip> <sidbpodname>:/opt/oracle/oradata
+  ## Deploy OracleRestDataService CR to front APEX
+  installApex: false
+  
   ## NA if cloning from a SourceDB (cloneFrom is set)
   ## Specify both sgaSize and pgaSize (in MB) or dont specify both
   ## Specify Non-Zero value to use

@@ -9,4 +9,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: container-registry.oracle.com/database/operator
-  newTag: 0.1.0
+  newTag: 0.1.1
