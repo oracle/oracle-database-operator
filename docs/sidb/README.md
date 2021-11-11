@@ -116,16 +116,14 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
 * ### Creation Status
   
- Creating a new database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections. 
- 
+ Creating a new database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections.
+
   ```sh
 $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
    
   Healthy
 ```
   
-
-
 * ### Connection Information
 
   External and internal (running in Kubernetes pods) clients can connect to the database using .status.connectString and .status.clusterConnectString
