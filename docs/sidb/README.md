@@ -334,7 +334,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
   
     Creating a new ORDS instance takes a while. ORDS is open for connections when the 'status' status returns a "Healthy"
 
-     ```sh
+    ```sh
     $ kubectl get oraclerestdataservice/ords-sample --template={{.status.status}}
 
       Healthy
@@ -376,6 +376,14 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
 * #### Some Usecases
 
 * ##### PDB Lifecycle Management
+
+  * To Enable PDB Lifecycle Management, Grant SYSDBA to CDB Administrator
+
+    ```sh
+    $ echo "GRANT SYSDBA TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" | sqlplus -s sys/<SysPassword of .spec.databaseRef>@<connectString of .spec.databaseRef> as sysdba
+    
+    Grant succeeded.
+    ```
 
     The Oracle REST Data Services (ORDS) database API allows us to manage the lifecycle of PDBs via REST web service calls.
     Few APIs :

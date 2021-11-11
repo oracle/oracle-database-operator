@@ -1412,7 +1412,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: container-registry.oracle.com/database/operator:0.1.1
+        image: phx.ocir.io/oracassandra/OraOperator:test-0.1.1
         imagePullPolicy: Always
         name: manager
         ports:
