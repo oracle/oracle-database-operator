@@ -220,7 +220,6 @@ const GetPdbsSQL string = "select name from v\\$pdbs where name not like 'PDB\\$
 const SetAdminUsersSQL string = "CREATE USER C##DBAPI_CDB_ADMIN IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK CONTAINER=ALL;" +
 	"\nalter user C##DBAPI_CDB_ADMIN identified by \\\"%[1]s\\\" account unlock;" +
 	"\nGRANT DBA TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" +
-	"\nGRANT SYSOPER TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" +
 	"\nGRANT PDB_DBA  TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" +
 	"\nCREATE USER C##_DBAPI_PDB_ADMIN IDENTIFIED BY \\\"%[1]s\\\" CONTAINER=ALL ACCOUNT UNLOCK;" +
 	"\nalter user C##_DBAPI_PDB_ADMIN identified by \\\"%[1]s\\\" account unlock;" +
@@ -255,7 +254,7 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
 	"\numask 177" +
-	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSOPER > cdbAdmin.properties" +
+	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
 	"\necho db.cdb.adminUser.password=\"%[4]s\" >> cdbAdmin.properties" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
 	"\nrm -f cdbAdmin.properties" +
