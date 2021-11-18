@@ -47,5 +47,5 @@ jobs:
           IMAGE_NAME=${{ env.IMAGE }}
           IMAGE_NAME=${IMAGE,,}
           make docker-build IMG="${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.TAG }}"
-          make docker-push "${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.TAG }}"
+          make docker-push IMG="${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.TAG }}"
 
