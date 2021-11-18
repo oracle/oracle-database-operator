@@ -10,7 +10,7 @@ env:
   REGISTRY: ghcr.io
   # github.repository as <account>/<repo>
   IMAGE: ${{ github.repository }}
-
+  TAG: latest 
 
 jobs:
   build:
@@ -34,15 +34,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # extract branch name
-      - name: Extract branch name
-        if: github.event_name != 'pull_request'
-        run: echo "BRANCH_NAME=${GITHUB_REF#refs/heads/}" >> "$GITHUB_ENV"
-
-      # extract branch name on pull request
+      # extract branch name on pull request to use as image tag
       - name: Extract branch name
         if: github.event_name == 'pull_request'
-        run: echo "BRANCH_NAME=${GITHUB_HEAD_REF}" >> "$GITHUB_ENV"
+        run: echo "TAG=${GITHUB_HEAD_REF}" >> "$GITHUB_ENV"
 
       # Build and push Operator image
       - name: Build and push Operator image
@@ -51,7 +46,6 @@ jobs:
           make manifests
           IMAGE_NAME=${{ env.IMAGE }}
           IMAGE_NAME=${IMAGE,,}
-          make docker-build IMG="${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.BRANCH_NAME }}"
-          docker push "${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.BRANCH_NAME }}"
-          docker rmi "${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.BRANCH_NAME }}" && docker system prune -f
-          rm -rf bin/
+          make docker-build IMG="${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.TAG }}"
+          make docker-push "${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.TAG }}"
+
