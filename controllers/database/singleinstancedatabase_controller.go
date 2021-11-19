@@ -387,9 +387,11 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	}
 	if m.Spec.CloneFrom != "" {
 		// Once a clone database has created , it has no link with its reference
-		if m.Status.DatafilesCreated == "true" {
+		if m.Status.DatafilesCreated == "true" ||
+			!dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
 			return requeueN, nil
 		}
+
 		// Fetch the Clone database reference
 		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.CloneFrom}, n)
 		if err != nil {
@@ -493,9 +495,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 									edition = "enterprise"
 								}
 							} else {
-								edition = n.Spec.Edition
-								if n.Spec.Edition == "" {
-									edition = "enterprise"
+								if !dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
+									edition = ""
+								} else {
+									edition = n.Spec.Edition
+									if n.Spec.Edition == "" {
+										edition = "enterprise"
+									}
 								}
 							}
 							return []string{"-c", fmt.Sprintf(dbcommons.InitWalletCMD, edition)}
@@ -639,16 +645,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
 						},
 						{
-							Name:  "PRIMARY_DB_CONN_STR",
-							Value: n.Name + ":1521/" + n.Spec.Sid,
-						},
-						{
-							Name:  "PRIMARY_SID",
-							Value: strings.ToUpper(n.Spec.Sid),
-						},
-						{
-							Name:  "PRIMARY_NAME",
-							Value: n.Name,
+							Name: "PRIMARY_DB_CONN_STR",
+							Value: func() string {
+								if dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
+									return n.Name + ":1521/" + n.Spec.Sid
+								}
+								return m.Spec.CloneFrom
+							}(),
 						},
 						{
 							Name: "ORACLE_HOSTNAME",

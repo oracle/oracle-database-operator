@@ -1412,7 +1412,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: phx.ocir.io/oracassandra/oraoperator:test-0.1.1
+        image: phx.ocir.io/oracassandra/cloneonprem:test-0.1.1
         imagePullPolicy: Always
         name: manager
         ports:

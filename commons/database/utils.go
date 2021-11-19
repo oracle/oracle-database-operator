@@ -617,3 +617,11 @@ func GetSqlClient(edition string) string {
 	}
 	return "sqlplus -s / as sysdba"
 }
+
+// Is Source Database On same Cluster
+func IsSourceDatabaseOnCluster(cloneFrom string) bool {
+	if strings.Contains(cloneFrom, ":") && strings.Contains(cloneFrom, "/") {
+		return false
+	}
+	return true
+}
