@@ -42,8 +42,8 @@ import (
 	"context"
 	"encoding/base64"
 
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/secrets"
+	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v51/secrets"
 )
 
 func getValueFromVaultSecret(secretClient secrets.SecretsClient, vaultSecretOCID string) (string, error) {

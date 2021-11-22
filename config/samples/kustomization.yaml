@@ -10,4 +10,5 @@ resources:
   - singleinstancedatabase.yaml
   - shardingdatabase.yaml
   - autonomousdatabasebackup.yaml
+- database_v1alpha1_autonomousdatabaserestore.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples

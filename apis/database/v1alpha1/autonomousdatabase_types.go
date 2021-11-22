@@ -42,7 +42,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/oracle/oci-go-sdk/v45/database"
+	"github.com/oracle/oci-go-sdk/v51/database"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 

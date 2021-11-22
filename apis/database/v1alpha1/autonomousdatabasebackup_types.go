@@ -41,7 +41,8 @@ package v1alpha1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/oracle/oci-go-sdk/v45/database"
+	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oracle-database-operator/commons/oci/ociutil"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -76,7 +77,7 @@ type AutonomousDatabaseBackupStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 // +kubebuilder:resource:shortName="adbbu";"adbbus"
-// +kubebuilder:printcolumn:JSONPath=".spec.displayName",name="Display Name",type=string
+// +kubebuilder:printcolumn:JSONPath=".status.displayName",name="Display Name",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.lifecycleState",name="State",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.type",name="Type",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.timeStarted",name="Started",type=string
@@ -101,10 +102,10 @@ func (backup *AutonomousDatabaseBackup) UpdateStatusFromAutonomousDatabaseBackup
 	backup.Status.LifecycleState = resp.LifecycleState
 
 	if resp.TimeStarted != nil {
-		backup.Status.TimeStarted = resp.TimeStarted.String()
+		backup.Status.TimeStarted = ociutil.FormatSDKTime(resp.TimeStarted.Time)
 	}
 	if resp.TimeEnded != nil {
-		backup.Status.TimeEnded = resp.TimeEnded.String()
+		backup.Status.TimeEnded = ociutil.FormatSDKTime(resp.TimeEnded.Time)
 	}
 }
 
