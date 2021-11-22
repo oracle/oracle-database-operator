@@ -6,39 +6,23 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.6.1
   creationTimestamp: null
-  name: autonomousdatabasebackups.database.oracle.com
+  name: autonomousdatabaserestores.database.oracle.com
 spec:
   group: database.oracle.com
   names:
-    kind: AutonomousDatabaseBackup
-    listKind: AutonomousDatabaseBackupList
-    plural: autonomousdatabasebackups
+    kind: AutonomousDatabaseRestore
+    listKind: AutonomousDatabaseRestoreList
+    plural: autonomousdatabaserestores
     shortNames:
-    - adbbu
-    - adbbus
-    singular: autonomousdatabasebackup
+    - adbr
+    - adbrs
+    singular: autonomousdatabaserestore
   scope: Namespaced
   versions:
-  - additionalPrinterColumns:
-    - jsonPath: .status.displayName
-      name: Display Name
-      type: string
-    - jsonPath: .status.lifecycleState
-      name: State
-      type: string
-    - jsonPath: .status.type
-      name: Type
-      type: string
-    - jsonPath: .status.timeStarted
-      name: Started
-      type: string
-    - jsonPath: .status.timeEnded
-      name: Ended
-      type: string
-    name: v1alpha1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AutonomousDatabaseBackup is the Schema for the autonomousdatabasebackups
+        description: AutonomousDatabaseRestore is the Schema for the autonomousdatabaserestores
           API
         properties:
           apiVersion:
@@ -54,14 +38,10 @@ spec:
           metadata:
             type: object
           spec:
-            description: AutonomousDatabaseBackupSpec defines the desired state of
-              AutonomousDatabaseBackup
+            description: AutonomousDatabaseRestoreSpec defines the desired state of
+              AutonomousDatabaseRestore
             properties:
-              autonomousDatabaseBackupOCID:
-                type: string
               autonomousDatabaseOCID:
-                type: string
-              displayName:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file'
                 type: string
@@ -72,44 +52,33 @@ spec:
                   secretName:
                     type: string
                 type: object
+              source:
+                properties:
+                  backupName:
+                    type: string
+                  datetime:
+                    type: string
+                type: object
+            required:
+            - autonomousDatabaseOCID
+            - source
             type: object
           status:
-            description: AutonomousDatabaseBackupStatus defines the observed state
-              of AutonomousDatabaseBackup
+            description: AutonomousDatabaseRestoreStatus defines the observed state
+              of AutonomousDatabaseRestore
             properties:
-              autonomousDatabaseBackupOCID:
+              state:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying
                   this file'
-                type: string
-              autonomousDatabaseOCID:
-                type: string
-              compartmentOCID:
-                type: string
-              displayName:
-                type: string
-              isAutomatic:
-                type: boolean
-              lifecycleState:
-                description: 'AutonomousDatabaseBackupLifecycleStateEnum Enum with
-                  underlying type: string'
-                type: string
-              timeEnded:
-                type: string
-              timeStarted:
-                type: string
-              type:
-                description: 'AutonomousDatabaseBackupTypeEnum Enum with underlying
-                  type: string'
+                enum:
+                - New
+                - InProgress
+                - Completed
+                - Failed
                 type: string
             required:
-            - autonomousDatabaseBackupOCID
-            - autonomousDatabaseOCID
-            - compartmentOCID
-            - displayName
-            - isAutomatic
-            - lifecycleState
-            - type
+            - state
             type: object
         type: object
     served: true
