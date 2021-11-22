@@ -44,9 +44,9 @@ import (
 	"reflect"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v45/database"
-	"github.com/oracle/oci-go-sdk/v45/secrets"
-	"github.com/oracle/oci-go-sdk/v45/workrequests"
+	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oci-go-sdk/v51/secrets"
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -509,7 +509,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	r.currentLogger.Info("AutonomousDatabase resoursce reconcile successfully")
+	r.currentLogger.Info("AutonomousDatabase resource reconcile successfully")
 
 	return ctrl.Result{}, nil
 }

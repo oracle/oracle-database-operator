@@ -1,0 +1,7 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabaseRestore
+metadata:
+  name: autonomousdatabaserestore-sample
+spec:
+  # Add fields here
+  foo: bar

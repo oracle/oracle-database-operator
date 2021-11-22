@@ -51,8 +51,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/oracle/oci-go-sdk/v45/database"
-	"github.com/oracle/oci-go-sdk/v45/workrequests"
+	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	backupUtil "github.com/oracle/oracle-database-operator/commons/autonomousdatabase"
@@ -160,7 +160,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	/******************************************************************
-	 * Create a backup if the AutonomousDatabaseBackupOCID is empty,
+	 * Create a backup if the Spec.AutonomousDatabaseBackupOCID is empty,
 	 * otherwise bind to an exisiting backup
 	 ******************************************************************/
 	if adbBackup.Spec.AutonomousDatabaseBackupOCID == "" {
