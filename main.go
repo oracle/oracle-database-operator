@@ -106,6 +106,14 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabaseBackup")
 		os.Exit(1)
 	}
+	if err = (&databasecontroller.AutonomousDatabaseRestoreReconciler{
+		KubeClient: mgr.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseRestore"),
+		Scheme:     mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabaseRestore")
+		os.Exit(1)
+	}
 	if err = (&databasecontroller.SingleInstanceDatabaseReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("SingleInstanceDatabase"),

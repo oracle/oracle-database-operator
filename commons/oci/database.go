@@ -39,10 +39,13 @@
 package oci
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -56,6 +59,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	"github.com/oracle/oracle-database-operator/commons/oci/ociutil"
 )
 
 // CreateAutonomousDatabase sends a request to OCI to provision a database and returns the AutonomousDatabase OCID.
@@ -525,13 +529,59 @@ func stopAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (r
 
 // DeleteAutonomousDatabase terminates an Autonomous Database in OCI
 func DeleteAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (resp database.DeleteAutonomousDatabaseResponse, err error) {
-
 	deleteRequest := database.DeleteAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
 	resp, err = dbClient.DeleteAutonomousDatabase(context.Background(), deleteRequest)
 	return
+}
+
+func RestoreAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string, dateTime time.Time) (opcID string, err error) {
+	endpoint := dbClient.Endpoint()
+	url := fmt.Sprintf("%s/20160918/autonomousDatabases/%s/actions/restore", endpoint, adbOCID)
+
+	// build the body
+	reqBody, err := json.Marshal(map[string]string{
+		"timestamp": ociutil.FormatSDKTime(dateTime),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	// create request
+	request, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return "", err
+	}
+
+	// Set the header
+	request.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+	request.Header.Set("Content-Type", "application/json")
+
+	hash, err := common.GetBodyHash(request)
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("x-content-sha256", hash)
+	request.Header.Set("Content-Length", fmt.Sprint(request.ContentLength))
+
+	// Build the signer
+	signer := common.DefaultRequestSigner(*dbClient.ConfigurationProvider())
+
+	// Sign the request
+	signer.Sign(request)
+
+	client := http.Client{}
+
+	// Execute the request
+	resp, err := client.Do(request)
+	if err != nil {
+		return "", err
+	}
+
+	opcRequestId := resp.Header.Get("opc-work-request-id")
+	return opcRequestId, nil
 }
 
 // ListAutonomousDatabaseBackups returns a list of Autonomous Database backups

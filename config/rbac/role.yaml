@@ -130,6 +130,26 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
+  - autonomousdatabaserestores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabaserestores/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
   - autonomousdatabases
   verbs:
   - create

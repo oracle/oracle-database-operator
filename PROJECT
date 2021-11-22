@@ -23,6 +23,24 @@ resources:
   controller: true
   domain: oracle.com
   group: database
+  kind: AutonomousDatabaseBackup
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: AutonomousDatabaseRestore
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
   kind: SingleInstanceDatabase
   path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
   version: v1alpha1
@@ -37,15 +55,6 @@ resources:
   domain: oracle.com
   group: database
   kind: ShardingDatabase
-  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
-  version: v1alpha1
-- api:
-    crdVersion: v1
-    namespaced: true
-  controller: true
-  domain: oracle.com
-  group: database
-  kind: AutonomousDatabaseBackup
   path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
   version: v1alpha1
 version: "3"

@@ -212,14 +212,6 @@ func CreateBackupResources(logger logr.Logger, kubeClient client.Client, dbClien
 				},
 			}
 
-			// fields with mandatory:"false" could be nil
-			if backupSummary.TimeStarted != nil {
-				backup.Status.TimeStarted = backupSummary.TimeStarted.String()
-			}
-			if backupSummary.TimeEnded != nil {
-				backup.Status.TimeEnded = backupSummary.TimeEnded.String()
-			}
-
 			if err := kubeClient.Create(context.TODO(), backup); err != nil {
 				return err
 			}
