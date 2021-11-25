@@ -156,7 +156,6 @@ spec:
             required:
             - adminPassword
             - image
-            - persistence
             - replicas
             type: object
           status:

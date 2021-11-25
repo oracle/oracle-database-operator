@@ -446,16 +446,26 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			},
 		},
 		Spec: corev1.PodSpec{
-			Volumes: []corev1.Volume{{
-				Name: "datamount",
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: m.Name,
-						ReadOnly:  false,
+			Volumes: func() []corev1.Volume {
+				// No PVC for Pre-built db
+				if m.Spec.Persistence.AccessMode == "" {
+					return []corev1.Volume{{}}
+				}
+				return []corev1.Volume{{
+					Name: "datamount",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: m.Name,
+							ReadOnly:  false,
+						},
 					},
-				},
-			}},
+				}}
+			}(),
 			InitContainers: func() []corev1.Container {
+				// No InitContainer needed for Pre-built db
+				if m.Spec.Persistence.AccessMode == "" {
+					return []corev1.Container{{}}
+				}
 				if m.Spec.Edition != "express" {
 					return []corev1.Container{{
 						Name:    "init-permissions",
@@ -496,7 +506,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								}
 							} else {
 								if !dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
-									edition = ""
+									edition = m.Spec.Edition
 								} else {
 									edition = n.Spec.Edition
 									if n.Spec.Edition == "" {
@@ -559,11 +569,36 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					}(),
 				},
 
-				VolumeMounts: []corev1.VolumeMount{{
-					MountPath: "/opt/oracle/oradata",
-					Name:      "datamount",
-				}},
+				VolumeMounts: func() []corev1.VolumeMount {
+					if m.Spec.Persistence.AccessMode == "" {
+						return []corev1.VolumeMount{{}}
+					}
+					return []corev1.VolumeMount{{
+						MountPath: "/opt/oracle/oradata",
+						Name:      "datamount",
+					}}
+				}(),
+				// VolumeMounts: []corev1.VolumeMount{{
+				// 	MountPath: "/opt/oracle/oradata",
+				// 	Name:      "datamount",
+				// }},
 				Env: func() []corev1.EnvVar {
+					if m.Spec.Persistence.AccessMode != "" {
+						return []corev1.EnvVar{
+							{
+								Name:  "SVC_HOST",
+								Value: m.Name,
+							},
+							{
+								Name:  "SVC_PORT",
+								Value: "1521",
+							},
+							{
+								Name:  "SKIP_DATAPATCH",
+								Value: "true",
+							},
+						}
+					}
 					if m.Spec.CloneFrom == "" {
 						return []corev1.EnvVar{
 							{
@@ -800,6 +835,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Context, req ctrl.Request,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 
+	// No PVC for Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
+		return requeueN, nil
+	}
 	log := r.Log.WithValues("createPVC", req.NamespacedName)
 
 	pvcDeleted := false
