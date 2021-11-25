@@ -13,10 +13,11 @@ spec:
   sid: ORCL1
 
   ## Secret containing SIDB password mapped to secretKey 
+  ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
-    secret:
-      secretName: 
-      key: 
+    secretName: 
+    secretKey:
+    keepSecret: false
 
   ## Database image details
   image:

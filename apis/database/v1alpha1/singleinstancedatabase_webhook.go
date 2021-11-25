@@ -74,6 +74,12 @@ func (r *SingleInstanceDatabase) Default() {
 	if r.Spec.Edition == "express" {
 		r.Spec.Replicas = 1
 	}
+
+	// Pre-built db should have 1 replica only
+	if r.Spec.Persistence.AccessMode == "" {
+		r.Spec.Replicas = 1
+	}
+
 	// TODO(user): fill in your defaulting logic.
 }
 
@@ -106,6 +112,12 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 				"Express edition PDB must be XEPDB1"))
+	}
+	//Edition must be passed when cloning from a source database other than same k8s cluster
+	if strings.Contains(r.Spec.CloneFrom, ":") && strings.Contains(r.Spec.CloneFrom, "/") && r.Spec.Edition == "" {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
+				"Edition must be passed when cloning from a source database other than same k8s cluster"))
 	}
 
 	if len(allErrs) == 0 {

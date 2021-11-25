@@ -9,4 +9,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: phx.ocir.io/oracassandra/cloneonprem
-  newTag: test-0.1.1
+  newTag: test-0.1.2

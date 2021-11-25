@@ -75,7 +75,7 @@ type SingleInstanceDatabaseSpec struct {
 	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`
 	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword"`
 	Image         SingleInstanceDatabaseImage         `json:"image"`
-	Persistence   SingleInstanceDatabasePersistence   `json:"persistence"`
+	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
 	InitParams    SingleInstanceDatabaseInitParams    `json:"initParams,omitempty"`
 }
 
