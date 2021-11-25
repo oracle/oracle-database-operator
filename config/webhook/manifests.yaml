@@ -13,6 +13,49 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /mutate-database-oracle-com-v1alpha1-cdb
+  failurePolicy: Fail
+  name: mcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v1alpha1-pdb
+  failurePolicy: Fail
+  name: mpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pdbs
+    - pdbs/status
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /mutate-database-oracle-com-v1alpha1-singleinstancedatabase
   failurePolicy: Fail
   name: msingleinstancedatabase.kb.io
@@ -35,6 +78,50 @@ metadata:
   creationTimestamp: null
   name: validating-webhook-configuration
 webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v1alpha1-cdb
+  failurePolicy: Fail
+  name: vcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v1alpha1-pdb
+  failurePolicy: Fail
+  name: vpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - pdbs
+    - pdbs/status
+  sideEffects: None
 - admissionReviewVersions:
   - v1
   - v1beta1

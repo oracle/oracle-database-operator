@@ -10,6 +10,23 @@ rules:
   - ""
   resources:
   - configmaps
+  - events
+  - pods
+  - pods/exec
+  - pods/log
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
   - secrets
   verbs:
   - create
@@ -94,6 +111,22 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps
+  - namespaces
+  - pods
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - pods/exec
   verbs:
   - create
@@ -114,6 +147,62 @@ rules:
   resources:
   - autonomousdatabases/status
   verbs:
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - cdbs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - cdbs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - cdbs/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - pdbs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - pdbs/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - pdbs/status
+  verbs:
+  - get
   - patch
   - update
 - apiGroups:

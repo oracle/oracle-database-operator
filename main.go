@@ -42,6 +42,7 @@ import (
 	"flag"
 	"os"
 	"strconv"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -131,6 +132,39 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
 			os.Exit(1)
 		}
+		if err = (&databasev1alpha1.PDB{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "PDB")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.CDB{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "CDB")
+			os.Exit(1)
+		}
+	}
+
+	// PDB Reconciler
+	if err = (&databasecontroller.PDBReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Log:      ctrl.Log.WithName("controllers").WithName("PDB"),
+		Interval: time.Duration(i),
+		Recorder: mgr.GetEventRecorderFor("PDB"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PDB")
+		os.Exit(1)
+	}
+
+	// CDB Reconciler
+	if err = (&databasecontroller.CDBReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Config:   mgr.GetConfig(),
+		Log:      ctrl.Log.WithName("controllers").WithName("CDB"),
+		Interval: time.Duration(i),
+		Recorder: mgr.GetEventRecorderFor("CDB"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CDB")
+		os.Exit(1)
 	}
 
 	// +kubebuilder:scaffold:builder

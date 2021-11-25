@@ -1,0 +1,279 @@
+/*
+** Copyright (c) 2021 Oracle and/or its affiliates.
+**
+** The Universal Permissive License (UPL), Version 1.0
+**
+** Subject to the condition set forth below, permission is hereby granted to any
+** person obtaining a copy of this software, associated documentation and/or data
+** (collectively the "Software"), free of charge and under any and all copyright
+** rights in the Software, and any and all patent rights owned or freely
+** licensable by each licensor hereunder covering either (i) the unmodified
+** Software as contributed to or provided by such licensor, or (ii) the Larger
+** Works (as defined below), to deal in both
+**
+** (a) the Software, and
+** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
+** one is included with the Software (each a "Larger Work" to which the Software
+** is contributed by such licensors),
+**
+** without restriction, including without limitation the rights to copy, create
+** derivative works of, display, perform, and distribute the Software and make,
+** use, sell, offer for sale, import, export, have made, and have sold the
+** Software and the Larger Work(s), and to sublicense the foregoing rights on
+** either these or other terms.
+**
+** This license is subject to the following condition:
+** The above copyright notice and either this complete permission notice or at
+** a minimum a reference to the UPL must be included in all copies or
+** substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+** SOFTWARE.
+ */
+
+package v1alpha1
+
+import (
+	"reflect"
+	"strconv"
+	"strings"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/validation/field"
+	ctrl "sigs.k8s.io/controller-runtime"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+)
+
+// log is for logging in this package.
+var pdblog = logf.Log.WithName("pdb-resource")
+
+func (r *PDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewWebhookManagedBy(mgr).
+		For(r).
+		Complete()
+}
+
+// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-pdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs;pdbs/status,verbs=create;update,versions=v1alpha1,name=mpdb.kb.io,admissionReviewVersions={v1,v1beta1}
+
+var _ webhook.Defaulter = &PDB{}
+
+// Default implements webhook.Defaulter so a webhook will be registered for the type
+func (r *PDB) Default() {
+	pdblog.Info("Setting default values in PDB spec for : " + r.Name)
+
+	if r.Spec.ReuseTempFile == nil {
+		r.Spec.ReuseTempFile = new(bool)
+		*r.Spec.ReuseTempFile = true
+		pdblog.Info(" - reuseTempFile : " + strconv.FormatBool(*(r.Spec.ReuseTempFile)))
+	}
+	if r.Spec.UnlimitedStorage == nil {
+		r.Spec.UnlimitedStorage = new(bool)
+		*r.Spec.UnlimitedStorage = true
+		pdblog.Info(" - unlimitedStorage : " + strconv.FormatBool(*(r.Spec.UnlimitedStorage)))
+	}
+	if r.Spec.GetScript == nil {
+		r.Spec.GetScript = new(bool)
+		*r.Spec.GetScript = false
+		pdblog.Info(" - getScript : " + strconv.FormatBool(*(r.Spec.GetScript)))
+	}
+	if r.Spec.AsClone == nil {
+		r.Spec.AsClone = new(bool)
+		*r.Spec.AsClone = false
+		pdblog.Info(" - asClone : " + strconv.FormatBool(*(r.Spec.AsClone)))
+	}
+	if r.Spec.TDEImport == nil {
+		r.Spec.TDEImport = new(bool)
+		*r.Spec.TDEImport = false
+		pdblog.Info(" - tdeImport : " + strconv.FormatBool(*(r.Spec.TDEImport)))
+	}
+	if r.Spec.TDEExport == nil {
+		r.Spec.TDEExport = new(bool)
+		*r.Spec.TDEExport = false
+		pdblog.Info(" - tdeExport : " + strconv.FormatBool(*(r.Spec.TDEExport)))
+	}
+}
+
+// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
+//+kubebuilder:webhook:path=/validate-database-oracle-com-v1alpha1-pdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs;pdbs/status,verbs=create;update;delete,versions=v1alpha1,name=vpdb.kb.io,admissionReviewVersions={v1,v1beta1}
+
+var _ webhook.Validator = &PDB{}
+
+// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
+func (r *PDB) ValidateCreate() error {
+	pdblog.Info("ValidateCreate-Validating PDB spec for : " + r.Name)
+
+	var allErrs field.ErrorList
+
+	r.validateCommon(&allErrs)
+
+	r.validateAction(&allErrs)
+
+	action := strings.ToUpper(r.Spec.Action)
+
+	if len(allErrs) == 0 {
+		pdblog.Info("PDB Resource : " + r.Name + " successfully validated for Action : " + action)
+		return nil
+	}
+	return apierrors.NewInvalid(
+		schema.GroupKind{Group: "database.oracle.com", Kind: "PDB"},
+		r.Name, allErrs)
+}
+
+// Validate Action for required parameters
+func (r *PDB) validateAction(allErrs *field.ErrorList) {
+	action := strings.ToUpper(r.Spec.Action)
+
+	pdblog.Info("Valdiating PDB Resource Action : " + action)
+
+	switch action {
+	case "CREATE":
+		if reflect.ValueOf(r.Spec.AdminName).IsZero() {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("adminName"), "Please specify PDB System Administrator user"))
+		}
+		if reflect.ValueOf(r.Spec.AdminPwd).IsZero() {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("adminPwd"), "Please specify PDB System Administrator Password"))
+		}
+		if r.Spec.FileNameConversions == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("fileNameConversions"), "Please specify a value for fileNameConversions. Values can be a filename convert pattern or NONE"))
+		}
+		if *(r.Spec.TDEImport) {
+			r.validateTDEInfo(allErrs)
+		}
+	case "CLONE":
+		// Sample Err: The PDB "pdb1-clone" is invalid: spec.srcPdbName: Required value: Please specify source PDB for Cloning
+		if r.Spec.SrcPDBName == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("srcPdbName"), "Please specify source PDB name for Cloning"))
+		}
+		if r.Spec.TotalSize == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("totalSize"), "Please specify size of the tablespace"))
+		}
+		if r.Spec.TempSize == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("tempSize"), "Please specify size of the temporary tablespace"))
+		}
+	case "PLUG":
+		if r.Spec.XMLFileName == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("xmlFileName"), "Please specify XML metadata filename"))
+		}
+		if r.Spec.FileNameConversions == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("fileNameConversions"), "Please specify a value for fileNameConversions. Values can be a filename convert pattern or NONE"))
+		}
+		if r.Spec.SourceFileNameConversions == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("sourceFileNameConversions"), "Please specify a value for sourceFileNameConversions. Values can be a filename convert pattern or NONE"))
+		}
+		if r.Spec.CopyAction == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("copyAction"), "Please specify a value for copyAction. Values can be COPY, NOCOPY or MOVE"))
+		}
+		if *(r.Spec.TDEImport) {
+			r.validateTDEInfo(allErrs)
+		}
+	case "UNPLUG":
+		if r.Spec.XMLFileName == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("xmlFileName"), "Please specify XML metadata filename"))
+		}
+		if *(r.Spec.TDEExport) {
+			r.validateTDEInfo(allErrs)
+		}
+	}
+}
+
+// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
+func (r *PDB) ValidateUpdate(old runtime.Object) error {
+	pdblog.Info("ValidateUpdate-Validating PDB spec for : " + r.Name)
+
+	var allErrs field.ErrorList
+
+	// Check Common Validations
+	r.validateCommon(&allErrs)
+
+	// Validate required parameters for Action specified
+	r.validateAction(&allErrs)
+
+	// Check TDE requirements
+	if *(r.Spec.TDEImport) || *(r.Spec.TDEExport) {
+		r.validateTDEInfo(&allErrs)
+	}
+
+	// Check for updation errors
+	oldPDB, ok := old.(*PDB)
+	if !ok {
+		return nil
+	}
+
+	if !strings.EqualFold(oldPDB.Spec.CDBResName, r.Spec.CDBResName) {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("cdbResName"), "cannot be changed"))
+	}
+
+	if len(allErrs) == 0 {
+		return nil
+	}
+	return apierrors.NewInvalid(
+		schema.GroupKind{Group: "database.oracle.com", Kind: "PDB"},
+		r.Name, allErrs)
+}
+
+// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
+func (r *PDB) ValidateDelete() error {
+	pdblog.Info("ValidateDelete-Validating PDB spec for : " + r.Name)
+
+	// TODO(user): fill in your validation logic upon object deletion.
+	return nil
+}
+
+// Validate common specs needed for all PDB Actions
+func (r *PDB) validateCommon(allErrs *field.ErrorList) {
+	pdblog.Info("validateCommon", "name", r.Name)
+
+	if r.Spec.Action == "" {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("action"), "Please specify PDB operation to be performed"))
+	}
+	if r.Spec.CDBResName == "" {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("cdbResName"), "Please specify the name of the CDB Kubernetes resource to use for PDB operations"))
+	}
+	if r.Spec.PDBName == "" {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("pdbName"), "Please specify name of the PDB to be created"))
+	}
+}
+
+// Validate TDE information for Create, Plug and Unplug Actions
+func (r *PDB) validateTDEInfo(allErrs *field.ErrorList) {
+	pdblog.Info("validateTDEInfo", "name", r.Name)
+
+	if reflect.ValueOf(r.Spec.TDEPassword).IsZero() {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("tdePassword"), "Please specify a value for tdePassword."))
+	}
+	if r.Spec.TDEKeystorePath == "" {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("tdeKeystorePath"), "Please specify a value for tdeKeystorePath."))
+	}
+	if reflect.ValueOf(r.Spec.TDESecret).IsZero() {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("tdeSecret"), "Please specify a value for tdeSecret."))
+	}
+
+}
