@@ -872,16 +872,12 @@ spec:
                 description: SingleInstanceDatabasePersistence defines the storage size and class for PVC
                 properties:
                   accessMode:
-                    enum:
-                    - ReadWriteOnce
-                    - ReadWriteMany
                     type: string
                   size:
                     type: string
                   storageClass:
                     type: string
                 required:
-                - accessMode
                 - size
                 - storageClass
                 type: object
@@ -895,7 +891,6 @@ spec:
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
             required:
-            - adminPassword
             - image
             - replicas
             type: object
@@ -1002,16 +997,12 @@ spec:
                 description: SingleInstanceDatabasePersistence defines the storage size and class for PVC
                 properties:
                   accessMode:
-                    enum:
-                    - ReadWriteOnce
-                    - ReadWriteMany
                     type: string
                   size:
                     type: string
                   storageClass:
                     type: string
                 required:
-                - accessMode
                 - size
                 - storageClass
                 type: object

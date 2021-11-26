@@ -9,8 +9,7 @@ metadata:
   namespace: default
 spec:
 
-  ## Database image details
+  ## Database Image
   image:
-    version:
     pullFrom:
     pullSecrets:
