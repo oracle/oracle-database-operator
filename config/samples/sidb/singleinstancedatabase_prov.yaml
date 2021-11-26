@@ -19,9 +19,8 @@ spec:
     secretKey:
     keepSecret: false
 
-  ## Database image details
+  ## Database Image
   image:
-    version:
     pullFrom:
     pullSecrets:
 

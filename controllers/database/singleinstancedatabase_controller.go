@@ -356,8 +356,8 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		return requeueN, err
 	}
 
-	// Validating the secret
-	if m.Status.DatafilesCreated != "true" {
+	// Validating the secret. Pre-built db doesnt need secret
+	if m.Spec.Persistence.AccessMode != "" && m.Status.DatafilesCreated != "true" {
 		secret := &corev1.Secret{}
 		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
 		if err != nil {
@@ -432,7 +432,108 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //    Instantiate POD spec from SingleInstanceDatabase spec
 //#############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase) *corev1.Pod {
+	// Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
+		pod := &corev1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "Pod",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      m.Name + "-" + dbcommons.GenerateRandomString(5),
+				Namespace: m.Namespace,
+				Labels: map[string]string{
+					"app":     m.Name,
+					"version": m.Spec.Image.Version,
+				},
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{{
+					Name:  m.Name,
+					Image: m.Spec.Image.PullFrom,
+					Lifecycle: &corev1.Lifecycle{
+						PreStop: &corev1.Handler{
+							Exec: &corev1.ExecAction{
+								Command: []string{"/bin/sh", "-c", "/bin/echo -en 'shutdown abort;\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"},
+							},
+						},
+					},
+					ImagePullPolicy: corev1.PullAlways,
+					Ports:           []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
 
+					ReadinessProbe: &corev1.Probe{
+						Handler: corev1.Handler{
+							Exec: &corev1.ExecAction{
+								Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
+							},
+						},
+						InitialDelaySeconds: 20,
+						TimeoutSeconds:      20,
+						PeriodSeconds: func() int32 {
+							if m.Spec.ReadinessCheckPeriod > 0 {
+								return int32(m.Spec.ReadinessCheckPeriod)
+							}
+							return 30
+						}(),
+					},
+					Env: func() []corev1.EnvVar {
+						return []corev1.EnvVar{
+							{
+								Name:  "SVC_HOST",
+								Value: m.Name,
+							},
+							{
+								Name:  "SVC_PORT",
+								Value: "1521",
+							},
+							{
+								Name:  "SKIP_DATAPATCH",
+								Value: "true",
+							},
+						}
+					}(),
+				}},
+
+				TerminationGracePeriodSeconds: func() *int64 { i := int64(30); return &i }(),
+
+				NodeSelector: func() map[string]string {
+					ns := make(map[string]string)
+					if len(m.Spec.NodeSelector) != 0 {
+						for key, value := range m.Spec.NodeSelector {
+							ns[key] = value
+						}
+					}
+					return ns
+				}(),
+
+				SecurityContext: &corev1.PodSecurityContext{
+					RunAsUser: func() *int64 {
+						i := int64(0)
+						if m.Spec.Edition != "express" {
+							i = int64(dbcommons.ORACLE_UID)
+						}
+						return &i
+					}(),
+					RunAsGroup: func() *int64 {
+						i := int64(0)
+						if m.Spec.Edition != "express" {
+							i = int64(dbcommons.ORACLE_GUID)
+						}
+						return &i
+					}(),
+				},
+				ImagePullSecrets: []corev1.LocalObjectReference{
+					{
+						Name: m.Spec.Image.PullSecrets,
+					},
+				},
+			},
+		}
+
+		// Set SingleInstanceDatabase instance as the owner and controller
+		ctrl.SetControllerReference(m, pod, r.Scheme)
+		return pod
+
+	}
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "Pod",
@@ -446,26 +547,16 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			},
 		},
 		Spec: corev1.PodSpec{
-			Volumes: func() []corev1.Volume {
-				// No PVC for Pre-built db
-				if m.Spec.Persistence.AccessMode == "" {
-					return []corev1.Volume{{}}
-				}
-				return []corev1.Volume{{
-					Name: "datamount",
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: m.Name,
-							ReadOnly:  false,
-						},
+			Volumes: []corev1.Volume{{
+				Name: "datamount",
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: m.Name,
+						ReadOnly:  false,
 					},
-				}}
-			}(),
+				},
+			}},
 			InitContainers: func() []corev1.Container {
-				// No InitContainer needed for Pre-built db
-				if m.Spec.Persistence.AccessMode == "" {
-					return []corev1.Container{{}}
-				}
 				if m.Spec.Edition != "express" {
 					return []corev1.Container{{
 						Name:    "init-permissions",
@@ -569,36 +660,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					}(),
 				},
 
-				VolumeMounts: func() []corev1.VolumeMount {
-					if m.Spec.Persistence.AccessMode == "" {
-						return []corev1.VolumeMount{{}}
-					}
-					return []corev1.VolumeMount{{
-						MountPath: "/opt/oracle/oradata",
-						Name:      "datamount",
-					}}
-				}(),
-				// VolumeMounts: []corev1.VolumeMount{{
-				// 	MountPath: "/opt/oracle/oradata",
-				// 	Name:      "datamount",
-				// }},
+				VolumeMounts: []corev1.VolumeMount{{
+					MountPath: "/opt/oracle/oradata",
+					Name:      "datamount",
+				}},
 				Env: func() []corev1.EnvVar {
-					if m.Spec.Persistence.AccessMode != "" {
-						return []corev1.EnvVar{
-							{
-								Name:  "SVC_HOST",
-								Value: m.Name,
-							},
-							{
-								Name:  "SVC_PORT",
-								Value: "1521",
-							},
-							{
-								Name:  "SKIP_DATAPATCH",
-								Value: "true",
-							},
-						}
-					}
 					if m.Spec.CloneFrom == "" {
 						return []corev1.EnvVar{
 							{
@@ -747,6 +813,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	// Set SingleInstanceDatabase instance as the owner and controller
 	ctrl.SetControllerReference(m, pod, r.Scheme)
 	return pod
+
 }
 
 //#############################################################################
@@ -1073,6 +1140,11 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 		return requeueN, nil
 	}
 
+	// No Wallet for Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
+		return requeueN, nil
+	}
+
 	// Listing all the pods
 	readyPod, _, availableFinal, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
 		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
@@ -1390,6 +1462,11 @@ func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceD
 		return requeueN, nil
 	}
 
+	// No Wallet for Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
+		return requeueN, nil
+	}
+
 	// Deleting the secret and then deleting the wallet
 	// If the secret is not found it means that the secret and wallet both are deleted, hence no need to requeue
 	if !m.Spec.AdminPassword.KeepSecret {
@@ -1431,6 +1508,11 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 
 	// Datapatch not supported for XE Database
 	if m.Spec.Edition == "express" {
+		return requeueN, nil
+	}
+
+	// No Patching for Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
 		return requeueN, nil
 	}
 
@@ -1484,6 +1566,11 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("updateInitParameters", req.NamespacedName)
 
+	// No InitParameters Updation for Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
+		return requeueN, nil
+	}
+
 	if m.Status.InitParams == m.Spec.InitParams {
 		return requeueN, nil
 	}
@@ -1528,6 +1615,11 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	log := r.Log.WithValues("updateDBConfig", req.NamespacedName)
+
+	// No updateDBConfig for Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
+		return requeueN, nil
+	}
 
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
@@ -1722,6 +1814,11 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("installApex", req.NamespacedName)
 
+	// No APEX for Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
+		return requeueN
+	}
+
 	if !m.Spec.InstallApex || m.Status.ApexInstalled {
 		return requeueN
 	}
@@ -1801,6 +1898,11 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstanceDatabase,
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("uninstallApex", req.NamespacedName)
+
+	// No APEX for Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
+		return requeueN
+	}
 
 	if m.Spec.InstallApex || !m.Status.ApexInstalled {
 		return requeueN

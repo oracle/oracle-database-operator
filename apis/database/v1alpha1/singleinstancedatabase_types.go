@@ -73,7 +73,7 @@ type SingleInstanceDatabaseSpec struct {
 	Replicas int `json:"replicas"`
 
 	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`
-	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword"`
+	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
 	Image         SingleInstanceDatabaseImage         `json:"image"`
 	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
 	InitParams    SingleInstanceDatabaseInitParams    `json:"initParams,omitempty"`
@@ -84,8 +84,7 @@ type SingleInstanceDatabasePersistence struct {
 	Size         string `json:"size"`
 	StorageClass string `json:"storageClass"`
 
-	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
-	AccessMode string `json:"accessMode"`
+	AccessMode string `json:"accessMode,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters
