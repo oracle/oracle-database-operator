@@ -177,7 +177,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		}
 		curIntPtr, ok := curObj.(*int)
 
-		if lastSucIntPtr != nil && curIntPtr != nil && *curIntPtr != 0 && *lastSucIntPtr != *curIntPtr {
+		if (lastSucIntPtr == nil && curIntPtr != nil) || (lastSucIntPtr != nil && curIntPtr != nil && *lastSucIntPtr != *curIntPtr) {
 			return true
 		}
 	case *string:
@@ -188,7 +188,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		}
 		curStringPtr := curObj.(*string)
 
-		if lastSucStringPtr != nil && curStringPtr != nil && *curStringPtr != "" && *lastSucStringPtr != *curStringPtr {
+		if (lastSucStringPtr == nil && curStringPtr != nil) || (lastSucStringPtr != nil && curStringPtr != nil && *lastSucStringPtr != *curStringPtr) {
 			return true
 		}
 	case *bool:
@@ -200,7 +200,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		curBoolPtr := curObj.(*bool)
 
 		// For boolean type, we don't have to check zero value
-		if lastSucBoolPtr != nil && curBoolPtr != nil && *lastSucBoolPtr != *curBoolPtr {
+		if (lastSucBoolPtr == nil && curBoolPtr != nil) || (lastSucBoolPtr != nil && curBoolPtr != nil && *lastSucBoolPtr != *curBoolPtr) {
 			return true
 		}
 	case []string:
