@@ -46,10 +46,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
-	"github.com/oracle/oci-go-sdk/v45/secrets"
-	"github.com/oracle/oci-go-sdk/v45/workrequests"
+	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oci-go-sdk/v51/secrets"
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1 "k8s.io/api/core/v1"

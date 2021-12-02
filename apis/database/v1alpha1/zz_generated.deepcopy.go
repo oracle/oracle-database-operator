@@ -134,18 +134,23 @@ func (in *AutonomousDatabaseDetails) DeepCopyInto(out *AutonomousDatabaseDetails
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
-	if in.PrivateEndpoint != nil {
-		in, out := &in.PrivateEndpoint, &out.PrivateEndpoint
-		*out = new(string)
+	if in.IsAccessControlEnabled != nil {
+		in, out := &in.IsAccessControlEnabled, &out.IsAccessControlEnabled
+		*out = new(bool)
+		**out = **in
+	}
+	if in.WhitelistedIPs != nil {
+		in, out := &in.WhitelistedIPs, &out.WhitelistedIPs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.IsMTLSConnectionRequired != nil {
+		in, out := &in.IsMTLSConnectionRequired, &out.IsMTLSConnectionRequired
+		*out = new(bool)
 		**out = **in
 	}
 	if in.PrivateEndpointLabel != nil {
 		in, out := &in.PrivateEndpointLabel, &out.PrivateEndpointLabel
-		*out = new(string)
-		**out = **in
-	}
-	if in.PrivateEndpointIP != nil {
-		in, out := &in.PrivateEndpointIP, &out.PrivateEndpointIP
 		*out = new(string)
 		**out = **in
 	}
