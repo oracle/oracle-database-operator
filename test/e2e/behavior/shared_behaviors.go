@@ -47,8 +47,8 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
+	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v51/database"
 	corev1 "k8s.io/api/core/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -311,9 +311,7 @@ func AssertUpdate(k8sClient *client.Client, dbClient *database.DatabaseClient, a
 				compartStringMap(adbDetails.FreeformTags, ociADBDetails.FreeformTags) &&
 				compartString(adbDetails.SubnetOCID, ociADBDetails.SubnetOCID) &&
 				reflect.DeepEqual(adbDetails.NsgOCIDs, ociADBDetails.NsgOCIDs) &&
-				compartString(adbDetails.PrivateEndpoint, ociADBDetails.PrivateEndpoint) &&
-				compartString(adbDetails.PrivateEndpointLabel, ociADBDetails.PrivateEndpointLabel) &&
-				compartString(adbDetails.PrivateEndpointIP, ociADBDetails.PrivateEndpointIP)
+				compartString(adbDetails.PrivateEndpointLabel, ociADBDetails.PrivateEndpointLabel)
 
 			return same, nil
 		}, updateTimeout, updateInterval).Should(BeTrue())
