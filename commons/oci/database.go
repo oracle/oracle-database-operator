@@ -46,10 +46,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
-	"github.com/oracle/oci-go-sdk/v45/secrets"
-	"github.com/oracle/oci-go-sdk/v45/workrequests"
+	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oci-go-sdk/v51/secrets"
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1 "k8s.io/api/core/v1"
@@ -77,8 +77,14 @@ func CreateAutonomousDatabase(logger logr.Logger, kubeClient client.Client, dbCl
 		DbVersion:            adb.Spec.Details.DbVersion,
 		DbWorkload: database.CreateAutonomousDatabaseBaseDbWorkloadEnum(
 			adb.Spec.Details.DbWorkload),
-		SubnetId: adb.Spec.Details.SubnetOCID,
-		NsgIds:   adb.Spec.Details.NsgOCIDs,
+
+		WhitelistedIps:           adb.Spec.Details.WhitelistedIPs,
+		SubnetId:                 adb.Spec.Details.SubnetOCID,
+		NsgIds:                   adb.Spec.Details.NsgOCIDs,
+		PrivateEndpointLabel:     adb.Spec.Details.PrivateEndpointLabel,
+		IsMtlsConnectionRequired: adb.Spec.Details.IsMTLSConnectionRequired,
+
+		FreeformTags: adb.Spec.Details.FreeformTags,
 	}
 
 	createAutonomousDatabaseRequest := database.CreateAutonomousDatabaseRequest{
@@ -177,7 +183,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		}
 		curIntPtr, ok := curObj.(*int)
 
-		if lastSucIntPtr != nil && curIntPtr != nil && *curIntPtr != 0 && *lastSucIntPtr != *curIntPtr {
+		if (lastSucIntPtr == nil && curIntPtr != nil) || (lastSucIntPtr != nil && curIntPtr != nil && *lastSucIntPtr != *curIntPtr) {
 			return true
 		}
 	case *string:
@@ -188,7 +194,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		}
 		curStringPtr := curObj.(*string)
 
-		if lastSucStringPtr != nil && curStringPtr != nil && *curStringPtr != "" && *lastSucStringPtr != *curStringPtr {
+		if (lastSucStringPtr == nil && curStringPtr != nil) || (lastSucStringPtr != nil && curStringPtr != nil && *lastSucStringPtr != *curStringPtr) {
 			return true
 		}
 	case *bool:
@@ -200,7 +206,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		curBoolPtr := curObj.(*bool)
 
 		// For boolean type, we don't have to check zero value
-		if lastSucBoolPtr != nil && curBoolPtr != nil && *lastSucBoolPtr != *curBoolPtr {
+		if (lastSucBoolPtr == nil && curBoolPtr != nil) || (lastSucBoolPtr != nil && curBoolPtr != nil && *lastSucBoolPtr != *curBoolPtr) {
 			return true
 		}
 	case []string:
@@ -287,19 +293,6 @@ func UpdateGeneralAndPasswordAttributes(logger logr.Logger, kubeClient client.Cl
 		shouldSendRequest = true
 	}
 
-	if isAttrChanged(lastSucSpec.Details.FreeformTags, curADB.Spec.Details.FreeformTags) {
-		updateAutonomousDatabaseDetails.FreeformTags = curADB.Spec.Details.FreeformTags
-		shouldSendRequest = true
-	}
-	if isAttrChanged(lastSucSpec.Details.SubnetOCID, curADB.Spec.Details.SubnetOCID) {
-		updateAutonomousDatabaseDetails.SubnetId = curADB.Spec.Details.SubnetOCID
-		shouldSendRequest = true
-	}
-	if isAttrChanged(lastSucSpec.Details.NsgOCIDs, curADB.Spec.Details.NsgOCIDs) {
-		updateAutonomousDatabaseDetails.NsgIds = curADB.Spec.Details.NsgOCIDs
-		shouldSendRequest = true
-	}
-
 	if isAttrChanged(lastSucSpec.Details.AdminPassword.K8sSecretName, curADB.Spec.Details.AdminPassword.K8sSecretName) ||
 		isAttrChanged(lastSucSpec.Details.AdminPassword.OCISecretOCID, curADB.Spec.Details.AdminPassword.OCISecretOCID) {
 		// Get the adminPassword
@@ -365,6 +358,90 @@ func UpdateScaleAttributes(logger logr.Logger, kubeClient client.Client, dbClien
 
 		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 			// AutonomousDatabaseId:            common.String(curADB.Spec.Details.AutonomousDatabaseOCID),
+			AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
+			UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
+		}
+
+		resp, err = dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
+	}
+
+	return
+}
+
+func UpdateOneWayTLSAttribute(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient,
+	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	var shouldSendRequest = false
+
+	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
+	if err != nil {
+		return resp, err
+	}
+
+	// Prepare the update request
+	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
+
+	if isAttrChanged(lastSucSpec.Details.IsMTLSConnectionRequired, curADB.Spec.Details.IsMTLSConnectionRequired) {
+		updateAutonomousDatabaseDetails.IsMtlsConnectionRequired = curADB.Spec.Details.IsMTLSConnectionRequired
+		shouldSendRequest = true
+	}
+
+	// Don't send the request if nothing is changed
+	if shouldSendRequest {
+
+		logger.Info("Sending 1-way TLS attribute update request")
+
+		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+			AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
+			UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
+		}
+
+		resp, err = dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
+	}
+
+	return
+}
+
+func UpdateNetworkAttributes(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient,
+	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	var shouldSendRequest = false
+
+	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
+	if err != nil {
+		return resp, err
+	}
+
+	// Prepare the update request
+	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
+
+	// Network settings
+	if isAttrChanged(lastSucSpec.Details.SubnetOCID, curADB.Spec.Details.SubnetOCID) {
+		updateAutonomousDatabaseDetails.SubnetId = curADB.Spec.Details.SubnetOCID
+		shouldSendRequest = true
+	}
+	if isAttrChanged(lastSucSpec.Details.NsgOCIDs, curADB.Spec.Details.NsgOCIDs) {
+		updateAutonomousDatabaseDetails.NsgIds = curADB.Spec.Details.NsgOCIDs
+		shouldSendRequest = true
+	}
+	if isAttrChanged(lastSucSpec.Details.IsAccessControlEnabled, curADB.Spec.Details.IsAccessControlEnabled) {
+		updateAutonomousDatabaseDetails.IsAccessControlEnabled = curADB.Spec.Details.IsAccessControlEnabled
+		shouldSendRequest = true
+	}
+	if isAttrChanged(lastSucSpec.Details.WhitelistedIPs, curADB.Spec.Details.WhitelistedIPs) {
+		updateAutonomousDatabaseDetails.WhitelistedIps = curADB.Spec.Details.WhitelistedIPs
+		shouldSendRequest = true
+	}
+	// PrivateEndpointLabel
+	if isAttrChanged(lastSucSpec.Details.PrivateEndpointLabel, curADB.Spec.Details.PrivateEndpointLabel) {
+		updateAutonomousDatabaseDetails.PrivateEndpointLabel = curADB.Spec.Details.PrivateEndpointLabel
+		shouldSendRequest = true
+	}
+
+	// Don't send the request if nothing is changed
+	if shouldSendRequest {
+
+		logger.Info("Sending network attributes update request")
+
+		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 			AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
 			UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
 		}
