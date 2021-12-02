@@ -44,9 +44,9 @@ import (
 	"math"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/keymanagement"
-	"github.com/oracle/oci-go-sdk/v45/vault"
+	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v51/keymanagement"
+	"github.com/oracle/oci-go-sdk/v51/vault"
 )
 
 func waitForVaultStatePolicy(state keymanagement.VaultLifecycleStateEnum) common.RetryPolicy {
