@@ -44,9 +44,9 @@ import (
 	"reflect"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v45/database"
-	"github.com/oracle/oci-go-sdk/v45/secrets"
-	"github.com/oracle/oci-go-sdk/v45/workrequests"
+	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oci-go-sdk/v51/secrets"
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
