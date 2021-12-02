@@ -311,9 +311,7 @@ func AssertUpdate(k8sClient *client.Client, dbClient *database.DatabaseClient, a
 				compartStringMap(adbDetails.FreeformTags, ociADBDetails.FreeformTags) &&
 				compartString(adbDetails.SubnetOCID, ociADBDetails.SubnetOCID) &&
 				reflect.DeepEqual(adbDetails.NsgOCIDs, ociADBDetails.NsgOCIDs) &&
-				compartString(adbDetails.PrivateEndpoint, ociADBDetails.PrivateEndpoint) &&
-				compartString(adbDetails.PrivateEndpointLabel, ociADBDetails.PrivateEndpointLabel) &&
-				compartString(adbDetails.PrivateEndpointIP, ociADBDetails.PrivateEndpointIP)
+				compartString(adbDetails.PrivateEndpointLabel, ociADBDetails.PrivateEndpointLabel)
 
 			return same, nil
 		}, updateTimeout, updateInterval).Should(BeTrue())
