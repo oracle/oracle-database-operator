@@ -446,7 +446,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -455,7 +455,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if oneWayTLSResp.OpcWorkRequestId != nil {
 				// Update status.state
 				adb.Status.LifecycleState = oneWayTLSResp.AutonomousDatabase.LifecycleState
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 
@@ -464,7 +464,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 					// Change the status to UNAVAILABLE
 					adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-					if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+					if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 				}
@@ -477,7 +477,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -486,7 +486,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if networkResp.OpcWorkRequestId != nil {
 				// Update status.state
 				adb.Status.LifecycleState = networkResp.AutonomousDatabase.LifecycleState
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 
@@ -495,7 +495,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 					// Change the status to UNAVAILABLE
 					adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-					if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+					if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 				}
