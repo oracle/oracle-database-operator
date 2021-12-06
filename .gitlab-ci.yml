@@ -1,0 +1,27 @@
+build-operator:
+  stage: build
+  variables:
+    IMAGE: "$DOCKER_REPO:$CI_COMMIT_BRANCH"
+    OP_YAML: oracle-database-operator.yaml
+  script:
+    - make docker-build IMG="$IMAGE"
+    - docker push "$IMAGE"
+    - newimage=$(docker inspect $IMAGE | python -c 'import json,sys; print json.load(sys.stdin)[0]["RepoDigests"][0]')
+    - echo $newimage
+    - docker rmi "$IMAGE" && docker system prune -f
+    - make operator-yaml IMG=$newimage
+    - curl -s -n $ARTIFACTORY_REPO/$CI_COMMIT_BRANCH/$OP_YAML -T ./$OP_YAML
+  only:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /\#run-pipeline/
+      - $CI_COMMIT_BRANCH =~ /master/
+      - $CI_MERGE_REQUEST_ID != ""
+  except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /\#skip-pipeline/
+
+cleanup:
+  stage: .post
+  script:
+    - echo "Clean up downloaded binaries"
+    - rm -rf bin/
