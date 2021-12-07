@@ -70,7 +70,7 @@ type SingleInstanceDatabaseSpec struct {
 
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Minimum=1
-	Replicas int `json:"replicas"`
+	Replicas int `json:"replicas,omitempty"`
 
 	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`
 	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`

@@ -151,7 +151,6 @@ spec:
                 type: string
             required:
             - image
-            - replicas
             type: object
           status:
             description: SingleInstanceDatabaseStatus defines the observed state of
