@@ -141,7 +141,8 @@ type CDBStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.cdbName",name="CDB Name",type="string",description="Name of the CDB"
 // +kubebuilder:printcolumn:JSONPath=".spec.dbServer",name="DB Server",type="string",description=" Name of the DB Server"
 // +kubebuilder:printcolumn:JSONPath=".spec.dbPort",name="DB Port",type="integer",description="DB server port"
-// +kubebuilder:printcolumn:JSONPath=".spec.scanName",name="SCAN NAme",type="string",description="SCAN Name"
+// +kubebuilder:printcolumn:JSONPath=".spec.scanName",name="SCAN Name",type="string",description="SCAN Name"
+// +kubebuilder:printcolumn:JSONPath=".spec.replicas",name="Replicas",type="integer",description="Replicas"
 // +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the CDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
 

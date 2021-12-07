@@ -220,8 +220,12 @@ spec:
       type: integer
     - description: SCAN Name
       jsonPath: .spec.scanName
-      name: SCAN NAme
+      name: SCAN Name
       type: string
+    - description: Replicas
+      jsonPath: .spec.replicas
+      name: Replicas
+      type: integer
     - description: Status of the CDB Resource
       jsonPath: .status.phase
       name: Status
@@ -1903,7 +1907,7 @@ spec:
         command:
         - /manager
         image: phx.ocir.io/intsanjaysingh/gdb-repo/oracle/dboper-ords-go:master
-        imagePullPolicy: Never
+        imagePullPolicy: Always
         name: manager
         ports:
         - containerPort: 9443
