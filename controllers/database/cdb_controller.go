@@ -80,7 +80,7 @@ type CDBReconciler struct {
 var (
 	cdbPhaseInit    = "Initializing"
 	cdbPhasePod     = "CreatingPod"
-	cdbPhaseValPod  = "ValidatingPod"
+	cdbPhaseValPod  = "ValidatingPods"
 	cdbPhaseService = "CreatingService"
 	cdbPhaseSecrets = "DeletingSecrets"
 	cdbPhaseReady   = "Ready"
@@ -150,6 +150,7 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeueY, nil
 	}
 
+	// If post-creation, CDB spec is changed, check and take appropriate action
 	if (cdb.Status.Phase == cdbPhaseReady) && cdb.Status.Status {
 		r.evaluateSpecChange(ctx, req, cdb)
 	}
@@ -164,15 +165,15 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		case cdbPhasePod:
 			// Create ORDS POD
 			//err = r.createORDSPod(ctx, req, cdb)
-			err = r.createORDSReplicaSet(ctx, req, cdb)
+			err = r.createORDSInstances(ctx, req, cdb)
 			if err != nil {
 				log.Info("Reconcile queued")
 				return requeueY, nil
 			}
 			cdb.Status.Phase = cdbPhaseValPod
 		case cdbPhaseValPod:
-			// Validate ORDS POD
-			err = r.validateORDSPod(ctx, req, cdb)
+			// Validate ORDS PODs
+			err = r.validateORDSPods(ctx, req, cdb)
 			if err != nil {
 				log.Info("Reconcile queued")
 				return requeueY, nil
@@ -211,66 +212,14 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	return requeueN, nil
 }
 
-/*************************************************
- * Create a Pod based on the ORDS container
- /************************************************/
-/*func (r *CDBReconciler) createORDSPod(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
-
-	log := r.Log.WithValues("createORDSPod", req.NamespacedName)
-
-	for i := 0; i < cdb.Spec.Replicas; i++ {
-		pod := r.createPodSpec(cdb)
-
-		log.Info("Creating a new Pod for :"+cdb.Name, "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err := r.Create(ctx, pod)
-		if err != nil {
-			log.Error(err, "Failed to create new Pod for :"+cdb.Name, "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-			return err
-		}
-	}
-
-	log.Info("Created ORDS Pod(s) successfully")
-	r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "CreatedORDSPod", "Created %s ORDS Pod(s) for %s", strconv.Itoa(cdb.Spec.Replicas), cdb.Name)
-	return nil
-}
-*/
 /**********************************************************
  * Create a ReplicaSet for pods based on the ORDS container
  /********************************************************/
-func (r *CDBReconciler) createORDSReplicaSet(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
+func (r *CDBReconciler) createORDSInstances(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
-	log := r.Log.WithValues("createORDSReplicaSet", req.NamespacedName)
+	log := r.Log.WithValues("createORDSInstances", req.NamespacedName)
 
-	replicas := int32(cdb.Spec.Replicas)
-	podSpec := r.createPodSpec(cdb)
-
-	replicaSet := &appsv1.ReplicaSet{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cdb.Name + "-ords-rs",
-			Namespace: cdb.Namespace,
-			Labels: map[string]string{
-				"name": cdb.Name + "-ords-rs",
-			},
-		},
-		Spec: appsv1.ReplicaSetSpec{
-			Replicas: &replicas,
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      cdb.Name + "-ords",
-					Namespace: cdb.Namespace,
-					Labels: map[string]string{
-						"name": cdb.Name + "-ords",
-					},
-				},
-				Spec: podSpec,
-			},
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"name": cdb.Name + "-ords",
-				},
-			},
-		},
-	}
+	replicaSet := r.createReplicaSetSpec(cdb)
 
 	foundRS := &appsv1.ReplicaSet{}
 	err := r.Get(context.TODO(), types.NamespacedName{Name: replicaSet.Name, Namespace: cdb.Namespace}, foundRS)
@@ -281,15 +230,9 @@ func (r *CDBReconciler) createORDSReplicaSet(ctx context.Context, req ctrl.Reque
 			log.Error(err, "Failed to create ReplicaSet for :"+cdb.Name, "Namespace", replicaSet.Namespace, "Name", replicaSet.Name)
 			return err
 		}
-	} else {
-		log.Info("Found Replicas: " + strconv.Itoa(int(*(foundRS.Spec.Replicas))) + ", New Replicas: " + strconv.Itoa(int(*(replicaSet.Spec.Replicas))))
-		foundRS.Spec = replicaSet.Spec
-		err = r.Update(ctx, foundRS)
-		//err = r.Update(ctx, replicaSet)
-		if err != nil {
-			log.Error(err, "Failed to update ReplicaSet for :"+cdb.Name, "Namespace", replicaSet.Namespace, "Name", replicaSet.Name)
-			return err
-		}
+	} else if err != nil {
+		log.Error(err, "Replicaset : "+replicaSet.Name+" already exists.")
+		return err
 	}
 
 	// Set CDB instance as the owner and controller
@@ -303,7 +246,7 @@ func (r *CDBReconciler) createORDSReplicaSet(ctx context.Context, req ctrl.Reque
 /*************************************************
  * Validate ORDS Pod. Check if there are any errors
  /************************************************/
-func (r *CDBReconciler) validateORDSPod(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
+func (r *CDBReconciler) validateORDSPods(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
 	log := r.Log.WithValues("validateORDSPod", req.NamespacedName)
 
@@ -490,178 +433,141 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 	return podSpec
 }
 
+/************************
+ * Create ReplicaSet spec
+/************************/
+func (r *CDBReconciler) createReplicaSetSpec(cdb *dbapi.CDB) *appsv1.ReplicaSet {
+
+	replicas := int32(cdb.Spec.Replicas)
+	podSpec := r.createPodSpec(cdb)
+
+	replicaSet := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cdb.Name + "-ords-rs",
+			Namespace: cdb.Namespace,
+			Labels: map[string]string{
+				"name": cdb.Name + "-ords-rs",
+			},
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Replicas: &replicas,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      cdb.Name + "-ords",
+					Namespace: cdb.Namespace,
+					Labels: map[string]string{
+						"name": cdb.Name + "-ords",
+					},
+				},
+				Spec: podSpec,
+			},
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"name": cdb.Name + "-ords",
+				},
+			},
+		},
+	}
+
+	return replicaSet
+}
+
 /**********************************************************
  * Evaluate change in Spec post creation and instantiation
  /********************************************************/
 func (r *CDBReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 	log := r.Log.WithValues("evaluateSpecChange", req.NamespacedName)
 
-	currCDB := &dbapi.CDB{}
+	// List the Pods matching the PodTemplate Labels
+	podName := cdb.Name + "-ords"
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{client.InNamespace(req.Namespace), client.MatchingLabels{"name": podName}}
 
-	err := r.Get(context.TODO(), types.NamespacedName{Name: cdb.Name, Namespace: cdb.Namespace}, currCDB)
-	if err != nil && apierrors.IsNotFound(err) {
-		log.Info("Uanble to get curr CDB CR: " + cdb.Name)
+	// List retrieves list of objects for a given namespace and list options.
+	err := r.List(ctx, podList, listOpts...)
+	if err != nil {
+		log.Info("Failed to list pods of: "+podName, "Namespace", req.Namespace)
 		return err
 	}
 
-	log.Info("Existing replicas: " + strconv.Itoa(currCDB.Spec.Replicas) + ", New Replicas: " + strconv.Itoa(cdb.Spec.Replicas))
+	var foundPod corev1.Pod
+	for _, pod := range podList.Items {
+		foundPod = pod
+		break
+	}
+
+	ordsSpecChange := false
+	for _, envVar := range foundPod.Spec.Containers[0].Env {
+		if envVar.Name == "ORACLE_HOST" && envVar.Value != cdb.Spec.DBServer {
+			ordsSpecChange = true
+		} else if envVar.Name == "ORACLE_PORT" && envVar.Value != strconv.Itoa(cdb.Spec.DBPort) {
+			ordsSpecChange = true
+		} else if envVar.Name == "ORDS_PORT" && envVar.Value != strconv.Itoa(cdb.Spec.ORDSPort) {
+			ordsSpecChange = true
+		}
+	}
+
+	if ordsSpecChange {
+		// Delete existing ReplicaSet
+		k_client, err := kubernetes.NewForConfig(r.Config)
+		if err != nil {
+			log.Error(err, "Kubernetes Config Error")
+			return err
+		}
+		replicaSetName := cdb.Name + "-ords-rs"
+		err = k_client.AppsV1().ReplicaSets(cdb.Namespace).Delete(context.TODO(), replicaSetName, metav1.DeleteOptions{})
+		if err != nil {
+			log.Info("Could not delete ReplicaSet", "RS Name", replicaSetName, "err", err.Error())
+			if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
+				return err
+			}
+		} else {
+			log.Info("Successfully deleted ORDS ReplicaSet", "RS Name", replicaSetName)
+		}
+
+		// Create new ReplicaSet
+		replicaSet := r.createReplicaSetSpec(cdb)
+		log.Info("Re-Creating ORDS Replicaset: " + replicaSet.Name)
+		err = r.Create(ctx, replicaSet)
+		if err != nil {
+			log.Error(err, "Failed to re-create ReplicaSet for :"+cdb.Name, "Namespace", replicaSet.Namespace, "Name", replicaSet.Name)
+			return err
+		}
+		// Set CDB instance as the owner and controller
+		ctrl.SetControllerReference(cdb, replicaSet, r.Scheme)
+		log.Info("Successfully re-created ORDS ReplicaSet", "RS Name", replicaSetName)
+
+		cdb.Status.Phase = cdbPhaseValPod
+		cdb.Status.Status = false
+		r.Status().Update(ctx, cdb)
+	} else {
+		// If only the value of replicas is changed, update the RS only
+		replicaSetName := cdb.Name + "-ords-rs"
+
+		foundRS := &appsv1.ReplicaSet{}
+		err := r.Get(context.TODO(), types.NamespacedName{Name: replicaSetName, Namespace: cdb.Namespace}, foundRS)
+		if err != nil {
+			log.Error(err, "Unable to get ORDS Replicaset: "+replicaSetName)
+			return err
+		}
+
+		// Check if replicas have changed
+		replicas := int32(cdb.Spec.Replicas)
+		if cdb.Spec.Replicas != int(*(foundRS.Spec.Replicas)) {
+			log.Info("Existing Replicas: " + strconv.Itoa(int(*(foundRS.Spec.Replicas))) + ", New Replicas: " + strconv.Itoa(cdb.Spec.Replicas))
+			foundRS.Spec.Replicas = &replicas
+			err = r.Update(ctx, foundRS)
+			if err != nil {
+				log.Error(err, "Failed to update ReplicaSet for :"+cdb.Name, "Namespace", cdb.Namespace, "Name", replicaSetName)
+				return err
+			}
+			cdb.Status.Phase = cdbPhaseValPod
+			cdb.Status.Status = false
+			r.Status().Update(ctx, cdb)
+		}
+	}
+
 	return nil
-}
-
-/************************
- * Create Pod spec
-/************************/
-func (r *CDBReconciler) createPodSpec2(cdb *dbapi.CDB) *corev1.Pod {
-
-	pod := &corev1.Pod{
-		TypeMeta: metav1.TypeMeta{
-			Kind: "Pod",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cdb.Name + "-ords-" + dbcommons.GenerateRandomString(5),
-			Namespace: cdb.Namespace,
-			Labels: map[string]string{
-				"name": cdb.Name + "-ords",
-			},
-		},
-		Spec: corev1.PodSpec{
-			Volumes: []corev1.Volume{{
-				Name: "secrets",
-				VolumeSource: corev1.VolumeSource{
-					Projected: &corev1.ProjectedVolumeSource{
-						DefaultMode: func() *int32 { i := int32(0666); return &i }(),
-						Sources: []corev1.VolumeProjection{
-							{
-								Secret: &corev1.SecretProjection{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: cdb.Spec.SysAdminPwd.Secret.SecretName,
-									},
-								},
-							},
-							{
-								Secret: &corev1.SecretProjection{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: cdb.Spec.CDBAdminUser.Secret.SecretName,
-									},
-								},
-							},
-							{
-								Secret: &corev1.SecretProjection{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: cdb.Spec.CDBAdminPwd.Secret.SecretName,
-									},
-								},
-							},
-							{
-								Secret: &corev1.SecretProjection{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: cdb.Spec.ORDSPwd.Secret.SecretName,
-									},
-								},
-							},
-							{
-								Secret: &corev1.SecretProjection{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: cdb.Spec.WebServerUser.Secret.SecretName,
-									},
-								},
-							},
-							{
-								Secret: &corev1.SecretProjection{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: cdb.Spec.WebServerPwd.Secret.SecretName,
-									},
-								},
-							},
-						},
-					},
-				},
-			}},
-			Containers: []corev1.Container{{
-				Name:  cdb.Name + "-ords",
-				Image: cdb.Spec.ORDSImage,
-				VolumeMounts: []corev1.VolumeMount{{
-					MountPath: "/opt/oracle/ords/secrets",
-					Name:      "secrets",
-					ReadOnly:  true,
-				}},
-				Env: func() []corev1.EnvVar {
-					return []corev1.EnvVar{
-						{
-							Name:  "ORACLE_HOST",
-							Value: cdb.Spec.DBServer,
-						},
-						{
-							Name:  "ORACLE_PORT",
-							Value: strconv.Itoa(cdb.Spec.DBPort),
-						},
-						{
-							Name:  "ORDS_PORT",
-							Value: strconv.Itoa(cdb.Spec.ORDSPort),
-						},
-						{
-							Name:  "ORACLE_SERVICE",
-							Value: cdb.Spec.ServiceName,
-						},
-						{
-							Name:  "ORACLE_PWD_KEY",
-							Value: cdb.Spec.SysAdminPwd.Secret.Key,
-						},
-						{
-							Name:  "CDBADMIN_USER_KEY",
-							Value: cdb.Spec.CDBAdminUser.Secret.Key,
-						},
-						{
-							Name:  "CDBADMIN_PWD_KEY",
-							Value: cdb.Spec.CDBAdminPwd.Secret.Key,
-						},
-						{
-							Name:  "ORDS_PWD_KEY",
-							Value: cdb.Spec.ORDSPwd.Secret.Key,
-						},
-						{
-							Name:  "WEBSERVER_USER_KEY",
-							Value: cdb.Spec.WebServerUser.Secret.Key,
-						},
-						{
-							Name:  "WEBSERVER_PASSWORD_KEY",
-							Value: cdb.Spec.WebServerPwd.Secret.Key,
-						},
-					}
-				}(),
-			}},
-
-			NodeSelector: func() map[string]string {
-				ns := make(map[string]string)
-				if len(cdb.Spec.NodeSelector) != 0 {
-					for key, value := range cdb.Spec.NodeSelector {
-						ns[key] = value
-					}
-				}
-				return ns
-			}(),
-		},
-	}
-
-	if len(cdb.Spec.ORDSImagePullSecret) > 0 {
-		pod.Spec.ImagePullSecrets = []corev1.LocalObjectReference{
-			{
-				Name: cdb.Spec.ORDSImagePullSecret,
-			},
-		}
-	}
-
-	pod.Spec.Containers[0].ImagePullPolicy = corev1.PullAlways
-
-	if len(cdb.Spec.ORDSImagePullPolicy) > 0 {
-		if strings.ToUpper(cdb.Spec.ORDSImagePullPolicy) == "NEVER" {
-			pod.Spec.Containers[0].ImagePullPolicy = corev1.PullNever
-		}
-	}
-
-	// Set CDB instance as the owner and controller
-	ctrl.SetControllerReference(cdb, pod, r.Scheme)
-	return pod
 }
 
 /*************************************************
@@ -671,17 +577,24 @@ func (r *CDBReconciler) createORDSSVC(ctx context.Context, req ctrl.Request, cdb
 
 	log := r.Log.WithValues("createORDSSVC", req.NamespacedName)
 
-	svc := r.createSvcSpec(cdb)
+	foundSvc := &corev1.Service{}
+	err := r.Get(context.TODO(), types.NamespacedName{Name: cdb.Name + "-ords", Namespace: cdb.Namespace}, foundSvc)
+	if err != nil && apierrors.IsNotFound(err) {
+		svc := r.createSvcSpec(cdb)
 
-	log.Info("Creating a new Cluster Service for: "+cdb.Name, "Svc.Namespace", svc.Namespace, "Service.Name", svc.Name)
-	err := r.Create(ctx, svc)
-	if err != nil {
-		log.Error(err, "Failed to create new Cluster Service for: "+cdb.Name, "Svc.Namespace", svc.Namespace, "Service.Name", svc.Name)
-		return err
+		log.Info("Creating a new Cluster Service for: "+cdb.Name, "Svc.Namespace", svc.Namespace, "Service.Name", svc.Name)
+		err := r.Create(ctx, svc)
+		if err != nil {
+			log.Error(err, "Failed to create new Cluster Service for: "+cdb.Name, "Svc.Namespace", svc.Namespace, "Service.Name", svc.Name)
+			return err
+		}
+
+		log.Info("Created ORDS Cluster Service successfully")
+		r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "CreatedORDSService", "Created ORDS Service for %s", cdb.Name)
+	} else {
+		log.Info("ORDS Cluster Service already exists")
 	}
 
-	log.Info("Created ORDS Cluster Service successfully")
-	r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "CreatedORDSService", "Created ORDS Service for %s", cdb.Name)
 	return nil
 }
 
@@ -809,66 +722,6 @@ func (r *CDBReconciler) deleteCDBInstance(ctx context.Context, req ctrl.Request,
 }
 
 /*************************************************
- * Delete CDB Resource
-/************************************************/
-func (r *CDBReconciler) deleteCDBInstance2(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
-
-	log := r.Log.WithValues("deleteCDBInstance", req.NamespacedName)
-
-	k_client, err := kubernetes.NewForConfig(r.Config)
-	if err != nil {
-		log.Error(err, "Kubernetes Config Error")
-	}
-
-	podName := cdb.Name + "-ords"
-
-	podList := &corev1.PodList{}
-	listOpts := []client.ListOption{client.InNamespace(req.Namespace), client.MatchingLabels{"name": podName}}
-
-	// List retrieves list of objects for a given namespace and list options.
-	err = r.List(ctx, podList, listOpts...)
-	if err != nil {
-		log.Error(err, "Failed to list pods of: "+podName, "Namespace", req.Namespace)
-		return err
-	}
-
-	if len(podList.Items) == 0 {
-		log.Info("No pods found for: "+podName, "Namespace", req.Namespace)
-		return nil
-	}
-
-	for _, pod := range podList.Items {
-		err = k_client.CoreV1().Pods(cdb.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
-		if err != nil {
-			log.Info("Could not delete Pod", "Pod Name", pod.Name, "err", err.Error())
-			if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
-				return err
-			}
-		} else {
-			log.Info("Successfully deleted ORDS Pod", "Pod Name", pod.Name)
-		}
-	}
-
-	r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "DeletedORDSPod", "Deleted ORDS Pod(s) for %s", cdb.Name)
-
-	svcName := cdb.Name + "-ords"
-
-	err = k_client.CoreV1().Services(cdb.Namespace).Delete(context.TODO(), svcName, metav1.DeleteOptions{})
-	if err != nil {
-		log.Info("Could not delete Service", "Service Name", svcName, "err", err.Error())
-		if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
-			return err
-		}
-	} else {
-		r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "DeletedORDSService", "Deleted ORDS Service for %s", cdb.Name)
-		log.Info("Successfully deleted ORDS Service", "Service Name", svcName)
-	}
-
-	log.Info("Successfully deleted CDB resource", "CDB Name", cdb.Spec.CDBName)
-	return nil
-}
-
-/*************************************************
  * Delete Secrets
  /************************************************/
 func (r *CDBReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) {
@@ -940,7 +793,8 @@ func (r *CDBReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			},
 			DeleteFunc: func(e event.DeleteEvent) bool {
 				// Evaluates to false if the object has been confirmed deleted.
-				return !e.DeleteStateUnknown
+				//return !e.DeleteStateUnknown
+				return false
 			},
 		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 100}).

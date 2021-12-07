@@ -77,12 +77,6 @@ func (r *CDB) Default() {
 	if r.Spec.Replicas == 0 {
 		r.Spec.Replicas = 1
 	}
-
-	cdblog.Info("CDB phase : " + r.Status.Phase)
-	if r.Status.Phase == "Ready" {
-		r.Status.Status = false
-		r.Status.Phase = "CreatingPod"
-	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -92,7 +86,6 @@ var _ webhook.Validator = &CDB{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *CDB) ValidateCreate() error {
-	cdblog.Info("Validating CDB spec for : " + r.Name)
 	cdblog.Info("ValidateCreate", "name", r.Name)
 
 	var allErrs field.ErrorList
@@ -159,7 +152,7 @@ func (r *CDB) ValidateUpdate(old runtime.Object) error {
 
 	if !strings.EqualFold(oldCDB.Spec.ServiceName, r.Spec.ServiceName) {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("serviceName"), "cannot be changed"))
+			field.Forbidden(field.NewPath("spec").Child("replics"), "cannot be changed"))
 	}
 
 	if len(allErrs) == 0 {
