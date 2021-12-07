@@ -50,7 +50,7 @@ resources:
   webhooks:
     defaulting: true
     validation: true
-    webhookVersion: v1beta1
+    webhookVersion: v1
 - api:
     crdVersion: v1
     namespaced: true
@@ -63,5 +63,5 @@ resources:
   webhooks:
     defaulting: true
     validation: true
-    webhookVersion: v1beta1
+    webhookVersion: v1
 version: "3"

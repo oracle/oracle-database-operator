@@ -47,6 +47,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -91,8 +92,9 @@ const CDBFinalizer = "database.oracle.com/CDBfinalizer"
 //+kubebuilder:rbac:groups=database.oracle.com,resources=cdbs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=cdbs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=cdbs/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;services;configmaps;events,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;services;configmaps;events;replicasets,verbs=create;delete;get;list;patch;update;watch
 //+kubebuilder:rbac:groups=core,resources=pods;secrets;services;configmaps;namespaces,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -148,6 +150,10 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeueY, nil
 	}
 
+	if (cdb.Status.Phase == cdbPhaseReady) && cdb.Status.Status {
+		r.evaluateSpecChange(ctx, req, cdb)
+	}
+
 	if !cdb.Status.Status {
 		phase := cdb.Status.Phase
 		log.Info("Current Phase:"+phase, "Name", cdb.Name)
@@ -157,7 +163,8 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			cdb.Status.Phase = cdbPhasePod
 		case cdbPhasePod:
 			// Create ORDS POD
-			err = r.createORDSPod(ctx, req, cdb)
+			//err = r.createORDSPod(ctx, req, cdb)
+			err = r.createORDSReplicaSet(ctx, req, cdb)
 			if err != nil {
 				log.Info("Reconcile queued")
 				return requeueY, nil
@@ -178,7 +185,8 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 				log.Info("Reconcile queued")
 				return requeueY, nil
 			}
-			cdb.Status.Phase = cdbPhaseSecrets
+			//cdb.Status.Phase = cdbPhaseSecrets
+			cdb.Status.Phase = cdbPhaseReady
 		case cdbPhaseSecrets:
 			// Delete CDB Secrets
 			//r.deleteSecrets(ctx, req, cdb)
@@ -206,7 +214,7 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 /*************************************************
  * Create a Pod based on the ORDS container
  /************************************************/
-func (r *CDBReconciler) createORDSPod(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
+/*func (r *CDBReconciler) createORDSPod(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
 	log := r.Log.WithValues("createORDSPod", req.NamespacedName)
 
@@ -223,6 +231,72 @@ func (r *CDBReconciler) createORDSPod(ctx context.Context, req ctrl.Request, cdb
 
 	log.Info("Created ORDS Pod(s) successfully")
 	r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "CreatedORDSPod", "Created %s ORDS Pod(s) for %s", strconv.Itoa(cdb.Spec.Replicas), cdb.Name)
+	return nil
+}
+*/
+/**********************************************************
+ * Create a ReplicaSet for pods based on the ORDS container
+ /********************************************************/
+func (r *CDBReconciler) createORDSReplicaSet(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
+
+	log := r.Log.WithValues("createORDSReplicaSet", req.NamespacedName)
+
+	replicas := int32(cdb.Spec.Replicas)
+	podSpec := r.createPodSpec(cdb)
+
+	replicaSet := &appsv1.ReplicaSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cdb.Name + "-ords-rs",
+			Namespace: cdb.Namespace,
+			Labels: map[string]string{
+				"name": cdb.Name + "-ords-rs",
+			},
+		},
+		Spec: appsv1.ReplicaSetSpec{
+			Replicas: &replicas,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      cdb.Name + "-ords",
+					Namespace: cdb.Namespace,
+					Labels: map[string]string{
+						"name": cdb.Name + "-ords",
+					},
+				},
+				Spec: podSpec,
+			},
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"name": cdb.Name + "-ords",
+				},
+			},
+		},
+	}
+
+	foundRS := &appsv1.ReplicaSet{}
+	err := r.Get(context.TODO(), types.NamespacedName{Name: replicaSet.Name, Namespace: cdb.Namespace}, foundRS)
+	if err != nil && apierrors.IsNotFound(err) {
+		log.Info("Creating ORDS Replicaset: " + replicaSet.Name)
+		err = r.Create(ctx, replicaSet)
+		if err != nil {
+			log.Error(err, "Failed to create ReplicaSet for :"+cdb.Name, "Namespace", replicaSet.Namespace, "Name", replicaSet.Name)
+			return err
+		}
+	} else {
+		log.Info("Found Replicas: " + strconv.Itoa(int(*(foundRS.Spec.Replicas))) + ", New Replicas: " + strconv.Itoa(int(*(replicaSet.Spec.Replicas))))
+		foundRS.Spec = replicaSet.Spec
+		err = r.Update(ctx, foundRS)
+		//err = r.Update(ctx, replicaSet)
+		if err != nil {
+			log.Error(err, "Failed to update ReplicaSet for :"+cdb.Name, "Namespace", replicaSet.Namespace, "Name", replicaSet.Name)
+			return err
+		}
+	}
+
+	// Set CDB instance as the owner and controller
+	ctrl.SetControllerReference(cdb, replicaSet, r.Scheme)
+
+	log.Info("Created ORDS ReplicaSet successfully")
+	r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "CreatedORDSReplicaSet", "Created ORDS Replicaset (Replicas - %s) for %s", strconv.Itoa(cdb.Spec.Replicas), cdb.Name)
 	return nil
 }
 
@@ -276,8 +350,168 @@ func (r *CDBReconciler) validateORDSPod(ctx context.Context, req ctrl.Request, c
 
 /************************
  * Create Pod spec
- /************************/
-func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) *corev1.Pod {
+/************************/
+func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
+
+	podSpec := corev1.PodSpec{
+		Volumes: []corev1.Volume{{
+			Name: "secrets",
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					DefaultMode: func() *int32 { i := int32(0666); return &i }(),
+					Sources: []corev1.VolumeProjection{
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.SysAdminPwd.Secret.SecretName,
+								},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.CDBAdminUser.Secret.SecretName,
+								},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.CDBAdminPwd.Secret.SecretName,
+								},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.ORDSPwd.Secret.SecretName,
+								},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.WebServerUser.Secret.SecretName,
+								},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.WebServerPwd.Secret.SecretName,
+								},
+							},
+						},
+					},
+				},
+			},
+		}},
+		Containers: []corev1.Container{{
+			Name:  cdb.Name + "-ords",
+			Image: cdb.Spec.ORDSImage,
+			VolumeMounts: []corev1.VolumeMount{{
+				MountPath: "/opt/oracle/ords/secrets",
+				Name:      "secrets",
+				ReadOnly:  true,
+			}},
+			Env: func() []corev1.EnvVar {
+				return []corev1.EnvVar{
+					{
+						Name:  "ORACLE_HOST",
+						Value: cdb.Spec.DBServer,
+					},
+					{
+						Name:  "ORACLE_PORT",
+						Value: strconv.Itoa(cdb.Spec.DBPort),
+					},
+					{
+						Name:  "ORDS_PORT",
+						Value: strconv.Itoa(cdb.Spec.ORDSPort),
+					},
+					{
+						Name:  "ORACLE_SERVICE",
+						Value: cdb.Spec.ServiceName,
+					},
+					{
+						Name:  "ORACLE_PWD_KEY",
+						Value: cdb.Spec.SysAdminPwd.Secret.Key,
+					},
+					{
+						Name:  "CDBADMIN_USER_KEY",
+						Value: cdb.Spec.CDBAdminUser.Secret.Key,
+					},
+					{
+						Name:  "CDBADMIN_PWD_KEY",
+						Value: cdb.Spec.CDBAdminPwd.Secret.Key,
+					},
+					{
+						Name:  "ORDS_PWD_KEY",
+						Value: cdb.Spec.ORDSPwd.Secret.Key,
+					},
+					{
+						Name:  "WEBSERVER_USER_KEY",
+						Value: cdb.Spec.WebServerUser.Secret.Key,
+					},
+					{
+						Name:  "WEBSERVER_PASSWORD_KEY",
+						Value: cdb.Spec.WebServerPwd.Secret.Key,
+					},
+				}
+			}(),
+		}},
+
+		NodeSelector: func() map[string]string {
+			ns := make(map[string]string)
+			if len(cdb.Spec.NodeSelector) != 0 {
+				for key, value := range cdb.Spec.NodeSelector {
+					ns[key] = value
+				}
+			}
+			return ns
+		}(),
+	}
+
+	if len(cdb.Spec.ORDSImagePullSecret) > 0 {
+		podSpec.ImagePullSecrets = []corev1.LocalObjectReference{
+			{
+				Name: cdb.Spec.ORDSImagePullSecret,
+			},
+		}
+	}
+
+	podSpec.Containers[0].ImagePullPolicy = corev1.PullAlways
+
+	if len(cdb.Spec.ORDSImagePullPolicy) > 0 {
+		if strings.ToUpper(cdb.Spec.ORDSImagePullPolicy) == "NEVER" {
+			podSpec.Containers[0].ImagePullPolicy = corev1.PullNever
+		}
+	}
+
+	return podSpec
+}
+
+/**********************************************************
+ * Evaluate change in Spec post creation and instantiation
+ /********************************************************/
+func (r *CDBReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
+	log := r.Log.WithValues("evaluateSpecChange", req.NamespacedName)
+
+	currCDB := &dbapi.CDB{}
+
+	err := r.Get(context.TODO(), types.NamespacedName{Name: cdb.Name, Namespace: cdb.Namespace}, currCDB)
+	if err != nil && apierrors.IsNotFound(err) {
+		log.Info("Uanble to get curr CDB CR: " + cdb.Name)
+		return err
+	}
+
+	log.Info("Existing replicas: " + strconv.Itoa(currCDB.Spec.Replicas) + ", New Replicas: " + strconv.Itoa(cdb.Spec.Replicas))
+	return nil
+}
+
+/************************
+ * Create Pod spec
+/************************/
+func (r *CDBReconciler) createPodSpec2(cdb *dbapi.CDB) *corev1.Pod {
 
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
@@ -533,8 +767,51 @@ func (r *CDBReconciler) manageCDBDeletion(ctx context.Context, req ctrl.Request,
 
 /*************************************************
  * Delete CDB Resource
- /************************************************/
+/************************************************/
 func (r *CDBReconciler) deleteCDBInstance(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
+
+	log := r.Log.WithValues("deleteCDBInstance", req.NamespacedName)
+
+	k_client, err := kubernetes.NewForConfig(r.Config)
+	if err != nil {
+		log.Error(err, "Kubernetes Config Error")
+	}
+
+	replicaSetName := cdb.Name + "-ords-rs"
+
+	err = k_client.AppsV1().ReplicaSets(cdb.Namespace).Delete(context.TODO(), replicaSetName, metav1.DeleteOptions{})
+	if err != nil {
+		log.Info("Could not delete ReplicaSet", "RS Name", replicaSetName, "err", err.Error())
+		if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
+			return err
+		}
+	} else {
+		log.Info("Successfully deleted ORDS ReplicaSet", "RS Name", replicaSetName)
+	}
+
+	r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "DeletedORDSReplicaSet", "Deleted ORDS ReplicaSet for %s", cdb.Name)
+
+	svcName := cdb.Name + "-ords"
+
+	err = k_client.CoreV1().Services(cdb.Namespace).Delete(context.TODO(), svcName, metav1.DeleteOptions{})
+	if err != nil {
+		log.Info("Could not delete Service", "Service Name", svcName, "err", err.Error())
+		if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
+			return err
+		}
+	} else {
+		r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "DeletedORDSService", "Deleted ORDS Service for %s", cdb.Name)
+		log.Info("Successfully deleted ORDS Service", "Service Name", svcName)
+	}
+
+	log.Info("Successfully deleted CDB resource", "CDB Name", cdb.Spec.CDBName)
+	return nil
+}
+
+/*************************************************
+ * Delete CDB Resource
+/************************************************/
+func (r *CDBReconciler) deleteCDBInstance2(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
 	log := r.Log.WithValues("deleteCDBInstance", req.NamespacedName)
 
@@ -655,7 +932,7 @@ func (r *CDBReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, cdb
 func (r *CDBReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.CDB{}).
-		Owns(&corev1.Pod{}). //Watch for deleted pods owned by this controller
+		Owns(&appsv1.ReplicaSet{}). //Watch for deleted RS owned by this controller
 		WithEventFilter(predicate.Funcs{
 			UpdateFunc: func(e event.UpdateEvent) bool {
 				// Ignore updates to CR status in which case metadata.Generation does not change

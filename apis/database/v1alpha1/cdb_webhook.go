@@ -40,7 +40,7 @@ package v1alpha1
 
 import (
 	"reflect"
-	//"strings"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -76,6 +76,12 @@ func (r *CDB) Default() {
 
 	if r.Spec.Replicas == 0 {
 		r.Spec.Replicas = 1
+	}
+
+	cdblog.Info("CDB phase : " + r.Status.Phase)
+	if r.Status.Phase == "Ready" {
+		r.Status.Status = false
+		r.Status.Phase = "CreatingPod"
 	}
 }
 
@@ -143,8 +149,26 @@ func (r *CDB) ValidateCreate() error {
 func (r *CDB) ValidateUpdate(old runtime.Object) error {
 	cdblog.Info("validate update", "name", r.Name)
 
-	// TODO(user): fill in your validation logic upon object update.
-	return nil
+	var allErrs field.ErrorList
+
+	// Check for updation errors
+	oldCDB, ok := old.(*CDB)
+	if !ok {
+		return nil
+	}
+
+	if !strings.EqualFold(oldCDB.Spec.ServiceName, r.Spec.ServiceName) {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("serviceName"), "cannot be changed"))
+	}
+
+	if len(allErrs) == 0 {
+		return nil
+	}
+
+	return apierrors.NewInvalid(
+		schema.GroupKind{Group: "database.oracle.com", Kind: "CDB"},
+		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
