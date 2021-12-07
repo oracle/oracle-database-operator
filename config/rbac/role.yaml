@@ -14,6 +14,7 @@ rules:
   - pods
   - pods/exec
   - pods/log
+  - replicasets
   - services
   verbs:
   - create
@@ -58,6 +59,18 @@ rules:
   - ''''''
   resources:
   - statefulsets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - replicasets
   verbs:
   - create
   - delete
