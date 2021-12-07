@@ -93,6 +93,43 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 
+	// Pre-built db
+	if r.Spec.Persistence.AccessMode == "" {
+		if r.Spec.AdminPassword.SecretName != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("adminPassword"), r.Spec.AdminPassword,
+					"cannot change password for prebuilt db"))
+		}
+		if r.Spec.Sid != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
+					"cannot change sid for prebuilt db"))
+		}
+		if r.Spec.Pdbname != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
+					"cannot change pdbName for prebuilt db"))
+		}
+		if r.Spec.CloneFrom != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
+					"cannot clone to create a prebuilt db"))
+		}
+		if len(allErrs) == 0 {
+			return nil
+		}
+		return apierrors.NewInvalid(
+			schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
+			r.Name, allErrs)
+	}
+
+	if r.Spec.Persistence.AccessMode != "" &&
+		r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Persistence.AccessMode,
+				"should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
+	}
+
 	if r.Spec.Persistence.AccessMode == "ReadWriteOnce" && r.Spec.Replicas != 1 {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("replicas"), r.Spec.Replicas,
@@ -146,11 +183,18 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 			return err
 		}
 	}
+
+	// Pre-built db
+	if r.Spec.Persistence.AccessMode == "" {
+		return nil
+	}
+
 	// Now check for updation errors
 	old, ok := oldRuntimeObject.(*SingleInstanceDatabase)
 	if !ok {
 		return nil
 	}
+
 	edition := r.Spec.Edition
 	if r.Spec.Edition == "" {
 		edition = "Enterprise"
