@@ -13,3 +13,7 @@ spec:
   image:
     pullFrom:
     pullSecrets:
+
+  ## Type of service . Applicable on cloud enviroments only
+  ## if loadBalService : false, service type = "NodePort". else "LoadBalancer"
+  loadBalancer: false

@@ -83,8 +83,7 @@ type SingleInstanceDatabaseSpec struct {
 type SingleInstanceDatabasePersistence struct {
 	Size         string `json:"size"`
 	StorageClass string `json:"storageClass"`
-
-	AccessMode string `json:"accessMode,omitempty"`
+	AccessMode   string `json:"accessMode,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters

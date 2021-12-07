@@ -314,6 +314,11 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	eventReason := "Spec Error"
 	var eventMsgs []string
 
+	// Pre-built db
+	if m.Spec.Persistence.AccessMode == "" {
+		return requeueN, nil
+	}
+
 	//  If Express Edition , Ensure Replicas=1
 	if m.Spec.Edition == "express" && m.Spec.Replicas != 1 {
 		eventMsgs = append(eventMsgs, "XE supports only one replica")
@@ -1000,24 +1005,30 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	m.Status.ConnectString = dbcommons.ValueUnavailable
 	m.Status.PdbConnectString = dbcommons.ValueUnavailable
 	m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+
 	pdbName := "ORCLPDB1"
+	sid := m.Spec.Sid
+	if m.Spec.Persistence.AccessMode == "" {
+		sid, pdbName, m.Status.Edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
+	}
+
 	if m.Spec.Pdbname != "" {
 		pdbName = strings.ToUpper(m.Spec.Pdbname)
 	}
 	if m.Spec.LoadBalancer {
-		m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(m.Spec.Sid)
+		m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
-			m.Status.ConnectString = svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(m.Spec.Sid)
+			m.Status.ConnectString = svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
 			m.Status.PdbConnectString = svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(pdbName)
 			m.Status.OemExpressUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[1].Port) + "/em"
 		}
 		return requeueN, nil
 	}
 
-	m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(m.Spec.Sid)
+	m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
 	nodeip := dbcommons.GetNodeIp(r, ctx, req)
 	if nodeip != "" {
-		m.Status.ConnectString = nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(m.Spec.Sid)
+		m.Status.ConnectString = nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(sid)
 		m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(pdbName)
 		m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[1].NodePort) + "/em"
 	}
