@@ -422,4 +422,4 @@ const SetApexUsers string = "\numask 177" +
 	"\numask 022"
 
 // Get Sid, Pdbname, Edition for prebuilt db
-const GetSidPdbEditionCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_standard ]; then echo \"$ORACLE_SID,$ORACLE_PDB,Standard\"; else echo \"$ORACLE_SID,$ORACLE_PDB,Enterprise\"; fi;"
+const GetSidPdbEditionCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_standard ]; then echo \"$ORACLE_SID,$ORACLE_PDB,Standard,Edition\"; else echo \"$ORACLE_SID,$ORACLE_PDB,Enterprise,Edition\"; fi;"
