@@ -5,7 +5,7 @@
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
-  name: singleinstancedatabase-sample
+  name: sidb-sample
   namespace: default
 spec:
   
@@ -13,6 +13,7 @@ spec:
   sid: ORCL1
   
   ## A source database ref to clone from, leave empty to create a fresh database
+  ## If cloning from on prem source database, mention connect string `<ip>:<port>/<sid>`.
   cloneFrom: ""
 
   ## NA if cloning from a SourceDB (cloneFrom is set)

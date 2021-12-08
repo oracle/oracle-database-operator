@@ -5,7 +5,7 @@
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
-  name: singleinstancedatabase-sample
+  name: sidb-sample-clone
   namespace: default
 spec:
   
