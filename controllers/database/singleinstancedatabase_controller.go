@@ -1010,6 +1010,9 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	sid := m.Spec.Sid
 	if m.Spec.Persistence.AccessMode == "" {
 		sid, pdbName, m.Status.Edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
+		if sid == "" || pdbName == "" || m.Status.Edition == "" {
+			return requeueN, nil
+		}
 	}
 
 	if m.Spec.Pdbname != "" {

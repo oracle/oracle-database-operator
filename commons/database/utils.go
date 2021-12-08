@@ -589,7 +589,7 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 			return "", "", ""
 		}
 		splitstr := strings.Split(out, ",")
-		if len(splitstr) == 3 {
+		if len(splitstr) == 4 {
 			return splitstr[0], splitstr[1], splitstr[2]
 		}
 	}
