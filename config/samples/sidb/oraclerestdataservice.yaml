@@ -34,8 +34,6 @@ spec:
     keepSecret: false
 
   ## ORDS image details
-  ## Add 'database.api.enabled=true' entry to below file while building ORDS image.
-  ## https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/ords_params.properties.tmpl
   image:
     pullFrom:
     pullSecrets:
