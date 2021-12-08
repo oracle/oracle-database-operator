@@ -116,6 +116,25 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
     singleinstancedatabase.database.oracle.com/sidb-sample created
   ```
 
+* ### Provision a Pre-built Database
+
+  Provision a new Pre-built  database instance by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
+
+  ```sh
+  $ kubectl create -f singleinstancedatabase_prov_prebuilt_db.yaml
+  
+    singleinstancedatabase.database.oracle.com/sidb-sample created
+  ```
+
+  This Pre-built image includes an already setup database inside the image itself. Although the image size is larger, the startup time of the container includes only the database startup itself, which makes the container startup duration just a couple of seconds.
+
+  This Pre-built database would be very useful in CI/CD scenarios, where database would be used for conducting tests, experiments and the workflow is simple.
+
+  Some limitations are listed as follows:
+
+  External volume can not be used for database persistence (as data files are inside the image itself).
+  Only the single replica mode (i.e. replicas=1) can be used.
+
 * ### Creation Status
   
  Creating a new database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections.
