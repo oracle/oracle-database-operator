@@ -1907,7 +1907,7 @@ spec:
         command:
         - /manager
         image: phx.ocir.io/intsanjaysingh/gdb-repo/oracle/dboper-ords-go:master
-        imagePullPolicy: Always
+        imagePullPolicy: Never
         name: manager
         ports:
         - containerPort: 9443
@@ -2003,7 +2003,6 @@ webhooks:
     - UPDATE
     resources:
     - pdbs
-    - pdbs/status
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -2076,7 +2075,6 @@ webhooks:
     - DELETE
     resources:
     - pdbs
-    - pdbs/status
   sideEffects: None
 - admissionReviewVersions:
   - v1

@@ -52,15 +52,13 @@ import (
 )
 
 // log is for logging in this package.
-var cdblog = logf.Log.WithName("cdb-resource")
+var cdblog = logf.Log.WithName("cdb-webhook")
 
 func (r *CDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
 		Complete()
 }
-
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-cdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=cdbs,verbs=create;update,versions=v1alpha1,name=mcdb.kb.io,admissionReviewVersions={v1,v1beta1}
 

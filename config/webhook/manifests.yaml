@@ -47,7 +47,6 @@ webhooks:
     - UPDATE
     resources:
     - pdbs
-    - pdbs/status
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -120,7 +119,6 @@ webhooks:
     - DELETE
     resources:
     - pdbs
-    - pdbs/status
   sideEffects: None
 - admissionReviewVersions:
   - v1
