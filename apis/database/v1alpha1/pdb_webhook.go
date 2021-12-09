@@ -53,7 +53,7 @@ import (
 )
 
 // log is for logging in this package.
-var pdblog = logf.Log.WithName("pdb-resource")
+var pdblog = logf.Log.WithName("pdb-webhook")
 
 func (r *PDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
@@ -61,9 +61,7 @@ func (r *PDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-pdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs;pdbs/status,verbs=create;update,versions=v1alpha1,name=mpdb.kb.io,admissionReviewVersions={v1,v1beta1}
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-pdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update,versions=v1alpha1,name=mpdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
 var _ webhook.Defaulter = &PDB{}
 
@@ -71,40 +69,50 @@ var _ webhook.Defaulter = &PDB{}
 func (r *PDB) Default() {
 	pdblog.Info("Setting default values in PDB spec for : " + r.Name)
 
-	if r.Spec.ReuseTempFile == nil {
-		r.Spec.ReuseTempFile = new(bool)
-		*r.Spec.ReuseTempFile = true
-		pdblog.Info(" - reuseTempFile : " + strconv.FormatBool(*(r.Spec.ReuseTempFile)))
+	action := strings.ToUpper(r.Spec.Action)
+
+	if action == "DELETE" {
+		if r.Spec.DropAction == "" {
+			r.Spec.DropAction = "KEEP"
+			pdblog.Info(" - dropAction : KEEP")
+		}
+	} else {
+		if r.Spec.ReuseTempFile == nil {
+			r.Spec.ReuseTempFile = new(bool)
+			*r.Spec.ReuseTempFile = true
+			pdblog.Info(" - reuseTempFile : " + strconv.FormatBool(*(r.Spec.ReuseTempFile)))
+		}
+		if r.Spec.UnlimitedStorage == nil {
+			r.Spec.UnlimitedStorage = new(bool)
+			*r.Spec.UnlimitedStorage = true
+			pdblog.Info(" - unlimitedStorage : " + strconv.FormatBool(*(r.Spec.UnlimitedStorage)))
+		}
+		if r.Spec.TDEImport == nil {
+			r.Spec.TDEImport = new(bool)
+			*r.Spec.TDEImport = false
+			pdblog.Info(" - tdeImport : " + strconv.FormatBool(*(r.Spec.TDEImport)))
+		}
+		if r.Spec.TDEExport == nil {
+			r.Spec.TDEExport = new(bool)
+			*r.Spec.TDEExport = false
+			pdblog.Info(" - tdeExport : " + strconv.FormatBool(*(r.Spec.TDEExport)))
+		}
+		if r.Spec.AsClone == nil {
+			r.Spec.AsClone = new(bool)
+			*r.Spec.AsClone = false
+			pdblog.Info(" - asClone : " + strconv.FormatBool(*(r.Spec.AsClone)))
+		}
 	}
-	if r.Spec.UnlimitedStorage == nil {
-		r.Spec.UnlimitedStorage = new(bool)
-		*r.Spec.UnlimitedStorage = true
-		pdblog.Info(" - unlimitedStorage : " + strconv.FormatBool(*(r.Spec.UnlimitedStorage)))
-	}
+
 	if r.Spec.GetScript == nil {
 		r.Spec.GetScript = new(bool)
 		*r.Spec.GetScript = false
 		pdblog.Info(" - getScript : " + strconv.FormatBool(*(r.Spec.GetScript)))
 	}
-	if r.Spec.AsClone == nil {
-		r.Spec.AsClone = new(bool)
-		*r.Spec.AsClone = false
-		pdblog.Info(" - asClone : " + strconv.FormatBool(*(r.Spec.AsClone)))
-	}
-	if r.Spec.TDEImport == nil {
-		r.Spec.TDEImport = new(bool)
-		*r.Spec.TDEImport = false
-		pdblog.Info(" - tdeImport : " + strconv.FormatBool(*(r.Spec.TDEImport)))
-	}
-	if r.Spec.TDEExport == nil {
-		r.Spec.TDEExport = new(bool)
-		*r.Spec.TDEExport = false
-		pdblog.Info(" - tdeExport : " + strconv.FormatBool(*(r.Spec.TDEExport)))
-	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:path=/validate-database-oracle-com-v1alpha1-pdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs;pdbs/status,verbs=create;update;delete,versions=v1alpha1,name=vpdb.kb.io,admissionReviewVersions={v1,v1beta1}
+//+kubebuilder:webhook:path=/validate-database-oracle-com-v1alpha1-pdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update;delete,versions=v1alpha1,name=vpdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
 var _ webhook.Validator = &PDB{}
 
@@ -202,27 +210,24 @@ func (r *PDB) ValidateUpdate(old runtime.Object) error {
 	pdblog.Info("ValidateUpdate-Validating PDB spec for : " + r.Name)
 
 	var allErrs field.ErrorList
+	action := strings.ToUpper(r.Spec.Action)
 
-	// Check Common Validations
-	r.validateCommon(&allErrs)
-
-	// Validate required parameters for Action specified
-	r.validateAction(&allErrs)
-
-	// Check TDE requirements
-	if *(r.Spec.TDEImport) || *(r.Spec.TDEExport) {
-		r.validateTDEInfo(&allErrs)
-	}
-
-	// Check for updation errors
-	oldPDB, ok := old.(*PDB)
-	if !ok {
-		return nil
-	}
-
-	if !strings.EqualFold(oldPDB.Spec.CDBResName, r.Spec.CDBResName) {
+	// If PDB CR has been created and in Ready state, only allow updates if the "action" value has changed as well
+	if (r.Status.Phase == "Ready") && (r.Status.Action == action) {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("cdbResName"), "cannot be changed"))
+			field.Required(field.NewPath("spec").Child("action"), "New action also needs to be specified after PDB is in Ready state"))
+	} else {
+
+		// Check Common Validations
+		r.validateCommon(&allErrs)
+
+		// Validate required parameters for Action specified
+		r.validateAction(&allErrs)
+
+		// Check TDE requirements
+		if (action != "DELETE") && (*(r.Spec.TDEImport) || *(r.Spec.TDEExport)) {
+			r.validateTDEInfo(&allErrs)
+		}
 	}
 
 	if len(allErrs) == 0 {

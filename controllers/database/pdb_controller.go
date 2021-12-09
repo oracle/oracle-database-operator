@@ -128,11 +128,6 @@ const PDBFinalizer = "database.oracle.com/PDBfinalizer"
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.9.2/pkg/reconcile
 func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	//_ = log.FromContext(ctx)
-	//_ = r.Log.WithValues("onpremdboperator", req.NamespacedName)
-	//fmt.Printf("In Reconcile")
-	//ctx := context.Background()
-
 	log := r.Log.WithValues("onpremdboperator", req.NamespacedName)
 	log.Info("Reconcile requested")
 
@@ -174,52 +169,34 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeueY, nil
 	}
 
-	action := strings.ToUpper(pdb.Spec.Action)
-	if pdb.Status.Phase != pdbPhaseFail && pdb.Status.Action != "" && pdb.Status.Action != action {
+	//action := strings.ToUpper(pdb.Spec.Action)
+
+	/*if pdb.Status.Phase != pdbPhaseFail && pdb.Status.Action != "" && pdb.Status.Action != action {
 		pdb.Status.Status = false
-	}
+	}*/
 
-	log.Info("PDB PHASE STATUS:", "Name", pdb.Name, "Phase", pdb.Status.Phase, "Status", strconv.FormatBool(pdb.Status.Status), "Last Action", pdb.Status.Action)
+	//log.Info("PDB PHASE STATUS:", "Name", pdb.Name, "Phase", pdb.Status.Phase, "Status", strconv.FormatBool(pdb.Status.Status), "Last Action", pdb.Status.Action)
 
-	if (pdb.Status.Phase != pdbPhaseReady && pdb.Status.Phase != pdbPhaseFail && !pdb.Status.Status) || (pdb.Status.Action != "" && pdb.Status.Action != action) {
-		r.validatePhase(ctx, req, pdb)
-	}
+	//if (pdb.Status.Phase != pdbPhaseReady && pdb.Status.Phase != pdbPhaseFail && !pdb.Status.Status) || (pdb.Status.Action != "" && pdb.Status.Action != action) {
+	//r.validatePhase(ctx, req, pdb)
+	//}
 
 	if !pdb.Status.Status {
+		r.validatePhase(ctx, req, pdb)
 		phase := pdb.Status.Phase
 		log.Info("PDB:", "Name", pdb.Name, "Phase", phase, "Status", strconv.FormatBool(pdb.Status.Status))
 
 		switch phase {
 		case pdbPhaseCreate:
 			err = r.createPDB(ctx, req, pdb)
-			if err != nil {
-				log.Info("Reconcile queued")
-				return requeueY, nil
-			}
 		case pdbPhaseClone:
 			err = r.clonePDB(ctx, req, pdb)
-			if err != nil {
-				log.Info("Reconcile queued")
-				return requeueY, nil
-			}
 		case pdbPhasePlug:
 			err = r.plugPDB(ctx, req, pdb)
-			if err != nil {
-				log.Info("Reconcile queued")
-				return requeueY, nil
-			}
 		case pdbPhaseUnplug:
 			err = r.unplugPDB(ctx, req, pdb)
-			if err != nil {
-				log.Info("Reconcile queued")
-				return requeueY, nil
-			}
 		case pdbPhaseDelete:
 			err = r.deletePDB(ctx, req, pdb)
-			if err != nil {
-				log.Info("Reconcile queued")
-				return requeueY, nil
-			}
 		case pdbPhaseReady, pdbPhaseFail:
 			pdb.Status.Status = true
 		default:
@@ -228,8 +205,12 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			return requeueN, nil
 		}
 		pdb.Status.Action = strings.ToUpper(pdb.Spec.Action)
-		pdb.Status.Phase = pdbPhaseReady
-		pdb.Status.Msg = "Success"
+		if err != nil {
+			pdb.Status.Phase = pdbPhaseFail
+		} else {
+			pdb.Status.Phase = pdbPhaseReady
+			pdb.Status.Msg = "Success"
+		}
 	}
 
 	log.Info("Reconcile completed")
@@ -283,7 +264,6 @@ func (r *PDBReconciler) getCDBResource(ctx context.Context, req ctrl.Request, pd
 
 	if err != nil {
 		log.Info("Failed to get CRD for CDB", "Name", cdbResName, "Namespace", req.Namespace, "Error", err.Error())
-		pdb.Status.Phase = pdbPhaseFail
 		pdb.Status.Msg = "Unable to get CRD for CDB : " + cdbResName
 		r.Status().Update(ctx, pdb)
 		return cdb, err
@@ -313,9 +293,7 @@ func (r *PDBReconciler) getORDSPod(ctx context.Context, req ctrl.Request, pdb *d
 
 	if err != nil {
 		log.Info("Failed to get Pod for CDB", "Name", cdbResName, "Namespace", req.Namespace, "Error", err.Error())
-		pdb.Status.Phase = pdbPhaseFail
 		pdb.Status.Msg = "Unable to get ORDS Pod for CDB : " + cdbResName
-		r.Status().Update(ctx, pdb)
 		return cdbPod, err
 	}
 
@@ -335,9 +313,7 @@ func (r *PDBReconciler) getSecret(ctx context.Context, req ctrl.Request, pdb *db
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Secret not found:" + secretName)
-			pdb.Status.Phase = pdbPhaseFail
 			pdb.Status.Msg = "Secret not found:" + secretName
-			r.Status().Update(ctx, pdb)
 			return "", err
 		}
 		log.Error(err, "Unable to get the secret.")
@@ -405,24 +381,14 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	resp, err := httpclient.Do(httpreq)
 	if err != nil {
 		log.Error(err, "Failed - Could not connect to ORDS Pod", "err", err.Error())
-		pdb.Status.Phase = pdbPhaseFail
 		pdb.Status.Msg = "Could not connect to ORDS Pod"
-		pdb.Status.Status = true
-		if err := r.Status().Update(ctx, pdb); err != nil {
-			log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
-		}
 		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSError", "Failed: Could not connect to ORDS Pod")
 		return err
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		bb, _ := ioutil.ReadAll(resp.Body)
-		pdb.Status.Phase = pdbPhaseFail
 		pdb.Status.Msg = "ORDS Error - HTTP Status Code:" + strconv.Itoa(resp.StatusCode)
-		pdb.Status.Status = true
-		if err := r.Status().Update(ctx, pdb); err != nil {
-			log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
-		}
 		log.Info("ORDS Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
 
 		var apiErr ORDSError
@@ -451,12 +417,7 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 		if sqlItem.ErrorDetails != "" {
 			log.Info("ORDS Error - Oracle Error Code :" + strconv.Itoa(sqlItem.ErrorCode))
 			if !errFound {
-				pdb.Status.Phase = pdbPhaseFail
 				pdb.Status.Msg = sqlItem.ErrorDetails
-				pdb.Status.Status = true
-				if err := r.Status().Update(ctx, pdb); err != nil {
-					log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
-				}
 			}
 			r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "OraError", "%s", sqlItem.ErrorDetails)
 			errFound = true
@@ -852,7 +813,8 @@ func (r *PDBReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			},
 			DeleteFunc: func(e event.DeleteEvent) bool {
 				// Evaluates to false if the object has been confirmed deleted.
-				return !e.DeleteStateUnknown
+				//return !e.DeleteStateUnknown
+				return false
 			},
 		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 100}).

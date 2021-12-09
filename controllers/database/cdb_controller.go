@@ -163,8 +163,7 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		case cdbPhaseInit:
 			cdb.Status.Phase = cdbPhasePod
 		case cdbPhasePod:
-			// Create ORDS POD
-			//err = r.createORDSPod(ctx, req, cdb)
+			// Create ORDS PODs
 			err = r.createORDSInstances(ctx, req, cdb)
 			if err != nil {
 				log.Info("Reconcile queued")
@@ -541,7 +540,7 @@ func (r *CDBReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Request
 		cdb.Status.Status = false
 		r.Status().Update(ctx, cdb)
 	} else {
-		// If only the value of replicas is changed, update the RS only
+		// Update the RS if the value of "replicas" is changed
 		replicaSetName := cdb.Name + "-ords-rs"
 
 		foundRS := &appsv1.ReplicaSet{}
@@ -551,7 +550,7 @@ func (r *CDBReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Request
 			return err
 		}
 
-		// Check if replicas have changed
+		// Check if number of replicas have changed
 		replicas := int32(cdb.Spec.Replicas)
 		if cdb.Spec.Replicas != int(*(foundRS.Spec.Replicas)) {
 			log.Info("Existing Replicas: " + strconv.Itoa(int(*(foundRS.Spec.Replicas))) + ", New Replicas: " + strconv.Itoa(cdb.Spec.Replicas))
