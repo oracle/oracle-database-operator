@@ -101,15 +101,15 @@ type ORDSError struct {
 }
 
 var (
-	pdbPhaseValidate = "Validating"
-	pdbPhaseCreate   = "Creating"
-	pdbPhasePlug     = "Plugging"
-	pdbPhaseUnplug   = "Unplugging"
-	pdbPhaseClone    = "Cloning"
-	pdbPhaseFinish   = "Finishing"
-	pdbPhaseReady    = "Ready"
-	pdbPhaseDelete   = "Deleting"
-	pdbPhaseFail     = "Failed"
+	pdbPhaseCreate = "Creating"
+	pdbPhasePlug   = "Plugging"
+	pdbPhaseUnplug = "Unplugging"
+	pdbPhaseClone  = "Cloning"
+	pdbPhaseFinish = "Finishing"
+	pdbPhaseReady  = "Ready"
+	pdbPhaseDelete = "Deleting"
+	pdbPhaseModify = "Modifying"
+	pdbPhaseFail   = "Failed"
 )
 
 const PDBFinalizer = "database.oracle.com/PDBfinalizer"
@@ -142,6 +142,9 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	defer func() {
 		//log.Info("DEFER PDB", "Name", pdb.Name, "Phase", pdb.Status.Phase, "Status", strconv.FormatBool(pdb.Status.Status))
 		if !pdb.Status.Status {
+			if pdb.Status.Phase == pdbPhaseReady {
+				pdb.Status.Status = true
+			}
 			if err := r.Status().Update(ctx, pdb); err != nil {
 				log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 			}
@@ -169,17 +172,19 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeueY, nil
 	}
 
-	//action := strings.ToUpper(pdb.Spec.Action)
+	action := strings.ToUpper(pdb.Spec.Action)
 
-	/*if pdb.Status.Phase != pdbPhaseFail && pdb.Status.Action != "" && pdb.Status.Action != action {
-		pdb.Status.Status = false
-	}*/
-
-	//log.Info("PDB PHASE STATUS:", "Name", pdb.Name, "Phase", pdb.Status.Phase, "Status", strconv.FormatBool(pdb.Status.Status), "Last Action", pdb.Status.Action)
-
-	//if (pdb.Status.Phase != pdbPhaseReady && pdb.Status.Phase != pdbPhaseFail && !pdb.Status.Status) || (pdb.Status.Action != "" && pdb.Status.Action != action) {
-	//r.validatePhase(ctx, req, pdb)
-	//}
+	if (pdb.Status.Phase == pdbPhaseReady) && (pdb.Status.Action != "") && (action == "MODIFY" || pdb.Status.Action != action) {
+		if action == "MODIFY" {
+			modOption := pdb.Spec.PDBState + "-" + pdb.Spec.ModifyOption
+			// To prevent Reconcile from Modifying again whenever the Operator gets re-started
+			if pdb.Status.ModifyOption != modOption {
+				pdb.Status.Status = false
+			}
+		} else {
+			pdb.Status.Status = false
+		}
+	}
 
 	if !pdb.Status.Status {
 		r.validatePhase(ctx, req, pdb)
@@ -195,12 +200,11 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			err = r.plugPDB(ctx, req, pdb)
 		case pdbPhaseUnplug:
 			err = r.unplugPDB(ctx, req, pdb)
+		case pdbPhaseModify:
+			err = r.modifyPDB(ctx, req, pdb)
 		case pdbPhaseDelete:
 			err = r.deletePDB(ctx, req, pdb)
-		case pdbPhaseReady, pdbPhaseFail:
-			pdb.Status.Status = true
 		default:
-			//pdb.Status.Phase = pdbPhaseValidate
 			log.Info("DEFAULT:", "Name", pdb.Name, "Phase", phase, "Status", strconv.FormatBool(pdb.Status.Status))
 			return requeueN, nil
 		}
@@ -237,6 +241,8 @@ func (r *PDBReconciler) validatePhase(ctx context.Context, req ctrl.Request, pdb
 		pdb.Status.Phase = pdbPhasePlug
 	case "UNPLUG":
 		pdb.Status.Phase = pdbPhaseUnplug
+	case "MODIFY":
+		pdb.Status.Phase = pdbPhaseModify
 	case "DELETE":
 		pdb.Status.Phase = pdbPhaseDelete
 	}
@@ -326,7 +332,7 @@ func (r *PDBReconciler) getSecret(ctx context.Context, req ctrl.Request, pdb *db
 /*************************************************
  * Issue a REST API Call to the ORDS container
  /************************************************/
-func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB, url string, payload map[string]string, action string) error {
+func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB, url string, payload map[string]string, action string) (string, error) {
 	log := r.Log.WithValues("callAPI", req.NamespacedName)
 
 	var err error
@@ -336,7 +342,7 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Get Web Server User
@@ -345,10 +351,10 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Secret not found:" + cdb.Spec.WebServerUser.Secret.SecretName)
-			return err
+			return "", err
 		}
 		log.Error(err, "Unable to get the secret.")
-		return err
+		return "", err
 	}
 	webUser := string(secret.Data[cdb.Spec.WebServerUser.Secret.Key])
 
@@ -358,20 +364,25 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Secret not found:" + cdb.Spec.WebServerPwd.Secret.SecretName)
-			return err
+			return "", err
 		}
 		log.Error(err, "Unable to get the secret.")
-		return err
+		return "", err
 	}
 	webUserPwd := string(secret.Data[cdb.Spec.WebServerPwd.Secret.Key])
 
-	//fmt.Println("payload:", payload)
+	var httpreq *http.Request
+	if action == "GET" {
+		httpreq, err = http.NewRequest(action, url, nil)
+	} else {
+		//fmt.Println("payload:", payload)
+		jsonValue, _ := json.Marshal(payload)
+		httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
+	}
 
-	jsonValue, _ := json.Marshal(payload)
-	httpreq, err := http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
 	if err != nil {
 		log.Info("Unable to create HTTP Request for PDB : "+pdb.Name, "err", err.Error())
-		return err
+		return "", err
 	}
 
 	httpreq.Header.Add("Accept", "application/json")
@@ -383,7 +394,7 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 		log.Error(err, "Failed - Could not connect to ORDS Pod", "err", err.Error())
 		pdb.Status.Msg = "Could not connect to ORDS Pod"
 		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSError", "Failed: Could not connect to ORDS Pod")
-		return err
+		return "", err
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -396,7 +407,7 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSError", "Failed: %s", apiErr.Message)
 		//fmt.Printf("%+v", apiErr)
 		//fmt.Println(string(bb))
-		return errors.New("ORDS Error")
+		return "", errors.New("ORDS Error")
 	}
 
 	defer resp.Body.Close()
@@ -405,6 +416,7 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	if err != nil {
 		fmt.Print(err.Error())
 	}
+	respData := string(bodyBytes)
 	//fmt.Println(string(bodyBytes))
 
 	var apiResponse RESTSQLCollection
@@ -425,10 +437,10 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	}
 
 	if errFound {
-		return errors.New("Oracle Error")
+		return "", errors.New("Oracle Error")
 	}
 
-	return nil
+	return respData, nil
 }
 
 /*************************************************
@@ -487,7 +499,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
 	if err != nil {
 		return err
 	}
@@ -496,6 +508,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	log.Info("Created PDB Resource", "PDB Name", pdb.Spec.PDBName)
+	r.getPDBState(ctx, req, pdb)
 	return nil
 }
 
@@ -540,7 +553,7 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
 	if err != nil {
 		return err
 	}
@@ -549,6 +562,7 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 
 	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	log.Info("Cloned PDB successfully", "Source PDB Name", pdb.Spec.SrcPDBName, "Clone PDB Name", pdb.Spec.PDBName)
+	r.getPDBState(ctx, req, pdb)
 	return nil
 }
 
@@ -593,6 +607,7 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
+		values["tdeImport"] = strconv.FormatBool(*(pdb.Spec.TDEImport))
 	}
 	if *(pdb.Spec.AsClone) {
 		values["asClone"] = strconv.FormatBool(*(pdb.Spec.AsClone))
@@ -605,7 +620,7 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
 	if err != nil {
 		return err
 	}
@@ -614,6 +629,7 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 
 	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	log.Info("Successfully plugged PDB", "PDB Name", pdb.Spec.PDBName)
+	r.getPDBState(ctx, req, pdb)
 	return nil
 }
 
@@ -649,6 +665,7 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
+		values["tdeExport"] = strconv.FormatBool(*(pdb.Spec.TDEExport))
 	}
 
 	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
@@ -658,7 +675,7 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
 	if err != nil {
 		return err
 	}
@@ -682,6 +699,87 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Unplugged", "PDB '%s' unplugged successfully", pdb.Spec.PDBName)
 
 	log.Info("Successfully unplugged PDB resource")
+	return nil
+}
+
+/*************************************************
+ * Modify a PDB state
+ /************************************************/
+func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
+
+	log := r.Log.WithValues("modifyPDB", req.NamespacedName)
+
+	var err error
+
+	cdb, err := r.getCDBResource(ctx, req, pdb)
+	if err != nil {
+		return err
+	}
+
+	values := map[string]string{
+		"state":        pdb.Spec.PDBState,
+		"modifyOption": pdb.Spec.ModifyOption,
+		"getScript":    strconv.FormatBool(*(pdb.Spec.GetScript))}
+
+	pdbName := pdb.Spec.PDBName
+	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+
+	pdb.Status.Phase = pdbPhaseModify
+	pdb.Status.ModifyOption = pdb.Spec.PDBState + "-" + pdb.Spec.ModifyOption
+	pdb.Status.Msg = "Waiting for PDB to be modified"
+	if err := r.Status().Update(ctx, pdb); err != nil {
+		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
+	}
+	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	if err != nil {
+		return err
+	}
+
+	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Modified", "PDB '%s' modified successfully", pdb.Spec.PDBName)
+	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+
+	log.Info("Successfully modified PDB state", "PDB Name", pdb.Spec.PDBName)
+	r.getPDBState(ctx, req, pdb)
+	return nil
+}
+
+/*************************************************
+ * Get PDB State
+ /************************************************/
+func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
+
+	log := r.Log.WithValues("getPDBState", req.NamespacedName)
+
+	var err error
+
+	cdb, err := r.getCDBResource(ctx, req, pdb)
+	if err != nil {
+		return err
+	}
+
+	pdbName := pdb.Spec.PDBName
+	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+
+	pdb.Status.Msg = "Getting PDB state"
+	if err := r.Status().Update(ctx, pdb); err != nil {
+		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
+	}
+
+	respData, err := r.callAPI(ctx, req, pdb, url, nil, "GET")
+
+	if err != nil {
+		pdb.Status.OpenMode = "UNKNOWN"
+		return err
+	}
+
+	var objmap map[string]interface{}
+	if err := json.Unmarshal([]byte(respData), &objmap); err != nil {
+		log.Error(err, "Failed to get state of PDB :"+pdbName, "err", err.Error())
+	}
+
+	pdb.Status.OpenMode = objmap["open_mode"].(string)
+
+	log.Info("Successfully obtained PDB state", "PDB Name", pdb.Spec.PDBName)
 	return nil
 }
 
@@ -791,7 +889,7 @@ func (r *PDBReconciler) deletePDBInstance(req ctrl.Request, ctx context.Context,
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	err = r.callAPI(ctx, req, pdb, url, values, "DELETE")
+	_, err = r.callAPI(ctx, req, pdb, url, values, "DELETE")
 	if err != nil {
 		return err
 	}
