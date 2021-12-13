@@ -96,8 +96,14 @@ type PDBSpec struct {
 	// Whether you need the script only or execute the script
 	GetScript *bool `json:"getScript,omitempty"`
 	// Action to be taken: Create or Clone or Plug or Unplug
-	// +kubebuilder:validation:Enum=Create;Clone;Plug;Unplug;Delete
+	// +kubebuilder:validation:Enum=Create;Clone;Plug;Unplug;Delete;Modify
 	Action string `json:"action"`
+	// Extra options for opening and closing a PDB
+	// +kubebuilder:validation:Enum=IMMEDIATE;NORMAL;READ ONLY;READ WRITE;RESTRICTED
+	ModifyOption string `json:"modifyOption,omitempty"`
+	// The target state of the PDB
+	// +kubebuilder:validation:Enum=OPEN;CLOSE
+	PDBState string `json:"pdbState,omitempty"`
 }
 
 // PDBAdminName defines the secret containing Sys Admin User mapped to key 'adminName' for PDB
@@ -133,10 +139,14 @@ type PDBStatus struct {
 
 	// PDB Connect String
 	ConnString string `json:"connString,omitempty"`
-	// Phase of the CDB Resource
+	// Phase of the PDB Resource
 	Phase string `json:"phase"`
-	// CDB Resource Status
+	// PDB Resource Status
 	Status bool `json:"status"`
+	// Open mode of the PDB
+	OpenMode string `json:"openMode,omitempty"`
+	// Modify Option of the PDB
+	ModifyOption string `json:"modifyOption,omitempty"`
 	// Message
 	Msg string `json:"msg,omitempty"`
 	// Last Completed Action
@@ -148,8 +158,9 @@ type PDBStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.connString",name="Connect String",type="string",description="The connect string to be used"
 // +kubebuilder:printcolumn:JSONPath=".spec.cdbName",name="CDB Name",type="string",description="Name of the CDB"
 // +kubebuilder:printcolumn:JSONPath=".spec.pdbName",name="PDB Name",type="string",description="Name of the PDB"
+// +kubebuilder:printcolumn:JSONPath=".status.openMode",name="PDB State",type="string",description="PDB Open Mode"
 // +kubebuilder:printcolumn:JSONPath=".spec.totalSize",name="PDB Size",type="string",description="Total Size of the PDB"
-// +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the PDB"
+// +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the PDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
 // PDB is the Schema for the pdbs API
 type PDB struct {
