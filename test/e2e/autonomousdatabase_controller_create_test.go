@@ -42,8 +42,6 @@ import (
 	"context"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	"github.com/oracle/oci-go-sdk/v45/common"
 	"github.com/oracle/oci-go-sdk/v45/database"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,11 +57,6 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var _ = Describe("test ADB provisioning", func() {
-	const (
-		changeStateTimeout  = time.Second * 300
-		changeStateInterval = time.Second * 10
-	)
-
 	AfterEach(func() {
 		// IMPORTANT: The operator might have to call reconcile multiple times to finish an operation.
 		// If we do the update immediately, the previous reconciliation will overwrite the changes.
