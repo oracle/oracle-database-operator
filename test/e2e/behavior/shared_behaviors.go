@@ -45,8 +45,8 @@ import (
 	"reflect"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 	"github.com/oracle/oci-go-sdk/v45/common"
 	"github.com/oracle/oci-go-sdk/v45/database"
 	corev1 "k8s.io/api/core/v1"
@@ -64,6 +64,19 @@ import (
 * passed as pointers otherwise the initial value will be passed
 * to the function, which is likely to be nil or zero value.
 **************************************************************/
+
+var (
+	Describe      = ginkgo.Describe
+	By            = ginkgo.By
+	GinkgoWriter  = ginkgo.GinkgoWriter
+	Expect        = gomega.Expect
+	BeNil         = gomega.BeNil
+	Eventually    = gomega.Eventually
+	Equal         = gomega.Equal
+	Succeed       = gomega.Succeed
+	BeNumerically = gomega.BeNumerically
+	BeTrue        = gomega.BeTrue
+)
 
 func AssertProvision(k8sClient *client.Client, adbLookupKey *types.NamespacedName) func() {
 	return func() {
