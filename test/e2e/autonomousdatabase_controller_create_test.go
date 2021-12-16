@@ -153,7 +153,7 @@ var _ = Describe("test ADB provisioning", func() {
 
 		It("Should download an instance wallet using the password from K8s Secret "+SharedWalletPassSecretName, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
 
-		It("should update ADB", e2ebehavior.AssertUpdate(&k8sClient, &dbClient, &adbLookupKey))
+		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
 
 		It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
 
@@ -214,7 +214,7 @@ var _ = Describe("test ADB provisioning", func() {
 
 		It("Should download an instance wallet using the password from OCI Secret OCID "+SharedInstanceWalletPasswordOCID, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
 
-		It("should update ADB", e2ebehavior.AssertUpdate(&k8sClient, &dbClient, &adbLookupKey))
+		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
 
 		It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
 
