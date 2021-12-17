@@ -124,9 +124,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
   
     singleinstancedatabase.database.oracle.com/sidb-sample created
   ```
-
-
-
+  
 * ### Creation Status
   
  Creating a new database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections. 
