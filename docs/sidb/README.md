@@ -106,7 +106,15 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
 ## Provision New Database
 
-  Provision a new database instance by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
+  - Quickly Provision a new database instance on **minikube** using the [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml) using following one command.
+
+  ```sh
+  $ kubectl create -f singleinstancedatabase_minikube.yaml
+  
+    singleinstancedatabase.database.oracle.com/sidb-sample created
+  ```
+
+  - Provision a new database instance on any k8s cluster by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
 
   ```sh
   $ kubectl create -f singleinstancedatabase.yaml
@@ -116,15 +124,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
   **NOTE:** Make sure you have created the required `.spec.adminPassword` [secret](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/)) and `.spec.persistence` [persistent volume](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
 
-* ### Quickly Provision On Minikube
 
-  Quickly Provision a new database instance on minikube using the [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml)
-
-  ```sh
-  $ kubectl create -f singleinstancedatabase_minikube.yaml
-  
-    singleinstancedatabase.database.oracle.com/sidb-sample created
-  ```
   
 * ### Creation Status
   
