@@ -181,7 +181,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		if !ok {
 			return false
 		}
-		curIntPtr, ok := curObj.(*int)
+		curIntPtr := curObj.(*int)
 
 		if (lastSucIntPtr == nil && curIntPtr != nil) || (lastSucIntPtr != nil && curIntPtr != nil && *lastSucIntPtr != *curIntPtr) {
 			return true
@@ -572,15 +572,6 @@ func getCompleteWorkRetryPolicy() common.RetryPolicy {
 		}
 
 		return true
-	}
-
-	return getRetryPolicy(shouldRetry)
-}
-
-func getConflictRetryPolicy() common.RetryPolicy {
-	// retry for 409 conflict status code
-	shouldRetry := func(r common.OCIOperationResponse) bool {
-		return r.Error != nil && r.Response.HTTPResponse().StatusCode == 409
 	}
 
 	return getRetryPolicy(shouldRetry)

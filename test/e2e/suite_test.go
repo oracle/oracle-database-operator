@@ -44,8 +44,8 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	"github.com/oracle/oci-go-sdk/v51/common"
 	"github.com/oracle/oci-go-sdk/v51/database"
@@ -77,6 +77,21 @@ This test suite runs the integration test which checks the following scenario
 5. Test ADB binding with hardLink=true
 **/
 
+// To avoid dot import
+var (
+	BeforeSuite  = ginkgo.BeforeSuite
+	AfterSuite   = ginkgo.AfterSuite
+	Describe     = ginkgo.Describe
+	AfterEach    = ginkgo.AfterEach
+	By           = ginkgo.By
+	It           = ginkgo.It
+	Expect       = gomega.Expect
+	Succeed      = gomega.Succeed
+	HaveOccurred = gomega.HaveOccurred
+	BeNil        = gomega.BeNil
+	Equal        = gomega.Equal
+)
+
 var cfg *rest.Config
 var k8sClient client.Client
 var configProvider common.ConfigurationProvider
@@ -100,15 +115,15 @@ const SharedAdminPassSecretName string = "adb-admin-password"
 const SharedWalletPassSecretName = "adb-wallet-password"
 
 func TestAPIs(t *testing.T) {
-	RegisterFailHandler(Fail)
+	gomega.RegisterFailHandler(ginkgo.Fail)
 
-	RunSpecsWithDefaultAndCustomReporters(t,
+	ginkgo.RunSpecsWithDefaultAndCustomReporters(t,
 		"Controller Suite",
-		[]Reporter{printer.NewlineReporter{}})
+		[]ginkgo.Reporter{printer.NewlineReporter{}})
 }
 
-var _ = BeforeSuite(func(done Done) {
-	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+var _ = BeforeSuite(func(done ginkgo.Done) {
+	logf.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
@@ -145,7 +160,7 @@ var _ = BeforeSuite(func(done Done) {
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
-		defer GinkgoRecover()
+		defer ginkgo.GinkgoRecover()
 		err = k8sManager.Start(ctrl.SetupSignalHandler())
 		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
 		gexec.KillAndWait(4 * time.Second)
