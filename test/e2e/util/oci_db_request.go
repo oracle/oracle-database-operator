@@ -130,30 +130,6 @@ func generateRetryPolicy(retryFunc func(r common.OCIOperationResponse) bool) com
 	return common.NewRetryPolicy(attempts, retryFunc, nextDuration)
 }
 
-func NewDisplayNameRetryPolicy(name string) common.RetryPolicy {
-	shouldRetry := func(r common.OCIOperationResponse) bool {
-		if databaseResponse, ok := r.Response.(database.GetAutonomousDatabaseResponse); ok {
-			// do the retry until lifecycle state reaches the passed terminal state
-			return databaseResponse.LifecycleState != database.AutonomousDatabaseLifecycleStateAvailable ||
-				*databaseResponse.DisplayName != name
-		}
-		return true
-	}
-	return generateRetryPolicy(shouldRetry)
-}
-
-func NewCPUCoreCountRetryPolicy(count int) common.RetryPolicy {
-	shouldRetry := func(r common.OCIOperationResponse) bool {
-		if databaseResponse, ok := r.Response.(database.GetAutonomousDatabaseResponse); ok {
-			// do the retry until lifecycle state reaches the passed terminal state
-			return databaseResponse.LifecycleState != database.AutonomousDatabaseLifecycleStateAvailable ||
-				*databaseResponse.CpuCoreCount != count
-		}
-		return true
-	}
-	return generateRetryPolicy(shouldRetry)
-}
-
 func NewLifecycleStateRetryPolicy(lifecycleState database.AutonomousDatabaseLifecycleStateEnum) common.RetryPolicy {
 	shouldRetry := func(r common.OCIOperationResponse) bool {
 		if databaseResponse, ok := r.Response.(database.GetAutonomousDatabaseResponse); ok {

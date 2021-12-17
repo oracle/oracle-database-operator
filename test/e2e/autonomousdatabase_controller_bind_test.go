@@ -42,8 +42,6 @@ import (
 	"context"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
 	"github.com/oracle/oci-go-sdk/v51/common"
 	"github.com/oracle/oci-go-sdk/v51/database"
 	"github.com/oracle/oci-go-sdk/v51/workrequests"
@@ -61,7 +59,6 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var _ = Describe("test ADB binding with hardLink=true", func() {
-	const bindingHardLinkTestFileName = "bind_adb_hardLink.yaml"
 	var adbLookupKey types.NamespacedName
 	const downloadedWallet = "instance-wallet-secret-1"
 	var adbID *string
