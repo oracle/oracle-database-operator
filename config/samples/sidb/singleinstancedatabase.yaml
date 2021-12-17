@@ -59,7 +59,7 @@ spec:
 
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
-  ## Change the storageClass and accessMode accordingly if you dont want to use oci block volume
+  ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types for persistent volumes.
   persistence:
     size: 100Gi
     storageClass: "oci"

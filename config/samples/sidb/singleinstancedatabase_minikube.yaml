@@ -86,7 +86,7 @@ spec:
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
-    size: 4Gi
+    size: 5Gi
     storageClass: "sidb"
     accessMode: "ReadWriteMany"
 
