@@ -173,7 +173,7 @@ func AssertWallet(k8sClient *client.Client, adbLookupKey *types.NamespacedName) 
 	}
 }
 
-func compartInt(obj1 *int, obj2 *int) bool {
+func compareInt(obj1 *int, obj2 *int) bool {
 	if obj1 == nil && obj2 == nil {
 		return true
 	}
@@ -183,7 +183,7 @@ func compartInt(obj1 *int, obj2 *int) bool {
 	return *obj1 == *obj2
 }
 
-func compartBool(obj1 *bool, obj2 *bool) bool {
+func compareBool(obj1 *bool, obj2 *bool) bool {
 	if obj1 == nil && obj2 == nil {
 		return true
 	}
@@ -193,7 +193,7 @@ func compartBool(obj1 *bool, obj2 *bool) bool {
 	return *obj1 == *obj2
 }
 
-func compartString(obj1 *string, obj2 *string) bool {
+func compareString(obj1 *string, obj2 *string) bool {
 	if obj1 == nil && obj2 == nil {
 		return true
 	}
@@ -203,7 +203,7 @@ func compartString(obj1 *string, obj2 *string) bool {
 	return *obj1 == *obj2
 }
 
-func compartStringMap(obj1 map[string]string, obj2 map[string]string) bool {
+func compareStringMap(obj1 map[string]string, obj2 map[string]string) bool {
 	if len(obj1) != len(obj2) {
 		return false
 	}
@@ -298,24 +298,27 @@ func AssertADBDetails(k8sClient *client.Client, dbClient *database.DatabaseClien
 
 			expectedADBDetails := expectedADB.Spec.Details
 
-			// Compare each elements. Reflect.DeepEqual isn't used here because some parameters (e.g. adminPassword)
-			// may not match.
+			// Compare the elements one by one rather than doing reflect.DeelEqual(adb1, adb2), since some parameters 
+			// (e.g. adminPassword, wallet) are missing from e2eutil.GetAutonomousDatabase().
 			// We don't compare LifecycleState in this case. We only make sure that the ADB is in AVAIABLE state before
 			// proceeding to the next test.
-			same := compartString(expectedADBDetails.AutonomousDatabaseOCID, resp.AutonomousDatabase.Id) &&
-				compartString(expectedADBDetails.CompartmentOCID, resp.AutonomousDatabase.CompartmentId) &&
-				compartString(expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName) &&
-				compartString(expectedADBDetails.DbName, resp.AutonomousDatabase.DbName) &&
+			same := compareString(expectedADBDetails.AutonomousDatabaseOCID, resp.AutonomousDatabase.Id) &&
+				compareString(expectedADBDetails.CompartmentOCID, resp.AutonomousDatabase.CompartmentId) &&
+				compareString(expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName) &&
+				compareString(expectedADBDetails.DbName, resp.AutonomousDatabase.DbName) &&
 				expectedADBDetails.DbWorkload == resp.AutonomousDatabase.DbWorkload &&
-				compartBool(expectedADBDetails.IsDedicated, resp.AutonomousDatabase.IsDedicated) &&
-				compartString(expectedADBDetails.DbVersion, resp.AutonomousDatabase.DbVersion) &&
-				compartInt(expectedADBDetails.DataStorageSizeInTBs, resp.AutonomousDatabase.DataStorageSizeInTBs) &&
-				compartInt(expectedADBDetails.CPUCoreCount, resp.AutonomousDatabase.CpuCoreCount) &&
-				compartBool(expectedADBDetails.IsAutoScalingEnabled, resp.AutonomousDatabase.IsAutoScalingEnabled) &&
-				compartStringMap(expectedADBDetails.FreeformTags, resp.AutonomousDatabase.FreeformTags) &&
-				compartString(expectedADBDetails.SubnetOCID, resp.AutonomousDatabase.SubnetId) &&
+				compareBool(expectedADBDetails.IsDedicated, resp.AutonomousDatabase.IsDedicated) &&
+				compareString(expectedADBDetails.DbVersion, resp.AutonomousDatabase.DbVersion) &&
+				compareInt(expectedADBDetails.DataStorageSizeInTBs, resp.AutonomousDatabase.DataStorageSizeInTBs) &&
+				compareInt(expectedADBDetails.CPUCoreCount, resp.AutonomousDatabase.CpuCoreCount) &&
+				compareBool(expectedADBDetails.IsAutoScalingEnabled, resp.AutonomousDatabase.IsAutoScalingEnabled) &&
+				compareStringMap(expectedADBDetails.FreeformTags, resp.AutonomousDatabase.FreeformTags) &&
+				compareString(expectedADBDetails.SubnetOCID, resp.AutonomousDatabase.SubnetId) &&
 				reflect.DeepEqual(expectedADBDetails.NsgOCIDs, resp.AutonomousDatabase.NsgIds) &&
-				compartString(expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel)
+				compareBool(expectedADBDetails.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled) &&
+				reflect.DeepEqual(expectedADBDetails.WhitelistedIPs, resp.AutonomousDatabase.WhitelistedIps) &&
+				compareBool(expectedADBDetails.IsMTLSConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) && 
+				compareString(expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel)
 
 			return same, nil
 		}, updateTimeout, updateInterval).Should(BeTrue())
