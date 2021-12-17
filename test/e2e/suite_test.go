@@ -40,6 +40,7 @@ package e2etest
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -61,7 +62,6 @@ import (
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	controllers "github.com/oracle/oracle-database-operator/controllers/database"
-	"github.com/oracle/oracle-database-operator/test/e2e/behavior"
 	"github.com/oracle/oracle-database-operator/test/e2e/util"
 	// +kubebuilder:scaffold:imports
 )
@@ -246,6 +246,18 @@ var _ = AfterSuite(func() {
 		Expect(err).ToNot(HaveOccurred())
 	*/
 
-	By("Deleting the resources that are created during the tests")
-	e2ebehavior.CleanupDB(&k8sClient, &dbClient, ADBNamespace)
+	By("Delete the resources that are created during the tests")
+	adbList := &databasev1alpha1.AutonomousDatabaseList{}
+	options := &client.ListOptions{
+		Namespace: ADBNamespace,
+	}
+	k8sClient.List(context.TODO(), adbList, options)
+	By(fmt.Sprintf("Found %d AutonomousDatabase(s)", len(adbList.Items)))
+
+	for _, adb := range adbList.Items {
+		if adb.Spec.Details.AutonomousDatabaseOCID != nil {
+			By("Terminating database " + *adb.Spec.Details.DbName)
+			Expect(e2eutil.DeleteAutonomousDatabase(dbClient, adb.Spec.Details.AutonomousDatabaseOCID)).Should(Succeed())
+		}
+	}
 })
