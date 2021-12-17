@@ -106,7 +106,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
 ## Provision New Database
 
-  - Quickly Provision a new database instance on **minikube** using the [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml) using following one command.
+  - Easily provision a new database instance on **minikube** using [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml) by the following one command.
 
   ```sh
   $ kubectl create -f singleinstancedatabase_minikube.yaml
