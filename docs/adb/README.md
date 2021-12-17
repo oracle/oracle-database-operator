@@ -2,6 +2,12 @@
 
 Before you use the Oracle Database Operator for Kubernetes (the operator), ensure your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
 
+## Required Permissions
+
+The opeartor must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. See [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb) for sample Autonomous Database policies.
+
+The permission to view the workrequests is also required, so that the operator will update the resources when the work is done. See [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) for sample work request policies.
+
 ## Supported Features
 
 After the operator is deployed, choose either one of the following operations to create an `AutonomousDatabase` custom resource for Oracle Autonomous Database in your cluster.
@@ -17,6 +23,8 @@ After you create the resource, you can use the operator to perform the following
 * [Download instance credentials (wallets)](#download-wallets) of an Autonomous Database
 * [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
 * [Delete the resource](#delete-the-resource) from the cluster
+
+To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
 
 ## Provision an Autonomous Database
 
@@ -373,3 +381,30 @@ Follow the steps to delete the resource and terminate the Autonomous Database.
     ```
 
 Now, you can verify that the database is in TERMINATING state on the Cloud Console.
+
+
+## Debugging and troubleshooting
+
+### Show the details of the resource
+
+If you edit and re-apply the `.yaml` file, the Autonomous Database controller will only update the parameters that the file contains. The parameters which are not in the file will not be impacted. To get the verbose output of the current spec, use below command:
+
+```sh
+kubectl describe adb/autonomousdatabase-sample
+```
+
+### The resource is in UNAVAILABLE state
+
+If an error occurs during the operation, the `lifecycleState` of the resoursce changes to UNAVAILABLE. Follow the steps to check the logs.
+
+1. List the pod replicas
+
+    ```sh
+    kubectl get pods -n oracle-database-operator-system
+    ```
+
+2. Use the below command to check the logs of the Pod which has a failure
+
+    ```sh
+    kubectl logs -f pod/oracle-database-operator-controller-manager-78666fdddb-s4xcm -n oracle-database-operator-system
+    ```
