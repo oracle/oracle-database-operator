@@ -5,7 +5,6 @@ Oracle Database Operator for Kubernetes (the operator) includes the Single Insta
 * [Prerequisites](#prerequisites)
 * [Kind SingleInstanceDatabase Resource](#kind-singleinstancedatabase-resource)
 * [Provision New Database](#provision-new-database)
-* [Provision New Database on Minikube](#provision-new-database-on-minikube)
 * [Clone Existing Database](#clone-existing-database)
 * [Patch/Rollback Database](#patchrollback-database)
 
@@ -115,7 +114,9 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
     singleinstancedatabase.database.oracle.com/sidb-sample created
   ```
 
-* ### Provision New Database On Minikube
+  **NOTE:** Make sure you have created the required `.spec.adminPassword` [secret](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/)) and `.spec.persistence` [persistent volume](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
+
+* ### Quickly Provision On Minikube
 
   Quickly Provision a new database instance on minikube using the [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml)
 
