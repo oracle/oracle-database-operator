@@ -42,9 +42,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
-	"github.com/oracle/oci-go-sdk/v45/workrequests"
+	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
