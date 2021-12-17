@@ -114,7 +114,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
     singleinstancedatabase.database.oracle.com/sidb-sample created
   ```
 
-  - Provision a new database instance on any k8s cluster by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
+  - Provision a new database instance on any k8s cluster by specifying appropriate values for the attributes in the [singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml), and running the following command:
 
   ```sh
   $ kubectl create -f singleinstancedatabase.yaml
@@ -123,7 +123,6 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
   ```
 
   **NOTE:** Make sure you have created the required `.spec.adminPassword` [secret](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/)) and `.spec.persistence` [persistent volume](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
-
 
   
 * ### Creation Status
