@@ -32,10 +32,11 @@ spec:
 
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  ## Change the storageClass and accessMode accordingly if you dont want to use oci block volume
   persistence:
     size: 100Gi
-    storageClass: ""
-    accessMode: "ReadWriteMany"
+    storageClass: "oci"
+    accessMode: "ReadWriteOnce"
 
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1
