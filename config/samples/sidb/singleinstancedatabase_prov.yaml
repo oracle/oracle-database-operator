@@ -14,13 +14,12 @@ spec:
 
   ## Secret containing SIDB password mapped to secretKey 
   adminPassword:
-    secret:
-      secretName: 
-      key: 
+    secretName: 
+    secretKey:
+    keepSecret: false
 
   ## Database image details
   image:
-    version:
     pullFrom:
     pullSecrets:
 

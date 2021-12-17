@@ -30,6 +30,7 @@ Upcoming releases will support new configurations, operations and capabilities.
 
 This release can be deployed on the following platforms:
 
+* [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.21.0 or later
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.17 or later
 * In an on-premises [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.3 or later
 
