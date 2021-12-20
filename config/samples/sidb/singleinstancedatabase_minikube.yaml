@@ -2,6 +2,32 @@
 # Copyright (c) 2021, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+type: Opaque
+stringData:
+  oracle_pwd: "Change_On_Install_1"
+
+---
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: sidb-pv
+spec:
+  accessModes:
+    - ReadWriteMany
+  capacity:
+    storage: 5Gi
+  storageClassName: sidb
+  hostPath:
+    path: /data/oradata
+  
+---
+
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
@@ -22,8 +48,8 @@ spec:
   ## Secret containing SIDB password mapped to secretKey
   ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
-    secretName: 
-    secretKey:
+    secretName: db-secret
+    secretKey: oracle_pwd
     keepSecret: false
 
   ## NA if cloning from a SourceDB (cloneFrom is set)
@@ -54,27 +80,15 @@ spec:
   ## Database can be patched by updating the RU version/image
   ## Major version changes are not supported
   image:
-    pullFrom:
-    pullSecrets:
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
+    pullSecrets: oracle-container-registry-secret
 
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
-  ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
   persistence:
-    size: 100Gi
-    storageClass: "oci"
-    accessMode: "ReadWriteOnce"
-
-  ## Type of service . Applicable on cloud enviroments only
-  ## if loadBalService : false, service type = "NodePort". else "LoadBalancer"
-  loadBalancer: false
-
-  ## Deploy only on nodes having required labels. Format label_name : label_value
-  ## Leave empty if there is no such requirement.
-  ## Uncomment to use
-  # nodeSelector: 
-  #   failure-domain.beta.kubernetes.io/zone: bVCG:PHX-AD-1
-  #   pool: sidb
+    size: 5Gi
+    storageClass: "sidb"
+    accessMode: "ReadWriteMany"
 
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1
