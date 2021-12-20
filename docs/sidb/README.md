@@ -127,13 +127,13 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
   
   * ### Creation Status
     
-  Creating a new database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections. 
-  
-    ```sh
-  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
+    Creating a new database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections. 
     
-    Healthy
-  ```
+      ```sh
+    $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
+      
+      Healthy
+    ```
   
 
 
