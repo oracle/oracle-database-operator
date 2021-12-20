@@ -263,7 +263,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
   * ### Patch existing Database
 
-    Edit and apply the `singleinstancedatabase.yaml` file of the database resource/object by specifying a new release update for image attributes. 
+    Edit and apply the `singleinstancedatabase.yaml` file of the database resource/object by specifying a new release update for image attributes or run the following command.
     
     ```sh
     kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
