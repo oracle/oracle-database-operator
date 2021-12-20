@@ -106,13 +106,21 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
 ## Provision New Database
 
-  - Easily provision a new database instance on **minikube** using [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml) by the following one command.
+  - Easily provision a new database instance on **minikube** using [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml).
+
+    Sign into [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:7154182141811:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:9,9,Oracle%20Database%20Enterprise%20Edition,Oracle%20Database%20Enterprise%20Edition,1,0&cs=3Y_90hkCQLfJzrvTLiEipIGgWGUytfrtAPuHFocuWd0NDSacbBPlamohfLuiJA-bAsVL6Z_yKEMsTbb52bm6IRA) and accept the license agreement for the Database image, ignore if accepted already.
+
+    Create an image pull secret for Oracle Container Registry, ignore if you have created already:
 
     ```sh
     $ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<oracle-sso-password>' --docker-email='<oracle-sso-email-address>'
       
       secret/oracle-container-registry-secret created
+    ```
 
+    Now, Easily provision a new database instance on minikube by using following one command.
+
+    ```sh
     $ kubectl create -f singleinstancedatabase_minikube.yaml
     
       singleinstancedatabase.database.oracle.com/sidb-sample created
