@@ -110,6 +110,9 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
     ```sh
     $ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<oracle-sso-password>' --docker-email='<oracle-sso-email-address>'
+      
+      secret/oracle-container-registry-secret created
+
     $ kubectl create -f singleinstancedatabase_minikube.yaml
     
       singleinstancedatabase.database.oracle.com/sidb-sample created
