@@ -109,6 +109,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
   - Easily provision a new database instance on **minikube** using [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml) by the following one command.
 
     ```sh
+    $ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<oracle-sso-password>' --docker-email='<oracle-sso-email-address>'
     $ kubectl create -f singleinstancedatabase_minikube.yaml
     
       singleinstancedatabase.database.oracle.com/sidb-sample created
@@ -251,7 +252,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
   * ### Patch existing Database
 
-    Edit and apply the `singleinstancedatabase.yaml` file of the database resource/object by specifying a new release update for image attributes. The database pods will be restarted with the new release update image. For minimum downtime, ensure that you have mutiple replicas of the database pods running.
+    Edit and apply the `singleinstancedatabase.yaml` file of the database resource/object by specifying a new release update for image attributes. 
     
     ```sh
     kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
@@ -259,6 +260,8 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
     singleinstancedatabase.database.oracle.com/sidb-sample patched
 
     ```
+
+    The database pods will be restarted with the new release update image. For minimum downtime, ensure that you have mutiple replicas of the database pods running.
 
   * ### Clone and Patch Database
     

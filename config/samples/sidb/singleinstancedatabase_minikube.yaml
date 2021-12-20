@@ -80,8 +80,8 @@ spec:
   ## Database can be patched by updating the RU version/image
   ## Major version changes are not supported
   image:
-    pullFrom:
-    pullSecrets:
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
+    pullSecrets: oracle-container-registry-secret
 
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
