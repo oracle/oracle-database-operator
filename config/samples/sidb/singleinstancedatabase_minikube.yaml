@@ -50,7 +50,7 @@ spec:
   adminPassword:
     secretName: db-secret
     secretKey: oracle_pwd
-    keepSecret: false
+    keepSecret: true
 
   ## NA if cloning from a SourceDB (cloneFrom is set)
   charset: AL32UTF8
