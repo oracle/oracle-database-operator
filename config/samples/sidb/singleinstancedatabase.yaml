@@ -24,7 +24,7 @@ spec:
   adminPassword:
     secretName: 
     secretKey:
-    keepSecret: false
+    keepSecret: true
 
   ## NA if cloning from a SourceDB (cloneFrom is set)
   charset: AL32UTF8
