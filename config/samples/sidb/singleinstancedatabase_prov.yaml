@@ -16,7 +16,7 @@ spec:
   adminPassword:
     secretName: 
     secretKey:
-    keepSecret: false
+    keepSecret: true
 
   ## Database image details
   image:
