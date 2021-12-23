@@ -5,10 +5,7 @@
 
 ## Append samples you want in your CSV to this file as resources ##
 resources:
-  - sharding_v1alpha1_provshard.yaml
-  - autonomousdatabase.yaml
-  - singleinstancedatabase.yaml
-  - shardingdatabase.yaml
-  - autonomousdatabasebackup.yaml
-- database_v1alpha1_autonomousdatabaserestore.yaml
+  - adb/autonomousdatabase.yaml
+  - sidb/singleinstancedatabase.yaml
+  - sharding/shardingdatabase.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples
