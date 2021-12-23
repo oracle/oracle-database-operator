@@ -7,7 +7,7 @@ import (
 )
 
 // Follow the format of the Display Name
-const displayFormat = "Jan 02, 2006 15:04:05 MST"
+const displayFormat = "2006-01-02 15:04:05 MST"
 
 func FormatSDKTime(dateTime time.Time) string {
 	return dateTime.Format(displayFormat)
