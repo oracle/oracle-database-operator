@@ -103,6 +103,7 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	if err != nil {
 		r.currentLogger.Error(err, "Fail to get OCI provider")
 
+
 		// Change the status to UNAVAILABLE
 		restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
 		if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
