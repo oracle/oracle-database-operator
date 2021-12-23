@@ -160,10 +160,11 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	/******************************************************************
-	 * Create a backup if the Spec.AutonomousDatabaseBackupOCID is empty,
-	 * otherwise bind to an exisiting backup
+	 * Create a backup if the Spec.AutonomousDatabaseBackupOCID is
+	 * empty and the LifecycleState is never assigned, or bind to an exisiting
+	 * backup if the Spec.AutonomousDatabaseBackupOCID isn't empty.
 	 ******************************************************************/
-	if adbBackup.Spec.AutonomousDatabaseBackupOCID == "" {
+	if adbBackup.Spec.AutonomousDatabaseBackupOCID == "" && adbBackup.Status.LifecycleState == "" {
 		resp, err := oci.CreateAutonomousDatabaseBackup(r.currentLogger, dbClient, adbBackup)
 		if err != nil {
 			r.currentLogger.Error(err, "Fail to create AutonomousDatabase Backup")
@@ -192,7 +193,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 			}
 			return ctrl.Result{}, nil
 		}
-	} else {
+	} else if adbBackup.Spec.AutonomousDatabaseBackupOCID != "" {
 		// Binding
 		// Add the Status.AutonomousDatabaseBackupOCID and update the status
 		adbBackup.Status.AutonomousDatabaseBackupOCID = adbBackup.Spec.AutonomousDatabaseBackupOCID
@@ -200,32 +201,38 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	/******************************************************************
-	 * Update the status of the resource
+	 * Update the status of the resource if the
+	 * Status.AutonomousDatabaseOCID isn't empty.
 	 ******************************************************************/
-	resp, err := oci.GetAutonomousDatabaseBackup(dbClient, &adbBackup.Status.AutonomousDatabaseBackupOCID)
-	if err != nil {
-		// Change the status to UNAVAILABLE
-		adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
-		if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
-			return ctrl.Result{}, statusErr
+	if adbBackup.Status.AutonomousDatabaseOCID != "" {
+		resp, err := oci.GetAutonomousDatabaseBackup(dbClient, &adbBackup.Status.AutonomousDatabaseBackupOCID)
+		if err != nil {
+			// Change the status to UNAVAILABLE
+			adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
+			if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, err
+
+		adbBackup.UpdateStatusFromAutonomousDatabaseBackupResponse(resp)
+
+		backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup)
 	}
 
-	adbBackup.UpdateStatusFromAutonomousDatabaseBackupResponse(resp)
-
-	backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup)
-
 	/******************************************************************
-	* Update the ownerReference if the AutonomousDatabase is found
+	* Look up the owner AutonomousDatabase and set the ownerReference
+	* if the owner hasn't been set.
 	******************************************************************/
-	if err := backupUtil.SetOwnerAutonomousDatabase(r.currentLogger, r.KubeClient, adbBackup); err != nil {
-		// Change the status to UNAVAILABLE
-		adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
-		if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
-			return ctrl.Result{}, statusErr
+	if len(adbBackup.GetOwnerReferences()) > 0 && adbBackup.Status.AutonomousDatabaseOCID != "" {
+		if err := backupUtil.SetOwnerAutonomousDatabase(r.currentLogger, r.KubeClient, adbBackup); err != nil {
+			// Change the status to UNAVAILABLE
+			adbBackup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
+			if statusErr := backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup); statusErr != nil {
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, err
 	}
 
 	r.currentLogger.Info("AutonomousDatabaseBackup reconcile successfully")
