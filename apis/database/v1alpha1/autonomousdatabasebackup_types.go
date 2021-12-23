@@ -52,8 +52,7 @@ import (
 type AutonomousDatabaseBackupSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	DisplayName                  string `json:"displayName,omitempty"`
-	AutonomousDatabaseOCID       string `json:"autonomousDatabaseOCID,omitempty"`
+	AutonomousDatabaseOCID       string `json:"autonomousDatabaseOCID"`
 	AutonomousDatabaseBackupOCID string `json:"autonomousDatabaseBackupOCID,omitempty"`
 
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
@@ -66,7 +65,6 @@ type AutonomousDatabaseBackupStatus struct {
 	AutonomousDatabaseBackupOCID string                                              `json:"autonomousDatabaseBackupOCID"`
 	CompartmentOCID              string                                              `json:"compartmentOCID"`
 	AutonomousDatabaseOCID       string                                              `json:"autonomousDatabaseOCID"`
-	DisplayName                  string                                              `json:"displayName"`
 	Type                         database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
 	IsAutomatic                  bool                                                `json:"isAutomatic"`
 	LifecycleState               database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
@@ -77,7 +75,6 @@ type AutonomousDatabaseBackupStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 // +kubebuilder:resource:shortName="adbbu";"adbbus"
-// +kubebuilder:printcolumn:JSONPath=".status.displayName",name="Display Name",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.lifecycleState",name="State",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.type",name="Type",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.timeStarted",name="Started",type=string
@@ -96,7 +93,6 @@ func (backup *AutonomousDatabaseBackup) UpdateStatusFromAutonomousDatabaseBackup
 	backup.Status.AutonomousDatabaseBackupOCID = *resp.Id
 	backup.Status.CompartmentOCID = *resp.CompartmentId
 	backup.Status.AutonomousDatabaseOCID = *resp.AutonomousDatabaseId
-	backup.Status.DisplayName = *resp.DisplayName
 	backup.Status.Type = resp.Type
 	backup.Status.IsAutomatic = *resp.IsAutomatic
 	backup.Status.LifecycleState = resp.LifecycleState

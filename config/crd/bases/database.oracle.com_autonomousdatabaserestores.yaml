@@ -45,6 +45,13 @@ spec:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file'
                 type: string
+              destination:
+                properties:
+                  backupName:
+                    type: string
+                  timeStamp:
+                    type: string
+                type: object
               ociConfig:
                 properties:
                   configMapName:
@@ -52,16 +59,9 @@ spec:
                   secretName:
                     type: string
                 type: object
-              source:
-                properties:
-                  backupName:
-                    type: string
-                  datetime:
-                    type: string
-                type: object
             required:
             - autonomousDatabaseOCID
-            - source
+            - destination
             type: object
           status:
             description: AutonomousDatabaseRestoreStatus defines the observed state
@@ -72,7 +72,7 @@ spec:
                   of cluster Important: Run "make" to regenerate code after modifying
                   this file'
                 enum:
-                - New
+                - NewCreated
                 - InProgress
                 - Completed
                 - Failed

@@ -40,7 +40,6 @@ package controllers
 
 import (
 	"context"
-	"time"
 
 	"github.com/go-logr/logr"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -49,6 +48,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/oracle/oci-go-sdk/v51/common"
 	"github.com/oracle/oci-go-sdk/v51/database"
 	"github.com/oracle/oci-go-sdk/v51/workrequests"
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
@@ -139,16 +139,16 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	 * Restore
 	 ******************************************************************/
 	if restore.Status.LifecycleState == "" || restore.Status.LifecycleState == dbv1alpha1.RestoreLifecycleStateNew {
-		var restoreTime time.Time
+		var restoreTime *common.SDKTime
 
-		if restore.Spec.Source.BackupName != "" {
+		if restore.Spec.Destination.BackupName != "" {
 			backup := &dbv1alpha1.AutonomousDatabaseBackup{}
-			namespacedName := types.NamespacedName{Namespace: restore.Namespace, Name: restore.Spec.Source.BackupName}
+			namespacedName := types.NamespacedName{Namespace: restore.Namespace, Name: restore.Spec.Destination.BackupName}
 			if err := r.KubeClient.Get(context.TODO(), namespacedName, backup); err != nil {
 				return ctrl.Result{}, err
 			}
 
-			restoreTime, err = ociutil.ParseSDKTime(backup.Status.TimeEnded)
+			restoreTime, err = ociutil.ParseDisplayTime(backup.Status.TimeEnded)
 			if err != nil {
 				r.currentLogger.Error(err, "Fail to parse time "+backup.Status.TimeEnded)
 
@@ -159,10 +159,10 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 				}
 				return ctrl.Result{}, nil
 			}
-		} else if restore.Spec.Source.DateTime != "" {
-			restoreTime, err = ociutil.ParseSDKTime(restore.Spec.Source.DateTime)
+		} else if restore.Spec.Destination.TimeStamp != "" {
+			restoreTime, err = ociutil.ParseDisplayTime(restore.Spec.Destination.TimeStamp)
 			if err != nil {
-				r.currentLogger.Error(err, "Fail to parse time "+restore.Spec.Source.DateTime)
+				r.currentLogger.Error(err, "Fail to parse time "+restore.Spec.Destination.TimeStamp)
 
 				// Change the status to UNAVAILABLE
 				restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
@@ -173,10 +173,9 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 			}
 		}
 
-		opcID, err := oci.RestoreAutonomousDatabase(dbClient, restore.Spec.AutonomousDatabaseOCID, restoreTime)
-
+		resp, err := oci.RestoreAutonomousDatabase(dbClient, restore.Spec.AutonomousDatabaseOCID, restoreTime)
 		if err != nil {
-			r.currentLogger.Error(err, "Fail to get OCI work request client")
+			r.currentLogger.Error(err, "Fail to restore database")
 
 			// Change the status to UNAVAILABLE
 			restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
@@ -186,8 +185,8 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 			return ctrl.Result{}, nil
 		}
 
-		if err := oci.WaitUntilWorkCompleted(r.currentLogger, workClient, &opcID); err != nil {
-			r.currentLogger.Error(err, "Fail to watch workrequest. Workrequest ID = "+opcID)
+		if err := oci.WaitUntilWorkCompleted(r.currentLogger, workClient, resp.OpcWorkRequestId); err != nil {
+			r.currentLogger.Error(err, "Fail to watch workrequest. Workrequest ID = "+*resp.OpcWorkRequestId)
 
 			// Change the status to UNAVAILABLE
 			restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
