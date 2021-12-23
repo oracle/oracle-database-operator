@@ -39,13 +39,10 @@
 package oci
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"net/http"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -59,7 +56,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	"github.com/oracle/oracle-database-operator/commons/oci/ociutil"
 )
 
 // CreateAutonomousDatabase sends a request to OCI to provision a database and returns the AutonomousDatabase OCID.
@@ -513,7 +509,7 @@ func startAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	resp, err = dbClient.StartAutonomousDatabase(context.Background(), startRequest)
+	resp, err = dbClient.StartAutonomousDatabase(context.TODO(), startRequest)
 	return
 }
 
@@ -523,7 +519,7 @@ func stopAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (r
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	resp, err = dbClient.StopAutonomousDatabase(context.Background(), stopRequest)
+	resp, err = dbClient.StopAutonomousDatabase(context.TODO(), stopRequest)
 	return
 }
 
@@ -533,55 +529,17 @@ func DeleteAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) 
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	resp, err = dbClient.DeleteAutonomousDatabase(context.Background(), deleteRequest)
-	return
+	return dbClient.DeleteAutonomousDatabase(context.TODO(), deleteRequest)
 }
 
-func RestoreAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string, dateTime time.Time) (opcID string, err error) {
-	endpoint := dbClient.Endpoint()
-	url := fmt.Sprintf("%s/20160918/autonomousDatabases/%s/actions/restore", endpoint, adbOCID)
-
-	// build the body
-	reqBody, err := json.Marshal(map[string]string{
-		"timestamp": ociutil.FormatSDKTime(dateTime),
-	})
-	if err != nil {
-		return "", err
+func RestoreAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string, sdkTime *common.SDKTime) (resp database.RestoreAutonomousDatabaseResponse, err error) {
+	request := database.RestoreAutonomousDatabaseRequest{
+		AutonomousDatabaseId: common.String(adbOCID),
+		RestoreAutonomousDatabaseDetails: database.RestoreAutonomousDatabaseDetails{
+			Timestamp: sdkTime,
+		},
 	}
-
-	// create request
-	request, err := http.NewRequest("POST", url, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return "", err
-	}
-
-	// Set the header
-	request.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
-	request.Header.Set("Content-Type", "application/json")
-
-	hash, err := common.GetBodyHash(request)
-	if err != nil {
-		return "", err
-	}
-	request.Header.Set("x-content-sha256", hash)
-	request.Header.Set("Content-Length", fmt.Sprint(request.ContentLength))
-
-	// Build the signer
-	signer := common.DefaultRequestSigner(*dbClient.ConfigurationProvider())
-
-	// Sign the request
-	signer.Sign(request)
-
-	client := http.Client{}
-
-	// Execute the request
-	resp, err := client.Do(request)
-	if err != nil {
-		return "", err
-	}
-
-	opcRequestId := resp.Header.Get("opc-work-request-id")
-	return opcRequestId, nil
+	return dbClient.RestoreAutonomousDatabase(context.TODO(), request)
 }
 
 // ListAutonomousDatabaseBackups returns a list of Autonomous Database backups
@@ -599,11 +557,11 @@ func ListAutonomousDatabaseBackups(dbClient database.DatabaseClient, adb *dbv1al
 
 // CreateAutonomousDatabaseBackup creates an backup of Autonomous Database
 func CreateAutonomousDatabaseBackup(logger logr.Logger, dbClient database.DatabaseClient, adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (resp database.CreateAutonomousDatabaseBackupResponse, err error) {
-	logger.Info("Creating Autonomous Database backup " + adbBackup.Spec.DisplayName)
+	logger.Info("Creating Autonomous Database backup " + adbBackup.GetName())
 
 	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
 		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
-			DisplayName:          &adbBackup.Spec.DisplayName,
+			DisplayName:          common.String(adbBackup.GetName()),
 			AutonomousDatabaseId: &adbBackup.Spec.AutonomousDatabaseOCID,
 		},
 	}
@@ -654,7 +612,9 @@ func getCompleteWorkRetryPolicy() common.RetryPolicy {
 
 		if converted, ok := r.Response.(workrequests.GetWorkRequestResponse); ok {
 			// do the retry until WorkReqeut Status is Succeeded  - ignore case (BMI-2652)
-			return converted.Status != workrequests.WorkRequestStatusSucceeded
+			return converted.Status != workrequests.WorkRequestStatusSucceeded &&
+				converted.Status != workrequests.WorkRequestStatusFailed &&
+				converted.Status != workrequests.WorkRequestStatusCanceled
 		}
 
 		return true

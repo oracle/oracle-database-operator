@@ -49,18 +49,18 @@ import (
 type AutonomousDatabaseRestoreSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	AutonomousDatabaseOCID string                          `json:"autonomousDatabaseOCID"`
-	Source                 AutonomousDatabaseRestoreSource `json:"source"`
+	AutonomousDatabaseOCID string                               `json:"autonomousDatabaseOCID"`
+	Destination            AutonomousDatabaseRestoreDestination `json:"destination"`
 
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 
-type AutonomousDatabaseRestoreSource struct {
+type AutonomousDatabaseRestoreDestination struct {
 	BackupName string `json:"backupName,omitempty"`
-	DateTime   string `json:"datetime,omitempty"`
+	TimeStamp  string `json:"timeStamp,omitempty"`
 }
 
-// +kubebuilder:validation:Enum=New;InProgress;Completed;Failed
+// +kubebuilder:validation:Enum=NewCreated;InProgress;Completed;Failed
 type RestoreLifecycleState string
 
 const (

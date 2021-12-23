@@ -1,13 +1,23 @@
 package ociutil
 
-import "time"
+import (
+	"time"
 
-const sdkFormat = "2006-01-02T15:04:05.999Z07:00"
+	"github.com/oracle/oci-go-sdk/v51/common"
+)
+
+// Follow the format of the Display Name
+const displayFormat = "Jan 02, 2006 15:04:05 MST"
 
 func FormatSDKTime(dateTime time.Time) string {
-	return dateTime.Format(sdkFormat)
+	return dateTime.Format(displayFormat)
 }
 
-func ParseSDKTime(val string) (time.Time, error) {
-	return time.Parse(sdkFormat, val)
+func ParseDisplayTime(val string) (*common.SDKTime, error) {
+	parsedTime, err := time.Parse(displayFormat, val)
+	if err != nil {
+		return nil, err
+	}
+	sdkTime := common.SDKTime{Time: parsedTime}
+	return &sdkTime, nil
 }

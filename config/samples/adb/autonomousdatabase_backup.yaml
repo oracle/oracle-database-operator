@@ -1,0 +1,11 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabaseBackup
+metadata:
+  name: autonomousdatabasebackup-sample
+spec:
+  autonomousDatabaseOCID: ocid1.autonomousdatabase...
+  
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey
