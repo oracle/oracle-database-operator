@@ -85,6 +85,7 @@ var (
 	cdbPhaseSecrets = "DeletingSecrets"
 	cdbPhaseReady   = "Ready"
 	cdbPhaseDelete  = "Deleting"
+	cdbPhaseFail    = "Failed"
 )
 
 const CDBFinalizer = "database.oracle.com/CDBfinalizer"
@@ -119,7 +120,7 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	// Execute for every reconcile
 	defer func() {
-		//log.Info("DEFER", "Name", cdb.Name, "Phase", cdb.Status.Phase, "Status", strconv.FormatBool(cdb.Status.Status))
+		log.Info("DEFER", "Name", cdb.Name, "Phase", cdb.Status.Phase, "Status", strconv.FormatBool(cdb.Status.Status))
 		if !cdb.Status.Status {
 			if err := r.Status().Update(ctx, cdb); err != nil {
 				log.Error(err, "Failed to update status for :"+cdb.Name, "err", err.Error())
@@ -141,7 +142,7 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeueY, err
 	}
 
-	//log.Info("Res Status:", "Name", cdb.Name, "Phase", cdb.Status.Phase, "Status", strconv.FormatBool(cdb.Status.Status))
+	log.Info("Res Status:", "Name", cdb.Name, "Phase", cdb.Status.Phase, "Status", strconv.FormatBool(cdb.Status.Status))
 
 	// Finalizer section
 	err = r.manageCDBDeletion(ctx, req, cdb)
@@ -161,6 +162,11 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 		switch phase {
 		case cdbPhaseInit:
+			err = r.verifySecrets(ctx, req, cdb)
+			if err != nil {
+				cdb.Status.Phase = cdbPhaseFail
+				return requeueN, nil
+			}
 			cdb.Status.Phase = cdbPhasePod
 		case cdbPhasePod:
 			// Create ORDS PODs
@@ -174,6 +180,9 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			// Validate ORDS PODs
 			err = r.validateORDSPods(ctx, req, cdb)
 			if err != nil {
+				if cdb.Status.Phase == cdbPhaseFail {
+					return requeueN, nil
+				}
 				log.Info("Reconcile queued")
 				return requeueY, nil
 			}
@@ -276,6 +285,17 @@ func (r *CDBReconciler) validateORDSPods(ctx context.Context, req ctrl.Request, 
 			out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", getORDSStatus)
 			if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
 				readyPods++
+			} else if strings.Contains(out, "HTTP/1.1 404 Not Found") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 404 NOT FOUND") {
+				// Check if DB connection parameters are correct
+				getORDSInstallStatus := " grep -q 'Failed to' /tmp/ords_install.log; echo $?;"
+				out, _ := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", getORDSInstallStatus)
+				if strings.TrimSpace(out) == "0" {
+					cdb.Status.Msg = "Check DB connection parameters"
+					cdb.Status.Phase = cdbPhaseFail
+					// Delete existing ReplicaSet
+					r.deleteReplicaSet(ctx, req, cdb)
+					return errors.New("Check DB connection parameters")
+				}
 			}
 		}
 	}
@@ -474,6 +494,32 @@ func (r *CDBReconciler) createReplicaSetSpec(cdb *dbapi.CDB) *appsv1.ReplicaSet 
 /**********************************************************
  * Evaluate change in Spec post creation and instantiation
  /********************************************************/
+func (r *CDBReconciler) deleteReplicaSet(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
+	log := r.Log.WithValues("deleteReplicaSet", req.NamespacedName)
+
+	k_client, err := kubernetes.NewForConfig(r.Config)
+	if err != nil {
+		log.Error(err, "Kubernetes Config Error")
+		return err
+	}
+
+	replicaSetName := cdb.Name + "-ords-rs"
+	err = k_client.AppsV1().ReplicaSets(cdb.Namespace).Delete(context.TODO(), replicaSetName, metav1.DeleteOptions{})
+	if err != nil {
+		log.Info("Could not delete ReplicaSet", "RS Name", replicaSetName, "err", err.Error())
+		if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
+			return err
+		}
+	} else {
+		log.Info("Successfully deleted ORDS ReplicaSet", "RS Name", replicaSetName)
+	}
+
+	return nil
+}
+
+/**********************************************************
+ * Evaluate change in Spec post creation and instantiation
+ /********************************************************/
 func (r *CDBReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 	log := r.Log.WithValues("evaluateSpecChange", req.NamespacedName)
 
@@ -503,40 +549,19 @@ func (r *CDBReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Request
 			ordsSpecChange = true
 		} else if envVar.Name == "ORDS_PORT" && envVar.Value != strconv.Itoa(cdb.Spec.ORDSPort) {
 			ordsSpecChange = true
+		} else if envVar.Name == "ORACLE_SERVICE" && envVar.Value != cdb.Spec.ServiceName {
+			ordsSpecChange = true
 		}
 	}
 
 	if ordsSpecChange {
 		// Delete existing ReplicaSet
-		k_client, err := kubernetes.NewForConfig(r.Config)
+		err = r.deleteReplicaSet(ctx, req, cdb)
 		if err != nil {
-			log.Error(err, "Kubernetes Config Error")
 			return err
 		}
-		replicaSetName := cdb.Name + "-ords-rs"
-		err = k_client.AppsV1().ReplicaSets(cdb.Namespace).Delete(context.TODO(), replicaSetName, metav1.DeleteOptions{})
-		if err != nil {
-			log.Info("Could not delete ReplicaSet", "RS Name", replicaSetName, "err", err.Error())
-			if !strings.Contains(strings.ToUpper(err.Error()), "NOT FOUND") {
-				return err
-			}
-		} else {
-			log.Info("Successfully deleted ORDS ReplicaSet", "RS Name", replicaSetName)
-		}
 
-		// Create new ReplicaSet
-		replicaSet := r.createReplicaSetSpec(cdb)
-		log.Info("Re-Creating ORDS Replicaset: " + replicaSet.Name)
-		err = r.Create(ctx, replicaSet)
-		if err != nil {
-			log.Error(err, "Failed to re-create ReplicaSet for :"+cdb.Name, "Namespace", replicaSet.Namespace, "Name", replicaSet.Name)
-			return err
-		}
-		// Set CDB instance as the owner and controller
-		ctrl.SetControllerReference(cdb, replicaSet, r.Scheme)
-		log.Info("Successfully re-created ORDS ReplicaSet", "RS Name", replicaSetName)
-
-		cdb.Status.Phase = cdbPhaseValPod
+		cdb.Status.Phase = cdbPhaseInit
 		cdb.Status.Status = false
 		r.Status().Update(ctx, cdb)
 	} else {
@@ -717,6 +742,59 @@ func (r *CDBReconciler) deleteCDBInstance(ctx context.Context, req ctrl.Request,
 	}
 
 	log.Info("Successfully deleted CDB resource", "CDB Name", cdb.Spec.CDBName)
+	return nil
+}
+
+/*************************************************
+ * Get Secret Key for a Secret Name
+ /************************************************/
+func (r *CDBReconciler) verifySecrets(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
+
+	log := r.Log.WithValues("verifySecrets", req.NamespacedName)
+
+	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.SysAdminPwd.Secret.SecretName); err != nil {
+		return err
+	}
+	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.CDBAdminUser.Secret.SecretName); err != nil {
+		return err
+	}
+	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.CDBAdminPwd.Secret.SecretName); err != nil {
+		return err
+	}
+	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.ORDSPwd.Secret.SecretName); err != nil {
+		return err
+	}
+	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.WebServerUser.Secret.SecretName); err != nil {
+		return err
+	}
+	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.WebServerPwd.Secret.SecretName); err != nil {
+		return err
+	}
+
+	cdb.Status.Msg = ""
+	log.Info("Verified secrets successfully")
+	return nil
+}
+
+/*************************************************
+ * Get Secret Key for a Secret Name
+ /************************************************/
+func (r *CDBReconciler) checkSecret(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB, secretName string) error {
+
+	log := r.Log.WithValues("checkSecret", req.NamespacedName)
+
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: cdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + secretName)
+			cdb.Status.Msg = "Secret not found:" + secretName
+			return err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return err
+	}
+
 	return nil
 }
 

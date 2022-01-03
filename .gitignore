@@ -4,3 +4,4 @@ bin
 testbin/*
 onpremtest/*
 ords/*zip
+.gitattributes
