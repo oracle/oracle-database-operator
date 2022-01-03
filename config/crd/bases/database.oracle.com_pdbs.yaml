@@ -74,6 +74,7 @@ spec:
                 - Unplug
                 - Delete
                 - Modify
+                - Status
                 type: string
               adminName:
                 description: The administrator username for the new PDB. This property

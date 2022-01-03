@@ -109,6 +109,7 @@ var (
 	pdbPhaseReady  = "Ready"
 	pdbPhaseDelete = "Deleting"
 	pdbPhaseModify = "Modifying"
+	pdbPhaseStatus = "CheckingState"
 	pdbPhaseFail   = "Failed"
 )
 
@@ -174,16 +175,8 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	action := strings.ToUpper(pdb.Spec.Action)
 
-	if (pdb.Status.Phase == pdbPhaseReady) && (pdb.Status.Action != "") && (action == "MODIFY" || pdb.Status.Action != action) {
-		if action == "MODIFY" {
-			modOption := pdb.Spec.PDBState + "-" + pdb.Spec.ModifyOption
-			// To prevent Reconcile from Modifying again whenever the Operator gets re-started
-			if pdb.Status.ModifyOption != modOption {
-				pdb.Status.Status = false
-			}
-		} else {
-			pdb.Status.Status = false
-		}
+	if (pdb.Status.Phase == pdbPhaseReady) && (pdb.Status.Action != "") && (action == "MODIFY" || action == "STATUS" || pdb.Status.Action != action) {
+		pdb.Status.Status = false
 	}
 
 	if !pdb.Status.Status {
@@ -204,6 +197,8 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			err = r.modifyPDB(ctx, req, pdb)
 		case pdbPhaseDelete:
 			err = r.deletePDB(ctx, req, pdb)
+		case pdbPhaseStatus:
+			err = r.getPDBState(ctx, req, pdb)
 		default:
 			log.Info("DEFAULT:", "Name", pdb.Name, "Phase", phase, "Status", strconv.FormatBool(pdb.Status.Status))
 			return requeueN, nil
@@ -245,6 +240,8 @@ func (r *PDBReconciler) validatePhase(ctx context.Context, req ctrl.Request, pdb
 		pdb.Status.Phase = pdbPhaseModify
 	case "DELETE":
 		pdb.Status.Phase = pdbPhaseDelete
+	case "STATUS":
+		pdb.Status.Phase = pdbPhaseStatus
 	}
 
 	log.Info("Validation complete")
@@ -399,7 +396,13 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 
 	if resp.StatusCode != http.StatusOK {
 		bb, _ := ioutil.ReadAll(resp.Body)
-		pdb.Status.Msg = "ORDS Error - HTTP Status Code:" + strconv.Itoa(resp.StatusCode)
+
+		if resp.StatusCode == 404 {
+			pdb.Status.ConnString = ""
+			pdb.Status.Msg = pdb.Spec.PDBName + " not found"
+		} else {
+			pdb.Status.Msg = "ORDS Error - HTTP Status Code:" + strconv.Itoa(resp.StatusCode)
+		}
 		log.Info("ORDS Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
 
 		var apiErr ORDSError
@@ -711,6 +714,17 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	var err error
 
+	err = r.getPDBState(ctx, req, pdb)
+	if err != nil {
+		return err
+	}
+
+	// To prevent Reconcile from Modifying again whenever the Operator gets re-started
+	modOption := pdb.Spec.PDBState + "-" + pdb.Spec.ModifyOption
+	if pdb.Status.ModifyOption == modOption {
+		return nil
+	}
+
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
 		return err
@@ -779,7 +793,7 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 
 	pdb.Status.OpenMode = objmap["open_mode"].(string)
 
-	log.Info("Successfully obtained PDB state", "PDB Name", pdb.Spec.PDBName)
+	log.Info("Successfully obtained PDB state", "PDB Name", pdb.Spec.PDBName, "State", objmap["open_mode"].(string))
 	return nil
 }
 
@@ -891,6 +905,7 @@ func (r *PDBReconciler) deletePDBInstance(req ctrl.Request, ctx context.Context,
 	}
 	_, err = r.callAPI(ctx, req, pdb, url, values, "DELETE")
 	if err != nil {
+		pdb.Status.ConnString = ""
 		return err
 	}
 

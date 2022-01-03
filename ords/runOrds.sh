@@ -58,7 +58,7 @@ function setupOrds() {
   sed -i -e "s|###CDBADMIN_PWD###|$CDBADMIN_PWD|g" $ORDS_HOME/cdbadmin.properties
 
   # Start ORDS setup
-  java -jar $ORDS_HOME/ords.war install simple
+  java -jar $ORDS_HOME/ords.war install simple  2>&1 | tee /tmp/ords_install.log
 
   # Setup Web Server User
   $ORDS_HOME/$SETUP_WEBUSER

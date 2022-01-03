@@ -96,7 +96,7 @@ type PDBSpec struct {
 	// Whether you need the script only or execute the script
 	GetScript *bool `json:"getScript,omitempty"`
 	// Action to be taken: Create or Clone or Plug or Unplug
-	// +kubebuilder:validation:Enum=Create;Clone;Plug;Unplug;Delete;Modify
+	// +kubebuilder:validation:Enum=Create;Clone;Plug;Unplug;Delete;Modify;Status
 	Action string `json:"action"`
 	// Extra options for opening and closing a PDB
 	// +kubebuilder:validation:Enum=IMMEDIATE;NORMAL;READ ONLY;READ WRITE;RESTRICTED

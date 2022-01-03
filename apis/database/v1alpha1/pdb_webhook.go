@@ -76,7 +76,7 @@ func (r *PDB) Default() {
 			r.Spec.DropAction = "KEEP"
 			pdblog.Info(" - dropAction : KEEP")
 		}
-	} else if action != "MODIFY" {
+	} else if action != "MODIFY" && action != "STATUS" {
 		if r.Spec.ReuseTempFile == nil {
 			r.Spec.ReuseTempFile = new(bool)
 			*r.Spec.ReuseTempFile = true
@@ -222,7 +222,7 @@ func (r *PDB) ValidateUpdate(old runtime.Object) error {
 	action := strings.ToUpper(r.Spec.Action)
 
 	// If PDB CR has been created and in Ready state, only allow updates if the "action" value has changed as well
-	if (r.Status.Phase == "Ready") && (r.Status.Action != "MODIFY") && (r.Status.Action == action) {
+	if (r.Status.Phase == "Ready") && (r.Status.Action != "MODIFY") && (r.Status.Action != "STATUS") && (r.Status.Action == action) {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("action"), "New action also needs to be specified after PDB is in Ready state"))
 	} else {
@@ -234,7 +234,7 @@ func (r *PDB) ValidateUpdate(old runtime.Object) error {
 		r.validateAction(&allErrs)
 
 		// Check TDE requirements
-		if action != "DELETE" && action != "MODIFY" && (*(r.Spec.TDEImport) || *(r.Spec.TDEExport)) {
+		if (action != "DELETE") && (action != "MODIFY") && (action != "STATUS") && (*(r.Spec.TDEImport) || *(r.Spec.TDEExport)) {
 			r.validateTDEInfo(&allErrs)
 		}
 	}
