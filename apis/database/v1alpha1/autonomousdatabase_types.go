@@ -82,12 +82,7 @@ type AutonomousDatabaseDetails struct {
 	IsAutoScalingEnabled *bool                                         `json:"isAutoScalingEnabled,omitempty"`
 	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
 
-	SubnetOCID               *string  `json:"subnetOCID,omitempty"`
-	NsgOCIDs                 []string `json:"nsgOCIDs,omitempty"`
-	IsAccessControlEnabled   *bool    `json:"isAccessControlEnabled,omitempty"`
-	WhitelistedIPs           []string `json:"whitelistedIPs,omitempty"`
-	IsMTLSConnectionRequired *bool    `json:"isMTLSConnectionRequired,omitempty"`
-	PrivateEndpointLabel     *string  `json:"privateEndpointLabel,omitempty"`
+	NetworkAccess NetworkAccessSpec `json:"networkAccess,omitempty"`
 
 	FreeformTags map[string]string `json:"freeformTags,omitempty"`
 
@@ -102,6 +97,28 @@ type WalletSpec struct {
 type PasswordSpec struct {
 	K8sSecretName *string `json:"k8sSecretName,omitempty"`
 	OCISecretOCID *string `json:"ociSecretOCID,omitempty"`
+}
+
+type NetworkAccessTypeEnum string
+
+const (
+	NetworkAccessTypePublic     NetworkAccessTypeEnum = "PUBLIC"
+	NetworkAccessTypeRestricted NetworkAccessTypeEnum = "RESTRICTED"
+	NetworkAccessTypePrivate    NetworkAccessTypeEnum = "PRIVATE"
+)
+
+type NetworkAccessSpec struct {
+	AccessType               NetworkAccessTypeEnum `json:"accessType"`
+	IsAccessControlEnabled   *bool                 `json:"isAccessControlEnabled,omitempty"`
+	AccessControlList        []string              `json:"accessControlList,omitempty"`
+	PrivateEndpoint          PrivateEndpointSpec   `json:"privateEndpoint,omitempty"`
+	IsMTLSConnectionRequired *bool                 `json:"isMTLSConnectionRequired,omitempty"`
+}
+
+type PrivateEndpointSpec struct {
+	SubnetOCID     *string  `json:"subnetOCID,omitempty"`
+	NsgOCIDs       []string `json:"nsgOCIDs,omitempty"`
+	HostnamePrefix *string  `json:"hostnamePrefix,omitempty"`
 }
 
 // AutonomousDatabaseStatus defines the observed state of AutonomousDatabase
@@ -187,12 +204,12 @@ func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj databa
 	adb.Spec.Details.LifecycleState = ociObj.LifecycleState
 	adb.Spec.Details.FreeformTags = ociObj.FreeformTags
 
-	adb.Spec.Details.SubnetOCID = ociObj.SubnetId
-	adb.Spec.Details.NsgOCIDs = ociObj.NsgIds
-	adb.Spec.Details.IsAccessControlEnabled = ociObj.IsAccessControlEnabled
-	adb.Spec.Details.WhitelistedIPs = ociObj.WhitelistedIps
-	adb.Spec.Details.IsMTLSConnectionRequired = ociObj.IsMtlsConnectionRequired
-	adb.Spec.Details.PrivateEndpointLabel = ociObj.PrivateEndpointLabel
+	adb.Spec.Details.NetworkAccess.IsAccessControlEnabled = ociObj.IsAccessControlEnabled
+	adb.Spec.Details.NetworkAccess.AccessControlList = ociObj.WhitelistedIps
+	adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = ociObj.IsMtlsConnectionRequired
+	adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = ociObj.SubnetId
+	adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = ociObj.NsgIds
+	adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = ociObj.PrivateEndpointLabel
 
 	// update the subresource as well
 	adb.Status.DisplayName = *ociObj.DisplayName

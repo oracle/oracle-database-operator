@@ -101,26 +101,40 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
-                  isAccessControlEnabled:
-                    type: boolean
                   isAutoScalingEnabled:
                     type: boolean
                   isDedicated:
-                    type: boolean
-                  isMTLSConnectionRequired:
                     type: boolean
                   lifecycleState:
                     description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying
                       type: string'
                     type: string
-                  nsgOCIDs:
-                    items:
-                      type: string
-                    type: array
-                  privateEndpointLabel:
-                    type: string
-                  subnetOCID:
-                    type: string
+                  networkAccess:
+                    properties:
+                      accessControlList:
+                        items:
+                          type: string
+                        type: array
+                      accessType:
+                        type: string
+                      isAccessControlEnabled:
+                        type: boolean
+                      isMTLSConnectionRequired:
+                        type: boolean
+                      privateEndpoint:
+                        properties:
+                          hostnamePrefix:
+                            type: string
+                          nsgOCIDs:
+                            items:
+                              type: string
+                            type: array
+                          subnetOCID:
+                            type: string
+                        type: object
+                    required:
+                    - accessType
+                    type: object
                   wallet:
                     properties:
                       name:
@@ -133,10 +147,6 @@ spec:
                             type: string
                         type: object
                     type: object
-                  whitelistedIPs:
-                    items:
-                      type: string
-                    type: array
                 type: object
               hardLink:
                 default: false
