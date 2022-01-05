@@ -78,11 +78,12 @@ func CreateAutonomousDatabase(logger logr.Logger, kubeClient client.Client, dbCl
 		DbWorkload: database.CreateAutonomousDatabaseBaseDbWorkloadEnum(
 			adb.Spec.Details.DbWorkload),
 
-		WhitelistedIps:           adb.Spec.Details.WhitelistedIPs,
-		SubnetId:                 adb.Spec.Details.SubnetOCID,
-		NsgIds:                   adb.Spec.Details.NsgOCIDs,
-		PrivateEndpointLabel:     adb.Spec.Details.PrivateEndpointLabel,
-		IsMtlsConnectionRequired: adb.Spec.Details.IsMTLSConnectionRequired,
+		IsAccessControlEnabled:   adb.Spec.Details.NetworkAccess.IsAccessControlEnabled,
+		WhitelistedIps:           adb.Spec.Details.NetworkAccess.AccessControlList,
+		IsMtlsConnectionRequired: adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
+		SubnetId:                 adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID,
+		NsgIds:                   adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs,
+		PrivateEndpointLabel:     adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix,
 
 		FreeformTags: adb.Spec.Details.FreeformTags,
 	}
@@ -368,6 +369,8 @@ func UpdateScaleAttributes(logger logr.Logger, kubeClient client.Client, dbClien
 	return
 }
 
+
+
 func UpdateOneWayTLSAttribute(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient,
 	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	var shouldSendRequest = false
@@ -380,8 +383,8 @@ func UpdateOneWayTLSAttribute(logger logr.Logger, kubeClient client.Client, dbCl
 	// Prepare the update request
 	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
 
-	if isAttrChanged(lastSucSpec.Details.IsMTLSConnectionRequired, curADB.Spec.Details.IsMTLSConnectionRequired) {
-		updateAutonomousDatabaseDetails.IsMtlsConnectionRequired = curADB.Spec.Details.IsMTLSConnectionRequired
+	if isAttrChanged(lastSucSpec.Details.NetworkAccess.IsMTLSConnectionRequired, curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired) {
+		updateAutonomousDatabaseDetails.IsMtlsConnectionRequired = curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired
 		shouldSendRequest = true
 	}
 
@@ -414,25 +417,25 @@ func UpdateNetworkAttributes(logger logr.Logger, kubeClient client.Client, dbCli
 	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
 
 	// Network settings
-	if isAttrChanged(lastSucSpec.Details.SubnetOCID, curADB.Spec.Details.SubnetOCID) {
-		updateAutonomousDatabaseDetails.SubnetId = curADB.Spec.Details.SubnetOCID
+	if isAttrChanged(lastSucSpec.Details.NetworkAccess.IsAccessControlEnabled, curADB.Spec.Details.NetworkAccess.IsAccessControlEnabled) {
+		updateAutonomousDatabaseDetails.IsAccessControlEnabled = curADB.Spec.Details.NetworkAccess.IsAccessControlEnabled
 		shouldSendRequest = true
 	}
-	if isAttrChanged(lastSucSpec.Details.NsgOCIDs, curADB.Spec.Details.NsgOCIDs) {
-		updateAutonomousDatabaseDetails.NsgIds = curADB.Spec.Details.NsgOCIDs
+	if isAttrChanged(lastSucSpec.Details.NetworkAccess.AccessControlList, curADB.Spec.Details.NetworkAccess.AccessControlList) {
+		updateAutonomousDatabaseDetails.WhitelistedIps = curADB.Spec.Details.NetworkAccess.AccessControlList
 		shouldSendRequest = true
 	}
-	if isAttrChanged(lastSucSpec.Details.IsAccessControlEnabled, curADB.Spec.Details.IsAccessControlEnabled) {
-		updateAutonomousDatabaseDetails.IsAccessControlEnabled = curADB.Spec.Details.IsAccessControlEnabled
+	if isAttrChanged(lastSucSpec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID, curADB.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID) {
+		updateAutonomousDatabaseDetails.SubnetId = curADB.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID
 		shouldSendRequest = true
 	}
-	if isAttrChanged(lastSucSpec.Details.WhitelistedIPs, curADB.Spec.Details.WhitelistedIPs) {
-		updateAutonomousDatabaseDetails.WhitelistedIps = curADB.Spec.Details.WhitelistedIPs
+	if isAttrChanged(lastSucSpec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs, curADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs) {
+		updateAutonomousDatabaseDetails.NsgIds = curADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs
 		shouldSendRequest = true
 	}
 	// PrivateEndpointLabel
-	if isAttrChanged(lastSucSpec.Details.PrivateEndpointLabel, curADB.Spec.Details.PrivateEndpointLabel) {
-		updateAutonomousDatabaseDetails.PrivateEndpointLabel = curADB.Spec.Details.PrivateEndpointLabel
+	if isAttrChanged(lastSucSpec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix, curADB.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix) {
+		updateAutonomousDatabaseDetails.PrivateEndpointLabel = curADB.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix
 		shouldSendRequest = true
 	}
 

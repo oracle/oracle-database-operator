@@ -313,12 +313,12 @@ func AssertADBDetails(k8sClient *client.Client, dbClient *database.DatabaseClien
 				compareInt(expectedADBDetails.CPUCoreCount, resp.AutonomousDatabase.CpuCoreCount) &&
 				compareBool(expectedADBDetails.IsAutoScalingEnabled, resp.AutonomousDatabase.IsAutoScalingEnabled) &&
 				compareStringMap(expectedADBDetails.FreeformTags, resp.AutonomousDatabase.FreeformTags) &&
-				compareString(expectedADBDetails.SubnetOCID, resp.AutonomousDatabase.SubnetId) &&
-				reflect.DeepEqual(expectedADBDetails.NsgOCIDs, resp.AutonomousDatabase.NsgIds) &&
-				compareBool(expectedADBDetails.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled) &&
-				reflect.DeepEqual(expectedADBDetails.WhitelistedIPs, resp.AutonomousDatabase.WhitelistedIps) &&
-				compareBool(expectedADBDetails.IsMTLSConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) &&
-				compareString(expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel)
+				compareBool(expectedADBDetails.NetworkAccess.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled) &&
+				reflect.DeepEqual(expectedADBDetails.NetworkAccess.AccessControlList, resp.AutonomousDatabase.WhitelistedIps) &&
+				compareBool(expectedADBDetails.NetworkAccess.IsMTLSConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) &&
+				compareString(expectedADBDetails.NetworkAccess.PrivateEndpoint.SubnetOCID, resp.AutonomousDatabase.SubnetId) &&
+				reflect.DeepEqual(expectedADBDetails.NetworkAccess.PrivateEndpoint.NsgOCIDs, resp.AutonomousDatabase.NsgIds) &&
+				compareString(expectedADBDetails.NetworkAccess.PrivateEndpoint.HostnamePrefix, resp.AutonomousDatabase.PrivateEndpointLabel)
 
 			return same, nil
 		}, updateTimeout, updateInterval).Should(BeTrue())
