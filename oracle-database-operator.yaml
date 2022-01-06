@@ -11,6 +11,193 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.6.1
   creationTimestamp: null
+  name: autonomousdatabasebackups.database.oracle.com
+spec:
+  group: database.oracle.com
+  names:
+    kind: AutonomousDatabaseBackup
+    listKind: AutonomousDatabaseBackupList
+    plural: autonomousdatabasebackups
+    shortNames:
+    - adbbu
+    - adbbus
+    singular: autonomousdatabasebackup
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .status.type
+      name: Type
+      type: string
+    - jsonPath: .status.timeStarted
+      name: Started
+      type: string
+    - jsonPath: .status.timeEnded
+      name: Ended
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: AutonomousDatabaseBackup is the Schema for the autonomousdatabasebackups API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AutonomousDatabaseBackupSpec defines the desired state of AutonomousDatabaseBackup
+            properties:
+              autonomousDatabaseBackupOCID:
+                type: string
+              autonomousDatabaseOCID:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "make" to regenerate code after modifying this file'
+                type: string
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+            required:
+            - autonomousDatabaseOCID
+            type: object
+          status:
+            description: AutonomousDatabaseBackupStatus defines the observed state of AutonomousDatabaseBackup
+            properties:
+              autonomousDatabaseBackupOCID:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
+                type: string
+              autonomousDatabaseOCID:
+                type: string
+              compartmentOCID:
+                type: string
+              isAutomatic:
+                type: boolean
+              lifecycleState:
+                description: 'AutonomousDatabaseBackupLifecycleStateEnum Enum with underlying type: string'
+                type: string
+              timeEnded:
+                type: string
+              timeStarted:
+                type: string
+              type:
+                description: 'AutonomousDatabaseBackupTypeEnum Enum with underlying type: string'
+                type: string
+            required:
+            - autonomousDatabaseBackupOCID
+            - autonomousDatabaseOCID
+            - compartmentOCID
+            - isAutomatic
+            - lifecycleState
+            - type
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.1
+  creationTimestamp: null
+  name: autonomousdatabaserestores.database.oracle.com
+spec:
+  group: database.oracle.com
+  names:
+    kind: AutonomousDatabaseRestore
+    listKind: AutonomousDatabaseRestoreList
+    plural: autonomousdatabaserestores
+    shortNames:
+    - adbr
+    - adbrs
+    singular: autonomousdatabaserestore
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: AutonomousDatabaseRestore is the Schema for the autonomousdatabaserestores API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AutonomousDatabaseRestoreSpec defines the desired state of AutonomousDatabaseRestore
+            properties:
+              autonomousDatabaseOCID:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "make" to regenerate code after modifying this file'
+                type: string
+              destination:
+                properties:
+                  backupName:
+                    type: string
+                  timeStamp:
+                    type: string
+                type: object
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+            required:
+            - autonomousDatabaseOCID
+            - destination
+            type: object
+          status:
+            description: AutonomousDatabaseRestoreStatus defines the observed state of AutonomousDatabaseRestore
+            properties:
+              state:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
+                enum:
+                - NewCreated
+                - InProgress
+                - Completed
+                - Failed
+                type: string
+            required:
+            - state
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.1
+  creationTimestamp: null
   name: autonomousdatabases.database.oracle.com
 spec:
   group: database.oracle.com
@@ -98,9 +285,13 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  isAccessControlEnabled:
+                    type: boolean
                   isAutoScalingEnabled:
                     type: boolean
                   isDedicated:
+                    type: boolean
+                  isMTLSConnectionRequired:
                     type: boolean
                   lifecycleState:
                     description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying type: string'
@@ -109,10 +300,6 @@ spec:
                     items:
                       type: string
                     type: array
-                  privateEndpoint:
-                    type: string
-                  privateEndpointIP:
-                    type: string
                   privateEndpointLabel:
                     type: string
                   subnetOCID:
@@ -129,6 +316,10 @@ spec:
                             type: string
                         type: object
                     type: object
+                  whitelistedIPs:
+                    items:
+                      type: string
+                    type: array
                 type: object
               hardLink:
                 default: false
@@ -1005,6 +1196,56 @@ rules:
   - pods/exec
   verbs:
   - create
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabaseBackups
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabasebackups
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabasebackups/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabaserestores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabaserestores/status
+  verbs:
+  - get
+  - patch
+  - update
 - apiGroups:
   - database.oracle.com
   resources:
