@@ -41,8 +41,11 @@ package autonomousdatabase
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -57,8 +60,8 @@ import (
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
-// SetStatus sets the status subresource.
-func SetStatus(kubeClient client.Client, adb *dbv1alpha1.AutonomousDatabase) error {
+// UpdateAutonomousDatabaseStatus sets the status subresource of AutonomousDatabase
+func UpdateAutonomousDatabaseStatus(kubeClient client.Client, adb *dbv1alpha1.AutonomousDatabase) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		curADB := &dbv1alpha1.AutonomousDatabase{}
 
@@ -123,5 +126,103 @@ func CreateWalletSecret(logger logr.Logger, kubeClient client.Client, dbClient d
 		return err
 	}
 	logger.Info(fmt.Sprintf("Wallet is stored in the Secret %s", *walletName))
+	return nil
+}
+
+func getValidName(name string, usedNames map[string]bool) string {
+	returnedName := name
+	var i = 1
+
+	_, ok := usedNames[returnedName]
+	for ok {
+		returnedName = fmt.Sprintf("%s-%d", name, i)
+		_, ok = usedNames[returnedName]
+		i++
+	}
+
+	return returnedName
+}
+
+// CreateBackupResources creates the all the AutonomousDatabasBackups that appears in the ListAutonomousDatabaseBackups request
+// The backup object will not be created if it already exists.
+func CreateBackupResources(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) error {
+	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
+	backupList, err := fetchAutonomousDatabaseBackups(kubeClient, adb.Namespace)
+	if err != nil {
+		return err
+	}
+
+	if err := kubeClient.List(context.TODO(), backupList, &client.ListOptions{Namespace: adb.Namespace}); err != nil {
+		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
+		// No need to change the since we don't know if we obtain the object.
+		if !apiErrors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	usedNames := make(map[string]bool)
+	usedBackupOCIDs := make(map[string]bool)
+
+	for _, backup := range backupList.Items {
+		usedNames[backup.Name] = true
+
+		// Add both Spec.AutonomousDatabaseBackupOCID and Status.AutonomousDatabaseBackupOCID.
+		// If it's a backup created from the operator, it won't have the OCID under the spec.
+		// if the backup isn't ready yet, it won't have the OCID under the status.
+		if backup.Spec.AutonomousDatabaseBackupOCID != "" {
+			usedBackupOCIDs[backup.Spec.AutonomousDatabaseBackupOCID] = true
+		}
+		if backup.Status.AutonomousDatabaseBackupOCID != "" {
+			usedBackupOCIDs[backup.Status.AutonomousDatabaseBackupOCID] = true
+		}
+	}
+
+	resp, err := oci.ListAutonomousDatabaseBackups(dbClient, adb)
+	if err != nil {
+		return err
+	}
+
+	for _, backupSummary := range resp.Items {
+		// Create the resource if the AutonomousDatabaseBackupOCID doesn't exist
+		_, ok := usedBackupOCIDs[*backupSummary.Id]
+		if !ok {
+			// Convert the string to lowercase, and replace spaces, commas, and colons with hyphens
+			backupName := *backupSummary.DisplayName
+			backupName = strings.ToLower(backupName)
+
+			re, err := regexp.Compile(`[^-a-zA-Z0-9]`)
+			if err != nil {
+				return err
+			}
+			backupName = re.ReplaceAllString(backupName, "-")
+			backupName = getValidName(backupName, usedNames)
+
+			backup := &dbv1alpha1.AutonomousDatabaseBackup{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace:       adb.GetNamespace(),
+					Name:            backupName,
+					OwnerReferences: newOwnerReference(adb),
+				},
+				Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
+					AutonomousDatabaseBackupOCID: *backupSummary.Id,
+					OCIConfig: dbv1alpha1.OCIConfigSpec{
+						ConfigMapName: adb.Spec.OCIConfig.ConfigMapName,
+						SecretName:    adb.Spec.OCIConfig.SecretName,
+					},
+				},
+			}
+
+			if err := kubeClient.Create(context.TODO(), backup); err != nil {
+				return err
+			}
+
+			// Add the used names and ocids
+			usedNames[backupName] = true
+			usedBackupOCIDs[*backupSummary.AutonomousDatabaseId] = true
+
+			logger.Info("Create AutonomousDatabaseBackup " + backupName)
+		}
+	}
+
 	return nil
 }
