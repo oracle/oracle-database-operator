@@ -298,7 +298,7 @@ func AssertADBDetails(k8sClient *client.Client, dbClient *database.DatabaseClien
 
 			expectedADBDetails := expectedADB.Spec.Details
 
-			// Compare the elements one by one rather than doing reflect.DeelEqual(adb1, adb2), since some parameters 
+			// Compare the elements one by one rather than doing reflect.DeelEqual(adb1, adb2), since some parameters
 			// (e.g. adminPassword, wallet) are missing from e2eutil.GetAutonomousDatabase().
 			// We don't compare LifecycleState in this case. We only make sure that the ADB is in AVAIABLE state before
 			// proceeding to the next test.
@@ -317,7 +317,7 @@ func AssertADBDetails(k8sClient *client.Client, dbClient *database.DatabaseClien
 				reflect.DeepEqual(expectedADBDetails.NsgOCIDs, resp.AutonomousDatabase.NsgIds) &&
 				compareBool(expectedADBDetails.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled) &&
 				reflect.DeepEqual(expectedADBDetails.WhitelistedIPs, resp.AutonomousDatabase.WhitelistedIps) &&
-				compareBool(expectedADBDetails.IsMTLSConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) && 
+				compareBool(expectedADBDetails.IsMTLSConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) &&
 				compareString(expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel)
 
 			return same, nil

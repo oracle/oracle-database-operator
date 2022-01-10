@@ -112,6 +112,7 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 
 // +kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases/status,verbs=update;patch
+// +kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabaseBackups,verbs=get;list;create;update;delete
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=create;get;list;update
 // +kubebuilder:rbac:groups="",resources=configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
 
@@ -145,7 +146,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -157,7 +158,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -169,7 +170,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -181,7 +182,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -219,7 +220,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 			}
@@ -259,7 +260,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -270,7 +271,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 			// Update status.state
 			adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-			if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+			if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
 
@@ -279,7 +280,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 			}
@@ -296,7 +297,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				return ctrl.Result{}, nil
@@ -319,7 +320,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				return ctrl.Result{}, nil
@@ -347,7 +348,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 					// Change the status to UNAVAILABLE
 					adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-					if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+					if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 					return ctrl.Result{}, nil
@@ -355,7 +356,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Update status.state
 				adb.Status.LifecycleState = lifecycleState
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 
@@ -364,7 +365,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 					// Change the status to UNAVAILABLE
 					adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-					if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+					if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 				}
@@ -381,7 +382,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -391,7 +392,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if updateGenPassResp.OpcWorkRequestId != nil {
 				// Update status.state
 				adb.Status.LifecycleState = updateGenPassResp.AutonomousDatabase.LifecycleState
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 
@@ -400,7 +401,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 					// Change the status to UNAVAILABLE
 					adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-					if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+					if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 				}
@@ -413,7 +414,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -423,7 +424,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if scaleResp.OpcWorkRequestId != nil {
 				// Update status.state
 				adb.Status.LifecycleState = scaleResp.AutonomousDatabase.LifecycleState
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 
@@ -432,7 +433,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 					// Change the status to UNAVAILABLE
 					adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-					if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+					if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 				}
@@ -445,7 +446,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -454,7 +455,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if oneWayTLSResp.OpcWorkRequestId != nil {
 				// Update status.state
 				adb.Status.LifecycleState = oneWayTLSResp.AutonomousDatabase.LifecycleState
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 
@@ -463,7 +464,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 					// Change the status to UNAVAILABLE
 					adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-					if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+					if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 				}
@@ -476,7 +477,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -485,7 +486,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			if networkResp.OpcWorkRequestId != nil {
 				// Update status.state
 				adb.Status.LifecycleState = networkResp.AutonomousDatabase.LifecycleState
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 
@@ -494,7 +495,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 					// Change the status to UNAVAILABLE
 					adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-					if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+					if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 				}
@@ -510,7 +511,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -522,7 +523,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err := r.updateAutonomousDatabaseDetails(adb); err != nil {
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, err
@@ -541,11 +542,26 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			r.currentLogger.Error(err, "Fail to download Instance Wallet")
 			// Change the status to UNAVAILABLE
 			adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-			if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+			if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
 		}
+	}
+
+	/*****************************************************
+	*	AutonomousDatabase Backups
+	*****************************************************/
+	if err := adbutil.CreateBackupResources(r.currentLogger, r.KubeClient, dbClient, adb); err != nil {
+		r.currentLogger.Error(err, "Fail to update Autonomous Database")
+
+		// Change the status to UNAVAILABLE
+		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
+			return ctrl.Result{}, statusErr
+		}
+		// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
+		return ctrl.Result{}, nil
 	}
 
 	/*****************************************************
@@ -555,7 +571,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	r.currentLogger.Info("AutonomousDatabase resoursce reconcile successfully")
+	r.currentLogger.Info("AutonomousDatabase resource reconcile successfully")
 
 	return ctrl.Result{}, nil
 }
@@ -602,7 +618,7 @@ func (r *AutonomousDatabaseReconciler) updateAutonomousDatabaseDetails(adb *dbv1
 	}
 
 	// Update status
-	if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+	if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 		return statusErr
 	}
 	r.currentLogger.Info("Update local resource AutonomousDatabase successfully")
