@@ -74,6 +74,8 @@ spec:
                       ociSecretOCID:
                         type: string
                     type: object
+                  autonomousContainerDatabaseOCID:
+                    type: string
                   autonomousDatabaseOCID:
                     type: string
                   compartmentOCID:
@@ -116,6 +118,11 @@ spec:
                           type: string
                         type: array
                       accessType:
+                        enum:
+                        - ""
+                        - PUBLIC
+                        - RESTRICTED
+                        - PRIVATE
                         type: string
                       isAccessControlEnabled:
                         type: boolean
@@ -132,8 +139,6 @@ spec:
                           subnetOCID:
                             type: string
                         type: object
-                    required:
-                    - accessType
                     type: object
                   wallet:
                     properties:
