@@ -39,7 +39,7 @@
 package e2etest
 
 import (
-	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -47,8 +47,6 @@ import (
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -61,8 +59,6 @@ import (
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	controllers "github.com/oracle/oracle-database-operator/controllers/database"
-	"github.com/oracle/oracle-database-operator/test/e2e/behavior"
-	"github.com/oracle/oracle-database-operator/test/e2e/util"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -94,25 +90,7 @@ var (
 
 var cfg *rest.Config
 var k8sClient client.Client
-var configProvider common.ConfigurationProvider
-var dbClient database.DatabaseClient
 var testEnv *envtest.Environment
-
-const configFileName = "test_config.yaml"
-const ADBNamespace string = "default"
-
-var SharedOCIConfigMapName = "oci-cred"
-var SharedOCISecretName = "oci-privatekey"
-var SharedPlainTextAdminPassword = "Welcome_1234"
-var SharedPlainTextWalletPassword = "Welcome_1234"
-var SharedCompartmentOCID string
-
-var SharedKeyOCID string
-var SharedAdminPasswordOCID string
-var SharedInstanceWalletPasswordOCID string
-
-const SharedAdminPassSecretName string = "adb-admin-password"
-const SharedWalletPassSecretName = "adb-wallet-password"
 
 func TestAPIs(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
@@ -126,8 +104,16 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 	logf.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
-	testEnv = &envtest.Environment{
-		CRDDirectoryPaths: []string{filepath.Join("../..", "config", "crd", "bases")},
+	t := true
+
+	if os.Getenv("TEST_USE_EXISTING_CLUSTER") == "true" {
+		testEnv = &envtest.Environment{
+			UseExistingCluster: &t,
+		}
+	} else {
+		testEnv = &envtest.Environment{
+			CRDDirectoryPaths: []string{filepath.Join("../..", "config", "crd", "bases")},
+		}
 	}
 
 	var err error
@@ -159,6 +145,17 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
+	// CDB Reconciler
+	err = (&controllers.CDBReconciler{
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Config:   k8sManager.GetConfig(),
+		Log:      ctrl.Log.WithName("controllers").WithName("CDB_test"),
+		Interval: time.Duration(15),
+		Recorder: k8sManager.GetEventRecorderFor("CDB"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
 	go func() {
 		defer ginkgo.GinkgoRecover()
 		err = k8sManager.Start(ctrl.SetupSignalHandler())
@@ -175,59 +172,7 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 	/**************************************************
 	* Custom codes for autonomousdatabase controller
 	**************************************************/
-	By("init the test by creating utililty variables and objects")
-	testConfig, err := e2eutil.GetTestConfig(configFileName)
-	Expect(err).ToNot(HaveOccurred())
-	Expect(testConfig).ToNot(BeNil())
-
-	SharedCompartmentOCID = testConfig.CompartmentOCID
-	SharedAdminPasswordOCID = testConfig.AdminPasswordOCID
-	SharedInstanceWalletPasswordOCID = testConfig.InstanceWalletPasswordOCID
-
-	By("checking if the required parameters exist")
-	Expect(testConfig.OCIConfigFile).ToNot(Equal(""))
-	Expect(testConfig.CompartmentOCID).ToNot(Equal(""))
-	Expect(testConfig.AdminPasswordOCID).ToNot(Equal(""))
-	Expect(testConfig.InstanceWalletPasswordOCID).ToNot(Equal(""))
-
-	By("getting OCI provider")
-	ociConfigUtil, err := e2eutil.GetOCIConfigUtil(testConfig.OCIConfigFile, testConfig.Profile)
-	Expect(err).ToNot(HaveOccurred())
-	configProvider, err = ociConfigUtil.GetConfigProvider()
-	Expect(err).ToNot(HaveOccurred())
-
-	By("creating a OCI DB client")
-	dbClient, err = database.NewDatabaseClientWithConfigurationProvider(configProvider)
-	Expect(err).ToNot(HaveOccurred())
-
-	By("creating a configMap for calling OCI")
-	ociConfigMap, err := ociConfigUtil.CreateOCIConfigMap(ADBNamespace, SharedOCIConfigMapName)
-	Expect(err).ToNot(HaveOccurred())
-	Expect(k8sClient.Create(context.TODO(), ociConfigMap)).To(Succeed())
-
-	By("creating a secret for calling OCI")
-	ociSecret, err := ociConfigUtil.CreateOCISecret(ADBNamespace, SharedOCISecretName)
-	Expect(err).ToNot(HaveOccurred())
-	Expect(k8sClient.Create(context.TODO(), ociSecret)).To(Succeed())
-
-	By("Creating a k8s secret to hold admin password", func() {
-		data := map[string]string{
-			SharedAdminPassSecretName: SharedPlainTextAdminPassword,
-		}
-		adminSecret, err := e2eutil.CreateKubeSecret(ADBNamespace, SharedAdminPassSecretName, data)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(k8sClient.Create(context.TODO(), adminSecret)).To(Succeed())
-	})
-
-	By("Creating a k8s secret to hold wallet password", func() {
-		data := map[string]string{
-			SharedWalletPassSecretName: SharedPlainTextWalletPassword,
-		}
-		walletSecret, err := e2eutil.CreateKubeSecret(ADBNamespace, SharedWalletPassSecretName, data)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(k8sClient.Create(context.TODO(), walletSecret)).To(Succeed())
-	})
-
+	//ADBSetup(k8sClient)
 	close(done)
 }, 60)
 
@@ -247,5 +192,5 @@ var _ = AfterSuite(func() {
 	*/
 
 	By("Deleting the resources that are created during the tests")
-	e2ebehavior.CleanupDB(&k8sClient, &dbClient, ADBNamespace)
+	//CleanupADB(&k8sClient)
 })

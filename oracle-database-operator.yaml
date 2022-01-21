@@ -49,21 +49,28 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AutonomousDatabase is the Schema for the autonomousdatabases API
+        description: AutonomousDatabase is the Schema for the autonomousdatabases
+          API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
-            description: 'AutonomousDatabaseSpec defines the desired state of AutonomousDatabase Important: Run "make" to regenerate code after modifying this file'
+            description: 'AutonomousDatabaseSpec defines the desired state of AutonomousDatabase
+              Important: Run "make" to regenerate code after modifying this file'
             properties:
               details:
-                description: AutonomousDatabaseDetails defines the detail information of AutonomousDatabase, corresponding to oci-go-sdk/database/AutonomousDatabase
+                description: AutonomousDatabaseDetails defines the detail information
+                  of AutonomousDatabase, corresponding to oci-go-sdk/database/AutonomousDatabase
                 properties:
                   adminPassword:
                     properties:
@@ -85,7 +92,8 @@ spec:
                   dbVersion:
                     type: string
                   dbWorkload:
-                    description: 'AutonomousDatabaseDbWorkloadEnum Enum with underlying type: string'
+                    description: 'AutonomousDatabaseDbWorkloadEnum Enum with underlying
+                      type: string'
                     enum:
                     - OLTP
                     - DW
@@ -103,7 +111,8 @@ spec:
                   isDedicated:
                     type: boolean
                   lifecycleState:
-                    description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying type: string'
+                    description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying
+                      type: string'
                     type: string
                   nsgOCIDs:
                     items:
@@ -151,18 +160,546 @@ spec:
               dataStorageSizeInTBs:
                 type: integer
               dbWorkload:
-                description: 'AutonomousDatabaseDbWorkloadEnum Enum with underlying type: string'
+                description: 'AutonomousDatabaseDbWorkloadEnum Enum with underlying
+                  type: string'
                 type: string
               displayName:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
                 type: string
               isDedicated:
                 type: string
               lifecycleState:
-                description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying type: string'
+                description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying
+                  type: string'
                 type: string
               timeCreated:
                 type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
+    controller-gen.kubebuilder.io/version: v0.6.1
+  name: cdbs.database.oracle.com
+spec:
+  group: database.oracle.com
+  names:
+    kind: CDB
+    listKind: CDBList
+    plural: cdbs
+    singular: cdb
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Name of the CDB
+      jsonPath: .spec.cdbName
+      name: CDB Name
+      type: string
+    - description: ' Name of the DB Server'
+      jsonPath: .spec.dbServer
+      name: DB Server
+      type: string
+    - description: DB server port
+      jsonPath: .spec.dbPort
+      name: DB Port
+      type: integer
+    - description: SCAN Name
+      jsonPath: .spec.scanName
+      name: SCAN Name
+      type: string
+    - description: Replicas
+      jsonPath: .spec.replicas
+      name: Replicas
+      type: integer
+    - description: Status of the CDB Resource
+      jsonPath: .status.phase
+      name: Status
+      type: string
+    - description: Error message, if any
+      jsonPath: .status.msg
+      name: Message
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: CDB is the Schema for the cdbs API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CDBSpec defines the desired state of CDB
+            properties:
+              cdbAdminPwd:
+                description: Password for the CDB Administrator to manage PDB lifecycle
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbAdminUser:
+                description: User in the root container with sysdba priviledges to
+                  manage PDB lifecycle
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbName:
+                description: Name of the CDB
+                type: string
+              dbPort:
+                description: DB server port
+                type: integer
+              dbServer:
+                description: Name of the DB server
+                type: string
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                description: Node Selector for running the Pod
+                type: object
+              ordsImage:
+                description: ORDS Image Name
+                type: string
+              ordsImagePullPolicy:
+                description: ORDS Image Pull Policy
+                enum:
+                - Always
+                - Never
+                type: string
+              ordsImagePullSecret:
+                description: The name of the image pull secret in case of a private
+                  docker repository.
+                type: string
+              ordsPort:
+                description: ORDS server port. For now, keep it as 8888. TO BE USED
+                  IN FUTURE RELEASE.
+                type: integer
+              ordsPwd:
+                description: Password for user ORDS_PUBLIC_USER
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              replicas:
+                description: Number of ORDS Containers to create
+                type: integer
+              scanName:
+                description: SCAN Name
+                type: string
+              serviceName:
+                description: Name of the CDB Service
+                type: string
+              sysAdminPwd:
+                description: Password for the CDB System Administrator
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              webServerPwd:
+                description: Password for the Web Server User
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              webServerUser:
+                description: Web Server User with SQL Administrator role to allow
+                  us to authenticate to the PDB Lifecycle Management REST endpoints
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+            type: object
+          status:
+            description: CDBStatus defines the observed state of CDB
+            properties:
+              msg:
+                description: Message
+                type: string
+              phase:
+                description: Phase of the CDB Resource
+                type: string
+              status:
+                description: CDB Resource Status
+                type: boolean
+            required:
+            - phase
+            - status
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
+    controller-gen.kubebuilder.io/version: v0.6.1
+  name: pdbs.database.oracle.com
+spec:
+  group: database.oracle.com
+  names:
+    kind: PDB
+    listKind: PDBList
+    plural: pdbs
+    singular: pdb
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: The connect string to be used
+      jsonPath: .status.connString
+      name: Connect String
+      type: string
+    - description: Name of the CDB
+      jsonPath: .spec.cdbName
+      name: CDB Name
+      type: string
+    - description: Name of the PDB
+      jsonPath: .spec.pdbName
+      name: PDB Name
+      type: string
+    - description: PDB Open Mode
+      jsonPath: .status.openMode
+      name: PDB State
+      type: string
+    - description: Total Size of the PDB
+      jsonPath: .spec.totalSize
+      name: PDB Size
+      type: string
+    - description: Status of the PDB Resource
+      jsonPath: .status.phase
+      name: Status
+      type: string
+    - description: Error message, if any
+      jsonPath: .status.msg
+      name: Message
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: PDB is the Schema for the pdbs API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: PDBSpec defines the desired state of PDB
+            properties:
+              action:
+                description: 'Action to be taken: Create or Clone or Plug or Unplug'
+                enum:
+                - Create
+                - Clone
+                - Plug
+                - Unplug
+                - Delete
+                - Modify
+                - Status
+                type: string
+              adminName:
+                description: The administrator username for the new PDB. This property
+                  is required when the Action property is Create.
+                properties:
+                  secret:
+                    description: PDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              adminPwd:
+                description: The administrator password for the new PDB. This property
+                  is required when the Action property is Create.
+                properties:
+                  secret:
+                    description: PDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              asClone:
+                description: Indicate if 'AS CLONE' option should be used in the command
+                  to plug in a PDB. This property is applicable when the Action property
+                  is PLUG but not required.
+                type: boolean
+              cdbName:
+                description: Name of the CDB
+                type: string
+              cdbResName:
+                description: Name of the CDB Custom Resource that runs the ORDS container
+                type: string
+              copyAction:
+                description: To copy files or not while cloning a PDB
+                enum:
+                - COPY
+                - NOCOPY
+                - MOVE
+                type: string
+              dropAction:
+                description: Specify if datafiles should be removed or not. The value
+                  can be INCLUDING or KEEP (default).
+                enum:
+                - INCLUDING
+                - KEEP
+                type: string
+              fileNameConversions:
+                description: Relevant for Create and Plug operations. As defined in
+                  the  Oracle Multitenant Database documentation. Values can be a
+                  filename convert pattern or NONE.
+                type: string
+              getScript:
+                description: Whether you need the script only or execute the script
+                type: boolean
+              modifyOption:
+                description: Extra options for opening and closing a PDB
+                enum:
+                - IMMEDIATE
+                - NORMAL
+                - READ ONLY
+                - READ WRITE
+                - RESTRICTED
+                type: string
+              pdbName:
+                description: The name of the new PDB. Relevant for both Create and
+                  Plug Actions.
+                type: string
+              pdbState:
+                description: The target state of the PDB
+                enum:
+                - OPEN
+                - CLOSE
+                type: string
+              reuseTempFile:
+                description: Whether to reuse temp file
+                type: boolean
+              sourceFileNameConversions:
+                description: This property is required when the Action property is
+                  Plug. As defined in the Oracle Multitenant Database documentation.
+                  Values can be a source filename convert pattern or NONE.
+                type: string
+              sparseClonePath:
+                description: A Path specified for sparse clone snapshot copy. (Optional)
+                type: string
+              srcPdbName:
+                description: Name of the Source PDB from which to clone
+                type: string
+              tdeExport:
+                description: TDE export for unplug operations
+                type: boolean
+              tdeImport:
+                description: TDE import for plug operations
+                type: boolean
+              tdeKeystorePath:
+                description: TDE keystore path is required if the tdeImport or tdeExport
+                  flag is set to true. Can be used in plug or unplug operations.
+                type: string
+              tdePassword:
+                description: TDE password if the tdeImport or tdeExport flag is set
+                  to true. Can be used in create, plug or unplug operations
+                properties:
+                  secret:
+                    description: PDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              tdeSecret:
+                description: TDE secret is required if the tdeImport or tdeExport
+                  flag is set to true. Can be used in plug or unplug operations.
+                properties:
+                  secret:
+                    description: PDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              tempSize:
+                description: Relevant for Create and Clone operations. Total size
+                  for temporary tablespace as defined in the Oracle Multitenant Database
+                  documentation. See size_clause description in Database SQL Language
+                  Reference documentation.
+                type: string
+              totalSize:
+                description: Relevant for create and plug operations. Total size as
+                  defined in the Oracle Multitenant Database documentation. See size_clause
+                  description in Database SQL Language Reference documentation.
+                type: string
+              unlimitedStorage:
+                description: Relevant for Create and Plug operations. True for unlimited
+                  storage. Even when set to true, totalSize and tempSize MUST be specified
+                  in the request if Action is Create.
+                type: boolean
+              xmlFileName:
+                description: XML metadata filename to be used for Plug or Unplug operations
+                type: string
+            required:
+            - action
+            type: object
+          status:
+            description: PDBStatus defines the observed state of PDB
+            properties:
+              action:
+                description: Last Completed Action
+                type: string
+              connString:
+                description: PDB Connect String
+                type: string
+              modifyOption:
+                description: Modify Option of the PDB
+                type: string
+              msg:
+                description: Message
+                type: string
+              openMode:
+                description: Open mode of the PDB
+                type: string
+              phase:
+                description: Phase of the PDB Resource
+                type: string
+              status:
+                description: PDB Resource Status
+                type: boolean
+            required:
+            - phase
+            - status
             type: object
         type: object
     served: true
@@ -198,10 +735,14 @@ spec:
         description: ShardingDatabase is the Schema for the shardingdatabases API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -214,7 +755,8 @@ spec:
                   properties:
                     envVars:
                       items:
-                        description: EnvironmentVariable represents a named variable accessible for containers.
+                        description: EnvironmentVariable represents a named variable
+                          accessible for containers.
                         properties:
                           name:
                             type: string
@@ -226,7 +768,8 @@ spec:
                         type: object
                       type: array
                     imagePullPolicy:
-                      description: PullPolicy describes a policy for if/when to pull a container image
+                      description: PullPolicy describes a policy for if/when to pull
+                        a container image
                       type: string
                     isDelete:
                       type: boolean
@@ -249,7 +792,8 @@ spec:
                     pvcName:
                       type: string
                     resources:
-                      description: ResourceRequirements describes the compute resource requirements.
+                      description: ResourceRequirements describes the compute resource
+                        requirements.
                       properties:
                         limits:
                           additionalProperties:
@@ -258,7 +802,8 @@ spec:
                             - type: string
                             pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                             x-kubernetes-int-or-string: true
-                          description: 'Limits describes the maximum amount of compute resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                          description: 'Limits describes the maximum amount of compute
+                            resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                           type: object
                         requests:
                           additionalProperties:
@@ -267,7 +812,11 @@ spec:
                             - type: string
                             pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                             x-kubernetes-int-or-string: true
-                          description: 'Requests describes the minimum amount of compute resources required. If Requests is omitted for a container, it defaults to Limits if that is explicitly specified, otherwise to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                          description: 'Requests describes the minimum amount of compute
+                            resources required. If Requests is omitted for a container,
+                            it defaults to Limits if that is explicitly specified,
+                            otherwise to an implementation-defined value. More info:
+                            https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                           type: object
                       type: object
                     storageSizeInGb:
@@ -287,7 +836,8 @@ spec:
                   properties:
                     envVars:
                       items:
-                        description: EnvironmentVariable represents a named variable accessible for containers.
+                        description: EnvironmentVariable represents a named variable
+                          accessible for containers.
                         properties:
                           name:
                             type: string
@@ -299,7 +849,8 @@ spec:
                         type: object
                       type: array
                     imagePullPolicy:
-                      description: PullPolicy describes a policy for if/when to pull a container image
+                      description: PullPolicy describes a policy for if/when to pull
+                        a container image
                       type: string
                     isDelete:
                       type: boolean
@@ -321,7 +872,8 @@ spec:
                       format: int32
                       type: integer
                     resources:
-                      description: ResourceRequirements describes the compute resource requirements.
+                      description: ResourceRequirements describes the compute resource
+                        requirements.
                       properties:
                         limits:
                           additionalProperties:
@@ -330,7 +882,8 @@ spec:
                             - type: string
                             pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                             x-kubernetes-int-or-string: true
-                          description: 'Limits describes the maximum amount of compute resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                          description: 'Limits describes the maximum amount of compute
+                            resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                           type: object
                         requests:
                           additionalProperties:
@@ -339,7 +892,11 @@ spec:
                             - type: string
                             pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                             x-kubernetes-int-or-string: true
-                          description: 'Requests describes the minimum amount of compute resources required. If Requests is omitted for a container, it defaults to Limits if that is explicitly specified, otherwise to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                          description: 'Requests describes the minimum amount of compute
+                            resources required. If Requests is omitted for a container,
+                            it defaults to Limits if that is explicitly specified,
+                            otherwise to an implementation-defined value. More info:
+                            https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                           type: object
                       type: object
                     storageSizeInGb:
@@ -371,7 +928,8 @@ spec:
                 type: string
               portMappings:
                 items:
-                  description: PortMapping is a specification of port mapping for an application deployment.
+                  description: PortMapping is a specification of port mapping for
+                    an application deployment.
                   properties:
                     port:
                       format: int32
@@ -393,13 +951,16 @@ spec:
               secret:
                 type: string
               shard:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "make" to regenerate code after modifying this file'
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
                 items:
-                  description: ShardSpec is a specification of Shards for an application deployment.
+                  description: ShardSpec is a specification of Shards for an application
+                    deployment.
                   properties:
                     envVars:
                       items:
-                        description: EnvironmentVariable represents a named variable accessible for containers.
+                        description: EnvironmentVariable represents a named variable
+                          accessible for containers.
                         properties:
                           name:
                             type: string
@@ -411,7 +972,8 @@ spec:
                         type: object
                       type: array
                     imagePullPolicy:
-                      description: PullPolicy describes a policy for if/when to pull a container image
+                      description: PullPolicy describes a policy for if/when to pull
+                        a container image
                       type: string
                     isDelete:
                       type: boolean
@@ -434,7 +996,8 @@ spec:
                     pvcName:
                       type: string
                     resources:
-                      description: ResourceRequirements describes the compute resource requirements.
+                      description: ResourceRequirements describes the compute resource
+                        requirements.
                       properties:
                         limits:
                           additionalProperties:
@@ -443,7 +1006,8 @@ spec:
                             - type: string
                             pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                             x-kubernetes-int-or-string: true
-                          description: 'Limits describes the maximum amount of compute resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                          description: 'Limits describes the maximum amount of compute
+                            resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                           type: object
                         requests:
                           additionalProperties:
@@ -452,7 +1016,11 @@ spec:
                             - type: string
                             pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                             x-kubernetes-int-or-string: true
-                          description: 'Requests describes the minimum amount of compute resources required. If Requests is omitted for a container, it defaults to Limits if that is explicitly specified, otherwise to an implementation-defined value. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                          description: 'Requests describes the minimum amount of compute
+                            resources required. If Requests is omitted for a container,
+                            it defaults to Limits if that is explicitly specified,
+                            otherwise to an implementation-defined value. More info:
+                            https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                           type: object
                       type: object
                     storageSizeInGb:
@@ -475,7 +1043,8 @@ spec:
             - shard
             type: object
           status:
-            description: To understand Metav1.Condition, please refer the link https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1 ShardingDatabaseStatus defines the observed state of ShardingDatabase
+            description: To understand Metav1.Condition, please refer the link https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1
+              ShardingDatabaseStatus defines the observed state of ShardingDatabase
             properties:
               catalogs:
                 additionalProperties:
@@ -483,23 +1052,45 @@ spec:
                 type: object
               conditions:
                 items:
-                  description: "Condition contains details for one aspect of the current state of this API Resource. --- This struct is intended for direct use as an array at the field path .status.conditions.  For example, type FooStatus struct{     // Represents the observations of a foo's current state.     // Known .status.conditions.type are: \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type     // +patchStrategy=merge     // +listType=map     // +listMapKey=type     Conditions []metav1.Condition `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"` \n     // other fields }"
+                  description: "Condition contains details for one aspect of the current
+                    state of this API Resource. --- This struct is intended for direct
+                    use as an array at the field path .status.conditions.  For example,
+                    type FooStatus struct{     // Represents the observations of a
+                    foo's current state.     // Known .status.conditions.type are:
+                    \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type
+                    \    // +patchStrategy=merge     // +listType=map     // +listMapKey=type
+                    \    Conditions []metav1.Condition `json:\"conditions,omitempty\"
+                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`
+                    \n     // other fields }"
                   properties:
                     lastTransitionTime:
-                      description: lastTransitionTime is the last time the condition transitioned from one status to another. This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      description: lastTransitionTime is the last time the condition
+                        transitioned from one status to another. This should be when
+                        the underlying condition changed.  If that is not known, then
+                        using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: message is a human readable message indicating details about the transition. This may be an empty string.
+                      description: message is a human readable message indicating
+                        details about the transition. This may be an empty string.
                       maxLength: 32768
                       type: string
                     observedGeneration:
-                      description: observedGeneration represents the .metadata.generation that the condition was set based upon. For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date with respect to the current state of the instance.
+                      description: observedGeneration represents the .metadata.generation
+                        that the condition was set based upon. For instance, if .metadata.generation
+                        is currently 12, but the .status.conditions[x].observedGeneration
+                        is 9, the condition is out of date with respect to the current
+                        state of the instance.
                       format: int64
                       minimum: 0
                       type: integer
                     reason:
-                      description: reason contains a programmatic identifier indicating the reason for the condition's last transition. Producers of specific condition types may define expected values and meanings for this field, and whether the values are considered a guaranteed API. The value should be a CamelCase string. This field may not be empty.
+                      description: reason contains a programmatic identifier indicating
+                        the reason for the condition's last transition. Producers
+                        of specific condition types may define expected values and
+                        meanings for this field, and whether the values are considered
+                        a guaranteed API. The value should be a CamelCase string.
+                        This field may not be empty.
                       maxLength: 1024
                       minLength: 1
                       pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
@@ -512,7 +1103,11 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: type of condition in CamelCase or in foo.example.com/CamelCase. --- Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be useful (see .node.status.conditions), the ability to deconflict is important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                        --- Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -606,13 +1201,18 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: SingleInstanceDatabase is the Schema for the singleinstancedatabases API
+        description: SingleInstanceDatabase is the Schema for the singleinstancedatabases
+          API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
@@ -620,7 +1220,8 @@ spec:
             description: SingleInstanceDatabaseSpec defines the desired state of SingleInstanceDatabase
             properties:
               adminPassword:
-                description: SingleInsatnceAdminPassword defines the secret containing Admin Password mapped to secretKey for Database
+                description: SingleInsatnceAdminPassword defines the secret containing
+                  Admin Password mapped to secretKey for Database
                 properties:
                   keepSecret:
                     type: boolean
@@ -648,7 +1249,8 @@ spec:
               forceLog:
                 type: boolean
               image:
-                description: SingleInstanceDatabaseImage defines the Image source and pullSecrets for POD
+                description: SingleInstanceDatabaseImage defines the Image source
+                  and pullSecrets for POD
                 properties:
                   pullFrom:
                     type: string
@@ -682,7 +1284,8 @@ spec:
               pdbName:
                 type: string
               persistence:
-                description: SingleInstanceDatabasePersistence defines the storage size and class for PVC
+                description: SingleInstanceDatabasePersistence defines the storage
+                  size and class for PVC
                 properties:
                   accessMode:
                     enum:
@@ -704,7 +1307,8 @@ spec:
                 minimum: 1
                 type: integer
               sid:
-                description: SID can only have a-z , A-Z, 0-9 . It cant have any special characters
+                description: SID can only have a-z , A-Z, 0-9 . It cant have any special
+                  characters
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
             required:
@@ -714,7 +1318,8 @@ spec:
             - replicas
             type: object
           status:
-            description: SingleInstanceDatabaseStatus defines the observed state of SingleInstanceDatabase
+            description: SingleInstanceDatabaseStatus defines the observed state of
+              SingleInstanceDatabase
             properties:
               apexInstalled:
                 type: boolean
@@ -728,23 +1333,45 @@ spec:
                 type: string
               conditions:
                 items:
-                  description: "Condition contains details for one aspect of the current state of this API Resource. --- This struct is intended for direct use as an array at the field path .status.conditions.  For example, type FooStatus struct{     // Represents the observations of a foo's current state.     // Known .status.conditions.type are: \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type     // +patchStrategy=merge     // +listType=map     // +listMapKey=type     Conditions []metav1.Condition `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"` \n     // other fields }"
+                  description: "Condition contains details for one aspect of the current
+                    state of this API Resource. --- This struct is intended for direct
+                    use as an array at the field path .status.conditions.  For example,
+                    type FooStatus struct{     // Represents the observations of a
+                    foo's current state.     // Known .status.conditions.type are:
+                    \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type
+                    \    // +patchStrategy=merge     // +listType=map     // +listMapKey=type
+                    \    Conditions []metav1.Condition `json:\"conditions,omitempty\"
+                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`
+                    \n     // other fields }"
                   properties:
                     lastTransitionTime:
-                      description: lastTransitionTime is the last time the condition transitioned from one status to another. This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      description: lastTransitionTime is the last time the condition
+                        transitioned from one status to another. This should be when
+                        the underlying condition changed.  If that is not known, then
+                        using the time when the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: message is a human readable message indicating details about the transition. This may be an empty string.
+                      description: message is a human readable message indicating
+                        details about the transition. This may be an empty string.
                       maxLength: 32768
                       type: string
                     observedGeneration:
-                      description: observedGeneration represents the .metadata.generation that the condition was set based upon. For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date with respect to the current state of the instance.
+                      description: observedGeneration represents the .metadata.generation
+                        that the condition was set based upon. For instance, if .metadata.generation
+                        is currently 12, but the .status.conditions[x].observedGeneration
+                        is 9, the condition is out of date with respect to the current
+                        state of the instance.
                       format: int64
                       minimum: 0
                       type: integer
                     reason:
-                      description: reason contains a programmatic identifier indicating the reason for the condition's last transition. Producers of specific condition types may define expected values and meanings for this field, and whether the values are considered a guaranteed API. The value should be a CamelCase string. This field may not be empty.
+                      description: reason contains a programmatic identifier indicating
+                        the reason for the condition's last transition. Producers
+                        of specific condition types may define expected values and
+                        meanings for this field, and whether the values are considered
+                        a guaranteed API. The value should be a CamelCase string.
+                        This field may not be empty.
                       maxLength: 1024
                       minLength: 1
                       pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
@@ -757,7 +1384,11 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: type of condition in CamelCase or in foo.example.com/CamelCase. --- Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be useful (see .node.status.conditions), the ability to deconflict is important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                        --- Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important. The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -813,7 +1444,8 @@ spec:
               pdbName:
                 type: string
               persistence:
-                description: SingleInstanceDatabasePersistence defines the storage size and class for PVC
+                description: SingleInstanceDatabasePersistence defines the storage
+                  size and class for PVC
                 properties:
                   accessMode:
                     enum:
@@ -918,6 +1550,24 @@ rules:
   - ""
   resources:
   - configmaps
+  - events
+  - pods
+  - pods/exec
+  - pods/log
+  - replicasets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
   - secrets
   verbs:
   - create
@@ -949,6 +1599,18 @@ rules:
   - ''''''
   resources:
   - statefulsets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - replicasets
   verbs:
   - create
   - delete
@@ -1002,6 +1664,22 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps
+  - namespaces
+  - pods
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - pods/exec
   verbs:
   - create
@@ -1022,6 +1700,62 @@ rules:
   resources:
   - autonomousdatabases/status
   verbs:
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - cdbs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - cdbs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - cdbs/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - pdbs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - pdbs/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - pdbs/status
+  verbs:
+  - get
   - patch
   - update
 - apiGroups:
@@ -1185,7 +1919,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -1199,7 +1933,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: container-registry.oracle.com/database/operator:0.1.0
+        image: phx.ocir.io/intsanjaysingh/gdb-repo/oracle/dboper-ords-go:master
         imagePullPolicy: Always
         name: manager
         ports:
@@ -1262,6 +1996,48 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-cdb
+  failurePolicy: Fail
+  name: mcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-pdb
+  failurePolicy: Fail
+  name: mpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /mutate-database-oracle-com-v1alpha1-singleinstancedatabase
   failurePolicy: Fail
   name: msingleinstancedatabase.kb.io
@@ -1284,6 +2060,49 @@ metadata:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
   name: oracle-database-operator-validating-webhook-configuration
 webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-cdb
+  failurePolicy: Fail
+  name: vcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-pdb
+  failurePolicy: Fail
+  name: vpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - pdbs
+  sideEffects: None
 - admissionReviewVersions:
   - v1
   - v1beta1
