@@ -89,6 +89,11 @@ func (in *AutonomousDatabaseDetails) DeepCopyInto(out *AutonomousDatabaseDetails
 		*out = new(string)
 		**out = **in
 	}
+	if in.AutonomousContainerDatabaseOCID != nil {
+		in, out := &in.AutonomousContainerDatabaseOCID, &out.AutonomousContainerDatabaseOCID
+		*out = new(string)
+		**out = **in
+	}
 	if in.DisplayName != nil {
 		in, out := &in.DisplayName, &out.DisplayName
 		*out = new(string)

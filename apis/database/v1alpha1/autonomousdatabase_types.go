@@ -68,11 +68,12 @@ type OCIConfigSpec struct {
 
 // AutonomousDatabaseDetails defines the detail information of AutonomousDatabase, corresponding to oci-go-sdk/database/AutonomousDatabase
 type AutonomousDatabaseDetails struct {
-	AutonomousDatabaseOCID *string `json:"autonomousDatabaseOCID,omitempty"`
-	CompartmentOCID        *string `json:"compartmentOCID,omitempty"`
-	DisplayName            *string `json:"displayName,omitempty"`
-	DbName                 *string `json:"dbName,omitempty"`
-	// +kubebuilder:validation:Enum:=OLTP;DW;AJD;APEX
+	AutonomousDatabaseOCID          *string `json:"autonomousDatabaseOCID,omitempty"`
+	CompartmentOCID                 *string `json:"compartmentOCID,omitempty"`
+	AutonomousContainerDatabaseOCID *string `json:"autonomousContainerDatabaseOCID,omitempty"`
+	DisplayName                     *string `json:"displayName,omitempty"`
+	DbName                          *string `json:"dbName,omitempty"`
+	// +kubebuilder:validation:Enum:="OLTP";"DW";"AJD";"APEX"
 	DbWorkload           database.AutonomousDatabaseDbWorkloadEnum     `json:"dbWorkload,omitempty"`
 	IsDedicated          *bool                                         `json:"isDedicated,omitempty"`
 	DbVersion            *string                                       `json:"dbVersion,omitempty"`
@@ -108,7 +109,8 @@ const (
 )
 
 type NetworkAccessSpec struct {
-	AccessType               NetworkAccessTypeEnum `json:"accessType"`
+	// +kubebuilder:validation:Enum:="";"PUBLIC";"RESTRICTED";"PRIVATE"
+	AccessType               NetworkAccessTypeEnum `json:"accessType,omitempty"`
 	IsAccessControlEnabled   *bool                 `json:"isAccessControlEnabled,omitempty"`
 	AccessControlList        []string              `json:"accessControlList,omitempty"`
 	PrivateEndpoint          PrivateEndpointSpec   `json:"privateEndpoint,omitempty"`
@@ -193,6 +195,7 @@ func (adb *AutonomousDatabase) UpdateLastSuccessfulSpec(kubeClient client.Client
 func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj database.AutonomousDatabase) *AutonomousDatabase {
 	adb.Spec.Details.AutonomousDatabaseOCID = ociObj.Id
 	adb.Spec.Details.CompartmentOCID = ociObj.CompartmentId
+	adb.Spec.Details.AutonomousContainerDatabaseOCID = ociObj.AutonomousContainerDatabaseId
 	adb.Spec.Details.DisplayName = ociObj.DisplayName
 	adb.Spec.Details.DbName = ociObj.DbName
 	adb.Spec.Details.DbWorkload = ociObj.DbWorkload
@@ -203,6 +206,18 @@ func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj databa
 	adb.Spec.Details.IsAutoScalingEnabled = ociObj.IsAutoScalingEnabled
 	adb.Spec.Details.LifecycleState = ociObj.LifecycleState
 	adb.Spec.Details.FreeformTags = ociObj.FreeformTags
+
+	if *ociObj.IsDedicated {
+		adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
+	} else {
+		if ociObj.NsgIds != nil {
+			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
+		} else if ociObj.WhitelistedIps != nil {
+			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypeRestricted
+		} else {
+			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePublic
+		}
+	}
 
 	adb.Spec.Details.NetworkAccess.IsAccessControlEnabled = ociObj.IsAccessControlEnabled
 	adb.Spec.Details.NetworkAccess.AccessControlList = ociObj.WhitelistedIps

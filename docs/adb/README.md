@@ -88,7 +88,11 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
         secretName: oci-privatekey
     ```
 
-4. Apply the yaml:
+4. Choose the type of network access (optional):
+
+   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the netowrk acess. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
+
+5. Apply the yaml:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_create.yaml
@@ -221,7 +225,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     \* The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.
 
-2. Update the example [config/samples/adb/autonomousdatabase_change_admin_password.yaml](./../../config/samples/adb/autonomousdatabase_change_admin_password.yaml)
+2. Update the example [config/samples/adb/autonomousdatabase_update_admin_password.yaml](./../../config/samples/adb/autonomousdatabase_update_admin_password.yaml)
 
     ```yaml
     ---
@@ -244,7 +248,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 3. Apply the YAML.
 
     ```sh
-    kubectl apply -f config/samples/adb/autonomousdatabase_change_admin_password.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_update_admin_password.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 

@@ -43,19 +43,272 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/go-logr/logr"
 	"github.com/oracle/oci-go-sdk/v51/common"
 	"github.com/oracle/oci-go-sdk/v51/database"
 	"github.com/oracle/oci-go-sdk/v51/secrets"
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
+
+func DetermineReturn(logger logr.Logger, err error) (ctrl.Result, error) {
+	if apiErrors.IsConflict(err) {
+		return ctrl.Result{}, err
+	}
+
+	logger.Error(err, "Reconcile failed")
+	return ctrl.Result{}, nil
+}
+
+func UpdateGeneralAndPasswordAttributesAndWait(logger logr.Logger, kubeClient client.Client,
+	dbClient database.DatabaseClient,
+	secretClient secrets.SecretsClient,
+	workClient workrequests.WorkRequestClient,
+	adb *dbv1alpha1.AutonomousDatabase) error {
+
+	updateGenPassResp, err := oci.UpdateGeneralAndPasswordAttributes(logger, kubeClient, dbClient, secretClient, adb)
+	if err != nil {
+		logger.Error(err, "Fail to update Autonomous Database")
+
+		// Change the status to UNAVAILABLE
+		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
+		if statusErr := SetStatus(kubeClient, adb); statusErr != nil {
+			return statusErr
+		}
+		// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
+		return err
+	}
+
+	// Wait for the work finish if a request is sent. Note that some of the requests (e.g. update displayName) won't return a work request ID.
+	if updateGenPassResp.OpcWorkRequestId != nil {
+		if err := UpdateStatusAndWait(logger, kubeClient, workClient, adb, updateGenPassResp.AutonomousDatabase.LifecycleState, updateGenPassResp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*updateGenPassResp.OpcWorkRequestId)
+		}
+
+		logger.Info("Update AutonomousDatabase " + *adb.Spec.Details.DbName + " succesfully")
+	}
+
+	return nil
+}
+
+func UpdateScaleAttributesAndWait(logger logr.Logger, kubeClient client.Client,
+	dbClient database.DatabaseClient,
+	workClient workrequests.WorkRequestClient,
+	adb *dbv1alpha1.AutonomousDatabase) error {
+
+	scaleResp, err := oci.UpdateScaleAttributes(logger, kubeClient, dbClient, adb)
+	if err != nil {
+		logger.Error(err, "Fail to update Autonomous Database")
+
+		// Change the status to UNAVAILABLE
+		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
+		if statusErr := SetStatus(kubeClient, adb); statusErr != nil {
+			return statusErr
+		}
+		// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
+		return err
+	}
+
+	if scaleResp.OpcWorkRequestId != nil {
+		if err := UpdateStatusAndWait(logger, kubeClient, workClient, adb, scaleResp.AutonomousDatabase.LifecycleState, scaleResp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*scaleResp.OpcWorkRequestId)
+		}
+
+		logger.Info("Scale AutonomousDatabase " + *adb.Spec.Details.DbName + " succesfully")
+	}
+
+	return nil
+}
+
+// The logic of updating the network access configurations is as follows:
+// 1. Shared databases:
+// 	 If the network access type changes
+//   a. to PUBLIC:
+//     was RESTRICTED: re-enable IsMTLSConnectionRequired if it's not. Then set WhitelistedIps to an array with a single empty string entry.
+//     was PRIVATE: re-enable IsMTLSConnectionRequired if it's not. Then set PrivateEndpointLabel to an emtpy string.
+//   b. to RESTRICTED:
+//     was PUBLIC: set WhitelistedIps to desired IPs/CIDR blocks/VCN OCID. Configure the IsMTLSConnectionRequired settings if it is set to disabled.
+//     was PRIVATE: re-enable IsMTLSConnectionRequired if it's not. Set the type to PUBLIC first, and then configure the WhitelistedIps. Finally resume the IsMTLSConnectionRequired settings if it was, or is configured as disabled.
+//   c. to PRIVATE:
+//     was PUBLIC: set subnetOCID and nsgOCIDs. Configure the IsMTLSConnectionRequired settings if it is set.
+//     was RESTRICTED: set subnetOCID and nsgOCIDs. Configure the IsMTLSConnectionRequired settings if it is set.
+//
+// 	 Otherwise, if the network access type remains the same, apply the network configuration, and then set the IsMTLSConnectionRequired.
+//
+// 2. Dedicated databases:
+//   Apply the configs directly
+func UpdateNetworkAttributes(logger logr.Logger,
+	kubeClient client.Client,
+	dbClient database.DatabaseClient,
+	workClient workrequests.WorkRequestClient,
+	curADB *dbv1alpha1.AutonomousDatabase) error {
+
+	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
+	if err != nil {
+		return err
+	}
+
+	if !*curADB.Spec.Details.IsDedicated {
+		var lastAccessType = lastSucSpec.Details.NetworkAccess.AccessType
+		var curAccessType = curADB.Spec.Details.NetworkAccess.AccessType
+
+		if oci.IsAttrChanged(lastAccessType, curAccessType) {
+			switch curAccessType {
+			case dbv1alpha1.NetworkAccessTypePublic:
+				// OCI validation requires IsMTLSConnectionRequired to be enabled before changing the network access type to PUBLIC
+				if !*lastSucSpec.Details.NetworkAccess.IsMTLSConnectionRequired {
+					curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = common.Bool(true)
+					if err := updateMTLSAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+						return err
+					}
+				}
+
+				if err := setNetworkAccessPublicAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+					return err
+				}
+			case dbv1alpha1.NetworkAccessTypeRestricted:
+				// If the access type was PRIVATE, then OCI validation requires IsMTLSConnectionRequired
+				// to be enabled before setting ACL. Also we can only change the network access type from
+				// PRIVATE to PUBLIC.
+				if lastAccessType == dbv1alpha1.NetworkAccessTypePrivate {
+					if !*lastSucSpec.Details.NetworkAccess.IsMTLSConnectionRequired {
+						var oldMTLS bool = *curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired
+						curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = common.Bool(true)
+						if err := updateMTLSAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+							return err
+						}
+						// restore IsMTLSConnectionRequired
+						curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = &oldMTLS
+					}
+
+					if err := setNetworkAccessPublicAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+						return err
+					}
+				}
+
+				if err := updateNetworkAccessAttributesAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+					return err
+				}
+
+				if err := updateMTLSAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+					return err
+				}
+			case dbv1alpha1.NetworkAccessTypePrivate:
+				if err := updateNetworkAccessAttributesAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+					return err
+				}
+
+				if err := updateMTLSAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+					return err
+				}
+			}
+		} else {
+			// Access type doesn't change
+			if err := updateNetworkAccessAttributesAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+				return err
+			}
+
+			if err := updateMTLSAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+				return err
+			}
+		}
+	} else {
+		// Dedicated database
+		if err := updateNetworkAccessAttributesAndWait(logger, kubeClient, dbClient, workClient, curADB); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func updateMTLSAndWait(logger logr.Logger,
+	kubeClient client.Client,
+	dbClient database.DatabaseClient,
+	workClient workrequests.WorkRequestClient,
+	curADB *dbv1alpha1.AutonomousDatabase) error {
+
+	resp, err := oci.UpdateMTLSConnectionRequired(logger, dbClient, curADB)
+	if err != nil {
+		return err
+	}
+
+	if resp.OpcWorkRequestId != nil {
+		if err := UpdateStatusAndWait(logger, kubeClient, workClient, curADB, resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+		}
+	}
+
+	return nil
+}
+
+func setNetworkAccessPublicAndWait(logger logr.Logger,
+	kubeClient client.Client,
+	dbClient database.DatabaseClient,
+	workClient workrequests.WorkRequestClient,
+	curADB *dbv1alpha1.AutonomousDatabase) error {
+
+	resp, err := oci.SetNetworkAccessPublic(logger, dbClient, curADB)
+	if err != nil {
+		return err
+	}
+
+	if resp.OpcWorkRequestId != nil {
+		if err := UpdateStatusAndWait(logger, kubeClient, workClient, curADB, resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+		}
+	}
+
+	return nil
+}
+
+func updateNetworkAccessAttributesAndWait(logger logr.Logger,
+	kubeClient client.Client,
+	dbClient database.DatabaseClient,
+	workClient workrequests.WorkRequestClient,
+	curADB *dbv1alpha1.AutonomousDatabase) error {
+
+	resp, err := oci.UpdateNetworkAccessAttributes(logger, dbClient, curADB)
+	if err != nil {
+		return err
+	}
+
+	if resp.OpcWorkRequestId != nil {
+		if err := UpdateStatusAndWait(logger, kubeClient, workClient, curADB, resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+		}
+	}
+
+	return nil
+}
+
+func UpdateStatusAndWait(logger logr.Logger, kubeClient client.Client,
+	workClient workrequests.WorkRequestClient,
+	adb *dbv1alpha1.AutonomousDatabase,
+	desiredLifecycleState database.AutonomousDatabaseLifecycleStateEnum,
+	opcWorkRequestID *string) error {
+
+	// Update status.state
+	adb.Status.LifecycleState = desiredLifecycleState
+	if statusErr := SetStatus(kubeClient, adb); statusErr != nil {
+		return statusErr
+	}
+
+	if err := oci.WaitUntilWorkCompleted(logger, workClient, opcWorkRequestID); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // SetStatus sets the status subresource.
 func SetStatus(kubeClient client.Client, adb *dbv1alpha1.AutonomousDatabase) error {
