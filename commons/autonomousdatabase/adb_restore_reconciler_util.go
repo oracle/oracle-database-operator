@@ -36,62 +36,33 @@
 ** SOFTWARE.
  */
 
-package e2eutil
+package autonomousdatabase
 
 import (
 	"context"
 
-	"github.com/oracle/oci-go-sdk/v51/common"
-	"github.com/oracle/oci-go-sdk/v51/workrequests"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"time"
+	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 )
 
-func WaitUntilWorkCompleted(workClient workrequests.WorkRequestClient, opcWorkRequestID *string) error {
-	retryPolicy := getCompleteWorkRetryPolicy()
+// UpdateAutonomousDatabaseBackupStatus updates the status subresource of AutonomousDatabaseBackup
+func UpdateAutonomousDatabaseRestoreStatus(kubeClient client.Client, adbRestore *dbv1alpha1.AutonomousDatabaseRestore) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		curBackup := &dbv1alpha1.AutonomousDatabaseRestore{}
 
-	// Apply wait until work complete retryPolicy
-	workRequest := workrequests.GetWorkRequestRequest{
-		WorkRequestId: opcWorkRequestID,
-		RequestMetadata: common.RequestMetadata{
-			RetryPolicy: &retryPolicy,
-		},
-	}
-
-	// GetWorkRequest retries until the work status is SUCCEEDED
-	if _, err := workClient.GetWorkRequest(context.TODO(), workRequest); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func getCompleteWorkRetryPolicy() common.RetryPolicy {
-	// maximum times of retry
-	attempts := uint(30)
-
-	shouldRetry := func(r common.OCIOperationResponse) bool {
-		if _, isServiceError := common.IsServiceError(r.Error); isServiceError {
-			// Don't retry if it's service error. Sometimes it could be network error or other errors which prevents
-			// request send to server; we do the retry in these cases.
-			return false
+		namespacedName := types.NamespacedName{
+			Namespace: adbRestore.GetNamespace(),
+			Name:      adbRestore.GetName(),
 		}
 
-		if converted, ok := r.Response.(workrequests.GetWorkRequestResponse); ok {
-			// do the retry until WorkReqeut Status is Succeeded  - ignore case (BMI-2652)
-			return converted.Status != workrequests.WorkRequestStatusSucceeded
+		if err := kubeClient.Get(context.TODO(), namespacedName, curBackup); err != nil {
+			return err
 		}
 
-		return true
-	}
-
-	nextDuration := func(r common.OCIOperationResponse) time.Duration {
-		// // you might want wait longer for next retry when your previous one failed
-		// // this function will return the duration as:
-		// // 1s, 2s, 4s, 8s, 16s, 32s, 64s etc...
-		// return time.Duration(math.Pow(float64(2), float64(r.AttemptNumber-1))) * time.Second
-		return time.Second * 20
-	}
-
-	return common.NewRetryPolicy(attempts, shouldRetry, nextDuration)
+		curBackup.Status = adbRestore.Status
+		return kubeClient.Status().Update(context.TODO(), curBackup)
+	})
 }

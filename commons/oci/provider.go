@@ -42,8 +42,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/common/auth"
+	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v51/common/auth"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -77,8 +77,8 @@ func GetOCIProvider(kubeClient client.Client, authData APIKeyAuth) (common.Confi
 	} else if authData.ConfigMapName == nil && authData.SecretName == nil {
 		return auth.InstancePrincipalConfigurationProvider()
 	} else {
-		return nil, errors.New("You have to provide both the OCI ConfigMap and the privateKey to authorize with API signing key, " +
-			"or leave them both empty to authorize with Instance Principal. Check if the spec configuration is correct.")
+		return nil, errors.New("both the OCI ConfigMap and the privateKey are required to authorize with API signing key; " +
+			"leave them both empty to authorize with Instance Principal")
 	}
 }
 
