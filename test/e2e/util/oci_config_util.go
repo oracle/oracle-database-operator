@@ -48,7 +48,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/oracle/oci-go-sdk/v45/common"
+	"github.com/oracle/oci-go-sdk/v51/common"
 
 	corev1 "k8s.io/api/core/v1"
 )
@@ -62,8 +62,6 @@ type configUtil struct {
 
 	//ConfigFileInfo
 	FileInfo *configFileInfo
-
-	provider common.ConfigurationProvider
 }
 
 func (p configUtil) readAndParseConfigFile() (*configFileInfo, error) {
@@ -125,17 +123,7 @@ func (p configUtil) CreateOCISecret(secretNamespace string, secretName string) (
 }
 
 func (p configUtil) GetConfigProvider() (common.ConfigurationProvider, error) {
-	if p.provider != nil {
-		return p.provider, nil
-	}
-
-	newProvider, err := common.ConfigurationProviderFromFileWithProfile(p.OCIConfigPath, p.Profile, "")
-	if err != nil {
-		return nil, nil
-	}
-
-	p.provider = newProvider
-	return newProvider, nil
+	return common.ConfigurationProviderFromFileWithProfile(p.OCIConfigPath, p.Profile, "")
 }
 
 func openConfigFile(configFilePath string) (data []byte, err error) {
@@ -193,7 +181,7 @@ func parseConfigFile(data []byte, profile string) (info *configFileInfo, err err
 
 	//Look for profile
 	for i, line := range splitContent {
-		if match := profileRegex.FindStringSubmatch(line); match != nil && len(match) > 1 && match[1] == profile {
+		if match := profileRegex.FindStringSubmatch(line); len(match) > 1 && match[1] == profile {
 			start := i + 1
 			return parseConfigAtLine(start, splitContent)
 		}

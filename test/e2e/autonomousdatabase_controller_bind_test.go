@@ -42,11 +42,9 @@ import (
 	"context"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
-	"github.com/oracle/oci-go-sdk/v45/workrequests"
+	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -60,24 +58,18 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-//if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-//	ADBBindTests()
-//}
+var _ = Describe("test ADB binding with hardLink=true", func() {
+	var adbLookupKey types.NamespacedName
+	const downloadedWallet = "instance-wallet-secret-1"
+	var adbID *string
+	var terminatedAdbID string
 
-func ADBBindTests() {
-	var _ = Describe("test ADB binding with hardLink=true", func() {
-		const bindingHardLinkTestFileName = "bind_adb_hardLink.yaml"
-		var adbLookupKey types.NamespacedName
-		const downloadedWallet = "instance-wallet-secret-1"
-		var adbID *string
-		var terminatedAdbID string
-
-		AfterEach(func() {
-			// IMPORTANT: The operator might have to call reconcile multiple times to finish an operation.
-			// If we do the update immediately, the previous reconciliation will overwrite the changes.
-			By("Sleeping 20 seconds to wait for reconciliation to finish")
-			time.Sleep(time.Second * 20)
-		})
+	AfterEach(func() {
+		// IMPORTANT: The operator might have to call reconcile multiple times to finish an operation.
+		// If we do the update immediately, the previous reconciliation will overwrite the changes.
+		By("Sleeping 20 seconds to wait for reconciliation to finish")
+		time.Sleep(time.Second * 20)
+	})
 
 		It("should init the test", func() {
 			By("creating a temp ADB in OCI for binding test")
@@ -140,7 +132,11 @@ func ADBBindTests() {
 
 			It("Should download an instance wallet using the password from K8s Secret "+SharedWalletPassSecretName, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
 
+<<<<<<< HEAD
 			It("should update ADB", e2ebehavior.AssertUpdate(&k8sClient, &dbClient, &adbLookupKey))
+=======
+		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
+>>>>>>> feff58aab50838a39c03d8e22fdede11da02aa14
 
 			It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
 
@@ -187,7 +183,11 @@ func ADBBindTests() {
 
 			It("Should download an instance wallet using the password from OCI Secret OCID "+SharedInstanceWalletPasswordOCID, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
 
+<<<<<<< HEAD
 			It("should update ADB", e2ebehavior.AssertUpdate(&k8sClient, &dbClient, &adbLookupKey))
+=======
+		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
+>>>>>>> feff58aab50838a39c03d8e22fdede11da02aa14
 
 			It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
 
@@ -231,6 +231,7 @@ func ADBBindTests() {
 
 			It("Should check for TERMINATED state in local resource", e2ebehavior.AssertLocalState(&k8sClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateTerminated))
 
+<<<<<<< HEAD
 			It("Should delete local resource", e2ebehavior.AssertSoftLinkDelete(&k8sClient, &adbLookupKey))
 		})
 
@@ -302,3 +303,8 @@ func ADBBindTests() {
 		// })
 	})
 }
+=======
+		It("Should delete local resource", e2ebehavior.AssertSoftLinkDelete(&k8sClient, &adbLookupKey))
+	})
+})
+>>>>>>> feff58aab50838a39c03d8e22fdede11da02aa14
