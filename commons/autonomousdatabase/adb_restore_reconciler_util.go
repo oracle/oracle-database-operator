@@ -47,7 +47,7 @@ import (
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 )
- 
+
 // UpdateAutonomousDatabaseBackupStatus updates the status subresource of AutonomousDatabaseBackup
 func UpdateAutonomousDatabaseRestoreStatus(kubeClient client.Client, adbRestore *dbv1alpha1.AutonomousDatabaseRestore) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -66,4 +66,3 @@ func UpdateAutonomousDatabaseRestoreStatus(kubeClient client.Client, adbRestore 
 		return kubeClient.Status().Update(context.TODO(), curBackup)
 	})
 }
- 
