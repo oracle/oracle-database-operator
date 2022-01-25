@@ -134,6 +134,19 @@ type AutonomousDatabaseStatus struct {
 	DataStorageSizeInTBs int                                           `json:"dataStorageSizeInTBs,omitempty"`
 	DbWorkload           database.AutonomousDatabaseDbWorkloadEnum     `json:"dbWorkload,omitempty"`
 	TimeCreated          string                                        `json:"timeCreated,omitempty"`
+	AllConnectionStrings []ConnectionStringsSet                        `json:"allConnectionStrings,omitempty"`
+}
+
+type TLSAuthenticationEnum string
+
+const (
+	TLSAuthenticationTLS  TLSAuthenticationEnum = "TLS"
+	TLSAuthenticationmTLS TLSAuthenticationEnum = "Mutual TLS"
+)
+
+type ConnectionStringsSet struct {
+	TLSAuthentication TLSAuthenticationEnum `json:"tlsAuthentication,omitempty"`
+	ConnectionStrings map[string]string     `json:"connectionStrings"`
 }
 
 // AutonomousDatabase is the Schema for the autonomousdatabases API
@@ -193,6 +206,9 @@ func (adb *AutonomousDatabase) UpdateLastSuccessfulSpec(kubeClient client.Client
 
 // UpdateAttrFromOCIAutonomousDatabase updates the attributes from database.AutonomousDatabase object and returns the resource
 func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj database.AutonomousDatabase) *AutonomousDatabase {
+	/***********************************
+	* update the spec
+	***********************************/
 	adb.Spec.Details.AutonomousDatabaseOCID = ociObj.Id
 	adb.Spec.Details.CompartmentOCID = ociObj.CompartmentId
 	adb.Spec.Details.AutonomousContainerDatabaseOCID = ociObj.AutonomousContainerDatabaseId
@@ -226,7 +242,9 @@ func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj databa
 	adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = ociObj.NsgIds
 	adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = ociObj.PrivateEndpointLabel
 
-	// update the subresource as well
+	/***********************************
+	* update the status subresource
+	***********************************/
 	adb.Status.DisplayName = *ociObj.DisplayName
 	adb.Status.LifecycleState = ociObj.LifecycleState
 	adb.Status.IsDedicated = strconv.FormatBool(*ociObj.IsDedicated)
@@ -234,6 +252,43 @@ func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj databa
 	adb.Status.DataStorageSizeInTBs = *ociObj.DataStorageSizeInTBs
 	adb.Status.DbWorkload = ociObj.DbWorkload
 	adb.Status.TimeCreated = ociObj.TimeCreated.String()
+
+	var curAlllConns []ConnectionStringsSet
+	if *ociObj.IsDedicated {
+		connSet := ConnectionStringsSet{ConnectionStrings: ociObj.ConnectionStrings.AllConnectionStrings}
+		curAlllConns = append(curAlllConns, connSet)
+
+	} else {
+		mTLSStrings := make(map[string]string)
+		tlsStrings := make(map[string]string)
+
+		for _, profile := range ociObj.ConnectionStrings.Profiles {
+			if profile.TlsAuthentication == database.DatabaseConnectionStringProfileTlsAuthenticationMutual {
+				mTLSStrings[*profile.DisplayName] = *profile.Value
+			} else {
+				tlsStrings[*profile.DisplayName] = *profile.Value
+			}
+		}
+
+		if len(mTLSStrings) > 0 {
+			mTLSConnSet := ConnectionStringsSet{
+				TLSAuthentication: TLSAuthenticationmTLS,
+				ConnectionStrings: mTLSStrings,
+			}
+
+			curAlllConns = append(curAlllConns, mTLSConnSet)
+		}
+
+		if len(tlsStrings) > 0 {
+			tlsConnSet := ConnectionStringsSet{
+				TLSAuthentication: TLSAuthenticationTLS,
+				ConnectionStrings: tlsStrings,
+			}
+
+			curAlllConns = append(curAlllConns, tlsConnSet)
+		}
+	}
+	adb.Status.AllConnectionStrings = curAlllConns
 
 	return adb
 }

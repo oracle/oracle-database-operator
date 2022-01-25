@@ -169,6 +169,19 @@ spec:
           status:
             description: AutonomousDatabaseStatus defines the observed state of AutonomousDatabase
             properties:
+              allConnectionStrings:
+                items:
+                  properties:
+                    connectionStrings:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    tlsAuthentication:
+                      type: string
+                  required:
+                  - connectionStrings
+                  type: object
+                type: array
               cpuCoreCount:
                 type: integer
               dataStorageSizeInTBs:
