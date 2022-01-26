@@ -100,7 +100,7 @@ func (r *AutonomousDatabase) ValidateCreate() error {
 	autonomousdatabaselog.Info("validate create", "name", r.Name)
 
 	if r.Spec.Details.AutonomousDatabaseOCID == nil { // provisioning operation
-		validateNetworkAcces(r, allErrs)
+		allErrs = validateNetworkAcces(r, allErrs)
 	} else { // binding operation
 	}
 
@@ -127,7 +127,7 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 
 	autonomousdatabaselog.Info("validate update", "name", r.Name)
 
-	validateNetworkAcces(r, allErrs)
+	allErrs = validateNetworkAcces(r, allErrs)
 
 	if len(allErrs) == 0 {
 		return nil
@@ -137,7 +137,7 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 		r.Name, allErrs)
 }
 
-func validateNetworkAcces(adb *AutonomousDatabase, allErrs field.ErrorList) {
+func validateNetworkAcces(adb *AutonomousDatabase, allErrs field.ErrorList) field.ErrorList {
 	if !isDedicated(adb) {
 		// Shared database
 		if adb.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypePublic {
@@ -145,13 +145,13 @@ func validateNetworkAcces(adb *AutonomousDatabase, allErrs field.ErrorList) {
 				adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID != nil ||
 				adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs != nil {
 				allErrs = append(allErrs,
-					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("accessControlList"),
+					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess"),
 						fmt.Sprintf("accessControlList, subnetOCID, nsgOCIDs cannot be provided when the network access type is %s", NetworkAccessTypePublic)))
 			}
 
 			if adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired != nil && !*adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired {
 				allErrs = append(allErrs,
-					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("accessControlList"),
+					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("isMTLSConnectionRequired"),
 						fmt.Sprintf("isMTLSConnectionRequired cannot be false when the network access type is %s", NetworkAccessTypePublic)))
 			}
 		} else if adb.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypeRestricted {
@@ -189,6 +189,8 @@ func validateNetworkAcces(adb *AutonomousDatabase, allErrs field.ErrorList) {
 				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("isMTLSConnectionRequired"), "isMTLSConnectionRequired is not supported on a dedicated database"))
 		}
 	}
+
+	return allErrs
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
