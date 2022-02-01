@@ -561,18 +561,25 @@ func CreateAutonomousDatabaseBackup(logger logr.Logger, dbClient database.Databa
 
 	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
 		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
-			DisplayName:          common.String(adbBackup.GetName()),
 			AutonomousDatabaseId: &adbBackup.Spec.AutonomousDatabaseOCID,
 		},
+	}
+
+	// Use the spec.displayName as the displayName of the backup if is provided,
+	// otherwise use the resource name as the displayName.
+	if adbBackup.Spec.DisplayName != "" {
+		createBackupRequest.DisplayName = common.String(adbBackup.Spec.DisplayName)
+	} else {
+		createBackupRequest.DisplayName = common.String(adbBackup.GetName())
 	}
 
 	return dbClient.CreateAutonomousDatabaseBackup(context.TODO(), createBackupRequest)
 }
 
 // GetAutonomousDatabaseBackup returns the response of GetAutonomousDatabaseBackupRequest
-func GetAutonomousDatabaseBackup(dbClient database.DatabaseClient, backupOCID *string) (resp database.GetAutonomousDatabaseBackupResponse, err error) {
+func GetAutonomousDatabaseBackup(dbClient database.DatabaseClient, backupOCID string) (resp database.GetAutonomousDatabaseBackupResponse, err error) {
 	getBackupRequest := database.GetAutonomousDatabaseBackupRequest{
-		AutonomousDatabaseBackupId: backupOCID,
+		AutonomousDatabaseBackupId: common.String(backupOCID),
 	}
 
 	return dbClient.GetAutonomousDatabaseBackup(context.TODO(), getBackupRequest)
@@ -624,14 +631,18 @@ func getCompleteWorkRetryPolicy() common.RetryPolicy {
 }
 
 func getRetryPolicy(retryOperation func(common.OCIOperationResponse) bool) common.RetryPolicy {
-	// maximum times of retry
-	attempts := uint(10)
+	// maximum times of retry (~15mins)
+	attempts := uint(33)
 
 	nextDuration := func(r common.OCIOperationResponse) time.Duration {
-		// you might want wait longer for next retry when your previous one failed
+		// Wait longer for next retry when your previous one failed
 		// this function will return the duration as:
-		// 1s, 2s, 4s, 8s, 16s, 32s, 64s etc...
-		return time.Duration(math.Pow(float64(2), float64(r.AttemptNumber-1))) * time.Second
+		// 1s, 2s, 4s, 8s, 16s, 30s, 30s etc...
+		if r.AttemptNumber <= 5 {
+			return time.Duration(math.Pow(float64(2), float64(r.AttemptNumber-1))) * time.Second
+		} else {
+			return time.Duration(30) * time.Second
+		}
 	}
 
 	return common.NewRetryPolicy(attempts, retryOperation, nextDuration)
