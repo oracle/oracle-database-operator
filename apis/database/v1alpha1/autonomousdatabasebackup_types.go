@@ -53,6 +53,7 @@ type AutonomousDatabaseBackupSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	AutonomousDatabaseOCID       string `json:"autonomousDatabaseOCID"`
+	DisplayName                  string `json:"displayName,omitempty"`
 	AutonomousDatabaseBackupOCID string `json:"autonomousDatabaseBackupOCID,omitempty"`
 
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
@@ -65,6 +66,7 @@ type AutonomousDatabaseBackupStatus struct {
 	AutonomousDatabaseBackupOCID string                                              `json:"autonomousDatabaseBackupOCID"`
 	CompartmentOCID              string                                              `json:"compartmentOCID"`
 	AutonomousDatabaseOCID       string                                              `json:"autonomousDatabaseOCID"`
+	DisplayName                  string                                              `json:"displayName"`
 	Type                         database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
 	IsAutomatic                  bool                                                `json:"isAutomatic"`
 	LifecycleState               database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
@@ -89,19 +91,20 @@ type AutonomousDatabaseBackup struct {
 	Status AutonomousDatabaseBackupStatus `json:"status,omitempty"`
 }
 
-func (backup *AutonomousDatabaseBackup) UpdateStatusFromAutonomousDatabaseBackupResponse(resp database.GetAutonomousDatabaseBackupResponse) {
-	backup.Status.AutonomousDatabaseBackupOCID = *resp.Id
-	backup.Status.CompartmentOCID = *resp.CompartmentId
-	backup.Status.AutonomousDatabaseOCID = *resp.AutonomousDatabaseId
-	backup.Status.Type = resp.Type
-	backup.Status.IsAutomatic = *resp.IsAutomatic
-	backup.Status.LifecycleState = resp.LifecycleState
+func (backup *AutonomousDatabaseBackup) UpdateStatusFromAutonomousDatabaseBackupResponse(ociBackup database.AutonomousDatabaseBackup) {
+	backup.Status.AutonomousDatabaseBackupOCID = *ociBackup.Id
+	backup.Status.CompartmentOCID = *ociBackup.CompartmentId
+	backup.Status.AutonomousDatabaseOCID = *ociBackup.AutonomousDatabaseId
+	backup.Status.DisplayName = *ociBackup.DisplayName
+	backup.Status.Type = ociBackup.Type
+	backup.Status.IsAutomatic = *ociBackup.IsAutomatic
+	backup.Status.LifecycleState = ociBackup.LifecycleState
 
-	if resp.TimeStarted != nil {
-		backup.Status.TimeStarted = ociutil.FormatSDKTime(resp.TimeStarted.Time)
+	if ociBackup.TimeStarted != nil {
+		backup.Status.TimeStarted = ociutil.FormatSDKTime(ociBackup.TimeStarted.Time)
 	}
-	if resp.TimeEnded != nil {
-		backup.Status.TimeEnded = ociutil.FormatSDKTime(resp.TimeEnded.Time)
+	if ociBackup.TimeEnded != nil {
+		backup.Status.TimeEnded = ociutil.FormatSDKTime(ociBackup.TimeEnded.Time)
 	}
 }
 
