@@ -60,6 +60,8 @@ spec:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file'
                 type: string
+              displayName:
+                type: string
               ociConfig:
                 properties:
                   configMapName:
@@ -83,6 +85,8 @@ spec:
                 type: string
               compartmentOCID:
                 type: string
+              displayName:
+                type: string
               isAutomatic:
                 type: boolean
               lifecycleState:
@@ -101,6 +105,7 @@ spec:
             - autonomousDatabaseBackupOCID
             - autonomousDatabaseOCID
             - compartmentOCID
+            - displayName
             - isAutomatic
             - lifecycleState
             - type
