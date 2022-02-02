@@ -39,7 +39,6 @@
 package e2etest
 
 import (
-	"os"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -95,7 +94,25 @@ var (
 
 var cfg *rest.Config
 var k8sClient client.Client
+var configProvider common.ConfigurationProvider
+var dbClient database.DatabaseClient
 var testEnv *envtest.Environment
+
+const configFileName = "test_config.yaml"
+const ADBNamespace string = "default"
+
+var SharedOCIConfigMapName = "oci-cred"
+var SharedOCISecretName = "oci-privatekey"
+var SharedPlainTextAdminPassword = "Welcome_1234"
+var SharedPlainTextWalletPassword = "Welcome_1234"
+var SharedCompartmentOCID string
+
+var SharedKeyOCID string
+var SharedAdminPasswordOCID string
+var SharedInstanceWalletPasswordOCID string
+
+const SharedAdminPassSecretName string = "adb-admin-password"
+const SharedWalletPassSecretName = "adb-wallet-password"
 
 func TestAPIs(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
@@ -109,16 +126,8 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 	logf.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
-	t := true
-
-	if os.Getenv("TEST_USE_EXISTING_CLUSTER") == "true" {
-		testEnv = &envtest.Environment{
-			UseExistingCluster: &t,
-		}
-	} else {
-		testEnv = &envtest.Environment{
-			CRDDirectoryPaths: []string{filepath.Join("../..", "config", "crd", "bases")},
-		}
+	testEnv = &envtest.Environment{
+		CRDDirectoryPaths: []string{filepath.Join("../..", "config", "crd", "bases")},
 	}
 
 	var err error
@@ -150,17 +159,6 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
-	// CDB Reconciler
-	err = (&controllers.CDBReconciler{
-		Client:   k8sManager.GetClient(),
-		Scheme:   k8sManager.GetScheme(),
-		Config:   k8sManager.GetConfig(),
-		Log:      ctrl.Log.WithName("controllers").WithName("CDB_test"),
-		Interval: time.Duration(15),
-		Recorder: k8sManager.GetEventRecorderFor("CDB"),
-	}).SetupWithManager(k8sManager)
-	Expect(err).ToNot(HaveOccurred())
-
 	go func() {
 		defer ginkgo.GinkgoRecover()
 		err = k8sManager.Start(ctrl.SetupSignalHandler())
@@ -175,25 +173,77 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 	}()
 
 	/**************************************************
-	* Custom codes for autonomousdatabase controller
-	**************************************************/
-	//ADBSetup(k8sClient)
+	 * Custom codes for autonomousdatabase controller
+	 **************************************************/
+	By("init the test by creating utililty variables and objects")
+	testConfig, err := e2eutil.GetTestConfig(configFileName)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(testConfig).ToNot(BeNil())
+
+	SharedCompartmentOCID = testConfig.CompartmentOCID
+	SharedAdminPasswordOCID = testConfig.AdminPasswordOCID
+	SharedInstanceWalletPasswordOCID = testConfig.InstanceWalletPasswordOCID
+
+	By("checking if the required parameters exist")
+	Expect(testConfig.OCIConfigFile).ToNot(Equal(""))
+	Expect(testConfig.CompartmentOCID).ToNot(Equal(""))
+	Expect(testConfig.AdminPasswordOCID).ToNot(Equal(""))
+	Expect(testConfig.InstanceWalletPasswordOCID).ToNot(Equal(""))
+
+	By("getting OCI provider")
+	ociConfigUtil, err := e2eutil.GetOCIConfigUtil(testConfig.OCIConfigFile, testConfig.Profile)
+	Expect(err).ToNot(HaveOccurred())
+	configProvider, err = ociConfigUtil.GetConfigProvider()
+	Expect(err).ToNot(HaveOccurred())
+
+	By("creating a OCI DB client")
+	dbClient, err = database.NewDatabaseClientWithConfigurationProvider(configProvider)
+	Expect(err).ToNot(HaveOccurred())
+
+	By("creating a configMap for calling OCI")
+	ociConfigMap, err := ociConfigUtil.CreateOCIConfigMap(ADBNamespace, SharedOCIConfigMapName)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(k8sClient.Create(context.TODO(), ociConfigMap)).To(Succeed())
+
+	By("creating a secret for calling OCI")
+	ociSecret, err := ociConfigUtil.CreateOCISecret(ADBNamespace, SharedOCISecretName)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(k8sClient.Create(context.TODO(), ociSecret)).To(Succeed())
+
+	By("Creating a k8s secret to hold admin password", func() {
+		data := map[string]string{
+			SharedAdminPassSecretName: SharedPlainTextAdminPassword,
+		}
+		adminSecret, err := e2eutil.CreateKubeSecret(ADBNamespace, SharedAdminPassSecretName, data)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(k8sClient.Create(context.TODO(), adminSecret)).To(Succeed())
+	})
+
+	By("Creating a k8s secret to hold wallet password", func() {
+		data := map[string]string{
+			SharedWalletPassSecretName: SharedPlainTextWalletPassword,
+		}
+		walletSecret, err := e2eutil.CreateKubeSecret(ADBNamespace, SharedWalletPassSecretName, data)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(k8sClient.Create(context.TODO(), walletSecret)).To(Succeed())
+	})
+
 	close(done)
 }, 60)
 
 var _ = AfterSuite(func() {
 	/*
-			From Kubernetes 1.21+, when it tries to cleanup the test environment, there is
-			a clash if a custom controller is created during testing. It would seem that
-			the controller is still running and kube-apiserver will not respond to shutdown.
-			This is the reason why teardown happens in BeforeSuite() after controller has stopped.
-			The error shown is as documented in:
-			https://github.com/kubernetes-sigs/controller-runtime/issues/1571
-		/*
-		/*
-		By("tearing down the test environment")
-		err := testEnv.Stop()
-		Expect(err).ToNot(HaveOccurred())
+			 From Kubernetes 1.21+, when it tries to cleanup the test environment, there is
+			 a clash if a custom controller is created during testing. It would seem that
+			 the controller is still running and kube-apiserver will not respond to shutdown.
+			 This is the reason why teardown happens in BeforeSuite() after controller has stopped.
+			 The error shown is as documented in:
+			 https://github.com/kubernetes-sigs/controller-runtime/issues/1571
+		 /*
+		 /*
+		 By("tearing down the test environment")
+		 err := testEnv.Stop()
+		 Expect(err).ToNot(HaveOccurred())
 	*/
 
 	By("Delete the resources that are created during the tests")
