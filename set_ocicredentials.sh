@@ -53,7 +53,7 @@ EOF
       exit 0
       ;;
       *)    # unknown command
-      echo "Unknow command. Use [set_ocicredentials -h] for help."
+      echo "Unknown command. Use [set_ocicredentials -h] for help."
       exit 1
       shift # past argument
       ;;

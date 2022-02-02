@@ -162,8 +162,6 @@ rules:
   - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - database.oracle.com
@@ -182,8 +180,6 @@ rules:
   - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - database.oracle.com

@@ -49,13 +49,13 @@ import (
 type AutonomousDatabaseRestoreSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	AutonomousDatabaseOCID string                               `json:"autonomousDatabaseOCID"`
-	Destination            AutonomousDatabaseRestoreDestination `json:"destination"`
+	AutonomousDatabaseOCID string                          `json:"autonomousDatabaseOCID"`
+	Source                 AutonomousDatabaseRestoreSource `json:"source"`
 
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 
-type AutonomousDatabaseRestoreDestination struct {
+type AutonomousDatabaseRestoreSource struct {
 	BackupName string `json:"backupName,omitempty"`
 	TimeStamp  string `json:"timeStamp,omitempty"`
 }

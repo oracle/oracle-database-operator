@@ -5,7 +5,7 @@ metadata:
 spec:
   autonomousDatabaseOCID: ocid1.autonomousdatabase...
   # Restore the database either from a backup or using point-in-time restore
-  destination:
+  source:
     # The name of your AutonomousDatabaseBackup
     backupName: autonomousdatabasebackup-sample
     # The timestamp must follow this format: YYYY-MM-DD HH:MM:SS GMT
