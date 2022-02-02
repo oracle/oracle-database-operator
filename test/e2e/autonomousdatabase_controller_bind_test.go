@@ -71,240 +71,158 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 		time.Sleep(time.Second * 20)
 	})
 
-		It("should init the test", func() {
-			By("creating a temp ADB in OCI for binding test")
-			dbName := e2eutil.GenerateDBName()
-			createResp, err := e2eutil.CreateAutonomousDatabase(dbClient, &SharedCompartmentOCID, &dbName, &SharedPlainTextAdminPassword)
-			Expect(err).ShouldNot(HaveOccurred())
-			Expect(createResp.AutonomousDatabase.Id).ShouldNot(BeNil())
+	It("should init the test", func() {
+		By("creating a temp ADB in OCI for binding test")
+		dbName := e2eutil.GenerateDBName()
+		createResp, err := e2eutil.CreateAutonomousDatabase(dbClient, &SharedCompartmentOCID, &dbName, &SharedPlainTextAdminPassword)
+		Expect(err).ShouldNot(HaveOccurred())
+		Expect(createResp.AutonomousDatabase.Id).ShouldNot(BeNil())
 
-			By("Save the database ID for later use")
-			adbID = createResp.AutonomousDatabase.Id
-			terminatedAdbID = *adbID
+		By("Save the database ID for later use")
+		adbID = createResp.AutonomousDatabase.Id
+		terminatedAdbID = *adbID
 
-			By("Wait until the work request is in SUCCEEDED status")
-			workClient, err := workrequests.NewWorkRequestClientWithConfigurationProvider(configProvider)
-			Expect(err).ShouldNot(HaveOccurred())
+		By("Wait until the work request is in SUCCEEDED status")
+		workClient, err := workrequests.NewWorkRequestClientWithConfigurationProvider(configProvider)
+		Expect(err).ShouldNot(HaveOccurred())
 
-			err = e2eutil.WaitUntilWorkCompleted(workClient, createResp.OpcWorkRequestId)
-			Expect(err).ShouldNot(HaveOccurred())
+		err = e2eutil.WaitUntilWorkCompleted(workClient, createResp.OpcWorkRequestId)
+		Expect(err).ShouldNot(HaveOccurred())
 
-			// listResp, err := e2eutil.ListAutonomousDatabases(dbClient, &SharedCompartmentOCID, &dbName)
-			// Expect(err).ShouldNot(HaveOccurred())
-			// fmt.Printf("List request DB %s is in %s state \n", *listResp.Items[0].DisplayName, listResp.Items[0].LifecycleState)
-		})
-
-		Describe("ADB binding with HardLink = false using Wallet Password Secret", func() {
-			It("Should create a AutonomousDatabase resource with HardLink = false", func() {
-				adb := &dbv1alpha1.AutonomousDatabase{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "database.oracle.com/v1alpha1",
-						Kind:       "AutonomousDatabase",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "bindadb",
-						Namespace: ADBNamespace,
-					},
-					Spec: dbv1alpha1.AutonomousDatabaseSpec{
-						Details: dbv1alpha1.AutonomousDatabaseDetails{
-							AutonomousDatabaseOCID: adbID,
-							Wallet: dbv1alpha1.WalletSpec{
-								Name: common.String(downloadedWallet),
-								Password: dbv1alpha1.PasswordSpec{
-									K8sSecretName: common.String(SharedWalletPassSecretName),
-								},
-							},
-						},
-						HardLink: common.Bool(false),
-						OCIConfig: dbv1alpha1.OCIConfigSpec{
-							ConfigMapName: common.String(SharedOCIConfigMapName),
-							SecretName:    common.String(SharedOCISecretName),
-						},
-					},
-				}
-
-				adbLookupKey = types.NamespacedName{Name: adb.Name, Namespace: adb.Namespace}
-
-				Expect(k8sClient.Create(context.TODO(), adb)).Should(Succeed())
-			})
-
-			It("should bind to an ADB", e2ebehavior.AssertBind(&k8sClient, &adbLookupKey))
-
-			It("Should download an instance wallet using the password from K8s Secret "+SharedWalletPassSecretName, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
-
-<<<<<<< HEAD
-			It("should update ADB", e2ebehavior.AssertUpdate(&k8sClient, &dbClient, &adbLookupKey))
-=======
-		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
->>>>>>> feff58aab50838a39c03d8e22fdede11da02aa14
-
-			It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
-
-			It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
-
-			It("Should delete the resource in cluster but not terminate the database in OCI", e2ebehavior.AssertSoftLinkDelete(&k8sClient, &adbLookupKey))
-		})
-
-		Describe("ADB binding with HardLink = true using Wallet Password OCID", func() {
-			It("Should create a AutonomousDatabase resource with HardLink = true", func() {
-				adb := &dbv1alpha1.AutonomousDatabase{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "database.oracle.com/v1alpha1",
-						Kind:       "AutonomousDatabase",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "bindadb",
-						Namespace: ADBNamespace,
-					},
-					Spec: dbv1alpha1.AutonomousDatabaseSpec{
-						Details: dbv1alpha1.AutonomousDatabaseDetails{
-							AutonomousDatabaseOCID: adbID,
-							Wallet: dbv1alpha1.WalletSpec{
-								Name: common.String(downloadedWallet),
-								Password: dbv1alpha1.PasswordSpec{
-									OCISecretOCID: common.String(SharedInstanceWalletPasswordOCID),
-								},
-							},
-						},
-						HardLink: common.Bool(true),
-						OCIConfig: dbv1alpha1.OCIConfigSpec{
-							ConfigMapName: common.String(SharedOCIConfigMapName),
-							SecretName:    common.String(SharedOCISecretName),
-						},
-					},
-				}
-
-				adbLookupKey = types.NamespacedName{Name: adb.Name, Namespace: adb.Namespace}
-
-				Expect(k8sClient.Create(context.TODO(), adb)).Should(Succeed())
-			})
-
-			It("should bind to an ADB", e2ebehavior.AssertBind(&k8sClient, &adbLookupKey))
-
-			It("Should download an instance wallet using the password from OCI Secret OCID "+SharedInstanceWalletPasswordOCID, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
-
-<<<<<<< HEAD
-			It("should update ADB", e2ebehavior.AssertUpdate(&k8sClient, &dbClient, &adbLookupKey))
-=======
-		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
->>>>>>> feff58aab50838a39c03d8e22fdede11da02aa14
-
-			It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
-
-			It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
-
-			It("Should delete the resource in cluster and terminate the database in OCI", e2ebehavior.AssertHardLinkDelete(&k8sClient, &dbClient, &adbLookupKey))
-		})
-
-		//Bind to terminated adb from previous test
-		Describe("bind to a terminated adb", func() {
-
-			//Wait until remote state is terminated
-			It("Should check that OCI adb state is terminated", e2ebehavior.AssertRemoteStateOCID(&k8sClient, &dbClient, &terminatedAdbID, database.AutonomousDatabaseLifecycleStateTerminated))
-
-			It("Should create a AutonomousDatabase resource", func() {
-				adb := &dbv1alpha1.AutonomousDatabase{
-					TypeMeta: metav1.TypeMeta{
-						APIVersion: "database.oracle.com/v1alpha1",
-						Kind:       "AutonomousDatabase",
-					},
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "bindadb",
-						Namespace: ADBNamespace,
-					},
-					Spec: dbv1alpha1.AutonomousDatabaseSpec{
-						Details: dbv1alpha1.AutonomousDatabaseDetails{
-							AutonomousDatabaseOCID: &terminatedAdbID,
-						},
-						HardLink: common.Bool(true),
-						OCIConfig: dbv1alpha1.OCIConfigSpec{
-							ConfigMapName: common.String(SharedOCIConfigMapName),
-							SecretName:    common.String(SharedOCISecretName),
-						},
-					},
-				}
-
-				adbLookupKey = types.NamespacedName{Name: adb.Name, Namespace: adb.Namespace}
-
-				Expect(k8sClient.Create(context.TODO(), adb)).Should(Succeed())
-			})
-
-			It("Should check for TERMINATED state in local resource", e2ebehavior.AssertLocalState(&k8sClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateTerminated))
-
-<<<<<<< HEAD
-			It("Should delete local resource", e2ebehavior.AssertSoftLinkDelete(&k8sClient, &adbLookupKey))
-		})
-
-		// Describe("Test ADB status", func() {
-		// 	var dbName string
-		// 	var backupID string
-
-		// 	It("Should init the test", func() {
-		// 		By("creating a temp ADB in OCI for binding test")
-		// 		dbName = e2eutil.GenerateDBName()
-		// 		createResp, err := e2eutil.CreateAutonomousDatabase(dbClient, &SharedCompartmentOCID, &dbName, &SharedPlainTextAdminPassword)
-		// 		Expect(err).ShouldNot(HaveOccurred())
-		// 		Expect(createResp.AutonomousDatabase.Id).ShouldNot(BeNil())
-
-		// 		By("Save the database ID for later use")
-		// 		adbID = createResp.AutonomousDatabase.Id
-		// 		backupID = *adbID
-
-		// 		By("Wait until the work request is in SUCCEEDED status")
-		// 		workClient, err := workrequests.NewWorkRequestClientWithConfigurationProvider(configProvider)
-		// 		Expect(err).ShouldNot(HaveOccurred())
-
-		// 		err = e2eutil.WaitUntilWorkCompleted(workClient, createResp.OpcWorkRequestId)
-		// 		Expect(err).ShouldNot(HaveOccurred())
-		// 	})
-
-		// 	It("Should create a AutonomousDatabase resource", func() {
-		// 		adb := &dbv1alpha1.AutonomousDatabase{
-		// 			TypeMeta: metav1.TypeMeta{
-		// 				APIVersion: "database.oracle.com/v1alpha1",
-		// 				Kind:       "AutonomousDatabase",
-		// 			},
-		// 			ObjectMeta: metav1.ObjectMeta{
-		// 				Name:      "bindadb",
-		// 				Namespace: ADBNamespace,
-		// 			},
-		// 			Spec: dbv1alpha1.AutonomousDatabaseSpec{
-		// 				Details: dbv1alpha1.AutonomousDatabaseDetails{
-		// 					AutonomousDatabaseOCID: adbID,
-		// 				},
-		// 				HardLink: common.Bool(true),
-		// 				OCIConfig: dbv1alpha1.OCIConfigSpec{
-		// 					ConfigMapName: common.String(SharedOCIConfigMapName),
-		// 					SecretName:    common.String(SharedOCISecretName),
-		// 				},
-		// 			},
-		// 		}
-
-		// 		adbLookupKey = types.NamespacedName{Name: adb.Name, Namespace: adb.Namespace}
-
-		// 		Expect(k8sClient.Create(context.TODO(), adb)).Should(Succeed())
-		// 	})
-
-		// 	It("should bind to an ADB", e2ebehavior.AssertBind(&k8sClient, &adbLookupKey))
-
-		// 	It("should terminate ADB in a different routine", func() {
-		// 		err := e2eutil.DeleteAutonomousDatabase(dbClient, adbID)
-		// 		Expect(err).ToNot(HaveOccurred())
-		// 		// By("Wait until the work request is in SUCCEEDED status")
-		// 		// workClient, err := workrequests.NewWorkRequestClientWithConfigurationProvider(configProvider)
-		// 		// Expect(err).ShouldNot(HaveOccurred())
-		// 		// err = e2eutil.WaitUntilWorkCompleted(workClient, createResp.OpcWorkRequestId)
-		// 		// Expect(err).ShouldNot(HaveOccurred())
-		// 	})
-
-		// 	It("should check for terminated state in OCI", e2ebehavior.AssertRemoteStateOCID(&k8sClient, &dbClient, &backupID, database.AutonomousDatabaseLifecycleStateTerminated))
-
-		// 	It("should check for terminated state in local resource", e2ebehavior.AssertLocalState(&k8sClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateTerminated))
-		// })
+		// listResp, err := e2eutil.ListAutonomousDatabases(dbClient, &SharedCompartmentOCID, &dbName)
+		// Expect(err).ShouldNot(HaveOccurred())
+		// fmt.Printf("List request DB %s is in %s state \n", *listResp.Items[0].DisplayName, listResp.Items[0].LifecycleState)
 	})
-}
-=======
+
+	Describe("ADB binding with HardLink = false using Wallet Password Secret", func() {
+		It("Should create a AutonomousDatabase resource with HardLink = false", func() {
+			adb := &dbv1alpha1.AutonomousDatabase{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "database.oracle.com/v1alpha1",
+					Kind:       "AutonomousDatabase",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bindadb",
+					Namespace: ADBNamespace,
+				},
+				Spec: dbv1alpha1.AutonomousDatabaseSpec{
+					Details: dbv1alpha1.AutonomousDatabaseDetails{
+						AutonomousDatabaseOCID: adbID,
+						Wallet: dbv1alpha1.WalletSpec{
+							Name: common.String(downloadedWallet),
+							Password: dbv1alpha1.PasswordSpec{
+								K8sSecretName: common.String(SharedWalletPassSecretName),
+							},
+						},
+					},
+					HardLink: common.Bool(false),
+					OCIConfig: dbv1alpha1.OCIConfigSpec{
+						ConfigMapName: common.String(SharedOCIConfigMapName),
+						SecretName:    common.String(SharedOCISecretName),
+					},
+				},
+			}
+
+			adbLookupKey = types.NamespacedName{Name: adb.Name, Namespace: adb.Namespace}
+
+			Expect(k8sClient.Create(context.TODO(), adb)).Should(Succeed())
+		})
+
+		It("should bind to an ADB", e2ebehavior.AssertBind(&k8sClient, &adbLookupKey))
+
+		It("Should download an instance wallet using the password from K8s Secret "+SharedWalletPassSecretName, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
+
+		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
+
+		It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
+
+		It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
+
+		It("Should delete the resource in cluster but not terminate the database in OCI", e2ebehavior.AssertSoftLinkDelete(&k8sClient, &adbLookupKey))
+	})
+
+	Describe("ADB binding with HardLink = true using Wallet Password OCID", func() {
+		It("Should create a AutonomousDatabase resource with HardLink = true", func() {
+			adb := &dbv1alpha1.AutonomousDatabase{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "database.oracle.com/v1alpha1",
+					Kind:       "AutonomousDatabase",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bindadb",
+					Namespace: ADBNamespace,
+				},
+				Spec: dbv1alpha1.AutonomousDatabaseSpec{
+					Details: dbv1alpha1.AutonomousDatabaseDetails{
+						AutonomousDatabaseOCID: adbID,
+						Wallet: dbv1alpha1.WalletSpec{
+							Name: common.String(downloadedWallet),
+							Password: dbv1alpha1.PasswordSpec{
+								OCISecretOCID: common.String(SharedInstanceWalletPasswordOCID),
+							},
+						},
+					},
+					HardLink: common.Bool(true),
+					OCIConfig: dbv1alpha1.OCIConfigSpec{
+						ConfigMapName: common.String(SharedOCIConfigMapName),
+						SecretName:    common.String(SharedOCISecretName),
+					},
+				},
+			}
+
+			adbLookupKey = types.NamespacedName{Name: adb.Name, Namespace: adb.Namespace}
+
+			Expect(k8sClient.Create(context.TODO(), adb)).Should(Succeed())
+		})
+
+		It("should bind to an ADB", e2ebehavior.AssertBind(&k8sClient, &adbLookupKey))
+
+		It("Should download an instance wallet using the password from OCI Secret OCID "+SharedInstanceWalletPasswordOCID, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
+
+		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
+
+		It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
+
+		It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
+
+		It("Should delete the resource in cluster and terminate the database in OCI", e2ebehavior.AssertHardLinkDelete(&k8sClient, &dbClient, &adbLookupKey))
+	})
+
+	//Bind to terminated adb from previous test
+	Describe("bind to a terminated adb", func() {
+
+		//Wait until remote state is terminated
+		It("Should check that OCI adb state is terminated", e2ebehavior.AssertRemoteStateOCID(&k8sClient, &dbClient, &terminatedAdbID, database.AutonomousDatabaseLifecycleStateTerminated))
+
+		It("Should create a AutonomousDatabase resource", func() {
+			adb := &dbv1alpha1.AutonomousDatabase{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "database.oracle.com/v1alpha1",
+					Kind:       "AutonomousDatabase",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "bindadb",
+					Namespace: ADBNamespace,
+				},
+				Spec: dbv1alpha1.AutonomousDatabaseSpec{
+					Details: dbv1alpha1.AutonomousDatabaseDetails{
+						AutonomousDatabaseOCID: &terminatedAdbID,
+					},
+					HardLink: common.Bool(true),
+					OCIConfig: dbv1alpha1.OCIConfigSpec{
+						ConfigMapName: common.String(SharedOCIConfigMapName),
+						SecretName:    common.String(SharedOCISecretName),
+					},
+				},
+			}
+
+			adbLookupKey = types.NamespacedName{Name: adb.Name, Namespace: adb.Namespace}
+
+			Expect(k8sClient.Create(context.TODO(), adb)).Should(Succeed())
+		})
+
+		It("Should check for TERMINATED state in local resource", e2ebehavior.AssertLocalState(&k8sClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateTerminated))
+
 		It("Should delete local resource", e2ebehavior.AssertSoftLinkDelete(&k8sClient, &adbLookupKey))
 	})
 })
->>>>>>> feff58aab50838a39c03d8e22fdede11da02aa14

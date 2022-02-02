@@ -104,6 +104,18 @@ func (r *CDB) ValidateCreate() error {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify DB Server Port"))
 	}
+	if r.Spec.DBPort < 0 {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify a valid DB Server Port"))
+	}
+	if r.Spec.ORDSPort < 0 {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify a valid ORDS Port"))
+	}
+	if r.Spec.Replicas < 0 {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify a valid value for Replicas"))
+	}
 	if r.Spec.ORDSImage == "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("ordsImage"), "Please specify name of ORDS Image to be used"))
@@ -132,7 +144,7 @@ func (r *CDB) ValidateCreate() error {
 		return nil
 	}
 	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "database.oracle.com", Kind: "PDB"},
+		schema.GroupKind{Group: "database.oracle.com", Kind: "CDB"},
 		r.Name, allErrs)
 }
 
