@@ -42,8 +42,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/oracle/oci-go-sdk/v51/common"
-	"github.com/oracle/oci-go-sdk/v51/common/auth"
+	"github.com/oracle/oci-go-sdk/v54/common"
+	"github.com/oracle/oci-go-sdk/v54/common/auth"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
