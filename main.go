@@ -153,6 +153,14 @@ func main() {
 		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
 		os.Exit(1)
 	}
+	if err = (&databasev1alpha1.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
+		os.Exit(1)
+	}
+	if err = (&databasev1alpha1.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")

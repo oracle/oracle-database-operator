@@ -100,7 +100,7 @@ func (r *AutonomousDatabase) ValidateCreate() error {
 	autonomousdatabaselog.Info("validate create", "name", r.Name)
 
 	if r.Spec.Details.AutonomousDatabaseOCID == nil { // provisioning operation
-		allErrs = validateNetworkAcces(r, allErrs)
+		allErrs = validateNetworkAccess(r, allErrs)
 	} else { // binding operation
 	}
 
@@ -124,10 +124,17 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 	}
 
 	var allErrs field.ErrorList
-
 	autonomousdatabaselog.Info("validate update", "name", r.Name)
 
-	allErrs = validateNetworkAcces(r, allErrs)
+	allErrs = validateNetworkAccess(r, allErrs)
+
+	if r.Spec.Details.AutonomousDatabaseOCID != nil &&
+		old.(*AutonomousDatabase).Spec.Details.AutonomousDatabaseOCID != nil &&
+		*r.Spec.Details.AutonomousDatabaseOCID != *old.(*AutonomousDatabase).Spec.Details.AutonomousDatabaseOCID {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("details").Child("autonomousDatabaseOCID"),
+				"autonomousDatabaseOCID cannot be modified"))
+	}
 
 	if len(allErrs) == 0 {
 		return nil
@@ -137,7 +144,7 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 		r.Name, allErrs)
 }
 
-func validateNetworkAcces(adb *AutonomousDatabase, allErrs field.ErrorList) field.ErrorList {
+func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) field.ErrorList {
 	if !isDedicated(adb) {
 		// Shared database
 		if adb.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypePublic {

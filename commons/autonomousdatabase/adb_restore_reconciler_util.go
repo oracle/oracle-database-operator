@@ -40,13 +40,86 @@ package autonomousdatabase
 
 import (
 	"context"
+	"errors"
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/go-logr/logr"
+	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	"github.com/oracle/oracle-database-operator/commons/oci"
+	"github.com/oracle/oracle-database-operator/commons/oci/ociutil"
 )
+
+func RestoreAutonomousDatabaseAndWait(logger logr.Logger,
+	kubeClient client.Client,
+	dbClient database.DatabaseClient,
+	workClient workrequests.WorkRequestClient,
+	restore *dbv1alpha1.AutonomousDatabaseRestore) (lifecycleState workrequests.WorkRequestStatusEnum, err error) {
+
+	var restoreTime *common.SDKTime
+	var adbOCID string
+
+	if restore.Spec.BackupName != "" {
+		backup := &dbv1alpha1.AutonomousDatabaseBackup{}
+		namespacedName := types.NamespacedName{Namespace: restore.Namespace, Name: restore.Spec.BackupName}
+		if err := kubeClient.Get(context.TODO(), namespacedName, backup); err != nil {
+			return "", err
+		}
+
+		if backup.Status.TimeEnded == "" {
+			return "", errors.New("broken backup: ended time is missing in the AutonomousDatabaseBackup " + backup.GetName())
+		}
+		restoreTime, err = ociutil.ParseDisplayTime(backup.Status.TimeEnded)
+		if err != nil {
+			return "", err
+		}
+
+		adbOCID = backup.Status.AutonomousDatabaseOCID
+
+	} else if restore.Spec.PointInTime.TimeStamp != "" {
+		// The validation of the pitr.timestamp has been handled by the webhook, so the error return is ignored
+		restoreTime, _ = ociutil.ParseDisplayTime(restore.Spec.PointInTime.TimeStamp)
+		adbOCID = restore.Spec.PointInTime.AutonomousDatabaseOCID
+	}
+
+	resp, err := oci.RestoreAutonomousDatabase(dbClient, adbOCID, restoreTime)
+	if err != nil {
+		logger.Error(err, "Fail to restore Autonomous Database")
+		return "", nil
+	}
+
+	// Update status and wait for the work finish if a request is sent. Note that some of the requests (e.g. update displayName) won't return a work request ID.
+	// It's important to update the status by reference otherwise Reconcile() won't be able to get the latest values
+	status := &restore.Status
+	status.DisplayName = *resp.AutonomousDatabase.DisplayName
+	status.DbName = *resp.AutonomousDatabase.DbName
+	status.AutonomousDatabaseOCID = *resp.AutonomousDatabase.Id
+	
+	workResp, err := oci.GetWorkRequest(workClient, resp.OpcWorkRequestId, nil)
+	if err != nil {
+		logger.Error(err, "Fail to get the work status. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+		return workResp.Status, nil
+	}
+	status.LifecycleState = workResp.Status
+	
+	UpdateAutonomousDatabaseRestoreStatus(kubeClient, restore)
+
+	// Wait until the work is done
+	lifecycleState, err = oci.GetWorkStatusAndWait(logger, workClient, resp.OpcWorkRequestId)
+	if err != nil {
+		logger.Error(err, "Fail to restore Autonomous Database. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+		return lifecycleState, nil
+	}
+
+	logger.Info("Restoration of Autonomous Database" + *resp.DisplayName + " finished")
+
+	return lifecycleState, nil
+}
 
 // UpdateAutonomousDatabaseBackupStatus updates the status subresource of AutonomousDatabaseBackup
 func UpdateAutonomousDatabaseRestoreStatus(kubeClient client.Client, adbRestore *dbv1alpha1.AutonomousDatabaseRestore) error {
