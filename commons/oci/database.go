@@ -640,7 +640,7 @@ func GetWorkRequest(workClient workrequests.WorkRequestClient,
 		WorkRequestId: opcWorkRequestID,
 	}
 
-	if (retryPolicy != nil) {
+	if retryPolicy != nil {
 		workRequest.RequestMetadata = common.RequestMetadata{
 			RetryPolicy: retryPolicy,
 		}

@@ -47,9 +47,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v51/common"
-	"github.com/oracle/oci-go-sdk/v51/database"
-	"github.com/oracle/oci-go-sdk/v51/workrequests"
+	"github.com/oracle/oci-go-sdk/v54/common"
+	"github.com/oracle/oci-go-sdk/v54/database"
+	"github.com/oracle/oci-go-sdk/v54/workrequests"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 	"github.com/oracle/oracle-database-operator/commons/oci/ociutil"
@@ -99,14 +99,14 @@ func RestoreAutonomousDatabaseAndWait(logger logr.Logger,
 	status.DisplayName = *resp.AutonomousDatabase.DisplayName
 	status.DbName = *resp.AutonomousDatabase.DbName
 	status.AutonomousDatabaseOCID = *resp.AutonomousDatabase.Id
-	
+
 	workResp, err := oci.GetWorkRequest(workClient, resp.OpcWorkRequestId, nil)
 	if err != nil {
 		logger.Error(err, "Fail to get the work status. opcWorkRequestID = "+*resp.OpcWorkRequestId)
 		return workResp.Status, nil
 	}
 	status.LifecycleState = workResp.Status
-	
+
 	UpdateAutonomousDatabaseRestoreStatus(kubeClient, restore)
 
 	// Wait until the work is done

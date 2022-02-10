@@ -2,12 +2,15 @@
 # Copyright (c) 2021, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
+
+# The path of your OCI configuration file, which usually is ~/.oci/config
 ociConfigFile: ~/.oci/config
+# The profile you want to use in the test (Optional)
 profile: DEFAULT
 
-plainTextAdminPassword: Welcome_1234
-plainTextWalletPassword: Welcome_1234
-
-compartmentOCID: ocid1.compartment.oc1..aaaaaaaa4rwyyueehc64fgs5q5tliyi44xjo3tm7zsuezvhyanuboztlce7q
-adminPasswordOCID: ocid1.vaultsecret.oc1.phx.amaaaaaadxiv6saan2rk3uhki5zq5byxkmz7ac3jale2mr5fmcuyjatg34ya
-instanceWalletPasswordOCID: ocid1.vaultsecret.oc1.phx.amaaaaaadxiv6saan2rk3uhki5zq5byxkmz7ac3jale2mr5fmcuyjatg34ya
+# Compartment OCID where the database creates
+compartmentOCID: ocid1.compartment..
+# The OCID of the OCI Vault Secret that holds the password of the ADMIN account (should start with ocid1.vaultsecret...)
+adminPasswordOCID: ocid1.vaultsecret...
+# The OCID of the OCI Vault Secret that holds the password of the wallet (should start with ocid1.vaultsecret...)
+instanceWalletPasswordOCID: ocid1.vaultsecret...

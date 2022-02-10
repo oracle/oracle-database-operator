@@ -39,7 +39,7 @@
 package v1alpha1
 
 import (
-	"github.com/oracle/oci-go-sdk/v51/workrequests"
+	"github.com/oracle/oci-go-sdk/v54/workrequests"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -64,9 +64,9 @@ type PITSource struct {
 type AutonomousDatabaseRestoreStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	DisplayName            string                    `json:"displayName"`
-	DbName                 string                    `json:"dbName"`
-	AutonomousDatabaseOCID string                    `json:"autonomousDatabaseOCID"`
+	DisplayName            string                             `json:"displayName"`
+	DbName                 string                             `json:"dbName"`
+	AutonomousDatabaseOCID string                             `json:"autonomousDatabaseOCID"`
 	LifecycleState         workrequests.WorkRequestStatusEnum `json:"lifecycleState"`
 }
 
