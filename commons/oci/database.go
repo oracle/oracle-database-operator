@@ -146,11 +146,7 @@ func getValueFromKubeSecret(kubeClient client.Client, namespacedName types.Names
 // GetAutonomousDatabaseResource gets Autonomous Database information from a remote instance
 // and return an AutonomousDatabase object
 func GetAutonomousDatabaseResource(logger logr.Logger, dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) (*dbv1alpha1.AutonomousDatabase, error) {
-	getAutonomousDatabaseRequest := database.GetAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
-	}
-
-	response, err := dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
+	response, err := GetAutonomousDatabase(dbClient, adb.Spec.Details.AutonomousDatabaseOCID)
 	if err != nil {
 		return nil, err
 	}
@@ -159,6 +155,14 @@ func GetAutonomousDatabaseResource(logger logr.Logger, dbClient database.Databas
 
 	logger.Info("Get information from remote AutonomousDatabase successfully")
 	return returnedADB, nil
+}
+
+func GetAutonomousDatabase(dbClient database.DatabaseClient, adbOCID *string) (database.GetAutonomousDatabaseResponse, error) {
+	getAutonomousDatabaseRequest := database.GetAutonomousDatabaseRequest{
+		AutonomousDatabaseId: adbOCID,
+	}
+
+	return dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
 }
 
 // IsAttrChanged checks if the values of last successful object and current object are different.
@@ -614,24 +618,35 @@ func GetAutonomousDatabaseBackup(dbClient database.DatabaseClient, backupOCID st
 	return dbClient.GetAutonomousDatabaseBackup(context.TODO(), getBackupRequest)
 }
 
-func WaitUntilWorkCompleted(logger logr.Logger, workClient workrequests.WorkRequestClient, opcWorkRequestID *string) error {
+func GetWorkStatusAndWait(logger logr.Logger, workClient workrequests.WorkRequestClient, opcWorkRequestID *string) (workrequests.WorkRequestStatusEnum, error) {
 	logger.Info("Waiting for the work request to finish. opcWorkRequestID = " + *opcWorkRequestID)
 
+	// retries until the work status is SUCCEEDED, FAILED or CANCELED
 	retryPolicy := getCompleteWorkRetryPolicy()
-	// Apply wait until work complete retryPolicy
+
+	resp, err := GetWorkRequest(workClient, opcWorkRequestID, &retryPolicy)
+	if err != nil {
+		return resp.Status, err
+	}
+
+	return resp.Status, nil
+}
+
+func GetWorkRequest(workClient workrequests.WorkRequestClient,
+	opcWorkRequestID *string,
+	retryPolicy *common.RetryPolicy) (response workrequests.GetWorkRequestResponse, err error) {
+
 	workRequest := workrequests.GetWorkRequestRequest{
 		WorkRequestId: opcWorkRequestID,
-		RequestMetadata: common.RequestMetadata{
-			RetryPolicy: &retryPolicy,
-		},
 	}
 
-	// GetWorkRequest retries until the work status is SUCCEEDED
-	if _, err := workClient.GetWorkRequest(context.TODO(), workRequest); err != nil {
-		return err
+	if (retryPolicy != nil) {
+		workRequest.RequestMetadata = common.RequestMetadata{
+			RetryPolicy: retryPolicy,
+		}
 	}
 
-	return nil
+	return workClient.GetWorkRequest(context.TODO(), workRequest)
 }
 
 func getCompleteWorkRetryPolicy() common.RetryPolicy {
@@ -656,8 +671,8 @@ func getCompleteWorkRetryPolicy() common.RetryPolicy {
 }
 
 func getRetryPolicy(retryOperation func(common.OCIOperationResponse) bool) common.RetryPolicy {
-	// maximum times of retry (~15mins)
-	attempts := uint(33)
+	// maximum times of retry (~30mins)
+	attempts := uint(63)
 
 	nextDuration := func(r common.OCIOperationResponse) time.Duration {
 		// Wait longer for next retry when your previous one failed
@@ -665,9 +680,8 @@ func getRetryPolicy(retryOperation func(common.OCIOperationResponse) bool) commo
 		// 1s, 2s, 4s, 8s, 16s, 30s, 30s etc...
 		if r.AttemptNumber <= 5 {
 			return time.Duration(math.Pow(float64(2), float64(r.AttemptNumber-1))) * time.Second
-		} else {
-			return time.Duration(30) * time.Second
 		}
+		return time.Duration(30) * time.Second
 	}
 
 	return common.NewRetryPolicy(attempts, retryOperation, nextDuration)

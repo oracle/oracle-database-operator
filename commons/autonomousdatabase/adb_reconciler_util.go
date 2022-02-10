@@ -87,7 +87,8 @@ func UpdateAutonomousDatabaseDetails(logger logr.Logger, kubeClient client.Clien
 	return nil
 }
 
-func UpdateGeneralAndPasswordAttributesAndWait(logger logr.Logger, kubeClient client.Client,
+func UpdateGeneralAndPasswordAttributesAndWait(logger logr.Logger,
+	kubeClient client.Client,
 	dbClient database.DatabaseClient,
 	secretClient secrets.SecretsClient,
 	workClient workrequests.WorkRequestClient,
@@ -103,13 +104,13 @@ func UpdateGeneralAndPasswordAttributesAndWait(logger logr.Logger, kubeClient cl
 			return statusErr
 		}
 		// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
-		return err
+		return nil
 	}
 
 	// Wait for the work finish if a request is sent. Note that some of the requests (e.g. update displayName) won't return a work request ID.
 	if updateGenPassResp.OpcWorkRequestId != nil {
-		if err := UpdateStatusAndWait(logger, kubeClient, workClient, adb, updateGenPassResp.AutonomousDatabase.LifecycleState, updateGenPassResp.OpcWorkRequestId); err != nil {
-			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*updateGenPassResp.OpcWorkRequestId)
+		if err := UpdateAutonomousDatabaseStatusAndWait(logger, kubeClient, workClient, adb, updateGenPassResp.AutonomousDatabase.LifecycleState, updateGenPassResp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to update Autonomous Database. opcWorkRequestID = "+*updateGenPassResp.OpcWorkRequestId)
 		}
 
 		logger.Info("Update AutonomousDatabase " + *adb.Spec.Details.DbName + " succesfully")
@@ -125,8 +126,6 @@ func UpdateScaleAttributesAndWait(logger logr.Logger, kubeClient client.Client,
 
 	scaleResp, err := oci.UpdateScaleAttributes(logger, kubeClient, dbClient, adb)
 	if err != nil {
-		logger.Error(err, "Fail to update Autonomous Database")
-
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
 		if statusErr := UpdateAutonomousDatabaseStatus(kubeClient, adb); statusErr != nil {
@@ -137,8 +136,8 @@ func UpdateScaleAttributesAndWait(logger logr.Logger, kubeClient client.Client,
 	}
 
 	if scaleResp.OpcWorkRequestId != nil {
-		if err := UpdateStatusAndWait(logger, kubeClient, workClient, adb, scaleResp.AutonomousDatabase.LifecycleState, scaleResp.OpcWorkRequestId); err != nil {
-			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*scaleResp.OpcWorkRequestId)
+		if err := UpdateAutonomousDatabaseStatusAndWait(logger, kubeClient, workClient, adb, scaleResp.AutonomousDatabase.LifecycleState, scaleResp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to scale the Autonomous Database. opcWorkRequestID = "+*scaleResp.OpcWorkRequestId)
 		}
 
 		logger.Info("Scale AutonomousDatabase " + *adb.Spec.Details.DbName + " succesfully")
@@ -261,8 +260,8 @@ func updateMTLSAndWait(logger logr.Logger,
 	}
 
 	if resp.OpcWorkRequestId != nil {
-		if err := UpdateStatusAndWait(logger, kubeClient, workClient, curADB, resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
-			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+		if err := UpdateAutonomousDatabaseStatusAndWait(logger, kubeClient, workClient, curADB, resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to update Autonomous Database MTLS. opcWorkRequestID = "+*resp.OpcWorkRequestId)
 		}
 	}
 
@@ -281,8 +280,8 @@ func setNetworkAccessPublicAndWait(logger logr.Logger,
 	}
 
 	if resp.OpcWorkRequestId != nil {
-		if err := UpdateStatusAndWait(logger, kubeClient, workClient, curADB, resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
-			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+		if err := UpdateAutonomousDatabaseStatusAndWait(logger, kubeClient, workClient, curADB, resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to update the network access options to public. opcWorkRequestID = "+*resp.OpcWorkRequestId)
 		}
 	}
 
@@ -301,15 +300,15 @@ func updateNetworkAccessAttributesAndWait(logger logr.Logger,
 	}
 
 	if resp.OpcWorkRequestId != nil {
-		if err := UpdateStatusAndWait(logger, kubeClient, workClient, curADB, resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
-			logger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+		if err := UpdateAutonomousDatabaseStatusAndWait(logger, kubeClient, workClient, curADB, resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
+			logger.Error(err, "Fail to update the network access of Autonomous Database. opcWorkRequestID = "+*resp.OpcWorkRequestId)
 		}
 	}
 
 	return nil
 }
 
-func UpdateStatusAndWait(logger logr.Logger, kubeClient client.Client,
+func UpdateAutonomousDatabaseStatusAndWait(logger logr.Logger, kubeClient client.Client,
 	workClient workrequests.WorkRequestClient,
 	adb *dbv1alpha1.AutonomousDatabase,
 	desiredLifecycleState database.AutonomousDatabaseLifecycleStateEnum,
@@ -321,7 +320,7 @@ func UpdateStatusAndWait(logger logr.Logger, kubeClient client.Client,
 		return statusErr
 	}
 
-	if err := oci.WaitUntilWorkCompleted(logger, workClient, opcWorkRequestID); err != nil {
+	if _, err := oci.GetWorkStatusAndWait(logger, workClient, opcWorkRequestID); err != nil {
 		return err
 	}
 

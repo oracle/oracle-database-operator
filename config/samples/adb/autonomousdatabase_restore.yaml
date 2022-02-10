@@ -3,13 +3,15 @@ kind: AutonomousDatabaseRestore
 metadata:
   name: autonomousdatabaserestore-sample
 spec:
-  autonomousDatabaseOCID: ocid1.autonomousdatabase...
   # Restore the database either from a backup or using point-in-time restore
-  source:
-    # The name of your AutonomousDatabaseBackup
-    backupName: autonomousdatabasebackup-sample
-    # The timestamp must follow this format: YYYY-MM-DD HH:MM:SS GMT
-    # timeStamp: 2021-10-23 11:03:13 UTC
+  # The name of your AutonomousDatabaseBackup resource
+  backupName: autonomousdatabasebackup-sample
+
+  # Uncomment the following block to perform point-in-time restore
+  # pointInTime:
+  #   autonomousDatabaseOCID: ocid1.autonomousdatabase...
+  #   # The timestamp must follow this format: YYYY-MM-DD HH:MM:SS GMT
+  #   timeStamp: 2021-10-23 11:03:13 UTC
 
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:

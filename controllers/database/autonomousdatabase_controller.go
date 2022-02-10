@@ -81,8 +81,8 @@ func (r *AutonomousDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error 
 func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicate {
 	pred := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldADB := e.ObjectOld.DeepCopyObject().(*dbv1alpha1.AutonomousDatabase)
-			newADB := e.ObjectNew.DeepCopyObject().(*dbv1alpha1.AutonomousDatabase)
+			oldADB := e.ObjectOld.(*dbv1alpha1.AutonomousDatabase)
+			newADB := e.ObjectNew.(*dbv1alpha1.AutonomousDatabase)
 
 			// Reconciliation should NOT happen if the lastSuccessfulSpec annotation or status.state changes.
 			oldSucSpec := oldADB.GetAnnotations()[dbv1alpha1.LastSuccessfulSpec]
@@ -123,9 +123,10 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, adb); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
 		// No need to change the since we don't know if we obtain the object.
-		if !apiErrors.IsNotFound(err) {
-			return ctrl.Result{}, err
+		if apiErrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
 		}
+		return ctrl.Result{}, err
 	}
 
 	/******************************************************************
@@ -265,9 +266,9 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 			adb.Spec.Details.AutonomousDatabaseOCID = resp.AutonomousDatabase.Id
 
-			if err := adbutil.UpdateStatusAndWait(currentLogger, r.KubeClient, workClient, adb,
+			if err := adbutil.UpdateAutonomousDatabaseStatusAndWait(currentLogger, r.KubeClient, workClient, adb,
 				resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
-				currentLogger.Error(err, "Fail to watch the status of provision request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+				currentLogger.Error(err, "Work request faied. opcWorkRequestID = "+*resp.OpcWorkRequestId)
 			}
 
 			currentLogger.Info("AutonomousDatabase " + *adb.Spec.Details.DbName + " provisioned succesfully")
@@ -339,8 +340,8 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 					return ctrl.Result{}, nil
 				}
 
-				if err := adbutil.UpdateStatusAndWait(currentLogger, r.KubeClient, workClient, adb, lifecycleState, opcWorkRequestID); err != nil {
-					currentLogger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*opcWorkRequestID)
+				if err := adbutil.UpdateAutonomousDatabaseStatusAndWait(currentLogger, r.KubeClient, workClient, adb, lifecycleState, opcWorkRequestID); err != nil {
+					currentLogger.Error(err, "Fail to update the status of Autonomous Database. opcWorkRequestID = "+*opcWorkRequestID)
 				}
 
 				currentLogger.Info(fmt.Sprintf("Change AutonomousDatabase %s lifecycle state to %s successfully\n",
@@ -351,18 +352,15 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			// Update the database in OCI from the local resource.
 			// The local resource will be synchronized again later.
 			if err := adbutil.UpdateGeneralAndPasswordAttributesAndWait(currentLogger, r.KubeClient, dbClient, secretClient, workClient, adb); err != nil {
-				currentLogger.Error(err, "Fail to update Autonomous Database")
-				return ctrl.Result{}, nil
+				currentLogger.Error(err, "Fail to update Autonomous Database general and password attributes")
 			}
 
 			if err := adbutil.UpdateScaleAttributesAndWait(currentLogger, r.KubeClient, dbClient, workClient, adb); err != nil {
-				currentLogger.Error(err, "Fail to update Autonomous Database")
-				return ctrl.Result{}, nil
+				currentLogger.Error(err, "Fail to scale Autonomous Database")
 			}
 
 			if err := adbutil.UpdateNetworkAttributes(currentLogger, r.KubeClient, dbClient, workClient, adb); err != nil {
-				currentLogger.Error(err, "Fail to update Autonomous Database")
-				return ctrl.Result{}, nil
+				currentLogger.Error(err, "Fail to update Autonomous Database network access attributes")
 			}
 		}
 	}
@@ -434,7 +432,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	currentLogger.Info("AutonomousDatabase resource reconcile successfully")
+	currentLogger.Info("AutonomousDatabase reconciles successfully")
 
 	return ctrl.Result{}, nil
 }

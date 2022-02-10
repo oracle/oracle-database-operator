@@ -111,9 +111,10 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, adbBackup); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
 		// No need to change the since we don't know if we obtain the object.
-		if !apiErrors.IsNotFound(err) {
-			return ctrl.Result{}, err
+		if apiErrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
 		}
+		return ctrl.Result{}, err
 	}
 
 	/******************************************************************
@@ -167,23 +168,29 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	 ******************************************************************/
 	if adbBackup.Spec.AutonomousDatabaseBackupOCID == "" && adbBackup.Status.LifecycleState == "" {
 		// Create a new backup
-		resp, err := oci.CreateAutonomousDatabaseBackup(currentLogger, dbClient, adbBackup)
+		backupResp, err := oci.CreateAutonomousDatabaseBackup(currentLogger, dbClient, adbBackup)
 		if err != nil {
 			currentLogger.Error(err, "Fail to create AutonomousDatabase Backup")
 			return ctrl.Result{}, nil
 		}
 
-		// update the status
-		adbBackup.UpdateStatusFromAutonomousDatabaseBackupResponse(resp.AutonomousDatabaseBackup)
-		backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup)
-
-		// Wait until the work is done
-		if err := oci.WaitUntilWorkCompleted(currentLogger, workClient, resp.OpcWorkRequestId); err != nil {
-			currentLogger.Error(err, "Fail to watch the status of provision request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+		adbResp, err := oci.GetAutonomousDatabase(dbClient, backupResp.AutonomousDatabaseId)
+		if err != nil {
+			currentLogger.Error(err, "Fail to get AutonomousDatabase. The AutonomousDatabase OCID = "+*backupResp.AutonomousDatabaseId)
 			return ctrl.Result{}, nil
 		}
 
-		currentLogger.Info("AutonomousBackup " + *resp.DisplayName + " created successfully")
+		// update the status
+		adbBackup.UpdateStatusFromAutonomousDatabaseBackupResponse(backupResp.AutonomousDatabaseBackup, adbResp.AutonomousDatabase)
+		backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup)
+
+		// Wait until the work is done
+		if _, err := oci.GetWorkStatusAndWait(currentLogger, workClient, backupResp.OpcWorkRequestId); err != nil {
+			currentLogger.Error(err, "Work request faied. opcWorkRequestID = "+*backupResp.OpcWorkRequestId)
+			return ctrl.Result{}, nil
+		}
+
+		currentLogger.Info("AutonomousDatabaseBackup " + *backupResp.DisplayName + " created successfully")
 
 	} else if adbBackup.Spec.AutonomousDatabaseBackupOCID != "" {
 		// Bind to an existing backup
@@ -195,13 +202,20 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	 * Status.AutonomousDatabaseOCID isn't empty.
 	 ******************************************************************/
 	if adbBackup.Status.AutonomousDatabaseBackupOCID != "" {
-		resp, err := oci.GetAutonomousDatabaseBackup(dbClient, adbBackup.Status.AutonomousDatabaseBackupOCID)
+		backupResp, err := oci.GetAutonomousDatabaseBackup(dbClient, adbBackup.Status.AutonomousDatabaseBackupOCID)
 		if err != nil {
 			currentLogger.Error(err, "Fail to get AutonomousDatabase Backup. The AutonomousDatabase Backup OCID = "+adbBackup.Status.AutonomousDatabaseBackupOCID)
 			return ctrl.Result{}, nil
 		}
 
-		adbBackup.UpdateStatusFromAutonomousDatabaseBackupResponse(resp.AutonomousDatabaseBackup)
+		adbResp, err := oci.GetAutonomousDatabase(dbClient, backupResp.AutonomousDatabaseId)
+		if err != nil {
+			currentLogger.Error(err, "Fail to get AutonomousDatabase. The AutonomousDatabase OCID = "+*backupResp.AutonomousDatabaseId)
+			return ctrl.Result{}, nil
+		}
+
+
+		adbBackup.UpdateStatusFromAutonomousDatabaseBackupResponse(backupResp.AutonomousDatabaseBackup, adbResp.AutonomousDatabase)
 		backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup)
 	}
 

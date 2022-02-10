@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	"github.com/oracle/oci-go-sdk/v51/workrequests"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -49,37 +50,32 @@ import (
 type AutonomousDatabaseRestoreSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	AutonomousDatabaseOCID string                          `json:"autonomousDatabaseOCID"`
-	Source                 AutonomousDatabaseRestoreSource `json:"source"`
-
-	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
+	BackupName  string        `json:"backupName,omitempty"`
+	PointInTime PITSource     `json:"pointInTime,omitempty"`
+	OCIConfig   OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 
-type AutonomousDatabaseRestoreSource struct {
-	BackupName string `json:"backupName,omitempty"`
-	TimeStamp  string `json:"timeStamp,omitempty"`
+type PITSource struct {
+	AutonomousDatabaseOCID string `json:"autonomousDatabaseOCID,omitempty"`
+	TimeStamp              string `json:"timeStamp,omitempty"`
 }
-
-// +kubebuilder:validation:Enum=NewCreated;InProgress;Completed;Failed
-type RestoreLifecycleState string
-
-const (
-	RestoreLifecycleStateNew        RestoreLifecycleState = "NewCreated"
-	RestoreLifecycleStateInProgress RestoreLifecycleState = "InProgress"
-	RestoreLifecycleStateCompleted  RestoreLifecycleState = "Completed"
-	RestoreLifecycleStateFailed     RestoreLifecycleState = "Failed"
-)
 
 // AutonomousDatabaseRestoreStatus defines the observed state of AutonomousDatabaseRestore
 type AutonomousDatabaseRestoreStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	LifecycleState RestoreLifecycleState `json:"state"`
+	DisplayName            string                    `json:"displayName"`
+	DbName                 string                    `json:"dbName"`
+	AutonomousDatabaseOCID string                    `json:"autonomousDatabaseOCID"`
+	LifecycleState         workrequests.WorkRequestStatusEnum `json:"lifecycleState"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:shortName="adbr";"adbrs"
+// +kubebuilder:printcolumn:JSONPath=".status.lifecycleState",name="State",type=string
+// +kubebuilder:printcolumn:JSONPath=".status.displayName",name="DisplayName",type=string
+// +kubebuilder:printcolumn:JSONPath=".status.dbName",name="DbName",type=string
 
 // AutonomousDatabaseRestore is the Schema for the autonomousdatabaserestores API
 type AutonomousDatabaseRestore struct {
