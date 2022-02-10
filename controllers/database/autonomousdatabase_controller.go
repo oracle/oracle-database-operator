@@ -44,14 +44,12 @@ import (
 	"reflect"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v51/database"
-	"github.com/oracle/oci-go-sdk/v51/secrets"
-	"github.com/oracle/oci-go-sdk/v51/workrequests"
+	"github.com/oracle/oci-go-sdk/v54/database"
+	"github.com/oracle/oci-go-sdk/v54/secrets"
+	"github.com/oracle/oci-go-sdk/v54/workrequests"
 
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -69,8 +67,6 @@ type AutonomousDatabaseReconciler struct {
 	KubeClient client.Client
 	Log        logr.Logger
 	Scheme     *runtime.Scheme
-
-	currentLogger logr.Logger
 }
 
 // SetupWithManager function
@@ -120,7 +116,7 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 // It go to the beggining of the reconcile if an error is returned. We won't return a error if it is related
 // to OCI, because the issues cannot be solved by re-run the reconcile.
 func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	r.currentLogger = r.Log.WithValues("Namespaced/Name", req.NamespacedName)
+	currentLogger := r.Log.WithValues("Namespaced/Name", req.NamespacedName)
 
 	// Get the autonomousdatabase instance from the cluster
 	adb := &dbv1alpha1.AutonomousDatabase{}
@@ -142,11 +138,11 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 	provider, err := oci.GetOCIProvider(r.KubeClient, authData)
 	if err != nil {
-		r.currentLogger.Error(err, "Fail to get OCI provider")
+		currentLogger.Error(err, "Fail to get OCI provider")
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -154,11 +150,11 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	dbClient, err := database.NewDatabaseClientWithConfigurationProvider(provider)
 	if err != nil {
-		r.currentLogger.Error(err, "Fail to get OCI database client")
+		currentLogger.Error(err, "Fail to get OCI database client")
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -166,11 +162,11 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	secretClient, err := secrets.NewSecretsClientWithConfigurationProvider(provider)
 	if err != nil {
-		r.currentLogger.Error(err, "Fail to get OCI secret client")
+		currentLogger.Error(err, "Fail to get OCI secret client")
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -178,17 +174,17 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	workClient, err := workrequests.NewWorkRequestClientWithConfigurationProvider(provider)
 	if err != nil {
-		r.currentLogger.Error(err, "Fail to get OCI work request client")
+		currentLogger.Error(err, "Fail to get OCI work request client")
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
 	}
 
-	r.currentLogger.Info("OCI provider configured succesfully")
+	currentLogger.Info("OCI provider configured succesfully")
 
 	/******************************************************************
 	* Register/unregister finalizer
@@ -201,33 +197,33 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		// The object is not being deleted
 		if *adb.Spec.HardLink && !finalizer.HasFinalizer(adb) {
 			finalizer.Register(r.KubeClient, adb)
-			r.currentLogger.Info("Finalizer registered successfully.")
+			currentLogger.Info("Finalizer registered successfully.")
 
 		} else if !*adb.Spec.HardLink && finalizer.HasFinalizer(adb) {
 			finalizer.Unregister(r.KubeClient, adb)
-			r.currentLogger.Info("Finalizer unregistered successfully.")
+			currentLogger.Info("Finalizer unregistered successfully.")
 		}
 	} else {
 		// The object is being deleted
 		if adb.Spec.Details.AutonomousDatabaseOCID == nil {
-			r.currentLogger.Info("Autonomous Database OCID is missing. Remove the resource only.")
+			currentLogger.Info("Autonomous Database OCID is missing. Remove the resource only.")
 		} else if adb.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminating &&
 			adb.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminated {
 			// Don't send terminate request if the database is terminating or already terminated
-			r.currentLogger.Info("Terminate Autonomous Database: " + *adb.Spec.Details.DbName)
+			currentLogger.Info("Terminate Autonomous Database: " + *adb.Spec.Details.DbName)
 			if _, err := oci.DeleteAutonomousDatabase(dbClient, *adb.Spec.Details.AutonomousDatabaseOCID); err != nil {
-				r.currentLogger.Error(err, "Fail to terminate Autonomous Database")
+				currentLogger.Error(err, "Fail to terminate Autonomous Database")
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 			}
 		}
 
 		finalizer.Unregister(r.KubeClient, adb)
-		r.currentLogger.Info("Finalizer unregistered successfully.")
+		currentLogger.Info("Finalizer unregistered successfully.")
 		// Stop reconciliation as the item is being deleted
 		return ctrl.Result{}, nil
 	}
@@ -251,16 +247,16 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if adb.Spec.Details.AutonomousDatabaseOCID == nil && lastSucSpec == nil {
 			// If no AutonomousDatabaseOCID specified, create a database
 			// Update from yaml file might not have an AutonomousDatabaseOCID. Don't create a database if it already has last successful spec.
-			r.currentLogger.Info("AutonomousDatabase provisioning")
+			currentLogger.Info("AutonomousDatabase provisioning")
 
-			resp, err := oci.CreateAutonomousDatabase(r.currentLogger, r.KubeClient, dbClient, secretClient, adb)
+			resp, err := oci.CreateAutonomousDatabase(currentLogger, r.KubeClient, dbClient, secretClient, adb)
 
 			if err != nil {
-				r.currentLogger.Error(err, "Fail to provision and get Autonomous Database OCID")
+				currentLogger.Error(err, "Fail to provision and get Autonomous Database OCID")
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -269,24 +265,24 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 			adb.Spec.Details.AutonomousDatabaseOCID = resp.AutonomousDatabase.Id
 
-			if err := adbutil.UpdateStatusAndWait(r.currentLogger, r.KubeClient, workClient, adb,
+			if err := adbutil.UpdateStatusAndWait(currentLogger, r.KubeClient, workClient, adb,
 				resp.AutonomousDatabase.LifecycleState, resp.OpcWorkRequestId); err != nil {
-				r.currentLogger.Error(err, "Fail to watch the status of provision request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
+				currentLogger.Error(err, "Fail to watch the status of provision request. opcWorkRequestID = "+*resp.OpcWorkRequestId)
 			}
 
-			r.currentLogger.Info("AutonomousDatabase " + *adb.Spec.Details.DbName + " provisioned succesfully")
+			currentLogger.Info("AutonomousDatabase " + *adb.Spec.Details.DbName + " provisioned succesfully")
 
 		} else if adb.Spec.Details.AutonomousDatabaseOCID != nil && lastSucSpec == nil {
 			// Binding operation. We have the database ID but hasn't gotten complete infromation from OCI.
 			// The next step is to get AutonomousDatabse details from a remote instance.
 
-			adb, err = oci.GetAutonomousDatabaseResource(r.currentLogger, dbClient, adb)
+			adb, err = oci.GetAutonomousDatabaseResource(currentLogger, dbClient, adb)
 			if err != nil {
-				r.currentLogger.Error(err, "Fail to get Autonomous Database")
+				currentLogger.Error(err, "Fail to get Autonomous Database")
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				return ctrl.Result{}, nil
@@ -303,13 +299,13 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 
 			// Start/Stop/Terminate
-			setStateResp, err := oci.SetAutonomousDatabaseLifecycleState(r.currentLogger, dbClient, adb)
+			setStateResp, err := oci.SetAutonomousDatabaseLifecycleState(currentLogger, dbClient, adb)
 			if err != nil {
-				r.currentLogger.Error(err, "Fail to set the Autonomous Database lifecycle state")
+				currentLogger.Error(err, "Fail to set the Autonomous Database lifecycle state")
 
 				// Change the status to UNAVAILABLE
 				adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-				if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+				if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				return ctrl.Result{}, nil
@@ -333,49 +329,52 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 					opcWorkRequestID = deleteResp.OpcWorkRequestId
 
 				} else {
-					r.currentLogger.Error(err, "Unknown response type")
+					currentLogger.Error(err, "Unknown response type")
 
 					// Change the status to UNAVAILABLE
 					adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-					if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+					if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 					return ctrl.Result{}, nil
 				}
 
-				if err := adbutil.UpdateStatusAndWait(r.currentLogger, r.KubeClient, workClient, adb, lifecycleState, opcWorkRequestID); err != nil {
-					r.currentLogger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*opcWorkRequestID)
+				if err := adbutil.UpdateStatusAndWait(currentLogger, r.KubeClient, workClient, adb, lifecycleState, opcWorkRequestID); err != nil {
+					currentLogger.Error(err, "Fail to watch the status of work request. opcWorkRequestID = "+*opcWorkRequestID)
 				}
 
-				r.currentLogger.Info(fmt.Sprintf("Change AutonomousDatabase %s lifecycle state to %s successfully\n",
+				currentLogger.Info(fmt.Sprintf("Change AutonomousDatabase %s lifecycle state to %s successfully\n",
 					*adb.Spec.Details.DbName,
 					adb.Spec.Details.LifecycleState))
 			}
 
 			// Update the database in OCI from the local resource.
 			// The local resource will be synchronized again later.
-			if err := adbutil.UpdateGeneralAndPasswordAttributesAndWait(r.currentLogger, r.KubeClient, dbClient, secretClient, workClient, adb); err != nil {
-				return adbutil.DetermineReturn(r.currentLogger, err)
+			if err := adbutil.UpdateGeneralAndPasswordAttributesAndWait(currentLogger, r.KubeClient, dbClient, secretClient, workClient, adb); err != nil {
+				currentLogger.Error(err, "Fail to update Autonomous Database")
+				return ctrl.Result{}, nil
 			}
 
-			if err := adbutil.UpdateScaleAttributesAndWait(r.currentLogger, r.KubeClient, dbClient, workClient, adb); err != nil {
-				return adbutil.DetermineReturn(r.currentLogger, err)
+			if err := adbutil.UpdateScaleAttributesAndWait(currentLogger, r.KubeClient, dbClient, workClient, adb); err != nil {
+				currentLogger.Error(err, "Fail to update Autonomous Database")
+				return ctrl.Result{}, nil
 			}
 
-			if err := adbutil.UpdateNetworkAttributes(r.currentLogger, r.KubeClient, dbClient, workClient, adb); err != nil {
-				return adbutil.DetermineReturn(r.currentLogger, err)
+			if err := adbutil.UpdateNetworkAttributes(currentLogger, r.KubeClient, dbClient, workClient, adb); err != nil {
+				currentLogger.Error(err, "Fail to update Autonomous Database")
+				return ctrl.Result{}, nil
 			}
 		}
 	}
 
 	// Get the information from OCI
-	updatedADB, err := oci.GetAutonomousDatabaseResource(r.currentLogger, dbClient, adb)
+	updatedADB, err := oci.GetAutonomousDatabaseResource(currentLogger, dbClient, adb)
 	if err != nil {
-		r.currentLogger.Error(err, "Fail to get Autonomous Database")
+		currentLogger.Error(err, "Fail to get Autonomous Database")
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, nil
@@ -384,10 +383,10 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	adb = updatedADB
 
 	// Update local object and the status
-	if err := r.updateAutonomousDatabaseDetails(adb); err != nil {
+	if err := adbutil.UpdateAutonomousDatabaseDetails(currentLogger, r.KubeClient, adb); err != nil {
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		return ctrl.Result{}, err
@@ -402,11 +401,11 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		(lastSucSpec != nil && lastSucSpec.Details.Wallet.Password.OCISecretOCID != adb.Spec.Details.Wallet.Password.OCISecretOCID)
 
 	if (passwordSecretUpdate || passwordOCIDUpdate) && adb.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateAvailable {
-		if err := adbutil.CreateWalletSecret(r.currentLogger, r.KubeClient, dbClient, secretClient, adb); err != nil {
-			r.currentLogger.Error(err, "Fail to download Instance Wallet")
+		if err := adbutil.CreateWalletSecret(currentLogger, r.KubeClient, dbClient, secretClient, adb); err != nil {
+			currentLogger.Error(err, "Fail to download Instance Wallet")
 			// Change the status to UNAVAILABLE
 			adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-			if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+			if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
@@ -414,14 +413,14 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	/*****************************************************
-	*	AutonomousDatabase Backups
+	*	Sync AutonomousDatabase Backups
 	*****************************************************/
-	if err := adbutil.CreateBackupResources(r.currentLogger, r.KubeClient, dbClient, adb); err != nil {
-		r.currentLogger.Error(err, "Fail to update Autonomous Database")
+	if err := adbutil.SyncBackupResources(currentLogger, r.KubeClient, dbClient, adb); err != nil {
+		currentLogger.Error(err, "Fail to sync Autonomous Database backups")
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
+		if statusErr := adbutil.UpdateAutonomousDatabaseStatus(r.KubeClient, adb); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
 		// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -435,57 +434,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
-	r.currentLogger.Info("AutonomousDatabase resource reconcile successfully")
+	currentLogger.Info("AutonomousDatabase resource reconcile successfully")
 
 	return ctrl.Result{}, nil
-}
-
-// type patchValue struct {
-// 	Op    string      `json:"op"`
-// 	Path  string      `json:"path"`
-// 	Value interface{} `json:"value"`
-// }
-
-func (r *AutonomousDatabaseReconciler) updateAutonomousDatabaseDetails(adb *dbv1alpha1.AutonomousDatabase) error {
-	// Patch the AutonomousDatabase Kubernetes resource to avoid resource version conflicts.
-	// payload := []patchValue{{
-	// 	Op:    "replace",
-	// 	Path:  "/spec/details",
-	// 	Value: adb.Spec.Details,
-	// }}
-	// payloadBytes, err := json.Marshal(payload)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// patch := client.RawPatch(types.JSONPatchType, payloadBytes)
-	// if err := r.KubeClient.Patch(context.TODO(), adb, patch); err != nil {
-	// 	return err
-	// }
-
-	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		curADB := &dbv1alpha1.AutonomousDatabase{}
-
-		namespacedName := types.NamespacedName{
-			Namespace: adb.GetNamespace(),
-			Name:      adb.GetName(),
-		}
-
-		if err := r.KubeClient.Get(context.TODO(), namespacedName, curADB); err != nil {
-			return err
-		}
-
-		curADB.Spec.Details = adb.Spec.Details
-		return r.KubeClient.Update(context.TODO(), curADB)
-	}); err != nil {
-		return err
-	}
-
-	// Update status
-	if statusErr := adbutil.SetStatus(r.KubeClient, adb); statusErr != nil {
-		return statusErr
-	}
-	r.currentLogger.Info("Update local resource AutonomousDatabase successfully")
-
-	return nil
 }

@@ -45,30 +45,46 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v51/common"
-	"github.com/oracle/oci-go-sdk/v51/database"
-	"github.com/oracle/oci-go-sdk/v51/secrets"
-	"github.com/oracle/oci-go-sdk/v51/workrequests"
+	"github.com/oracle/oci-go-sdk/v54/common"
+	"github.com/oracle/oci-go-sdk/v54/database"
+	"github.com/oracle/oci-go-sdk/v54/secrets"
+	"github.com/oracle/oci-go-sdk/v54/workrequests"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
-func DetermineReturn(logger logr.Logger, err error) (ctrl.Result, error) {
-	if apiErrors.IsConflict(err) {
-		return ctrl.Result{}, err
+func UpdateAutonomousDatabaseDetails(logger logr.Logger, kubeClient client.Client, adb *dbv1alpha1.AutonomousDatabase) error {
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		curADB := &dbv1alpha1.AutonomousDatabase{}
+
+		namespacedName := types.NamespacedName{
+			Namespace: adb.GetNamespace(),
+			Name:      adb.GetName(),
+		}
+
+		if err := kubeClient.Get(context.TODO(), namespacedName, curADB); err != nil {
+			return err
+		}
+
+		curADB.Spec.Details = adb.Spec.Details
+		return kubeClient.Update(context.TODO(), curADB)
+	}); err != nil {
+		return err
 	}
 
-	logger.Error(err, "Reconcile failed")
-	return ctrl.Result{}, nil
+	// Update status
+	if statusErr := UpdateAutonomousDatabaseStatus(kubeClient, adb); statusErr != nil {
+		return statusErr
+	}
+	logger.Info("Update local resource AutonomousDatabase successfully")
+	return nil
 }
 
 func UpdateGeneralAndPasswordAttributesAndWait(logger logr.Logger, kubeClient client.Client,
@@ -83,7 +99,7 @@ func UpdateGeneralAndPasswordAttributesAndWait(logger logr.Logger, kubeClient cl
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := SetStatus(kubeClient, adb); statusErr != nil {
+		if statusErr := UpdateAutonomousDatabaseStatus(kubeClient, adb); statusErr != nil {
 			return statusErr
 		}
 		// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -113,7 +129,7 @@ func UpdateScaleAttributesAndWait(logger logr.Logger, kubeClient client.Client,
 
 		// Change the status to UNAVAILABLE
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUnavailable
-		if statusErr := SetStatus(kubeClient, adb); statusErr != nil {
+		if statusErr := UpdateAutonomousDatabaseStatus(kubeClient, adb); statusErr != nil {
 			return statusErr
 		}
 		// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -301,7 +317,7 @@ func UpdateStatusAndWait(logger logr.Logger, kubeClient client.Client,
 
 	// Update status.state
 	adb.Status.LifecycleState = desiredLifecycleState
-	if statusErr := SetStatus(kubeClient, adb); statusErr != nil {
+	if statusErr := UpdateAutonomousDatabaseStatus(kubeClient, adb); statusErr != nil {
 		return statusErr
 	}
 
@@ -312,8 +328,8 @@ func UpdateStatusAndWait(logger logr.Logger, kubeClient client.Client,
 	return nil
 }
 
-// SetStatus sets the status subresource.
-func SetStatus(kubeClient client.Client, adb *dbv1alpha1.AutonomousDatabase) error {
+// UpdateAutonomousDatabaseStatus sets the status subresource of AutonomousDatabase
+func UpdateAutonomousDatabaseStatus(kubeClient client.Client, adb *dbv1alpha1.AutonomousDatabase) error {
 	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		curADB := &dbv1alpha1.AutonomousDatabase{}
 
@@ -395,37 +411,23 @@ func getValidName(name string, usedNames map[string]bool) string {
 	return returnedName
 }
 
-// CreateBackupResources creates the all the AutonomousDatabasBackups that appears in the ListAutonomousDatabaseBackups request
-// The backup object will not be created if it already exists.
-func CreateBackupResources(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) error {
+// SyncBackupResources get the list of AutonomousDatabasBackups and
+// create a backup object if it's not found in the same namespace
+func SyncBackupResources(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) error {
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
 	backupList, err := fetchAutonomousDatabaseBackups(kubeClient, adb.Namespace)
 	if err != nil {
 		return err
 	}
 
-	if err := kubeClient.List(context.TODO(), backupList, &client.ListOptions{Namespace: adb.Namespace}); err != nil {
-		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
-		// No need to change the since we don't know if we obtain the object.
-		if !apiErrors.IsNotFound(err) {
-			return err
-		}
-	}
-
-	usedNames := make(map[string]bool)
-	usedBackupOCIDs := make(map[string]bool)
+	curBackupNames := make(map[string]bool)
+	curBackupOCIDs := make(map[string]bool)
 
 	for _, backup := range backupList.Items {
-		usedNames[backup.Name] = true
+		curBackupNames[backup.Name] = true
 
-		// Add both Spec.AutonomousDatabaseBackupOCID and Status.AutonomousDatabaseBackupOCID.
-		// If it's a backup created from the operator, it won't have the OCID under the spec.
-		// if the backup isn't ready yet, it won't have the OCID under the status.
-		if backup.Spec.AutonomousDatabaseBackupOCID != "" {
-			usedBackupOCIDs[backup.Spec.AutonomousDatabaseBackupOCID] = true
-		}
 		if backup.Status.AutonomousDatabaseBackupOCID != "" {
-			usedBackupOCIDs[backup.Status.AutonomousDatabaseBackupOCID] = true
+			curBackupOCIDs[backup.Status.AutonomousDatabaseBackupOCID] = true
 		}
 	}
 
@@ -436,7 +438,7 @@ func CreateBackupResources(logger logr.Logger, kubeClient client.Client, dbClien
 
 	for _, backupSummary := range resp.Items {
 		// Create the resource if the AutonomousDatabaseBackupOCID doesn't exist
-		_, ok := usedBackupOCIDs[*backupSummary.Id]
+		_, ok := curBackupOCIDs[*backupSummary.Id]
 		if !ok {
 			// Convert the string to lowercase, and replace spaces, commas, and colons with hyphens
 			backupName := *backupSummary.DisplayName
@@ -447,33 +449,45 @@ func CreateBackupResources(logger logr.Logger, kubeClient client.Client, dbClien
 				return err
 			}
 			backupName = re.ReplaceAllString(backupName, "-")
-			backupName = getValidName(backupName, usedNames)
+			backupName = getValidName(backupName, curBackupNames)
 
-			backup := &dbv1alpha1.AutonomousDatabaseBackup{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace:       adb.GetNamespace(),
-					Name:            backupName,
-					OwnerReferences: newOwnerReference(adb),
-				},
-				Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
-					AutonomousDatabaseBackupOCID: *backupSummary.Id,
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
-						ConfigMapName: adb.Spec.OCIConfig.ConfigMapName,
-						SecretName:    adb.Spec.OCIConfig.SecretName,
-					},
-				},
-			}
-
-			if err := kubeClient.Create(context.TODO(), backup); err != nil {
+			if err := createBackupResource(kubeClient, backupName, backupSummary, adb); err != nil {
 				return err
 			}
 
 			// Add the used names and ocids
-			usedNames[backupName] = true
-			usedBackupOCIDs[*backupSummary.AutonomousDatabaseId] = true
+			curBackupNames[backupName] = true
+			curBackupOCIDs[*backupSummary.AutonomousDatabaseId] = true
 
 			logger.Info("Create AutonomousDatabaseBackup " + backupName)
 		}
+	}
+
+	return nil
+}
+
+func createBackupResource(kubeClient client.Client,
+	backupName string,
+	backupSummary database.AutonomousDatabaseBackupSummary,
+	adb *dbv1alpha1.AutonomousDatabase) error {
+
+	backup := &dbv1alpha1.AutonomousDatabaseBackup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:       adb.GetNamespace(),
+			Name:            backupName,
+			OwnerReferences: newOwnerReference(adb),
+		},
+		Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
+			AutonomousDatabaseBackupOCID: *backupSummary.Id,
+			OCIConfig: dbv1alpha1.OCIConfigSpec{
+				ConfigMapName: adb.Spec.OCIConfig.ConfigMapName,
+				SecretName:    adb.Spec.OCIConfig.SecretName,
+			},
+		},
+	}
+
+	if err := kubeClient.Create(context.TODO(), backup); err != nil {
+		return err
 	}
 
 	return nil

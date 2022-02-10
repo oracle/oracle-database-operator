@@ -3,7 +3,7 @@ package ociutil
 import (
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v51/common"
+	"github.com/oracle/oci-go-sdk/v54/common"
 )
 
 // Follow the format of the Display Name
