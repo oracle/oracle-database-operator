@@ -214,7 +214,6 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 			return ctrl.Result{}, nil
 		}
 
-
 		adbBackup.UpdateStatusFromAutonomousDatabaseBackupResponse(backupResp.AutonomousDatabaseBackup, adbResp.AutonomousDatabase)
 		backupUtil.UpdateAutonomousDatabaseBackupStatus(r.KubeClient, adbBackup)
 	}
