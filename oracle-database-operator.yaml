@@ -40,23 +40,32 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AutonomousDatabaseBackup is the Schema for the autonomousdatabasebackups API
+        description: AutonomousDatabaseBackup is the Schema for the autonomousdatabasebackups
+          API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
-            description: AutonomousDatabaseBackupSpec defines the desired state of AutonomousDatabaseBackup
+            description: AutonomousDatabaseBackupSpec defines the desired state of
+              AutonomousDatabaseBackup
             properties:
               autonomousDatabaseBackupOCID:
                 type: string
               autonomousDatabaseOCID:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "make" to regenerate code after modifying this file'
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
+                type: string
+              displayName:
                 type: string
               ociConfig:
                 properties:
@@ -69,31 +78,39 @@ spec:
             - autonomousDatabaseOCID
             type: object
           status:
-            description: AutonomousDatabaseBackupStatus defines the observed state of AutonomousDatabaseBackup
+            description: AutonomousDatabaseBackupStatus defines the observed state
+              of AutonomousDatabaseBackup
             properties:
               autonomousDatabaseBackupOCID:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
                 type: string
               autonomousDatabaseOCID:
                 type: string
               compartmentOCID:
                 type: string
+              displayName:
+                type: string
               isAutomatic:
                 type: boolean
               lifecycleState:
-                description: 'AutonomousDatabaseBackupLifecycleStateEnum Enum with underlying type: string'
+                description: 'AutonomousDatabaseBackupLifecycleStateEnum Enum with
+                  underlying type: string'
                 type: string
               timeEnded:
                 type: string
               timeStarted:
                 type: string
               type:
-                description: 'AutonomousDatabaseBackupTypeEnum Enum with underlying type: string'
+                description: 'AutonomousDatabaseBackupTypeEnum Enum with underlying
+                  type: string'
                 type: string
             required:
             - autonomousDatabaseBackupOCID
             - autonomousDatabaseOCID
             - compartmentOCID
+            - displayName
             - isAutomatic
             - lifecycleState
             - type
@@ -132,29 +149,29 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: AutonomousDatabaseRestore is the Schema for the autonomousdatabaserestores API
+        description: AutonomousDatabaseRestore is the Schema for the autonomousdatabaserestores
+          API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
-            description: AutonomousDatabaseRestoreSpec defines the desired state of AutonomousDatabaseRestore
+            description: AutonomousDatabaseRestoreSpec defines the desired state of
+              AutonomousDatabaseRestore
             properties:
               autonomousDatabaseOCID:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "make" to regenerate code after modifying this file'
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
                 type: string
-              destination:
-                properties:
-                  backupName:
-                    type: string
-                  timeStamp:
-                    type: string
-                type: object
               ociConfig:
                 properties:
                   configMapName:
@@ -162,15 +179,25 @@ spec:
                   secretName:
                     type: string
                 type: object
+              source:
+                properties:
+                  backupName:
+                    type: string
+                  timeStamp:
+                    type: string
+                type: object
             required:
             - autonomousDatabaseOCID
-            - destination
+            - source
             type: object
           status:
-            description: AutonomousDatabaseRestoreStatus defines the observed state of AutonomousDatabaseRestore
+            description: AutonomousDatabaseRestoreStatus defines the observed state
+              of AutonomousDatabaseRestore
             properties:
               state:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
                 enum:
                 - NewCreated
                 - InProgress
@@ -1893,8 +1920,6 @@ rules:
   - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - database.oracle.com
@@ -1913,8 +1938,6 @@ rules:
   - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - database.oracle.com
@@ -2175,7 +2198,7 @@ spec:
         command:
         - /manager
         image: phx.ocir.io/intsanjaysingh/gdb-repo/oracle/dboper-ords-go:master
-        imagePullPolicy: Always
+        imagePullPolicy: Never
         name: manager
         ports:
         - containerPort: 9443
@@ -2340,7 +2363,6 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
-    - DELETE
     resources:
     - pdbs
   sideEffects: None
