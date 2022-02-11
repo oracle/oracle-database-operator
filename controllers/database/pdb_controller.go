@@ -175,8 +175,19 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 	action := strings.ToUpper(pdb.Spec.Action)
 
-	if (pdb.Status.Phase == pdbPhaseReady) && (pdb.Status.Action != "") && (action == "MODIFY" || action == "STATUS" || pdb.Status.Action != action) {
-		pdb.Status.Status = false
+	if pdb.Status.Phase == pdbPhaseReady {
+		if (pdb.Status.Action != "") && (action == "MODIFY" || action == "STATUS" || pdb.Status.Action != action) {
+			pdb.Status.Status = false
+		} else {
+			err = r.getPDBState(ctx, req, pdb)
+			if err != nil {
+				pdb.Status.Phase = pdbPhaseFail
+			} else {
+				pdb.Status.Phase = pdbPhaseReady
+				pdb.Status.Msg = "Success"
+			}
+			r.Status().Update(ctx, pdb)
+		}
 	}
 
 	if !pdb.Status.Status {

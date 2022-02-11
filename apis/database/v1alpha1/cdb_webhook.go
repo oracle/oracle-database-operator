@@ -110,11 +110,11 @@ func (r *CDB) ValidateCreate() error {
 	}
 	if r.Spec.ORDSPort < 0 {
 		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify a valid ORDS Port"))
+			field.Required(field.NewPath("spec").Child("ordsPort"), "Please specify a valid ORDS Port"))
 	}
 	if r.Spec.Replicas < 0 {
 		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify a valid value for Replicas"))
+			field.Required(field.NewPath("spec").Child("replicas"), "Please specify a valid value for Replicas"))
 	}
 	if r.Spec.ORDSImage == "" {
 		allErrs = append(allErrs,
@@ -152,6 +152,11 @@ func (r *CDB) ValidateCreate() error {
 func (r *CDB) ValidateUpdate(old runtime.Object) error {
 	cdblog.Info("validate update", "name", r.Name)
 
+	isCDBMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
+	if isCDBMarkedToBeDeleted {
+		return nil
+	}
+
 	var allErrs field.ErrorList
 
 	// Check for updation errors
@@ -160,6 +165,18 @@ func (r *CDB) ValidateUpdate(old runtime.Object) error {
 		return nil
 	}
 
+	if r.Spec.DBPort < 0 {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify a valid DB Server Port"))
+	}
+	if r.Spec.ORDSPort < 0 {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("ordsPort"), "Please specify a valid ORDS Port"))
+	}
+	if r.Spec.Replicas < 0 {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("replicas"), "Please specify a valid value for Replicas"))
+	}
 	if !strings.EqualFold(oldCDB.Spec.ServiceName, r.Spec.ServiceName) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("replics"), "cannot be changed"))

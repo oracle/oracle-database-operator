@@ -112,7 +112,7 @@ func (r *PDB) Default() {
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:path=/validate-database-oracle-com-v1alpha1-pdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update;delete,versions=v1alpha1,name=vpdb.kb.io,admissionReviewVersions={v1,v1beta1}
+//+kubebuilder:webhook:path=/validate-database-oracle-com-v1alpha1-pdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update,versions=v1alpha1,name=vpdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
 var _ webhook.Validator = &PDB{}
 
@@ -217,6 +217,11 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *PDB) ValidateUpdate(old runtime.Object) error {
 	pdblog.Info("ValidateUpdate-Validating PDB spec for : " + r.Name)
+
+	isPDBMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
+	if isPDBMarkedToBeDeleted {
+		return nil
+	}
 
 	var allErrs field.ErrorList
 	action := strings.ToUpper(r.Spec.Action)
