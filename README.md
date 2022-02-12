@@ -32,6 +32,7 @@ This release can be deployed on the following platforms:
 
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.17 or later
 * In an on-premises [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.3 or later
+* [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.21.0 or later
 
 In upcoming releases, the operator will be certified against third-party Kubernetes clusters.
 

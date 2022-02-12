@@ -42,7 +42,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/oracle/oci-go-sdk/v45/database"
+	"github.com/oracle/oci-go-sdk/v54/database"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -81,13 +81,17 @@ type AutonomousDatabaseDetails struct {
 	AdminPassword        PasswordSpec                                  `json:"adminPassword,omitempty"`
 	IsAutoScalingEnabled *bool                                         `json:"isAutoScalingEnabled,omitempty"`
 	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
-	SubnetOCID           *string                                       `json:"subnetOCID,omitempty"`
-	NsgOCIDs             []string                                      `json:"nsgOCIDs,omitempty"`
-	PrivateEndpoint      *string                                       `json:"privateEndpoint,omitempty"`
-	PrivateEndpointLabel *string                                       `json:"privateEndpointLabel,omitempty"`
-	PrivateEndpointIP    *string                                       `json:"privateEndpointIP,omitempty"`
-	FreeformTags         map[string]string                             `json:"freeformTags,omitempty"`
-	Wallet               WalletSpec                                    `json:"wallet,omitempty"`
+
+	SubnetOCID               *string  `json:"subnetOCID,omitempty"`
+	NsgOCIDs                 []string `json:"nsgOCIDs,omitempty"`
+	IsAccessControlEnabled   *bool    `json:"isAccessControlEnabled,omitempty"`
+	WhitelistedIPs           []string `json:"whitelistedIPs,omitempty"`
+	IsMTLSConnectionRequired *bool    `json:"isMTLSConnectionRequired,omitempty"`
+	PrivateEndpointLabel     *string  `json:"privateEndpointLabel,omitempty"`
+
+	FreeformTags map[string]string `json:"freeformTags,omitempty"`
+
+	Wallet WalletSpec `json:"wallet,omitempty"`
 }
 
 type WalletSpec struct {
@@ -185,9 +189,10 @@ func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj databa
 
 	adb.Spec.Details.SubnetOCID = ociObj.SubnetId
 	adb.Spec.Details.NsgOCIDs = ociObj.NsgIds
-	adb.Spec.Details.PrivateEndpoint = ociObj.PrivateEndpoint
+	adb.Spec.Details.IsAccessControlEnabled = ociObj.IsAccessControlEnabled
+	adb.Spec.Details.WhitelistedIPs = ociObj.WhitelistedIps
+	adb.Spec.Details.IsMTLSConnectionRequired = ociObj.IsMtlsConnectionRequired
 	adb.Spec.Details.PrivateEndpointLabel = ociObj.PrivateEndpointLabel
-	adb.Spec.Details.PrivateEndpointIP = ociObj.PrivateEndpointIp
 
 	// update the subresource as well
 	adb.Status.DisplayName = *ociObj.DisplayName

@@ -222,7 +222,7 @@ func buildContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase, Ora
 			PeriodSeconds:       int32(240),
 			InitialDelaySeconds: int32(300),
 			TimeoutSeconds:      int32(120),
-			Handler: corev1.Handler{
+			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
 					Command: getLivenessCmd("SHARD"),
 				},
