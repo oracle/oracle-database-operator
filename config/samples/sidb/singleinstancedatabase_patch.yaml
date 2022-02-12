@@ -17,7 +17,7 @@ spec:
   adminPassword:
     secretName: 
     secretKey:
-    keepSecret: false
+    keepSecret: true
 
   ## Patch the database by updating the RU version/image
   ## Major version changes are not supported
