@@ -50,16 +50,17 @@ type OracleRestDataServiceSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	DatabaseRef       string                                   `json:"databaseRef"`
-	LoadBalancer      bool                                     `json:"loadBalancer,omitempty"`
-	NodeSelector      map[string]string                        `json:"nodeSelector,omitempty"`
-	Image             OracleRestDataServiceImage               `json:"image,omitempty"`
-	OrdsPassword      OracleRestDataServicePassword            `json:"ordsPassword"`
-	ApexPassword      OracleRestDataServicePassword            `json:"apexPassword,omitempty"`
-	AdminPassword     OracleRestDataServicePassword            `json:"adminPassword"`
-	OrdsUser          string                                   `json:"ordsUser,omitempty"`
-	RestEnableSchemas []OracleRestDataServiceRestEnableSchemas `json:"restEnableSchemas,omitempty"`
-	OracleService     string                                   `json:"oracleService,omitempty"`
+	DatabaseRef        string                                   `json:"databaseRef"`
+	LoadBalancer       bool                                     `json:"loadBalancer,omitempty"`
+	NodeSelector       map[string]string                        `json:"nodeSelector,omitempty"`
+	Image              OracleRestDataServiceImage               `json:"image,omitempty"`
+	OrdsPassword       OracleRestDataServicePassword            `json:"ordsPassword"`
+	ApexPassword       OracleRestDataServicePassword            `json:"apexPassword,omitempty"`
+	AdminPassword      OracleRestDataServicePassword            `json:"adminPassword"`
+	OrdsUser           string                                   `json:"ordsUser,omitempty"`
+	RestEnableSchemas  []OracleRestDataServiceRestEnableSchemas `json:"restEnableSchemas,omitempty"`
+	OracleService      string                                   `json:"oracleService,omitempty"`
+	ServiceAccountName string                                   `json:"serviceAccountName,omitempty"`
 
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Minimum=1

@@ -82,5 +82,8 @@ spec:
   #   failure-domain.beta.kubernetes.io/zone: bVCG:PHX-AD-1
   #   pool: sidb
 
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  ServiceAccountname: default
+
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1

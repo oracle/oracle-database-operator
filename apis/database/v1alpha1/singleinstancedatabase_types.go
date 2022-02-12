@@ -67,6 +67,7 @@ type SingleInstanceDatabaseSpec struct {
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
+	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
 
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Minimum=1
