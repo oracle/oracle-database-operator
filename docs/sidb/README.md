@@ -108,13 +108,35 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
 ## Provision New Database
 
-  Provision a new database instance by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
+  - Easily provision a new database instance on **minikube** using [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml).
 
-  ```sh
-  $ kubectl create -f singleinstancedatabase.yaml
-  
-    singleinstancedatabase.database.oracle.com/sidb-sample created
-  ```
+    Sign into [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:7154182141811:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:9,9,Oracle%20Database%20Enterprise%20Edition,Oracle%20Database%20Enterprise%20Edition,1,0&cs=3Y_90hkCQLfJzrvTLiEipIGgWGUytfrtAPuHFocuWd0NDSacbBPlamohfLuiJA-bAsVL6Z_yKEMsTbb52bm6IRA) and accept the license agreement for the Database image, ignore if you have accepted already.
+
+    Create an image pull secret for Oracle Container Registry, ignore if you have created already:
+
+    ```sh
+    $ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<oracle-sso-password>' --docker-email='<oracle-sso-email-address>'
+      
+      secret/oracle-container-registry-secret created
+    ```
+
+    Now, Easily provision a new database instance on minikube by using following one command.
+
+    ```sh
+    $ kubectl create -f singleinstancedatabase_minikube.yaml
+    
+      singleinstancedatabase.database.oracle.com/sidb-sample created
+    ```
+
+  - Provision a new database instance on any K8s cluster by specifying appropriate values for the attributes in the [singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) and running the following command:
+
+    ```sh
+    $ kubectl create -f singleinstancedatabase.yaml
+    
+      singleinstancedatabase.database.oracle.com/sidb-sample created
+    ```
+
+    **NOTE:** Make sure you have created the required `.spec.adminPassword` [secret](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/) and `.spec.persistence` [persistent volume](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
 
 * ### Provision a Pre-built Database
 
@@ -147,89 +169,89 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
   
 * ### Connection Information
 
-  External and internal (running in Kubernetes pods) clients can connect to the database using .status.connectString and .status.clusterConnectString
-  respectively in the following command
+    External and internal (running in Kubernetes pods) clients can connect to the database using .status.connectString and .status.clusterConnectString
+    respectively in the following command
 
-  ```sh
-  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.connectString}"
+    ```sh
+    $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.connectString}"
 
-    144.25.10.119:1521/ORCL
-  ```
+      144.25.10.119:1521/ORCL
+    ```
 
-  The Oracle Database inside the container also has Oracle Enterprise Manager Express configured. To access OEM Express, start the browser and follow the URL:
+    The Oracle Database inside the container also has Oracle Enterprise Manager Express configured. To access OEM Express, start the browser and follow the URL:
 
-  ```sh
-  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.oemExpressUrl}"
+    ```sh
+    $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.oemExpressUrl}"
 
-    https://144.25.10.119:5500/em
-  ```
+      https://144.25.10.119:5500/em
+    ```
 
-* ### Update Database Config
-  
-  The following database parameters can be updated post database creation: flashBack, archiveLog, forceLog. Change their attribute values and apply using
-  kubectl apply or edit/patch commands . Enable archiveLog before turning ON flashBack . Turn OFF flashBack before disabling the archiveLog
+  * ### Update Database Config
+    
+    The following database parameters can be updated post database creation: flashBack, archiveLog, forceLog. Change their attribute values and apply using
+    kubectl apply or edit/patch commands . Enable archiveLog before turning ON flashBack . Turn OFF flashBack before disabling the archiveLog
 
-  ```sh
-  $ kubectl patch singleinstancedatabase sidb-sample --type merge -p '{"spec":{"forceLog": true}}' 
+    ```sh
+    $ kubectl patch singleinstancedatabase sidb-sample --type merge -p '{"spec":{"forceLog": true}}' 
 
-    singleinstancedatabase.database.oracle.com/sidb-sample patched
-  ```
+      singleinstancedatabase.database.oracle.com/sidb-sample patched
+    ```
 
-* #### Database Config Status
+    * #### Database Config Status
 
-  Check the Database Config Status using the following command
+      Check the Database Config Status using the following command
 
-  ```sh
-  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath=[{.status.archiveLog}, {.status.flashBack}, {.status.forceLog}]"
+      ```sh
+      $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath=[{.status.archiveLog}, {.status.flashBack}, {.status.forceLog}]"
 
-    [true, true, true]
-  ```
+        [true, true, true]
+      ```
 
-* ### Update Initialization Parameters
+  * ### Update Initialization Parameters
 
-  The following database initialization parameters can be updated post database creation: `sgaTarget, pgaAggregateTarget, cpuCount, processes`. Change their attribute values and apply using kubectl apply or edit/patch commands.
+    The following database initialization parameters can be updated post database creation: `sgaTarget, pgaAggregateTarget, cpuCount, processes`. Change their attribute values and apply using kubectl apply or edit/patch commands.
 
-  **NOTE**
-  * `sgaTarget` should be in range [sga_min_size, sga_max_size], else initialization parameter `sga_target` would not be updated to specified `sgaTarget`.
+    **NOTE**
+    * `sgaTarget` should be in range [sga_min_size, sga_max_size], else initialization parameter `sga_target` would not be updated to specified `sgaTarget`.
 
-* ### Multiple Replicas
-  
-  Multiple database pod replicas can be provisioned when the persistent volume access mode is ReadWriteMany. Database is open and mounted by one of the replicas. Other replicas will have instance started but not mounted and serve to provide quick cold fail-over in case the active pod dies. Update the replica attribute in the .yaml and apply using the kubectl apply command or edit/patch commands
+  * ### Multiple Replicas
+    
+    Multiple database pod replicas can be provisioned when the persistent volume access mode is ReadWriteMany. Database is open and mounted by one of the replicas. Other replicas will have instance started but not mounted and serve to provide quick cold fail-over in case the active pod dies. Update the replica attribute in the .yaml and apply using the kubectl apply command or edit/patch commands
 
-  Note: This functionality requires the [K8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s)
-        Pre-built images from container-registry.oracle.com include the K8s extension
+    Note: This functionality requires the [K8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s)
+          Pre-built images from container-registry.oracle.com include the K8s extension
 
-* ### Patch Attributes
+  * ### Patch Attributes
 
-  The following attributes cannot be patched post SingleInstanceDatabase instance Creation : sid, edition, charset, pdbName, cloneFrom.
+    The following attributes cannot be patched post SingleInstanceDatabase instance Creation : sid, edition, charset, pdbName, cloneFrom.
 
-  ```sh
-  $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabase sidb-sample 
+    ```sh
+    $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabase sidb-sample 
 
-    The SingleInstanceDatabase "sidb-sample" is invalid: spec.sid: Forbidden: cannot be changed
-  ```
+      The SingleInstanceDatabase "sidb-sample" is invalid: spec.sid: Forbidden: cannot be changed
+    ```
 
-* #### Patch Persistence Volume Claim
+    * #### Patch Persistence Volume Claim
 
-  Persistence Volume Claim (PVC) can be patched post SingleInstanceDatabase instance Creation . This will **delete all the database pods, PVC** and new database pods are created using the new PVC .
+      Persistence Volume Claim (PVC) can be patched post SingleInstanceDatabase instance Creation . This will **delete all the database pods, PVC** and new database pods are created using the new PVC .
 
-  ```sh
-  $ kubectl --type=merge -p '{"spec":{"persistence":{"accessMode":"ReadWriteMany","size":"110Gi","storageClass":""}}}' patch singleinstancedatabase sidb-sample 
+      ```sh
+      $ kubectl --type=merge -p '{"spec":{"persistence":{"accessMode":"ReadWriteMany","size":"110Gi","storageClass":""}}}' patch singleinstancedatabase sidb-sample 
 
-    singleinstancedatabase.database.oracle.com/sidb-sample patched
-  ```
+        singleinstancedatabase.database.oracle.com/sidb-sample patched
+      ```
 
-* #### Patch Service
+    * #### Patch Service
 
-  Service can be patched post SingleInstanceDatabase instance Creation . This will **replace the Service with a new type** .
-  * NodePort     - '{"spec":{"loadBalancer": false}}'
-  * LoadBalancer - '{"spec":{"loadBalancer": true }}'
+      Service can be patched post SingleInstanceDatabase instance Creation . This will **replace the Service with a new type** .
+      * NodePort     - '{"spec":{"loadBalancer": false}}'
+      * LoadBalancer - '{"spec":{"loadBalancer": true }}'
 
-  ```sh
-  $ kubectl --type=merge -p '{"spec":{"loadBalancer": false}}' patch singleinstancedatabase sidb-sample 
+      ```sh
+      $ kubectl --type=merge -p '{"spec":{"loadBalancer": false}}' patch singleinstancedatabase sidb-sample 
 
-    singleinstancedatabase.database.oracle.com/sidb-sample patched
-  ```
+        singleinstancedatabase.database.oracle.com/sidb-sample patched
+      ```
 
 ## Clone Existing Database
 
@@ -257,28 +279,37 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
   
   Patched Oracle Docker images can be built using this [patching extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching)
 
-* ### Patch existing Database
+  * ### Patch existing Database
 
-  Edit and apply the `singleinstancedatabase.yaml` file of the database resource/object by specifying a new release update for image attributes. The database pods will be restarted with the new release update image. For minimum downtime, ensure that you have mutiple replicas of the database pods running.
-  
-* ### Clone and Patch Database
-  
-  Clone your source database using the method of [cloning existing database](README.md#clone-existing-database) and specify a new release image for the cloned database. Use this method to enusure there are no patching related issues impacting your database performance/functionality
-  
-* ### Datapatch status
-
-  Patching/Rollback operations are complete when the datapatch tool completes patching or rollback of the data files. Check the data files patching status
-  and current release update version using the following commands
-
-  ```sh
-  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.datafilesPatched}"
-
-    true
+    Edit and apply the `singleinstancedatabase.yaml` file of the database resource/object by specifying a new release update for image attributes or run the following command.
     
-  $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.releaseUpdate}"
+    ```sh
+    kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
 
-    19.3.0.0.0 (29517242)
-  ```
+    singleinstancedatabase.database.oracle.com/sidb-sample patched
+
+    ```
+
+    The database pods will be restarted with the new release update image. For minimum downtime, ensure that you have mutiple replicas of the database pods running.
+
+  * ### Clone and Patch Database
+    
+    Clone your source database using the method of [cloning existing database](README.md#clone-existing-database) and specify a new release image for the cloned database. Use this method to enusure there are no patching related issues impacting your database performance/functionality
+    
+  * ### Datapatch status
+
+    Patching/Rollback operations are complete when the datapatch tool completes patching or rollback of the data files. Check the data files patching status
+    and current release update version using the following commands
+
+    ```sh
+    $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.datafilesPatched}"
+
+      true
+      
+    $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.releaseUpdate}"
+
+      19.3.0.0.0 (29517242)
+    ```
   
 ## Kind OracleRestDataService
 
