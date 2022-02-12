@@ -16,14 +16,14 @@ spec:
   adminPassword:
     secretName: 
     secretKey:
-    keepSecret: false
+    keepSecret: true
 
   ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
   ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   ordsPassword:
     secretName: 
     secretKey:
-    keepSecret: false
+    keepSecret: true
 
   ## Secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
   ## Mention a non-null string for apexPassword.secretName to configure APEX with ORDS.
@@ -31,7 +31,7 @@ spec:
   apexPassword:
     secretName: 
     secretKey:
-    keepSecret: false
+    keepSecret: true
 
   ## ORDS image details
   image:

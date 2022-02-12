@@ -22,7 +22,7 @@ spec:
   adminPassword:
     secretName: 
     secretKey:
-    keepSecret: false
+    keepSecret: true
 
   ## Database image details
   ## Database can be patched out of place by updating the RU version/image
