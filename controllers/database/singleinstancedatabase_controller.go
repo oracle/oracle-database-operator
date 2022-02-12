@@ -509,7 +509,12 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					}
 					return ns
 				}(),
-
+				ServiceAccountName: func() string {
+					if m.Spec.ServiceAccountName != "" {
+						return m.Spec.ServiceAccountName
+					}
+					return "default"
+				}(),
 				SecurityContext: &corev1.PodSecurityContext{
 					RunAsUser: func() *int64 {
 						i := int64(0)

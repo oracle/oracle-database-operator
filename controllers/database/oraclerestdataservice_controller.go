@@ -516,7 +516,12 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 				}
 				return ns
 			}(),
-
+			ServiceAccountName: func() string {
+				if m.Spec.ServiceAccountName != "" {
+					return m.Spec.ServiceAccountName
+				}
+				return "default"
+			}(),
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
 				RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),

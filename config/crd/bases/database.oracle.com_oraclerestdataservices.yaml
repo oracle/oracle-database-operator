@@ -139,6 +139,8 @@ spec:
                   - schema
                   type: object
                 type: array
+              serviceAccountName:
+                type: string
             required:
             - adminPassword
             - databaseRef
