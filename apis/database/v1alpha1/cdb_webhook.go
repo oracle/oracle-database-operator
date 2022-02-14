@@ -179,7 +179,7 @@ func (r *CDB) ValidateUpdate(old runtime.Object) error {
 	}
 	if !strings.EqualFold(oldCDB.Spec.ServiceName, r.Spec.ServiceName) {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("replics"), "cannot be changed"))
+			field.Forbidden(field.NewPath("spec").Child("replicas"), "cannot be changed"))
 	}
 
 	if len(allErrs) == 0 {
