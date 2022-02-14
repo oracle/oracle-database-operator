@@ -2,7 +2,7 @@
 
 ## Oracle Autonomous Database (ADB) Prerequisites
 
-Oracle Database Operator for Kubernetes must have access to OCI services. 
+Oracle Database Operator for Kubernetes must have access to OCI services.
 
 To provide access, choose **one of the following approaches**:
 
@@ -10,12 +10,11 @@ To provide access, choose **one of the following approaches**:
 
 * The Kubernetes cluster nodes are [granted with Instance Principal](#authorized-with-instance-principal)
 
-### Authorized with API Key Authentication
+## Authorized with API Key Authentication
 
-By default, all pods in the Oracle Container Engine for Kubernetes (OKE) are able to access the instance principal certificates, so that the operator calls OCI REST endpoints without any extra step. If you're using OKE, then please proceed to the installation.
-If the operator is deployed in a third-party Kubernetes cluster, then the credentials of the Oracle Cloud Infrastructure (OCI) user are needed. The operator reads these credentials from a ConfigMap and a Secret.
+API keys are supplied by users to authenticate the operator accessing Oracle Cloud Infrastructure (OCI) services. The operator reads the credintials of the OCI user from a ConfigMap and a Secret. If you're using Oracle Container Engine for Kubernetes (OKE), you may alternatively use [Instance Principal](#authorized-with-instance-principal) to avoid the need to configure user credentails or a configuration file. If the operator is deployed in a third-party Kubernetes cluster, then the credentials or a configuration file are needed, since Instance principal authorization applies only to instances that are running in the OCI.
 
-Oracle recommends using the helper script `set_ocicredentials.sh` in the root directory of the repository; This script will generate a ConfigMap and a Secret with the OCI credentials. By default, the script parses the **DEFAULT** profile in `~/.oci/config`. The default names of the ConfigMap and the Secret are, respectively: `oci-cred` and `oci-privatekey`.
+Oracle recommends using the helper script `set_ocicredentials.sh` in the root directory of the repository; this script will generate a ConfigMap and a Secret with the OCI credentials. By default, the script parses the **DEFAULT** profile in `~/.oci/config`. The default names of the ConfigMap and the Secret are, respectively: `oci-cred` and `oci-privatekey`.
 
 ```sh
 ./set_ocicredentials.sh run
@@ -45,56 +44,77 @@ kubectl create secret generic oci-privatekey \
 
 After creating the ConfigMap and the Secret, use their names as the values of `ociConfigMap` and `ociSecret` attributes in the yaml files for provisioning, binding, and other operations.
 
-### Authorized with Instance Principal
+## Authorized with Instance Principal
 
-Instance principal authorization enables the operator to make API calls from an instance (that is, a node) without requiring the `ociConfigMap`,  and `ociSecret` attributes in the `.yaml` file.
+Instance principal authorization enables the operator to make API calls from an instance (that is, a node) without requiring the `ociConfigMap`,  and `ociSecret` attributes in the `.yaml` file. This approach applies only to instances that are running in the Oracle Cloud Infrastructure (OCI). In general, you will have to:
 
-> Note: Instance principal authorization applies only to instances that are running in the Oracle Cloud Infrastructure (OCI).
+* [Define dynamic group that includes the nodes in which the operator runs](#define-dynamic-group)
+* [Define policies that grant to the dynamic group the required permissions for the operator to its OCI interactions](#define-policies)
 
-To set up Instance Principle authorization: 
+### Define Dynamic Group
 
-1. Get the `compartment OCID`:
-
-    Log in to the cloud console, and click **Compartment**.
-
-    ![compartment-1](/images/adb/compartment-1.png)
-
-    Choose the compartment where the cluster creates instances, and **copy** the OCID in the details page.
-
-    ![compartment-2](/images/adb/compartment-2.png)
-
-2. Create a dynamic group and matching rules:
-
-    Go to the **Dynamic Groups** page, and click **Create Dynamic Group**.
+1. Go to the **Dynamic Groups** page, and click **Create Dynamic Group**.
 
     ![instance-principal-1](/images/adb/instance-principal-1.png)
 
-    In the **Matching Rules** section, write the following rule. Change `compartment-OCID` to the OCID of your compartment. This rule enables all the resources, including **nodes** in the compartment, to be members of the dynamic group.
+2. In the **Matching Rules** section, write rules the to include the OKE nodes in the dynamic group.
+
+    Example 1 : enables **all** the resources, including OKE nodes in the compartment, to be members of the dynamic group.
 
     ```sh
-    All {instance.compartment.id = 'compartment-OCID'}
+    All {instance.compartment.id = '<compartment-OCID>'}
     ```
 
     ![instance-principal-2](/images/adb/instance-principal-2.png)
 
-    To apply the rules, click **Create**.
+    Example 2 : enables the OKE nodes in the compartment, to be members of the dynamic group.
 
-3. Set up policies for dynamic groups:
-
-    Go to **Policies**, and click **Create Policy**.
+    ```sh
+    Any {instance.compartment.id = '<oke-node1-instance-OCID>', instance.compartment.id = '<oke-node2-instance-OCID>', instance.compartment.id = '<oke-node3-instance-OCID>'}
+    ```
 
     ![instance-principal-3](/images/adb/instance-principal-3.png)
 
-    This example enables the dynamic group to manage all the resources in your tenancy:
+3. To apply the rules, click **Create**.
+
+### Define Policies
+
+1. Get the `compartment name` where the database resides:
+
+    > Note: You may skip this step if the database is in the root compartment.
+
+    Go to **Autonomous Database** in the Cloud Console.
+
+    ![adb-id-1](/images/adb/adb-id-1.png)
+
+    Copy the name of the compartment in the details page.
+
+    ![instance-principal-4](/images/adb/instance-principal-4.png)
+
+2. Set up policies for dynamic groups to grant access to its OCI interactions. Use the dynamic group name is from the [Define Dynamic Group](#define-dynamic-group) section, and the compartment name from the previous step:
+
+    Go to **Policies**, and click **Create Policy**.
+
+    ![instance-principal-5](/images/adb/instance-principal-5.png)
+
+    Example 1: enable the dynamic group to manage **all** the resources in a compartment
 
     ```sh
-    Allow dynamic-group <your-dynamic-group> to manage all-resources in tenancy
+    Allow dynamic-group <dynamic-group-name> to manage all-resources in compartment <compartment-name>
     ```
 
-    You can also specify a particular resouce access for the dynamic group. This example enables the dynamic group to manage Oracle Autonomous Database in a given compartment:
+    Example 2: enable the dynamic group to manage **all** the resources in your tenancy (root compartment).
 
     ```sh
-    Allow dynamic-group <your-dynamic-group> to manage autonomous-database-family in compartment <your-compartment>
+    Allow dynamic-group <dynamic-group-name> to manage all-resources in tenancy
     ```
 
-At this stage, the operator has been granted sufficient permissions to call OCI services. You can now proceed to the installation.
+    Example 3: enable a particular resouce access for the dynamic group to manage Oracle Autonomous Database in a given compartment
+
+    ```sh
+    Allow dynamic-group <dynamic-group-name> to manage autonomous-database-family in compartment <compartment-name>
+    ```
+
+3. To apply the policy, click Create.
+
+At this stage, the instances where the operator deploys have been granted sufficient permissions to call OCI services. You can now proceed to the installation.
