@@ -173,6 +173,14 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeueY, nil
 	}
 
+	// Check for Duplicate PDB
+	if !pdb.Status.Status {
+		err = r.checkDuplicatePDB(ctx, req, pdb)
+		if err != nil {
+			return requeueN, nil
+		}
+	}
+
 	action := strings.ToUpper(pdb.Spec.Action)
 
 	if pdb.Status.Phase == pdbPhaseReady {
@@ -256,6 +264,49 @@ func (r *PDBReconciler) validatePhase(ctx context.Context, req ctrl.Request, pdb
 	}
 
 	log.Info("Validation complete")
+}
+
+/****************************************************************
+ * Check for Duplicate PDB. Same PDB name on the same CDB resource.
+ /***************************************************************/
+func (r *PDBReconciler) checkDuplicatePDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
+
+	log := r.Log.WithValues("checkDuplicatePDB", req.NamespacedName)
+
+	// Name of the CDB CR that holds the ORDS container
+	cdbResName := pdb.Spec.CDBResName
+	//cdbame := pdb.Spec.CDBName
+
+	// Name of the PDB resource
+	pdbResName := pdb.Spec.PDBName
+
+	pdbList := &dbapi.PDBList{}
+
+	listOpts := []client.ListOption{client.InNamespace(req.Namespace), client.MatchingFields{"spec.pdbName": pdbResName}}
+
+	// List retrieves list of objects for a given namespace and list options.
+	err := r.List(ctx, pdbList, listOpts...)
+	if err != nil {
+		log.Info("Failed to list pdbs", "Namespace", req.Namespace, "Error", err)
+		return err
+	}
+
+	if len(pdbList.Items) == 0 {
+		log.Info("No pdbs found for PDBName: "+pdbResName, "CDBResName", cdbResName)
+		return nil
+	}
+
+	for _, p := range pdbList.Items {
+		log.Info("Found PDB: " + p.Name)
+		if (p.Name != pdb.Name) && (p.Spec.CDBResName == cdbResName) {
+			log.Info("Duplicate PDB found")
+			pdb.Status.Msg = "PDB Resource already exists"
+			pdb.Status.Status = false
+			pdb.Status.Phase = pdbPhaseFail
+			return errors.New("Duplicate PDB found")
+		}
+	}
+	return nil
 }
 
 /****************************************************************
@@ -854,6 +905,7 @@ func (r *PDBReconciler) managePDBDeletion(ctx context.Context, req ctrl.Request,
 	isPDBMarkedToBeDeleted := pdb.GetDeletionTimestamp() != nil
 	if isPDBMarkedToBeDeleted {
 		log.Info("Marked to be deleted")
+		pdb.Status.Phase = pdbPhaseDelete
 		if controllerutil.ContainsFinalizer(pdb, PDBFinalizer) {
 			// Remove PDBFinalizer. Once all finalizers have been
 			// removed, the object will be deleted.

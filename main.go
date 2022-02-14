@@ -39,6 +39,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"strconv"
@@ -49,6 +50,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
@@ -90,6 +92,9 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+
+	// Get Cache
+	cache := mgr.GetCache()
 
 	if err = (&databasecontroller.AutonomousDatabaseReconciler{
 		KubeClient: mgr.GetClient(),
@@ -184,6 +189,15 @@ func main() {
 	}
 
 	// +kubebuilder:scaffold:builder
+
+	// Add index for PDB CR to enable mgr to cache PDBs
+	indexFunc := func(obj client.Object) []string {
+		return []string{obj.(*databasev1alpha1.PDB).Spec.PDBName}
+	}
+	if err = cache.IndexField(context.TODO(), &databasev1alpha1.PDB{}, "spec.pdbName", indexFunc); err != nil {
+		setupLog.Error(err, "unable to create index function for ", "controller", "PDB")
+		os.Exit(1)
+	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
