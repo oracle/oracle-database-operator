@@ -76,7 +76,7 @@ func (r *SingleInstanceDatabase) Default() {
 	}
 
 	// Pre-built db should have 1 replica only
-	if r.Spec.Persistence.AccessMode == "" {
+	if r.Spec.Persistence.AccessMode == "" && r.Spec.Replicas > 1 {
 		r.Spec.Replicas = 1
 	}
 
