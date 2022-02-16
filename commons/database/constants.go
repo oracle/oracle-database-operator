@@ -91,9 +91,114 @@ const ArchiveLogFalseCMD string = CreateChkFileCMD + " && " +
 	"echo -e  \"SHUTDOWN IMMEDIATE; \n STARTUP MOUNT; \n ALTER DATABASE NOARCHIVELOG; \n SELECT log_mode FROM v\\$database; \n ALTER DATABASE OPEN;" +
 	" \n ALTER PLUGGABLE DATABASE ALL OPEN; \n ALTER SYSTEM REGISTER;\" | %s && " + RemoveChkFileCMD
 
-const GetDatabaseRoleCMD string = "SELECT DATABASE_ROLE FROM V\\$DATABASE; "
+const StandbyDatabasePrerequisitesSQL string = "ALTER SYSTEM SET db_create_file_dest='/opt/oracle/oradata/';" +
+	"\nALTER SYSTEM SET db_create_online_log_dest_1='/opt/oracle/oradata/';" +
+	"\nALTER SYSTEM SWITCH LOGFILE;" +
+	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 GROUP 10 SIZE 200M;" +
+	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 GROUP 11 SIZE 200M;" +
+	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 GROUP 12 SIZE 200M;" +
+	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 GROUP 13 SIZE 200M;" +
+	"\nALTER SYSTEM SET STANDBY_FILE_MANAGEMENT=AUTO;" +
+	"\nALTER SYSTEM SET dg_broker_start=TRUE;"
+
+const StandbyTnsnamesEntry string = `
+##STANDBYDATABASE_SID## =
+(DESCRIPTION =
+(ADDRESS = (PROTOCOL = TCP)(HOST = ##STANDBYDATABASE_SERVICE_EXPOSED## )(PORT = 1521))
+(CONNECT_DATA =
+(SERVER = DEDICATED)
+(SERVICE_NAME = ##STANDBYDATABASE_SID##)
+)
+)
+`
+const PDBTnsnamesEntry string = `
+##PDB_NAME## =
+(DESCRIPTION =
+(ADDRESS = (PROTOCOL = TCP)(HOST = 0.0.0.0 )(PORT = 1521))
+(CONNECT_DATA =
+(SERVER = DEDICATED)
+(SERVICE_NAME = ##PDB_NAME##)
+)
+)
+`
+
+const PrimaryTnsnamesEntry string = `
+${PRIMARY_SID} =
+(DESCRIPTION =
+(ADDRESS = (PROTOCOL = TCP)(HOST = ${PRIMARY_IP})(PORT = 1521 ))
+(CONNECT_DATA =
+ (SERVER = DEDICATED)
+ (SERVICE_NAME = ${PRIMARY_SID})
+)
+)
+`
+
+const ListenerEntry string = `LISTENER = 
+(DESCRIPTION_LIST = 
+(DESCRIPTION = 
+(ADDRESS = (PROTOCOL = IPC)(KEY = EXTPROC1)) 
+(ADDRESS = (PROTOCOL = TCP)(HOST = 0.0.0.0)(PORT = 1521)) 
+)
+) 
+SID_LIST_LISTENER =
+(SID_LIST =
+(SID_DESC =
+  (GLOBAL_DBNAME = ${ORACLE_SID^^})
+  (SID_NAME = ${ORACLE_SID^^})
+  (ORACLE_HOME = ${ORACLE_HOME})
+)
+(SID_DESC =
+  (GLOBAL_DBNAME = ${ORACLE_SID^^}_DGMGRL)
+  (SID_NAME = ${ORACLE_SID^^})
+  (ORACLE_HOME = ${ORACLE_HOME})
+  (ENVS="TNS_ADMIN=/opt/oracle/oradata/dbconfig/${ORACLE_SID^^}")
+)
+)
+
+DEDICATED_THROUGH_BROKER_LISTENER=ON
+`
+
+const DataguardBrokerMaxPerformanceCMD string = "CREATE CONFIGURATION dg_config AS PRIMARY DATABASE IS ${PRIMARY_SID} CONNECT IDENTIFIER IS ${PRIMARY_DB_CONN_STR};" +
+	"\nADD DATABASE ${ORACLE_SID} AS CONNECT IDENTIFIER IS ${SVC_HOST}:1521/${ORACLE_SID} MAINTAINED AS PHYSICAL;" +
+	"\nEDIT DATABASE ${PRIMARY_SID} SET PROPERTY LogXptMode='ASYNC';" +
+	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY LogXptMode='ASYNC';" +
+	"\nEDIT DATABASE ${PRIMARY_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${PRIMARY_IP})(PORT=1521))" +
+	"(CONNECT_DATA=(SERVICE_NAME=${PRIMARY_SID}_DGMGRL)(INSTANCE_NAME=${PRIMARY_SID})(SERVER=DEDICATED)))';" +
+	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${SVC_HOST})(PORT=1521))" +
+	"(CONNECT_DATA=(SERVICE_NAME=${ORACLE_SID}_DGMGRL)(INSTANCE_NAME=${ORACLE_SID})(SERVER=DEDICATED)))';" +
+	"\nEDIT CONFIGURATION SET PROTECTION MODE AS MAXPERFORMANCE;" +
+	"\nENABLE CONFIGURATION;"
+
+const DataguardBrokerMaxAvailabilityCMD string = "CREATE CONFIGURATION dg_config AS PRIMARY DATABASE IS ${PRIMARY_SID} CONNECT IDENTIFIER IS ${PRIMARY_DB_CONN_STR};" +
+	"\nADD DATABASE ${ORACLE_SID} AS CONNECT IDENTIFIER IS ${SVC_HOST}:1521/${ORACLE_SID} MAINTAINED AS PHYSICAL;" +
+	"\nEDIT DATABASE ${PRIMARY_SID} SET PROPERTY LogXptMode='SYNC';" +
+	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY LogXptMode='SYNC';" +
+	"\nEDIT DATABASE ${PRIMARY_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${PRIMARY_IP})(PORT=1521))" +
+	"(CONNECT_DATA=(SERVICE_NAME=${PRIMARY_SID}_DGMGRL)(INSTANCE_NAME=${PRIMARY_SID})(SERVER=DEDICATED)))';" +
+	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${SVC_HOST})(PORT=1521))" +
+	"(CONNECT_DATA=(SERVICE_NAME=${ORACLE_SID}_DGMGRL)(INSTANCE_NAME=${ORACLE_SID})(SERVER=DEDICATED)))';" +
+	"\nEDIT CONFIGURATION SET PROTECTION MODE AS MAXAVAILABILITY;" +
+	"\nENABLE CONFIGURATION;"
+
+const DataguardBrokerAddDBMaxPerformanceCMD string = "ADD DATABASE ${ORACLE_SID} AS CONNECT IDENTIFIER IS ${SVC_HOST}:1521/${ORACLE_SID} MAINTAINED AS PHYSICAL;" +
+	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY LogXptMode='ASYNC';" +
+	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${SVC_HOST})(PORT=1521))" +
+	"(CONNECT_DATA=(SERVICE_NAME=${ORACLE_SID}_DGMGRL)(INSTANCE_NAME=${ORACLE_SID})(SERVER=DEDICATED)))';" +
+	"\nENABLE CONFIGURATION;"
+
+const DataguardBrokerAddDBMaxAvailabilityCMD string = "ADD DATABASE ${ORACLE_SID} AS CONNECT IDENTIFIER IS ${SVC_HOST}:1521/${ORACLE_SID} MAINTAINED AS PHYSICAL;" +
+	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY LogXptMode='SYNC';" +
+	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${SVC_HOST})(PORT=1521))" +
+	"(CONNECT_DATA=(SERVICE_NAME=${ORACLE_SID}_DGMGRL)(INSTANCE_NAME=${ORACLE_SID})(SERVER=DEDICATED)))';" +
+	"\nENABLE CONFIGURATION;"
+
+const DBShowConfigCMD string = "SHOW CONFIGURATION;"
 
 const DataguardBrokerGetDatabaseCMD string = "SELECT DATABASE || ':' || DATAGUARD_ROLE AS DATABASE FROM V\\$DG_BROKER_CONFIG;"
+
+const EnableFSFOCMD string = "ENABLE FAST_START FAILOVER;"
+
+const GetDatabaseRoleCMD string = "SELECT DATABASE_ROLE FROM V\\$DATABASE; "
 
 const RunDatapatchCMD string = " ( while true; do  sleep 60; echo \"Installing patches...\" ; done ) & if ! $ORACLE_HOME/OPatch/datapatch -skip_upgrade_check;" +
 	" then echo \"Datapatch execution has failed.\" ; else echo \"DONE: Datapatch execution.\" ; fi ; kill -9 $!;"
@@ -109,6 +214,95 @@ const GetCheckpointFileCMD string = "find ${ORACLE_BASE}/oradata -name .${ORACLE
 const GetEnterpriseEditionFileCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_enterprise ]; then ls ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_enterprise; fi "
 
 const GetStandardEditionFileCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_standard ]; then ls ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_standard; fi "
+
+const GetPdbsSQL string = "select name from v\\$pdbs where name not like 'PDB\\$SEED' and open_mode like 'READ WRITE';"
+
+const SetAdminUsersSQL string = "CREATE USER C##DBAPI_CDB_ADMIN IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK CONTAINER=ALL;" +
+	"\nalter user C##DBAPI_CDB_ADMIN identified by \\\"%[1]s\\\" account unlock;" +
+	"\nGRANT DBA TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" +
+	"\nGRANT PDB_DBA  TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" +
+	"\nCREATE USER C##_DBAPI_PDB_ADMIN IDENTIFIED BY \\\"%[1]s\\\" CONTAINER=ALL ACCOUNT UNLOCK;" +
+	"\nalter user C##_DBAPI_PDB_ADMIN identified by \\\"%[1]s\\\" account unlock;" +
+	"\nGRANT DBA TO C##_DBAPI_PDB_ADMIN CONTAINER = ALL;"
+
+const GetUserOrdsSchemaStatusSQL string = "alter session set container=%[2]s;" +
+	"\nselect 'STATUS:'||status as status from ords_metadata.ords_schemas where upper(parsing_schema) = upper('%[1]s');"
+
+const EnableORDSSchemaSQL string = "\nALTER SESSION SET CONTAINER=%[5]s;" +
+	"\nCREATE USER %[1]s IDENTIFIED BY \\\"%[2]s\\\";" +
+	"\nGRANT CONNECT, RESOURCE, DBA, PDB_DBA TO %[1]s;" +
+	"\nCONN %[1]s/\\\"%[2]s\\\"@localhost:1521/%[5]s;" +
+	"\nBEGIN" +
+	"\nORDS.enable_schema(p_enabled => %[3]s ,p_schema => '%[1]s',p_url_mapping_type => 'BASE_PATH',p_url_mapping_pattern => '%[4]s',p_auto_rest_auth => FALSE);" +
+	"\nCOMMIT;" +
+	"\nEND;" +
+	"\n/"
+
+	// SetupORDSCMD is run only for the FIRST TIME, ORDS is installed. Once ORDS is installed, we delete the pod that ran SetupORDSCMD and create new ones.
+	// Newly created pod doesn't run this SetupORDSCMD.
+const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.admin.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property dbc.auth.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property restEnabledSql.active true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property db.serviceNameSuffix \"\" " + // Mandatory when ORDS Installing at CDB Level -> Maps PDB's
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InitialLimit 5" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.MaxLimit 20" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InactivityTimeout 300" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
+	"\numask 177" +
+	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
+	"\necho db.cdb.adminUser.password=\"%[4]s\" >> cdbAdmin.properties" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
+	"\nrm -f cdbAdmin.properties" +
+	"\necho db.username=APEX_LISTENER > apexlistener" +
+	"\necho db.password=\"%[2]s\" >> apexlistener" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_al apexlistener" +
+	"\nrm -f apexlistener" +
+	"\necho db.username=APEX_REST_PUBLIC_USER > apexRestPublicUser" +
+	"\necho db.password=\"%[2]s\" >> apexRestPublicUser" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_rt apexRestPublicUser" +
+	"\nrm -f apexRestPublicUser" +
+	"\necho db.username=APEX_PUBLIC_USER > apexPublicUser" +
+	"\necho db.password=\"%[2]s\" >> apexPublicUser" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex apexPublicUser" +
+	"\nrm -f apexPublicUser" +
+	"\necho db.adminUser=C##_DBAPI_PDB_ADMIN > pdbAdmin.properties" +
+	"\necho db.adminUser.password=\"%[4]s\">> pdbAdmin.properties" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu pdbAdmin.properties" +
+	"\nrm -f pdbAdmin.properties" +
+	"\necho -e \"%[1]s\n%[1]s\" > sqladmin.passwd" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
+	"\nrm -f sqladmin.passwd" +
+	"\numask 022" +
+	"\nsed -i 's,jetty.port=8888,jetty.secure.port=8443\\nssl.cert=\\nssl.cert.key=\\nssl.host=%[3]s,g' /opt/oracle/ords/config/ords/standalone/standalone.properties " +
+	"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/ords/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
+
+const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p WHERE s.username = 'ORDS_PUBLIC_USER' AND p.addr(+) = s.paddr;"
+
+const KillSessionSQL string = "alter system kill session '%[1]s';"
+
+const DropAdminUsersSQL string = "drop user C##DBAPI_CDB_ADMIN;" +
+	"\ndrop user C##_DBAPI_PDB_ADMIN;"
+
+const UninstallORDSCMD string = "\numask 177" +
+	"\necho -e \"1\n${ORACLE_HOST}\n${ORACLE_PORT}\n1\n${ORACLE_SERVICE}\nsys\n%[1]s\n%[1]s\n1\" > ords.cred" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war uninstall advanced < ords.cred" +
+	"\nrm -f ords.cred" +
+	"\numask 022" +
+	"\nrm -f /opt/oracle/ords/config/ords/defaults.xml" +
+	"\nrm -f /opt/oracle/ords/config/ords/credentials" +
+	"\nrm -rf /opt/oracle/ords/config/ords/conf" +
+	"\nrm -rf /opt/oracle/ords/config/ords/standalone" +
+	"\nrm -rf /opt/oracle/ords/config/ords/apex"
+
+// To handle timing issue, checking if either of https://localhost:8443 or http://localhost:8888 is used for ORDS Installation
+const GetORDSStatus string = "  curl -sSkv -k -X GET https://localhost:8443/ords/_/db-api/stable/metadata-catalog/ || curl  -sSkv -X GET http://localhost:8888/ords/_/db-api/stable/metadata-catalog/ "
+
+const ValidateAdminPassword string = "conn sys/%s@${ORACLE_SID} as sysdba\nshow user"
 
 const ReconcileError string = "ReconcileError"
 
@@ -175,3 +369,57 @@ const IsApexInstalled string = "select 'APEXVERSION:'||version as version FROM D
 
 const UninstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apxremov.sql ]; then  ( while true; do  sleep 60; echo \"Uninstalling Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apxremov.sql\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
+
+const ConfigureApexRest string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apex_rest_config.sql ]; then  cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && " +
+	"echo -e \"%[1]s\n%[1]s\" | %[2]s ; else echo \"Apex Folder doesn't exist\" ; fi ;"
+
+const AlterApexUsers string = "echo -e \" ALTER USER APEX_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK; \n ALTER USER APEX_REST_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;" +
+	" \n ALTER USER APEX_LISTENER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;\" | %[2]s"
+
+const CopyApexImages string = " ( while true; do  sleep 60; echo \"Copying Apex Images...\" ; done ) & mkdir -p /opt/oracle/oradata/${ORACLE_SID^^}_ORDS/apex/images && " +
+	" cp -R /opt/oracle/oradata/${ORACLE_SID^^}/apex/images/* /opt/oracle/oradata/${ORACLE_SID^^}_ORDS/apex/images; chown -R oracle:oinstall /opt/oracle/oradata/${ORACLE_SID^^}_ORDS/apex; kill -9 $!;"
+
+const ApexAdmin string = "BEGIN" +
+	"\napex_util.set_security_group_id(p_security_group_id => 10); APEX_UTIL.REMOVE_USER(p_user_name => 'ADMIN');" +
+	"\nCOMMIT;" +
+	"\nEND;" +
+	"\n/" +
+	"\nBEGIN" +
+	"\nAPEX_UTIL.create_user(p_user_name => 'ADMIN',p_email_address   => 'admin@oracle.com',p_web_password => '%[1]s',p_developer_privs => 'ADMIN',p_failed_access_attempts => '5' ," +
+	" p_allow_app_building_yn => 'Y' ,p_allow_sql_workshop_yn => 'Y' ,p_allow_websheet_dev_yn => 'Y' , p_allow_team_development_yn => 'Y' , p_change_password_on_first_use  => 'N' );" +
+	"apex_util.unlock_account(p_user_name => 'ADMIN'); APEX_UTIL.set_security_group_id( null );" +
+	"\nCOMMIT;" +
+	"\nEND;" +
+	"\n/" +
+	"\nALTER SESSION SET CONTAINER=%[2]s;" +
+	"\nBEGIN" +
+	"\napex_util.set_security_group_id(p_security_group_id => 10); APEX_UTIL.REMOVE_USER(p_user_name => 'ADMIN');" +
+	"\nCOMMIT;" +
+	"\nEND;" +
+	"\n/" +
+	"\nBEGIN" +
+	"\nAPEX_UTIL.create_user(p_user_name => 'ADMIN',p_email_address   => 'admin@oracle.com',p_web_password => '%[1]s',p_developer_privs => 'ADMIN',p_failed_access_attempts => '5' ," +
+	" p_allow_app_building_yn => 'Y' ,p_allow_sql_workshop_yn => 'Y' ,p_allow_websheet_dev_yn => 'Y' , p_allow_team_development_yn => 'Y' , p_change_password_on_first_use  => 'N' );" +
+	"apex_util.unlock_account(p_user_name => 'ADMIN'); APEX_UTIL.set_security_group_id( null );" +
+	"\nCOMMIT;" +
+	"\nEND;" +
+	"\n/"
+
+// SetApexUsers is used to set Apex Users, pod that runs SetApexUsers is deleted and new ones is created.
+const SetApexUsers string = "\numask 177" +
+	"\necho db.username=APEX_LISTENER > apexlistener" +
+	"\necho db.password=\"%[1]s\" >> apexlistener" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_al apexlistener" +
+	"\nrm -f apexlistener" +
+	"\necho db.username=APEX_REST_PUBLIC_USER > apexRestPublicUser" +
+	"\necho db.password=\"%[1]s\" >> apexRestPublicUser" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_rt apexRestPublicUser" +
+	"\nrm -f apexRestPublicUser" +
+	"\necho db.username=APEX_PUBLIC_USER > apexPublicUser" +
+	"\necho db.password=\"%[1]s\" >> apexPublicUser" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex apexPublicUser" +
+	"\nrm -f apexPublicUser" +
+	"\numask 022"
+
+// Get Sid, Pdbname, Edition for prebuilt db
+const GetSidPdbEditionCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_standard ]; then echo \"$ORACLE_SID,$ORACLE_PDB,Standard,Edition\"; else echo \"$ORACLE_SID,$ORACLE_PDB,Enterprise,Edition\"; fi;"
