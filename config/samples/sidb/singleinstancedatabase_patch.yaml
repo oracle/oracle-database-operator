@@ -33,5 +33,8 @@ spec:
     storageClass: "oci"
     accessMode: "ReadWriteOnce"
 
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  ServiceAccountname: default
+
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1

@@ -165,6 +165,32 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
+  - oraclerestdataservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - oraclerestdataservices/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - oraclerestdataservices/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
   - shardingdatabases
   verbs:
   - create
