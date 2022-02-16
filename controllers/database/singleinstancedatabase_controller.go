@@ -1356,7 +1356,7 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 
 	noDeleted := 0
 	for _, availablePod := range available {
-		if readyPod.Name == availablePod.Name {
+		if readyPod.Name == availablePod.Name && m.Spec.Replicas != 0 {
 			continue
 		}
 		if replicasRequired == (len(available) - noDeleted) {
