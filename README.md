@@ -19,7 +19,7 @@ Oracle will continue to expand Oracle Database Operator support for additional O
 This release of Oracle Database Operator for Kubernetes (the operator) supports the following lifecycle operations:
 
 * ADB-S: provision, bind, start, stop, terminate (soft/hard), scale (down/up)
-* SIDB: provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console)
+* SIDB: provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, and Application Express (Apex)
 * SHARDED: provision/deploy sharded databases and the shard topology, add a new shard, delete an existing shard
 
 Upcoming releases will support new configurations, operations and capabilities.

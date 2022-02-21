@@ -1,0 +1,20 @@
+# permissions for end users to view oraclerestdataservices.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oraclerestdataservice-viewer-role
+rules:
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - oraclerestdataservices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - oraclerestdataservices/status
+  verbs:
+  - get

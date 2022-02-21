@@ -1,0 +1,24 @@
+# permissions for end users to edit oraclerestdataservices.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oraclerestdataservice-editor-role
+rules:
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - oraclerestdataservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - oraclerestdataservices/status
+  verbs:
+  - get
