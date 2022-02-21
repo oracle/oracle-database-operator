@@ -23,6 +23,9 @@ spec:
     - jsonPath: .status.lifecycleState
       name: State
       type: string
+    - jsonPath: .status.dbDisplayName
+      name: DB DisplayName
+      type: string
     - jsonPath: .status.type
       name: Type
       type: string
@@ -69,29 +72,29 @@ spec:
                   secretName:
                     type: string
                 type: object
-            required:
-            - autonomousDatabaseOCID
             type: object
           status:
             description: AutonomousDatabaseBackupStatus defines the observed state
               of AutonomousDatabaseBackup
             properties:
               autonomousDatabaseBackupOCID:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
                 type: string
               autonomousDatabaseOCID:
                 type: string
               compartmentOCID:
+                type: string
+              dbDisplayName:
+                type: string
+              dbName:
                 type: string
               displayName:
                 type: string
               isAutomatic:
                 type: boolean
               lifecycleState:
-                description: 'AutonomousDatabaseBackupLifecycleStateEnum Enum with
-                  underlying type: string'
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
                 type: string
               timeEnded:
                 type: string
@@ -105,6 +108,8 @@ spec:
             - autonomousDatabaseBackupOCID
             - autonomousDatabaseOCID
             - compartmentOCID
+            - dbDisplayName
+            - dbName
             - displayName
             - isAutomatic
             - lifecycleState

@@ -68,11 +68,12 @@ type OCIConfigSpec struct {
 
 // AutonomousDatabaseDetails defines the detail information of AutonomousDatabase, corresponding to oci-go-sdk/database/AutonomousDatabase
 type AutonomousDatabaseDetails struct {
-	AutonomousDatabaseOCID *string `json:"autonomousDatabaseOCID,omitempty"`
-	CompartmentOCID        *string `json:"compartmentOCID,omitempty"`
-	DisplayName            *string `json:"displayName,omitempty"`
-	DbName                 *string `json:"dbName,omitempty"`
-	// +kubebuilder:validation:Enum:=OLTP;DW;AJD;APEX
+	AutonomousDatabaseOCID          *string `json:"autonomousDatabaseOCID,omitempty"`
+	CompartmentOCID                 *string `json:"compartmentOCID,omitempty"`
+	AutonomousContainerDatabaseOCID *string `json:"autonomousContainerDatabaseOCID,omitempty"`
+	DisplayName                     *string `json:"displayName,omitempty"`
+	DbName                          *string `json:"dbName,omitempty"`
+	// +kubebuilder:validation:Enum:="OLTP";"DW";"AJD";"APEX"
 	DbWorkload           database.AutonomousDatabaseDbWorkloadEnum     `json:"dbWorkload,omitempty"`
 	IsDedicated          *bool                                         `json:"isDedicated,omitempty"`
 	DbVersion            *string                                       `json:"dbVersion,omitempty"`
@@ -82,12 +83,7 @@ type AutonomousDatabaseDetails struct {
 	IsAutoScalingEnabled *bool                                         `json:"isAutoScalingEnabled,omitempty"`
 	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
 
-	SubnetOCID               *string  `json:"subnetOCID,omitempty"`
-	NsgOCIDs                 []string `json:"nsgOCIDs,omitempty"`
-	IsAccessControlEnabled   *bool    `json:"isAccessControlEnabled,omitempty"`
-	WhitelistedIPs           []string `json:"whitelistedIPs,omitempty"`
-	IsMTLSConnectionRequired *bool    `json:"isMTLSConnectionRequired,omitempty"`
-	PrivateEndpointLabel     *string  `json:"privateEndpointLabel,omitempty"`
+	NetworkAccess NetworkAccessSpec `json:"networkAccess,omitempty"`
 
 	FreeformTags map[string]string `json:"freeformTags,omitempty"`
 
@@ -104,6 +100,29 @@ type PasswordSpec struct {
 	OCISecretOCID *string `json:"ociSecretOCID,omitempty"`
 }
 
+type NetworkAccessTypeEnum string
+
+const (
+	NetworkAccessTypePublic     NetworkAccessTypeEnum = "PUBLIC"
+	NetworkAccessTypeRestricted NetworkAccessTypeEnum = "RESTRICTED"
+	NetworkAccessTypePrivate    NetworkAccessTypeEnum = "PRIVATE"
+)
+
+type NetworkAccessSpec struct {
+	// +kubebuilder:validation:Enum:="";"PUBLIC";"RESTRICTED";"PRIVATE"
+	AccessType               NetworkAccessTypeEnum `json:"accessType,omitempty"`
+	IsAccessControlEnabled   *bool                 `json:"isAccessControlEnabled,omitempty"`
+	AccessControlList        []string              `json:"accessControlList,omitempty"`
+	PrivateEndpoint          PrivateEndpointSpec   `json:"privateEndpoint,omitempty"`
+	IsMTLSConnectionRequired *bool                 `json:"isMTLSConnectionRequired,omitempty"`
+}
+
+type PrivateEndpointSpec struct {
+	SubnetOCID     *string  `json:"subnetOCID,omitempty"`
+	NsgOCIDs       []string `json:"nsgOCIDs,omitempty"`
+	HostnamePrefix *string  `json:"hostnamePrefix,omitempty"`
+}
+
 // AutonomousDatabaseStatus defines the observed state of AutonomousDatabase
 type AutonomousDatabaseStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -115,6 +134,19 @@ type AutonomousDatabaseStatus struct {
 	DataStorageSizeInTBs int                                           `json:"dataStorageSizeInTBs,omitempty"`
 	DbWorkload           database.AutonomousDatabaseDbWorkloadEnum     `json:"dbWorkload,omitempty"`
 	TimeCreated          string                                        `json:"timeCreated,omitempty"`
+	AllConnectionStrings []ConnectionStringsSet                        `json:"allConnectionStrings,omitempty"`
+}
+
+type TLSAuthenticationEnum string
+
+const (
+	TLSAuthenticationTLS  TLSAuthenticationEnum = "TLS"
+	TLSAuthenticationmTLS TLSAuthenticationEnum = "Mutual TLS"
+)
+
+type ConnectionStringsSet struct {
+	TLSAuthentication TLSAuthenticationEnum `json:"tlsAuthentication,omitempty"`
+	ConnectionStrings map[string]string     `json:"connectionStrings"`
 }
 
 // AutonomousDatabase is the Schema for the autonomousdatabases API
@@ -174,8 +206,12 @@ func (adb *AutonomousDatabase) UpdateLastSuccessfulSpec(kubeClient client.Client
 
 // UpdateAttrFromOCIAutonomousDatabase updates the attributes from database.AutonomousDatabase object and returns the resource
 func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj database.AutonomousDatabase) *AutonomousDatabase {
+	/***********************************
+	* update the spec
+	***********************************/
 	adb.Spec.Details.AutonomousDatabaseOCID = ociObj.Id
 	adb.Spec.Details.CompartmentOCID = ociObj.CompartmentId
+	adb.Spec.Details.AutonomousContainerDatabaseOCID = ociObj.AutonomousContainerDatabaseId
 	adb.Spec.Details.DisplayName = ociObj.DisplayName
 	adb.Spec.Details.DbName = ociObj.DbName
 	adb.Spec.Details.DbWorkload = ociObj.DbWorkload
@@ -187,14 +223,28 @@ func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj databa
 	adb.Spec.Details.LifecycleState = ociObj.LifecycleState
 	adb.Spec.Details.FreeformTags = ociObj.FreeformTags
 
-	adb.Spec.Details.SubnetOCID = ociObj.SubnetId
-	adb.Spec.Details.NsgOCIDs = ociObj.NsgIds
-	adb.Spec.Details.IsAccessControlEnabled = ociObj.IsAccessControlEnabled
-	adb.Spec.Details.WhitelistedIPs = ociObj.WhitelistedIps
-	adb.Spec.Details.IsMTLSConnectionRequired = ociObj.IsMtlsConnectionRequired
-	adb.Spec.Details.PrivateEndpointLabel = ociObj.PrivateEndpointLabel
+	if *ociObj.IsDedicated {
+		adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
+	} else {
+		if ociObj.NsgIds != nil {
+			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
+		} else if ociObj.WhitelistedIps != nil {
+			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypeRestricted
+		} else {
+			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePublic
+		}
+	}
 
-	// update the subresource as well
+	adb.Spec.Details.NetworkAccess.IsAccessControlEnabled = ociObj.IsAccessControlEnabled
+	adb.Spec.Details.NetworkAccess.AccessControlList = ociObj.WhitelistedIps
+	adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = ociObj.IsMtlsConnectionRequired
+	adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = ociObj.SubnetId
+	adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = ociObj.NsgIds
+	adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = ociObj.PrivateEndpointLabel
+
+	/***********************************
+	* update the status subresource
+	***********************************/
 	adb.Status.DisplayName = *ociObj.DisplayName
 	adb.Status.LifecycleState = ociObj.LifecycleState
 	adb.Status.IsDedicated = strconv.FormatBool(*ociObj.IsDedicated)
@@ -202,6 +252,43 @@ func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj databa
 	adb.Status.DataStorageSizeInTBs = *ociObj.DataStorageSizeInTBs
 	adb.Status.DbWorkload = ociObj.DbWorkload
 	adb.Status.TimeCreated = ociObj.TimeCreated.String()
+
+	var curAlllConns []ConnectionStringsSet
+	if *ociObj.IsDedicated {
+		connSet := ConnectionStringsSet{ConnectionStrings: ociObj.ConnectionStrings.AllConnectionStrings}
+		curAlllConns = append(curAlllConns, connSet)
+
+	} else {
+		mTLSStrings := make(map[string]string)
+		tlsStrings := make(map[string]string)
+
+		for _, profile := range ociObj.ConnectionStrings.Profiles {
+			if profile.TlsAuthentication == database.DatabaseConnectionStringProfileTlsAuthenticationMutual {
+				mTLSStrings[*profile.DisplayName] = *profile.Value
+			} else {
+				tlsStrings[*profile.DisplayName] = *profile.Value
+			}
+		}
+
+		if len(mTLSStrings) > 0 {
+			mTLSConnSet := ConnectionStringsSet{
+				TLSAuthentication: TLSAuthenticationmTLS,
+				ConnectionStrings: mTLSStrings,
+			}
+
+			curAlllConns = append(curAlllConns, mTLSConnSet)
+		}
+
+		if len(tlsStrings) > 0 {
+			tlsConnSet := ConnectionStringsSet{
+				TLSAuthentication: TLSAuthenticationTLS,
+				ConnectionStrings: tlsStrings,
+			}
+
+			curAlllConns = append(curAlllConns, tlsConnSet)
+		}
+	}
+	adb.Status.AllConnectionStrings = curAlllConns
 
 	return adb
 }
