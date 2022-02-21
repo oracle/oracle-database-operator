@@ -67,15 +67,16 @@ type SingleInstanceDatabaseSpec struct {
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
+	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
 
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Minimum=1
-	Replicas int `json:"replicas"`
+	Replicas int `json:"replicas,omitempty"`
 
 	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`
-	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword"`
+	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
 	Image         SingleInstanceDatabaseImage         `json:"image"`
-	Persistence   SingleInstanceDatabasePersistence   `json:"persistence"`
+	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
 	InitParams    SingleInstanceDatabaseInitParams    `json:"initParams,omitempty"`
 }
 
@@ -83,9 +84,7 @@ type SingleInstanceDatabaseSpec struct {
 type SingleInstanceDatabasePersistence struct {
 	Size         string `json:"size"`
 	StorageClass string `json:"storageClass"`
-
-	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
-	AccessMode string `json:"accessMode"`
+	AccessMode   string `json:"accessMode,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters
