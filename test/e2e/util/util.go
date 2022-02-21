@@ -119,6 +119,8 @@ type testConfiguration struct {
 	CompartmentOCID            string `yaml:"compartmentOCID"`
 	AdminPasswordOCID          string `yaml:"adminPasswordOCID"`
 	InstanceWalletPasswordOCID string `yaml:"instanceWalletPasswordOCID"`
+	SubnetOCID                 string `yaml:"subnetOCID"`
+	NsgOCID                    string `yaml:"nsgOCID"`
 }
 
 func GetTestConfig(filename string) (*testConfiguration, error) {
