@@ -70,7 +70,6 @@ type SingleInstanceDatabaseSpec struct {
 	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
 
 	// +k8s:openapi-gen=true
-	// +kubebuilder:validation:Minimum=1
 	Replicas int `json:"replicas,omitempty"`
 
 	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`

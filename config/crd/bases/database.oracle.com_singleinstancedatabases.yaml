@@ -142,7 +142,6 @@ spec:
               readinessCheckPeriod:
                 type: integer
               replicas:
-                minimum: 1
                 type: integer
               serviceAccountName:
                 type: string

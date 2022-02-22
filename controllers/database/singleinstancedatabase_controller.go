@@ -320,11 +320,11 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	}
 
 	//  If Express Edition , Ensure Replicas=1
-	if m.Spec.Edition == "express" && m.Spec.Replicas != 1 {
+	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
 		eventMsgs = append(eventMsgs, "XE supports only one replica")
 	}
 	//  If Block Volume , Ensure Replicas=1
-	if m.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Replicas != 1 {
+	if m.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Replicas > 1 {
 		eventMsgs = append(eventMsgs, "accessMode ReadWriteOnce supports only one replica")
 	}
 	if m.Status.Sid != "" && !strings.EqualFold(m.Spec.Sid, m.Status.Sid) {
@@ -1356,7 +1356,7 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 
 	noDeleted := 0
 	for _, availablePod := range available {
-		if readyPod.Name == availablePod.Name {
+		if readyPod.Name == availablePod.Name && m.Spec.Replicas != 0 {
 			continue
 		}
 		if replicasRequired == (len(available) - noDeleted) {
