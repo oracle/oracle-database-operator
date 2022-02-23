@@ -409,9 +409,9 @@ func TestNetworkAccessPrivate(k8sClient *client.Client, dbClient *database.Datab
 			AccessControlList:        []string{},
 			IsMTLSConnectionRequired: common.Bool(isMTLSConnectionRequired),
 			PrivateEndpoint: dbv1alpha1.PrivateEndpointSpec{
-				HostnamePrefix: adb.Spec.Details.DisplayName,
-				NsgOCIDs:   []string{*nsgOCIDs},
-				SubnetOCID: common.String(*subnetOCID),
+				HostnamePrefix: adb.Spec.Details.DbName,
+				NsgOCIDs:       []string{*nsgOCIDs},
+				SubnetOCID:     common.String(*subnetOCID),
 			},
 		}
 
