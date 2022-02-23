@@ -61,7 +61,7 @@ func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-//+kubebuilder:webhook:verbs=create;update,path=/mutate-database-oracle-com-v1alpha1-autonomousdatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabase,versions=v1alpha1,name=mautonomousdatabase.kb.io,admissionReviewVersions={v1}
+//+kubebuilder:webhook:verbs=create;update,path=/mutate-database-oracle-com-v1alpha1-autonomousdatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v1alpha1,name=mautonomousdatabase.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Defaulter = &AutonomousDatabase{}
 
@@ -167,7 +167,7 @@ func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) fie
 					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("accessControlList"),
 						fmt.Sprintf("accessControlList cannot be empty when the network access type is %s", NetworkAccessTypeRestricted)))
 			}
-		} else { // the accessType is PRIVATE
+		} else if adb.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypePrivate { // the accessType is PRIVATE
 			if adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID == nil {
 				allErrs = append(allErrs,
 					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("privateEndpoint").Child("subnetOCID"),

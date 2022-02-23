@@ -176,6 +176,7 @@ func main() {
 		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
 		os.Exit(1)
 	}
+
 	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")
