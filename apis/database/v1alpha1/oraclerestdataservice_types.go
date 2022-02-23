@@ -61,6 +61,7 @@ type OracleRestDataServiceSpec struct {
 	RestEnableSchemas  []OracleRestDataServiceRestEnableSchemas `json:"restEnableSchemas,omitempty"`
 	OracleService      string                                   `json:"oracleService,omitempty"`
 	ServiceAccountName string                                   `json:"serviceAccountName,omitempty"`
+	Persistence        OracleRestDataServicePersistence         `json:"persistence,omitempty"`
 
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Minimum=1
@@ -69,11 +70,11 @@ type OracleRestDataServiceSpec struct {
 
 // OracleRestDataServicePersistence defines the storage releated params
 type OracleRestDataServicePersistence struct {
-	Size         string `json:"size"`
-	StorageClass string `json:"storageClass"`
+	Size         string `json:"size,omitempty"`
+	StorageClass string `json:"storageClass,omitempty"`
 
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
-	AccessMode string `json:"accessMode"`
+	AccessMode string `json:"accessMode,omitempty"`
 }
 
 // OracleRestDataServiceImage defines the Image source and pullSecrets for POD
