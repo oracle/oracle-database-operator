@@ -1848,10 +1848,11 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 	eventMsg := "Waiting for Apex Installation to complete"
 	r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 
-	unzipApex := dbcommons.UnzipApex
+	unzipApex := dbcommons.UnzipApexOnSIDBPod
 	if m.Spec.Edition == "express" {
 		unzipApex += dbcommons.ChownApex
 	}
+
 	// Unzip /opt/oracle/oradata/apex-latest.zip to /opt/oracle/oradata/${ORACLE_SID^^}
 	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		unzipApex)
