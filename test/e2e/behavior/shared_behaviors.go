@@ -263,10 +263,15 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 			newCPUCoreCount = 1
 		}
 
-		By(fmt.Sprintf("Updating the ADB with newDisplayName = %s and newCPUCoreCount = %d\n", newDisplayName, newCPUCoreCount))
+		var newKey = "testKey"
+		var newVal = "testVal"
+
+		By(fmt.Sprintf("Updating the ADB with newDisplayName = %s, newCPUCoreCount = %d and newFreeformTag = %s:%s\n",
+			newDisplayName, newCPUCoreCount, newKey, newVal))
 
 		expectedADB.Spec.Details.DisplayName = common.String(newDisplayName)
 		expectedADB.Spec.Details.CPUCoreCount = common.Int(newCPUCoreCount)
+		expectedADB.Spec.Details.FreeformTags = map[string]string{newKey: newVal}
 
 		Expect(derefK8sClient.Update(context.TODO(), expectedADB)).To(Succeed())
 
@@ -409,9 +414,9 @@ func TestNetworkAccessPrivate(k8sClient *client.Client, dbClient *database.Datab
 			AccessControlList:        []string{},
 			IsMTLSConnectionRequired: common.Bool(isMTLSConnectionRequired),
 			PrivateEndpoint: dbv1alpha1.PrivateEndpointSpec{
-				HostnamePrefix: adb.Spec.Details.DisplayName,
-				NsgOCIDs:   []string{*nsgOCIDs},
-				SubnetOCID: common.String(*subnetOCID),
+				HostnamePrefix: adb.Spec.Details.DbName,
+				NsgOCIDs:       []string{*nsgOCIDs},
+				SubnetOCID:     common.String(*subnetOCID),
 			},
 		}
 
