@@ -360,7 +360,7 @@ const GetInitParamsSQL string = "echo -e  \"select name,display_value from v\\$p
 
 const UnzipApexOnSIDBPod string = "if [ -f /opt/oracle/oradata/apex-latest.zip ]; then unzip -o /opt/oracle/oradata/apex-latest.zip -d /opt/oracle/oradata/${ORACLE_SID^^}; else echo \"apex-latest.zip not found\"; fi;"
 
-const UnzipApexOnORDSPod string = "if [ -f /opt/oracle/ords/config/ords/apex-latest.zip ]; then unzip -o /opt/oracle/ords/config/ords/apex-latest.zip -d /opt/oracle/ords/config/ords; else echo \"apex-latest.zip not found\"; fi;"
+const UnzipApexOnORDSPod string = "if [ -f /opt/oracle/ords/config/ords/apex-latest.zip ]; then cd /opt/oracle/ords/config/ords && jar -xf /opt/oracle/ords/config/ords/apex-latest.zip; else echo \"apex-latest.zip not found\"; fi;"
 
 const ChownApex string = " chown oracle:oinstall /opt/oracle/oradata/${ORACLE_SID^^}/apex;"
 
