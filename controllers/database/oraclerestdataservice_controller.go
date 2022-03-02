@@ -201,7 +201,10 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	var err error
 	eventReason := "Spec Error"
 	var eventMsgs []string
-
+	//  If using same pvc for ords as sidb, ensure sidb has ReadWriteMany Accessmode
+	if n.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Persistence.AccessMode == "" {
+		eventMsgs = append(eventMsgs, "ords can be installed only on ReadWriteMany Access Mode of : "+m.Spec.DatabaseRef)
+	}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
 		eventMsgs = append(eventMsgs, "databaseRef cannot be updated")
 	}
