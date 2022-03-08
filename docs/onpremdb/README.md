@@ -13,7 +13,7 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
 
 + ### Prepare CDB for PDB Lifecycme Management (PDB-LM)
 
-  Pluggable Database management is performed in the Container Database (CDB) and includes create, clone, plug, unplug and delete operations.
+  Pluggable Database management is performed in the Container Database (CDB) and includes create, clone, plug, unplug, delete, modify and map operations.
   You cannot have an ORDS enabled schema in the container database. To perform the PDB lifecycle management operations, the default CDB administrator credentials must be defined. 
 
   To define the default CDB administrator credentials, perform the following steps on the target CDB(s) where PDB-LM operations are to be performed:
@@ -130,6 +130,16 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
 + ### Delete PDB
 
   A sample .yaml file is available here: [config/samples/onpremdb/pdb_delete.yaml](../../config/samples/onpremdb/pdb_delete.yaml)
+
++ ### Modify PDB
+
+  This is used to open/close a target PDB.
+  A sample .yaml file is available here: [config/samples/onpremdb/pdb_modify.yaml](../../config/samples/onpremdb/pdb_modify.yaml)  
+
++ ### Map PDB
+
+  This is used to map an existing PDB in the CDB as a Kubernetes Custom Resource
+  A sample .yaml file is available here: [config/samples/onpremdb/pdb_map.yaml](../../config/samples/onpremdb/pdb_map.yaml) 
 
 ## Validation and Errors
 
