@@ -95,8 +95,8 @@ type PDBSpec struct {
 	TDESecret TDESecret `json:"tdeSecret,omitempty"`
 	// Whether you need the script only or execute the script
 	GetScript *bool `json:"getScript,omitempty"`
-	// Action to be taken: Create or Clone or Plug or Unplug
-	// +kubebuilder:validation:Enum=Create;Clone;Plug;Unplug;Delete;Modify;Status
+	// Action to be taken: Create/Clone/Plug/Unplug/Delete/Modify/Status/Map. Map is used to map a Databse PDB to a Kubernetes PDB CR.
+	// +kubebuilder:validation:Enum=Create;Clone;Plug;Unplug;Delete;Modify;Status;Map
 	Action string `json:"action"`
 	// Extra options for opening and closing a PDB
 	// +kubebuilder:validation:Enum=IMMEDIATE;NORMAL;READ ONLY;READ WRITE;RESTRICTED
@@ -143,6 +143,8 @@ type PDBStatus struct {
 	Phase string `json:"phase"`
 	// PDB Resource Status
 	Status bool `json:"status"`
+	// Total size of the PDB
+	TotalSize string `json:"totalSize,omitempty"`
 	// Open mode of the PDB
 	OpenMode string `json:"openMode,omitempty"`
 	// Modify Option of the PDB
@@ -159,7 +161,7 @@ type PDBStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.cdbName",name="CDB Name",type="string",description="Name of the CDB"
 // +kubebuilder:printcolumn:JSONPath=".spec.pdbName",name="PDB Name",type="string",description="Name of the PDB"
 // +kubebuilder:printcolumn:JSONPath=".status.openMode",name="PDB State",type="string",description="PDB Open Mode"
-// +kubebuilder:printcolumn:JSONPath=".spec.totalSize",name="PDB Size",type="string",description="Total Size of the PDB"
+// +kubebuilder:printcolumn:JSONPath=".status.totalSize",name="PDB Size",type="string",description="Total Size of the PDB"
 // +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the PDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
 // PDB is the Schema for the pdbs API
