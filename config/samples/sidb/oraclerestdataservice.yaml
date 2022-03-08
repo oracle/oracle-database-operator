@@ -1,0 +1,66 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: OracleRestDataService
+metadata:
+  name: ords-sample
+spec:
+  
+  ## Database ref. This can be of kind SingleInstanceDatabase.
+  databaseRef: "singleinstancedatabase-sample"
+  
+  ## Secret containing databaseRef password mapped to secretKey. 
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  adminPassword:
+    secretName: 
+    secretKey:
+    keepSecret: true
+
+  ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  ordsPassword:
+    secretName: 
+    secretKey:
+    keepSecret: true
+
+  ## Secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
+  ## Mention a non-null string for apexPassword.secretName to configure APEX with ORDS.
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  apexPassword:
+    secretName: 
+    secretKey:
+    keepSecret: true
+
+  ## ORDS image details
+  image:
+    pullFrom:
+    pullSecrets:
+
+  ## Uncomment only if you want to use seperate pvc for ords. else same pvc for sidb is used here
+  ## apex-latest.zip file should be present in the location '/opt/oracle/ords/config/ords'
+  ## Download using `wget https://download.oracle.com/otn_software/apex/apex-latest.zip`
+  ## use `kubectl cp <full/path/to/local/apex-latest.zip> <ordspodname>:/opt/oracle/ords/config/ords
+  ## size : Minimum size of pvc | class : PVC storage Class
+  ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
+  # persistence:
+  #   size: 100Gi
+  #   storageClass: "oci"
+  #   accessMode: "ReadWriteOnce"
+
+  ## Type of service  Applicable on cloud enviroments only.
+  ## if loadBalService: false, service type = "NodePort". else "LoadBalancer"
+  loadBalancer: false
+
+  ## PDB Schemas to be ORDS Enabled.
+  ## Schema will be created (if not exists) with username as schema and password as .spec.ordsPassword.
+  restEnableSchemas:
+  - schema:
+    enable: true
+    urlMapping:
+    pdb:
+
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  serviceAccountName: default

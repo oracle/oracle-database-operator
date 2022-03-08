@@ -44,18 +44,15 @@ import (
 	"github.com/go-logr/logr"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/oracle/oci-go-sdk/v54/common"
 	"github.com/oracle/oci-go-sdk/v54/database"
 	"github.com/oracle/oci-go-sdk/v54/workrequests"
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	restoreUtil "github.com/oracle/oracle-database-operator/commons/autonomousdatabase"
 	"github.com/oracle/oracle-database-operator/commons/oci"
-	"github.com/oracle/oracle-database-operator/commons/oci/ociutil"
 )
 
 // AutonomousDatabaseRestoreReconciler reconciles a AutonomousDatabaseRestore object
@@ -83,10 +80,11 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	restore := &dbv1alpha1.AutonomousDatabaseRestore{}
 	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, restore); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
-		// No need to change the since we don't know if we obtain the object.
-		if !apiErrors.IsNotFound(err) {
-			return ctrl.Result{}, err
+		// No need to change since we don't know if we obtain the object.
+		if apiErrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
 		}
+		return ctrl.Result{}, err
 	}
 
 	/******************************************************************
@@ -102,7 +100,7 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 		currentLogger.Error(err, "Fail to get OCI provider")
 
 		// Change the status to UNAVAILABLE
-		restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
+		restore.Status.LifecycleState = workrequests.WorkRequestStatusFailed
 		if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
@@ -114,7 +112,7 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 		currentLogger.Error(err, "Fail to get OCI database client")
 
 		// Change the status to UNAVAILABLE
-		restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
+		restore.Status.LifecycleState = workrequests.WorkRequestStatusFailed
 		if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
@@ -126,7 +124,7 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 		currentLogger.Error(err, "Fail to get OCI work request client")
 
 		// Change the status to UNAVAILABLE
-		restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
+		restore.Status.LifecycleState = workrequests.WorkRequestStatusFailed
 		if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
 			return ctrl.Result{}, statusErr
 		}
@@ -136,71 +134,23 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	/******************************************************************
 	 * Restore
 	 ******************************************************************/
-	if restore.Status.LifecycleState == "" || restore.Status.LifecycleState == dbv1alpha1.RestoreLifecycleStateNew {
-		var restoreTime *common.SDKTime
-
-		if restore.Spec.Source.BackupName != "" {
-			backup := &dbv1alpha1.AutonomousDatabaseBackup{}
-			namespacedName := types.NamespacedName{Namespace: restore.Namespace, Name: restore.Spec.Source.BackupName}
-			if err := r.KubeClient.Get(context.TODO(), namespacedName, backup); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			restoreTime, err = ociutil.ParseDisplayTime(backup.Status.TimeEnded)
-			if err != nil {
-				currentLogger.Error(err, "Fail to parse time "+backup.Status.TimeEnded)
-
-				// Change the status to UNAVAILABLE
-				restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
-				if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
-					return ctrl.Result{}, statusErr
-				}
-				return ctrl.Result{}, nil
-			}
-		} else if restore.Spec.Source.TimeStamp != "" {
-			restoreTime, err = ociutil.ParseDisplayTime(restore.Spec.Source.TimeStamp)
-			if err != nil {
-				currentLogger.Error(err, "Fail to parse time "+restore.Spec.Source.TimeStamp)
-
-				// Change the status to UNAVAILABLE
-				restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
-				if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
-					return ctrl.Result{}, statusErr
-				}
-				return ctrl.Result{}, nil
-			}
-		}
-
-		resp, err := oci.RestoreAutonomousDatabase(dbClient, restore.Spec.AutonomousDatabaseOCID, restoreTime)
+	if restore.Status.LifecycleState == "" {
+		lifecycleState, err := restoreUtil.RestoreAutonomousDatabaseAndWait(currentLogger, r.KubeClient, dbClient, workClient, restore)
 		if err != nil {
 			currentLogger.Error(err, "Fail to restore database")
-
-			// Change the status to UNAVAILABLE
-			restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
-			if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
-				return ctrl.Result{}, statusErr
-			}
 			return ctrl.Result{}, nil
 		}
 
-		if err := oci.WaitUntilWorkCompleted(currentLogger, workClient, resp.OpcWorkRequestId); err != nil {
-			currentLogger.Error(err, "Fail to watch workrequest. Workrequest ID = "+*resp.OpcWorkRequestId)
+		restore.Status.LifecycleState = lifecycleState
 
-			// Change the status to UNAVAILABLE
-			restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateFailed
-			if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
-				return ctrl.Result{}, statusErr
-			}
-			return ctrl.Result{}, nil
-		}
-
-		currentLogger.Info("Restore database completed")
-
-		restore.Status.LifecycleState = dbv1alpha1.RestoreLifecycleStateCompleted
 		if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
-			return ctrl.Result{}, statusErr
+			// No need to return the error since it will re-execute the Reconcile()
+			currentLogger.Error(err, "Fail to update the status of AutonomousDatabaseRestore")
+			return ctrl.Result{}, nil
 		}
 	}
+
+	currentLogger.Info("AutonomousDatabaseRestore reconciles successfully")
 
 	return ctrl.Result{}, nil
 }

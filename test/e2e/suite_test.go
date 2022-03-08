@@ -110,6 +110,8 @@ var SharedCompartmentOCID string
 var SharedKeyOCID string
 var SharedAdminPasswordOCID string
 var SharedInstanceWalletPasswordOCID string
+var SharedSubnetOCID string
+var SharedNsgOCID string
 
 const SharedAdminPassSecretName string = "adb-admin-password"
 const SharedWalletPassSecretName = "adb-wallet-password"
@@ -183,12 +185,16 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 	SharedCompartmentOCID = testConfig.CompartmentOCID
 	SharedAdminPasswordOCID = testConfig.AdminPasswordOCID
 	SharedInstanceWalletPasswordOCID = testConfig.InstanceWalletPasswordOCID
+	SharedSubnetOCID = testConfig.SubnetOCID
+	SharedNsgOCID = testConfig.NsgOCID
 
 	By("checking if the required parameters exist")
 	Expect(testConfig.OCIConfigFile).ToNot(Equal(""))
 	Expect(testConfig.CompartmentOCID).ToNot(Equal(""))
 	Expect(testConfig.AdminPasswordOCID).ToNot(Equal(""))
 	Expect(testConfig.InstanceWalletPasswordOCID).ToNot(Equal(""))
+	Expect(testConfig.SubnetOCID).ToNot(Equal(""))
+	Expect(testConfig.NsgOCID).ToNot(Equal(""))
 
 	By("getting OCI provider")
 	ociConfigUtil, err := e2eutil.GetOCIConfigUtil(testConfig.OCIConfigFile, testConfig.Profile)

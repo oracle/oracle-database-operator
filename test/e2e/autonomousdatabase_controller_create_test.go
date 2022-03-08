@@ -220,6 +220,16 @@ var _ = Describe("test ADB provisioning", func() {
 
 		It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
 
+		It("Should change to RESTRICTED network access", e2ebehavior.TestNetworkAccessRestricted(&k8sClient, &dbClient, &adbLookupKey, false))
+
+		It("Should change isMTLSConnectionRequired to false", e2ebehavior.TestNetworkAccessRestricted(&k8sClient, &dbClient, &adbLookupKey, false))
+
+		It("Should should change to PRIVATE network access", e2ebehavior.TestNetworkAccessPrivate(&k8sClient, &dbClient, &adbLookupKey, false, &SharedSubnetOCID, &SharedNsgOCID))
+
+		It("Should change isMTLSConnectionRequired to true when network access is PRIVATE", e2ebehavior.TestNetworkAccessPrivate(&k8sClient, &dbClient, &adbLookupKey, true, &SharedSubnetOCID, &SharedNsgOCID))
+
+		It("Should return to PUBLIC access type", e2ebehavior.TestNetworkAccessPublic(&k8sClient, &dbClient, &adbLookupKey))
+
 		It("Should delete the resource in cluster and terminate the database in OCI", e2ebehavior.AssertHardLinkDelete(&k8sClient, &dbClient, &adbLookupKey))
 	})
 })

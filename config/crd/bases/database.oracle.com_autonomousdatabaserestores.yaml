@@ -19,7 +19,17 @@ spec:
     singular: autonomousdatabaserestore
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .status.displayName
+      name: DisplayName
+      type: string
+    - jsonPath: .status.dbName
+      name: DbName
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: AutonomousDatabaseRestore is the Schema for the autonomousdatabaserestores
@@ -41,7 +51,7 @@ spec:
             description: AutonomousDatabaseRestoreSpec defines the desired state of
               AutonomousDatabaseRestore
             properties:
-              autonomousDatabaseOCID:
+              backupName:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file'
                 type: string
@@ -52,33 +62,35 @@ spec:
                   secretName:
                     type: string
                 type: object
-              source:
+              pointInTime:
                 properties:
-                  backupName:
+                  autonomousDatabaseOCID:
                     type: string
                   timeStamp:
                     type: string
                 type: object
-            required:
-            - autonomousDatabaseOCID
-            - source
             type: object
           status:
             description: AutonomousDatabaseRestoreStatus defines the observed state
               of AutonomousDatabaseRestore
             properties:
-              state:
+              autonomousDatabaseOCID:
+                type: string
+              dbName:
+                type: string
+              displayName:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying
                   this file'
-                enum:
-                - NewCreated
-                - InProgress
-                - Completed
-                - Failed
+                type: string
+              lifecycleState:
+                description: 'WorkRequestStatusEnum Enum with underlying type: string'
                 type: string
             required:
-            - state
+            - autonomousDatabaseOCID
+            - dbName
+            - displayName
+            - lifecycleState
             type: object
         type: object
     served: true
