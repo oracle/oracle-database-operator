@@ -139,6 +139,17 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ShardingDatabase")
 		os.Exit(1)
 	}
+	if err = (&databasecontroller.OracleRestDataServiceReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("OracleRestDataService"),
+		Scheme:   mgr.GetScheme(),
+		Config:   mgr.GetConfig(),
+		Recorder: mgr.GetEventRecorderFor("OracleRestDataService"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "OracleRestDataService")
+		os.Exit(1)
+	}
+
 	// Set RECONCILE_INTERVAL environment variable if you want to change the default value from 15 secs
 	interval := os.Getenv("RECONCILE_INTERVAL")
 	i, err := strconv.ParseInt(interval, 10, 64)
@@ -151,6 +162,10 @@ func main() {
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&databasev1alpha1.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
 			os.Exit(1)
 		}
 		if err = (&databasev1alpha1.PDB{}).SetupWebhookWithManager(mgr); err != nil {
@@ -188,6 +203,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
+		os.Exit(1)
+	}
+	if err = (&databasev1alpha1.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
+		os.Exit(1)
+	}
+	if err = (&databasev1alpha1.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs

@@ -13,6 +13,7 @@ spec:
   sid: ORCL1
   
   ## A source database ref to clone from, leave empty to create a fresh database
+  ## If cloning from on prem source database, mention connect string `<ip>:<port>/<sid>`.
   cloneFrom: ""
 
   ## NA if cloning from a SourceDB (cloneFrom is set)
@@ -41,6 +42,12 @@ spec:
   ## Enable/Disable ForceLogging
   forceLog: false
 
+  ## apex-latest.zip file should be present in the location '/opt/oracle/oradata'
+  ## Download using `wget https://download.oracle.com/otn_software/apex/apex-latest.zip`
+  ## use `kubectl cp <full/path/to/local/apex-latest.zip> <sidbpodname>:/opt/oracle/oradata
+  ## Deploy OracleRestDataService CR to front APEX
+  installApex: false
+  
   ## NA if cloning from a SourceDB (cloneFrom is set)
   ## Specify both sgaSize and pgaSize (in MB) or dont specify both
   ## Specify Non-Zero value to use
@@ -75,6 +82,9 @@ spec:
   # nodeSelector: 
   #   failure-domain.beta.kubernetes.io/zone: bVCG:PHX-AD-1
   #   pool: sidb
+
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  serviceAccountName: default
 
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1
