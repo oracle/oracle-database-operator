@@ -15,7 +15,7 @@ spec:
     pullSecrets:
 
   ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
-  ServiceAccountname: default
+  serviceAccountName: default
 
   ## Type of service . Applicable on cloud enviroments only
   ## if loadBalService : false, service type = "NodePort". else "LoadBalancer"

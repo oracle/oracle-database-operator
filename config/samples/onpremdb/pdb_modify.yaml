@@ -1,0 +1,22 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: PDB 
+metadata: 
+  name: pdb1
+  namespace: oracle-database-operator-system
+  labels:
+    cdb: cdb-dev
+spec:
+  cdbResName: "cdb-dev"
+  cdbName: "democdb"
+  pdbName: "demotest"
+  action: "Modify"
+  pdbState: "CLOSE"
+  modifyOption: "IMMEDIATE"
+  
+  # To Open an existing PDB, uncomment the below lines and comment the two lines above
+  #pdbState: "OPEN"
+  #modifyOption: "READ WRITE"

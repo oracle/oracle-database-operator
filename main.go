@@ -39,15 +39,18 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"os"
 	"strconv"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
@@ -89,6 +92,9 @@ func main() {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
+
+	// Get Cache
+	cache := mgr.GetCache()
 
 	if err = (&databasecontroller.AutonomousDatabaseReconciler{
 		KubeClient: mgr.GetClient(),
@@ -163,6 +169,39 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
 			os.Exit(1)
 		}
+		if err = (&databasev1alpha1.PDB{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "PDB")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.CDB{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "CDB")
+			os.Exit(1)
+		}
+	}
+
+	// PDB Reconciler
+	if err = (&databasecontroller.PDBReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Log:      ctrl.Log.WithName("controllers").WithName("PDB"),
+		Interval: time.Duration(i),
+		Recorder: mgr.GetEventRecorderFor("PDB"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PDB")
+		os.Exit(1)
+	}
+
+	// CDB Reconciler
+	if err = (&databasecontroller.CDBReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Config:   mgr.GetConfig(),
+		Log:      ctrl.Log.WithName("controllers").WithName("CDB"),
+		Interval: time.Duration(i),
+		Recorder: mgr.GetEventRecorderFor("CDB"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CDB")
+		os.Exit(1)
 	}
 
 	if err = (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
@@ -179,6 +218,15 @@ func main() {
 	}
 
 	// +kubebuilder:scaffold:builder
+
+	// Add index for PDB CR to enable mgr to cache PDBs
+	indexFunc := func(obj client.Object) []string {
+		return []string{obj.(*databasev1alpha1.PDB).Spec.PDBName}
+	}
+	if err = cache.IndexField(context.TODO(), &databasev1alpha1.PDB{}, "spec.pdbName", indexFunc); err != nil {
+		setupLog.Error(err, "unable to create index function for ", "controller", "PDB")
+		os.Exit(1)
+	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
