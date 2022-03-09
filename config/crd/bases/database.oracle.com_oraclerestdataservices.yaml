@@ -117,6 +117,20 @@ spec:
                 type: object
               ordsUser:
                 type: string
+              persistence:
+                description: OracleRestDataServicePersistence defines the storage
+                  releated params
+                properties:
+                  accessMode:
+                    enum:
+                    - ReadWriteOnce
+                    - ReadWriteMany
+                    type: string
+                  size:
+                    type: string
+                  storageClass:
+                    type: string
+                type: object
               replicas:
                 minimum: 1
                 type: integer

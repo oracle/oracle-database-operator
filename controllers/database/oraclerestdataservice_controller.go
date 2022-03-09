@@ -48,6 +48,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -142,6 +143,13 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
+	// PVC Creation
+	result, err = r.createPVC(ctx, req, oracleRestDataService)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+
 	// Validate if Primary Database Reference is ready
 	result, sidbReadyPod := r.validateSidbReadiness(oracleRestDataService, singleInstanceDatabase, ctx, req)
 	if result.Requeue {
@@ -149,15 +157,15 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
-	// Configure Apex
-	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	// Create ORDS Pods
+	result = r.createPods(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
 
-	// Create ORDS Pods
-	result = r.createPods(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	// Configure Apex
+	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -193,8 +201,8 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	var err error
 	eventReason := "Spec Error"
 	var eventMsgs []string
-	//  If Block Volume , Ensure Replicas=1
-	if n.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+	//  If using same pvc for ords as sidb, ensure sidb has ReadWriteMany Accessmode
+	if n.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Persistence.AccessMode == "" {
 		eventMsgs = append(eventMsgs, "ords can be installed only on ReadWriteMany Access Mode of : "+m.Spec.DatabaseRef)
 	}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
@@ -390,8 +398,13 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 				Name: "datamount",
 				VolumeSource: corev1.VolumeSource{
 					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: n.Name,
-						ReadOnly:  false,
+						ClaimName: func() string {
+							if m.Spec.Persistence.AccessMode != "" {
+								return m.Name
+							}
+							return n.Name
+						}(),
+						ReadOnly: false,
 					},
 				},
 			}},
@@ -541,6 +554,42 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 }
 
 //#############################################################################
+//    Instantiate Persistent Volume Claim spec from SingleInstanceDatabase spec
+//#############################################################################
+func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRestDataService) *corev1.PersistentVolumeClaim {
+
+	pvc := &corev1.PersistentVolumeClaim{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "PersistentVolumeClaim",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.Name,
+			Namespace: m.Namespace,
+			Labels: map[string]string{
+				"app": m.Name,
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: func() []corev1.PersistentVolumeAccessMode {
+				var accessMode []corev1.PersistentVolumeAccessMode
+				accessMode = append(accessMode, corev1.PersistentVolumeAccessMode(m.Spec.Persistence.AccessMode))
+				return accessMode
+			}(),
+			Resources: corev1.ResourceRequirements{
+				Requests: map[corev1.ResourceName]resource.Quantity{
+					// Requests describes the minimum amount of compute resources required
+					"storage": resource.MustParse(m.Spec.Persistence.Size),
+				},
+			},
+			StorageClassName: &m.Spec.Persistence.StorageClass,
+		},
+	}
+	// Set SingleInstanceDatabase instance as the owner and controller
+	ctrl.SetControllerReference(m, pvc, r.Scheme)
+	return pvc
+}
+
+//#############################################################################
 //    Create a Service for OracleRestDataService
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctrl.Request,
@@ -590,6 +639,40 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 		m.Status.DatabaseActionsUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/ords/sql-developer"
 	}
 	return requeueN
+}
+
+//#############################################################################
+//    Stake a claim for Persistent Volume
+//#############################################################################
+func (r *OracleRestDataServiceReconciler) createPVC(ctx context.Context, req ctrl.Request,
+	m *dbapi.OracleRestDataService) (ctrl.Result, error) {
+
+	// PV is shared for ORDS and SIDB
+	if m.Spec.Persistence.AccessMode == "" {
+		return requeueN, nil
+	}
+	log := r.Log.WithValues("createPVC", req.NamespacedName)
+
+	pvc := &corev1.PersistentVolumeClaim{}
+	err := r.Get(ctx, types.NamespacedName{Name: m.Name, Namespace: m.Namespace}, pvc)
+	if err != nil && apierrors.IsNotFound(err) {
+		// Define a new PVC
+		pvc = r.instantiatePVCSpec(m)
+		log.Info("Creating a new PVC", "PVC.Namespace", pvc.Namespace, "PVC.Name", pvc.Name)
+		err = r.Create(ctx, pvc)
+		if err != nil {
+			log.Error(err, "Failed to create new PVC", "PVC.Namespace", pvc.Namespace, "PVC.Name", pvc.Name)
+			return requeueY, err
+		}
+		return requeueN, nil
+	} else if err != nil {
+		log.Error(err, "Failed to get PVC")
+		return requeueY, err
+	} else {
+		log.Info("PVC already exists")
+	}
+
+	return requeueN, nil
 }
 
 //#############################################################################
@@ -884,6 +967,55 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		return requeueY
 	}
 
+	// If Seperate PV for ORDS, we need to unzip apex-latest.zip
+	if m.Spec.Persistence.AccessMode != "" {
+		ordsReadyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
+			m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
+		if err != nil {
+			log.Error(err, err.Error())
+			return requeueY
+		}
+		if ordsReadyPod.Name == "" {
+			eventReason := "Waiting"
+			eventMsg := "waiting for " + m.Name + " to be Ready"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			return requeueY
+		}
+
+		unzipApex := dbcommons.UnzipApexOnORDSPod
+		if n.Spec.Edition == "express" {
+			unzipApex += dbcommons.ChownApex
+		}
+
+		// Unzip /opt/oracle/ords/config/ords/apex-latest.zip to /opt/oracle/ords/config/ords
+		out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			unzipApex)
+		if err != nil {
+			log.Error(err, err.Error())
+			return requeueY
+		}
+		log.Info(" UnzipApex Output : \n" + out)
+
+		if strings.Contains(out, "apex-latest.zip not found") {
+			eventReason := "Waiting"
+			eventMsg := "apex-latest.zip doesn't exist in the location /opt/oracle/ords/config/ords"
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			return requeueY
+		}
+
+	} else {
+
+		// Copy APEX Images to ORACLE_SID only if PV for ORDS and SIDB is shared
+		out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			fmt.Sprintf(dbcommons.CopyApexImages))
+		if err != nil {
+			log.Info(err.Error())
+			return requeueY
+		}
+		log.Info(" CopyApexImages Output : \n" + out)
+
+	}
+
 	apexPasswordSecret := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
 	if err != nil {
@@ -952,15 +1084,6 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 
 	m.Status.ApexConfigured = true
 	r.Status().Update(ctx, m)
-
-	// Copy APEX Images
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf(dbcommons.CopyApexImages))
-	if err != nil {
-		log.Info(err.Error())
-		return requeueY
-	}
-	log.Info(" CopyApexImages Output : \n" + out)
 
 	if m.Status.OrdsInstalled {
 
