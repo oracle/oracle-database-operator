@@ -266,5 +266,4 @@
 			 Expect(e2eutil.DeleteAutonomousDatabase(dbClient, adb.Spec.Details.AutonomousDatabaseOCID)).Should(Succeed())
 		 }
 	 }
- })
- 
+ }) 

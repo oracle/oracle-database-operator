@@ -13,7 +13,7 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
 
 + ### Prepare CDB for PDB Lifecycme Management (PDB-LM)
 
-  Pluggable Database management is performed in the Container Database (CDB) and includes create, clone, plug, unplug and delete operations.
+  Pluggable Database management is performed in the Container Database (CDB) and includes create, clone, plug, unplug, delete, modify and map operations.
   You cannot have an ORDS enabled schema in the container database. To perform the PDB lifecycle management operations, the default CDB administrator credentials must be defined. 
 
   To define the default CDB administrator credentials, perform the following steps on the target CDB(s) where PDB-LM operations are to be performed:
@@ -71,7 +71,7 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
   
 ## Kubernetes CRD for CDB
 
-  The Oracle Database Operator creates the CDB kind as a custom resource that models a target CDB as a native Kubernetes object. This is only used to create Pods to connect to the target CDB to perform PDB-LM operations. Each CDB resource follows the CDB CRD as defined here: [config/crd/bases/database.oracle.com_cdbs.yaml](../../config/crd/bases/database.oracle.com_cdbs.yaml)
+  The Oracle Database Operator creates the CDB kind as a custom resource that models a target CDB as a native Kubernetes object. This is only used to create Pods to connect to the target CDB to perform PDB-LM operations. These CDB resources can be scaled up and down based on the expected load using replicas. Each CDB resource follows the CDB CRD as defined here: [config/crd/bases/database.oracle.com_cdbs.yaml](../../config/crd/bases/database.oracle.com_cdbs.yaml)
 
  + ### CDB Sample YAML   
 
@@ -83,13 +83,17 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
   ```sh
   $ kubectl get cdbs -A
 
-  NAMESPACE                         NAME      CDB NAME   DB SERVER    DB PORT   SCAN NAME   STATUS   MESSAGE
-  oracle-database-operator-system   cdb-dev   devdb      172.17.0.4   1521      devdb       Ready    Success
+  NAMESPACE                         NAME      CDB NAME   DB SERVER    DB PORT   SCAN NAME  REPLICAS    STATUS   MESSAGE
+  oracle-database-operator-system   cdb-dev   devdb      172.17.0.4   1521      devdb      1           Ready    Success
+  ```
+ + ### Scale the CDB resource
+  ```sh
+  $ kubectl patch --type=merge cdb cdb-dev -p '{"spec":{"replicas":3}}' -n oracle-database-operator-system
   ```
 
 ## Kubernetes CRD for PDB  
 
-  The Oracle Database Operator creates the PDB kind as a custom resource that models a PDB as a native Kubernetes object. This PDB resource can be used to perform PDB-LM operations by specifying the action attribute in the PDB specs. Each PDB resource follows the PDB CRD as defined here: [config/crd/bases/database.oracle.com_pdbs.yaml](../../config/crd/bases/database.oracle.com_pdbs.yaml)
+  The Oracle Database Operator creates the PDB kind as a custom resource that models a PDB as a native Kubernetes object. There is a one-to-one mapping between the actual PDB and the Kubernetes PDB Custom Resource. You cannot have more than one Kubernetes resource for a target PDB. This PDB resource can be used to perform PDB-LM operations by specifying the action attribute in the PDB specs. Each PDB resource follows the PDB CRD as defined here: [config/crd/bases/database.oracle.com_pdbs.yaml](../../config/crd/bases/database.oracle.com_pdbs.yaml)
 
 
  + ### PDB Sample YAML   
@@ -130,6 +134,26 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
 + ### Delete PDB
 
   A sample .yaml file is available here: [config/samples/onpremdb/pdb_delete.yaml](../../config/samples/onpremdb/pdb_delete.yaml)
+
+  You can also use the following cmd to delete an existing PDB:
+  ```sh
+  $ kubectl patch --type=merge pdb pdb1 -p '{"spec":{"action":"Delete","dropAction":"INCLUDING"}}' -n oracle-database-operator-system
+  ```
+
++ ### Modify PDB
+
+  This is used to open/close a target PDB.
+  A sample .yaml file is available here: [config/samples/onpremdb/pdb_modify.yaml](../../config/samples/onpremdb/pdb_modify.yaml)
+
+  You can also use the following cmd to modify an existing PDB:
+  ```sh
+  $ kubectl patch --type=merge pdb pdb1 -p '{"spec":{"action":"Modify","modifyOption":"IMMEDIATE","pdbState":"CLOSE"}}' -n oracle-database-operator-system
+  ```
+
++ ### Map PDB
+
+  This is used to map an existing PDB in the CDB as a Kubernetes Custom Resource.
+  A sample .yaml file is available here: [config/samples/onpremdb/pdb_map.yaml](../../config/samples/onpremdb/pdb_map.yaml) 
 
 ## Validation and Errors
 
