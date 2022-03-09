@@ -36,57 +36,69 @@
 ** SOFTWARE.
  */
 
-package oci
+package k8s
 
 import (
 	"context"
-	"encoding/base64"
 
-	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v54/common"
-	"github.com/oracle/oci-go-sdk/v54/secrets"
+	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+
+	"github.com/oracle/oci-go-sdk/v54/database"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-type VaultService interface {
-	GetSecretValue(vaultSecretOCID string) (string, error)
+func CreateSecret(kubeClient client.Client, namespace string, name string, data map[string][]byte, owner client.Object, label map[string]string) error {
+	ownerReference := NewOwnerReference(owner)
+
+	// Create the secret with the wallet data
+	stringData := map[string]string{}
+	for key, val := range data {
+		stringData[key] = string(val)
+	}
+
+	walletSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:       namespace,
+			Name:            name,
+			OwnerReferences: ownerReference,
+			Labels:          label,
+		},
+		StringData: stringData,
+	}
+
+	if err := kubeClient.Create(context.TODO(), walletSecret); err != nil {
+		return err
+	}
+	return nil
 }
 
-type vaultService struct {
-	logger       logr.Logger
-	secretClient secrets.SecretsClient
-}
+func CreateAutonomousBackup(kubeClient client.Client,
+	backupName string,
+	backupSummary database.AutonomousDatabaseBackupSummary,
+	ownerADB *dbv1alpha1.AutonomousDatabase) error {
 
-func NewVaultService(
-	logger logr.Logger,
-	provider common.ConfigurationProvider) (VaultService, error) {
-
-	secretClient, err := secrets.NewSecretsClientWithConfigurationProvider(provider)
-	if err != nil {
-		return nil, err
+	backup := &dbv1alpha1.AutonomousDatabaseBackup{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:       ownerADB.GetNamespace(),
+			Name:            backupName,
+			OwnerReferences: NewOwnerReference(ownerADB),
+		},
+		Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
+			AutonomousDatabaseOCID: *backupSummary.AutonomousDatabaseId,
+			DisplayName: *backupSummary.DisplayName,
+			AutonomousDatabaseBackupOCID: *backupSummary.Id,
+			OCIConfig: dbv1alpha1.OCIConfigSpec{
+				ConfigMapName: ownerADB.Spec.OCIConfig.ConfigMapName,
+				SecretName:    ownerADB.Spec.OCIConfig.SecretName,
+			},
+		},
 	}
 
-	return &vaultService{
-		logger:       logger,
-		secretClient: secretClient,
-	}, nil
-}
-
-func (v *vaultService) GetSecretValue(vaultSecretOCID string) (string, error) {
-	request := secrets.GetSecretBundleRequest{
-		SecretId: common.String(vaultSecretOCID),
+	if err := kubeClient.Create(context.TODO(), backup); err != nil {
+		return err
 	}
 
-	response, err := v.secretClient.GetSecretBundle(context.TODO(), request)
-	if err != nil {
-		return "", err
-	}
-
-	base64content := response.SecretBundle.SecretBundleContent.(secrets.Base64SecretBundleContentDetails)
-	base64String := *base64content.Content
-	decoded, err := base64.StdEncoding.DecodeString(base64String)
-	if err != nil {
-		return "", err
-	}
-
-	return string(decoded), nil
+	return nil
 }

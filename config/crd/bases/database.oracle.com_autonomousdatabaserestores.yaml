@@ -20,8 +20,8 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.lifecycleState
-      name: State
+    - jsonPath: .status.status
+      name: Status
       type: string
     - jsonPath: .status.displayName
       name: DisplayName
@@ -83,14 +83,13 @@ spec:
                   of cluster Important: Run "make" to regenerate code after modifying
                   this file'
                 type: string
-              lifecycleState:
-                description: 'WorkRequestStatusEnum Enum with underlying type: string'
+              status:
                 type: string
             required:
             - autonomousDatabaseOCID
             - dbName
             - displayName
-            - lifecycleState
+            - status
             type: object
         type: object
     served: true

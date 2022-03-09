@@ -263,10 +263,15 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 			newCPUCoreCount = 1
 		}
 
-		By(fmt.Sprintf("Updating the ADB with newDisplayName = %s and newCPUCoreCount = %d\n", newDisplayName, newCPUCoreCount))
+		var newKey = "testKey"
+		var newVal = "testVal"
+
+		By(fmt.Sprintf("Updating the ADB with newDisplayName = %s, newCPUCoreCount = %d and newFreeformTag = %s:%s\n",
+			newDisplayName, newCPUCoreCount, newKey, newVal))
 
 		expectedADB.Spec.Details.DisplayName = common.String(newDisplayName)
 		expectedADB.Spec.Details.CPUCoreCount = common.Int(newCPUCoreCount)
+		expectedADB.Spec.Details.FreeformTags = map[string]string{newKey: newVal}
 
 		Expect(derefK8sClient.Update(context.TODO(), expectedADB)).To(Succeed())
 
@@ -491,14 +496,14 @@ func AssertHardLinkDelete(k8sClient *client.Client, dbClient *database.DatabaseC
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 		Expect(derefK8sClient.Delete(context.TODO(), adb)).To(Succeed())
 
-		AssertSoftLinkDelete(k8sClient, adbLookupKey)()
-
 		By("Checking if the ADB in OCI is in TERMINATING state")
 		// Check every 10 secs for total 60 secs
 		Eventually(func() (database.AutonomousDatabaseLifecycleStateEnum, error) {
 			retryPolicy := e2eutil.NewLifecycleStateRetryPolicy(database.AutonomousDatabaseLifecycleStateTerminating)
 			return returnRemoteState(derefK8sClient, derefDBClient, adb.Spec.Details.AutonomousDatabaseOCID, &retryPolicy)
 		}, changeStateTimeout).Should(Equal(database.AutonomousDatabaseLifecycleStateTerminating))
+
+		AssertSoftLinkDelete(k8sClient, adbLookupKey)()
 	}
 }
 

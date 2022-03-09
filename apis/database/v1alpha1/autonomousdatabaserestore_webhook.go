@@ -39,9 +39,6 @@
 package v1alpha1
 
 import (
-	"reflect"
-
-	"github.com/oracle/oracle-database-operator/commons/oci/ociutil"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -94,7 +91,7 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() error {
 
 	// Verify the timestamp format if it's PITR
 	if r.Spec.PointInTime.TimeStamp != "" {
-		_, err := ociutil.ParseDisplayTime(r.Spec.PointInTime.TimeStamp)
+		_, err := parseDisplayTime(r.Spec.PointInTime.TimeStamp)
 		if err != nil {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec"), "invalid timestamp format"))
@@ -115,12 +112,8 @@ func (r *AutonomousDatabaseRestore) ValidateUpdate(old runtime.Object) error {
 
 	var allErrs field.ErrorList
 
-	if old.(*AutonomousDatabaseRestore).Status.LifecycleState != "" &&
-		!reflect.DeepEqual(r.Spec, old.(*AutonomousDatabaseRestore).Spec) {
-
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec"), "the AutonomousDatabaseRestore resource cannot be modified"))
-	}
+	allErrs = append(allErrs,
+		field.Forbidden(field.NewPath("spec"), "update AutonomousDatabaseRestore is diabled"))
 
 	if len(allErrs) == 0 {
 		return nil

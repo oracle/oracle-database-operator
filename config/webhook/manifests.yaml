@@ -24,7 +24,7 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - autonomousdatabase
+    - autonomousdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1

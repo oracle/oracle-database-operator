@@ -36,19 +36,15 @@
 ** SOFTWARE.
  */
 
-package autonomousdatabase
+package k8s
 
 import (
-	"context"
-
-	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilErrors "k8s.io/apimachinery/pkg/util/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 )
 
-func newOwnerReference(owner client.Object) []metav1.OwnerReference {
+func NewOwnerReference(owner client.Object) []metav1.OwnerReference {
 	ownerRef := []metav1.OwnerReference{
 		{
 			Kind:       owner.GetObjectKind().GroupVersionKind().Kind,
@@ -60,44 +56,6 @@ func newOwnerReference(owner client.Object) []metav1.OwnerReference {
 	return ownerRef
 }
 
-// func newOwnerReference(adb *dbv1alpha1.AutonomousDatabase) []metav1.OwnerReference {
-// 	ownerRef := []metav1.OwnerReference{
-// 		{
-// 			Kind:       adb.GroupVersionKind().Kind,
-// 			APIVersion: adb.APIVersion,
-// 			Name:       adb.Name,
-// 			UID:        types.UID(adb.UID),
-// 		},
-// 	}
-// 	return ownerRef
-// }
-
-func fetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseList, error) {
-	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
-	adbList := &dbv1alpha1.AutonomousDatabaseList{}
-
-	if err := kubeClient.List(context.TODO(), adbList, &client.ListOptions{Namespace: namespace}); err != nil {
-		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
-		// No need to change the since we don't know if we obtain the object.
-		if !apiErrors.IsNotFound(err) {
-			return adbList, err
-		}
-	}
-
-	return adbList, nil
-}
-
-func fetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseBackupList, error) {
-	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
-	backupList := &dbv1alpha1.AutonomousDatabaseBackupList{}
-
-	if err := kubeClient.List(context.TODO(), backupList, &client.ListOptions{Namespace: namespace}); err != nil {
-		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
-		// No need to change the since we don't know if we obtain the object.
-		if !apiErrors.IsNotFound(err) {
-			return backupList, err
-		}
-	}
-
-	return backupList, nil
+func CombineErrors(errs ...error) error {
+	return utilErrors.NewAggregate(errs)
 }
