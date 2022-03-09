@@ -73,7 +73,7 @@ func unmarshalFromYamlBytes(bytes []byte, obj interface{}) error {
 	return json.Unmarshal(jsonBytes, obj)
 }
 
-// LoadTestFixture create an AutonomousDatabase resoursce from a test fixture
+// LoadTestFixture create an AutonomousDatabase resource from a test fixture
 func LoadTestFixture(adb *dbv1alpha1.AutonomousDatabase, filename string) (*dbv1alpha1.AutonomousDatabase, error) {
 	filePath := "./resource/" + filename
 	yamlBytes, err := ioutil.ReadFile(filePath)
@@ -119,6 +119,8 @@ type testConfiguration struct {
 	CompartmentOCID            string `yaml:"compartmentOCID"`
 	AdminPasswordOCID          string `yaml:"adminPasswordOCID"`
 	InstanceWalletPasswordOCID string `yaml:"instanceWalletPasswordOCID"`
+	SubnetOCID                 string `yaml:"subnetOCID"`
+	NsgOCID                    string `yaml:"nsgOCID"`
 }
 
 func GetTestConfig(filename string) (*testConfiguration, error) {

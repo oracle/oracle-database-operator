@@ -5,14 +5,15 @@
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
-  name: singleinstancedatabase-sample
+  name: sidb-sample-clone
   namespace: default
 spec:
   
   ## Use only alphanumeric characters for sid
   sid: ORCL1
   
-  ## A source database ref to clone from, leave empty to create a fresh database
+  ## A source database ref to clone from.
+  ## If cloning from on prem source database, mention connect string `<ip>:<port>/<sid>`.
   cloneFrom: ""
 
   ## Should refer to SourceDB secret
@@ -21,7 +22,7 @@ spec:
   adminPassword:
     secretName: 
     secretKey:
-    keepSecret: false
+    keepSecret: true
 
   ## Database image details
   ## Database can be patched out of place by updating the RU version/image
@@ -32,10 +33,14 @@ spec:
 
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
   persistence:
     size: 100Gi
-    storageClass: ""
-    accessMode: "ReadWriteMany"
+    storageClass: "oci"
+    accessMode: "ReadWriteOnce"
+
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  serviceAccountName: default
 
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1
