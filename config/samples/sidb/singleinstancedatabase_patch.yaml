@@ -5,7 +5,7 @@
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
-  name: singleinstancedatabase-sample
+  name: sidb-sample-patch
   namespace: default
 spec:
   
@@ -17,7 +17,7 @@ spec:
   adminPassword:
     secretName: 
     secretKey:
-    keepSecret: false
+    keepSecret: true
 
   ## Patch the database by updating the RU version/image
   ## Major version changes are not supported
@@ -27,10 +27,14 @@ spec:
 
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
   persistence:
     size: 100Gi
-    storageClass: ""
-    accessMode: "ReadWriteMany"
+    storageClass: "oci"
+    accessMode: "ReadWriteOnce"
+
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  serviceAccountName: default
 
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1

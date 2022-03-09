@@ -74,6 +74,8 @@ spec:
                       ociSecretOCID:
                         type: string
                     type: object
+                  autonomousContainerDatabaseOCID:
+                    type: string
                   autonomousDatabaseOCID:
                     type: string
                   compartmentOCID:
@@ -109,18 +111,35 @@ spec:
                     description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying
                       type: string'
                     type: string
-                  nsgOCIDs:
-                    items:
-                      type: string
-                    type: array
-                  privateEndpoint:
-                    type: string
-                  privateEndpointIP:
-                    type: string
-                  privateEndpointLabel:
-                    type: string
-                  subnetOCID:
-                    type: string
+                  networkAccess:
+                    properties:
+                      accessControlList:
+                        items:
+                          type: string
+                        type: array
+                      accessType:
+                        enum:
+                        - ""
+                        - PUBLIC
+                        - RESTRICTED
+                        - PRIVATE
+                        type: string
+                      isAccessControlEnabled:
+                        type: boolean
+                      isMTLSConnectionRequired:
+                        type: boolean
+                      privateEndpoint:
+                        properties:
+                          hostnamePrefix:
+                            type: string
+                          nsgOCIDs:
+                            items:
+                              type: string
+                            type: array
+                          subnetOCID:
+                            type: string
+                        type: object
+                    type: object
                   wallet:
                     properties:
                       name:
@@ -150,6 +169,19 @@ spec:
           status:
             description: AutonomousDatabaseStatus defines the observed state of AutonomousDatabase
             properties:
+              allConnectionStrings:
+                items:
+                  properties:
+                    connectionStrings:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    tlsAuthentication:
+                      type: string
+                  required:
+                  - connectionStrings
+                  type: object
+                type: array
               cpuCoreCount:
                 type: integer
               dataStorageSizeInTBs:

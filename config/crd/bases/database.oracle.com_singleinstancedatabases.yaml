@@ -130,34 +130,28 @@ spec:
                   size and class for PVC
                 properties:
                   accessMode:
-                    enum:
-                    - ReadWriteOnce
-                    - ReadWriteMany
                     type: string
                   size:
                     type: string
                   storageClass:
                     type: string
                 required:
-                - accessMode
                 - size
                 - storageClass
                 type: object
               readinessCheckPeriod:
                 type: integer
               replicas:
-                minimum: 1
                 type: integer
+              serviceAccountName:
+                type: string
               sid:
                 description: SID can only have a-z , A-Z, 0-9 . It cant have any special
                   characters
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
             required:
-            - adminPassword
             - image
-            - persistence
-            - replicas
             type: object
           status:
             description: SingleInstanceDatabaseStatus defines the observed state of
@@ -290,16 +284,12 @@ spec:
                   size and class for PVC
                 properties:
                   accessMode:
-                    enum:
-                    - ReadWriteOnce
-                    - ReadWriteMany
                     type: string
                   size:
                     type: string
                   storageClass:
                     type: string
                 required:
-                - accessMode
                 - size
                 - storageClass
                 type: object

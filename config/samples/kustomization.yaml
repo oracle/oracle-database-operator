@@ -11,4 +11,7 @@ resources:
   - shardingdatabase.yaml
   - database_v1alpha1_pdb.yaml
   - database_v1alpha1_cdb.yaml
+  - adb/autonomousdatabase.yaml
+  - sidb/singleinstancedatabase.yaml
+  - sharding/shardingdatabase.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples

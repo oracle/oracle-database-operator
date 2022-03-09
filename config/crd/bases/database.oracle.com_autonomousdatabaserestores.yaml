@@ -1,0 +1,105 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.1
+  creationTimestamp: null
+  name: autonomousdatabaserestores.database.oracle.com
+spec:
+  group: database.oracle.com
+  names:
+    kind: AutonomousDatabaseRestore
+    listKind: AutonomousDatabaseRestoreList
+    plural: autonomousdatabaserestores
+    shortNames:
+    - adbr
+    - adbrs
+    singular: autonomousdatabaserestore
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .status.displayName
+      name: DisplayName
+      type: string
+    - jsonPath: .status.dbName
+      name: DbName
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: AutonomousDatabaseRestore is the Schema for the autonomousdatabaserestores
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AutonomousDatabaseRestoreSpec defines the desired state of
+              AutonomousDatabaseRestore
+            properties:
+              backupName:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
+                type: string
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+              pointInTime:
+                properties:
+                  autonomousDatabaseOCID:
+                    type: string
+                  timeStamp:
+                    type: string
+                type: object
+            type: object
+          status:
+            description: AutonomousDatabaseRestoreStatus defines the observed state
+              of AutonomousDatabaseRestore
+            properties:
+              autonomousDatabaseOCID:
+                type: string
+              dbName:
+                type: string
+              displayName:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
+                type: string
+              lifecycleState:
+                description: 'WorkRequestStatusEnum Enum with underlying type: string'
+                type: string
+            required:
+            - autonomousDatabaseOCID
+            - dbName
+            - displayName
+            - lifecycleState
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

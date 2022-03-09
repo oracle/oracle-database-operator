@@ -46,10 +46,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
-	"github.com/oracle/oci-go-sdk/v45/secrets"
-	"github.com/oracle/oci-go-sdk/v45/workrequests"
+	"github.com/oracle/oci-go-sdk/v54/common"
+	"github.com/oracle/oci-go-sdk/v54/database"
+	"github.com/oracle/oci-go-sdk/v54/secrets"
+	"github.com/oracle/oci-go-sdk/v54/workrequests"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1 "k8s.io/api/core/v1"
@@ -66,19 +66,27 @@ func CreateAutonomousDatabase(logger logr.Logger, kubeClient client.Client, dbCl
 	}
 
 	createAutonomousDatabaseDetails := database.CreateAutonomousDatabaseDetails{
-		CompartmentId:        adb.Spec.Details.CompartmentOCID,
-		DbName:               adb.Spec.Details.DbName,
-		CpuCoreCount:         adb.Spec.Details.CPUCoreCount,
-		DataStorageSizeInTBs: adb.Spec.Details.DataStorageSizeInTBs,
-		AdminPassword:        common.String(adminPassword),
-		DisplayName:          adb.Spec.Details.DisplayName,
-		IsAutoScalingEnabled: adb.Spec.Details.IsAutoScalingEnabled,
-		IsDedicated:          adb.Spec.Details.IsDedicated,
-		DbVersion:            adb.Spec.Details.DbVersion,
+		CompartmentId:                 adb.Spec.Details.CompartmentOCID,
+		AutonomousContainerDatabaseId: adb.Spec.Details.AutonomousContainerDatabaseOCID,
+		DbName:                        adb.Spec.Details.DbName,
+		CpuCoreCount:                  adb.Spec.Details.CPUCoreCount,
+		DataStorageSizeInTBs:          adb.Spec.Details.DataStorageSizeInTBs,
+		AdminPassword:                 common.String(adminPassword),
+		DisplayName:                   adb.Spec.Details.DisplayName,
+		IsAutoScalingEnabled:          adb.Spec.Details.IsAutoScalingEnabled,
+		IsDedicated:                   adb.Spec.Details.IsDedicated,
+		DbVersion:                     adb.Spec.Details.DbVersion,
 		DbWorkload: database.CreateAutonomousDatabaseBaseDbWorkloadEnum(
 			adb.Spec.Details.DbWorkload),
-		SubnetId: adb.Spec.Details.SubnetOCID,
-		NsgIds:   adb.Spec.Details.NsgOCIDs,
+
+		IsAccessControlEnabled:   adb.Spec.Details.NetworkAccess.IsAccessControlEnabled,
+		WhitelistedIps:           adb.Spec.Details.NetworkAccess.AccessControlList,
+		IsMtlsConnectionRequired: adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
+		SubnetId:                 adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID,
+		NsgIds:                   adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs,
+		PrivateEndpointLabel:     adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix,
+
+		FreeformTags: adb.Spec.Details.FreeformTags,
 	}
 
 	createAutonomousDatabaseRequest := database.CreateAutonomousDatabaseRequest{
@@ -138,11 +146,7 @@ func getValueFromKubeSecret(kubeClient client.Client, namespacedName types.Names
 // GetAutonomousDatabaseResource gets Autonomous Database information from a remote instance
 // and return an AutonomousDatabase object
 func GetAutonomousDatabaseResource(logger logr.Logger, dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) (*dbv1alpha1.AutonomousDatabase, error) {
-	getAutonomousDatabaseRequest := database.GetAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
-	}
-
-	response, err := dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
+	response, err := GetAutonomousDatabase(dbClient, adb.Spec.Details.AutonomousDatabaseOCID)
 	if err != nil {
 		return nil, err
 	}
@@ -153,12 +157,31 @@ func GetAutonomousDatabaseResource(logger logr.Logger, dbClient database.Databas
 	return returnedADB, nil
 }
 
-// isAttrChanged checks if the values of last successful object and current object are different.
+func GetAutonomousDatabase(dbClient database.DatabaseClient, adbOCID *string) (database.GetAutonomousDatabaseResponse, error) {
+	getAutonomousDatabaseRequest := database.GetAutonomousDatabaseRequest{
+		AutonomousDatabaseId: adbOCID,
+	}
+
+	return dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
+}
+
+// IsAttrChanged checks if the values of last successful object and current object are different.
 // The function returns false if the types are mismatch or unknown.
 // The function returns false if the current object has zero value (not applicable for boolean type).
-func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
+func IsAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 	switch curObj.(type) {
-	case string: // Enum
+	case dbv1alpha1.NetworkAccessTypeEnum:
+		lastSucAccessType, ok := lastSucObj.(dbv1alpha1.NetworkAccessTypeEnum)
+		if !ok {
+			return false
+		}
+		curSucAccessType, ok := curObj.(dbv1alpha1.NetworkAccessTypeEnum)
+		if !ok {
+			return false
+		}
+
+		return lastSucAccessType != curSucAccessType
+	case string:
 		// type check
 		lastSucString, ok := lastSucObj.(string)
 		if !ok {
@@ -177,7 +200,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		}
 		curIntPtr := curObj.(*int)
 
-		if lastSucIntPtr != nil && curIntPtr != nil && *curIntPtr != 0 && *lastSucIntPtr != *curIntPtr {
+		if (lastSucIntPtr == nil && curIntPtr != nil) || (lastSucIntPtr != nil && curIntPtr != nil && *lastSucIntPtr != *curIntPtr) {
 			return true
 		}
 	case *string:
@@ -188,7 +211,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		}
 		curStringPtr := curObj.(*string)
 
-		if lastSucStringPtr != nil && curStringPtr != nil && *curStringPtr != "" && *lastSucStringPtr != *curStringPtr {
+		if (lastSucStringPtr == nil && curStringPtr != nil) || (lastSucStringPtr != nil && curStringPtr != nil && *lastSucStringPtr != *curStringPtr) {
 			return true
 		}
 	case *bool:
@@ -200,7 +223,7 @@ func isAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
 		curBoolPtr := curObj.(*bool)
 
 		// For boolean type, we don't have to check zero value
-		if lastSucBoolPtr != nil && curBoolPtr != nil && *lastSucBoolPtr != *curBoolPtr {
+		if (lastSucBoolPtr == nil && curBoolPtr != nil) || (lastSucBoolPtr != nil && curBoolPtr != nil && *lastSucBoolPtr != *curBoolPtr) {
 			return true
 		}
 	case []string:
@@ -265,43 +288,30 @@ func UpdateGeneralAndPasswordAttributes(logger logr.Logger, kubeClient client.Cl
 	// Prepare the update request
 	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
 
-	if isAttrChanged(lastSucSpec.Details.DisplayName, curADB.Spec.Details.DisplayName) {
+	if IsAttrChanged(lastSucSpec.Details.DisplayName, curADB.Spec.Details.DisplayName) {
 		updateAutonomousDatabaseDetails.DisplayName = curADB.Spec.Details.DisplayName
 		shouldSendRequest = true
 	}
-	if isAttrChanged(lastSucSpec.Details.DbName, curADB.Spec.Details.DbName) {
+	if IsAttrChanged(lastSucSpec.Details.DbName, curADB.Spec.Details.DbName) {
 		updateAutonomousDatabaseDetails.DbName = curADB.Spec.Details.DbName
 		shouldSendRequest = true
 	}
-	if isAttrChanged(lastSucSpec.Details.DbWorkload, curADB.Spec.Details.DbWorkload) {
+	if IsAttrChanged(lastSucSpec.Details.DbWorkload, curADB.Spec.Details.DbWorkload) {
 		updateAutonomousDatabaseDetails.DbWorkload = database.UpdateAutonomousDatabaseDetailsDbWorkloadEnum(curADB.Spec.Details.DbWorkload)
 		shouldSendRequest = true
 	}
-	if isAttrChanged(lastSucSpec.Details.DbVersion, curADB.Spec.Details.DbVersion) {
+	if IsAttrChanged(lastSucSpec.Details.DbVersion, curADB.Spec.Details.DbVersion) {
 		updateAutonomousDatabaseDetails.DbVersion = curADB.Spec.Details.DbVersion
 		shouldSendRequest = true
 	}
 
-	if isAttrChanged(lastSucSpec.Details.FreeformTags, curADB.Spec.Details.FreeformTags) {
+	if IsAttrChanged(lastSucSpec.Details.FreeformTags, curADB.Spec.Details.FreeformTags) {
 		updateAutonomousDatabaseDetails.FreeformTags = curADB.Spec.Details.FreeformTags
 		shouldSendRequest = true
 	}
 
-	if isAttrChanged(lastSucSpec.Details.FreeformTags, curADB.Spec.Details.FreeformTags) {
-		updateAutonomousDatabaseDetails.FreeformTags = curADB.Spec.Details.FreeformTags
-		shouldSendRequest = true
-	}
-	if isAttrChanged(lastSucSpec.Details.SubnetOCID, curADB.Spec.Details.SubnetOCID) {
-		updateAutonomousDatabaseDetails.SubnetId = curADB.Spec.Details.SubnetOCID
-		shouldSendRequest = true
-	}
-	if isAttrChanged(lastSucSpec.Details.NsgOCIDs, curADB.Spec.Details.NsgOCIDs) {
-		updateAutonomousDatabaseDetails.NsgIds = curADB.Spec.Details.NsgOCIDs
-		shouldSendRequest = true
-	}
-
-	if isAttrChanged(lastSucSpec.Details.AdminPassword.K8sSecretName, curADB.Spec.Details.AdminPassword.K8sSecretName) ||
-		isAttrChanged(lastSucSpec.Details.AdminPassword.OCISecretOCID, curADB.Spec.Details.AdminPassword.OCISecretOCID) {
+	if IsAttrChanged(lastSucSpec.Details.AdminPassword.K8sSecretName, curADB.Spec.Details.AdminPassword.K8sSecretName) ||
+		IsAttrChanged(lastSucSpec.Details.AdminPassword.OCISecretOCID, curADB.Spec.Details.AdminPassword.OCISecretOCID) {
 		// Get the adminPassword
 		var adminPassword string
 
@@ -320,7 +330,6 @@ func UpdateGeneralAndPasswordAttributes(logger logr.Logger, kubeClient client.Cl
 		logger.Info("Sending general attributes and ADMIN password update request")
 
 		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-			// AutonomousDatabaseId:            common.String(curADB.Spec.Details.AutonomousDatabaseOCID),
 			AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
 			UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
 		}
@@ -345,15 +354,15 @@ func UpdateScaleAttributes(logger logr.Logger, kubeClient client.Client, dbClien
 	// Prepare the update request
 	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
 
-	if isAttrChanged(lastSucSpec.Details.DataStorageSizeInTBs, curADB.Spec.Details.DataStorageSizeInTBs) {
+	if IsAttrChanged(lastSucSpec.Details.DataStorageSizeInTBs, curADB.Spec.Details.DataStorageSizeInTBs) {
 		updateAutonomousDatabaseDetails.DataStorageSizeInTBs = curADB.Spec.Details.DataStorageSizeInTBs
 		shouldSendRequest = true
 	}
-	if isAttrChanged(lastSucSpec.Details.CPUCoreCount, curADB.Spec.Details.CPUCoreCount) {
+	if IsAttrChanged(lastSucSpec.Details.CPUCoreCount, curADB.Spec.Details.CPUCoreCount) {
 		updateAutonomousDatabaseDetails.CpuCoreCount = curADB.Spec.Details.CPUCoreCount
 		shouldSendRequest = true
 	}
-	if isAttrChanged(lastSucSpec.Details.IsAutoScalingEnabled, curADB.Spec.Details.IsAutoScalingEnabled) {
+	if IsAttrChanged(lastSucSpec.Details.IsAutoScalingEnabled, curADB.Spec.Details.IsAutoScalingEnabled) {
 		updateAutonomousDatabaseDetails.IsAutoScalingEnabled = curADB.Spec.Details.IsAutoScalingEnabled
 		shouldSendRequest = true
 	}
@@ -364,7 +373,108 @@ func UpdateScaleAttributes(logger logr.Logger, kubeClient client.Client, dbClien
 		logger.Info("Sending scale attributes update request")
 
 		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-			// AutonomousDatabaseId:            common.String(curADB.Spec.Details.AutonomousDatabaseOCID),
+			AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
+			UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
+		}
+
+		resp, err = dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
+	}
+
+	return
+}
+
+func UpdateMTLSConnectionRequired(logger logr.Logger,
+	dbClient database.DatabaseClient,
+	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+
+	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
+	if err != nil {
+		return resp, err
+	}
+
+	if IsAttrChanged(lastSucSpec.Details.NetworkAccess.IsMTLSConnectionRequired, curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired) {
+		logger.Info(fmt.Sprintf("Sending request to set mTLSRequired to %t", *curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired))
+
+		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+			AutonomousDatabaseId: curADB.Spec.Details.AutonomousDatabaseOCID,
+			UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
+				IsMtlsConnectionRequired: curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
+			},
+		}
+		resp, err = dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
+	}
+
+	return
+}
+
+func SetNetworkAccessPublic(logger logr.Logger, dbClient database.DatabaseClient,
+	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
+	if err != nil {
+		return resp, err
+	}
+
+	logger.Info("Sending request to configure Network Access type to PUBLIC")
+
+	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
+
+	if lastSucSpec.Details.NetworkAccess.AccessType == dbv1alpha1.NetworkAccessTypeRestricted {
+		updateAutonomousDatabaseDetails.WhitelistedIps = []string{""}
+	} else if lastSucSpec.Details.NetworkAccess.AccessType == dbv1alpha1.NetworkAccessTypePrivate {
+		updateAutonomousDatabaseDetails.PrivateEndpointLabel = common.String("")
+	}
+
+	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+		AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
+		UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
+	}
+
+	return dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
+}
+
+// UpdateNetworkAccessAttributes determines if any of the network access attributes changes and send the update request
+func UpdateNetworkAccessAttributes(logger logr.Logger, dbClient database.DatabaseClient,
+	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+
+	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
+	if err != nil {
+		return resp, err
+	}
+
+	var lastNetworkAccess = lastSucSpec.Details.NetworkAccess
+	var curNetworkAccess = curADB.Spec.Details.NetworkAccess
+
+	if IsAttrChanged(lastNetworkAccess.IsAccessControlEnabled, curNetworkAccess.IsAccessControlEnabled) ||
+		IsAttrChanged(lastNetworkAccess.AccessControlList, curNetworkAccess.AccessControlList) ||
+		IsAttrChanged(lastNetworkAccess.PrivateEndpoint.SubnetOCID, curNetworkAccess.PrivateEndpoint.SubnetOCID) ||
+		IsAttrChanged(lastNetworkAccess.PrivateEndpoint.NsgOCIDs, curNetworkAccess.PrivateEndpoint.NsgOCIDs) ||
+		IsAttrChanged(lastNetworkAccess.PrivateEndpoint.HostnamePrefix, curNetworkAccess.PrivateEndpoint.HostnamePrefix) {
+
+		logger.Info("Sending request to configure Network Access")
+
+		updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
+
+		if IsAttrChanged(lastNetworkAccess.IsAccessControlEnabled, curNetworkAccess.IsAccessControlEnabled) {
+			updateAutonomousDatabaseDetails.IsAccessControlEnabled = curNetworkAccess.IsAccessControlEnabled
+		}
+
+		if IsAttrChanged(lastNetworkAccess.AccessControlList, curNetworkAccess.AccessControlList) {
+			updateAutonomousDatabaseDetails.WhitelistedIps = curNetworkAccess.AccessControlList
+		}
+
+		if IsAttrChanged(lastNetworkAccess.PrivateEndpoint.SubnetOCID, curNetworkAccess.PrivateEndpoint.SubnetOCID) {
+			updateAutonomousDatabaseDetails.SubnetId = curNetworkAccess.PrivateEndpoint.SubnetOCID
+		}
+
+		if IsAttrChanged(lastNetworkAccess.PrivateEndpoint.NsgOCIDs, curNetworkAccess.PrivateEndpoint.NsgOCIDs) {
+			updateAutonomousDatabaseDetails.NsgIds = curNetworkAccess.PrivateEndpoint.NsgOCIDs
+		}
+
+		if IsAttrChanged(lastNetworkAccess.PrivateEndpoint.HostnamePrefix, curNetworkAccess.PrivateEndpoint.HostnamePrefix) {
+			updateAutonomousDatabaseDetails.PrivateEndpointLabel = curNetworkAccess.PrivateEndpoint.HostnamePrefix
+		}
+
+		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 			AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
 			UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
 		}
@@ -432,7 +542,7 @@ func startAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	resp, err = dbClient.StartAutonomousDatabase(context.Background(), startRequest)
+	resp, err = dbClient.StartAutonomousDatabase(context.TODO(), startRequest)
 	return
 }
 
@@ -442,43 +552,101 @@ func stopAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (r
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	resp, err = dbClient.StopAutonomousDatabase(context.Background(), stopRequest)
+	resp, err = dbClient.StopAutonomousDatabase(context.TODO(), stopRequest)
 	return
 }
 
 // DeleteAutonomousDatabase terminates an Autonomous Database in OCI
 func DeleteAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (resp database.DeleteAutonomousDatabaseResponse, err error) {
-
 	deleteRequest := database.DeleteAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	resp, err = dbClient.DeleteAutonomousDatabase(context.Background(), deleteRequest)
-	return
+	return dbClient.DeleteAutonomousDatabase(context.TODO(), deleteRequest)
 }
 
-func WaitUntilWorkCompleted(logger logr.Logger, workClient workrequests.WorkRequestClient, opcWorkRequestID *string) error {
-	if opcWorkRequestID == nil {
-		return nil
+func RestoreAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string, sdkTime *common.SDKTime) (resp database.RestoreAutonomousDatabaseResponse, err error) {
+	request := database.RestoreAutonomousDatabaseRequest{
+		AutonomousDatabaseId: common.String(adbOCID),
+		RestoreAutonomousDatabaseDetails: database.RestoreAutonomousDatabaseDetails{
+			Timestamp: sdkTime,
+		},
+	}
+	return dbClient.RestoreAutonomousDatabase(context.TODO(), request)
+}
+
+// ListAutonomousDatabaseBackups returns a list of Autonomous Database backups
+func ListAutonomousDatabaseBackups(dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) (resp database.ListAutonomousDatabaseBackupsResponse, err error) {
+	if adb.Spec.Details.AutonomousDatabaseOCID == nil {
+		return resp, nil
 	}
 
-	logger.Info("Waiting for the work request to finish. opcWorkRequestID = " + *opcWorkRequestID)
+	listBackupRequest := database.ListAutonomousDatabaseBackupsRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+	}
 
-	retryPolicy := getCompleteWorkRetryPolicy()
-	// Apply wait until work complete retryPolicy
-	workRequest := workrequests.GetWorkRequestRequest{
-		WorkRequestId: opcWorkRequestID,
-		RequestMetadata: common.RequestMetadata{
-			RetryPolicy: &retryPolicy,
+	return dbClient.ListAutonomousDatabaseBackups(context.TODO(), listBackupRequest)
+}
+
+// CreateAutonomousDatabaseBackup creates an backup of Autonomous Database
+func CreateAutonomousDatabaseBackup(logger logr.Logger, dbClient database.DatabaseClient, adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (resp database.CreateAutonomousDatabaseBackupResponse, err error) {
+	logger.Info("Creating Autonomous Database backup " + adbBackup.GetName())
+
+	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
+		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
+			AutonomousDatabaseId: &adbBackup.Spec.AutonomousDatabaseOCID,
 		},
 	}
 
-	// GetWorkRequest retries until the work status is SUCCEEDED
-	if _, err := workClient.GetWorkRequest(context.TODO(), workRequest); err != nil {
-		return err
+	// Use the spec.displayName as the displayName of the backup if is provided,
+	// otherwise use the resource name as the displayName.
+	if adbBackup.Spec.DisplayName != "" {
+		createBackupRequest.DisplayName = common.String(adbBackup.Spec.DisplayName)
+	} else {
+		createBackupRequest.DisplayName = common.String(adbBackup.GetName())
 	}
 
-	return nil
+	return dbClient.CreateAutonomousDatabaseBackup(context.TODO(), createBackupRequest)
+}
+
+// GetAutonomousDatabaseBackup returns the response of GetAutonomousDatabaseBackupRequest
+func GetAutonomousDatabaseBackup(dbClient database.DatabaseClient, backupOCID string) (resp database.GetAutonomousDatabaseBackupResponse, err error) {
+	getBackupRequest := database.GetAutonomousDatabaseBackupRequest{
+		AutonomousDatabaseBackupId: common.String(backupOCID),
+	}
+
+	return dbClient.GetAutonomousDatabaseBackup(context.TODO(), getBackupRequest)
+}
+
+func GetWorkStatusAndWait(logger logr.Logger, workClient workrequests.WorkRequestClient, opcWorkRequestID *string) (workrequests.WorkRequestStatusEnum, error) {
+	logger.Info("Waiting for the work request to finish. opcWorkRequestID = " + *opcWorkRequestID)
+
+	// retries until the work status is SUCCEEDED, FAILED or CANCELED
+	retryPolicy := getCompleteWorkRetryPolicy()
+
+	resp, err := GetWorkRequest(workClient, opcWorkRequestID, &retryPolicy)
+	if err != nil {
+		return resp.Status, err
+	}
+
+	return resp.Status, nil
+}
+
+func GetWorkRequest(workClient workrequests.WorkRequestClient,
+	opcWorkRequestID *string,
+	retryPolicy *common.RetryPolicy) (response workrequests.GetWorkRequestResponse, err error) {
+
+	workRequest := workrequests.GetWorkRequestRequest{
+		WorkRequestId: opcWorkRequestID,
+	}
+
+	if retryPolicy != nil {
+		workRequest.RequestMetadata = common.RequestMetadata{
+			RetryPolicy: retryPolicy,
+		}
+	}
+
+	return workClient.GetWorkRequest(context.TODO(), workRequest)
 }
 
 func getCompleteWorkRetryPolicy() common.RetryPolicy {
@@ -491,7 +659,9 @@ func getCompleteWorkRetryPolicy() common.RetryPolicy {
 
 		if converted, ok := r.Response.(workrequests.GetWorkRequestResponse); ok {
 			// do the retry until WorkReqeut Status is Succeeded  - ignore case (BMI-2652)
-			return converted.Status != workrequests.WorkRequestStatusSucceeded
+			return converted.Status != workrequests.WorkRequestStatusSucceeded &&
+				converted.Status != workrequests.WorkRequestStatusFailed &&
+				converted.Status != workrequests.WorkRequestStatusCanceled
 		}
 
 		return true
@@ -501,14 +671,17 @@ func getCompleteWorkRetryPolicy() common.RetryPolicy {
 }
 
 func getRetryPolicy(retryOperation func(common.OCIOperationResponse) bool) common.RetryPolicy {
-	// maximum times of retry
-	attempts := uint(10)
+	// maximum times of retry (~30mins)
+	attempts := uint(63)
 
 	nextDuration := func(r common.OCIOperationResponse) time.Duration {
-		// you might want wait longer for next retry when your previous one failed
+		// Wait longer for next retry when your previous one failed
 		// this function will return the duration as:
-		// 1s, 2s, 4s, 8s, 16s, 32s, 64s etc...
-		return time.Duration(math.Pow(float64(2), float64(r.AttemptNumber-1))) * time.Second
+		// 1s, 2s, 4s, 8s, 16s, 30s, 30s etc...
+		if r.AttemptNumber <= 5 {
+			return time.Duration(math.Pow(float64(2), float64(r.AttemptNumber-1))) * time.Second
+		}
+		return time.Duration(30) * time.Second
 	}
 
 	return common.NewRetryPolicy(attempts, retryOperation, nextDuration)
