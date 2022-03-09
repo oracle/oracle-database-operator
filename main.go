@@ -100,6 +100,7 @@ func main() {
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("database").WithName("AutonomousDatabase"),
 		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabase"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabase")
 		os.Exit(1)
@@ -215,6 +216,7 @@ func main() {
 		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
 		os.Exit(1)
 	}
+
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs

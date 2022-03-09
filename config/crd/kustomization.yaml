@@ -7,6 +7,8 @@
 # It should be run by config/default
 resources:
 - bases/database.oracle.com_autonomousdatabases.yaml
+- bases/database.oracle.com_autonomousdatabasebackups.yaml
+- bases/database.oracle.com_autonomousdatabaserestores.yaml
 - bases/database.oracle.com_singleinstancedatabases.yaml
 - bases/database.oracle.com_shardingdatabases.yaml
 - bases/database.oracle.com_pdbs.yaml
