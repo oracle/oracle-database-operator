@@ -158,6 +158,7 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 		KubeClient: k8sManager.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabase_test"),
 		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabase_test"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

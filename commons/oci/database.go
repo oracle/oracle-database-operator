@@ -40,29 +40,104 @@ package oci
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"math"
-	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/oracle/oci-go-sdk/v54/common"
 	"github.com/oracle/oci-go-sdk/v54/database"
-	"github.com/oracle/oci-go-sdk/v54/secrets"
-	"github.com/oracle/oci-go-sdk/v54/workrequests"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
-
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	"github.com/oracle/oracle-database-operator/commons/k8s"
 )
 
-// CreateAutonomousDatabase sends a request to OCI to provision a database and returns the AutonomousDatabase OCID.
-func CreateAutonomousDatabase(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient, secretClient secrets.SecretsClient, adb *dbv1alpha1.AutonomousDatabase) (*database.CreateAutonomousDatabaseResponse, error) {
-	adminPassword, err := getAdminPassword(logger, kubeClient, secretClient, adb)
+type DatabaseService interface {
+	CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDatabase) (database.CreateAutonomousDatabaseResponse, error)
+	GetAutonomousDatabase(adbOCID string) (database.GetAutonomousDatabaseResponse, error)
+	UpdateAutonomousDatabaseGeneralFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseDBWorkload(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseLicenseModel(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseAdminPassword(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseScalingFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccessMTLSRequired(adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccessMTLS(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccessPublic(lastSucSpec *dbv1alpha1.AutonomousDatabaseSpec, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccess(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error)
+	StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error)
+	DeleteAutonomousDatabase(adbOCID string) (database.DeleteAutonomousDatabaseResponse, error)
+	DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (database.GenerateAutonomousDatabaseWalletResponse, error)
+	RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error)
+	ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error)
+	CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (database.CreateAutonomousDatabaseBackupResponse, error)
+	GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error)
+}
+
+type databaseService struct {
+	logger       logr.Logger
+	kubeClient   client.Client
+	dbClient     database.DatabaseClient
+	vaultService VaultService
+}
+
+func NewDatabaseService(
+	logger logr.Logger,
+	kubeClient client.Client,
+	provider common.ConfigurationProvider) (DatabaseService, error) {
+
+	dbClient, err := database.NewDatabaseClientWithConfigurationProvider(provider)
 	if err != nil {
 		return nil, err
+	}
+
+	vaultService, err := NewVaultService(logger, provider)
+	if err != nil {
+		return nil, err
+	}
+
+	return &databaseService{
+		logger:       logger,
+		kubeClient:   kubeClient,
+		dbClient:     dbClient,
+		vaultService: vaultService,
+	}, nil
+}
+
+// ReadPassword reads the password from passwordSpec, and returns the pointer to the read password string.
+// The function returns a nil if nothing is read
+func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1.PasswordSpec) (*string, error) {
+	logger := d.logger.WithName("read-password")
+
+	if passwordSpec.K8sSecretName != nil {
+		logger.Info(fmt.Sprintf("Getting password from Secret %s", *passwordSpec.K8sSecretName))
+
+		key := *passwordSpec.K8sSecretName
+		password, err := k8s.GetSecretValue(d.kubeClient, namespace, *passwordSpec.K8sSecretName, key)
+		if err != nil {
+			return nil, err
+		}
+
+		return common.String(password), nil
+	}
+
+	if passwordSpec.OCISecretOCID != nil {
+		logger.Info(fmt.Sprintf("Getting password from OCI Vault Secret OCID %s", *passwordSpec.OCISecretOCID))
+
+		password, err := d.vaultService.GetSecretValue(*passwordSpec.OCISecretOCID)
+		if err != nil {
+			return nil, err
+		}
+		return common.String(password), nil
+	}
+
+	return nil, nil
+}
+
+// CreateAutonomousDatabase sends a request to OCI to provision a database and returns the AutonomousDatabase OCID.
+func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDatabase) (resp database.CreateAutonomousDatabaseResponse, err error) {
+	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.AdminPassword)
+	if err != nil {
+		return resp, err
 	}
 
 	createAutonomousDatabaseDetails := database.CreateAutonomousDatabaseDetails{
@@ -71,14 +146,14 @@ func CreateAutonomousDatabase(logger logr.Logger, kubeClient client.Client, dbCl
 		DbName:                        adb.Spec.Details.DbName,
 		CpuCoreCount:                  adb.Spec.Details.CPUCoreCount,
 		DataStorageSizeInTBs:          adb.Spec.Details.DataStorageSizeInTBs,
-		AdminPassword:                 common.String(adminPassword),
+		AdminPassword:                 adminPassword,
 		DisplayName:                   adb.Spec.Details.DisplayName,
 		IsAutoScalingEnabled:          adb.Spec.Details.IsAutoScalingEnabled,
 		IsDedicated:                   adb.Spec.Details.IsDedicated,
 		DbVersion:                     adb.Spec.Details.DbVersion,
 		DbWorkload: database.CreateAutonomousDatabaseBaseDbWorkloadEnum(
 			adb.Spec.Details.DbWorkload),
-
+		LicenseModel:             database.CreateAutonomousDatabaseBaseLicenseModelEnum(adb.Spec.Details.LicenseModel),
 		IsAccessControlEnabled:   adb.Spec.Details.NetworkAccess.IsAccessControlEnabled,
 		WhitelistedIps:           adb.Spec.Details.NetworkAccess.AccessControlList,
 		IsMtlsConnectionRequired: adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
@@ -93,329 +168,104 @@ func CreateAutonomousDatabase(logger logr.Logger, kubeClient client.Client, dbCl
 		CreateAutonomousDatabaseDetails: createAutonomousDatabaseDetails,
 	}
 
-	resp, err := dbClient.CreateAutonomousDatabase(context.TODO(), createAutonomousDatabaseRequest)
+	resp, err = d.dbClient.CreateAutonomousDatabase(context.TODO(), createAutonomousDatabaseRequest)
 	if err != nil {
-		return nil, err
+		return resp, err
 	}
 
-	return &resp, nil
+	return resp, nil
 }
 
-// Get the desired admin password from either Kubernetes Secret or OCI Vault Secret.
-func getAdminPassword(logger logr.Logger, kubeClient client.Client, secretClient secrets.SecretsClient, adb *dbv1alpha1.AutonomousDatabase) (string, error) {
-	if adb.Spec.Details.AdminPassword.K8sSecretName != nil {
-		logger.Info(fmt.Sprintf("Getting admin password from Secret %s", *adb.Spec.Details.AdminPassword.K8sSecretName))
-
-		namespacedName := types.NamespacedName{
-			Namespace: adb.GetNamespace(),
-			Name:      *adb.Spec.Details.AdminPassword.K8sSecretName,
-		}
-
-		key := *adb.Spec.Details.AdminPassword.K8sSecretName
-		adminPassword, err := getValueFromKubeSecret(kubeClient, namespacedName, key)
-		if err != nil {
-			return "", err
-		}
-		return adminPassword, nil
-
-	} else if adb.Spec.Details.AdminPassword.OCISecretOCID != nil {
-		logger.Info(fmt.Sprintf("Getting admin password from OCI Vault Secret OCID %s", *adb.Spec.Details.AdminPassword.OCISecretOCID))
-
-		adminPassword, err := getValueFromVaultSecret(secretClient, *adb.Spec.Details.AdminPassword.OCISecretOCID)
-		if err != nil {
-			return "", err
-		}
-		return adminPassword, nil
-	}
-	return "", errors.New("should provide either AdminPasswordSecret or AdminPasswordOCID")
-}
-
-func getValueFromKubeSecret(kubeClient client.Client, namespacedName types.NamespacedName, key string) (string, error) {
-	secret := &corev1.Secret{}
-	if err := kubeClient.Get(context.TODO(), namespacedName, secret); err != nil {
-		return "", err
-	}
-
-	val, ok := secret.Data[key]
-	if !ok {
-		return "", errors.New("Secret key not found: " + key)
-	}
-	return string(val), nil
-}
-
-// GetAutonomousDatabaseResource gets Autonomous Database information from a remote instance
-// and return an AutonomousDatabase object
-func GetAutonomousDatabaseResource(logger logr.Logger, dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) (*dbv1alpha1.AutonomousDatabase, error) {
-	response, err := GetAutonomousDatabase(dbClient, adb.Spec.Details.AutonomousDatabaseOCID)
-	if err != nil {
-		return nil, err
-	}
-
-	returnedADB := adb.UpdateAttrFromOCIAutonomousDatabase(response.AutonomousDatabase)
-
-	logger.Info("Get information from remote AutonomousDatabase successfully")
-	return returnedADB, nil
-}
-
-func GetAutonomousDatabase(dbClient database.DatabaseClient, adbOCID *string) (database.GetAutonomousDatabaseResponse, error) {
+func (d *databaseService) GetAutonomousDatabase(adbOCID string) (database.GetAutonomousDatabaseResponse, error) {
 	getAutonomousDatabaseRequest := database.GetAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adbOCID,
+		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	return dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
+	return d.dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
 }
 
-// IsAttrChanged checks if the values of last successful object and current object are different.
-// The function returns false if the types are mismatch or unknown.
-// The function returns false if the current object has zero value (not applicable for boolean type).
-func IsAttrChanged(lastSucObj interface{}, curObj interface{}) bool {
-	switch curObj.(type) {
-	case dbv1alpha1.NetworkAccessTypeEnum:
-		lastSucAccessType, ok := lastSucObj.(dbv1alpha1.NetworkAccessTypeEnum)
-		if !ok {
-			return false
-		}
-		curSucAccessType, ok := curObj.(dbv1alpha1.NetworkAccessTypeEnum)
-		if !ok {
-			return false
-		}
-
-		return lastSucAccessType != curSucAccessType
-	case string:
-		// type check
-		lastSucString, ok := lastSucObj.(string)
-		if !ok {
-			return false
-		}
-		curString := curObj.(string)
-
-		if curString != "" && (lastSucString != curString) {
-			return true
-		}
-	case *int:
-		// type check
-		lastSucIntPtr, ok := lastSucObj.(*int)
-		if !ok {
-			return false
-		}
-		curIntPtr := curObj.(*int)
-
-		if (lastSucIntPtr == nil && curIntPtr != nil) || (lastSucIntPtr != nil && curIntPtr != nil && *lastSucIntPtr != *curIntPtr) {
-			return true
-		}
-	case *string:
-		// type check
-		lastSucStringPtr, ok := lastSucObj.(*string)
-		if !ok {
-			return false
-		}
-		curStringPtr := curObj.(*string)
-
-		if (lastSucStringPtr == nil && curStringPtr != nil) || (lastSucStringPtr != nil && curStringPtr != nil && *lastSucStringPtr != *curStringPtr) {
-			return true
-		}
-	case *bool:
-		// type check
-		lastSucBoolPtr, ok := lastSucObj.(*bool)
-		if !ok {
-			return false
-		}
-		curBoolPtr := curObj.(*bool)
-
-		// For boolean type, we don't have to check zero value
-		if (lastSucBoolPtr == nil && curBoolPtr != nil) || (lastSucBoolPtr != nil && curBoolPtr != nil && *lastSucBoolPtr != *curBoolPtr) {
-			return true
-		}
-	case []string:
-		// type check
-		lastSucSlice, ok := lastSucObj.([]string)
-		if !ok {
-			return false
-		}
-
-		curSlice := curObj.([]string)
-		if curSlice == nil {
-			return false
-		} else if len(lastSucSlice) != len(curSlice) {
-			return true
-		}
-
-		for i, v := range lastSucSlice {
-			if v != curSlice[i] {
-				return true
-			}
-		}
-	case map[string]string:
-		// type check
-		lastSucMap, ok := lastSucObj.(map[string]string)
-		if !ok {
-			return false
-		}
-
-		curMap := curObj.(map[string]string)
-		if curMap == nil {
-			return false
-		} else if len(lastSucMap) != len(curMap) {
-			return true
-		}
-
-		for k, v := range lastSucMap {
-			if w, ok := curMap[k]; !ok || v != w {
-				return true
-			}
-		}
+func (d *databaseService) UpdateAutonomousDatabaseGeneralFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
+			DisplayName:  adb.Spec.Details.DisplayName,
+			DbName:       adb.Spec.Details.DbName,
+			DbVersion:    adb.Spec.Details.DbVersion,
+			FreeformTags: adb.Spec.Details.FreeformTags,
+		},
 	}
-	return false
+	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-// UpdateGeneralAndPasswordAttributes updates the general and password attributes of the Autonomous Database.
-// Based on the responses from OCI calls, we can split the attributes into the following five categories.
-// AutonomousDatabaseOCID, CompartmentOCID, IsDedicated, and LifecycleState are excluded since they not applicable in updateAutonomousDatabaseRequest.
-// Except for category 1, category 2 and 3 cannot be updated at the same time, i.e.,we can at most update category 1 plus another category 2,or 3.
-// 1. General attribute: including DisplayName, DbName, DbWorkload, DbVersion, freeformTags, subnetOCID, nsgOCIDs, and whitelistedIPs. The general attributes can be updated together with one of the other categories in the same request.
-// 2. Scale attribute: includining IsAutoScalingEnabled, CpuCoreCount and DataStorageSizeInTBs.
-// 3. Password attribute: including AdminPasswordSecret and AdminPasswordOCID
-// From the above rules, we group general and password attributes and send the update together in the same request, and then send the scale update in another request.
-func UpdateGeneralAndPasswordAttributes(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient,
-	secretClient secrets.SecretsClient, curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	var shouldSendRequest = false
+func (d *databaseService) UpdateAutonomousDatabaseDBWorkload(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
+			DbWorkload: database.UpdateAutonomousDatabaseDetailsDbWorkloadEnum(adb.Spec.Details.DbWorkload),
+		},
+	}
+	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
+}
 
-	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
+func (d *databaseService) UpdateAutonomousDatabaseLicenseModel(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
+			LicenseModel: database.UpdateAutonomousDatabaseDetailsLicenseModelEnum(adb.Spec.Details.LicenseModel),
+		},
+	}
+	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
+}
+
+func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.AdminPassword)
 	if err != nil {
 		return resp, err
 	}
 
-	// Prepare the update request
-	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
-
-	if IsAttrChanged(lastSucSpec.Details.DisplayName, curADB.Spec.Details.DisplayName) {
-		updateAutonomousDatabaseDetails.DisplayName = curADB.Spec.Details.DisplayName
-		shouldSendRequest = true
+	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
+			AdminPassword: adminPassword,
+		},
 	}
-	if IsAttrChanged(lastSucSpec.Details.DbName, curADB.Spec.Details.DbName) {
-		updateAutonomousDatabaseDetails.DbName = curADB.Spec.Details.DbName
-		shouldSendRequest = true
-	}
-	if IsAttrChanged(lastSucSpec.Details.DbWorkload, curADB.Spec.Details.DbWorkload) {
-		updateAutonomousDatabaseDetails.DbWorkload = database.UpdateAutonomousDatabaseDetailsDbWorkloadEnum(curADB.Spec.Details.DbWorkload)
-		shouldSendRequest = true
-	}
-	if IsAttrChanged(lastSucSpec.Details.DbVersion, curADB.Spec.Details.DbVersion) {
-		updateAutonomousDatabaseDetails.DbVersion = curADB.Spec.Details.DbVersion
-		shouldSendRequest = true
-	}
-
-	if IsAttrChanged(lastSucSpec.Details.FreeformTags, curADB.Spec.Details.FreeformTags) {
-		updateAutonomousDatabaseDetails.FreeformTags = curADB.Spec.Details.FreeformTags
-		shouldSendRequest = true
-	}
-
-	if IsAttrChanged(lastSucSpec.Details.AdminPassword.K8sSecretName, curADB.Spec.Details.AdminPassword.K8sSecretName) ||
-		IsAttrChanged(lastSucSpec.Details.AdminPassword.OCISecretOCID, curADB.Spec.Details.AdminPassword.OCISecretOCID) {
-		// Get the adminPassword
-		var adminPassword string
-
-		adminPassword, err = getAdminPassword(logger, kubeClient, secretClient, curADB)
-		if err != nil {
-			return
-		}
-		updateAutonomousDatabaseDetails.AdminPassword = common.String(adminPassword)
-
-		shouldSendRequest = true
-	}
-
-	// Send the request only when something changes
-	if shouldSendRequest {
-
-		logger.Info("Sending general attributes and ADMIN password update request")
-
-		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-			AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
-			UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
-		}
-
-		resp, err = dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-	}
-
-	return
+	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-// UpdateScaleAttributes updates the scale attributes of the Autonomous Database
-// Refer to UpdateGeneralAndPasswordAttributes for more details about how and why we separate the attributes in different calls.
-func UpdateScaleAttributes(logger logr.Logger, kubeClient client.Client, dbClient database.DatabaseClient,
-	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	var shouldSendRequest = false
-
-	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
-	if err != nil {
-		return resp, err
+func (d *databaseService) UpdateAutonomousDatabaseScalingFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
+			DataStorageSizeInTBs: adb.Spec.Details.DataStorageSizeInTBs,
+			CpuCoreCount:         adb.Spec.Details.CPUCoreCount,
+			IsAutoScalingEnabled: adb.Spec.Details.IsAutoScalingEnabled,
+		},
 	}
-
-	// Prepare the update request
-	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
-
-	if IsAttrChanged(lastSucSpec.Details.DataStorageSizeInTBs, curADB.Spec.Details.DataStorageSizeInTBs) {
-		updateAutonomousDatabaseDetails.DataStorageSizeInTBs = curADB.Spec.Details.DataStorageSizeInTBs
-		shouldSendRequest = true
-	}
-	if IsAttrChanged(lastSucSpec.Details.CPUCoreCount, curADB.Spec.Details.CPUCoreCount) {
-		updateAutonomousDatabaseDetails.CpuCoreCount = curADB.Spec.Details.CPUCoreCount
-		shouldSendRequest = true
-	}
-	if IsAttrChanged(lastSucSpec.Details.IsAutoScalingEnabled, curADB.Spec.Details.IsAutoScalingEnabled) {
-		updateAutonomousDatabaseDetails.IsAutoScalingEnabled = curADB.Spec.Details.IsAutoScalingEnabled
-		shouldSendRequest = true
-	}
-
-	// Don't send the request if nothing is changed
-	if shouldSendRequest {
-
-		logger.Info("Sending scale attributes update request")
-
-		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-			AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
-			UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
-		}
-
-		resp, err = dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-	}
-
-	return
+	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func UpdateMTLSConnectionRequired(logger logr.Logger,
-	dbClient database.DatabaseClient,
-	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-
-	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
-	if err != nil {
-		return resp, err
+func (d *databaseService) UpdateNetworkAccessMTLSRequired(adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+		AutonomousDatabaseId: common.String(adbOCID),
+		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
+			IsMtlsConnectionRequired: common.Bool(true),
+		},
 	}
-
-	if IsAttrChanged(lastSucSpec.Details.NetworkAccess.IsMTLSConnectionRequired, curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired) {
-		logger.Info(fmt.Sprintf("Sending request to set mTLSRequired to %t", *curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired))
-
-		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-			AutonomousDatabaseId: curADB.Spec.Details.AutonomousDatabaseOCID,
-			UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-				IsMtlsConnectionRequired: curADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
-			},
-		}
-		resp, err = dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-	}
-
-	return
+	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func SetNetworkAccessPublic(logger logr.Logger, dbClient database.DatabaseClient,
-	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
-	if err != nil {
-		return resp, err
+func (d *databaseService) UpdateNetworkAccessMTLS(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
+			IsMtlsConnectionRequired: adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
+		},
 	}
+	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
+}
 
-	logger.Info("Sending request to configure Network Access type to PUBLIC")
-
+func (d *databaseService) UpdateNetworkAccessPublic(lastSucSpec *dbv1alpha1.AutonomousDatabaseSpec,
+	adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
 
 	if lastSucSpec.Details.NetworkAccess.AccessType == dbv1alpha1.NetworkAccessTypeRestricted {
@@ -425,173 +275,95 @@ func SetNetworkAccessPublic(logger logr.Logger, dbClient database.DatabaseClient
 	}
 
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId:            common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
 	}
 
-	return dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
+	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-// UpdateNetworkAccessAttributes determines if any of the network access attributes changes and send the update request
-func UpdateNetworkAccessAttributes(logger logr.Logger, dbClient database.DatabaseClient,
-	curADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-
-	lastSucSpec, err := curADB.GetLastSuccessfulSpec()
-	if err != nil {
-		return resp, err
+func (d *databaseService) UpdateNetworkAccess(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
+			IsAccessControlEnabled: adb.Spec.Details.NetworkAccess.IsAccessControlEnabled,
+			WhitelistedIps:         adb.Spec.Details.NetworkAccess.AccessControlList,
+			SubnetId:               adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID,
+			NsgIds:                 adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs,
+			PrivateEndpointLabel:   adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix,
+		},
 	}
 
-	var lastNetworkAccess = lastSucSpec.Details.NetworkAccess
-	var curNetworkAccess = curADB.Spec.Details.NetworkAccess
-
-	if IsAttrChanged(lastNetworkAccess.IsAccessControlEnabled, curNetworkAccess.IsAccessControlEnabled) ||
-		IsAttrChanged(lastNetworkAccess.AccessControlList, curNetworkAccess.AccessControlList) ||
-		IsAttrChanged(lastNetworkAccess.PrivateEndpoint.SubnetOCID, curNetworkAccess.PrivateEndpoint.SubnetOCID) ||
-		IsAttrChanged(lastNetworkAccess.PrivateEndpoint.NsgOCIDs, curNetworkAccess.PrivateEndpoint.NsgOCIDs) ||
-		IsAttrChanged(lastNetworkAccess.PrivateEndpoint.HostnamePrefix, curNetworkAccess.PrivateEndpoint.HostnamePrefix) {
-
-		logger.Info("Sending request to configure Network Access")
-
-		updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
-
-		if IsAttrChanged(lastNetworkAccess.IsAccessControlEnabled, curNetworkAccess.IsAccessControlEnabled) {
-			updateAutonomousDatabaseDetails.IsAccessControlEnabled = curNetworkAccess.IsAccessControlEnabled
-		}
-
-		if IsAttrChanged(lastNetworkAccess.AccessControlList, curNetworkAccess.AccessControlList) {
-			updateAutonomousDatabaseDetails.WhitelistedIps = curNetworkAccess.AccessControlList
-		}
-
-		if IsAttrChanged(lastNetworkAccess.PrivateEndpoint.SubnetOCID, curNetworkAccess.PrivateEndpoint.SubnetOCID) {
-			updateAutonomousDatabaseDetails.SubnetId = curNetworkAccess.PrivateEndpoint.SubnetOCID
-		}
-
-		if IsAttrChanged(lastNetworkAccess.PrivateEndpoint.NsgOCIDs, curNetworkAccess.PrivateEndpoint.NsgOCIDs) {
-			updateAutonomousDatabaseDetails.NsgIds = curNetworkAccess.PrivateEndpoint.NsgOCIDs
-		}
-
-		if IsAttrChanged(lastNetworkAccess.PrivateEndpoint.HostnamePrefix, curNetworkAccess.PrivateEndpoint.HostnamePrefix) {
-			updateAutonomousDatabaseDetails.PrivateEndpointLabel = curNetworkAccess.PrivateEndpoint.HostnamePrefix
-		}
-
-		updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-			AutonomousDatabaseId:            curADB.Spec.Details.AutonomousDatabaseOCID,
-			UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
-		}
-
-		resp, err = dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-	}
-
-	return
+	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-// SetAutonomousDatabaseLifecycleState starts or stops AutonomousDatabase in OCI based on the LifeCycleState attribute
-func SetAutonomousDatabaseLifecycleState(logger logr.Logger, dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) (resp interface{}, err error) {
-	lastSucSpec, err := adb.GetLastSuccessfulSpec()
-	if err != nil {
-		return resp, err
-	}
-
-	// Return if the desired lifecycle state is the same as the current lifecycle state
-	if adb.Spec.Details.LifecycleState == lastSucSpec.Details.LifecycleState {
-		return nil, nil
-	}
-
-	switch string(adb.Spec.Details.LifecycleState) {
-	case string(database.AutonomousDatabaseLifecycleStateAvailable):
-		logger.Info("Sending start request to the Autonomous Database " + *adb.Spec.Details.DbName)
-
-		resp, err = startAutonomousDatabase(dbClient, *adb.Spec.Details.AutonomousDatabaseOCID)
-		if err != nil {
-			return
-		}
-
-	case string(database.AutonomousDatabaseLifecycleStateStopped):
-		logger.Info("Sending stop request to the Autonomous Database " + *adb.Spec.Details.DbName)
-
-		resp, err = stopAutonomousDatabase(dbClient, *adb.Spec.Details.AutonomousDatabaseOCID)
-		if err != nil {
-			return
-		}
-
-	case string(database.AutonomousDatabaseLifecycleStateTerminated):
-		// Special case.
-		if adb.Spec.Details.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminating {
-			break
-		}
-		logger.Info("Sending teminate request to the Autonomous Database " + *adb.Spec.Details.DbName)
-
-		resp, err = DeleteAutonomousDatabase(dbClient, *adb.Spec.Details.AutonomousDatabaseOCID)
-		if err != nil {
-			return
-		}
-
-	default:
-		err = fmt.Errorf("invalid lifecycleState value: currently the operator only accept %s, %s and %s as the value of the lifecycleState parameter",
-			database.AutonomousDatabaseLifecycleStateAvailable,
-			database.AutonomousDatabaseLifecycleStateStopped,
-			database.AutonomousDatabaseLifecycleStateTerminated)
-	}
-
-	return
-}
-
-// startAutonomousDatabase starts an Autonomous Database in OCI
-func startAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (resp database.StartAutonomousDatabaseResponse, err error) {
+func (d *databaseService) StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error) {
 	startRequest := database.StartAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	resp, err = dbClient.StartAutonomousDatabase(context.TODO(), startRequest)
-	return
+	return d.dbClient.StartAutonomousDatabase(context.TODO(), startRequest)
 }
 
-// stopAutonomousDatabase stops an Autonomous Database in OCI
-func stopAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (resp database.StopAutonomousDatabaseResponse, err error) {
+func (d *databaseService) StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error) {
 	stopRequest := database.StopAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	resp, err = dbClient.StopAutonomousDatabase(context.TODO(), stopRequest)
-	return
+	return d.dbClient.StopAutonomousDatabase(context.TODO(), stopRequest)
 }
 
-// DeleteAutonomousDatabase terminates an Autonomous Database in OCI
-func DeleteAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string) (resp database.DeleteAutonomousDatabaseResponse, err error) {
+func (d *databaseService) DeleteAutonomousDatabase(adbOCID string) (database.DeleteAutonomousDatabaseResponse, error) {
 	deleteRequest := database.DeleteAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	return dbClient.DeleteAutonomousDatabase(context.TODO(), deleteRequest)
+	return d.dbClient.DeleteAutonomousDatabase(context.TODO(), deleteRequest)
 }
 
-func RestoreAutonomousDatabase(dbClient database.DatabaseClient, adbOCID string, sdkTime *common.SDKTime) (resp database.RestoreAutonomousDatabaseResponse, err error) {
+func (d *databaseService) DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (resp database.GenerateAutonomousDatabaseWalletResponse, err error) {
+	// Prepare wallet password
+	walletPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.Wallet.Password)
+	if err != nil {
+		return resp, err
+	}
+
+	// Download a Wallet
+	req := database.GenerateAutonomousDatabaseWalletRequest{
+		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		GenerateAutonomousDatabaseWalletDetails: database.GenerateAutonomousDatabaseWalletDetails{
+			Password: walletPassword,
+		},
+	}
+
+	// Send the request using the service client
+	resp, err = d.dbClient.GenerateAutonomousDatabaseWallet(context.TODO(), req)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, nil
+}
+
+func (d *databaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error) {
 	request := database.RestoreAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		RestoreAutonomousDatabaseDetails: database.RestoreAutonomousDatabaseDetails{
-			Timestamp: sdkTime,
+			Timestamp: &sdkTime,
 		},
 	}
-	return dbClient.RestoreAutonomousDatabase(context.TODO(), request)
+	return d.dbClient.RestoreAutonomousDatabase(context.TODO(), request)
 }
 
-// ListAutonomousDatabaseBackups returns a list of Autonomous Database backups
-func ListAutonomousDatabaseBackups(dbClient database.DatabaseClient, adb *dbv1alpha1.AutonomousDatabase) (resp database.ListAutonomousDatabaseBackupsResponse, err error) {
-	if adb.Spec.Details.AutonomousDatabaseOCID == nil {
-		return resp, nil
-	}
-
+func (d *databaseService) ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error) {
 	listBackupRequest := database.ListAutonomousDatabaseBackupsRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId: common.String(adbOCID),
 	}
 
-	return dbClient.ListAutonomousDatabaseBackups(context.TODO(), listBackupRequest)
+	return d.dbClient.ListAutonomousDatabaseBackups(context.TODO(), listBackupRequest)
 }
 
-// CreateAutonomousDatabaseBackup creates an backup of Autonomous Database
-func CreateAutonomousDatabaseBackup(logger logr.Logger, dbClient database.DatabaseClient, adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (resp database.CreateAutonomousDatabaseBackupResponse, err error) {
-	logger.Info("Creating Autonomous Database backup " + adbBackup.GetName())
-
+func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (database.CreateAutonomousDatabaseBackupResponse, error) {
 	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
 		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
 			AutonomousDatabaseId: &adbBackup.Spec.AutonomousDatabaseOCID,
@@ -606,83 +378,13 @@ func CreateAutonomousDatabaseBackup(logger logr.Logger, dbClient database.Databa
 		createBackupRequest.DisplayName = common.String(adbBackup.GetName())
 	}
 
-	return dbClient.CreateAutonomousDatabaseBackup(context.TODO(), createBackupRequest)
+	return d.dbClient.CreateAutonomousDatabaseBackup(context.TODO(), createBackupRequest)
 }
 
-// GetAutonomousDatabaseBackup returns the response of GetAutonomousDatabaseBackupRequest
-func GetAutonomousDatabaseBackup(dbClient database.DatabaseClient, backupOCID string) (resp database.GetAutonomousDatabaseBackupResponse, err error) {
+func (d *databaseService) GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error) {
 	getBackupRequest := database.GetAutonomousDatabaseBackupRequest{
 		AutonomousDatabaseBackupId: common.String(backupOCID),
 	}
 
-	return dbClient.GetAutonomousDatabaseBackup(context.TODO(), getBackupRequest)
-}
-
-func GetWorkStatusAndWait(logger logr.Logger, workClient workrequests.WorkRequestClient, opcWorkRequestID *string) (workrequests.WorkRequestStatusEnum, error) {
-	logger.Info("Waiting for the work request to finish. opcWorkRequestID = " + *opcWorkRequestID)
-
-	// retries until the work status is SUCCEEDED, FAILED or CANCELED
-	retryPolicy := getCompleteWorkRetryPolicy()
-
-	resp, err := GetWorkRequest(workClient, opcWorkRequestID, &retryPolicy)
-	if err != nil {
-		return resp.Status, err
-	}
-
-	return resp.Status, nil
-}
-
-func GetWorkRequest(workClient workrequests.WorkRequestClient,
-	opcWorkRequestID *string,
-	retryPolicy *common.RetryPolicy) (response workrequests.GetWorkRequestResponse, err error) {
-
-	workRequest := workrequests.GetWorkRequestRequest{
-		WorkRequestId: opcWorkRequestID,
-	}
-
-	if retryPolicy != nil {
-		workRequest.RequestMetadata = common.RequestMetadata{
-			RetryPolicy: retryPolicy,
-		}
-	}
-
-	return workClient.GetWorkRequest(context.TODO(), workRequest)
-}
-
-func getCompleteWorkRetryPolicy() common.RetryPolicy {
-	shouldRetry := func(r common.OCIOperationResponse) bool {
-		if _, isServiceError := common.IsServiceError(r.Error); isServiceError {
-			// Don't retry if it's service error. Sometimes it could be network error or other errors which prevents
-			// request send to server; we do the retry in these cases.
-			return false
-		}
-
-		if converted, ok := r.Response.(workrequests.GetWorkRequestResponse); ok {
-			// do the retry until WorkReqeut Status is Succeeded  - ignore case (BMI-2652)
-			return converted.Status != workrequests.WorkRequestStatusSucceeded &&
-				converted.Status != workrequests.WorkRequestStatusFailed &&
-				converted.Status != workrequests.WorkRequestStatusCanceled
-		}
-
-		return true
-	}
-
-	return getRetryPolicy(shouldRetry)
-}
-
-func getRetryPolicy(retryOperation func(common.OCIOperationResponse) bool) common.RetryPolicy {
-	// maximum times of retry (~30mins)
-	attempts := uint(63)
-
-	nextDuration := func(r common.OCIOperationResponse) time.Duration {
-		// Wait longer for next retry when your previous one failed
-		// this function will return the duration as:
-		// 1s, 2s, 4s, 8s, 16s, 30s, 30s etc...
-		if r.AttemptNumber <= 5 {
-			return time.Duration(math.Pow(float64(2), float64(r.AttemptNumber-1))) * time.Second
-		}
-		return time.Duration(30) * time.Second
-	}
-
-	return common.NewRetryPolicy(attempts, retryOperation, nextDuration)
+	return d.dbClient.GetAutonomousDatabaseBackup(context.TODO(), getBackupRequest)
 }

@@ -77,8 +77,6 @@ spec:
             description: AutonomousDatabaseBackupStatus defines the observed state
               of AutonomousDatabaseBackup
             properties:
-              autonomousDatabaseBackupOCID:
-                type: string
               autonomousDatabaseOCID:
                 type: string
               compartmentOCID:
@@ -86,8 +84,6 @@ spec:
               dbDisplayName:
                 type: string
               dbName:
-                type: string
-              displayName:
                 type: string
               isAutomatic:
                 type: boolean
@@ -105,12 +101,10 @@ spec:
                   type: string'
                 type: string
             required:
-            - autonomousDatabaseBackupOCID
             - autonomousDatabaseOCID
             - compartmentOCID
             - dbDisplayName
             - dbName
-            - displayName
             - isAutomatic
             - lifecycleState
             - type

@@ -43,7 +43,6 @@ import (
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v54/common"
-	"github.com/oracle/oci-go-sdk/v54/database"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -149,7 +148,7 @@ var _ = Describe("test ADB provisioning", func() {
 			Expect(k8sClient.Create(context.TODO(), duplicateAdb)).To(Succeed())
 		})
 
-		It("Should check for local resource state UNAVAILABLE", e2ebehavior.AssertLocalState(&k8sClient, &dupAdbLookupKey, database.AutonomousDatabaseLifecycleStateUnavailable))
+		It("Should check for local resource state \"\"", e2ebehavior.AssertLocalState(&k8sClient, &dupAdbLookupKey, ""))
 
 		It("Should download an instance wallet using the password from K8s Secret "+SharedWalletPassSecretName, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
 

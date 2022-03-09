@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package finalizer
+package k8s
 
 import (
 	"context"
@@ -47,7 +47,7 @@ import (
 )
 
 // name of our custom finalizer
-var finalizerName = "database.oracle.com/dbcsfinalizer"
+var finalizerName = "database.oracle.com/oraoperator-finalizer"
 
 // HasFinalizer returns true if the finalizer exists in the object metadata
 func HasFinalizer(obj client.Object) bool {

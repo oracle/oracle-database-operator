@@ -94,6 +94,7 @@ func main() {
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("database").WithName("AutonomousDatabase"),
 		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabase"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabase")
 		os.Exit(1)
