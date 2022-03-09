@@ -40,18 +40,22 @@ package controllers
 
 import (
 	"context"
+	"errors"
 
 	"github.com/go-logr/logr"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/oracle/oci-go-sdk/v54/database"
+	"github.com/oracle/oci-go-sdk/v54/common"
 	"github.com/oracle/oci-go-sdk/v54/workrequests"
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	restoreUtil "github.com/oracle/oracle-database-operator/commons/autonomousdatabase"
+	"github.com/oracle/oracle-database-operator/commons/k8s"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
@@ -60,6 +64,17 @@ type AutonomousDatabaseRestoreReconciler struct {
 	KubeClient client.Client
 	Log        logr.Logger
 	Scheme     *runtime.Scheme
+
+	adbService  oci.DatabaseService
+	workService oci.WorkRequestService
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *AutonomousDatabaseRestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&databasev1alpha1.AutonomousDatabaseRestore{}).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
+		Complete(r)
 }
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabaserestores,verbs=get;list;watch;create;delete
@@ -75,89 +90,156 @@ type AutonomousDatabaseRestoreReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.6.4/pkg/reconcile
 func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	currentLogger := r.Log.WithValues("Namespaced/Name", req.NamespacedName)
+	logger := r.Log.WithValues("Namespaced/Name", req.NamespacedName)
 
 	restore := &dbv1alpha1.AutonomousDatabaseRestore{}
 	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, restore); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
 		// No need to change since we don't know if we obtain the object.
 		if apiErrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
+			return emptyResult, nil
 		}
-		return ctrl.Result{}, err
+		// Failed to get ADBRestore, so we don't need to update the status
+		return emptyResult, err
 	}
 
 	/******************************************************************
-	 * Get OCI database client and work request client
+	* Get OCI database client and work request client
+	******************************************************************/
+	if err := r.setupOCIClients(restore); err != nil {
+		return r.manageError(restore, err)
+	}
+
+	logger.Info("OCI clients configured succesfully")
+
+	/******************************************************************
+	 * Start restore
 	 ******************************************************************/
+	if err := r.restoreAutonomousDatabase(restore); err != nil {
+		return r.manageError(restore, err)
+	}
+
+	logger.Info("AutonomousDatabaseRestore reconciles successfully")
+
+	return ctrl.Result{}, nil
+}
+
+func (r *AutonomousDatabaseRestoreReconciler) restoreAutonomousDatabase(restore *dbv1alpha1.AutonomousDatabaseRestore) error {
+	var restoreTime *common.SDKTime
+	var adbOCID string
+	var err error
+
+	if restore.Spec.BackupName != "" { // restore using backupName
+		backup := &dbv1alpha1.AutonomousDatabaseBackup{}
+		namespacedName := types.NamespacedName{Namespace: restore.Namespace, Name: restore.Spec.BackupName}
+		if err := r.KubeClient.Get(context.TODO(), namespacedName, backup); err != nil {
+			return err
+		}
+
+		if backup.Status.TimeEnded == "" {
+			return errors.New("broken backup: ended time is missing in the AutonomousDatabaseBackup " + backup.GetName())
+		}
+		restoreTime, err = backup.GetTimeEnded()
+		if err != nil {
+			return err
+		}
+
+		adbOCID = backup.Spec.AutonomousDatabaseOCID
+
+	} else if restore.Spec.PointInTime.TimeStamp != "" { // PIT restore
+		// The validation of the pitr.timestamp has been handled by the webhook, so the error return is ignored
+		restoreTime, _ = restore.GetPIT()
+		adbOCID = restore.Spec.PointInTime.AutonomousDatabaseOCID
+	}
+
+	resp, err := r.adbService.RestoreAutonomousDatabase(adbOCID, *restoreTime)
+	if err != nil {
+		return err
+	}
+
+	// Update status and wait for the work finish if a request is sent. Note that some of the requests (e.g. update displayName) won't return a work request ID.
+	// It's important to update the status by reference otherwise Reconcile() won't be able to get the latest values
+	restore.Status.DisplayName = *resp.AutonomousDatabase.DisplayName
+	restore.Status.DbName = *resp.AutonomousDatabase.DbName
+	restore.Status.AutonomousDatabaseOCID = *resp.AutonomousDatabase.Id
+	restore.Status.Status = restore.ConvertWorkRequestStatus(workrequests.WorkRequestStatusEnum(resp.LifecycleState))
+
+	r.updateResourceStatus(restore)
+
+	workStatus, err := r.workService.Wait(*resp.OpcWorkRequestId)
+	if err != nil {
+		return err
+	}
+
+	// Update status when the work is finished
+	restore.Status.Status = restore.ConvertWorkRequestStatus(workStatus)
+	r.updateResourceStatus(restore)
+
+	return nil
+}
+
+func (r *AutonomousDatabaseRestoreReconciler) updateResourceStatus(restore *dbv1alpha1.AutonomousDatabaseRestore) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		curBackup := &dbv1alpha1.AutonomousDatabaseRestore{}
+
+		namespacedName := types.NamespacedName{
+			Namespace: restore.GetNamespace(),
+			Name:      restore.GetName(),
+		}
+
+		if err := r.KubeClient.Get(context.TODO(), namespacedName, curBackup); err != nil {
+			return err
+		}
+
+		curBackup.Status = restore.Status
+		return r.KubeClient.Status().Update(context.TODO(), curBackup)
+	})
+}
+
+func (r *AutonomousDatabaseRestoreReconciler) setupOCIClients(restore *dbv1alpha1.AutonomousDatabaseRestore) error {
+	var err error
+
 	authData := oci.APIKeyAuth{
 		ConfigMapName: restore.Spec.OCIConfig.ConfigMapName,
 		SecretName:    restore.Spec.OCIConfig.SecretName,
 		Namespace:     restore.GetNamespace(),
 	}
+
 	provider, err := oci.GetOCIProvider(r.KubeClient, authData)
 	if err != nil {
-		currentLogger.Error(err, "Fail to get OCI provider")
-
-		// Change the status to UNAVAILABLE
-		restore.Status.LifecycleState = workrequests.WorkRequestStatusFailed
-		if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
-			return ctrl.Result{}, statusErr
-		}
-		return ctrl.Result{}, nil
+		return err
 	}
 
-	dbClient, err := database.NewDatabaseClientWithConfigurationProvider(provider)
+	r.adbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
 	if err != nil {
-		currentLogger.Error(err, "Fail to get OCI database client")
-
-		// Change the status to UNAVAILABLE
-		restore.Status.LifecycleState = workrequests.WorkRequestStatusFailed
-		if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
-			return ctrl.Result{}, statusErr
-		}
-		return ctrl.Result{}, nil
+		return err
 	}
 
-	workClient, err := workrequests.NewWorkRequestClientWithConfigurationProvider(provider)
+	r.workService, err = oci.NewWorkRequestService(r.Log, r.KubeClient, provider)
 	if err != nil {
-		currentLogger.Error(err, "Fail to get OCI work request client")
-
-		// Change the status to UNAVAILABLE
-		restore.Status.LifecycleState = workrequests.WorkRequestStatusFailed
-		if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
-			return ctrl.Result{}, statusErr
-		}
-		return ctrl.Result{}, nil
+		return err
 	}
 
-	/******************************************************************
-	 * Restore
-	 ******************************************************************/
-	if restore.Status.LifecycleState == "" {
-		lifecycleState, err := restoreUtil.RestoreAutonomousDatabaseAndWait(currentLogger, r.KubeClient, dbClient, workClient, restore)
-		if err != nil {
-			currentLogger.Error(err, "Fail to restore database")
-			return ctrl.Result{}, nil
-		}
-
-		restore.Status.LifecycleState = lifecycleState
-
-		if statusErr := restoreUtil.UpdateAutonomousDatabaseRestoreStatus(r.KubeClient, restore); statusErr != nil {
-			// No need to return the error since it will re-execute the Reconcile()
-			currentLogger.Error(err, "Fail to update the status of AutonomousDatabaseRestore")
-			return ctrl.Result{}, nil
-		}
-	}
-
-	currentLogger.Info("AutonomousDatabaseRestore reconciles successfully")
-
-	return ctrl.Result{}, nil
+	return nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *AutonomousDatabaseRestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&databasev1alpha1.AutonomousDatabaseRestore{}).
-		Complete(r)
+// manageError doesn't return the error so that the request won't be requeued
+func (r *AutonomousDatabaseRestoreReconciler) manageError(restore *dbv1alpha1.AutonomousDatabaseRestore, issue error) (ctrl.Result, error) {
+	nsn := types.NamespacedName{
+		Namespace: restore.Namespace,
+		Name:      restore.Name,
+	}
+	logger := r.Log.WithValues("Namespaced/Name", nsn)
+
+	// Change the status to FAILED
+	var combinedErr error = issue
+
+	restore.Status.Status = dbv1alpha1.RestoreStatusFailed
+	if statusErr := r.updateResourceStatus(restore); statusErr != nil {
+		combinedErr = k8s.CombineErrors(issue, statusErr)
+	}
+
+	logger.Error(combinedErr, "Fail to restore Autonomous Database")
+
+	return emptyResult, nil
 }

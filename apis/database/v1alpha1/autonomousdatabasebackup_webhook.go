@@ -78,27 +78,7 @@ var _ webhook.Validator = &AutonomousDatabaseBackup{}
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *AutonomousDatabaseBackup) ValidateCreate() error {
 	autonomousdatabasebackuplog.Info("validate create", "name", r.Name)
-
-	var allErrs field.ErrorList
-
-	if r.Spec.AutonomousDatabaseBackupOCID != "" && r.Spec.AutonomousDatabaseOCID != "" {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"),
-				"cannot apply autonomousDatabaseBackupOCID and autonomousDatabaseOCID to the backup at the same time"))
-	}
-
-	if r.Spec.DisplayName != "" && r.Spec.AutonomousDatabaseOCID == "" {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("displayName"),
-				"autonomousDatabaseOCID cannot be empty"))
-	}
-
-	if len(allErrs) == 0 {
-		return nil
-	}
-	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseBackup"},
-		r.Name, allErrs)
+	return nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
@@ -106,24 +86,22 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) error {
 	autonomousdatabasebackuplog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
+	oldBackup := old.(*AutonomousDatabaseBackup)
 
-	if r.Spec.AutonomousDatabaseBackupOCID != "" &&
-		old.(*AutonomousDatabaseBackup).Status.AutonomousDatabaseBackupOCID != "" &&
-		r.Spec.AutonomousDatabaseBackupOCID != old.(*AutonomousDatabaseBackup).Status.AutonomousDatabaseBackupOCID {
+	if oldBackup.Spec.AutonomousDatabaseBackupOCID != "" &&
+		oldBackup.Spec.AutonomousDatabaseBackupOCID != r.Spec.AutonomousDatabaseBackupOCID {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"), "cannot assign a new autonomousDatabaseBackupOCID to this backup"))
 	}
 
 	if r.Spec.AutonomousDatabaseOCID != "" &&
-		old.(*AutonomousDatabaseBackup).Status.AutonomousDatabaseOCID != "" &&
-		r.Spec.AutonomousDatabaseOCID != old.(*AutonomousDatabaseBackup).Status.AutonomousDatabaseOCID {
+		oldBackup.Spec.AutonomousDatabaseOCID != r.Spec.AutonomousDatabaseOCID {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseOCID"), "cannot assign a new autonomousDatabaseOCID to this backup"))
 	}
 
 	if r.Spec.DisplayName != "" &&
-		old.(*AutonomousDatabaseBackup).Status.DisplayName != "" &&
-		r.Spec.DisplayName != old.(*AutonomousDatabaseBackup).Status.DisplayName {
+		oldBackup.Spec.DisplayName != r.Spec.DisplayName {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("displayName"), "cannot assign a new displayName to this backup"))
 	}

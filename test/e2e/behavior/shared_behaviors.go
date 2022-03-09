@@ -496,14 +496,14 @@ func AssertHardLinkDelete(k8sClient *client.Client, dbClient *database.DatabaseC
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 		Expect(derefK8sClient.Delete(context.TODO(), adb)).To(Succeed())
 
-		AssertSoftLinkDelete(k8sClient, adbLookupKey)()
-
 		By("Checking if the ADB in OCI is in TERMINATING state")
 		// Check every 10 secs for total 60 secs
 		Eventually(func() (database.AutonomousDatabaseLifecycleStateEnum, error) {
 			retryPolicy := e2eutil.NewLifecycleStateRetryPolicy(database.AutonomousDatabaseLifecycleStateTerminating)
 			return returnRemoteState(derefK8sClient, derefDBClient, adb.Spec.Details.AutonomousDatabaseOCID, &retryPolicy)
 		}, changeStateTimeout).Should(Equal(database.AutonomousDatabaseLifecycleStateTerminating))
+
+		AssertSoftLinkDelete(k8sClient, adbLookupKey)()
 	}
 }
 

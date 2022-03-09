@@ -40,13 +40,11 @@ package v1alpha1
 
 import (
 	"encoding/json"
-	"strconv"
+	"errors"
 
 	"github.com/oracle/oci-go-sdk/v54/database"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/oracle/oracle-database-operator/commons/annotations"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -61,11 +59,6 @@ type AutonomousDatabaseSpec struct {
 	HardLink *bool `json:"hardLink,omitempty"`
 }
 
-type OCIConfigSpec struct {
-	ConfigMapName *string `json:"configMapName,omitempty"`
-	SecretName    *string `json:"secretName,omitempty"`
-}
-
 // AutonomousDatabaseDetails defines the detail information of AutonomousDatabase, corresponding to oci-go-sdk/database/AutonomousDatabase
 type AutonomousDatabaseDetails struct {
 	AutonomousDatabaseOCID          *string `json:"autonomousDatabaseOCID,omitempty"`
@@ -74,13 +67,15 @@ type AutonomousDatabaseDetails struct {
 	DisplayName                     *string `json:"displayName,omitempty"`
 	DbName                          *string `json:"dbName,omitempty"`
 	// +kubebuilder:validation:Enum:="OLTP";"DW";"AJD";"APEX"
-	DbWorkload           database.AutonomousDatabaseDbWorkloadEnum     `json:"dbWorkload,omitempty"`
-	IsDedicated          *bool                                         `json:"isDedicated,omitempty"`
+	DbWorkload database.AutonomousDatabaseDbWorkloadEnum `json:"dbWorkload,omitempty"`
+	// +kubebuilder:validation:Enum:="LICENSE_INCLUDED";"BRING_YOUR_OWN_LICENSE"
+	LicenseModel         database.AutonomousDatabaseLicenseModelEnum   `json:"licenseModel,omitempty"`
 	DbVersion            *string                                       `json:"dbVersion,omitempty"`
 	DataStorageSizeInTBs *int                                          `json:"dataStorageSizeInTBs,omitempty"`
 	CPUCoreCount         *int                                          `json:"cpuCoreCount,omitempty"`
 	AdminPassword        PasswordSpec                                  `json:"adminPassword,omitempty"`
 	IsAutoScalingEnabled *bool                                         `json:"isAutoScalingEnabled,omitempty"`
+	IsDedicated          *bool                                         `json:"isDedicated,omitempty"`
 	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
 
 	NetworkAccess NetworkAccessSpec `json:"networkAccess,omitempty"`
@@ -127,38 +122,44 @@ type PrivateEndpointSpec struct {
 type AutonomousDatabaseStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	DisplayName          string                                        `json:"displayName,omitempty"`
 	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
-	IsDedicated          string                                        `json:"isDedicated,omitempty"`
-	CPUCoreCount         int                                           `json:"cpuCoreCount,omitempty"`
-	DataStorageSizeInTBs int                                           `json:"dataStorageSizeInTBs,omitempty"`
-	DbWorkload           database.AutonomousDatabaseDbWorkloadEnum     `json:"dbWorkload,omitempty"`
 	TimeCreated          string                                        `json:"timeCreated,omitempty"`
-	AllConnectionStrings []ConnectionStringsSet                        `json:"allConnectionStrings,omitempty"`
+	AllConnectionStrings []ConnectionStringProfile                     `json:"allConnectionStrings,omitempty"`
+
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metaV1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 type TLSAuthenticationEnum string
 
 const (
-	TLSAuthenticationTLS  TLSAuthenticationEnum = "TLS"
-	TLSAuthenticationmTLS TLSAuthenticationEnum = "Mutual TLS"
+	tlsAuthenticationTLS  TLSAuthenticationEnum = "TLS"
+	tlsAuthenticationMTLS TLSAuthenticationEnum = "Mutual TLS"
 )
 
-type ConnectionStringsSet struct {
-	TLSAuthentication TLSAuthenticationEnum `json:"tlsAuthentication,omitempty"`
-	ConnectionStrings map[string]string     `json:"connectionStrings"`
+type ConnectionStringProfile struct {
+	TLSAuthentication TLSAuthenticationEnum  `json:"tlsAuthentication,omitempty"`
+	ConnectionStrings []ConnectionStringSpec `json:"connectionStrings"`
+}
+
+type ConnectionStringSpec struct {
+	TNSName          string `json:"tnsName,omitempty"`
+	ConnectionString string `json:"connectionString,omitempty"`
 }
 
 // AutonomousDatabase is the Schema for the autonomousdatabases API
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:shortName="adb";"adbs"
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".status.displayName",name="Display Name",type=string
+// +kubebuilder:printcolumn:JSONPath=".spec.details.displayName",name="Display Name",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.lifecycleState",name="State",type=string
-// +kubebuilder:printcolumn:JSONPath=".status.isDedicated",name="Dedicated",type=string
-// +kubebuilder:printcolumn:JSONPath=".status.cpuCoreCount",name="OCPUs",type=integer
-// +kubebuilder:printcolumn:JSONPath=".status.dataStorageSizeInTBs",name="Storage (TB)",type=integer
-// +kubebuilder:printcolumn:JSONPath=".status.dbWorkload",name="Workload Type",type=string
+// +kubebuilder:printcolumn:JSONPath=".spec.details.isDedicated",name="Dedicated",type=string
+// +kubebuilder:printcolumn:JSONPath=".spec.details.cpuCoreCount",name="OCPUs",type=integer
+// +kubebuilder:printcolumn:JSONPath=".spec.details.dataStorageSizeInTBs",name="Storage (TB)",type=integer
+// +kubebuilder:printcolumn:JSONPath=".spec.details.dbWorkload",name="Workload Type",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.timeCreated",name="Created",type=string
 type AutonomousDatabase struct {
 	metaV1.TypeMeta   `json:",inline"`
@@ -168,8 +169,18 @@ type AutonomousDatabase struct {
 	Status AutonomousDatabaseStatus `json:"status,omitempty"`
 }
 
-// LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
-const LastSuccessfulSpec string = "lastSuccessfulSpec"
+// +kubebuilder:object:root=true
+
+// AutonomousDatabaseList contains a list of AutonomousDatabase
+type AutonomousDatabaseList struct {
+	metaV1.TypeMeta `json:",inline"`
+	metaV1.ListMeta `json:"metadata,omitempty"`
+	Items           []AutonomousDatabase `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&AutonomousDatabase{}, &AutonomousDatabaseList{})
+}
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.
 // Returns nil, nil if there is no lastSuccessfulSpec.
@@ -190,22 +201,18 @@ func (adb *AutonomousDatabase) GetLastSuccessfulSpec() (*AutonomousDatabaseSpec,
 	return &sucSpec, nil
 }
 
-// UpdateLastSuccessfulSpec updates lastSuccessfulSpec with the current spec.
-func (adb *AutonomousDatabase) UpdateLastSuccessfulSpec(kubeClient client.Client) error {
-	specBytes, err := json.Marshal(adb.Spec)
+func (adb *AutonomousDatabase) UpdateConditions(lifecycleState database.AutonomousDatabaseLifecycleStateEnum, err error) {
+	var metaCondition metaV1.Condition
+
 	if err != nil {
-		return err
+		metaCondition = CreateMetaCondition(adb, err, string(CrdReconcileErrorState), string(CrdReconcileErrorReason))
 	}
 
-	anns := map[string]string{
-		LastSuccessfulSpec: string(specBytes),
-	}
-
-	return annotations.SetAnnotations(kubeClient, adb, anns)
+	meta.SetStatusCondition(&adb.Status.Conditions, metaCondition)
 }
 
 // UpdateAttrFromOCIAutonomousDatabase updates the attributes from database.AutonomousDatabase object and returns the resource
-func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj database.AutonomousDatabase) *AutonomousDatabase {
+func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDatabase) {
 	/***********************************
 	* update the spec
 	***********************************/
@@ -215,14 +222,16 @@ func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj databa
 	adb.Spec.Details.DisplayName = ociObj.DisplayName
 	adb.Spec.Details.DbName = ociObj.DbName
 	adb.Spec.Details.DbWorkload = ociObj.DbWorkload
-	adb.Spec.Details.IsDedicated = ociObj.IsDedicated
+	adb.Spec.Details.LicenseModel = ociObj.LicenseModel
 	adb.Spec.Details.DbVersion = ociObj.DbVersion
 	adb.Spec.Details.DataStorageSizeInTBs = ociObj.DataStorageSizeInTBs
 	adb.Spec.Details.CPUCoreCount = ociObj.CpuCoreCount
 	adb.Spec.Details.IsAutoScalingEnabled = ociObj.IsAutoScalingEnabled
+	adb.Spec.Details.IsDedicated = ociObj.IsDedicated
 	adb.Spec.Details.LifecycleState = ociObj.LifecycleState
 	adb.Spec.Details.FreeformTags = ociObj.FreeformTags
 
+	// Determine network.accessType
 	if *ociObj.IsDedicated {
 		adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
 	} else {
@@ -245,65 +254,68 @@ func (adb *AutonomousDatabase) UpdateAttrFromOCIAutonomousDatabase(ociObj databa
 	/***********************************
 	* update the status subresource
 	***********************************/
-	adb.Status.DisplayName = *ociObj.DisplayName
+
 	adb.Status.LifecycleState = ociObj.LifecycleState
-	adb.Status.IsDedicated = strconv.FormatBool(*ociObj.IsDedicated)
-	adb.Status.CPUCoreCount = *ociObj.CpuCoreCount
-	adb.Status.DataStorageSizeInTBs = *ociObj.DataStorageSizeInTBs
-	adb.Status.DbWorkload = ociObj.DbWorkload
 	adb.Status.TimeCreated = ociObj.TimeCreated.String()
 
-	var curAlllConns []ConnectionStringsSet
 	if *ociObj.IsDedicated {
-		connSet := ConnectionStringsSet{ConnectionStrings: ociObj.ConnectionStrings.AllConnectionStrings}
-		curAlllConns = append(curAlllConns, connSet)
+		conns := make([]ConnectionStringSpec, len(ociObj.ConnectionStrings.AllConnectionStrings))
+		for key, val := range ociObj.ConnectionStrings.AllConnectionStrings {
+			conns = append(conns, ConnectionStringSpec{TNSName: key, ConnectionString: val})
+		}
 
+		adb.Status.AllConnectionStrings = []ConnectionStringProfile{
+			ConnectionStringProfile{ConnectionStrings: conns},
+		}
 	} else {
-		mTLSStrings := make(map[string]string)
-		tlsStrings := make(map[string]string)
+		var mTLSConns []ConnectionStringSpec
+		var tlsConns []ConnectionStringSpec
+
+		var conns []ConnectionStringProfile
 
 		for _, profile := range ociObj.ConnectionStrings.Profiles {
 			if profile.TlsAuthentication == database.DatabaseConnectionStringProfileTlsAuthenticationMutual {
-				mTLSStrings[*profile.DisplayName] = *profile.Value
+				mTLSConns = append(mTLSConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
 			} else {
-				tlsStrings[*profile.DisplayName] = *profile.Value
+				tlsConns = append(tlsConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
 			}
 		}
 
-		if len(mTLSStrings) > 0 {
-			mTLSConnSet := ConnectionStringsSet{
-				TLSAuthentication: TLSAuthenticationmTLS,
-				ConnectionStrings: mTLSStrings,
-			}
-
-			curAlllConns = append(curAlllConns, mTLSConnSet)
+		if len(mTLSConns) > 0 {
+			conns = append(conns, ConnectionStringProfile{
+				TLSAuthentication: tlsAuthenticationMTLS,
+				ConnectionStrings: mTLSConns,
+			})
 		}
 
-		if len(tlsStrings) > 0 {
-			tlsConnSet := ConnectionStringsSet{
-				TLSAuthentication: TLSAuthenticationTLS,
-				ConnectionStrings: tlsStrings,
-			}
-
-			curAlllConns = append(curAlllConns, tlsConnSet)
+		if len(tlsConns) > 0 {
+			conns = append(conns, ConnectionStringProfile{
+				TLSAuthentication: tlsAuthenticationTLS,
+				ConnectionStrings: tlsConns,
+			})
 		}
+
+		adb.Status.AllConnectionStrings = conns
 	}
-	adb.Status.AllConnectionStrings = curAlllConns
-
-	return adb
 }
 
-// +kubebuilder:object:root=true
+// RemoveUnchangedDetails removes the unchanged fields in spec.details, and returns if the details has been changed.
+// details.autonomousDatabaseOCID won't be affected because we need it to send requests.
+// A `false` is returned if the lastSucSpec is nil.
+func (adb *AutonomousDatabase) RemoveUnchangedDetails() (bool, error) {
+	lastSucSpec, err := adb.GetLastSuccessfulSpec()
+	if lastSucSpec == nil {
+		return false, errors.New("lastSucSpec is nil")
+	}
 
-// AutonomousDatabaseList contains a list of AutonomousDatabase
-type AutonomousDatabaseList struct {
-	metaV1.TypeMeta `json:",inline"`
-	metaV1.ListMeta `json:"metadata,omitempty"`
-	Items           []AutonomousDatabase `json:"items"`
-}
+	changed, err := removeUnchangedFields(lastSucSpec.Details, &adb.Spec.Details)
+	if err != nil {
+		return changed, err
+	}
 
-func init() {
-	SchemeBuilder.Register(&AutonomousDatabase{}, &AutonomousDatabaseList{})
+	adb.Spec.Details.AutonomousDatabaseOCID = lastSucSpec.Details.AutonomousDatabaseOCID
+
+	return changed, nil
 }
 
 // A helper function which is useful for debugging. The function prints out a structural JSON format.
