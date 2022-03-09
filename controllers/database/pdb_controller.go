@@ -109,6 +109,7 @@ var (
 	pdbPhaseReady  = "Ready"
 	pdbPhaseDelete = "Deleting"
 	pdbPhaseModify = "Modifying"
+	pdbPhaseMap    = "Mapping"
 	pdbPhaseStatus = "CheckingState"
 	pdbPhaseFail   = "Failed"
 )
@@ -173,10 +174,30 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return requeueY, nil
 	}
 
+	// Check for Duplicate PDB
+	if !pdb.Status.Status {
+		err = r.checkDuplicatePDB(ctx, req, pdb)
+		if err != nil {
+			return requeueN, nil
+		}
+	}
+
 	action := strings.ToUpper(pdb.Spec.Action)
 
-	if (pdb.Status.Phase == pdbPhaseReady) && (pdb.Status.Action != "") && (action == "MODIFY" || action == "STATUS" || pdb.Status.Action != action) {
-		pdb.Status.Status = false
+	if pdb.Status.Phase == pdbPhaseReady {
+		//log.Info("PDB:", "Name", pdb.Name, "Phase", pdb.Status.Phase, "Status", strconv.FormatBool(pdb.Status.Status))
+		if (pdb.Status.Action != "") && (action == "MODIFY" || action == "STATUS" || pdb.Status.Action != action) {
+			pdb.Status.Status = false
+		} else {
+			err = r.getPDBState(ctx, req, pdb)
+			if err != nil {
+				pdb.Status.Phase = pdbPhaseFail
+			} else {
+				pdb.Status.Phase = pdbPhaseReady
+				pdb.Status.Msg = "Success"
+			}
+			r.Status().Update(ctx, pdb)
+		}
 	}
 
 	if !pdb.Status.Status {
@@ -199,6 +220,8 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			err = r.deletePDB(ctx, req, pdb)
 		case pdbPhaseStatus:
 			err = r.getPDBState(ctx, req, pdb)
+		case pdbPhaseMap:
+			err = r.mapPDB(ctx, req, pdb)
 		default:
 			log.Info("DEFAULT:", "Name", pdb.Name, "Phase", phase, "Status", strconv.FormatBool(pdb.Status.Status))
 			return requeueN, nil
@@ -242,9 +265,54 @@ func (r *PDBReconciler) validatePhase(ctx context.Context, req ctrl.Request, pdb
 		pdb.Status.Phase = pdbPhaseDelete
 	case "STATUS":
 		pdb.Status.Phase = pdbPhaseStatus
+	case "MAP":
+		pdb.Status.Phase = pdbPhaseMap
 	}
 
 	log.Info("Validation complete")
+}
+
+/****************************************************************
+ * Check for Duplicate PDB. Same PDB name on the same CDB resource.
+ /***************************************************************/
+func (r *PDBReconciler) checkDuplicatePDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
+
+	log := r.Log.WithValues("checkDuplicatePDB", req.NamespacedName)
+
+	// Name of the CDB CR that holds the ORDS container
+	cdbResName := pdb.Spec.CDBResName
+	//cdbame := pdb.Spec.CDBName
+
+	// Name of the PDB resource
+	pdbResName := pdb.Spec.PDBName
+
+	pdbList := &dbapi.PDBList{}
+
+	listOpts := []client.ListOption{client.InNamespace(req.Namespace), client.MatchingFields{"spec.pdbName": pdbResName}}
+
+	// List retrieves list of objects for a given namespace and list options.
+	err := r.List(ctx, pdbList, listOpts...)
+	if err != nil {
+		log.Info("Failed to list pdbs", "Namespace", req.Namespace, "Error", err)
+		return err
+	}
+
+	if len(pdbList.Items) == 0 {
+		log.Info("No pdbs found for PDBName: "+pdbResName, "CDBResName", cdbResName)
+		return nil
+	}
+
+	for _, p := range pdbList.Items {
+		log.Info("Found PDB: " + p.Name)
+		if (p.Name != pdb.Name) && (p.Spec.CDBResName == cdbResName) {
+			log.Info("Duplicate PDB found")
+			pdb.Status.Msg = "PDB Resource already exists"
+			pdb.Status.Status = false
+			pdb.Status.Phase = pdbPhaseFail
+			return errors.New("Duplicate PDB found")
+		}
+	}
+	return nil
 }
 
 /****************************************************************
@@ -497,6 +565,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 
+	pdb.Status.TotalSize = pdb.Spec.TotalSize
 	pdb.Status.Phase = pdbPhaseCreate
 	pdb.Status.Msg = "Waiting for PDB to be created"
 	if err := r.Status().Update(ctx, pdb); err != nil {
@@ -618,6 +687,7 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 
 	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 
+	pdb.Status.TotalSize = pdb.Spec.TotalSize
 	pdb.Status.Phase = pdbPhasePlug
 	pdb.Status.Msg = "Waiting for PDB to be plugged"
 	if err := r.Status().Update(ctx, pdb); err != nil {
@@ -798,6 +868,52 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 }
 
 /*************************************************
+ * Map Database PDB to Kubernetes PDB CR
+ /************************************************/
+func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
+
+	log := r.Log.WithValues("mapPDB", req.NamespacedName)
+
+	var err error
+
+	cdb, err := r.getCDBResource(ctx, req, pdb)
+	if err != nil {
+		return err
+	}
+
+	pdbName := pdb.Spec.PDBName
+	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
+
+	pdb.Status.Msg = "Mapping PDB"
+	if err := r.Status().Update(ctx, pdb); err != nil {
+		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
+	}
+
+	respData, err := r.callAPI(ctx, req, pdb, url, nil, "GET")
+
+	if err != nil {
+		pdb.Status.OpenMode = "UNKNOWN"
+		return err
+	}
+
+	var objmap map[string]interface{}
+	if err := json.Unmarshal([]byte(respData), &objmap); err != nil {
+		log.Error(err, "Failed to get state of PDB :"+pdbName, "err", err.Error())
+	}
+
+	//fmt.Printf("%+v\n", objmap)
+	totSizeInBytes := objmap["total_size"].(float64)
+	totSizeInGB := totSizeInBytes / 1024 / 1024 / 1024
+
+	pdb.Status.OpenMode = objmap["open_mode"].(string)
+	pdb.Status.TotalSize = fmt.Sprintf("%.2f", totSizeInGB) + "G"
+	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+
+	log.Info("Successfully mapped PDB to Kubernetes resource", "PDB Name", pdb.Spec.PDBName)
+	return nil
+}
+
+/*************************************************
  * Delete a PDB
  /************************************************/
 func (r *PDBReconciler) deletePDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
@@ -843,6 +959,10 @@ func (r *PDBReconciler) managePDBDeletion(ctx context.Context, req ctrl.Request,
 	isPDBMarkedToBeDeleted := pdb.GetDeletionTimestamp() != nil
 	if isPDBMarkedToBeDeleted {
 		log.Info("Marked to be deleted")
+		pdb.Status.Phase = pdbPhaseDelete
+		pdb.Status.Status = true
+		r.Status().Update(ctx, pdb)
+
 		if controllerutil.ContainsFinalizer(pdb, PDBFinalizer) {
 			// Remove PDBFinalizer. Once all finalizers have been
 			// removed, the object will be deleted.
@@ -853,7 +973,6 @@ func (r *PDBReconciler) managePDBDeletion(ctx context.Context, req ctrl.Request,
 				log.Info("Could not remove finalizer", "err", err.Error())
 				return err
 			}
-			pdb.Status.Status = true
 			log.Info("Successfully removed PDB resource")
 			return nil
 		}
