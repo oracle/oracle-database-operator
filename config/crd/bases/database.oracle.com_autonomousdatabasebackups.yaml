@@ -72,13 +72,14 @@ spec:
                   secretName:
                     type: string
                 type: object
+            required:
+            - autonomousDatabaseOCID
+            - displayName
             type: object
           status:
             description: AutonomousDatabaseBackupStatus defines the observed state
               of AutonomousDatabaseBackup
             properties:
-              autonomousDatabaseOCID:
-                type: string
               compartmentOCID:
                 type: string
               dbDisplayName:
@@ -101,7 +102,6 @@ spec:
                   type: string'
                 type: string
             required:
-            - autonomousDatabaseOCID
             - compartmentOCID
             - dbDisplayName
             - dbName

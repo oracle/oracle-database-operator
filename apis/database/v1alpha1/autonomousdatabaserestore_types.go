@@ -117,6 +117,7 @@ func (r *AutonomousDatabaseRestore) GetPIT() (*common.SDKTime, error) {
 func (r *AutonomousDatabaseRestore) ConvertWorkRequestStatus(s workrequests.WorkRequestStatusEnum) restoreStatusEnum {
 	switch s {
 	case workrequests.WorkRequestStatusAccepted:
+		fallthrough
 	case workrequests.WorkRequestStatusInProgress:
 		return RestoreStatusInProgress
 
@@ -127,5 +128,5 @@ func (r *AutonomousDatabaseRestore) ConvertWorkRequestStatus(s workrequests.Work
 		return RestoreStatusFailed
 	}
 
-	return RestoreStatusFailed
+	return "UNKNOWN"
 }

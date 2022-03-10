@@ -45,7 +45,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/oracle/oci-go-sdk/v54/database"
@@ -80,8 +79,6 @@ type AutonomousDatabaseReconciler struct {
 	lastSucSpec *dbv1alpha1.AutonomousDatabaseSpec
 }
 
-// To requeue after 60 secs allowing graceful state changes
-var requeueResult ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}
 var emptyResult ctrl.Result = ctrl.Result{}
 
 // SetupWithManager function
@@ -97,16 +94,32 @@ func (r *AutonomousDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error 
 func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicate {
 	pred := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			newADB := e.ObjectNew.(*dbv1alpha1.AutonomousDatabase)
+			oldStatus := e.ObjectOld.(*dbv1alpha1.AutonomousDatabase).Status.LifecycleState
+			desiredStatus := e.ObjectNew.(*dbv1alpha1.AutonomousDatabase).Spec.Details.LifecycleState
 
-			// Don't enqueue request
-			if newADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateBackupInProgress ||
-				newADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateUpdating ||
-				newADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateStarting ||
-				newADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateStopping ||
-				newADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminating {
+			if oldStatus == database.AutonomousDatabaseLifecycleStateProvisioning ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateUpdating ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateStarting ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateStopping ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateTerminating ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateRestoreInProgress ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateBackupInProgress ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateMaintenanceInProgress ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateRestarting ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateRecreating ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateRoleChangeInProgress ||
+				oldStatus == database.AutonomousDatabaseLifecycleStateUpgrading {
+
+				// Except for the case that the ADB is already terminating, we should let the terminate requests to be enqueued
+				if oldStatus != database.AutonomousDatabaseLifecycleStateTerminating &&
+					desiredStatus == database.AutonomousDatabaseLifecycleStateTerminated {
+					return true
+				}
+
+				// All the requests other than the terminate request, should be discarded during the intermediate states
 				return false
 			}
+
 			return true
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
@@ -236,7 +249,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	logger.Info("AutonomousDatabase reconciles successfully")
 
-	return requeueResult, nil
+	return emptyResult, nil
 }
 
 func (r *AutonomousDatabaseReconciler) setupOCIClients(adb *dbv1alpha1.AutonomousDatabase) error {
@@ -343,6 +356,21 @@ func (r *AutonomousDatabaseReconciler) updateLastSuccessfulSpec(adb *dbv1alpha1.
 	return annotations.SetAnnotations(r.KubeClient, adb, anns)
 }
 
+// helper function to update the resource, and then wait until the work completes after an update/start/stop/delete AutonomousDatabase request is sent
+func (r *AutonomousDatabaseReconciler) updateResourceAndWait(adb *dbv1alpha1.AutonomousDatabase, opcWorkRequestId string) error {
+	// updateResource updates the lastSucSpec as well
+	if err := r.updateResource(adb); err != nil {
+		return err
+	}
+
+	// Wait until the work is finished
+	if _, err := r.workService.Wait(opcWorkRequestId); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // updateResource updates the specification, the status of AutonomousDatabase resource, and the lastSucSpec
 func (r *AutonomousDatabaseReconciler) updateResource(adb *dbv1alpha1.AutonomousDatabase) error {
 	// Update the status first to prevent unwanted Reconcile()
@@ -376,22 +404,12 @@ func (r *AutonomousDatabaseReconciler) updateResource(adb *dbv1alpha1.Autonomous
 	return nil
 }
 
+// updateResourceStatus updates only the status of the resource, not including the lastSucSpec.
+// This function should not be called by the functions associated with the OCI update requests.
+// The OCI update requests should use updateResource() to ensure all the spec, resource and the
+// lastSucSpec are updated.
 func (r *AutonomousDatabaseReconciler) updateResourceStatus(adb *dbv1alpha1.AutonomousDatabase) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		curADB := &dbv1alpha1.AutonomousDatabase{}
-
-		namespacedName := types.NamespacedName{
-			Namespace: adb.GetNamespace(),
-			Name:      adb.GetName(),
-		}
-
-		if err := r.KubeClient.Get(context.TODO(), namespacedName, curADB); err != nil {
-			return err
-		}
-
-		curADB.Status = adb.Status
-		return r.KubeClient.Status().Update(context.TODO(), curADB)
-	})
+	return k8s.UpdateADBStatus(r.KubeClient, adb)
 }
 
 func (r *AutonomousDatabaseReconciler) syncResource(adb *dbv1alpha1.AutonomousDatabase) error {
@@ -451,21 +469,6 @@ func (r *AutonomousDatabaseReconciler) createADB(adb *dbv1alpha1.AutonomousDatab
 	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
 
 	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
-}
-
-// helper function to update the resource, and then wait until the work completes after an update/start/stop/delete AutonomousDatabase request is sent
-func (r *AutonomousDatabaseReconciler) updateResourceAndWait(adb *dbv1alpha1.AutonomousDatabase, opcWorkRequestId string) error {
-	// updateResource updates the lastSucSpec as well
-	if err := r.updateResource(adb); err != nil {
-		return err
-	}
-
-	// Wait until the work is finished
-	if _, err := r.workService.Wait(opcWorkRequestId); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (r *AutonomousDatabaseReconciler) updateGeneralFields(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -580,7 +583,6 @@ func (r *AutonomousDatabaseReconciler) updateLifecycleState(adb *dbv1alpha1.Auto
 		return nil
 	}
 
-
 	var opcWorkRequestId string
 
 	switch difADB.Spec.Details.LifecycleState {
@@ -612,12 +614,7 @@ func (r *AutonomousDatabaseReconciler) updateLifecycleState(adb *dbv1alpha1.Auto
 		return errors.New("Unknown state")
 	}
 
-	if err := r.updateResourceStatus(adb); err != nil {
-		return err
-	}
-
-	// Wait until the work is finished
-	if _, err := r.workService.Wait(opcWorkRequestId); err != nil {
+	if err := r.updateResourceAndWait(adb, opcWorkRequestId); err != nil {
 		return err
 	}
 
