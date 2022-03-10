@@ -63,14 +63,14 @@ type AutonomousDatabaseBackupSpec struct {
 type AutonomousDatabaseBackupStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	LifecycleState         database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
-	Type                   database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
-	IsAutomatic            bool                                                `json:"isAutomatic"`
-	TimeStarted            string                                              `json:"timeStarted,omitempty"`
-	TimeEnded              string                                              `json:"timeEnded,omitempty"`
-	CompartmentOCID        string                                              `json:"compartmentOCID"`
-	DBName                 string                                              `json:"dbName"`
-	DBDisplayName          string                                              `json:"dbDisplayName"`
+	LifecycleState  database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
+	Type            database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
+	IsAutomatic     bool                                                `json:"isAutomatic"`
+	TimeStarted     string                                              `json:"timeStarted,omitempty"`
+	TimeEnded       string                                              `json:"timeEnded,omitempty"`
+	CompartmentOCID string                                              `json:"compartmentOCID"`
+	DBName          string                                              `json:"dbName"`
+	DBDisplayName   string                                              `json:"dbDisplayName"`
 }
 
 //+kubebuilder:object:root=true
@@ -104,7 +104,11 @@ func init() {
 	SchemeBuilder.Register(&AutonomousDatabaseBackup{}, &AutonomousDatabaseBackupList{})
 }
 
-func (backup *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociADB database.AutonomousDatabase) {
+func (backup *AutonomousDatabaseBackup) UpdateFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociADB database.AutonomousDatabase) {
+	backup.Spec.AutonomousDatabaseBackupOCID = *ociBackup.Id
+	backup.Spec.AutonomousDatabaseOCID = *ociBackup.AutonomousDatabaseId
+	backup.Spec.DisplayName = *ociBackup.DisplayName
+
 	backup.Status.CompartmentOCID = *ociBackup.CompartmentId
 	backup.Status.Type = ociBackup.Type
 	backup.Status.IsAutomatic = *ociBackup.IsAutomatic

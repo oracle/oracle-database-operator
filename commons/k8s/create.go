@@ -86,8 +86,8 @@ func CreateAutonomousBackup(kubeClient client.Client,
 			OwnerReferences: NewOwnerReference(ownerADB),
 		},
 		Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
-			AutonomousDatabaseOCID: *backupSummary.AutonomousDatabaseId,
-			DisplayName: *backupSummary.DisplayName,
+			AutonomousDatabaseOCID:       *backupSummary.AutonomousDatabaseId,
+			DisplayName:                  *backupSummary.DisplayName,
 			AutonomousDatabaseBackupOCID: *backupSummary.Id,
 			OCIConfig: dbv1alpha1.OCIConfigSpec{
 				ConfigMapName: ownerADB.Spec.OCIConfig.ConfigMapName,

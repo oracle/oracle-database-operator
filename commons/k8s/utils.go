@@ -39,8 +39,13 @@
 package k8s
 
 import (
+	"context"
+
+	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilErrors "k8s.io/apimachinery/pkg/util/errors"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -58,4 +63,22 @@ func NewOwnerReference(owner client.Object) []metav1.OwnerReference {
 
 func CombineErrors(errs ...error) error {
 	return utilErrors.NewAggregate(errs)
+}
+
+func UpdateADBStatus(kubeClient client.Client, adb *dbv1alpha1.AutonomousDatabase) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		curADB := &dbv1alpha1.AutonomousDatabase{}
+
+		namespacedName := types.NamespacedName{
+			Namespace: adb.GetNamespace(),
+			Name:      adb.GetName(),
+		}
+
+		if err := kubeClient.Get(context.TODO(), namespacedName, curADB); err != nil {
+			return err
+		}
+
+		curADB.Status = adb.Status
+		return kubeClient.Status().Update(context.TODO(), curADB)
+	})
 }

@@ -50,7 +50,24 @@ import (
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 )
 
-func FetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseList, error) {
+// Returns the first AutonomousDatabase resource that matches the AutonomousDatabaseOCID of the backup
+// If the AutonomousDatabase doesn't exist, returns a nil
+func FetchAutonomousDatabase(kubeClient client.Client, namespace string, ocid string) (*dbv1alpha1.AutonomousDatabase, error) {
+	adbList, err := fetchAutonomousDatabases(kubeClient, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, adb := range adbList.Items {
+		if adb.Spec.Details.AutonomousDatabaseOCID != nil && *adb.Spec.Details.AutonomousDatabaseOCID == ocid {
+			return &adb, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func fetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseList, error) {
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
 	adbList := &dbv1alpha1.AutonomousDatabaseList{}
 
