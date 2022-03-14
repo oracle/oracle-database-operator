@@ -100,6 +100,7 @@ func (r *AutonomousDatabaseBackupReconciler) eventFilterPredicate() predicate.Pr
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabasebackups,verbs=get;list;watch;create;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabasebackups/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases,verbs=get;list
 
 func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("Namespaced/Name", req.NamespacedName)
@@ -139,7 +140,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	 ******************************************************************/
 	if backup.Spec.AutonomousDatabaseBackupOCID == "" && backup.Status.LifecycleState == "" {
 		// Create a new backup
-		backupResp, err := r.adbService.CreateAutonomousDatabaseBackup(backup)
+		backupResp, err := r.adbService.CreateAutonomousDatabaseBackup(backup, *r.ownerADB.Spec.Details.AutonomousDatabaseOCID)
 		if err != nil {
 			return r.manageError(backup, err)
 		}
@@ -192,16 +193,23 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 }
 
 func (r *AutonomousDatabaseBackupReconciler) verifyOwnerADB(backup *dbv1alpha1.AutonomousDatabaseBackup) error {
-	if len(backup.GetOwnerReferences()) == 0 && backup.Spec.AutonomousDatabaseOCID != "" {
+	if len(backup.GetOwnerReferences()) == 0 {
 		var err error
-		r.ownerADB, err = k8s.FetchAutonomousDatabase(r.KubeClient, backup.Namespace, backup.Spec.AutonomousDatabaseOCID)
-		if err != nil {
-			return err
-		}
-		if r.ownerADB == nil {
-			if err := r.setOwnerAutonomousDatabase(backup, r.ownerADB); err != nil {
+
+		if backup.Spec.TargetADB.Name != "" {
+			r.ownerADB, err = k8s.FetchAutonomousDatabase(r.KubeClient, backup.Namespace, backup.Spec.TargetADB.Name)
+			if err != nil {
 				return err
 			}
+		} else {
+			r.ownerADB, err = k8s.FetchAutonomousDatabaseWithOCID(r.KubeClient, backup.Namespace, backup.Spec.TargetADB.OCID)
+			if err != nil {
+				return err
+			}
+		}
+
+		if err := r.setOwnerAutonomousDatabase(backup, r.ownerADB); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -289,9 +297,6 @@ func (r *AutonomousDatabaseBackupReconciler) updateResourceStatus(backup *dbv1al
 
 // No-op if the ownerADB is not assigned
 func (r *AutonomousDatabaseBackupReconciler) syncADBStatus() error {
-	if r.ownerADB == nil {
-		return nil
-	}
 	resp, err := r.adbService.GetAutonomousDatabase(*r.ownerADB.Spec.Details.AutonomousDatabaseOCID)
 	if err != nil {
 		return err

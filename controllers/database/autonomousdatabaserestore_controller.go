@@ -81,6 +81,7 @@ func (r *AutonomousDatabaseRestoreReconciler) SetupWithManager(mgr ctrl.Manager)
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabaserestores,verbs=get;list;watch;create;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabaserestores/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases,verbs=get;list
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -105,19 +106,33 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 		return emptyResult, err
 	}
 
-	/******************************************************************
-	* Extract the restoreTime and the adbOCID from the spec
-	******************************************************************/
-	restoreTime, adbOCID, err := r.fetchData(restore)
-	if err != nil {
-		return r.manageError(restore, err)
+	if restore.Status.Status != "" {
+		return emptyResult, nil
 	}
+
+	// ===================== Run Restore for the Target ADB ============================
 
 	/******************************************************************
 	* Look up the owner AutonomousDatabase and set the ownerReference
 	* if the owner hasn't been set yet.
 	******************************************************************/
-	if err := r.verifyOwnerADB(restore, adbOCID); err != nil {
+	if err := r.verifyOwnerADB(restore); err != nil {
+		return r.manageError(restore, err)
+	}
+
+	/******************************************************************
+	* Extract the restoreTime from the spec
+	******************************************************************/
+	restoreTime, err := r.getRestoreSDKTime(restore)
+	if err != nil {
+		return r.manageError(restore, err)
+	}
+
+	/******************************************************************
+	* Get the target ADB OCID
+	******************************************************************/
+	adbOCID, err := r.getADBOCID(restore)
+	if err != nil {
 		return r.manageError(restore, err)
 	}
 
@@ -142,31 +157,28 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	return ctrl.Result{}, nil
 }
 
-func (r *AutonomousDatabaseRestoreReconciler) fetchData(restore *dbv1alpha1.AutonomousDatabaseRestore) (restoreTime *common.SDKTime, adbOCID string, err error) {
-	if restore.Spec.BackupName != "" { // restore using backupName
+func (r *AutonomousDatabaseRestoreReconciler) getRestoreSDKTime(restore *dbv1alpha1.AutonomousDatabaseRestore) (*common.SDKTime, error) {
+	if restore.Spec.Source.AutonomousDatabaseBackup.Name != "" { // restore using backupName
 		backup := &dbv1alpha1.AutonomousDatabaseBackup{}
-		namespacedName := types.NamespacedName{Namespace: restore.Namespace, Name: restore.Spec.BackupName}
-		if err := r.KubeClient.Get(context.TODO(), namespacedName, backup); err != nil {
-			return restoreTime, adbOCID, err
+		if err := k8s.FetchResource(r.KubeClient, restore.Namespace, restore.Spec.Source.AutonomousDatabaseBackup.Name, backup); err != nil {
+			return nil, err
 		}
 
 		if backup.Status.TimeEnded == "" {
-			return restoreTime, adbOCID, errors.New("broken backup: ended time is missing in the AutonomousDatabaseBackup " + backup.GetName())
+			return nil, errors.New("broken backup: ended time is missing from the AutonomousDatabaseBackup " + backup.GetName())
 		}
-		restoreTime, err = backup.GetTimeEnded()
+		restoreTime, err := backup.GetTimeEnded()
 		if err != nil {
-			return restoreTime, adbOCID, err
+			return nil, err
 		}
 
-		adbOCID = backup.Spec.AutonomousDatabaseOCID
+		return restoreTime, nil
 
-	} else if restore.Spec.PointInTime.TimeStamp != "" { // PIT restore
+	} else { // PIT restore
 		// The validation of the pitr.timestamp has been handled by the webhook, so the error return is ignored
-		restoreTime, _ = restore.GetPIT()
-		adbOCID = restore.Spec.PointInTime.AutonomousDatabaseOCID
+		restoreTime, _ := restore.GetPIT()
+		return restoreTime, nil
 	}
-
-	return restoreTime, adbOCID, nil
 }
 
 // setOwnerAutonomousDatabase sets the owner of the AutonomousDatabaseBackup if the AutonomousDatabase resource with the same database OCID is found
@@ -184,13 +196,20 @@ func (r *AutonomousDatabaseRestoreReconciler) setOwnerAutonomousDatabase(restore
 	return nil
 }
 
-func (r *AutonomousDatabaseRestoreReconciler) verifyOwnerADB(restore *dbv1alpha1.AutonomousDatabaseRestore, adbOCID string) error {
+func (r *AutonomousDatabaseRestoreReconciler) verifyOwnerADB(restore *dbv1alpha1.AutonomousDatabaseRestore) error {
 	if len(restore.GetOwnerReferences()) == 0 {
 		var err error
 
-		r.ownerADB, err = k8s.FetchAutonomousDatabase(r.KubeClient, restore.Namespace, adbOCID)
-		if err != nil {
-			return err
+		if restore.Spec.TargetADB.Name != "" {
+			r.ownerADB, err = k8s.FetchAutonomousDatabase(r.KubeClient, restore.Namespace, restore.Spec.TargetADB.Name)
+			if err != nil {
+				return err
+			}
+		} else {
+			r.ownerADB, err = k8s.FetchAutonomousDatabaseWithOCID(r.KubeClient, restore.Namespace, restore.Spec.TargetADB.OCID)
+			if err != nil {
+				return err
+			}
 		}
 
 		if r.ownerADB == nil {
@@ -203,35 +222,16 @@ func (r *AutonomousDatabaseRestoreReconciler) verifyOwnerADB(restore *dbv1alpha1
 	return nil
 }
 
-func (r *AutonomousDatabaseRestoreReconciler) restoreAutonomousDatabase(
-	restore *dbv1alpha1.AutonomousDatabaseRestore,
-	restoreTime *common.SDKTime,
-	adbOCID string) error {
-
-	resp, err := r.adbService.RestoreAutonomousDatabase(adbOCID, *restoreTime)
-	if err != nil {
-		return err
+func (r *AutonomousDatabaseRestoreReconciler) getADBOCID(restore *dbv1alpha1.AutonomousDatabaseRestore) (string, error) {
+	if r.ownerADB != nil {
+		return *r.ownerADB.Spec.Details.AutonomousDatabaseOCID, nil
+	} else {
+		backup := &dbv1alpha1.AutonomousDatabaseBackup{}
+		if err := k8s.FetchResource(r.KubeClient, restore.Namespace, restore.Spec.Source.AutonomousDatabaseBackup.Name, backup); err != nil {
+			return "", err
+		}
+		return backup.Status.AutonomousDatabaseOCID, nil
 	}
-
-	// Update status and wait for the work finish if a request is sent. Note that some of the requests (e.g. update displayName) won't return a work request ID.
-	// It's important to update the status by reference otherwise Reconcile() won't be able to get the latest values
-	restore.Status.DisplayName = *resp.AutonomousDatabase.DisplayName
-	restore.Status.DbName = *resp.AutonomousDatabase.DbName
-	restore.Status.AutonomousDatabaseOCID = *resp.AutonomousDatabase.Id
-	restore.Status.Status = restore.ConvertWorkRequestStatus(workrequests.WorkRequestStatusEnum(resp.LifecycleState))
-
-	r.updateResourceStatus(restore)
-
-	workStatus, err := r.workService.Wait(*resp.OpcWorkRequestId)
-	if err != nil {
-		return err
-	}
-
-	// Update status when the work is finished
-	restore.Status.Status = restore.ConvertWorkRequestStatus(workStatus)
-	r.updateResourceStatus(restore)
-
-	return nil
 }
 
 func (r *AutonomousDatabaseRestoreReconciler) updateResourceStatus(restore *dbv1alpha1.AutonomousDatabaseRestore) error {
@@ -323,4 +323,35 @@ func (r *AutonomousDatabaseRestoreReconciler) manageError(restore *dbv1alpha1.Au
 	logger.Error(combinedErr, "Fail to restore Autonomous Database")
 
 	return emptyResult, nil
+}
+
+func (r *AutonomousDatabaseRestoreReconciler) restoreAutonomousDatabase(
+	restore *dbv1alpha1.AutonomousDatabaseRestore,
+	restoreTime *common.SDKTime,
+	adbOCID string) error {
+
+	resp, err := r.adbService.RestoreAutonomousDatabase(adbOCID, *restoreTime)
+	if err != nil {
+		return err
+	}
+
+	// Update status and wait for the work finish if a request is sent. Note that some of the requests (e.g. update displayName) won't return a work request ID.
+	// It's important to update the status by reference otherwise Reconcile() won't be able to get the latest values
+	restore.Status.DisplayName = *resp.AutonomousDatabase.DisplayName
+	restore.Status.DbName = *resp.AutonomousDatabase.DbName
+	restore.Status.AutonomousDatabaseOCID = *resp.AutonomousDatabase.Id
+	restore.Status.Status = restore.ConvertWorkRequestStatus(workrequests.WorkRequestStatusEnum(resp.LifecycleState))
+
+	r.updateResourceStatus(restore)
+
+	workStatus, err := r.workService.Wait(*resp.OpcWorkRequestId)
+	if err != nil {
+		return err
+	}
+
+	// Update status when the work is finished
+	restore.Status.Status = restore.ConvertWorkRequestStatus(workStatus)
+	r.updateResourceStatus(restore)
+
+	return nil
 }

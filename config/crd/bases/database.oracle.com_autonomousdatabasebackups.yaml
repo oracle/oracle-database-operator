@@ -59,10 +59,6 @@ spec:
             properties:
               autonomousDatabaseBackupOCID:
                 type: string
-              autonomousDatabaseOCID:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file'
-                type: string
               displayName:
                 type: string
               ociConfig:
@@ -72,14 +68,28 @@ spec:
                   secretName:
                     type: string
                 type: object
+              targetADB:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
+                properties:
+                  name:
+                    type: string
+                  ocid:
+                    type: string
+                required:
+                - name
+                - ocid
+                type: object
             required:
-            - autonomousDatabaseOCID
             - displayName
+            - targetADB
             type: object
           status:
             description: AutonomousDatabaseBackupStatus defines the observed state
               of AutonomousDatabaseBackup
             properties:
+              autonomousDatabaseOCID:
+                type: string
               compartmentOCID:
                 type: string
               dbDisplayName:
@@ -102,6 +112,7 @@ spec:
                   type: string'
                 type: string
             required:
+            - autonomousDatabaseOCID
             - compartmentOCID
             - dbDisplayName
             - dbName

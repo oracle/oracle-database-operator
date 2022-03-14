@@ -70,6 +70,13 @@ type OCIConfigSpec struct {
 	SecretName    *string `json:"secretName,omitempty"`
 }
 
+// TargetSpec defines the spec of the target for backup/restore runs.
+// The name could be the name of an AutonomousDatabase or an AutonomousDatabaseBackup
+type TargetSpec struct {
+	Name string `json:"name"`
+	OCID string `json:"ocid"`
+}
+
 // removeUnchangedFields removes the unchanged fields in the struct and returns if the struct is changed.
 // lastSpec should be a derefereced struct that is the last successful spec, e.g. AutonomousDatabaseSpec.
 // curSpec should be a pointer pointing to the struct that is being proccessed, e.g., *AutonomousDatabaseSpec.
@@ -159,8 +166,13 @@ func hasChanged(lastField reflect.Value, curField reflect.Value) bool {
 // Follow the format of the display time
 const displayFormat = "2006-01-02 15:04:05 MST"
 
-func formatSDKTime(dateTime time.Time) string {
-	return dateTime.Format(displayFormat)
+func formatSDKTime(sdkTime *common.SDKTime) string {
+	if sdkTime == nil {
+		return ""
+	}
+
+	time := sdkTime.Time
+	return time.Format(displayFormat)
 }
 
 func parseDisplayTime(val string) (*common.SDKTime, error) {

@@ -61,7 +61,7 @@ type DatabaseService interface {
 	UpdateAutonomousDatabaseScalingFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	UpdateNetworkAccessMTLSRequired(adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	UpdateNetworkAccessMTLS(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccessPublic(lastSucSpec *dbv1alpha1.AutonomousDatabaseSpec, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccessPublic(lastSucSpec dbv1alpha1.NetworkAccessTypeEnum, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	UpdateNetworkAccess(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error)
 	StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error)
@@ -69,8 +69,11 @@ type DatabaseService interface {
 	DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (database.GenerateAutonomousDatabaseWalletResponse, error)
 	RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error)
 	ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error)
-	CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (database.CreateAutonomousDatabaseBackupResponse, error)
+	CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error)
 	GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error)
+	CreateAutonomousContainerDatabase(acb *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
+	GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error)
+	UpdateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
 }
 
 type databaseService struct {
@@ -102,6 +105,10 @@ func NewDatabaseService(
 		vaultService: vaultService,
 	}, nil
 }
+
+/********************************
+ * Autonomous Database
+ *******************************/
 
 // ReadPassword reads the password from passwordSpec, and returns the pointer to the read password string.
 // The function returns a nil if nothing is read
@@ -264,13 +271,13 @@ func (d *databaseService) UpdateNetworkAccessMTLS(adb *dbv1alpha1.AutonomousData
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateNetworkAccessPublic(lastSucSpec *dbv1alpha1.AutonomousDatabaseSpec,
+func (d *databaseService) UpdateNetworkAccessPublic(lastAccessType dbv1alpha1.NetworkAccessTypeEnum,
 	adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
 
-	if lastSucSpec.Details.NetworkAccess.AccessType == dbv1alpha1.NetworkAccessTypeRestricted {
+	if lastAccessType == dbv1alpha1.NetworkAccessTypeRestricted {
 		updateAutonomousDatabaseDetails.WhitelistedIps = []string{""}
-	} else if lastSucSpec.Details.NetworkAccess.AccessType == dbv1alpha1.NetworkAccessTypePrivate {
+	} else if lastAccessType == dbv1alpha1.NetworkAccessTypePrivate {
 		updateAutonomousDatabaseDetails.PrivateEndpointLabel = common.String("")
 	}
 
@@ -345,6 +352,10 @@ func (d *databaseService) DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (re
 	return resp, nil
 }
 
+/********************************
+ * Autonomous Database Restore
+ *******************************/
+
 func (d *databaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error) {
 	request := database.RestoreAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
@@ -355,6 +366,10 @@ func (d *databaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime comm
 	return d.dbClient.RestoreAutonomousDatabase(context.TODO(), request)
 }
 
+/********************************
+ * Autonomous Database Backup
+ *******************************/
+
 func (d *databaseService) ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error) {
 	listBackupRequest := database.ListAutonomousDatabaseBackupsRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
@@ -363,10 +378,10 @@ func (d *databaseService) ListAutonomousDatabaseBackups(adbOCID string) (databas
 	return d.dbClient.ListAutonomousDatabaseBackups(context.TODO(), listBackupRequest)
 }
 
-func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (database.CreateAutonomousDatabaseBackupResponse, error) {
+func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error) {
 	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
 		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
-			AutonomousDatabaseId: &adbBackup.Spec.AutonomousDatabaseOCID,
+			AutonomousDatabaseId: common.String(adbOCID),
 		},
 	}
 

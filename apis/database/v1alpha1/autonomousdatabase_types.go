@@ -43,7 +43,6 @@ import (
 	"errors"
 
 	"github.com/oracle/oci-go-sdk/v54/database"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -125,12 +124,6 @@ type AutonomousDatabaseStatus struct {
 	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
 	TimeCreated          string                                        `json:"timeCreated,omitempty"`
 	AllConnectionStrings []ConnectionStringProfile                     `json:"allConnectionStrings,omitempty"`
-
-	// +patchMergeKey=type
-	// +patchStrategy=merge
-	// +listType=map
-	// +listMapKey=type
-	Conditions []metaV1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 type TLSAuthenticationEnum string
@@ -201,17 +194,53 @@ func (adb *AutonomousDatabase) GetLastSuccessfulSpec() (*AutonomousDatabaseSpec,
 	return &sucSpec, nil
 }
 
-func (adb *AutonomousDatabase) UpdateConditions(lifecycleState database.AutonomousDatabaseLifecycleStateEnum, err error) {
-	var metaCondition metaV1.Condition
+// UpdateStatusFromOCIADB updates only the status from database.AutonomousDatabase object
+func (adb *AutonomousDatabase) UpdateStatusFromOCIADB(ociObj database.AutonomousDatabase) {
+	adb.Status.LifecycleState = ociObj.LifecycleState
+	adb.Status.TimeCreated = formatSDKTime(ociObj.TimeCreated)
 
-	if err != nil {
-		metaCondition = CreateMetaCondition(adb, err, string(CrdReconcileErrorState), string(CrdReconcileErrorReason))
+	if *ociObj.IsDedicated {
+		conns := make([]ConnectionStringSpec, len(ociObj.ConnectionStrings.AllConnectionStrings))
+		for key, val := range ociObj.ConnectionStrings.AllConnectionStrings {
+			conns = append(conns, ConnectionStringSpec{TNSName: key, ConnectionString: val})
+		}
+
+		adb.Status.AllConnectionStrings = []ConnectionStringProfile{
+			{ConnectionStrings: conns},
+		}
+	} else {
+		var mTLSConns []ConnectionStringSpec
+		var tlsConns []ConnectionStringSpec
+
+		var conns []ConnectionStringProfile
+
+		for _, profile := range ociObj.ConnectionStrings.Profiles {
+			if profile.TlsAuthentication == database.DatabaseConnectionStringProfileTlsAuthenticationMutual {
+				mTLSConns = append(mTLSConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
+			} else {
+				tlsConns = append(tlsConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
+			}
+		}
+
+		if len(mTLSConns) > 0 {
+			conns = append(conns, ConnectionStringProfile{
+				TLSAuthentication: tlsAuthenticationMTLS,
+				ConnectionStrings: mTLSConns,
+			})
+		}
+
+		if len(tlsConns) > 0 {
+			conns = append(conns, ConnectionStringProfile{
+				TLSAuthentication: tlsAuthenticationTLS,
+				ConnectionStrings: tlsConns,
+			})
+		}
+
+		adb.Status.AllConnectionStrings = conns
 	}
-
-	meta.SetStatusCondition(&adb.Status.Conditions, metaCondition)
 }
 
-// UpdateAttrFromOCIAutonomousDatabase updates the attributes from database.AutonomousDatabase object and returns the resource
+// UpdateFromOCIADB updates the attributes from database.AutonomousDatabase object
 func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDatabase) {
 	/***********************************
 	* update the spec
@@ -255,48 +284,7 @@ func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDataba
 	* update the status subresource
 	***********************************/
 
-	adb.Status.LifecycleState = ociObj.LifecycleState
-	adb.Status.TimeCreated = ociObj.TimeCreated.String()
-
-	if *ociObj.IsDedicated {
-		conns := make([]ConnectionStringSpec, len(ociObj.ConnectionStrings.AllConnectionStrings))
-		for key, val := range ociObj.ConnectionStrings.AllConnectionStrings {
-			conns = append(conns, ConnectionStringSpec{TNSName: key, ConnectionString: val})
-		}
-
-		adb.Status.AllConnectionStrings = []ConnectionStringProfile{
-			ConnectionStringProfile{ConnectionStrings: conns},
-		}
-	} else {
-		var mTLSConns []ConnectionStringSpec
-		var tlsConns []ConnectionStringSpec
-
-		var conns []ConnectionStringProfile
-
-		for _, profile := range ociObj.ConnectionStrings.Profiles {
-			if profile.TlsAuthentication == database.DatabaseConnectionStringProfileTlsAuthenticationMutual {
-				mTLSConns = append(mTLSConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
-			} else {
-				tlsConns = append(tlsConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
-			}
-		}
-
-		if len(mTLSConns) > 0 {
-			conns = append(conns, ConnectionStringProfile{
-				TLSAuthentication: tlsAuthenticationMTLS,
-				ConnectionStrings: mTLSConns,
-			})
-		}
-
-		if len(tlsConns) > 0 {
-			conns = append(conns, ConnectionStringProfile{
-				TLSAuthentication: tlsAuthenticationTLS,
-				ConnectionStrings: tlsConns,
-			})
-		}
-
-		adb.Status.AllConnectionStrings = conns
-	}
+	adb.UpdateStatusFromOCIADB(ociObj)
 }
 
 // RemoveUnchangedDetails removes the unchanged fields in spec.details, and returns if the details has been changed.

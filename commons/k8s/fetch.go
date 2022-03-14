@@ -50,9 +50,31 @@ import (
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 )
 
+func FetchResource(kubeClient client.Client, namespace string, name string, object client.Object) error {
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	if err := kubeClient.Get(context.TODO(), namespacedName, object); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func FetchAutonomousDatabase(kubeClient client.Client, namespace string, name string) (*dbv1alpha1.AutonomousDatabase, error) {
+	adb := &dbv1alpha1.AutonomousDatabase{}
+
+	if err := FetchResource(kubeClient, namespace, name, adb); err != nil {
+		return nil, err
+	}
+
+	return adb, nil
+}
+
 // Returns the first AutonomousDatabase resource that matches the AutonomousDatabaseOCID of the backup
 // If the AutonomousDatabase doesn't exist, returns a nil
-func FetchAutonomousDatabase(kubeClient client.Client, namespace string, ocid string) (*dbv1alpha1.AutonomousDatabase, error) {
+func FetchAutonomousDatabaseWithOCID(kubeClient client.Client, namespace string, ocid string) (*dbv1alpha1.AutonomousDatabase, error) {
 	adbList, err := fetchAutonomousDatabases(kubeClient, namespace)
 	if err != nil {
 		return nil, err
@@ -98,12 +120,9 @@ func FetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string) 
 }
 
 func FetchConfigMap(kubeClient client.Client, namespace string, name string) (*corev1.ConfigMap, error) {
-	namespacedName := types.NamespacedName{
-		Namespace: namespace,
-		Name:      name,
-	}
 	configMap := &corev1.ConfigMap{}
-	if err := kubeClient.Get(context.TODO(), namespacedName, configMap); err != nil {
+
+	if err := FetchResource(kubeClient, namespace, name, configMap); err != nil {
 		return nil, err
 	}
 
@@ -111,12 +130,9 @@ func FetchConfigMap(kubeClient client.Client, namespace string, name string) (*c
 }
 
 func FetchSecret(kubeClient client.Client, namespace string, name string) (*corev1.Secret, error) {
-	namespacedName := types.NamespacedName{
-		Namespace: namespace,
-		Name:      name,
-	}
 	secret := &corev1.Secret{}
-	if err := kubeClient.Get(context.TODO(), namespacedName, secret); err != nil {
+	
+	if err := FetchResource(kubeClient, namespace, name, secret); err != nil {
 		return nil, err
 	}
 

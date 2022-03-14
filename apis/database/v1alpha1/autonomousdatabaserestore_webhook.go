@@ -71,30 +71,29 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() error {
 	var allErrs field.ErrorList
 
 	// Validate the restore source
-	if r.Spec.BackupName == "" &&
-		r.Spec.PointInTime.AutonomousDatabaseOCID == "" &&
-		r.Spec.PointInTime.TimeStamp == "" {
+	if r.Spec.Source.AutonomousDatabaseBackup.Name == "" &&
+		r.Spec.Source.PointInTime == "" {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec"), "no retore source is chosen"))
+			field.Forbidden(field.NewPath("spec").Child("source"), "no retore source is chosen"))
 	}
 
-	if r.Spec.BackupName != "" &&
-		(r.Spec.PointInTime.AutonomousDatabaseOCID != "" || r.Spec.PointInTime.TimeStamp != "") {
+	if r.Spec.Source.AutonomousDatabaseBackup.Name != "" &&
+		r.Spec.Source.PointInTime != "" {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec"), "cannot apply backupName and the PITR parameters at the same time"))
+			field.Forbidden(field.NewPath("spec").Child("source"), "cannot apply backupName and the PITR parameters at the same time"))
 	}
 
-	if (r.Spec.PointInTime.AutonomousDatabaseOCID == "" && r.Spec.PointInTime.TimeStamp != "") ||
-		(r.Spec.PointInTime.AutonomousDatabaseOCID != "" && r.Spec.PointInTime.TimeStamp == "") {
-		field.Forbidden(field.NewPath("spec").Child("pointInTime"), "autonomousDatabaseOCID or timeStamp cannot be empty")
+	if (r.Spec.TargetADB.OCID == "" && r.Spec.Source.PointInTime != "") ||
+		(r.Spec.TargetADB.OCID != "" && r.Spec.Source.PointInTime == "") {
+		field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime"), "targetADB.OCID or source.pointInTime cannot be empty")
 	}
 
 	// Verify the timestamp format if it's PITR
-	if r.Spec.PointInTime.TimeStamp != "" {
-		_, err := parseDisplayTime(r.Spec.PointInTime.TimeStamp)
+	if r.Spec.Source.PointInTime != "" {
+		_, err := parseDisplayTime(r.Spec.Source.PointInTime)
 		if err != nil {
 			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec"), "invalid timestamp format"))
+				field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime"), "invalid timestamp format"))
 		}
 	}
 

@@ -51,10 +51,6 @@ spec:
             description: AutonomousDatabaseRestoreSpec defines the desired state of
               AutonomousDatabaseRestore
             properties:
-              backupName:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file'
-                type: string
               ociConfig:
                 properties:
                   configMapName:
@@ -62,13 +58,31 @@ spec:
                   secretName:
                     type: string
                 type: object
-              pointInTime:
+              sourceSpec:
                 properties:
-                  autonomousDatabaseOCID:
-                    type: string
-                  timeStamp:
+                  autonomousDatabaseBackup:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  pointInTime:
                     type: string
                 type: object
+              targetADB:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
+                properties:
+                  name:
+                    type: string
+                  ocid:
+                    type: string
+                required:
+                - name
+                - ocid
+                type: object
+            required:
+            - sourceSpec
+            - targetADB
             type: object
           status:
             description: AutonomousDatabaseRestoreStatus defines the observed state
