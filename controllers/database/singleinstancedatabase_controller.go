@@ -1013,6 +1013,9 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 
 	pdbName := "ORCLPDB1"
 	sid := m.Spec.Sid
+	if strings.ToUpper(sid) == "XE" {
+		pdbName = "XEPDB1"
+	}
 	if m.Spec.Persistence.AccessMode == "" {
 		sid, pdbName, m.Status.Edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
 		if sid == "" || pdbName == "" || m.Status.Edition == "" {
