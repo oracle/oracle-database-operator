@@ -52,9 +52,9 @@ import (
 type AutonomousDatabaseBackupSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	AutonomousDatabaseOCID       string `json:"autonomousDatabaseOCID"`
-	DisplayName                  string `json:"displayName"`
-	AutonomousDatabaseBackupOCID string `json:"autonomousDatabaseBackupOCID,omitempty"`
+	TargetADB                       TargetSpec `json:"targetADB"`
+	DisplayName                  string     `json:"displayName"`
+	AutonomousDatabaseBackupOCID string     `json:"autonomousDatabaseBackupOCID,omitempty"`
 
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
@@ -63,14 +63,15 @@ type AutonomousDatabaseBackupSpec struct {
 type AutonomousDatabaseBackupStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	LifecycleState  database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
-	Type            database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
-	IsAutomatic     bool                                                `json:"isAutomatic"`
-	TimeStarted     string                                              `json:"timeStarted,omitempty"`
-	TimeEnded       string                                              `json:"timeEnded,omitempty"`
-	CompartmentOCID string                                              `json:"compartmentOCID"`
-	DBName          string                                              `json:"dbName"`
-	DBDisplayName   string                                              `json:"dbDisplayName"`
+	LifecycleState         database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
+	Type                   database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
+	IsAutomatic            bool                                                `json:"isAutomatic"`
+	TimeStarted            string                                              `json:"timeStarted,omitempty"`
+	TimeEnded              string                                              `json:"timeEnded,omitempty"`
+	AutonomousDatabaseOCID string                                              `json:"autonomousDatabaseOCID"`
+	CompartmentOCID        string                                              `json:"compartmentOCID"`
+	DBName                 string                                              `json:"dbName"`
+	DBDisplayName          string                                              `json:"dbDisplayName"`
 }
 
 //+kubebuilder:object:root=true
@@ -106,20 +107,16 @@ func init() {
 
 func (backup *AutonomousDatabaseBackup) UpdateFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociADB database.AutonomousDatabase) {
 	backup.Spec.AutonomousDatabaseBackupOCID = *ociBackup.Id
-	backup.Spec.AutonomousDatabaseOCID = *ociBackup.AutonomousDatabaseId
 	backup.Spec.DisplayName = *ociBackup.DisplayName
-
+	
+	backup.Status.AutonomousDatabaseOCID = *ociBackup.AutonomousDatabaseId
 	backup.Status.CompartmentOCID = *ociBackup.CompartmentId
 	backup.Status.Type = ociBackup.Type
 	backup.Status.IsAutomatic = *ociBackup.IsAutomatic
 	backup.Status.LifecycleState = ociBackup.LifecycleState
 
-	if ociBackup.TimeStarted != nil {
-		backup.Status.TimeStarted = formatSDKTime(ociBackup.TimeStarted.Time)
-	}
-	if ociBackup.TimeEnded != nil {
-		backup.Status.TimeEnded = formatSDKTime(ociBackup.TimeEnded.Time)
-	}
+	backup.Status.TimeStarted = formatSDKTime(ociBackup.TimeStarted)
+	backup.Status.TimeEnded = formatSDKTime(ociBackup.TimeEnded)
 
 	backup.Status.DBDisplayName = *ociADB.DisplayName
 	backup.Status.DBName = *ociADB.DbName

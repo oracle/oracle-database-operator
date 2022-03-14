@@ -52,14 +52,18 @@ import (
 type AutonomousDatabaseRestoreSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	BackupName  string        `json:"backupName,omitempty"`
-	PointInTime PITSource     `json:"pointInTime,omitempty"`
-	OCIConfig   OCIConfigSpec `json:"ociConfig,omitempty"`
+	TargetADB    TargetSpec    `json:"targetADB"`
+	Source    SourceSpec    `json:"sourceSpec"`
+	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 
-type PITSource struct {
-	AutonomousDatabaseOCID string `json:"autonomousDatabaseOCID,omitempty"`
-	TimeStamp              string `json:"timeStamp,omitempty"`
+type SourceSpec struct {
+	AutonomousDatabaseBackup BackupSourceSpec `json:"autonomousDatabaseBackup,omitempty"`
+	PointInTime              string                       `json:"pointInTime,omitempty"`
+}
+
+type BackupSourceSpec struct {
+	Name string `json:"name,omitempty"`
 }
 
 type restoreStatusEnum string
@@ -111,7 +115,7 @@ func init() {
 
 // GetPIT returns the spec.pointInTime.timeStamp in SDKTime format
 func (r *AutonomousDatabaseRestore) GetPIT() (*common.SDKTime, error) {
-	return parseDisplayTime(r.Spec.PointInTime.TimeStamp)
+	return parseDisplayTime(r.Spec.Source.PointInTime)
 }
 
 func (r *AutonomousDatabaseRestore) ConvertWorkRequestStatus(s workrequests.WorkRequestStatusEnum) restoreStatusEnum {

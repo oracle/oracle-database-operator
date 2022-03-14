@@ -46,27 +46,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// name of our custom finalizer
-var finalizerName = "database.oracle.com/oraoperator-finalizer"
 
 // HasFinalizer returns true if the finalizer exists in the object metadata
-func HasFinalizer(obj client.Object) bool {
-	finalizer := obj.GetFinalizers()
-	return containsString(finalizer, finalizerName)
+func HasFinalizer(obj client.Object, finalizer string) bool {
+	finalizers := obj.GetFinalizers()
+	return containsString(finalizers, finalizer)
 }
 
 // Register adds the finalizer and patch the object
-func Register(kubeClient client.Client, obj client.Object) error {
-	finalizer := obj.GetFinalizers()
-	finalizer = append(finalizer, finalizerName)
-	return setFinalizer(kubeClient, obj, finalizer)
+func Register(kubeClient client.Client, obj client.Object, finalizer string) error {
+	finalizers := obj.GetFinalizers()
+	finalizers = append(finalizers, finalizer)
+	return setFinalizer(kubeClient, obj, finalizers)
 }
 
 // Unregister removes the finalizer and patch the object
-func Unregister(kubeClient client.Client, obj client.Object) error {
-	finalizer := obj.GetFinalizers()
-	finalizer = removeString(finalizer, finalizerName)
-	return setFinalizer(kubeClient, obj, finalizer)
+func Unregister(kubeClient client.Client, obj client.Object, finalizer string) error {
+	finalizers := obj.GetFinalizers()
+	finalizers = removeString(finalizers, finalizer)
+	return setFinalizer(kubeClient, obj, finalizers)
 }
 
 // Helper functions to check and remove string from a slice of strings.
@@ -95,10 +93,10 @@ type patchValue struct {
 	Value interface{} `json:"value"`
 }
 
-func setFinalizer(kubeClient client.Client, dbcs client.Object, finalizer []string) error {
+func setFinalizer(kubeClient client.Client, obj client.Object, finalizer []string) error {
 	payload := []patchValue{}
 
-	if dbcs.GetFinalizers() == nil {
+	if obj.GetFinalizers() == nil {
 		payload = append(payload, patchValue{
 			Op:    "replace",
 			Path:  "/metadata/finalizers",
@@ -118,5 +116,5 @@ func setFinalizer(kubeClient client.Client, dbcs client.Object, finalizer []stri
 	}
 
 	patch := client.RawPatch(types.JSONPatchType, payloadBytes)
-	return kubeClient.Patch(context.TODO(), dbcs, patch)
+	return kubeClient.Patch(context.TODO(), obj, patch)
 }

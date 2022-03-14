@@ -67,6 +67,10 @@ import (
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
+// name of our custom finalizer
+const finalizer = "database.oracle.com/oraoperator-finalizer"
+var emptyResult ctrl.Result = ctrl.Result{}
+
 // *AutonomousDatabaseReconciler reconciles a AutonomousDatabase object
 type AutonomousDatabaseReconciler struct {
 	KubeClient client.Client
@@ -78,8 +82,6 @@ type AutonomousDatabaseReconciler struct {
 	workService oci.WorkRequestService
 	lastSucSpec *dbv1alpha1.AutonomousDatabaseSpec
 }
-
-var emptyResult ctrl.Result = ctrl.Result{}
 
 // SetupWithManager function
 func (r *AutonomousDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -213,11 +215,6 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if err := r.downloadWallet(adb); err != nil {
 			return r.manageError(adb, err)
 		}
-
-		err = r.syncResource(adb)
-		if err != nil {
-			return r.manageError(adb, err)
-		}
 	case adbActionBind:
 		fallthrough
 	case adbActionSync:
@@ -244,6 +241,13 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	*	Sync AutonomousDatabase Backups from OCI
 	*****************************************************/
 	if err := r.syncBackupResources(adb); err != nil {
+		return r.manageError(adb, err)
+	}
+
+	/*****************************************************
+	*	Update the lastSucSpec
+	*****************************************************/
+	if err := r.updateLastSuccessfulSpec(adb); err != nil {
 		return r.manageError(adb, err)
 	}
 
@@ -283,19 +287,20 @@ func (r *AutonomousDatabaseReconciler) manageError(adb *dbv1alpha1.AutonomousDat
 	// Rollback if lastSucSpec exists
 	if r.lastSucSpec != nil {
 		// Send event
-		r.Recorder.Event(adb, corev1.EventTypeWarning, "SpecRollback", issue.Error())
+		r.Recorder.Event(adb, corev1.EventTypeWarning, "ReconcileIncompleted", issue.Error())
 
-		adb.Spec = *r.lastSucSpec
+		var finalIssue = issue
 
-		if err := r.updateResource(adb); err != nil {
-			// returns the error because we didn't trigger another Reconcile loop
-			return emptyResult, k8s.CombineErrors(issue, err)
+		if err := r.syncResource(adb); err != nil {
+			finalIssue = k8s.CombineErrors(finalIssue, err)
 		}
 
-		r.Log.Error(issue, "Reconcile failed")
+		if err := r.updateLastSuccessfulSpec(adb); err != nil {
+			finalIssue = k8s.CombineErrors(finalIssue, err)
+		}
 
-		// r.updateResource has already triggered another Reconcile loop, so we return a nil instead of an error
-		return emptyResult, nil
+		// r.updateResource has already triggered another Reconcile loop, so we simply log the error and return a nil
+		return emptyResult, finalIssue
 	} else {
 		// Send event
 		r.Recorder.Event(adb, corev1.EventTypeWarning, "CreateFailed", issue.Error())
@@ -309,14 +314,14 @@ func (r *AutonomousDatabaseReconciler) validateFinalizer(adb *dbv1alpha1.Autonom
 
 	if adb.ObjectMeta.DeletionTimestamp.IsZero() {
 		// The object is not being deleted
-		if *adb.Spec.HardLink && !k8s.HasFinalizer(adb) {
-			if err := k8s.Register(r.KubeClient, adb); err != nil {
+		if *adb.Spec.HardLink && !k8s.HasFinalizer(adb, finalizer) {
+			if err := k8s.Register(r.KubeClient, adb, finalizer); err != nil {
 				return false, err
 			}
 			logger.Info("Finalizer registered successfully.")
 
-		} else if !*adb.Spec.HardLink && k8s.HasFinalizer(adb) {
-			if err := k8s.Unregister(r.KubeClient, adb); err != nil {
+		} else if !*adb.Spec.HardLink && !k8s.HasFinalizer(adb, finalizer) {
+			if err := k8s.Unregister(r.KubeClient, adb, finalizer); err != nil {
 				return false, err
 			}
 			logger.Info("Finalizer unregistered successfully.")
@@ -336,7 +341,9 @@ func (r *AutonomousDatabaseReconciler) validateFinalizer(adb *dbv1alpha1.Autonom
 			}
 		}
 
-		k8s.Unregister(r.KubeClient, adb)
+		if err := k8s.Unregister(r.KubeClient, adb, finalizer); err != nil {
+			return true, err
+		}
 		logger.Info("Finalizer unregistered successfully.")
 		// Stop reconciliation as the item is being deleted
 		return true, nil
@@ -356,15 +363,15 @@ func (r *AutonomousDatabaseReconciler) updateLastSuccessfulSpec(adb *dbv1alpha1.
 	return annotations.SetAnnotations(r.KubeClient, adb, anns)
 }
 
-// helper function to update the resource, and then wait until the work completes after an update/start/stop/delete AutonomousDatabase request is sent
-func (r *AutonomousDatabaseReconciler) updateResourceAndWait(adb *dbv1alpha1.AutonomousDatabase, opcWorkRequestId string) error {
-	// updateResource updates the lastSucSpec as well
-	if err := r.updateResource(adb); err != nil {
+// A helper function to wait until the work completes after an update/start/stop/delete AutonomousDatabase request is sent
+// , and then sync the resource to make sure everything is updated when the work is finished
+func (r *AutonomousDatabaseReconciler) wait(adb *dbv1alpha1.AutonomousDatabase, opcWorkRequestId string) error {
+	// Wait until the work is finished
+	if _, err := r.workService.Wait(opcWorkRequestId); err != nil {
 		return err
 	}
 
-	// Wait until the work is finished
-	if _, err := r.workService.Wait(opcWorkRequestId); err != nil {
+	if err := r.syncResource(adb); err != nil {
 		return err
 	}
 
@@ -394,10 +401,6 @@ func (r *AutonomousDatabaseReconciler) updateResource(adb *dbv1alpha1.Autonomous
 		curADB.Spec.Details = adb.Spec.Details
 		return r.KubeClient.Update(context.TODO(), curADB)
 	}); err != nil {
-		return err
-	}
-
-	if err := r.updateLastSuccessfulSpec(adb); err != nil {
 		return err
 	}
 
@@ -466,9 +469,14 @@ func (r *AutonomousDatabaseReconciler) createADB(adb *dbv1alpha1.AutonomousDatab
 		return err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	// Update the ADB OCID and the status
+	adb.Spec.Details.AutonomousDatabaseOCID = resp.AutonomousDatabase.Id
+	adb.UpdateStatusFromOCIADB(resp.AutonomousDatabase)
+	if err := r.updateResource(adb); err != nil {
+		return err
+	}
 
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) updateGeneralFields(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -490,7 +498,12 @@ func (r *AutonomousDatabaseReconciler) updateGeneralFields(adb *dbv1alpha1.Auton
 		return nil
 	}
 
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	adb.UpdateStatusFromOCIADB(resp.AutonomousDatabase)
+	if err := r.updateResourceStatus(adb); err != nil {
+		return err
+	}
+
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) updateAdminPassword(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -499,14 +512,13 @@ func (r *AutonomousDatabaseReconciler) updateAdminPassword(adb *dbv1alpha1.Auton
 		return nil
 	}
 
-	resp, err := r.adbService.UpdateAutonomousDatabaseAdminPassword(difADB)
+	_, err := r.adbService.UpdateAutonomousDatabaseAdminPassword(difADB)
 	if err != nil {
 		return err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
-
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	// UpdateAdminPassword request doesn't return the workrequest ID
+	return nil
 }
 
 func (r *AutonomousDatabaseReconciler) updateDbWorkload(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -519,9 +531,12 @@ func (r *AutonomousDatabaseReconciler) updateDbWorkload(adb *dbv1alpha1.Autonomo
 		return err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	adb.UpdateStatusFromOCIADB(resp.AutonomousDatabase)
+	if err := r.updateResourceStatus(adb); err != nil {
+		return err
+	}
 
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) updateLicenseModel(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -534,9 +549,12 @@ func (r *AutonomousDatabaseReconciler) updateLicenseModel(adb *dbv1alpha1.Autono
 		return err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	adb.UpdateStatusFromOCIADB(resp.AutonomousDatabase)
+	if err := r.updateResourceStatus(adb); err != nil {
+		return err
+	}
 
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) updateScalingFields(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -551,9 +569,12 @@ func (r *AutonomousDatabaseReconciler) updateScalingFields(adb *dbv1alpha1.Auton
 		return err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	adb.UpdateStatusFromOCIADB(resp.AutonomousDatabase)
+	if err := r.updateResourceStatus(adb); err != nil {
+		return err
+	}
 
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) deleteAutonomousDatabase(adb *dbv1alpha1.AutonomousDatabase) error {
@@ -564,18 +585,12 @@ func (r *AutonomousDatabaseReconciler) deleteAutonomousDatabase(adb *dbv1alpha1.
 	}
 
 	adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateTerminating
-	opcWorkRequestId := *resp.OpcWorkRequestId
 
 	if err := r.updateResourceStatus(adb); err != nil {
 		return err
 	}
 
-	// Wait until the work is finished
-	if _, err := r.workService.Wait(opcWorkRequestId); err != nil {
-		return err
-	}
-
-	return nil
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) updateLifecycleState(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -614,11 +629,11 @@ func (r *AutonomousDatabaseReconciler) updateLifecycleState(adb *dbv1alpha1.Auto
 		return errors.New("Unknown state")
 	}
 
-	if err := r.updateResourceAndWait(adb, opcWorkRequestId); err != nil {
+	if err := r.updateResourceStatus(adb); err != nil {
 		return err
 	}
 
-	return nil
+	return r.wait(adb, opcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) setMTLSRequired(adb *dbv1alpha1.AutonomousDatabase) error {
@@ -627,9 +642,12 @@ func (r *AutonomousDatabaseReconciler) setMTLSRequired(adb *dbv1alpha1.Autonomou
 		return err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	adb.UpdateStatusFromOCIADB(resp.AutonomousDatabase)
+	if err := r.updateResourceStatus(adb); err != nil {
+		return err
+	}
 
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) updateMTLS(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -642,20 +660,26 @@ func (r *AutonomousDatabaseReconciler) updateMTLS(adb *dbv1alpha1.AutonomousData
 		return err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	adb.UpdateStatusFromOCIADB(resp.AutonomousDatabase)
+	if err := r.updateResourceStatus(adb); err != nil {
+		return err
+	}
 
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) setNetworkAccessPublic(adb *dbv1alpha1.AutonomousDatabase) error {
-	resp, err := r.adbService.UpdateNetworkAccessPublic(r.lastSucSpec, *adb.Spec.Details.AutonomousDatabaseOCID)
+	resp, err := r.adbService.UpdateNetworkAccessPublic(r.lastSucSpec.Details.NetworkAccess.AccessType, *adb.Spec.Details.AutonomousDatabaseOCID)
 	if err != nil {
 		return err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	adb.UpdateStatusFromOCIADB(resp.AutonomousDatabase)
+	if err := r.updateResourceStatus(adb); err != nil {
+		return err
+	}
 
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 func (r *AutonomousDatabaseReconciler) updateNetworkAccess(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -672,9 +696,12 @@ func (r *AutonomousDatabaseReconciler) updateNetworkAccess(adb *dbv1alpha1.Auton
 		return err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	adb.UpdateStatusFromOCIADB(resp.AutonomousDatabase)
+	if err := r.updateResourceStatus(adb); err != nil {
+		return err
+	}
 
-	return r.updateResourceAndWait(adb, *resp.OpcWorkRequestId)
+	return r.wait(adb, *resp.OpcWorkRequestId)
 }
 
 // The logic of updating the network access configurations is as follows:

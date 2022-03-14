@@ -94,10 +94,16 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) error {
 			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"), "cannot assign a new autonomousDatabaseBackupOCID to this backup"))
 	}
 
-	if r.Spec.AutonomousDatabaseOCID != "" &&
-		oldBackup.Spec.AutonomousDatabaseOCID != r.Spec.AutonomousDatabaseOCID {
+	if r.Spec.TargetADB.Name != "" &&
+		oldBackup.Spec.TargetADB.Name != r.Spec.TargetADB.Name {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseOCID"), "cannot assign a new autonomousDatabaseOCID to this backup"))
+			field.Forbidden(field.NewPath("spec").Child("targetADB").Child("name"), "cannot change target.name"))
+	}
+
+	if r.Spec.TargetADB.OCID != "" &&
+		oldBackup.Spec.TargetADB.OCID != r.Spec.TargetADB.OCID {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("targetADB").Child("ocid"), "cannot change target.ocid"))
 	}
 
 	if r.Spec.DisplayName != "" &&
