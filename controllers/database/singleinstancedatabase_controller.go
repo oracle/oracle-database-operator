@@ -675,7 +675,40 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					Name:      "datamount",
 				}},
 				Env: func() []corev1.EnvVar {
+					// adding XE support
 					if m.Spec.CloneFrom == "" {
+						if m.Spec.Edition == "express" {
+							return []corev1.EnvVar{
+								{
+									Name:  "SVC_HOST",
+									Value: m.Name,
+								},
+								{
+									Name:  "SVC_PORT",
+									Value: "1521",
+								},
+								{
+									Name:  "ORACLE_CHARACTERSET",
+									Value: m.Spec.Charset,
+								},
+								{
+									Name:  "ORACLE_EDITION",
+									Value: m.Spec.Edition,
+								},
+								{
+									Name: "ORACLE_PWD",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: m.Spec.AdminPassword.SecretName,
+											},
+											Key: m.Spec.AdminPassword.SecretKey,
+										},
+									},
+								},
+							}
+						}
+
 						return []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
