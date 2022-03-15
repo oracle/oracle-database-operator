@@ -85,6 +85,7 @@ spec:
                 enum:
                 - standard
                 - enterprise
+                - express
                 type: string
               flashBack:
                 type: boolean
