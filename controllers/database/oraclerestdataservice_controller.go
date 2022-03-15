@@ -1037,10 +1037,6 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	r.Status().Update(ctx, m)
 
 	configureApexRestSqlClient := "sqlplus -s / as sysdba @apex_rest_config.sql"
-	if n.Spec.Edition == "express" {
-		configureApexRestSqlClient = "su -p oracle -c \"sqlplus -s / as sysdba @apex_rest_config.sql;\""
-	}
-
 	// Configure APEX
 	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf(dbcommons.ConfigureApexRest, apexPassword, configureApexRestSqlClient))
