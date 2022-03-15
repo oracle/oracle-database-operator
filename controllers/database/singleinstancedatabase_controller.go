@@ -1494,7 +1494,7 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 	if m.Spec.Edition == "express" {
 		//Configure OEM Express Listener
 		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false,
-			"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | su -p oracle -c \"sqlplus -s / as sysdba\" ", dbcommons.ConfigureOEMSQL))
+			"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba ", dbcommons.ConfigureOEMSQL))
 		if err != nil {
 			r.Log.Error(err, err.Error())
 			return requeueY, readyPod, err
