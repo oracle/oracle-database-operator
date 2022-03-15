@@ -831,17 +831,17 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsUser: func() *int64 {
-					i := int64(0)
-					if m.Spec.Edition != "express" {
-						i = int64(dbcommons.ORACLE_UID)
-					}
+					// i := int64(0)
+					// if m.Spec.Edition != "express" {
+					i := int64(dbcommons.ORACLE_UID)
+					// }
 					return &i
 				}(),
 				RunAsGroup: func() *int64 {
-					i := int64(0)
-					if m.Spec.Edition != "express" {
-						i = int64(dbcommons.ORACLE_GUID)
-					}
+					// i := int64(0)
+					// if m.Spec.Edition != "express" {
+					i := int64(dbcommons.ORACLE_GUID)
+					// }
 					return &i
 				}(),
 			},
