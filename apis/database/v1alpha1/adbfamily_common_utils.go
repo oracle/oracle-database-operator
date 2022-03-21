@@ -49,6 +49,9 @@ import (
 	"github.com/oracle/oci-go-sdk/v54/common"
 )
 
+// LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
+const LastSuccessfulSpec string = "lastSuccessfulSpec"
+
 // File the meta condition and return the meta view
 func CreateMetaCondition(obj client.Object, err error, lifecycleState string, stateMsg string) metav1.Condition {
 
@@ -62,20 +65,34 @@ func CreateMetaCondition(obj client.Object, err error, lifecycleState string, st
 	}
 }
 
-// LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
-const LastSuccessfulSpec string = "lastSuccessfulSpec"
-
+/************************
+*	OCI config
+************************/
 type OCIConfigSpec struct {
 	ConfigMapName *string `json:"configMapName,omitempty"`
 	SecretName    *string `json:"secretName,omitempty"`
 }
 
-// TargetSpec defines the spec of the target for backup/restore runs.
-// The name could be the name of an AutonomousDatabase or an AutonomousDatabaseBackup
-type TargetSpec struct {
-	Name string `json:"name"`
-	OCID string `json:"ocid"`
+/************************
+*	ADB spec
+************************/
+type K8sADBSpec struct {
+	Name *string `json:"name,omitempty"`
 }
+
+type OCIADBSpec struct {
+	OCID *string `json:"ocid,omitempty"`
+}
+
+// TargetSpec defines the spec of the target for backup/restore runs.
+type TargetSpec struct {
+	K8sADB K8sADBSpec `json:"k8sADB,omitempty"`
+	OCIADB OCIADBSpec `json:"ociADB,omitempty"`
+}
+
+/**************************
+*	Remove Unchanged Fields
+**************************/
 
 // removeUnchangedFields removes the unchanged fields in the struct and returns if the struct is changed.
 // lastSpec should be a derefereced struct that is the last successful spec, e.g. AutonomousDatabaseSpec.
@@ -162,6 +179,10 @@ func hasChanged(lastField reflect.Value, curField reflect.Value) bool {
 
 	return true
 }
+
+/************************
+*	SDKTime format
+************************/
 
 // Follow the format of the display time
 const displayFormat = "2006-01-02 15:04:05 MST"

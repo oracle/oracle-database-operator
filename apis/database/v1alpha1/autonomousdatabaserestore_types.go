@@ -39,6 +39,8 @@
 package v1alpha1
 
 import (
+	"errors"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/oracle/oci-go-sdk/v54/common"
@@ -47,23 +49,27 @@ import (
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+type K8sADBBackupSpec struct {
+	Name *string `json:"name,omitempty"`
+}
+
+type PITSpec struct {
+	// The timestamp must follow this format: YYYY-MM-DD HH:MM:SS GMT
+	Timestamp *string `json:"timestamp,omitempty"`
+}
+
+type SourceSpec struct {
+	K8sADBBackup K8sADBBackupSpec `json:"k8sADBBackup,omitempty"`
+	PointInTime  PITSpec          `json:"pointInTime,omitempty"`
+}
 
 // AutonomousDatabaseRestoreSpec defines the desired state of AutonomousDatabaseRestore
 type AutonomousDatabaseRestoreSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	TargetADB    TargetSpec    `json:"targetADB"`
-	Source    SourceSpec    `json:"sourceSpec"`
+	Target    TargetSpec    `json:"target"`
+	Source    SourceSpec    `json:"source"`
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
-}
-
-type SourceSpec struct {
-	AutonomousDatabaseBackup BackupSourceSpec `json:"autonomousDatabaseBackup,omitempty"`
-	PointInTime              string                       `json:"pointInTime,omitempty"`
-}
-
-type BackupSourceSpec struct {
-	Name string `json:"name,omitempty"`
 }
 
 type restoreStatusEnum string
@@ -115,22 +121,29 @@ func init() {
 
 // GetPIT returns the spec.pointInTime.timeStamp in SDKTime format
 func (r *AutonomousDatabaseRestore) GetPIT() (*common.SDKTime, error) {
-	return parseDisplayTime(r.Spec.Source.PointInTime)
+	if r.Spec.Source.PointInTime.Timestamp == nil {
+		return nil, errors.New("The timestamp is empty")
+	}
+	return parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 }
 
-func (r *AutonomousDatabaseRestore) ConvertWorkRequestStatus(s workrequests.WorkRequestStatusEnum) restoreStatusEnum {
+func (r *AutonomousDatabaseRestore) ConvertWorkRequestStatus(s workrequests.WorkRequestStatusEnum) (restoreStatusEnum, error) {
 	switch s {
 	case workrequests.WorkRequestStatusAccepted:
 		fallthrough
 	case workrequests.WorkRequestStatusInProgress:
-		return RestoreStatusInProgress
+		return RestoreStatusInProgress, nil
 
 	case workrequests.WorkRequestStatusSucceeded:
-		return RestoreStatusSucceeded
+		return RestoreStatusSucceeded, nil
 
+	case workrequests.WorkRequestStatusCanceling:
+		fallthrough
+	case workrequests.WorkRequestStatusCanceled:
+		fallthrough
 	case workrequests.WorkRequestStatusFailed:
-		return RestoreStatusFailed
+		return RestoreStatusFailed, nil
 	}
 
-	return "UNKNOWN"
+	return "", errors.New("unable to convert the status: " + string(s))
 }

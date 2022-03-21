@@ -69,13 +69,35 @@ spec:
                 properties:
                   adminPassword:
                     properties:
-                      k8sSecretName:
-                        type: string
-                      ociSecretOCID:
-                        type: string
+                      k8sSecret:
+                        description: "*********************** *\tSecret specs ***********************"
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociSecret:
+                        properties:
+                          ocid:
+                            type: string
+                        type: object
                     type: object
-                  autonomousContainerDatabaseOCID:
-                    type: string
+                  autonomousContainerDatabase:
+                    description: ACDSpec defines the spec of the target for backup/restore
+                      runs. The name could be the name of an AutonomousDatabase or
+                      an AutonomousDatabaseBackup
+                    properties:
+                      k8sACD:
+                        description: "*********************** *\tACD specs ***********************"
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociACD:
+                        properties:
+                          ocid:
+                            type: string
+                        type: object
+                    type: object
                   autonomousDatabaseOCID:
                     type: string
                   compartmentOCID:
@@ -153,10 +175,18 @@ spec:
                         type: string
                       password:
                         properties:
-                          k8sSecretName:
-                            type: string
-                          ociSecretOCID:
-                            type: string
+                          k8sSecret:
+                            description: "*********************** *\tSecret specs
+                              ***********************"
+                            properties:
+                              name:
+                                type: string
+                            type: object
+                          ociSecret:
+                            properties:
+                              ocid:
+                                type: string
+                            type: object
                         type: object
                     type: object
                 type: object
@@ -164,6 +194,7 @@ spec:
                 default: false
                 type: boolean
               ociConfig:
+                description: "*********************** *\tOCI config ***********************"
                 properties:
                   configMapName:
                     type: string

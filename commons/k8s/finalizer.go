@@ -44,56 +44,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+func patchFinalizer(kubeClient client.Client, obj client.Object) error {
+	finalizer := obj.GetFinalizers()
 
-// HasFinalizer returns true if the finalizer exists in the object metadata
-func HasFinalizer(obj client.Object, finalizer string) bool {
-	finalizers := obj.GetFinalizers()
-	return containsString(finalizers, finalizer)
-}
-
-// Register adds the finalizer and patch the object
-func Register(kubeClient client.Client, obj client.Object, finalizer string) error {
-	finalizers := obj.GetFinalizers()
-	finalizers = append(finalizers, finalizer)
-	return setFinalizer(kubeClient, obj, finalizers)
-}
-
-// Unregister removes the finalizer and patch the object
-func Unregister(kubeClient client.Client, obj client.Object, finalizer string) error {
-	finalizers := obj.GetFinalizers()
-	finalizers = removeString(finalizers, finalizer)
-	return setFinalizer(kubeClient, obj, finalizers)
-}
-
-// Helper functions to check and remove string from a slice of strings.
-func containsString(slice []string, s string) bool {
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
-}
-
-func removeString(slice []string, s string) (result []string) {
-	for _, item := range slice {
-		if item == s {
-			continue
-		}
-		result = append(result, item)
-	}
-	return
-}
-
-type patchValue struct {
-	Op    string      `json:"op"`
-	Path  string      `json:"path"`
-	Value interface{} `json:"value"`
-}
-
-func setFinalizer(kubeClient client.Client, obj client.Object, finalizer []string) error {
 	payload := []patchValue{}
 
 	if obj.GetFinalizers() == nil {
@@ -117,4 +73,26 @@ func setFinalizer(kubeClient client.Client, obj client.Object, finalizer []strin
 
 	patch := client.RawPatch(types.JSONPatchType, payloadBytes)
 	return kubeClient.Patch(context.TODO(), obj, patch)
+}
+
+// No-op if the obj already has the finalizer
+func AddFinalizerAndPatch(kubeClient client.Client, obj client.Object, finalizer string) error {
+	if !controllerutil.ContainsFinalizer(obj, finalizer) {
+		controllerutil.AddFinalizer(obj, finalizer)
+		if err := patchFinalizer(kubeClient, obj); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// No-op if the obj doesn't have the finalizer
+func RemoveFinalizerAndPatch(kubeClient client.Client, obj client.Object, finalizer string) error {
+	if controllerutil.ContainsFinalizer(obj, finalizer) {
+		controllerutil.RemoveFinalizer(obj, finalizer)
+		if err := patchFinalizer(kubeClient, obj); err != nil {
+			return err
+		}
+	}
+	return nil
 }

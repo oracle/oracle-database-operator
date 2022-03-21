@@ -70,30 +70,36 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() error {
 
 	var allErrs field.ErrorList
 
+	// Validate the target ADB
+	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB.name or ociADB.ocid, but not both"))
+	}
+
 	// Validate the restore source
-	if r.Spec.Source.AutonomousDatabaseBackup.Name == "" &&
-		r.Spec.Source.PointInTime == "" {
+	if r.Spec.Source.K8sADBBackup.Name == nil &&
+		r.Spec.Source.PointInTime.Timestamp == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("source"), "no retore source is chosen"))
 	}
 
-	if r.Spec.Source.AutonomousDatabaseBackup.Name != "" &&
-		r.Spec.Source.PointInTime != "" {
+	if r.Spec.Source.K8sADBBackup.Name != nil &&
+		r.Spec.Source.PointInTime.Timestamp != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("source"), "cannot apply backupName and the PITR parameters at the same time"))
 	}
 
-	if (r.Spec.TargetADB.OCID == "" && r.Spec.Source.PointInTime != "") ||
-		(r.Spec.TargetADB.OCID != "" && r.Spec.Source.PointInTime == "") {
-		field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime"), "targetADB.OCID or source.pointInTime cannot be empty")
+	if (r.Spec.Target.OCIADB.OCID == nil && r.Spec.Source.PointInTime.Timestamp != nil) ||
+		(r.Spec.Target.OCIADB.OCID != nil && r.Spec.Source.PointInTime.Timestamp == nil) {
+		field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime").Child("timestamp"), "target.ociADB.ocid or source.pointInTime.timestamp cannot be empty")
 	}
 
 	// Verify the timestamp format if it's PITR
-	if r.Spec.Source.PointInTime != "" {
-		_, err := parseDisplayTime(r.Spec.Source.PointInTime)
+	if r.Spec.Source.PointInTime.Timestamp != nil {
+		_, err := parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 		if err != nil {
 			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime"), "invalid timestamp format"))
+				field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime").Child("timestamp"), "invalid timestamp format"))
 		}
 	}
 
@@ -110,9 +116,6 @@ func (r *AutonomousDatabaseRestore) ValidateUpdate(old runtime.Object) error {
 	autonomousdatabaserestorelog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
-
-	allErrs = append(allErrs,
-		field.Forbidden(field.NewPath("spec"), "update AutonomousDatabaseRestore is diabled"))
 
 	if len(allErrs) == 0 {
 		return nil

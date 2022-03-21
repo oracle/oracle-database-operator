@@ -51,6 +51,7 @@ import (
 )
 
 type WorkRequestService interface {
+	Get(opcWorkRequestID string) (workrequests.WorkRequestStatusEnum, error)
 	Wait(opcWorkRequestID string) (workrequests.WorkRequestStatusEnum, error)
 }
 
@@ -93,8 +94,8 @@ func (w workRequestService) getRetryPolicy() common.RetryPolicy {
 		return true
 	}
 
-	// maximum times of retry (~30mins)
-	attempts := uint(63)
+	// maximum times of retry (~60mins)
+	attempts := uint(124)
 
 	nextDuration := func(r common.OCIOperationResponse) time.Duration {
 		// Wait longer for next retry when your previous one failed
@@ -120,6 +121,19 @@ func (w *workRequestService) Wait(opcWorkRequestID string) (workrequests.WorkReq
 		RequestMetadata: common.RequestMetadata{
 			RetryPolicy: &retryPolicy,
 		},
+	}
+
+	resp, err := w.workClient.GetWorkRequest(context.TODO(), workRequest)
+	if err != nil {
+		return resp.Status, err
+	}
+
+	return resp.Status, nil
+}
+
+func (w *workRequestService) Get(opcWorkRequestID string) (workrequests.WorkRequestStatusEnum, error) {
+	workRequest := workrequests.GetWorkRequestRequest{
+		WorkRequestId: common.String(opcWorkRequestID),
 	}
 
 	resp, err := w.workClient.GetWorkRequest(context.TODO(), workRequest)

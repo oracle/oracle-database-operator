@@ -1,0 +1,20 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousContainerDatabase
+metadata:
+  name: autonomouscontainerdatabase-sample
+spec:
+  # Update compartmentOCID with your compartment OCID.
+  compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
+  displayName: newACD
+  autonomousExadataVMClusterOCID: ocid1.autonomousexainfrastructure...
+  patchModel: RELEASE_UPDATES # optional
+
+  freeformTags:
+    key1: val1
+
+  hardLink: false
+
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred-dedicated
+    secretName: oci-privatekey-dedicated

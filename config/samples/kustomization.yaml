@@ -11,7 +11,7 @@ resources:
   - adb/autonomousdatabase_bind.yaml
   - adb/autonomousdatabase_backup.yaml
   - adb/autonomousdatabase_restore.yaml
-  - adb/autonomouscontainerdatabase.yaml
+  - acd/autonomouscontainerdatabase_create.yaml
   - sidb/singleinstancedatabase.yaml
   - sharding/shardingdatabase.yaml
   - sharding/sharding_v1alpha1_provshard.yaml
