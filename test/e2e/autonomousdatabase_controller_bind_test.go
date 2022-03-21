@@ -88,10 +88,6 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 
 		err = e2eutil.WaitUntilWorkCompleted(workClient, createResp.OpcWorkRequestId)
 		Expect(err).ShouldNot(HaveOccurred())
-
-		// listResp, err := e2eutil.ListAutonomousDatabases(dbClient, &SharedCompartmentOCID, &dbName)
-		// Expect(err).ShouldNot(HaveOccurred())
-		// fmt.Printf("List request DB %s is in %s state \n", *listResp.Items[0].DisplayName, listResp.Items[0].LifecycleState)
 	})
 
 	Describe("ADB binding with HardLink = false using Wallet Password Secret", func() {
@@ -111,7 +107,9 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 						Wallet: dbv1alpha1.WalletSpec{
 							Name: common.String(downloadedWallet),
 							Password: dbv1alpha1.PasswordSpec{
-								K8sSecretName: common.String(SharedWalletPassSecretName),
+								K8sSecret: dbv1alpha1.K8sSecretSpec{
+									Name: common.String(SharedWalletPassSecretName),
+								},
 							},
 						},
 					},
@@ -168,7 +166,9 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 						Wallet: dbv1alpha1.WalletSpec{
 							Name: common.String(downloadedWallet),
 							Password: dbv1alpha1.PasswordSpec{
-								OCISecretOCID: common.String(SharedInstanceWalletPasswordOCID),
+								OCISecret: dbv1alpha1.OCISecretSpec{
+									OCID: common.String(SharedInstanceWalletPasswordOCID),
+								},
 							},
 						},
 					},

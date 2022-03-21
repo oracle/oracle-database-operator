@@ -52,9 +52,9 @@ import (
 type AutonomousDatabaseBackupSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	TargetADB                       TargetSpec `json:"targetADB"`
+	Target                       TargetSpec `json:"target"`
 	DisplayName                  string     `json:"displayName"`
-	AutonomousDatabaseBackupOCID string     `json:"autonomousDatabaseBackupOCID,omitempty"`
+	AutonomousDatabaseBackupOCID *string    `json:"autonomousDatabaseBackupOCID,omitempty"`
 
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
@@ -63,15 +63,17 @@ type AutonomousDatabaseBackupSpec struct {
 type AutonomousDatabaseBackupStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	LifecycleState         database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
-	Type                   database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
-	IsAutomatic            bool                                                `json:"isAutomatic"`
-	TimeStarted            string                                              `json:"timeStarted,omitempty"`
-	TimeEnded              string                                              `json:"timeEnded,omitempty"`
-	AutonomousDatabaseOCID string                                              `json:"autonomousDatabaseOCID"`
-	CompartmentOCID        string                                              `json:"compartmentOCID"`
-	DBName                 string                                              `json:"dbName"`
-	DBDisplayName          string                                              `json:"dbDisplayName"`
+	AutonomousDatabaseBackupOCID string                                              `json:"autonomousDatabaseBackupOCID,omitempty"`
+	DisplayName                  string                                              `json:"displayName"`
+	LifecycleState               database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
+	Type                         database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
+	IsAutomatic                  bool                                                `json:"isAutomatic"`
+	TimeStarted                  string                                              `json:"timeStarted,omitempty"`
+	TimeEnded                    string                                              `json:"timeEnded,omitempty"`
+	AutonomousDatabaseOCID       string                                              `json:"autonomousDatabaseOCID"`
+	CompartmentOCID              string                                              `json:"compartmentOCID"`
+	DBName                       string                                              `json:"dbName"`
+	DBDisplayName                string                                              `json:"dbDisplayName"`
 }
 
 //+kubebuilder:object:root=true
@@ -105,10 +107,10 @@ func init() {
 	SchemeBuilder.Register(&AutonomousDatabaseBackup{}, &AutonomousDatabaseBackupList{})
 }
 
-func (backup *AutonomousDatabaseBackup) UpdateFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociADB database.AutonomousDatabase) {
-	backup.Spec.AutonomousDatabaseBackupOCID = *ociBackup.Id
-	backup.Spec.DisplayName = *ociBackup.DisplayName
-	
+func (backup *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociADB database.AutonomousDatabase) {
+	backup.Status.AutonomousDatabaseBackupOCID = *ociBackup.Id
+	backup.Status.DisplayName = *ociBackup.DisplayName
+
 	backup.Status.AutonomousDatabaseOCID = *ociBackup.AutonomousDatabaseId
 	backup.Status.CompartmentOCID = *ociBackup.CompartmentId
 	backup.Status.Type = ociBackup.Type

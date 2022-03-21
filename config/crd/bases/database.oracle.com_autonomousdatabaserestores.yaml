@@ -52,37 +52,50 @@ spec:
               AutonomousDatabaseRestore
             properties:
               ociConfig:
+                description: "*********************** *\tOCI config ***********************"
                 properties:
                   configMapName:
                     type: string
                   secretName:
                     type: string
                 type: object
-              sourceSpec:
+              source:
                 properties:
-                  autonomousDatabaseBackup:
+                  k8sADBBackup:
+                    description: 'EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO
+                      OWN! NOTE: json tags are required.  Any new fields you add must
+                      have json tags for the fields to be serialized.'
                     properties:
                       name:
                         type: string
                     type: object
                   pointInTime:
-                    type: string
+                    properties:
+                      timestamp:
+                        description: 'The timestamp must follow this format: YYYY-MM-DD
+                          HH:MM:SS GMT'
+                        type: string
+                    type: object
                 type: object
-              targetADB:
+              target:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file'
                 properties:
-                  name:
-                    type: string
-                  ocid:
-                    type: string
-                required:
-                - name
-                - ocid
+                  k8sADB:
+                    description: "*********************** *\tADB spec ***********************"
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  ociADB:
+                    properties:
+                      ocid:
+                        type: string
+                    type: object
                 type: object
             required:
-            - sourceSpec
-            - targetADB
+            - source
+            - target
             type: object
           status:
             description: AutonomousDatabaseRestoreStatus defines the observed state

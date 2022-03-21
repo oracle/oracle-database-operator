@@ -62,16 +62,6 @@ func FetchResource(kubeClient client.Client, namespace string, name string, obje
 	return nil
 }
 
-func FetchAutonomousDatabase(kubeClient client.Client, namespace string, name string) (*dbv1alpha1.AutonomousDatabase, error) {
-	adb := &dbv1alpha1.AutonomousDatabase{}
-
-	if err := FetchResource(kubeClient, namespace, name, adb); err != nil {
-		return nil, err
-	}
-
-	return adb, nil
-}
-
 // Returns the first AutonomousDatabase resource that matches the AutonomousDatabaseOCID of the backup
 // If the AutonomousDatabase doesn't exist, returns a nil
 func FetchAutonomousDatabaseWithOCID(kubeClient client.Client, namespace string, ocid string) (*dbv1alpha1.AutonomousDatabase, error) {
@@ -131,7 +121,7 @@ func FetchConfigMap(kubeClient client.Client, namespace string, name string) (*c
 
 func FetchSecret(kubeClient client.Client, namespace string, name string) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
-	
+
 	if err := FetchResource(kubeClient, namespace, name, secret); err != nil {
 		return nil, err
 	}

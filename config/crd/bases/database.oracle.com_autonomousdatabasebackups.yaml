@@ -62,32 +62,42 @@ spec:
               displayName:
                 type: string
               ociConfig:
+                description: "*********************** *\tOCI config ***********************"
                 properties:
                   configMapName:
                     type: string
                   secretName:
                     type: string
                 type: object
-              targetADB:
+              target:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file'
                 properties:
-                  name:
-                    type: string
-                  ocid:
-                    type: string
-                required:
-                - name
-                - ocid
+                  k8sADB:
+                    description: "*********************** *\tADB spec ***********************"
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  ociADB:
+                    properties:
+                      ocid:
+                        type: string
+                    type: object
                 type: object
             required:
             - displayName
-            - targetADB
+            - target
             type: object
           status:
             description: AutonomousDatabaseBackupStatus defines the observed state
               of AutonomousDatabaseBackup
             properties:
+              autonomousDatabaseBackupOCID:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
+                type: string
               autonomousDatabaseOCID:
                 type: string
               compartmentOCID:
@@ -96,12 +106,13 @@ spec:
                 type: string
               dbName:
                 type: string
+              displayName:
+                type: string
               isAutomatic:
                 type: boolean
               lifecycleState:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
+                description: 'AutonomousDatabaseBackupLifecycleStateEnum Enum with
+                  underlying type: string'
                 type: string
               timeEnded:
                 type: string
@@ -116,6 +127,7 @@ spec:
             - compartmentOCID
             - dbDisplayName
             - dbName
+            - displayName
             - isAutomatic
             - lifecycleState
             - type

@@ -82,9 +82,12 @@ var (
 	BeforeSuite  = ginkgo.BeforeSuite
 	AfterSuite   = ginkgo.AfterSuite
 	Describe     = ginkgo.Describe
+	PDescribe    = ginkgo.PDescribe
 	AfterEach    = ginkgo.AfterEach
 	By           = ginkgo.By
 	It           = ginkgo.It
+	FIt          = ginkgo.FIt
+	PIt          = ginkgo.PIt
 	Expect       = gomega.Expect
 	Succeed      = gomega.Succeed
 	HaveOccurred = gomega.HaveOccurred
@@ -159,6 +162,30 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabase_test"),
 		Scheme:     k8sManager.GetScheme(),
 		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabase_test"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&controllers.AutonomousDatabaseBackupReconciler{
+		KubeClient: k8sManager.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseBakcup_test"),
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabaseBakcup_test"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&controllers.AutonomousDatabaseRestoreReconciler{
+		KubeClient: k8sManager.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseRestore_test"),
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabaseRestore_test"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&controllers.AutonomousContainerDatabaseReconciler{
+		KubeClient: k8sManager.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousContainerDatabase_test"),
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousContainerDatabase_test"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 

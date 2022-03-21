@@ -74,6 +74,7 @@ type DatabaseService interface {
 	CreateAutonomousContainerDatabase(acb *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
 	GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error)
 	UpdateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
+	TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error)
 }
 
 type databaseService struct {
@@ -115,11 +116,11 @@ func NewDatabaseService(
 func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1.PasswordSpec) (*string, error) {
 	logger := d.logger.WithName("read-password")
 
-	if passwordSpec.K8sSecretName != nil {
-		logger.Info(fmt.Sprintf("Getting password from Secret %s", *passwordSpec.K8sSecretName))
+	if passwordSpec.K8sSecret.Name != nil {
+		logger.Info(fmt.Sprintf("Getting password from Secret %s", *passwordSpec.K8sSecret.Name))
 
-		key := *passwordSpec.K8sSecretName
-		password, err := k8s.GetSecretValue(d.kubeClient, namespace, *passwordSpec.K8sSecretName, key)
+		key := *passwordSpec.K8sSecret.Name
+		password, err := k8s.GetSecretValue(d.kubeClient, namespace, *passwordSpec.K8sSecret.Name, key)
 		if err != nil {
 			return nil, err
 		}
@@ -127,14 +128,31 @@ func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1
 		return common.String(password), nil
 	}
 
-	if passwordSpec.OCISecretOCID != nil {
-		logger.Info(fmt.Sprintf("Getting password from OCI Vault Secret OCID %s", *passwordSpec.OCISecretOCID))
+	if passwordSpec.OCISecret.OCID != nil {
+		logger.Info(fmt.Sprintf("Getting password from OCI Vault Secret OCID %s", *passwordSpec.OCISecret.OCID))
 
-		password, err := d.vaultService.GetSecretValue(*passwordSpec.OCISecretOCID)
+		password, err := d.vaultService.GetSecretValue(*passwordSpec.OCISecret.OCID)
 		if err != nil {
 			return nil, err
 		}
 		return common.String(password), nil
+	}
+
+	return nil, nil
+}
+
+func (d *databaseService) readACD_OCID(acd *dbv1alpha1.ACDSpec, namespace string) (*string, error) {
+	if acd.OCIACD.OCID != nil {
+		return acd.OCIACD.OCID, nil
+	}
+
+	if acd.K8sACD.Name != nil {
+		fetchedACD := &dbv1alpha1.AutonomousContainerDatabase{}
+		if err := k8s.FetchResource(d.kubeClient, namespace, *acd.K8sACD.Name, fetchedACD); err != nil {
+			return nil, err
+		}
+
+		return fetchedACD.Spec.AutonomousContainerDatabaseOCID, nil
 	}
 
 	return nil, nil
@@ -147,9 +165,13 @@ func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDat
 		return resp, err
 	}
 
+	acdOCID, err := d.readACD_OCID(&adb.Spec.Details.AutonomousContainerDatabase, adb.Namespace)
+	if err != nil {
+		return resp, err
+	}
+
 	createAutonomousDatabaseDetails := database.CreateAutonomousDatabaseDetails{
 		CompartmentId:                 adb.Spec.Details.CompartmentOCID,
-		AutonomousContainerDatabaseId: adb.Spec.Details.AutonomousContainerDatabaseOCID,
 		DbName:                        adb.Spec.Details.DbName,
 		CpuCoreCount:                  adb.Spec.Details.CPUCoreCount,
 		DataStorageSizeInTBs:          adb.Spec.Details.DataStorageSizeInTBs,
@@ -157,6 +179,7 @@ func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDat
 		DisplayName:                   adb.Spec.Details.DisplayName,
 		IsAutoScalingEnabled:          adb.Spec.Details.IsAutoScalingEnabled,
 		IsDedicated:                   adb.Spec.Details.IsDedicated,
+		AutonomousContainerDatabaseId: acdOCID,
 		DbVersion:                     adb.Spec.Details.DbVersion,
 		DbWorkload: database.CreateAutonomousDatabaseBaseDbWorkloadEnum(
 			adb.Spec.Details.DbWorkload),
