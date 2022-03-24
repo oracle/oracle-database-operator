@@ -75,6 +75,7 @@ type AutonomousDatabaseRestoreSpec struct {
 type restoreStatusEnum string
 
 const (
+	RestoreStatusError      restoreStatusEnum = "ERROR"
 	RestoreStatusInProgress restoreStatusEnum = "IN_PROGRESS"
 	RestoreStatusFailed     restoreStatusEnum = "FAILED"
 	RestoreStatusSucceeded  restoreStatusEnum = "SUCCEEDED"
@@ -85,6 +86,9 @@ type AutonomousDatabaseRestoreStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	DisplayName            string            `json:"displayName"`
+	TimeAccepted           string            `json:"timeAccepted,omitempty"`
+	TimeStarted            string            `json:"timeStarted,omitempty"`
+	TimeEnded              string            `json:"timeEnded,omitempty"`
 	DbName                 string            `json:"dbName"`
 	AutonomousDatabaseOCID string            `json:"autonomousDatabaseOCID"`
 	Status                 restoreStatusEnum `json:"status"`
@@ -94,7 +98,7 @@ type AutonomousDatabaseRestoreStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:shortName="adbr";"adbrs"
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type=string
-// +kubebuilder:printcolumn:JSONPath=".status.displayName",name="DisplayName",type=string
+// +kubebuilder:printcolumn:JSONPath=".status.displayName",name="DbDisplayName",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.dbName",name="DbName",type=string
 
 // AutonomousDatabaseRestore is the Schema for the autonomousdatabaserestores API
@@ -127,23 +131,23 @@ func (r *AutonomousDatabaseRestore) GetPIT() (*common.SDKTime, error) {
 	return parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 }
 
-func (r *AutonomousDatabaseRestore) ConvertWorkRequestStatus(s workrequests.WorkRequestStatusEnum) (restoreStatusEnum, error) {
+func (r *AutonomousDatabaseRestore) ConvertWorkRequestStatus(s workrequests.WorkRequestStatusEnum) restoreStatusEnum {
 	switch s {
 	case workrequests.WorkRequestStatusAccepted:
 		fallthrough
 	case workrequests.WorkRequestStatusInProgress:
-		return RestoreStatusInProgress, nil
+		return RestoreStatusInProgress
 
 	case workrequests.WorkRequestStatusSucceeded:
-		return RestoreStatusSucceeded, nil
+		return RestoreStatusSucceeded
 
 	case workrequests.WorkRequestStatusCanceling:
 		fallthrough
 	case workrequests.WorkRequestStatusCanceled:
 		fallthrough
 	case workrequests.WorkRequestStatusFailed:
-		return RestoreStatusFailed, nil
+		return RestoreStatusFailed
+	default:
+		return "UNKNOWN"
 	}
-
-	return "", errors.New("unable to convert the status: " + string(s))
 }

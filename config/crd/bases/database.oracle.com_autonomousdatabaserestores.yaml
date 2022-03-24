@@ -24,7 +24,7 @@ spec:
       name: Status
       type: string
     - jsonPath: .status.displayName
-      name: DisplayName
+      name: DbDisplayName
       type: string
     - jsonPath: .status.dbName
       name: DbName
@@ -111,6 +111,12 @@ spec:
                   this file'
                 type: string
               status:
+                type: string
+              timeAccepted:
+                type: string
+              timeEnded:
+                type: string
+              timeStarted:
                 type: string
             required:
             - autonomousDatabaseOCID

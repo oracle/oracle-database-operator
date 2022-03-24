@@ -15,10 +15,13 @@ spec:
     displayName: NewADB
     cpuCoreCount: 1
     adminPassword:
-      # The Name of the K8s secret where you want to hold the password of the ADMIN account. Comment out k8sSecretName and uncomment ociSecretOCID if you pass the admin password using OCI Secret.
-      k8sSecretName: admin-password
-      # The OCID of the OCI Secret that holds the password of the ADMIN account. It should start with ocid1.vaultsecret... .
-      # ociSecretOCID: ocid1.vaultsecret...
+      # Comment out k8sSecret and uncomment ociSecret if you pass the admin password using OCI Secret.
+      k8sSecret:
+        # The Name of the K8s secret where you want to hold the password of the ADMIN account.
+        name: admin-password
+      # ociSecret:
+      #   # The OCID of the OCI Secret that holds the password of the ADMIN account. It should start with ocid1.vaultsecret... .
+      #   ocid: ocid1.vaultsecret...
     dataStorageSizeInTBs: 1
 
     # networkAccess:

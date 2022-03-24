@@ -52,6 +52,15 @@ import (
 // name of our custom finalizer
 const ACDFinalizer = "database.oracle.com/acd-finalizer"
 
+type acdActionEnum string
+
+const (
+	AcdActionBlank     acdActionEnum = ""
+	AcdActionSync      acdActionEnum = "SYNC"
+	AcdActionRestart   acdActionEnum = "RESTART"
+	AcdActionTerminate acdActionEnum = "TERMINATE"
+)
+
 // AutonomousContainerDatabaseSpec defines the desired state of AutonomousContainerDatabase
 type AutonomousContainerDatabaseSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -61,8 +70,10 @@ type AutonomousContainerDatabaseSpec struct {
 	DisplayName                     *string `json:"displayName,omitempty"`
 	AutonomousExadataVMClusterOCID  *string `json:"autonomousExadataVMClusterOCID,omitempty"`
 	// +kubebuilder:validation:Enum:="RELEASE_UPDATES";"RELEASE_UPDATE_REVISIONS"
-	PatchModel   database.AutonomousContainerDatabasePatchModelEnum `json:"patchModel,omitempty"`
-	FreeformTags map[string]string                                  `json:"freeformTags,omitempty"`
+	PatchModel database.AutonomousContainerDatabasePatchModelEnum `json:"patchModel,omitempty"`
+	// +kubebuilder:validation:Enum:="SYNC";"RESTART";"TERMINATE"
+	Action       acdActionEnum     `json:"action,omitempty"`
+	FreeformTags map[string]string `json:"freeformTags,omitempty"`
 
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 	// +kubebuilder:default:=false
@@ -128,11 +139,12 @@ func (acd *AutonomousContainerDatabase) GetLastSuccessfulSpec() (*AutonomousCont
 // UpdateStatusFromOCIACD updates only the status from database.AutonomousDatabase object
 func (acd *AutonomousContainerDatabase) UpdateStatusFromOCIACD(ociObj database.AutonomousContainerDatabase) {
 	acd.Status.LifecycleState = ociObj.LifecycleState
-	acd.Status.TimeCreated = formatSDKTime(ociObj.TimeCreated)
+	acd.Status.TimeCreated = FormatSDKTime(ociObj.TimeCreated)
 }
 
 func (acd *AutonomousContainerDatabase) UpdateFromOCIACD(ociObj database.AutonomousContainerDatabase) {
 	// Spec
+	acd.Spec.Action = AcdActionBlank
 	acd.Spec.AutonomousContainerDatabaseOCID = ociObj.Id
 	acd.Spec.CompartmentOCID = ociObj.CompartmentId
 	acd.Spec.DisplayName = ociObj.DisplayName

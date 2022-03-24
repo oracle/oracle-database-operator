@@ -74,6 +74,7 @@ type DatabaseService interface {
 	CreateAutonomousContainerDatabase(acb *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
 	GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error)
 	UpdateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
+	RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error)
 	TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error)
 }
 
@@ -410,8 +411,8 @@ func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.A
 
 	// Use the spec.displayName as the displayName of the backup if is provided,
 	// otherwise use the resource name as the displayName.
-	if adbBackup.Spec.DisplayName != "" {
-		createBackupRequest.DisplayName = common.String(adbBackup.Spec.DisplayName)
+	if adbBackup.Spec.DisplayName != nil {
+		createBackupRequest.DisplayName = adbBackup.Spec.DisplayName
 	} else {
 		createBackupRequest.DisplayName = common.String(adbBackup.GetName())
 	}

@@ -52,38 +52,49 @@ import (
 type AutonomousDatabaseBackupSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Target                       TargetSpec `json:"target"`
-	DisplayName                  string     `json:"displayName"`
+	Target                       TargetSpec `json:"target,omitempty"`
+	DisplayName                  *string    `json:"displayName,omitempty"`
 	AutonomousDatabaseBackupOCID *string    `json:"autonomousDatabaseBackupOCID,omitempty"`
 
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 
+type BackupStateEnum string
+
+const (
+	BackupStateError    BackupStateEnum = "ERROR"
+	BackupStateCreating BackupStateEnum = "CREATING"
+	BackupStateActive   BackupStateEnum = "ACTIVE"
+	BackupStateDeleting BackupStateEnum = "DELETING"
+	BackupStateDeleted  BackupStateEnum = "DELETED"
+	BackupStateFailed   BackupStateEnum = "FAILED"
+)
+
 // AutonomousDatabaseBackupStatus defines the observed state of AutonomousDatabaseBackup
 type AutonomousDatabaseBackupStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	AutonomousDatabaseBackupOCID string                                              `json:"autonomousDatabaseBackupOCID,omitempty"`
-	DisplayName                  string                                              `json:"displayName"`
-	LifecycleState               database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
-	Type                         database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
-	IsAutomatic                  bool                                                `json:"isAutomatic"`
-	TimeStarted                  string                                              `json:"timeStarted,omitempty"`
-	TimeEnded                    string                                              `json:"timeEnded,omitempty"`
-	AutonomousDatabaseOCID       string                                              `json:"autonomousDatabaseOCID"`
-	CompartmentOCID              string                                              `json:"compartmentOCID"`
-	DBName                       string                                              `json:"dbName"`
-	DBDisplayName                string                                              `json:"dbDisplayName"`
+	AutonomousDatabaseBackupOCID string                                    `json:"autonomousDatabaseBackupOCID,omitempty"`
+	DisplayName                  string                                    `json:"displayName"`
+	LifecycleState               BackupStateEnum                           `json:"lifecycleState"`
+	Type                         database.AutonomousDatabaseBackupTypeEnum `json:"type"`
+	IsAutomatic                  bool                                      `json:"isAutomatic"`
+	TimeStarted                  string                                    `json:"timeStarted,omitempty"`
+	TimeEnded                    string                                    `json:"timeEnded,omitempty"`
+	AutonomousDatabaseOCID       string                                    `json:"autonomousDatabaseOCID"`
+	CompartmentOCID              string                                    `json:"compartmentOCID"`
+	DBName                       string                                    `json:"dbName"`
+	DBDisplayName                string                                    `json:"dbDisplayName"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-// +kubebuilder:resource:shortName="adbbu";"adbbus"
-// +kubebuilder:printcolumn:JSONPath=".status.lifecycleState",name="State",type=string
-// +kubebuilder:printcolumn:JSONPath=".status.dbDisplayName",name="DB DisplayName",type=string
-// +kubebuilder:printcolumn:JSONPath=".status.type",name="Type",type=string
-// +kubebuilder:printcolumn:JSONPath=".status.timeStarted",name="Started",type=string
-// +kubebuilder:printcolumn:JSONPath=".status.timeEnded",name="Ended",type=string
+//+kubebuilder:resource:shortName="adbbu";"adbbus"
+//+kubebuilder:printcolumn:JSONPath=".status.lifecycleState",name="State",type=string
+//+kubebuilder:printcolumn:JSONPath=".status.dbDisplayName",name="DB DisplayName",type=string
+//+kubebuilder:printcolumn:JSONPath=".status.type",name="Type",type=string
+//+kubebuilder:printcolumn:JSONPath=".status.timeStarted",name="Started",type=string
+//+kubebuilder:printcolumn:JSONPath=".status.timeEnded",name="Ended",type=string
 
 // AutonomousDatabaseBackup is the Schema for the autonomousdatabasebackups API
 type AutonomousDatabaseBackup struct {
@@ -107,24 +118,44 @@ func init() {
 	SchemeBuilder.Register(&AutonomousDatabaseBackup{}, &AutonomousDatabaseBackupList{})
 }
 
-func (backup *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociADB database.AutonomousDatabase) {
-	backup.Status.AutonomousDatabaseBackupOCID = *ociBackup.Id
-	backup.Status.DisplayName = *ociBackup.DisplayName
+func (b *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociADB database.AutonomousDatabase) {
+	b.Status.AutonomousDatabaseBackupOCID = *ociBackup.Id
+	b.Status.DisplayName = *ociBackup.DisplayName
 
-	backup.Status.AutonomousDatabaseOCID = *ociBackup.AutonomousDatabaseId
-	backup.Status.CompartmentOCID = *ociBackup.CompartmentId
-	backup.Status.Type = ociBackup.Type
-	backup.Status.IsAutomatic = *ociBackup.IsAutomatic
-	backup.Status.LifecycleState = ociBackup.LifecycleState
+	b.Status.AutonomousDatabaseOCID = *ociBackup.AutonomousDatabaseId
+	b.Status.CompartmentOCID = *ociBackup.CompartmentId
+	b.Status.Type = ociBackup.Type
+	b.Status.IsAutomatic = *ociBackup.IsAutomatic
 
-	backup.Status.TimeStarted = formatSDKTime(ociBackup.TimeStarted)
-	backup.Status.TimeEnded = formatSDKTime(ociBackup.TimeEnded)
+	b.Status.LifecycleState = b.ConvertBackupStatus(ociBackup.LifecycleState)
 
-	backup.Status.DBDisplayName = *ociADB.DisplayName
-	backup.Status.DBName = *ociADB.DbName
+	b.Status.TimeStarted = FormatSDKTime(ociBackup.TimeStarted)
+	b.Status.TimeEnded = FormatSDKTime(ociBackup.TimeEnded)
+
+	b.Status.DBDisplayName = *ociADB.DisplayName
+	b.Status.DBName = *ociADB.DbName
 }
 
 // GetTimeEnded returns the status.timeEnded in SDKTime format
-func (backup *AutonomousDatabaseBackup) GetTimeEnded() (*common.SDKTime, error) {
-	return parseDisplayTime(backup.Status.TimeEnded)
+func (b *AutonomousDatabaseBackup) GetTimeEnded() (*common.SDKTime, error) {
+	return parseDisplayTime(b.Status.TimeEnded)
+}
+
+func (b *AutonomousDatabaseBackup) ConvertBackupStatus(state database.AutonomousDatabaseBackupLifecycleStateEnum) BackupStateEnum {
+	switch state {
+	case database.AutonomousDatabaseBackupLifecycleStateCreating:
+		return BackupStateCreating
+	case database.AutonomousDatabaseBackupLifecycleStateActive:
+		return BackupStateActive
+
+	case database.AutonomousDatabaseBackupLifecycleStateDeleting:
+		return BackupStateDeleting
+
+	case database.AutonomousDatabaseBackupLifecycleStateDeleted:
+		return BackupStateDeleted
+	case database.AutonomousDatabaseBackupLifecycleStateFailed:
+		return BackupStateFailed
+	default:
+		return "UNKNOWN"
+	}
 }

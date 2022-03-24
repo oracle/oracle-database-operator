@@ -41,6 +41,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 
 	"github.com/go-logr/logr"
@@ -72,7 +73,7 @@ type AutonomousContainerDatabaseReconciler struct {
 	Scheme     *runtime.Scheme
 	Recorder   record.EventRecorder
 
-	adbService  oci.DatabaseService
+	dbService   oci.DatabaseService
 	workService oci.WorkRequestService
 	lastSucSpec *dbv1alpha1.AutonomousContainerDatabaseSpec
 }
@@ -157,7 +158,7 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 		if apiErrors.IsNotFound(err) {
 			return emptyResult, nil
 		}
-		// Failed to get ADB, so we don't need to update the status
+		// Failed to get ACD, so we don't need to update the status
 		return emptyResult, err
 	}
 
@@ -209,18 +210,18 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 	}
 
 	switch action {
-	case acdActionProvision:
+	case acdRecActionProvision:
 		if err := r.createACD(acd); err != nil {
 			return r.manageError(acd, err)
 		}
-	case acdActionBind:
+	case acdRecActionBind:
 		break
-	case acdActionUpdate:
-		// updateADB contains downloadWallet
+	case acdRecActionUpdate:
+		// updateACD contains downloadWallet
 		if err := r.updateACD(acd, difACD); err != nil {
 			return r.manageError(acd, err)
 		}
-	case acdActionSync:
+	case acdRecActionSync:
 		break
 	}
 
@@ -259,10 +260,10 @@ func (r *AutonomousContainerDatabaseReconciler) updateResourceStatus(acd *dbv1al
 	})
 }
 
-// updateResource updates the specification, the status of AutonomousContainerDatabase resource, and the lastSucSpec
-func (r *AutonomousContainerDatabaseReconciler) updateResource(adb *dbv1alpha1.AutonomousContainerDatabase) error {
+// updateResource updates the specification, the status of AutonomousContainerDatabase resource
+func (r *AutonomousContainerDatabaseReconciler) updateResource(acd *dbv1alpha1.AutonomousContainerDatabase) error {
 	// Update the status first to prevent unwanted Reconcile()
-	if err := r.updateResourceStatus(adb); err != nil {
+	if err := r.updateResourceStatus(acd); err != nil {
 		return err
 	}
 
@@ -271,15 +272,15 @@ func (r *AutonomousContainerDatabaseReconciler) updateResource(adb *dbv1alpha1.A
 		curACD := &dbv1alpha1.AutonomousContainerDatabase{}
 
 		namespacedName := types.NamespacedName{
-			Namespace: adb.GetNamespace(),
-			Name:      adb.GetName(),
+			Namespace: acd.GetNamespace(),
+			Name:      acd.GetName(),
 		}
 
 		if err := r.KubeClient.Get(context.TODO(), namespacedName, curACD); err != nil {
 			return err
 		}
 
-		curACD.Spec = adb.Spec
+		curACD.Spec = acd.Spec
 		return r.KubeClient.Update(context.TODO(), curACD)
 	}); err != nil {
 		return err
@@ -294,7 +295,7 @@ func (r *AutonomousContainerDatabaseReconciler) updateResource(adb *dbv1alpha1.A
 // looking if the lastSucSpec is present.
 func (r *AutonomousContainerDatabaseReconciler) syncResource(acd *dbv1alpha1.AutonomousContainerDatabase) error {
 	// Get the information from OCI
-	resp, err := r.adbService.GetAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID)
+	resp, err := r.dbService.GetAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID)
 	if err != nil {
 		return err
 	}
@@ -370,7 +371,7 @@ func (r *AutonomousContainerDatabaseReconciler) setupOCIClients(acd *dbv1alpha1.
 		return err
 	}
 
-	r.adbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
+	r.dbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
 	if err != nil {
 		return err
 	}
@@ -428,45 +429,49 @@ func (r *AutonomousContainerDatabaseReconciler) validateFinalizer(acd *dbv1alpha
 	return false, nil
 }
 
-type ACDActionEnum string
+type acdRecActionEnum string
 
 const (
-	acdActionProvision = "PROVISION"
-	acdActionBind      = "BIND"
-	acdActionUpdate    = "UPDATE"
-	acdActionSync      = "SYNC"
+	acdRecActionProvision acdRecActionEnum = "PROVISION"
+	acdRecActionBind      acdRecActionEnum = "BIND"
+	acdRecActionUpdate    acdRecActionEnum = "UPDATE"
+	acdRecActionSync      acdRecActionEnum = "SYNC"
 )
 
-func (r *AutonomousContainerDatabaseReconciler) determineAction(adb *dbv1alpha1.AutonomousContainerDatabase) (ACDActionEnum, *dbv1alpha1.AutonomousContainerDatabase, error) {
+func (r *AutonomousContainerDatabaseReconciler) determineAction(acd *dbv1alpha1.AutonomousContainerDatabase) (acdRecActionEnum, *dbv1alpha1.AutonomousContainerDatabase, error) {
 	if r.lastSucSpec == nil {
-		if adb.Spec.AutonomousContainerDatabaseOCID == nil {
-			return acdActionProvision, nil, nil
+		if acd.Spec.AutonomousContainerDatabaseOCID == nil {
+			return acdRecActionProvision, nil, nil
 		} else {
-			return acdActionBind, nil, nil
+			return acdRecActionBind, nil, nil
 		}
 	} else {
 		// Pre-process step for the UPDATE. Remove the unchanged fields from spec.details,
-		difACD := adb.DeepCopy()
+		difACD := acd.DeepCopy()
 		specChanged, err := difACD.RemoveUnchangedSpec()
 		if err != nil {
 			return "", nil, err
 		}
 
 		if specChanged {
-			return acdActionUpdate, difACD, nil
+			// Return SYNC if the spec.action is SYNC
+			if difACD.Spec.Action == dbv1alpha1.AcdActionSync {
+				return acdRecActionSync, nil, nil
+			}
+			return acdRecActionUpdate, difACD, nil
 		}
 
-		return acdActionSync, nil, nil
+		return acdRecActionSync, nil, nil
 	}
 }
 
 func (r *AutonomousContainerDatabaseReconciler) createACD(acd *dbv1alpha1.AutonomousContainerDatabase) error {
-	resp, err := r.adbService.CreateAutonomousContainerDatabase(acd)
+	resp, err := r.dbService.CreateAutonomousContainerDatabase(acd)
 	if err != nil {
 		return err
 	}
 
-	// Update the ADB OCID and the status
+	// Update the ACD OCID and the status
 	// The trick is to update the status first to prevent unwanted reconcile
 	acd.Spec.AutonomousContainerDatabaseOCID = resp.AutonomousContainerDatabase.Id
 	acd.UpdateStatusFromOCIACD(resp.AutonomousContainerDatabase)
@@ -486,14 +491,14 @@ func (r *AutonomousContainerDatabaseReconciler) createACD(acd *dbv1alpha1.Autono
 	return nil
 }
 
-func (r *AutonomousContainerDatabaseReconciler) updateACD(acd *dbv1alpha1.AutonomousContainerDatabase, difACD *dbv1alpha1.AutonomousContainerDatabase) error {
+func (r *AutonomousContainerDatabaseReconciler) updateGeneralFields(acd *dbv1alpha1.AutonomousContainerDatabase, difACD *dbv1alpha1.AutonomousContainerDatabase) error {
 	if difACD.Spec.DisplayName == nil &&
 		difACD.Spec.PatchModel == "" &&
 		difACD.Spec.FreeformTags == nil {
 		return nil
 	}
 
-	resp, err := r.adbService.UpdateAutonomousContainerDatabase(difACD)
+	resp, err := r.dbService.UpdateAutonomousContainerDatabase(difACD)
 	if err != nil {
 		return err
 	}
@@ -517,7 +522,7 @@ func (r *AutonomousContainerDatabaseReconciler) updateACD(acd *dbv1alpha1.Autono
 
 func (r *AutonomousContainerDatabaseReconciler) terminateACD(acd *dbv1alpha1.AutonomousContainerDatabase) error {
 
-	resp, err := r.adbService.TerminateAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID)
+	resp, err := r.dbService.TerminateAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID)
 	if err != nil {
 		return err
 	}
@@ -531,5 +536,56 @@ func (r *AutonomousContainerDatabaseReconciler) terminateACD(acd *dbv1alpha1.Aut
 	if _, err := r.workService.Wait(*resp.OpcWorkRequestId); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (r *AutonomousContainerDatabaseReconciler) updateLifecycleState(acd *dbv1alpha1.AutonomousContainerDatabase, difACD *dbv1alpha1.AutonomousContainerDatabase) error {
+	if difACD.Spec.Action == dbv1alpha1.AcdActionBlank {
+		return nil
+	}
+
+	var opcWorkRequestId string
+
+	switch difACD.Spec.Action {
+	case dbv1alpha1.AcdActionRestart:
+		resp, err := r.dbService.RestartAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID)
+		if err != nil {
+			return err
+		}
+
+		acd.Status.LifecycleState = resp.LifecycleState
+		opcWorkRequestId = *resp.OpcWorkRequestId
+	case dbv1alpha1.AcdActionTerminate:
+		resp, err := r.dbService.TerminateAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID)
+		if err != nil {
+			return err
+		}
+
+		acd.Status.LifecycleState = database.AutonomousContainerDatabaseLifecycleStateTerminating
+		opcWorkRequestId = *resp.OpcWorkRequestId
+	default:
+		return errors.New("Unknown action")
+	}
+
+	// Update the status and then erase the Action field
+	if err := r.updateResource(acd); err != nil {
+		return err
+	}
+
+	if _, err := r.workService.Wait(opcWorkRequestId); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *AutonomousContainerDatabaseReconciler) updateACD(acd *dbv1alpha1.AutonomousContainerDatabase, difACD *dbv1alpha1.AutonomousContainerDatabase) error {
+	if err := r.updateGeneralFields(acd, difACD); err != nil {
+		return err
+	}
+
+	if err := r.updateLifecycleState(acd, difACD); err != nil {
+		return err
+	}
+
 	return nil
 }

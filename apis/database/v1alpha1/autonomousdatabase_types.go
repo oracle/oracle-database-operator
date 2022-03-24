@@ -233,7 +233,7 @@ func (adb *AutonomousDatabase) GetLastSuccessfulSpec() (*AutonomousDatabaseSpec,
 // UpdateStatusFromOCIADB updates only the status from database.AutonomousDatabase object
 func (adb *AutonomousDatabase) UpdateStatusFromOCIADB(ociObj database.AutonomousDatabase) {
 	adb.Status.LifecycleState = ociObj.LifecycleState
-	adb.Status.TimeCreated = formatSDKTime(ociObj.TimeCreated)
+	adb.Status.TimeCreated = FormatSDKTime(ociObj.TimeCreated)
 
 	if *ociObj.IsDedicated {
 		conns := make([]ConnectionStringSpec, len(ociObj.ConnectionStrings.AllConnectionStrings))

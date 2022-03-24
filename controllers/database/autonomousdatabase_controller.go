@@ -81,7 +81,7 @@ type AutonomousDatabaseReconciler struct {
 	Scheme     *runtime.Scheme
 	Recorder   record.EventRecorder
 
-	adbService  oci.DatabaseService
+	dbService   oci.DatabaseService
 	workService oci.WorkRequestService
 	lastSucSpec *dbv1alpha1.AutonomousDatabaseSpec
 }
@@ -271,7 +271,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	switch action {
-	case adbActionProvision:
+	case adbRecActionProvision:
 		if err := r.createADB(adb); err != nil {
 			return r.manageError(adb, err)
 		}
@@ -279,16 +279,16 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if err := r.downloadWallet(adb); err != nil {
 			return r.manageError(adb, err)
 		}
-	case adbActionBind:
+	case adbRecActionBind:
 		if err := r.downloadWallet(adb); err != nil {
 			return r.manageError(adb, err)
 		}
-	case adbActionUpdate:
+	case adbRecActionUpdate:
 		// updateADB contains downloadWallet
 		if err := r.updateADB(adb, difADB); err != nil {
 			return r.manageError(adb, err)
 		}
-	case adbActionSync:
+	case adbRecActionSync:
 		// SYNC action needs to make sure the wallet is present
 		if err := r.downloadWallet(adb); err != nil {
 			return r.manageError(adb, err)
@@ -329,7 +329,7 @@ func (r *AutonomousDatabaseReconciler) setupOCIClients(adb *dbv1alpha1.Autonomou
 		return err
 	}
 
-	r.adbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
+	r.dbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
 	if err != nil {
 		return err
 	}
@@ -463,7 +463,7 @@ func (r *AutonomousDatabaseReconciler) updateResourceStatus(adb *dbv1alpha1.Auto
 // looking if the lastSucSpec is present.
 func (r *AutonomousDatabaseReconciler) syncResource(adb *dbv1alpha1.AutonomousDatabase) error {
 	// Get the information from OCI
-	resp, err := r.adbService.GetAutonomousDatabase(*adb.Spec.Details.AutonomousDatabaseOCID)
+	resp, err := r.dbService.GetAutonomousDatabase(*adb.Spec.Details.AutonomousDatabaseOCID)
 	if err != nil {
 		return err
 	}
@@ -511,21 +511,21 @@ func (r *AutonomousDatabaseReconciler) updateResource(adb *dbv1alpha1.Autonomous
 	return nil
 }
 
-type ADBActionEnum string
+type adbRecActionEnum string
 
 const (
-	adbActionProvision = "PROVISION"
-	adbActionBind      = "BIND"
-	adbActionUpdate    = "UPDATE"
-	adbActionSync      = "SYNC"
+	adbRecActionProvision adbRecActionEnum = "PROVISION"
+	adbRecActionBind      adbRecActionEnum = "BIND"
+	adbRecActionUpdate    adbRecActionEnum = "UPDATE"
+	adbRecActionSync      adbRecActionEnum = "SYNC"
 )
 
-func (r *AutonomousDatabaseReconciler) determineAction(adb *dbv1alpha1.AutonomousDatabase) (ACDActionEnum, *dbv1alpha1.AutonomousDatabase, error) {
+func (r *AutonomousDatabaseReconciler) determineAction(adb *dbv1alpha1.AutonomousDatabase) (adbRecActionEnum, *dbv1alpha1.AutonomousDatabase, error) {
 	if r.lastSucSpec == nil {
 		if adb.Spec.Details.AutonomousDatabaseOCID == nil {
-			return acdActionProvision, nil, nil
+			return adbRecActionProvision, nil, nil
 		} else {
-			return acdActionBind, nil, nil
+			return adbRecActionBind, nil, nil
 		}
 	} else {
 		// Pre-process step for the UPDATE. Remove the unchanged fields in spec.details,
@@ -536,15 +536,15 @@ func (r *AutonomousDatabaseReconciler) determineAction(adb *dbv1alpha1.Autonomou
 		}
 
 		if detailsChanged {
-			return acdActionUpdate, difADB, nil
+			return adbRecActionUpdate, difADB, nil
 		}
 
-		return acdActionSync, nil, nil
+		return adbRecActionSync, nil, nil
 	}
 }
 
 func (r *AutonomousDatabaseReconciler) createADB(adb *dbv1alpha1.AutonomousDatabase) error {
-	resp, err := r.adbService.CreateAutonomousDatabase(adb)
+	resp, err := r.dbService.CreateAutonomousDatabase(adb)
 	if err != nil {
 		return err
 	}
@@ -577,7 +577,7 @@ func (r *AutonomousDatabaseReconciler) updateGeneralFields(adb *dbv1alpha1.Auton
 		return nil
 	}
 
-	resp, err := r.adbService.UpdateAutonomousDatabaseGeneralFields(difADB)
+	resp, err := r.dbService.UpdateAutonomousDatabaseGeneralFields(difADB)
 	if err != nil {
 		return err
 	}
@@ -605,7 +605,7 @@ func (r *AutonomousDatabaseReconciler) updateAdminPassword(adb *dbv1alpha1.Auton
 		return nil
 	}
 
-	_, err := r.adbService.UpdateAutonomousDatabaseAdminPassword(difADB)
+	_, err := r.dbService.UpdateAutonomousDatabaseAdminPassword(difADB)
 	if err != nil {
 		return err
 	}
@@ -619,7 +619,7 @@ func (r *AutonomousDatabaseReconciler) updateDbWorkload(adb *dbv1alpha1.Autonomo
 		return nil
 	}
 
-	resp, err := r.adbService.UpdateAutonomousDatabaseDBWorkload(difADB)
+	resp, err := r.dbService.UpdateAutonomousDatabaseDBWorkload(difADB)
 	if err != nil {
 		return err
 	}
@@ -640,7 +640,7 @@ func (r *AutonomousDatabaseReconciler) updateLicenseModel(adb *dbv1alpha1.Autono
 		return nil
 	}
 
-	resp, err := r.adbService.UpdateAutonomousDatabaseLicenseModel(difADB)
+	resp, err := r.dbService.UpdateAutonomousDatabaseLicenseModel(difADB)
 	if err != nil {
 		return err
 	}
@@ -663,7 +663,7 @@ func (r *AutonomousDatabaseReconciler) updateScalingFields(adb *dbv1alpha1.Auton
 		return nil
 	}
 
-	resp, err := r.adbService.UpdateAutonomousDatabaseScalingFields(difADB)
+	resp, err := r.dbService.UpdateAutonomousDatabaseScalingFields(difADB)
 	if err != nil {
 		return err
 	}
@@ -681,7 +681,7 @@ func (r *AutonomousDatabaseReconciler) updateScalingFields(adb *dbv1alpha1.Auton
 
 func (r *AutonomousDatabaseReconciler) deleteAutonomousDatabase(adb *dbv1alpha1.AutonomousDatabase) error {
 
-	resp, err := r.adbService.DeleteAutonomousDatabase(*adb.Spec.Details.AutonomousDatabaseOCID)
+	resp, err := r.dbService.DeleteAutonomousDatabase(*adb.Spec.Details.AutonomousDatabaseOCID)
 	if err != nil {
 		return err
 	}
@@ -706,7 +706,7 @@ func (r *AutonomousDatabaseReconciler) updateLifecycleState(adb *dbv1alpha1.Auto
 
 	switch difADB.Spec.Details.LifecycleState {
 	case database.AutonomousDatabaseLifecycleStateAvailable:
-		resp, err := r.adbService.StartAutonomousDatabase(*difADB.Spec.Details.AutonomousDatabaseOCID)
+		resp, err := r.dbService.StartAutonomousDatabase(*difADB.Spec.Details.AutonomousDatabaseOCID)
 		if err != nil {
 			return err
 		}
@@ -714,7 +714,7 @@ func (r *AutonomousDatabaseReconciler) updateLifecycleState(adb *dbv1alpha1.Auto
 		adb.Status.LifecycleState = resp.LifecycleState
 		opcWorkRequestId = *resp.OpcWorkRequestId
 	case database.AutonomousDatabaseLifecycleStateStopped:
-		resp, err := r.adbService.StopAutonomousDatabase(*difADB.Spec.Details.AutonomousDatabaseOCID)
+		resp, err := r.dbService.StopAutonomousDatabase(*difADB.Spec.Details.AutonomousDatabaseOCID)
 		if err != nil {
 			return err
 		}
@@ -722,7 +722,7 @@ func (r *AutonomousDatabaseReconciler) updateLifecycleState(adb *dbv1alpha1.Auto
 		adb.Status.LifecycleState = resp.LifecycleState
 		opcWorkRequestId = *resp.OpcWorkRequestId
 	case database.AutonomousDatabaseLifecycleStateTerminated:
-		resp, err := r.adbService.DeleteAutonomousDatabase(*difADB.Spec.Details.AutonomousDatabaseOCID)
+		resp, err := r.dbService.DeleteAutonomousDatabase(*difADB.Spec.Details.AutonomousDatabaseOCID)
 		if err != nil {
 			return err
 		}
@@ -744,7 +744,7 @@ func (r *AutonomousDatabaseReconciler) updateLifecycleState(adb *dbv1alpha1.Auto
 }
 
 func (r *AutonomousDatabaseReconciler) setMTLSRequired(adb *dbv1alpha1.AutonomousDatabase) error {
-	resp, err := r.adbService.UpdateNetworkAccessMTLSRequired(*adb.Spec.Details.AutonomousDatabaseOCID)
+	resp, err := r.dbService.UpdateNetworkAccessMTLSRequired(*adb.Spec.Details.AutonomousDatabaseOCID)
 	if err != nil {
 		return err
 	}
@@ -765,7 +765,7 @@ func (r *AutonomousDatabaseReconciler) updateMTLS(adb *dbv1alpha1.AutonomousData
 		return nil
 	}
 
-	resp, err := r.adbService.UpdateNetworkAccessMTLS(difADB)
+	resp, err := r.dbService.UpdateNetworkAccessMTLS(difADB)
 	if err != nil {
 		return err
 	}
@@ -782,7 +782,7 @@ func (r *AutonomousDatabaseReconciler) updateMTLS(adb *dbv1alpha1.AutonomousData
 }
 
 func (r *AutonomousDatabaseReconciler) setNetworkAccessPublic(adb *dbv1alpha1.AutonomousDatabase) error {
-	resp, err := r.adbService.UpdateNetworkAccessPublic(r.lastSucSpec.Details.NetworkAccess.AccessType, *adb.Spec.Details.AutonomousDatabaseOCID)
+	resp, err := r.dbService.UpdateNetworkAccessPublic(r.lastSucSpec.Details.NetworkAccess.AccessType, *adb.Spec.Details.AutonomousDatabaseOCID)
 	if err != nil {
 		return err
 	}
@@ -807,7 +807,7 @@ func (r *AutonomousDatabaseReconciler) updateNetworkAccess(adb *dbv1alpha1.Auton
 		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix == nil {
 		return nil
 	}
-	resp, err := r.adbService.UpdateNetworkAccess(difADB)
+	resp, err := r.dbService.UpdateNetworkAccess(difADB)
 	if err != nil {
 		return err
 	}
@@ -954,7 +954,7 @@ func (r *AutonomousDatabaseReconciler) downloadWallet(adb *dbv1alpha1.Autonomous
 		return err
 	}
 
-	resp, err := r.adbService.DownloadWallet(adb)
+	resp, err := r.dbService.DownloadWallet(adb)
 	if err != nil {
 		return err
 	}
@@ -973,20 +973,6 @@ func (r *AutonomousDatabaseReconciler) downloadWallet(adb *dbv1alpha1.Autonomous
 	logger.Info(fmt.Sprintf("Wallet is stored in the Secret %s", walletName))
 
 	return nil
-}
-
-func (r *AutonomousDatabaseReconciler) getValidBackupName(name string, usedNames map[string]bool) string {
-	returnedName := name
-	var i = 1
-
-	_, ok := usedNames[returnedName]
-	for ok {
-		returnedName = fmt.Sprintf("%s-%d", name, i)
-		_, ok = usedNames[returnedName]
-		i++
-	}
-
-	return returnedName
 }
 
 func (r *AutonomousDatabaseReconciler) updateADB(adb *dbv1alpha1.AutonomousDatabase, difADB *dbv1alpha1.AutonomousDatabase) error {
@@ -1025,6 +1011,52 @@ func (r *AutonomousDatabaseReconciler) updateADB(adb *dbv1alpha1.AutonomousDatab
 	return nil
 }
 
+func (r *AutonomousDatabaseReconciler) getValidBackupName(displayName string, usedNames map[string]bool) (string, error) {
+	// Convert the displayName to lowercase, and replace spaces, commas, and colons with hyphens
+	baseName := strings.ToLower(displayName)
+
+	re, err := regexp.Compile(`[^-a-zA-Z0-9]`)
+	if err != nil {
+		return "", err
+	}
+
+	baseName = re.ReplaceAllString(baseName, "-")
+
+	finalName := baseName
+	var i = 1
+	_, ok := usedNames[finalName]
+	for ok {
+		finalName = fmt.Sprintf("%s-%d", baseName, i)
+		_, ok = usedNames[finalName]
+		i++
+	}
+
+	return finalName, nil
+}
+
+func (r *AutonomousDatabaseReconciler) ifBackupExists(backupSummary database.AutonomousDatabaseBackupSummary, curBackupOCIDs map[string]bool, backupList *dbv1alpha1.AutonomousDatabaseBackupList) bool {
+	_, ok := curBackupOCIDs[*backupSummary.Id]
+	if ok {
+		return true
+	}
+
+	// Special case: when a Backup is creating and hasn't updated the OCID, a duplicated Backup might be created by mistake.
+	// To handle this case, skip creating the backup if the current backupSummary is with CREATING state, and there is
+	// another AutonomousBackup with the same displayName in the cluster is also at CREATING state.
+	if backupSummary.LifecycleState == database.AutonomousDatabaseBackupSummaryLifecycleStateCreating {
+		for _, backup := range backupList.Items {
+			if (backup.Spec.DisplayName != nil && *backup.Spec.DisplayName == *backupSummary.DisplayName) &&
+				(backup.Status.LifecycleState == "" ||
+					backup.Status.LifecycleState == dbv1alpha1.BackupStateError ||
+					backup.Status.LifecycleState == dbv1alpha1.BackupStateCreating) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // updateBackupResources get the list of AutonomousDatabasBackups and
 // create a backup object if it's not found in the same namespace
 func (r *AutonomousDatabaseReconciler) syncBackupResources(adb *dbv1alpha1.AutonomousDatabase) error {
@@ -1040,42 +1072,37 @@ func (r *AutonomousDatabaseReconciler) syncBackupResources(adb *dbv1alpha1.Auton
 	curBackupOCIDs := make(map[string]bool)
 
 	for _, backup := range backupList.Items {
+		// mark the backup name that exists
 		curBackupNames[backup.Name] = true
 
-		if backup.Spec.AutonomousDatabaseBackupOCID != nil {
-			curBackupOCIDs[*backup.Spec.AutonomousDatabaseBackupOCID] = true
+		// mark the backup ocid that exists
+		if backup.Status.AutonomousDatabaseBackupOCID != "" {
+			curBackupOCIDs[backup.Status.AutonomousDatabaseBackupOCID] = true
 		}
 	}
 
-	resp, err := r.adbService.ListAutonomousDatabaseBackups(*adb.Spec.Details.AutonomousDatabaseOCID)
+	resp, err := r.dbService.ListAutonomousDatabaseBackups(*adb.Spec.Details.AutonomousDatabaseOCID)
 	if err != nil {
 		return err
 	}
 
 	for _, backupSummary := range resp.Items {
-		// Create the resource if the AutonomousDatabaseBackupOCID doesn't exist
-		_, ok := curBackupOCIDs[*backupSummary.Id]
-		if !ok {
-			// Convert the string to lowercase, and replace spaces, commas, and colons with hyphens
-			resourceName := *backupSummary.DisplayName
-			resourceName = strings.ToLower(resourceName)
-
-			re, err := regexp.Compile(`[^-a-zA-Z0-9]`)
+		// Create the resource if the backup doesn't exist
+		if !r.ifBackupExists(backupSummary, curBackupOCIDs, backupList) {
+			validBackupName, err := r.getValidBackupName(*backupSummary.DisplayName, curBackupNames)
 			if err != nil {
 				return err
 			}
-			resourceName = re.ReplaceAllString(resourceName, "-")
-			resourceName = r.getValidBackupName(resourceName, curBackupNames)
 
-			if err := k8s.CreateAutonomousBackup(r.KubeClient, resourceName, backupSummary, adb); err != nil {
+			if err := k8s.CreateAutonomousBackup(r.KubeClient, validBackupName, backupSummary, adb); err != nil {
 				return err
 			}
 
-			// Add the used names and ocids
-			curBackupNames[resourceName] = true
+			// Add the used name and ocid
+			curBackupNames[validBackupName] = true
 			curBackupOCIDs[*backupSummary.AutonomousDatabaseId] = true
 
-			logger.Info("Create AutonomousDatabaseBackup " + resourceName)
+			logger.Info("Create AutonomousDatabaseBackup " + validBackupName)
 		}
 	}
 

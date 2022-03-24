@@ -239,5 +239,5 @@ func (r *AutonomousDatabase) ValidateDelete() error {
 // We don't use Details.IsDedicated because the parameter might be null when it's a provision operation.
 func isDedicated(adb *AutonomousDatabase) bool {
 	return adb.Spec.Details.AutonomousContainerDatabase.K8sACD.Name != nil ||
-	adb.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID != nil
+		adb.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID != nil
 }

@@ -51,10 +51,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	"github.com/oracle/oci-go-sdk/v54/database"
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/commons/adb_family"
@@ -62,7 +62,7 @@ import (
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
-// *AutonomousDatabaseBackupReconciler reconciles a AutonomousDatabaseBackup object
+// AutonomousDatabaseBackupReconciler reconciles a AutonomousDatabaseBackup object
 type AutonomousDatabaseBackupReconciler struct {
 	KubeClient client.Client
 	Log        logr.Logger
@@ -73,15 +73,6 @@ type AutonomousDatabaseBackupReconciler struct {
 	workService oci.WorkRequestService
 }
 
-// SetupWithManager sets up the controller with the Manager.
-func (r *AutonomousDatabaseBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&databasev1alpha1.AutonomousDatabaseBackup{}).
-		WithEventFilter(predicate.And(r.eventFilterPredicate(), predicate.GenerationChangedPredicate{})).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 100}). // ReconcileHandler is never invoked concurrently with the same object.
-		Complete(r)
-}
-
 func (r *AutonomousDatabaseBackupReconciler) eventFilterPredicate() predicate.Predicate {
 	pred := predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
@@ -90,9 +81,8 @@ func (r *AutonomousDatabaseBackupReconciler) eventFilterPredicate() predicate.Pr
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			oldStatus := e.ObjectOld.(*dbv1alpha1.AutonomousDatabaseBackup).Status.LifecycleState
 
-			if oldStatus == database.AutonomousDatabaseBackupLifecycleStateCreating ||
-				oldStatus == database.AutonomousDatabaseBackupLifecycleStateDeleting {
-				// All the requests other than the terminate request, should be discarded during the intermediate states
+			if oldStatus == dbv1alpha1.BackupStateCreating ||
+				oldStatus == dbv1alpha1.BackupStateDeleting {
 				return false
 			}
 
@@ -101,6 +91,24 @@ func (r *AutonomousDatabaseBackupReconciler) eventFilterPredicate() predicate.Pr
 	}
 
 	return pred
+}
+
+// SetupWithManager sets up the controller with the Manager.
+func (r *AutonomousDatabaseBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	return ctrl.NewControllerManagedBy(mgr).
+		For(&databasev1alpha1.AutonomousDatabaseBackup{}).
+		WithEventFilter(r.eventFilterPredicate()).
+		WithOptions(controller.Options{MaxConcurrentReconciles: 100}). // ReconcileHandler is never invoked concurrently with the same object.
+		Complete(r)
+}
+
+func (r *AutonomousDatabaseBackupReconciler) backupStarted(backup *dbv1alpha1.AutonomousDatabaseBackup) bool {
+	return backup.Spec.AutonomousDatabaseBackupOCID != nil ||
+		(backup.Status.LifecycleState == dbv1alpha1.BackupStateCreating ||
+			backup.Status.LifecycleState == dbv1alpha1.BackupStateActive ||
+			backup.Status.LifecycleState == dbv1alpha1.BackupStateDeleting ||
+			backup.Status.LifecycleState == dbv1alpha1.BackupStateDeleted ||
+			backup.Status.LifecycleState == dbv1alpha1.BackupStateFailed)
 }
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabasebackups,verbs=get;list;watch;create;delete
@@ -144,7 +152,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	 * LifecycleState is checked to avoid sending a duplicated backup request when the backup is creating.
 	 * Otherwise, bind to an exisiting backup if the  Spec.AutonomousDatabaseBackupOCID isn't empty.
 	 ******************************************************************/
-	if backup.Spec.AutonomousDatabaseBackupOCID == nil && backup.Status.LifecycleState == "" {
+	if !r.backupStarted(backup) {
 		// Create a new backup
 		backupResp, err := r.adbService.CreateAutonomousDatabaseBackup(backup, adbOCID)
 		if err != nil {
@@ -205,6 +213,19 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	return emptyResult, nil
 }
 
+// setOwnerAutonomousDatabase sets the owner of the AutonomousDatabaseBackup if the AutonomousDatabase resource with the same database OCID is found
+func (r *AutonomousDatabaseBackupReconciler) setOwnerAutonomousDatabase(backup *dbv1alpha1.AutonomousDatabaseBackup, adb *dbv1alpha1.AutonomousDatabase) error {
+	logger := r.Log.WithName("set-owner-reference")
+
+	controllerutil.SetOwnerReference(adb, backup, r.Scheme)
+	if err := r.KubeClient.Update(context.TODO(), backup); err != nil {
+		return err
+	}
+	logger.Info(fmt.Sprintf("Set the owner of AutonomousDatabaseBackup %s to AutonomousDatabase %s", backup.Name, adb.Name))
+
+	return nil
+}
+
 // verifyTargetADB searches if the target ADB is in the cluster, and set the owner reference to the ADB if it exists.
 // The function returns the OCID of the target ADB.
 func (r *AutonomousDatabaseBackupReconciler) verifyTargetADB(backup *dbv1alpha1.AutonomousDatabaseBackup) (string, error) {
@@ -252,37 +273,12 @@ func (r *AutonomousDatabaseBackupReconciler) setupOCIClients(backup *dbv1alpha1.
 	return nil
 }
 
-// updateResource updates the specification and the status of AutonomousDatabase resource without trigger a reconcile loop
-func (r *AutonomousDatabaseBackupReconciler) updateResource(backup *dbv1alpha1.AutonomousDatabaseBackup) error {
-	if err := r.KubeClient.Update(context.TODO(), backup); err != nil {
-		return err
-	}
-
-	// Update the status
-	if err := r.KubeClient.Status().Update(context.TODO(), backup); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// setOwnerAutonomousDatabase sets the owner of the AutonomousDatabaseBackup if the AutonomousDatabase resource with the same database OCID is found
-func (r *AutonomousDatabaseBackupReconciler) setOwnerAutonomousDatabase(backup *dbv1alpha1.AutonomousDatabaseBackup, adb *dbv1alpha1.AutonomousDatabase) error {
-	logger := r.Log.WithName("set-owner-reference")
-
-	backup.SetOwnerReferences(k8s.NewOwnerReference(adb))
-	r.updateResource(backup)
-	logger.Info(fmt.Sprintf("Set the owner of %s to %s", backup.Name, adb.Name))
-
-	return nil
-}
-
 func (r *AutonomousDatabaseBackupReconciler) manageError(backup *dbv1alpha1.AutonomousDatabaseBackup, issue error) (ctrl.Result, error) {
 	// Send event
 	r.Recorder.Event(backup, corev1.EventTypeWarning, "ReconcileFailed", issue.Error())
 
-	// Change the status to FAILED
-	backup.Status.LifecycleState = database.AutonomousDatabaseBackupLifecycleStateFailed
+	// Change the status to ERROR
+	backup.Status.LifecycleState = dbv1alpha1.BackupStateError
 	if statusErr := r.KubeClient.Status().Update(context.TODO(), backup); statusErr != nil {
 		return emptyResult, k8s.CombineErrors(issue, statusErr)
 	}

@@ -7,7 +7,8 @@ spec:
   compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
   displayName: newACD
   autonomousExadataVMClusterOCID: ocid1.autonomousexainfrastructure...
-  patchModel: RELEASE_UPDATES # optional
+  # # An optional field for Database Patch model preference. Should be either RELEASE_UPDATES or RELEASE_UPDATE_REVISIONS
+  # patchModel: RELEASE_UPDATES
 
   freeformTags:
     key1: val1

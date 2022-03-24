@@ -101,26 +101,26 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) error {
 	var allErrs field.ErrorList
 	oldBackup := old.(*AutonomousDatabaseBackup)
 
-	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil &&
-		oldBackup.Spec.AutonomousDatabaseBackupOCID != r.Spec.AutonomousDatabaseBackupOCID {
+	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil && r.Spec.AutonomousDatabaseBackupOCID != nil &&
+		*oldBackup.Spec.AutonomousDatabaseBackupOCID != *r.Spec.AutonomousDatabaseBackupOCID {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"), "cannot assign a new autonomousDatabaseBackupOCID to this backup"))
 	}
 
-	if r.Spec.Target.K8sADB.Name != nil &&
-		oldBackup.Spec.Target.K8sADB.Name != r.Spec.Target.K8sADB.Name {
+	if oldBackup.Spec.Target.K8sADB.Name != nil && r.Spec.Target.K8sADB.Name != nil &&
+		*oldBackup.Spec.Target.K8sADB.Name != *r.Spec.Target.K8sADB.Name {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target").Child("k8sADB").Child("name"), "cannot change target.name"))
+			field.Forbidden(field.NewPath("spec").Child("target").Child("k8sADB").Child("name"), "cannot assign a new name to the target"))
 	}
 
-	if r.Spec.Target.OCIADB.OCID != nil &&
-		oldBackup.Spec.Target.OCIADB.OCID != r.Spec.Target.OCIADB.OCID {
+	if oldBackup.Spec.Target.OCIADB.OCID != nil && r.Spec.Target.OCIADB.OCID != nil &&
+		*oldBackup.Spec.Target.OCIADB.OCID != *r.Spec.Target.OCIADB.OCID {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target").Child("ociADB").Child("ocid"), "cannot change target.ocid"))
+			field.Forbidden(field.NewPath("spec").Child("target").Child("ociADB").Child("ocid"), "cannot assign a new ocid to the target"))
 	}
 
-	if r.Spec.DisplayName != "" &&
-		oldBackup.Spec.DisplayName != r.Spec.DisplayName {
+	if oldBackup.Spec.DisplayName != nil && r.Spec.DisplayName != nil &&
+		*oldBackup.Spec.DisplayName != *r.Spec.DisplayName {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("displayName"), "cannot assign a new displayName to this backup"))
 	}
