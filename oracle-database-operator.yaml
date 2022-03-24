@@ -1706,7 +1706,6 @@ spec:
                 enum:
                 - standard
                 - enterprise
-                - express
                 type: string
               flashBack:
                 type: boolean
@@ -2445,7 +2444,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -2459,7 +2458,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: us-phoenix-1.ocir.io/oracassandra/oraoperator:0.2.4
+        image: container-registry.oracle.com/database/operator:0.1.0
         imagePullPolicy: Always
         name: manager
         ports:
