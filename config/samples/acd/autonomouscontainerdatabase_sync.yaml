@@ -1,0 +1,12 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousContainerDatabase
+metadata:
+  name: autonomouscontainerdatabase-sample
+spec:
+  autonomousContainerDatabaseOCID: ocid1.autonomouscontainerdatabase...
+  action: SYNC
+
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred-dedicated
+    secretName: oci-privatekey-dedicated

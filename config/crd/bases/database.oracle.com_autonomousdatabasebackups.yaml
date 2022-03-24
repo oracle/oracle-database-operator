@@ -85,9 +85,6 @@ spec:
                         type: string
                     type: object
                 type: object
-            required:
-            - displayName
-            - target
             type: object
           status:
             description: AutonomousDatabaseBackupStatus defines the observed state
@@ -111,8 +108,6 @@ spec:
               isAutomatic:
                 type: boolean
               lifecycleState:
-                description: 'AutonomousDatabaseBackupLifecycleStateEnum Enum with
-                  underlying type: string'
                 type: string
               timeEnded:
                 type: string

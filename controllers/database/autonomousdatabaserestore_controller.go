@@ -52,6 +52,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/oracle/oci-go-sdk/v54/common"
@@ -81,6 +82,13 @@ func (r *AutonomousDatabaseRestoreReconciler) SetupWithManager(mgr ctrl.Manager)
 		Complete(r)
 }
 
+func (r *AutonomousDatabaseRestoreReconciler) restoreStarted(restore *dbv1alpha1.AutonomousDatabaseRestore) bool {
+	return restore.Status.TimeAccepted != "" ||
+		(restore.Status.Status == dbv1alpha1.RestoreStatusInProgress ||
+			restore.Status.Status == dbv1alpha1.RestoreStatusFailed ||
+			restore.Status.Status == dbv1alpha1.RestoreStatusSucceeded)
+}
+
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabaserestores,verbs=get;list;watch;create;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabaserestores/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases,verbs=get;list
@@ -108,7 +116,7 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 		return emptyResult, err
 	}
 
-	if restore.Status.Status != "" {
+	if r.restoreStarted(restore) {
 		return emptyResult, nil
 	}
 
@@ -178,15 +186,13 @@ func (r *AutonomousDatabaseRestoreReconciler) getRestoreSDKTime(restore *dbv1alp
 
 // setOwnerAutonomousDatabase sets the owner of the AutonomousDatabaseBackup if the AutonomousDatabase resource with the same database OCID is found
 func (r *AutonomousDatabaseRestoreReconciler) setOwnerAutonomousDatabase(restore *dbv1alpha1.AutonomousDatabaseRestore, adb *dbv1alpha1.AutonomousDatabase) error {
-	logger := r.Log.WithName("set-owner")
+	logger := r.Log.WithName("set-owner-reference")
 
-	restore.SetOwnerReferences(k8s.NewOwnerReference(adb))
-
+	controllerutil.SetOwnerReference(adb, restore, r.Scheme)
 	if err := r.KubeClient.Update(context.TODO(), restore); err != nil {
 		return err
 	}
-
-	logger.Info(fmt.Sprintf("Set the owner of %s to %s", restore.Name, adb.Name))
+	logger.Info(fmt.Sprintf("Set the owner of AutonomousDatabaseRestore %s to AutonomousDatabase %s", restore.Name, adb.Name))
 
 	return nil
 }
@@ -267,10 +273,10 @@ func (r *AutonomousDatabaseRestoreReconciler) manageError(restore *dbv1alpha1.Au
 	// Send event
 	r.Recorder.Event(restore, corev1.EventTypeWarning, "ReconcileFailed", issue.Error())
 
-	// Change the status to FAILED
+	// Change the status to ERROR
 	var combinedErr error = issue
 
-	restore.Status.Status = dbv1alpha1.RestoreStatusFailed
+	restore.Status.Status = dbv1alpha1.RestoreStatusError
 	if statusErr := r.updateResourceStatus(restore); statusErr != nil {
 		combinedErr = k8s.CombineErrors(issue, statusErr)
 	}
@@ -297,27 +303,24 @@ func (r *AutonomousDatabaseRestoreReconciler) restoreAutonomousDatabase(
 	restore.Status.DbName = *resp.AutonomousDatabase.DbName
 	restore.Status.AutonomousDatabaseOCID = *resp.AutonomousDatabase.Id
 
-	workStatusStart, err := r.workService.Get(*resp.OpcWorkRequestId)
+	workStart, err := r.workService.Get(*resp.OpcWorkRequestId)
 	if err != nil {
 		return err
 	}
-	restore.Status.Status, err = restore.ConvertWorkRequestStatus(workStatusStart)
-	if err != nil {
-		return err
-	}
+	restore.Status.Status = restore.ConvertWorkRequestStatus(workStart.Status)
+	restore.Status.TimeAccepted = dbv1alpha1.FormatSDKTime(workStart.TimeAccepted)
 
 	r.updateResourceStatus(restore)
 
-	workStatusEnd, err := r.workService.Wait(*resp.OpcWorkRequestId)
+	workEnd, err := r.workService.Wait(*resp.OpcWorkRequestId)
 	if err != nil {
 		return err
 	}
 
 	// Update status when the work is finished
-	restore.Status.Status, err = restore.ConvertWorkRequestStatus(workStatusEnd)
-	if err != nil {
-		return err
-	}
+	restore.Status.Status = restore.ConvertWorkRequestStatus(workEnd.Status)
+	restore.Status.TimeStarted = dbv1alpha1.FormatSDKTime(workEnd.TimeStarted)
+	restore.Status.TimeEnded = dbv1alpha1.FormatSDKTime(workEnd.TimeFinished)
 
 	r.updateResourceStatus(restore)
 

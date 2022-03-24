@@ -278,6 +278,11 @@ func (in *AutonomousDatabaseBackupList) DeepCopyObject() runtime.Object {
 func (in *AutonomousDatabaseBackupSpec) DeepCopyInto(out *AutonomousDatabaseBackupSpec) {
 	*out = *in
 	in.Target.DeepCopyInto(&out.Target)
+	if in.DisplayName != nil {
+		in, out := &in.DisplayName, &out.DisplayName
+		*out = new(string)
+		**out = **in
+	}
 	if in.AutonomousDatabaseBackupOCID != nil {
 		in, out := &in.AutonomousDatabaseBackupOCID, &out.AutonomousDatabaseBackupOCID
 		*out = new(string)

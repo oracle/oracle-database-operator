@@ -187,7 +187,7 @@ func hasChanged(lastField reflect.Value, curField reflect.Value) bool {
 // Follow the format of the display time
 const displayFormat = "2006-01-02 15:04:05 MST"
 
-func formatSDKTime(sdkTime *common.SDKTime) string {
+func FormatSDKTime(sdkTime *common.SDKTime) string {
 	if sdkTime == nil {
 		return ""
 	}

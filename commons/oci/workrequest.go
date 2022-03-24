@@ -51,8 +51,8 @@ import (
 )
 
 type WorkRequestService interface {
-	Get(opcWorkRequestID string) (workrequests.WorkRequestStatusEnum, error)
-	Wait(opcWorkRequestID string) (workrequests.WorkRequestStatusEnum, error)
+	Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
+	Wait(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
 }
 
 type workRequestService struct {
@@ -110,7 +110,7 @@ func (w workRequestService) getRetryPolicy() common.RetryPolicy {
 	return common.NewRetryPolicy(attempts, shouldRetry, nextDuration)
 }
 
-func (w *workRequestService) Wait(opcWorkRequestID string) (workrequests.WorkRequestStatusEnum, error) {
+func (w *workRequestService) Wait(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error) {
 	w.logger.Info("Waiting for the work request to finish. opcWorkRequestID = " + opcWorkRequestID)
 
 	// retries until the work status is SUCCEEDED, FAILED or CANCELED
@@ -125,21 +125,21 @@ func (w *workRequestService) Wait(opcWorkRequestID string) (workrequests.WorkReq
 
 	resp, err := w.workClient.GetWorkRequest(context.TODO(), workRequest)
 	if err != nil {
-		return resp.Status, err
+		return resp, err
 	}
 
-	return resp.Status, nil
+	return resp, nil
 }
 
-func (w *workRequestService) Get(opcWorkRequestID string) (workrequests.WorkRequestStatusEnum, error) {
+func (w *workRequestService) Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error) {
 	workRequest := workrequests.GetWorkRequestRequest{
 		WorkRequestId: common.String(opcWorkRequestID),
 	}
 
 	resp, err := w.workClient.GetWorkRequest(context.TODO(), workRequest)
 	if err != nil {
-		return resp.Status, err
+		return resp, err
 	}
 
-	return resp.Status, nil
+	return resp, nil
 }

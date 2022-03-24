@@ -84,6 +84,14 @@ func (d *databaseService) UpdateAutonomousContainerDatabase(acd *dbv1alpha1.Auto
 	return d.dbClient.UpdateAutonomousContainerDatabase(context.TODO(), updateAutonomousContainerDatabaseRequest)
 }
 
+func (d *databaseService) RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error) {
+	restartRequest := database.RestartAutonomousContainerDatabaseRequest{
+		AutonomousContainerDatabaseId: common.String(acdOCID),
+	}
+
+	return d.dbClient.RestartAutonomousContainerDatabase(context.TODO(), restartRequest)
+}
+
 func (d *databaseService) TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error) {
 	terminateRequest := database.TerminateAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
