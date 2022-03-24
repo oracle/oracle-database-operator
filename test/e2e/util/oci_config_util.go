@@ -48,7 +48,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/oracle/oci-go-sdk/v54/common"
+	"github.com/oracle/oci-go-sdk/v63/common"
 
 	corev1 "k8s.io/api/core/v1"
 )
