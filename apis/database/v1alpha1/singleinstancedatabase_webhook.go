@@ -73,8 +73,18 @@ func (r *SingleInstanceDatabase) Default() {
 
 	if r.Spec.Edition == "express" {
 		r.Spec.Replicas = 1
+		if r.Spec.Sid == "" {
+			r.Spec.Sid = "XE"
+		}
 	}
+	if r.Spec.Pdbname == "" {
+		if r.Spec.Edition == "express" {
+			r.Spec.Pdbname = "XEPDB1"
+		} else {
+			r.Spec.Pdbname = "ORCLPDB1"
+		}
 
+	}
 	// Pre-built db should have 1 replica only
 	if r.Spec.Persistence.AccessMode == "" && r.Spec.Replicas > 1 {
 		r.Spec.Replicas = 1
