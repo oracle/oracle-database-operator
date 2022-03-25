@@ -314,12 +314,11 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	eventReason := "Spec Error"
 	var eventMsgs []string
 
-	r.Log.Info("Check Edition=", m.Spec.Edition)
+	r.Log.Info("Got", "edition", m.Spec.Edition)
 	// Pre-built db
 	if m.Spec.Persistence.AccessMode == "" {
 		return requeueN, nil
 	}
-	r.Log.Info("PBDB not identified")
 
 	//  If Express Edition , Ensure Replicas=1
 	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
