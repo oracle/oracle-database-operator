@@ -39,32 +39,43 @@
 package v1alpha1
 
 import (
+	"errors"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/oracle/oci-go-sdk/v54/common"
-	"github.com/oracle/oci-go-sdk/v54/workrequests"
+	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/workrequests"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+type K8sADBBackupSpec struct {
+	Name *string `json:"name,omitempty"`
+}
+
+type PITSpec struct {
+	// The timestamp must follow this format: YYYY-MM-DD HH:MM:SS GMT
+	Timestamp *string `json:"timestamp,omitempty"`
+}
+
+type SourceSpec struct {
+	K8sADBBackup K8sADBBackupSpec `json:"k8sADBBackup,omitempty"`
+	PointInTime  PITSpec          `json:"pointInTime,omitempty"`
+}
 
 // AutonomousDatabaseRestoreSpec defines the desired state of AutonomousDatabaseRestore
 type AutonomousDatabaseRestoreSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	BackupName  string        `json:"backupName,omitempty"`
-	PointInTime PITSource     `json:"pointInTime,omitempty"`
-	OCIConfig   OCIConfigSpec `json:"ociConfig,omitempty"`
-}
-
-type PITSource struct {
-	AutonomousDatabaseOCID string `json:"autonomousDatabaseOCID,omitempty"`
-	TimeStamp              string `json:"timeStamp,omitempty"`
+	Target    TargetSpec    `json:"target"`
+	Source    SourceSpec    `json:"source"`
+	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 
 type restoreStatusEnum string
 
 const (
+	RestoreStatusError      restoreStatusEnum = "ERROR"
 	RestoreStatusInProgress restoreStatusEnum = "IN_PROGRESS"
 	RestoreStatusFailed     restoreStatusEnum = "FAILED"
 	RestoreStatusSucceeded  restoreStatusEnum = "SUCCEEDED"
@@ -75,6 +86,9 @@ type AutonomousDatabaseRestoreStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	DisplayName            string            `json:"displayName"`
+	TimeAccepted           string            `json:"timeAccepted,omitempty"`
+	TimeStarted            string            `json:"timeStarted,omitempty"`
+	TimeEnded              string            `json:"timeEnded,omitempty"`
 	DbName                 string            `json:"dbName"`
 	AutonomousDatabaseOCID string            `json:"autonomousDatabaseOCID"`
 	Status                 restoreStatusEnum `json:"status"`
@@ -84,7 +98,7 @@ type AutonomousDatabaseRestoreStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:shortName="adbr";"adbrs"
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type=string
-// +kubebuilder:printcolumn:JSONPath=".status.displayName",name="DisplayName",type=string
+// +kubebuilder:printcolumn:JSONPath=".status.displayName",name="DbDisplayName",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.dbName",name="DbName",type=string
 
 // AutonomousDatabaseRestore is the Schema for the autonomousdatabaserestores API
@@ -111,21 +125,29 @@ func init() {
 
 // GetPIT returns the spec.pointInTime.timeStamp in SDKTime format
 func (r *AutonomousDatabaseRestore) GetPIT() (*common.SDKTime, error) {
-	return parseDisplayTime(r.Spec.PointInTime.TimeStamp)
+	if r.Spec.Source.PointInTime.Timestamp == nil {
+		return nil, errors.New("The timestamp is empty")
+	}
+	return parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 }
 
 func (r *AutonomousDatabaseRestore) ConvertWorkRequestStatus(s workrequests.WorkRequestStatusEnum) restoreStatusEnum {
 	switch s {
 	case workrequests.WorkRequestStatusAccepted:
+		fallthrough
 	case workrequests.WorkRequestStatusInProgress:
 		return RestoreStatusInProgress
 
 	case workrequests.WorkRequestStatusSucceeded:
 		return RestoreStatusSucceeded
 
+	case workrequests.WorkRequestStatusCanceling:
+		fallthrough
+	case workrequests.WorkRequestStatusCanceled:
+		fallthrough
 	case workrequests.WorkRequestStatusFailed:
 		return RestoreStatusFailed
+	default:
+		return "UNKNOWN"
 	}
-
-	return RestoreStatusFailed
 }

@@ -1,0 +1,13 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousContainerDatabase
+metadata:
+  name: autonomouscontainerdatabase-sample
+spec:
+  autonomousContainerDatabaseOCID: ocid1.autonomouscontainerdatabase...
+  # Change the action to "TERMINATE" to terminate the database
+  action: RESTART
+
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred-dedicated
+    secretName: oci-privatekey-dedicated

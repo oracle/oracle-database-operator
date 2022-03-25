@@ -163,16 +163,16 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 
 func validateCommon(adb *AutonomousDatabase, allErrs field.ErrorList) field.ErrorList {
 	// password
-	if adb.Spec.Details.AdminPassword.K8sSecretName != nil && adb.Spec.Details.AdminPassword.OCISecretOCID != nil {
+	if adb.Spec.Details.AdminPassword.K8sSecret.Name != nil && adb.Spec.Details.AdminPassword.OCISecret.OCID != nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("details").Child("Wallet").Child("Password"),
-				"cannot apply k8sSecretName and ociSecretOCID at the same time"))
+			field.Forbidden(field.NewPath("spec").Child("details").Child("adminPassword"),
+				"cannot apply k8sSecret.name and ociSecret.ocid at the same time"))
 	}
 
-	if adb.Spec.Details.Wallet.Password.K8sSecretName != nil && adb.Spec.Details.Wallet.Password.OCISecretOCID != nil {
+	if adb.Spec.Details.Wallet.Password.K8sSecret.Name != nil && adb.Spec.Details.Wallet.Password.OCISecret.OCID != nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("details").Child("AdminPassword"),
-				"cannot apply k8sSecretName and ociSecretOCID at the same time"))
+			field.Forbidden(field.NewPath("spec").Child("details").Child("wallet").Child("password"),
+				"cannot apply k8sSecret.name and ociSecret.ocid at the same time"))
 	}
 
 	return allErrs
@@ -238,5 +238,6 @@ func (r *AutonomousDatabase) ValidateDelete() error {
 // Returns true if AutonomousContainerDatabaseOCID has value.
 // We don't use Details.IsDedicated because the parameter might be null when it's a provision operation.
 func isDedicated(adb *AutonomousDatabase) bool {
-	return adb.Spec.Details.AutonomousContainerDatabaseOCID != nil
+	return adb.Spec.Details.AutonomousContainerDatabase.K8sACD.Name != nil ||
+		adb.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID != nil
 }

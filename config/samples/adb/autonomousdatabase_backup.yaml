@@ -5,7 +5,13 @@ metadata:
 spec:
   # Before you can create manual backups, you must have an Object Storage bucket and your database must be configured to connect to it. This is a one-time operation.
   # See https://docs.oracle.com/en-us/iaas/Content/Database/Tasks/adbbackingup.htm#creatingbucket
-  autonomousDatabaseOCID: ocid1.autonomousdatabase...
+  target:
+    k8sADB:
+      name: autonomousdatabase-sample
+    # # Uncomment the below block if you use ADB OCID as the input of the target
+    # ociADB:
+    #   ocid: ocid1.autonomousdatabase...
+  displayName: autonomousdatabasebackup-sample
   
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:
