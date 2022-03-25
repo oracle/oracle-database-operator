@@ -42,13 +42,15 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/oracle/oci-go-sdk/v54/database"
-	"k8s.io/apimachinery/pkg/api/meta"
+	"github.com/oracle/oci-go-sdk/v63/database"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
+// name of our custom finalizer
+const ADBFinalizer = "database.oracle.com/adb-finalizer"
 
 // AutonomousDatabaseSpec defines the desired state of AutonomousDatabase
 // Important: Run "make" to regenerate code after modifying this file
@@ -59,30 +61,38 @@ type AutonomousDatabaseSpec struct {
 	HardLink *bool `json:"hardLink,omitempty"`
 }
 
-// AutonomousDatabaseDetails defines the detail information of AutonomousDatabase, corresponding to oci-go-sdk/database/AutonomousDatabase
-type AutonomousDatabaseDetails struct {
-	AutonomousDatabaseOCID          *string `json:"autonomousDatabaseOCID,omitempty"`
-	CompartmentOCID                 *string `json:"compartmentOCID,omitempty"`
-	AutonomousContainerDatabaseOCID *string `json:"autonomousContainerDatabaseOCID,omitempty"`
-	DisplayName                     *string `json:"displayName,omitempty"`
-	DbName                          *string `json:"dbName,omitempty"`
-	// +kubebuilder:validation:Enum:="OLTP";"DW";"AJD";"APEX"
-	DbWorkload database.AutonomousDatabaseDbWorkloadEnum `json:"dbWorkload,omitempty"`
-	// +kubebuilder:validation:Enum:="LICENSE_INCLUDED";"BRING_YOUR_OWN_LICENSE"
-	LicenseModel         database.AutonomousDatabaseLicenseModelEnum   `json:"licenseModel,omitempty"`
-	DbVersion            *string                                       `json:"dbVersion,omitempty"`
-	DataStorageSizeInTBs *int                                          `json:"dataStorageSizeInTBs,omitempty"`
-	CPUCoreCount         *int                                          `json:"cpuCoreCount,omitempty"`
-	AdminPassword        PasswordSpec                                  `json:"adminPassword,omitempty"`
-	IsAutoScalingEnabled *bool                                         `json:"isAutoScalingEnabled,omitempty"`
-	IsDedicated          *bool                                         `json:"isDedicated,omitempty"`
-	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
+/************************
+*	ACD specs
+************************/
+type K8sACDSpec struct {
+	Name *string `json:"name,omitempty"`
+}
 
-	NetworkAccess NetworkAccessSpec `json:"networkAccess,omitempty"`
+type OCIACDSpec struct {
+	OCID *string `json:"ocid,omitempty"`
+}
 
-	FreeformTags map[string]string `json:"freeformTags,omitempty"`
+// ACDSpec defines the spec of the target for backup/restore runs.
+// The name could be the name of an AutonomousDatabase or an AutonomousDatabaseBackup
+type ACDSpec struct {
+	K8sACD K8sACDSpec `json:"k8sACD,omitempty"`
+	OCIACD OCIACDSpec `json:"ociACD,omitempty"`
+}
 
-	Wallet WalletSpec `json:"wallet,omitempty"`
+/************************
+*	Secret specs
+************************/
+type K8sSecretSpec struct {
+	Name *string `json:"name,omitempty"`
+}
+
+type OCISecretSpec struct {
+	OCID *string `json:"ocid,omitempty"`
+}
+
+type PasswordSpec struct {
+	K8sSecret K8sSecretSpec `json:"k8sSecret,omitempty"`
+	OCISecret OCISecretSpec `json:"ociSecret,omitempty"`
 }
 
 type WalletSpec struct {
@@ -90,10 +100,9 @@ type WalletSpec struct {
 	Password PasswordSpec `json:"password,omitempty"`
 }
 
-type PasswordSpec struct {
-	K8sSecretName *string `json:"k8sSecretName,omitempty"`
-	OCISecretOCID *string `json:"ociSecretOCID,omitempty"`
-}
+/************************
+*	Network Access specs
+************************/
 
 type NetworkAccessTypeEnum string
 
@@ -118,6 +127,32 @@ type PrivateEndpointSpec struct {
 	HostnamePrefix *string  `json:"hostnamePrefix,omitempty"`
 }
 
+// AutonomousDatabaseDetails defines the detail information of AutonomousDatabase, corresponding to oci-go-sdk/database/AutonomousDatabase
+type AutonomousDatabaseDetails struct {
+	AutonomousDatabaseOCID      *string `json:"autonomousDatabaseOCID,omitempty"`
+	CompartmentOCID             *string `json:"compartmentOCID,omitempty"`
+	AutonomousContainerDatabase ACDSpec `json:"autonomousContainerDatabase,omitempty"`
+	DisplayName                 *string `json:"displayName,omitempty"`
+	DbName                      *string `json:"dbName,omitempty"`
+	// +kubebuilder:validation:Enum:="OLTP";"DW";"AJD";"APEX"
+	DbWorkload database.AutonomousDatabaseDbWorkloadEnum `json:"dbWorkload,omitempty"`
+	// +kubebuilder:validation:Enum:="LICENSE_INCLUDED";"BRING_YOUR_OWN_LICENSE"
+	LicenseModel         database.AutonomousDatabaseLicenseModelEnum   `json:"licenseModel,omitempty"`
+	DbVersion            *string                                       `json:"dbVersion,omitempty"`
+	DataStorageSizeInTBs *int                                          `json:"dataStorageSizeInTBs,omitempty"`
+	CPUCoreCount         *int                                          `json:"cpuCoreCount,omitempty"`
+	AdminPassword        PasswordSpec                                  `json:"adminPassword,omitempty"`
+	IsAutoScalingEnabled *bool                                         `json:"isAutoScalingEnabled,omitempty"`
+	IsDedicated          *bool                                         `json:"isDedicated,omitempty"`
+	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
+
+	NetworkAccess NetworkAccessSpec `json:"networkAccess,omitempty"`
+
+	FreeformTags map[string]string `json:"freeformTags,omitempty"`
+
+	Wallet WalletSpec `json:"wallet,omitempty"`
+}
+
 // AutonomousDatabaseStatus defines the observed state of AutonomousDatabase
 type AutonomousDatabaseStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -125,12 +160,6 @@ type AutonomousDatabaseStatus struct {
 	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
 	TimeCreated          string                                        `json:"timeCreated,omitempty"`
 	AllConnectionStrings []ConnectionStringProfile                     `json:"allConnectionStrings,omitempty"`
-
-	// +patchMergeKey=type
-	// +patchStrategy=merge
-	// +listType=map
-	// +listMapKey=type
-	Conditions []metaV1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 type TLSAuthenticationEnum string
@@ -201,24 +230,60 @@ func (adb *AutonomousDatabase) GetLastSuccessfulSpec() (*AutonomousDatabaseSpec,
 	return &sucSpec, nil
 }
 
-func (adb *AutonomousDatabase) UpdateConditions(lifecycleState database.AutonomousDatabaseLifecycleStateEnum, err error) {
-	var metaCondition metaV1.Condition
+// UpdateStatusFromOCIADB updates only the status from database.AutonomousDatabase object
+func (adb *AutonomousDatabase) UpdateStatusFromOCIADB(ociObj database.AutonomousDatabase) {
+	adb.Status.LifecycleState = ociObj.LifecycleState
+	adb.Status.TimeCreated = FormatSDKTime(ociObj.TimeCreated)
 
-	if err != nil {
-		metaCondition = CreateMetaCondition(adb, err, string(CrdReconcileErrorState), string(CrdReconcileErrorReason))
+	if *ociObj.IsDedicated {
+		conns := make([]ConnectionStringSpec, len(ociObj.ConnectionStrings.AllConnectionStrings))
+		for key, val := range ociObj.ConnectionStrings.AllConnectionStrings {
+			conns = append(conns, ConnectionStringSpec{TNSName: key, ConnectionString: val})
+		}
+
+		adb.Status.AllConnectionStrings = []ConnectionStringProfile{
+			{ConnectionStrings: conns},
+		}
+	} else {
+		var mTLSConns []ConnectionStringSpec
+		var tlsConns []ConnectionStringSpec
+
+		var conns []ConnectionStringProfile
+
+		for _, profile := range ociObj.ConnectionStrings.Profiles {
+			if profile.TlsAuthentication == database.DatabaseConnectionStringProfileTlsAuthenticationMutual {
+				mTLSConns = append(mTLSConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
+			} else {
+				tlsConns = append(tlsConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
+			}
+		}
+
+		if len(mTLSConns) > 0 {
+			conns = append(conns, ConnectionStringProfile{
+				TLSAuthentication: tlsAuthenticationMTLS,
+				ConnectionStrings: mTLSConns,
+			})
+		}
+
+		if len(tlsConns) > 0 {
+			conns = append(conns, ConnectionStringProfile{
+				TLSAuthentication: tlsAuthenticationTLS,
+				ConnectionStrings: tlsConns,
+			})
+		}
+
+		adb.Status.AllConnectionStrings = conns
 	}
-
-	meta.SetStatusCondition(&adb.Status.Conditions, metaCondition)
 }
 
-// UpdateAttrFromOCIAutonomousDatabase updates the attributes from database.AutonomousDatabase object and returns the resource
+// UpdateFromOCIADB updates the attributes from database.AutonomousDatabase object
 func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDatabase) {
 	/***********************************
 	* update the spec
 	***********************************/
 	adb.Spec.Details.AutonomousDatabaseOCID = ociObj.Id
 	adb.Spec.Details.CompartmentOCID = ociObj.CompartmentId
-	adb.Spec.Details.AutonomousContainerDatabaseOCID = ociObj.AutonomousContainerDatabaseId
+	adb.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID = ociObj.AutonomousContainerDatabaseId
 	adb.Spec.Details.DisplayName = ociObj.DisplayName
 	adb.Spec.Details.DbName = ociObj.DbName
 	adb.Spec.Details.DbWorkload = ociObj.DbWorkload
@@ -255,52 +320,11 @@ func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDataba
 	* update the status subresource
 	***********************************/
 
-	adb.Status.LifecycleState = ociObj.LifecycleState
-	adb.Status.TimeCreated = ociObj.TimeCreated.String()
-
-	if *ociObj.IsDedicated {
-		conns := make([]ConnectionStringSpec, len(ociObj.ConnectionStrings.AllConnectionStrings))
-		for key, val := range ociObj.ConnectionStrings.AllConnectionStrings {
-			conns = append(conns, ConnectionStringSpec{TNSName: key, ConnectionString: val})
-		}
-
-		adb.Status.AllConnectionStrings = []ConnectionStringProfile{
-			ConnectionStringProfile{ConnectionStrings: conns},
-		}
-	} else {
-		var mTLSConns []ConnectionStringSpec
-		var tlsConns []ConnectionStringSpec
-
-		var conns []ConnectionStringProfile
-
-		for _, profile := range ociObj.ConnectionStrings.Profiles {
-			if profile.TlsAuthentication == database.DatabaseConnectionStringProfileTlsAuthenticationMutual {
-				mTLSConns = append(mTLSConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
-			} else {
-				tlsConns = append(tlsConns, ConnectionStringSpec{TNSName: *profile.DisplayName, ConnectionString: *profile.Value})
-			}
-		}
-
-		if len(mTLSConns) > 0 {
-			conns = append(conns, ConnectionStringProfile{
-				TLSAuthentication: tlsAuthenticationMTLS,
-				ConnectionStrings: mTLSConns,
-			})
-		}
-
-		if len(tlsConns) > 0 {
-			conns = append(conns, ConnectionStringProfile{
-				TLSAuthentication: tlsAuthenticationTLS,
-				ConnectionStrings: tlsConns,
-			})
-		}
-
-		adb.Status.AllConnectionStrings = conns
-	}
+	adb.UpdateStatusFromOCIADB(ociObj)
 }
 
 // RemoveUnchangedDetails removes the unchanged fields in spec.details, and returns if the details has been changed.
-// details.autonomousDatabaseOCID won't be affected because we need it to send requests.
+// Always restore the details.autonomousDatabaseOCID from the lastSucSpec because we need it to send requests.
 // A `false` is returned if the lastSucSpec is nil.
 func (adb *AutonomousDatabase) RemoveUnchangedDetails() (bool, error) {
 	lastSucSpec, err := adb.GetLastSuccessfulSpec()

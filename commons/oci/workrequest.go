@@ -46,12 +46,13 @@ import (
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/oracle/oci-go-sdk/v54/common"
-	"github.com/oracle/oci-go-sdk/v54/workrequests"
+	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/workrequests"
 )
 
 type WorkRequestService interface {
-	Wait(opcWorkRequestID string) (workrequests.WorkRequestStatusEnum, error)
+	Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
+	Wait(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
 }
 
 type workRequestService struct {
@@ -93,8 +94,8 @@ func (w workRequestService) getRetryPolicy() common.RetryPolicy {
 		return true
 	}
 
-	// maximum times of retry (~30mins)
-	attempts := uint(63)
+	// maximum times of retry (~60mins)
+	attempts := uint(124)
 
 	nextDuration := func(r common.OCIOperationResponse) time.Duration {
 		// Wait longer for next retry when your previous one failed
@@ -109,7 +110,7 @@ func (w workRequestService) getRetryPolicy() common.RetryPolicy {
 	return common.NewRetryPolicy(attempts, shouldRetry, nextDuration)
 }
 
-func (w *workRequestService) Wait(opcWorkRequestID string) (workrequests.WorkRequestStatusEnum, error) {
+func (w *workRequestService) Wait(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error) {
 	w.logger.Info("Waiting for the work request to finish. opcWorkRequestID = " + opcWorkRequestID)
 
 	// retries until the work status is SUCCEEDED, FAILED or CANCELED
@@ -124,8 +125,21 @@ func (w *workRequestService) Wait(opcWorkRequestID string) (workrequests.WorkReq
 
 	resp, err := w.workClient.GetWorkRequest(context.TODO(), workRequest)
 	if err != nil {
-		return resp.Status, err
+		return resp, err
 	}
 
-	return resp.Status, nil
+	return resp, nil
+}
+
+func (w *workRequestService) Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error) {
+	workRequest := workrequests.GetWorkRequestRequest{
+		WorkRequestId: common.String(opcWorkRequestID),
+	}
+
+	resp, err := w.workClient.GetWorkRequest(context.TODO(), workRequest)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, nil
 }

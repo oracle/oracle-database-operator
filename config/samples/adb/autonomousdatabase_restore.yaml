@@ -5,13 +5,19 @@ metadata:
 spec:
   # Restore the database either from a backup or using point-in-time restore
   # The name of your AutonomousDatabaseBackup resource
-  backupName: autonomousdatabasebackup-sample
-
-  # Uncomment the following block to perform point-in-time restore
-  # pointInTime:
-  #   autonomousDatabaseOCID: ocid1.autonomousdatabase...
-  #   # The timestamp must follow this format: YYYY-MM-DD HH:MM:SS GMT
-  #   timeStamp: 2021-10-23 11:03:13 UTC
+  target:
+    k8sADB:
+      name: autonomousdatabase-sample
+    # # Uncomment the below block if you use ADB OCID as the input of the target
+    # ociADB:
+    #   ocid: ocid1.autonomousdatabase...
+  source:
+    k8sADBBackup: 
+      name: autonomousdatabasebackup-sample
+    # # Uncomment the following field to perform point-in-time restore
+    # pointInTime: 
+    #   # The timestamp must follow this format: YYYY-MM-DD HH:MM:SS GMT
+    #   timestamp: 2021-12-23 11:03:13 UTC
 
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:
