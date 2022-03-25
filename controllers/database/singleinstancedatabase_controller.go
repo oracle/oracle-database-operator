@@ -1045,11 +1045,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	m.Status.PdbConnectString = dbcommons.ValueUnavailable
 	m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 
-	pdbName := "ORCLPDB1"
+	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
-	if strings.ToUpper(sid) == "XE" {
-		pdbName = "XEPDB1"
-	}
 	if m.Spec.Persistence.AccessMode == "" {
 		sid, pdbName, m.Status.Edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
 		if sid == "" || pdbName == "" || m.Status.Edition == "" {
@@ -1057,9 +1054,6 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		}
 	}
 
-	if m.Spec.Pdbname != "" {
-		pdbName = strings.ToUpper(m.Spec.Pdbname)
-	}
 	if m.Spec.LoadBalancer {
 		m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
