@@ -43,8 +43,8 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v54/common"
-	"github.com/oracle/oci-go-sdk/v54/database"
+	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/database"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"

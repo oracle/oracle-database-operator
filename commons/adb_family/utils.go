@@ -39,7 +39,7 @@
 package adbfamily
 
 import (
-	"github.com/oracle/oci-go-sdk/v54/common"
+	"github.com/oracle/oci-go-sdk/v63/common"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/commons/k8s"
 	"sigs.k8s.io/controller-runtime/pkg/client"
