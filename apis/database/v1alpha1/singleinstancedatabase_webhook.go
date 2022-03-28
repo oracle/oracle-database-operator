@@ -105,22 +105,17 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 
 	// Pre-built db
 	if r.Spec.Persistence.AccessMode == "" {
-		if r.Spec.AdminPassword.SecretName != "" {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("adminPassword"), r.Spec.AdminPassword,
-					"cannot change password for prebuilt db"))
-		}
-		if r.Spec.Sid != "" {
+		if r.Spec.Sid != "" && r.Spec.Edition != "express" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
 					"cannot change sid for prebuilt db"))
 		}
-		if r.Spec.Pdbname != "" {
+		if r.Spec.Pdbname != "" && r.Spec.Edition != "express" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 					"cannot change pdbName for prebuilt db"))
 		}
-		if r.Spec.CloneFrom != "" {
+		if r.Spec.CloneFrom != "" && r.Spec.Edition != "express" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
 					"cannot clone to create a prebuilt db"))
