@@ -8,7 +8,7 @@ spec:
   target:
     k8sADB:
       name: autonomousdatabase-sample
-    # # Uncomment the below block if you use ADB OCID as the input of the target
+    # # Uncomment the below block if you use ADB OCID as the input of the target ADB
     # ociADB:
     #   ocid: ocid1.autonomousdatabase...
   source:
