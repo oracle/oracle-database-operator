@@ -28,7 +28,7 @@ To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Deb
 
 ## Provision an Autonomous Database
 
-Follow the steps to provision an Autonomous Database that will bind objects in your cluster.
+Follow the steps to provision an Autonomous Database that will map objects in your cluster.
 
 1. Get the `Compartment OCID`.
 
@@ -102,6 +102,8 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
 ## Bind to an existing Autonomous Database
 
 Other than provisioning a database, you can bind to an existing database in your cluster.
+
+The operator also generates the `AutonomousBackup` custom resources if a database has backups. The operator syncs the `AutonomousBackups` in every reconciliation loop by getting the list of OCIDs of the AutonomousBackups from OCI, and then creates the `AutonomousDatabaseBackup` object automatically if it cannot find a resource that has the same `AutonomousBackupOCID` in the cluster.
 
 1. Clean up the resource you created in the earlier provision operation:
 
@@ -386,7 +388,6 @@ Follow the steps to delete the resource and terminate the Autonomous Database.
 
 Now, you can verify that the database is in TERMINATING state on the Cloud Console.
 
-
 ## Debugging and troubleshooting
 
 ### Show the details of the resource
@@ -397,9 +398,9 @@ If you edit and re-apply the `.yaml` file, the Autonomous Database controller wi
 kubectl describe adb/autonomousdatabase-sample
 ```
 
-### The resource is in UNAVAILABLE state
+### Check the logs of the pod where the operator deploys
 
-If an error occurs during the operation, the `lifecycleState` of the resoursce changes to UNAVAILABLE. Follow the steps to check the logs.
+Follow the steps to check the logs.
 
 1. List the pod replicas
 
