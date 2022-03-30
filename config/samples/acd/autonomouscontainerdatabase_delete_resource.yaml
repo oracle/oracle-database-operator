@@ -7,18 +7,9 @@ kind: AutonomousContainerDatabase
 metadata:
   name: autonomouscontainerdatabase-sample
 spec:
-  # Update compartmentOCID with your compartment OCID.
-  compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
-  autonomousExadataVMClusterOCID: ocid1.autonomousexainfrastructure...
-  displayName: newACD
-  # # An optional field for Database Patch model preference. Should be either RELEASE_UPDATES or RELEASE_UPDATE_REVISIONS
-  # patchModel: RELEASE_UPDATES
-
-  freeformTags:
-    key1: val1
-
-  hardLink: false
-
+  autonomousContainerDatabaseOCID: ocid1.autonomouscontainerdatabase...
+  # Delete this resource to terminate database after the changes applied
+  hardLink: true
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:
     configMapName: oci-cred
