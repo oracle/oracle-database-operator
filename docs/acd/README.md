@@ -44,9 +44,9 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
 
     ![aei-1](/images/adb/adb-id-1.png)
 
-    ![aei-2](/images/adb/aei-id-1.png)
+    Click on the name of the Autonomous Exadata VM Cluster, and copy the `OCID`.
 
-    Copy the `OCID` of the Autonomous Exadata VM Cluster.
+    ![aei-2](/images/adb/aei-id-1.png)
 
     ![aei-3](/images/adb/aei-id-2.png)
 
@@ -56,7 +56,7 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
     | `spec.compartmentOCID` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the compartment of the Autonomous Container Database. | Yes |
     | `spec.autonomousExadataVMClusterOCID` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the Autonomous Exadata Infrastructure. | Yes |
     | `spec.displayName` | string | The user-friendly name for the Autonomous Container Database. The name does not have to be unique. | Yes |
-    | `spec.patchModel` | string | The Database Patch model preference. The following values are valid: RELEASE_UPDATES and RELEASE_UPDATE_REVISIONS. Currently, the Release Update Revision (RUR) maintenance type is not a selectable option. | No |
+    | `spec.patchModel` | string | The Database Patch model preference. The following values are valid: RELEASE_UPDATES and RELEASE_UPDATE_REVISIONS. Currently, the Release Update Revision maintenance type is not a selectable option. | No |
     | `spec.freeformTags` | dictionary | Free-form tags for this resource. Each tag is a simple key-value pair with no predefined name, type, or namespace. For more information, see [Resource Tag](https://docs.cloud.oracle.com/Content/General/Concepts/resourcetags.htm).<br><br> Example:<br> `freeformTags:`<br> &nbsp;&nbsp;&nbsp;&nbsp;`key1: value1`<br> &nbsp;&nbsp;&nbsp;&nbsp;`key2: value2`| No |
     | `spec.ociConfig` | dictionary | Not required when the Operator is authorized with [Instance Principal](./../adb/ADB_PREREQUISITES.md#authorized-with-instance-principal). Otherwise, you will need the values from the [Authorized with API Key Authentication](./../adb/ADB_PREREQUISITES.md#authorized-with-api-key-authentication) section. | Conditional |
     | `spec.ociConfig.configMapName` | string | Name of the ConfigMap that holds the local OCI configuration | Conditional |
@@ -147,7 +147,7 @@ You can change the display name of the database by modifying the value of the `d
       name: autonomouscontainerdatabase-sample
     spec:
       compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
-      displayName: newACD
+      displayName: RenamedADB
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
@@ -171,6 +171,7 @@ Here's a list of the values you can set for `action`:
 
 * `RESTART`: to restart the database
 * `TERMINATE`: to terminate the database
+* `SYNC`: to sync the database, will describe in the next section
 
 1. A sample .yaml file is available here: [config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml](./../../config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml)
 
@@ -189,7 +190,7 @@ Here's a list of the values you can set for `action`:
         secretName: oci-privatekey
     ```
 
-2. Apply the change to stop the database.
+2. Apply the change to restart the database.
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml
@@ -218,7 +219,7 @@ Users can sync the resource manually by setting the value of the `action` attrib
         secretName: oci-privatekey
     ```
 
-2. Apply the change to stop the database.
+2. Apply the change to sync the database.
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_sync.yaml
