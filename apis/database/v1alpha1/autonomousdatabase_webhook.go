@@ -34,7 +34,7 @@
 ** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
- */
+*/
 
 package v1alpha1
 
@@ -140,14 +140,18 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 				"autonomousDatabaseOCID cannot be modified"))
 	}
 
-	// cannot apply lifecycleState with other fields together
-	copyDetails := r.Spec.Details.DeepCopy()
-	copyDetails.LifecycleState = oldADB.Spec.Details.LifecycleState
-	onlyLifecycleStateChanged := reflect.DeepEqual(oldADB.Spec.Details, copyDetails)
-	if onlyLifecycleStateChanged {
+	// cannot change lifecycleState with other fields together
+	var lifecycleChanged, otherDetailsChanged bool
+	lifecycleChanged = oldADB.Spec.Details.LifecycleState != r.Spec.Details.LifecycleState
+	copyLifecycleState := oldADB.Spec.Details.LifecycleState
+	oldADB.Spec.Details.LifecycleState = r.Spec.Details.LifecycleState
+	otherDetailsChanged = !reflect.DeepEqual(oldADB.Spec.Details, r.Spec.Details)
+	oldADB.Spec.Details.LifecycleState = copyLifecycleState // restore
+
+	if lifecycleChanged && otherDetailsChanged {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("details").Child("LifecycleState"),
-				"cannot apply lifecycleState with other spec.details attributes at the same time"))
+				"cannot change lifecycleState with other spec.details attributes at the same time"))
 	}
 
 	allErrs = validateCommon(r, allErrs)
@@ -211,7 +215,8 @@ func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) fie
 		// Dedicated database
 
 		// accessControlList cannot be provided when Autonomous Database's access control is disabled
-		if !*adb.Spec.Details.NetworkAccess.IsAccessControlEnabled && adb.Spec.Details.NetworkAccess.AccessControlList != nil {
+		if adb.Spec.Details.NetworkAccess.AccessControlList != nil &&
+			(adb.Spec.Details.NetworkAccess.IsAccessControlEnabled == nil || !*adb.Spec.Details.NetworkAccess.IsAccessControlEnabled) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("accessControlList"),
 					"access control list cannot be provided when Autonomous Database's access control is disabled"))
@@ -220,7 +225,8 @@ func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) fie
 		// IsMTLSConnectionRequired is not supported by dedicated database
 		if adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired != nil {
 			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("isMTLSConnectionRequired"), "isMTLSConnectionRequired is not supported on a dedicated database"))
+				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("isMTLSConnectionRequired"),
+					"isMTLSConnectionRequired is not supported on a dedicated database"))
 		}
 	}
 

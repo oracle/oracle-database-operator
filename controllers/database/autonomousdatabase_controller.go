@@ -350,15 +350,11 @@ func (r *AutonomousDatabaseReconciler) manageError(adb *dbv1alpha1.AutonomousDat
 
 		var finalIssue = issue
 
+		// Roll back
 		if err := r.syncResource(adb); err != nil {
 			finalIssue = k8s.CombineErrors(finalIssue, err)
 		}
 
-		if err := r.updateLastSuccessfulSpec(adb); err != nil {
-			finalIssue = k8s.CombineErrors(finalIssue, err)
-		}
-
-		// r.updateResource has already triggered another Reconcile loop, so we simply log the error and return a nil
 		return emptyResult, finalIssue
 	} else {
 		// Send event
@@ -475,6 +471,11 @@ func (r *AutonomousDatabaseReconciler) syncResource(adb *dbv1alpha1.AutonomousDa
 		return err
 	}
 
+	// Update the status first to prevent unwanted Reconcile()
+	if err := r.updateResourceStatus(adb); err != nil {
+		return err
+	}
+
 	if err := r.updateResource(adb); err != nil {
 		return err
 	}
@@ -484,11 +485,6 @@ func (r *AutonomousDatabaseReconciler) syncResource(adb *dbv1alpha1.AutonomousDa
 
 // updateResource updates the specification, the status of AutonomousDatabase resource, and the lastSucSpec
 func (r *AutonomousDatabaseReconciler) updateResource(adb *dbv1alpha1.AutonomousDatabase) error {
-	// Update the status first to prevent unwanted Reconcile()
-	if err := r.updateResourceStatus(adb); err != nil {
-		return err
-	}
-
 	// Update the spec
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		curADB := &dbv1alpha1.AutonomousDatabase{}
