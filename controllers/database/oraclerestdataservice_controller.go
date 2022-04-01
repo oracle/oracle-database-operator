@@ -144,7 +144,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	// PVC Creation
-	result, err = r.createPVC(ctx, req, oracleRestDataService)
+	result, _ = r.createPVC(ctx, req, oracleRestDataService)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -907,7 +907,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
-			fmt.Sprintf(uninstallORDS))
+				   uninstallORDS)
 		log.Info("UninstallORDSCMD Output : " + out)
 		if strings.Contains(strings.ToUpper(out), "ERROR") {
 			return errors.New(out)
