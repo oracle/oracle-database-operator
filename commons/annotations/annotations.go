@@ -53,9 +53,9 @@ type PatchValue struct {
 	Value interface{} `json:"value"`
 }
 
-// SetAnnotations attaches the given metadata to the target object
+// PatchAnnotations attaches the given metadata to the target object
 // The obj will be updated with the content returned by the cluster
-func SetAnnotations(kubeClient client.Client, obj client.Object, anns map[string]string) error {
+func PatchAnnotations(kubeClient client.Client, obj client.Object, anns map[string]string) error {
 	payload := []PatchValue{}
 
 	if obj.GetAnnotations() == nil {

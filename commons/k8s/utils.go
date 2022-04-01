@@ -39,7 +39,11 @@
 package k8s
 
 import (
+	"context"
+	"encoding/json"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	utilErrors "k8s.io/apimachinery/pkg/util/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -58,4 +62,25 @@ func NewOwnerReference(owner client.Object) []metav1.OwnerReference {
 
 func CombineErrors(errs ...error) error {
 	return utilErrors.NewAggregate(errs)
+}
+
+/**********************
+ Patch resource
+**********************/
+
+type patchValue struct {
+	Op    string      `json:"op"`
+	Path  string      `json:"path"`
+	Value interface{} `json:"value"`
+}
+
+func Patch(kubeClient client.Client, obj client.Object, path string, value interface{}) error {
+	payload := []patchValue{{
+		Op:    "replace",
+		Path:  path,
+		Value: value,
+	}}
+	payloadBytes, _ := json.Marshal(payload)
+	patch := client.RawPatch(types.JSONPatchType, payloadBytes)
+	return kubeClient.Patch(context.TODO(), obj, patch)
 }

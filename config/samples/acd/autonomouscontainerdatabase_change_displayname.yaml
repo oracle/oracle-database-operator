@@ -1,0 +1,16 @@
+#
+# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousContainerDatabase
+metadata:
+  name: autonomouscontainerdatabase-sample
+spec:
+  # Update compartmentOCID with your compartment OCID.
+  compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
+  displayName: newACD
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey
