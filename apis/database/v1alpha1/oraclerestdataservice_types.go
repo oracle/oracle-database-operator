@@ -108,7 +108,7 @@ type OracleRestDataServiceStatus struct {
 	ClusterDbApiUrl    string `json:"clusterDbApiUrl,omitempty"`
 	LoadBalancer       string `json:"loadBalancer,omitempty"`
 	DatabaseRef        string `json:"databaseRef,omitempty"`
-	ServiceIP          string `json:"serviceIP,omitempty,omitempty"`
+	ServiceIP          string `json:"serviceIP,omitempty"`
 	DatabaseActionsUrl string `json:"databaseActionsUrl,omitempty"`
 	OrdsInstalled      bool   `json:"ordsInstalled,omitempty"`
 	ApexConfigured     bool   `json:"apexConfigured,omitempty"`

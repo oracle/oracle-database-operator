@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -44,6 +44,8 @@ const ORACLE_GUID int64 = 54321
 
 const DBA_GUID int64 = 54322
 
+const SQLPlusCLI string = "sqlplus -s / as sysdba"
+
 const NoCloneRef string = "Unavailable"
 
 const GetVersionSQL string = "SELECT VERSION_FULL FROM V\\$INSTANCE;"
@@ -57,9 +59,6 @@ const CreateChkFileCMD string = "touch \"${ORACLE_BASE}/oradata/.${ORACLE_SID}.n
 const RemoveChkFileCMD string = "rm -f \"${ORACLE_BASE}/oradata/.${ORACLE_SID}.nochk\""
 
 const CreateDBRecoveryDestCMD string = "mkdir -p ${ORACLE_BASE}/oradata/fast_recovery_area"
-
-const ConfigureOEMSQL string = "exec DBMS_XDB_CONFIG.SETHTTPSPORT(5500);" +
-	"\nalter system register;"
 
 const SetDBRecoveryDestSQL string = "SHOW PARAMETER db_recovery_file_dest;" +
 	"\nALTER SYSTEM SET db_recovery_file_dest_size=50G scope=both sid='*';" +
