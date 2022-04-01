@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -43,6 +43,8 @@ const ORACLE_UID int64 = 54321
 const ORACLE_GUID int64 = 54321
 
 const DBA_GUID int64 = 54322
+
+const SQLPlusCLI string = "sqlplus -s / as sysdba"
 
 const NoCloneRef string = "Unavailable"
 
