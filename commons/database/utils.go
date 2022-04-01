@@ -638,9 +638,6 @@ func GetSqlpatchStatus(r client.Reader, config *rest.Config, readyPod corev1.Pod
 }
 
 func GetSqlClient(edition string) string {
-	if edition == "express" {
-		return "su -p oracle -c \"sqlplus -s / as sysdba\""
-	}
 	return "sqlplus -s / as sysdba"
 }
 

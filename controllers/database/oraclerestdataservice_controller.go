@@ -144,7 +144,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	// PVC Creation
-	result, err = r.createPVC(ctx, req, oracleRestDataService)
+	result, _ = r.createPVC(ctx, req, oracleRestDataService)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -907,7 +907,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
-			fmt.Sprintf(uninstallORDS))
+				   uninstallORDS)
 		log.Info("UninstallORDSCMD Output : " + out)
 		if strings.Contains(strings.ToUpper(out), "ERROR") {
 			return errors.New(out)
@@ -1037,10 +1037,6 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	r.Status().Update(ctx, m)
 
 	configureApexRestSqlClient := "sqlplus -s / as sysdba @apex_rest_config.sql"
-	if n.Spec.Edition == "express" {
-		configureApexRestSqlClient = "su -p oracle -c \"sqlplus -s / as sysdba @apex_rest_config.sql;\""
-	}
-
 	// Configure APEX
 	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf(dbcommons.ConfigureApexRest, apexPassword, configureApexRestSqlClient))

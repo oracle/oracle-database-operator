@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -314,6 +314,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	eventReason := "Spec Error"
 	var eventMsgs []string
 
+	r.Log.Info("Got", "edition", m.Spec.Edition)
 	// Pre-built db
 	if m.Spec.Persistence.AccessMode == "" {
 		return requeueN, nil
@@ -494,6 +495,18 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Name:  "SKIP_DATAPATCH",
 								Value: "true",
 							},
+							{
+								// This is for the pre-built DB useful for dev/test/CI-CD
+								Name: "ORACLE_PWD",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: m.Spec.AdminPassword.SecretName,
+										},
+										Key: m.Spec.AdminPassword.SecretKey,
+									},
+								},
+							},
 						}
 					}(),
 				}},
@@ -517,17 +530,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}(),
 				SecurityContext: &corev1.PodSecurityContext{
 					RunAsUser: func() *int64 {
-						i := int64(0)
-						if m.Spec.Edition != "express" {
-							i = int64(dbcommons.ORACLE_UID)
-						}
+						i := int64(dbcommons.ORACLE_UID)
 						return &i
 					}(),
 					RunAsGroup: func() *int64 {
-						i := int64(0)
-						if m.Spec.Edition != "express" {
-							i = int64(dbcommons.ORACLE_GUID)
-						}
+						i := int64(dbcommons.ORACLE_GUID)
 						return &i
 					}(),
 				},
@@ -675,6 +682,39 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					Name:      "datamount",
 				}},
 				Env: func() []corev1.EnvVar {
+					// adding XE support
+					if m.Spec.Edition == "express" {
+						return []corev1.EnvVar{
+							{
+								Name:  "SVC_HOST",
+								Value: m.Name,
+							},
+							{
+								Name:  "SVC_PORT",
+								Value: "1521",
+							},
+							{
+								Name:  "ORACLE_CHARACTERSET",
+								Value: m.Spec.Charset,
+							},
+							{
+								Name:  "ORACLE_EDITION",
+								Value: m.Spec.Edition,
+							},
+							{
+								// This is for the express edition DB useful for dev/test/CI-CD
+								Name: "ORACLE_PWD",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: m.Spec.AdminPassword.SecretName,
+										},
+										Key: m.Spec.AdminPassword.SecretKey,
+									},
+								},
+							},
+						}
+					}
 					if m.Spec.CloneFrom == "" {
 						return []corev1.EnvVar{
 							{
@@ -798,17 +838,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsUser: func() *int64 {
-					i := int64(0)
-					if m.Spec.Edition != "express" {
-						i = int64(dbcommons.ORACLE_UID)
-					}
+					i := int64(dbcommons.ORACLE_UID)
 					return &i
 				}(),
 				RunAsGroup: func() *int64 {
-					i := int64(0)
-					if m.Spec.Edition != "express" {
-						i = int64(dbcommons.ORACLE_GUID)
-					}
+					i := int64(dbcommons.ORACLE_GUID)
 					return &i
 				}(),
 			},
@@ -1011,7 +1045,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	m.Status.PdbConnectString = dbcommons.ValueUnavailable
 	m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 
-	pdbName := "ORCLPDB1"
+	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
 	if m.Spec.Persistence.AccessMode == "" {
 		sid, pdbName, m.Status.Edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
@@ -1020,9 +1054,6 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		}
 	}
 
-	if m.Spec.Pdbname != "" {
-		pdbName = strings.ToUpper(m.Spec.Pdbname)
-	}
 	if m.Spec.LoadBalancer {
 		m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
@@ -1455,17 +1486,6 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 		}
 	}
 
-	if m.Spec.Edition == "express" {
-		//Configure OEM Express Listener
-		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false,
-			"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | su -p oracle -c \"sqlplus -s / as sysdba\" ", dbcommons.ConfigureOEMSQL))
-		if err != nil {
-			r.Log.Error(err, err.Error())
-			return requeueY, readyPod, err
-		}
-		r.Log.Info("ConfigureOEMSQL output")
-		r.Log.Info(out)
-	}
 
 	return requeueN, readyPod, nil
 
