@@ -53,6 +53,7 @@ import (
 type WorkRequestService interface {
 	Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
 	Wait(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
+	List(compartmentID string, resourceID string) (workrequests.ListWorkRequestsResponse, error)
 }
 
 type workRequestService struct {
@@ -137,6 +138,20 @@ func (w *workRequestService) Get(opcWorkRequestID string) (workrequests.GetWorkR
 	}
 
 	resp, err := w.workClient.GetWorkRequest(context.TODO(), workRequest)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, nil
+}
+
+func (w *workRequestService) List(compartmentID string, resourceID string) (workrequests.ListWorkRequestsResponse, error) {
+	req := workrequests.ListWorkRequestsRequest{
+		CompartmentId: common.String(compartmentID),
+		ResourceId:    common.String(resourceID),
+	}
+
+	resp, err := w.workClient.ListWorkRequests(context.TODO(), req)
 	if err != nil {
 		return resp, err
 	}
