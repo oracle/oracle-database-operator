@@ -58,9 +58,6 @@ const RemoveChkFileCMD string = "rm -f \"${ORACLE_BASE}/oradata/.${ORACLE_SID}.n
 
 const CreateDBRecoveryDestCMD string = "mkdir -p ${ORACLE_BASE}/oradata/fast_recovery_area"
 
-const ConfigureOEMSQL string = "exec DBMS_XDB_CONFIG.SETHTTPSPORT(5500);" +
-	"\nalter system register;"
-
 const SetDBRecoveryDestSQL string = "SHOW PARAMETER db_recovery_file_dest;" +
 	"\nALTER SYSTEM SET db_recovery_file_dest_size=50G scope=both sid='*';" +
 	"\nALTER SYSTEM SET db_recovery_file_dest='${ORACLE_BASE}/oradata/fast_recovery_area' scope=both sid='*';" +
