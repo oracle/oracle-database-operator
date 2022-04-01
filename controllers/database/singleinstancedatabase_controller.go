@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -495,6 +495,18 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Name:  "SKIP_DATAPATCH",
 								Value: "true",
 							},
+							{
+								// This is for the pre-built DB useful for dev/test/CI-CD
+								Name: "ORACLE_PWD",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{
+											Name: m.Spec.AdminPassword.SecretName,
+										},
+										Key: m.Spec.AdminPassword.SecretKey,
+									},
+								},
+							},
 						}
 					}(),
 				}},
@@ -690,6 +702,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: m.Spec.Edition,
 							},
 							{
+								// This is for the express edition DB useful for dev/test/CI-CD
 								Name: "ORACLE_PWD",
 								ValueFrom: &corev1.EnvVarSource{
 									SecretKeyRef: &corev1.SecretKeySelector{
