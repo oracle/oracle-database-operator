@@ -46,8 +46,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/oracle/oci-go-sdk/v54/common"
+	"github.com/oracle/oci-go-sdk/v63/common"
 )
+
+// LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
+const LastSuccessfulSpec string = "lastSuccessfulSpec"
 
 // File the meta condition and return the meta view
 func CreateMetaCondition(obj client.Object, err error, lifecycleState string, stateMsg string) metav1.Condition {
@@ -62,13 +65,34 @@ func CreateMetaCondition(obj client.Object, err error, lifecycleState string, st
 	}
 }
 
-// LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
-const LastSuccessfulSpec string = "lastSuccessfulSpec"
-
+/************************
+*	OCI config
+************************/
 type OCIConfigSpec struct {
 	ConfigMapName *string `json:"configMapName,omitempty"`
 	SecretName    *string `json:"secretName,omitempty"`
 }
+
+/************************
+*	ADB spec
+************************/
+type K8sADBSpec struct {
+	Name *string `json:"name,omitempty"`
+}
+
+type OCIADBSpec struct {
+	OCID *string `json:"ocid,omitempty"`
+}
+
+// TargetSpec defines the spec of the target for backup/restore runs.
+type TargetSpec struct {
+	K8sADB K8sADBSpec `json:"k8sADB,omitempty"`
+	OCIADB OCIADBSpec `json:"ociADB,omitempty"`
+}
+
+/**************************
+*	Remove Unchanged Fields
+**************************/
 
 // removeUnchangedFields removes the unchanged fields in the struct and returns if the struct is changed.
 // lastSpec should be a derefereced struct that is the last successful spec, e.g. AutonomousDatabaseSpec.
@@ -156,11 +180,20 @@ func hasChanged(lastField reflect.Value, curField reflect.Value) bool {
 	return true
 }
 
+/************************
+*	SDKTime format
+************************/
+
 // Follow the format of the display time
 const displayFormat = "2006-01-02 15:04:05 MST"
 
-func formatSDKTime(dateTime time.Time) string {
-	return dateTime.Format(displayFormat)
+func FormatSDKTime(sdkTime *common.SDKTime) string {
+	if sdkTime == nil {
+		return ""
+	}
+
+	time := sdkTime.Time
+	return time.Format(displayFormat)
 }
 
 func parseDisplayTime(val string) (*common.SDKTime, error) {

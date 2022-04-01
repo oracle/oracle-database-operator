@@ -50,7 +50,36 @@ import (
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 )
 
-func FetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseList, error) {
+func FetchResource(kubeClient client.Client, namespace string, name string, object client.Object) error {
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	if err := kubeClient.Get(context.TODO(), namespacedName, object); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Returns the first AutonomousDatabase resource that matches the AutonomousDatabaseOCID of the backup
+// If the AutonomousDatabase doesn't exist, returns a nil
+func FetchAutonomousDatabaseWithOCID(kubeClient client.Client, namespace string, ocid string) (*dbv1alpha1.AutonomousDatabase, error) {
+	adbList, err := fetchAutonomousDatabases(kubeClient, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, adb := range adbList.Items {
+		if adb.Spec.Details.AutonomousDatabaseOCID != nil && *adb.Spec.Details.AutonomousDatabaseOCID == ocid {
+			return &adb, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func fetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseList, error) {
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
 	adbList := &dbv1alpha1.AutonomousDatabaseList{}
 
@@ -81,12 +110,9 @@ func FetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string) 
 }
 
 func FetchConfigMap(kubeClient client.Client, namespace string, name string) (*corev1.ConfigMap, error) {
-	namespacedName := types.NamespacedName{
-		Namespace: namespace,
-		Name:      name,
-	}
 	configMap := &corev1.ConfigMap{}
-	if err := kubeClient.Get(context.TODO(), namespacedName, configMap); err != nil {
+
+	if err := FetchResource(kubeClient, namespace, name, configMap); err != nil {
 		return nil, err
 	}
 
@@ -94,12 +120,9 @@ func FetchConfigMap(kubeClient client.Client, namespace string, name string) (*c
 }
 
 func FetchSecret(kubeClient client.Client, namespace string, name string) (*corev1.Secret, error) {
-	namespacedName := types.NamespacedName{
-		Namespace: namespace,
-		Name:      name,
-	}
 	secret := &corev1.Secret{}
-	if err := kubeClient.Get(context.TODO(), namespacedName, secret); err != nil {
+
+	if err := FetchResource(kubeClient, namespace, name, secret); err != nil {
 		return nil, err
 	}
 

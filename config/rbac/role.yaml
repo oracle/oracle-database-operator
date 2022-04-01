@@ -146,12 +146,22 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
-  - autonomousdatabaseBackups
+  - autonomouscontainerdatabases
   verbs:
   - create
   - delete
   - get
   - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomouscontainerdatabases/status
+  verbs:
+  - get
+  - patch
   - update
 - apiGroups:
   - database.oracle.com
@@ -162,6 +172,7 @@ rules:
   - delete
   - get
   - list
+  - update
   - watch
 - apiGroups:
   - database.oracle.com
@@ -180,6 +191,7 @@ rules:
   - delete
   - get
   - list
+  - update
   - watch
 - apiGroups:
   - database.oracle.com

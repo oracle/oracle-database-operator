@@ -298,7 +298,7 @@ func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpec(kubeClient client.C
 		lastSuccessfulSpec: string(specBytes),
 	}
 
-	return annsv1.SetAnnotations(kubeClient, shardingv1, anns)
+	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)
 }
 
 func init() {

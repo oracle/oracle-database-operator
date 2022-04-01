@@ -43,8 +43,8 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v54/common"
-	"github.com/oracle/oci-go-sdk/v54/database"
+	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/database"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
@@ -61,7 +61,7 @@ type DatabaseService interface {
 	UpdateAutonomousDatabaseScalingFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	UpdateNetworkAccessMTLSRequired(adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	UpdateNetworkAccessMTLS(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccessPublic(lastSucSpec *dbv1alpha1.AutonomousDatabaseSpec, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccessPublic(lastSucSpec dbv1alpha1.NetworkAccessTypeEnum, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	UpdateNetworkAccess(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error)
 	StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error)
@@ -69,8 +69,13 @@ type DatabaseService interface {
 	DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (database.GenerateAutonomousDatabaseWalletResponse, error)
 	RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error)
 	ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error)
-	CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (database.CreateAutonomousDatabaseBackupResponse, error)
+	CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error)
 	GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error)
+	CreateAutonomousContainerDatabase(acb *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
+	GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error)
+	UpdateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
+	RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error)
+	TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error)
 }
 
 type databaseService struct {
@@ -103,16 +108,20 @@ func NewDatabaseService(
 	}, nil
 }
 
+/********************************
+ * Autonomous Database
+ *******************************/
+
 // ReadPassword reads the password from passwordSpec, and returns the pointer to the read password string.
 // The function returns a nil if nothing is read
 func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1.PasswordSpec) (*string, error) {
 	logger := d.logger.WithName("read-password")
 
-	if passwordSpec.K8sSecretName != nil {
-		logger.Info(fmt.Sprintf("Getting password from Secret %s", *passwordSpec.K8sSecretName))
+	if passwordSpec.K8sSecret.Name != nil {
+		logger.Info(fmt.Sprintf("Getting password from Secret %s", *passwordSpec.K8sSecret.Name))
 
-		key := *passwordSpec.K8sSecretName
-		password, err := k8s.GetSecretValue(d.kubeClient, namespace, *passwordSpec.K8sSecretName, key)
+		key := *passwordSpec.K8sSecret.Name
+		password, err := k8s.GetSecretValue(d.kubeClient, namespace, *passwordSpec.K8sSecret.Name, key)
 		if err != nil {
 			return nil, err
 		}
@@ -120,14 +129,31 @@ func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1
 		return common.String(password), nil
 	}
 
-	if passwordSpec.OCISecretOCID != nil {
-		logger.Info(fmt.Sprintf("Getting password from OCI Vault Secret OCID %s", *passwordSpec.OCISecretOCID))
+	if passwordSpec.OCISecret.OCID != nil {
+		logger.Info(fmt.Sprintf("Getting password from OCI Vault Secret OCID %s", *passwordSpec.OCISecret.OCID))
 
-		password, err := d.vaultService.GetSecretValue(*passwordSpec.OCISecretOCID)
+		password, err := d.vaultService.GetSecretValue(*passwordSpec.OCISecret.OCID)
 		if err != nil {
 			return nil, err
 		}
 		return common.String(password), nil
+	}
+
+	return nil, nil
+}
+
+func (d *databaseService) readACD_OCID(acd *dbv1alpha1.ACDSpec, namespace string) (*string, error) {
+	if acd.OCIACD.OCID != nil {
+		return acd.OCIACD.OCID, nil
+	}
+
+	if acd.K8sACD.Name != nil {
+		fetchedACD := &dbv1alpha1.AutonomousContainerDatabase{}
+		if err := k8s.FetchResource(d.kubeClient, namespace, *acd.K8sACD.Name, fetchedACD); err != nil {
+			return nil, err
+		}
+
+		return fetchedACD.Spec.AutonomousContainerDatabaseOCID, nil
 	}
 
 	return nil, nil
@@ -140,9 +166,13 @@ func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDat
 		return resp, err
 	}
 
+	acdOCID, err := d.readACD_OCID(&adb.Spec.Details.AutonomousContainerDatabase, adb.Namespace)
+	if err != nil {
+		return resp, err
+	}
+
 	createAutonomousDatabaseDetails := database.CreateAutonomousDatabaseDetails{
 		CompartmentId:                 adb.Spec.Details.CompartmentOCID,
-		AutonomousContainerDatabaseId: adb.Spec.Details.AutonomousContainerDatabaseOCID,
 		DbName:                        adb.Spec.Details.DbName,
 		CpuCoreCount:                  adb.Spec.Details.CPUCoreCount,
 		DataStorageSizeInTBs:          adb.Spec.Details.DataStorageSizeInTBs,
@@ -150,6 +180,7 @@ func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDat
 		DisplayName:                   adb.Spec.Details.DisplayName,
 		IsAutoScalingEnabled:          adb.Spec.Details.IsAutoScalingEnabled,
 		IsDedicated:                   adb.Spec.Details.IsDedicated,
+		AutonomousContainerDatabaseId: acdOCID,
 		DbVersion:                     adb.Spec.Details.DbVersion,
 		DbWorkload: database.CreateAutonomousDatabaseBaseDbWorkloadEnum(
 			adb.Spec.Details.DbWorkload),
@@ -264,13 +295,13 @@ func (d *databaseService) UpdateNetworkAccessMTLS(adb *dbv1alpha1.AutonomousData
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateNetworkAccessPublic(lastSucSpec *dbv1alpha1.AutonomousDatabaseSpec,
+func (d *databaseService) UpdateNetworkAccessPublic(lastAccessType dbv1alpha1.NetworkAccessTypeEnum,
 	adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
 
-	if lastSucSpec.Details.NetworkAccess.AccessType == dbv1alpha1.NetworkAccessTypeRestricted {
+	if lastAccessType == dbv1alpha1.NetworkAccessTypeRestricted {
 		updateAutonomousDatabaseDetails.WhitelistedIps = []string{""}
-	} else if lastSucSpec.Details.NetworkAccess.AccessType == dbv1alpha1.NetworkAccessTypePrivate {
+	} else if lastAccessType == dbv1alpha1.NetworkAccessTypePrivate {
 		updateAutonomousDatabaseDetails.PrivateEndpointLabel = common.String("")
 	}
 
@@ -345,6 +376,10 @@ func (d *databaseService) DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (re
 	return resp, nil
 }
 
+/********************************
+ * Autonomous Database Restore
+ *******************************/
+
 func (d *databaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error) {
 	request := database.RestoreAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
@@ -355,6 +390,10 @@ func (d *databaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime comm
 	return d.dbClient.RestoreAutonomousDatabase(context.TODO(), request)
 }
 
+/********************************
+ * Autonomous Database Backup
+ *******************************/
+
 func (d *databaseService) ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error) {
 	listBackupRequest := database.ListAutonomousDatabaseBackupsRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
@@ -363,17 +402,17 @@ func (d *databaseService) ListAutonomousDatabaseBackups(adbOCID string) (databas
 	return d.dbClient.ListAutonomousDatabaseBackups(context.TODO(), listBackupRequest)
 }
 
-func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup) (database.CreateAutonomousDatabaseBackupResponse, error) {
+func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error) {
 	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
 		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
-			AutonomousDatabaseId: &adbBackup.Spec.AutonomousDatabaseOCID,
+			AutonomousDatabaseId: common.String(adbOCID),
 		},
 	}
 
 	// Use the spec.displayName as the displayName of the backup if is provided,
 	// otherwise use the resource name as the displayName.
-	if adbBackup.Spec.DisplayName != "" {
-		createBackupRequest.DisplayName = common.String(adbBackup.Spec.DisplayName)
+	if adbBackup.Spec.DisplayName != nil {
+		createBackupRequest.DisplayName = adbBackup.Spec.DisplayName
 	} else {
 		createBackupRequest.DisplayName = common.String(adbBackup.GetName())
 	}
