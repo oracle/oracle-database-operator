@@ -42,6 +42,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -196,16 +197,17 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 	}
 
 	/******************************************************************
-	* Determine which Database operations need to be executed by checking the changes to spec.details.
+	* Determine which Database operations need to be executed by checking the changes to spec.
 	* There are three scenario:
-	* 1. provision operation. The AutonomousDatabaseOCID is missing, and the LastSucSpec annotation is missing.
-	* 2. bind operation. The AutonomousDatabaseOCID is provided, but the LastSucSpec annotation is missing.
-	* 3. update operation. Every changes other than the above two cases goes here.
+	* 1. provision operation. The ACD OCID is missing, and the LastSucSpec annotation is missing.
+	* 2. bind operation. The ACD OCID is provided, but the LastSucSpec annotation is missing.
+	* 3. sync operation. The action field is SYNC.
+	* 4. update operation. The changes which are not provision, bind or sync operations is an update operation.
 	* Afterwards, update the resource from the remote database in OCI. This step will be executed right after
 	* the above three cases during every reconcile.
 	/******************************************************************/
 	// difACD is nil when the action is PROVISION or BIND.
-	// Use difACD to identify which fields are updated when it's UPDATE operation.
+	// Use difACD to identify which fields are updated when it's an UPDATE operation.
 	action, difACD, err := r.determineAction(acd)
 	if err != nil {
 		return r.manageError(acd, err)
@@ -230,9 +232,14 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 	/*****************************************************
 	*	Sync resource and update the lastSucSpec
 	*****************************************************/
-	err = r.syncResource(acd)
+	specUpdated, err := r.syncResource(acd)
 	if err != nil {
 		return r.manageError(acd, err)
+	}
+
+	r.Log.Info(fmt.Sprintf("=== specUpdated: %t", specUpdated))
+	if specUpdated {
+		return emptyResult, nil
 	}
 
 	logger.Info("AutonomousContainerDatabase reconciles successfully")
@@ -264,11 +271,6 @@ func (r *AutonomousContainerDatabaseReconciler) updateResourceStatus(acd *dbv1al
 
 // updateResource updates the specification, the status of AutonomousContainerDatabase resource
 func (r *AutonomousContainerDatabaseReconciler) updateResource(acd *dbv1alpha1.AutonomousContainerDatabase) error {
-	// Update the status first to prevent unwanted Reconcile()
-	if err := r.updateResourceStatus(acd); err != nil {
-		return err
-	}
-
 	// Update the spec
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		curACD := &dbv1alpha1.AutonomousContainerDatabase{}
@@ -291,35 +293,53 @@ func (r *AutonomousContainerDatabaseReconciler) updateResource(acd *dbv1alpha1.A
 	return nil
 }
 
-// syncResource pulled information from OCI, update the LastSucSpec, and lastly, update the local resource.
-// It's important to update the LastSucSpec prior than we update the local resource,
-// because updating the local resource triggers the Reconcile, and the Reconcile determines the action by
-// looking if the lastSucSpec is present.
-func (r *AutonomousContainerDatabaseReconciler) syncResource(acd *dbv1alpha1.AutonomousContainerDatabase) error {
+// syncResource pulled information from OCI, update the lastSucSpec, and lastly, update the local resource.
+// It's important to update the lastSucSpec prior than we update the local resource, because updating
+// the local resource triggers the Reconcile, and the Reconcile determines the action by looking if
+// the lastSucSpec is present.
+// The function returns if the spec is updated (and the Reconcile is triggered).
+func (r *AutonomousContainerDatabaseReconciler) syncResource(acd *dbv1alpha1.AutonomousContainerDatabase) (bool, error) {
 	// Get the information from OCI
 	resp, err := r.dbService.GetAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	acd.UpdateFromOCIACD(resp.AutonomousContainerDatabase)
+	specChanged, statusChanged := acd.UpdateFromOCIACD(resp.AutonomousContainerDatabase)
+	r.Log.Info(fmt.Sprintf("==== specChanged = %t, statusChanged = %t", specChanged, statusChanged))
 
-	if err := r.updateResource(acd); err != nil {
-		return err
+	// Validate the status change
+	if statusChanged {
+		r.Log.Info("==== update status")
+		if err := r.updateResourceStatus(acd); err != nil {
+			return false, err
+		}
 	}
 
-	// Update the lastSucSpec
-	if err := r.updateLastSuccessfulSpec(acd); err != nil {
-		return err
+	// Validate the spec change
+	// If the spec changes, update the lastSucSpec and the resource, and then exit the Reconcile since it triggers another round of the Reconcile.
+	if specChanged {
+		r.Log.Info("==== update lastSucSpec")
+		if err := r.updateLastSuccessfulSpec(acd); err != nil {
+			return false, err
+		}
+
+		r.Log.Info("==== update resource")
+		if err := r.updateResource(acd); err != nil {
+			return false, err
+		}
+
+		return true, nil
 	}
 
-	if err := r.updateResource(acd); err != nil {
-		return err
-	}
-
-	return nil
+	return false, nil
 }
 
+// updateLastSuccessfulSpec updates the lasSucSpec annotation, and returns the ORIGINAL object
+// The object will NOT be updated with the returned content from the cluster since we want to
+// update only the lasSucSpec. For example: After we get the ACD information from OCI, we want
+// to update the lasSucSpec before updating the local resource. In this case, we want to keep
+// the content returned from the OCI, not the one from the cluster.
 func (r *AutonomousContainerDatabaseReconciler) updateLastSuccessfulSpec(acd *dbv1alpha1.AutonomousContainerDatabase) error {
 	specBytes, err := json.Marshal(acd.Spec)
 	if err != nil {
@@ -330,7 +350,9 @@ func (r *AutonomousContainerDatabaseReconciler) updateLastSuccessfulSpec(acd *db
 		dbv1alpha1.LastSuccessfulSpec: string(specBytes),
 	}
 
-	return annotations.PatchAnnotations(r.KubeClient, acd, anns)
+	copyACD := acd.DeepCopy()
+
+	return annotations.PatchAnnotations(r.KubeClient, copyACD, anns)
 }
 
 func (r *AutonomousContainerDatabaseReconciler) manageError(acd *dbv1alpha1.AutonomousContainerDatabase, issue error) (ctrl.Result, error) {
@@ -341,15 +363,11 @@ func (r *AutonomousContainerDatabaseReconciler) manageError(acd *dbv1alpha1.Auto
 
 		var finalIssue = issue
 
-		if err := r.syncResource(acd); err != nil {
+		// Roll back
+		if _, err := r.syncResource(acd); err != nil {
 			finalIssue = k8s.CombineErrors(finalIssue, err)
 		}
 
-		if err := r.updateLastSuccessfulSpec(acd); err != nil {
-			finalIssue = k8s.CombineErrors(finalIssue, err)
-		}
-
-		// r.updateResource has already triggered another Reconcile loop, so we simply log the error and return a nil
 		return emptyResult, finalIssue
 	} else {
 		// Send event
@@ -493,41 +511,6 @@ func (r *AutonomousContainerDatabaseReconciler) createACD(acd *dbv1alpha1.Autono
 		return err
 	}
 
-	// Wait for the ACD status changes to BACKUP_IN_PROGRESS
-	// Retry up to 3 times every 10 seconds.
-	logger.Info("Waiting for the status changing to BACKUP_IN_PROGRESS")
-	backupStartAttempts := uint(3)
-	backupStartNextDuration := func(r common.OCIOperationResponse) time.Duration {
-		return time.Duration(10) * time.Second
-	}
-	if _, err := r.dbService.WaitAutonomousContainerDatabaseStatus(*resp.AutonomousContainerDatabase.Id,
-		backupStartAttempts,
-		database.AutonomousContainerDatabaseLifecycleStateBackupInProgress,
-		backupStartNextDuration); err != nil {
-		return err
-	}
-
-	// Wait for the ACD status changes to AVAILABLE.
-	// Wait 20 mins in the first attempt, then retry every 30 secs after that until reaches the
-	// maximum time of retry (~60mins).
-	logger.Info("Waiting for the status changing to AVAILABLE")
-	backupFinishAttempts := uint(81)
-	backupFinishNextDuration := func(r common.OCIOperationResponse) time.Duration {
-		if r.AttemptNumber <= 1 {
-			return time.Duration(20) * time.Minute
-		}
-		return time.Duration(30) * time.Second
-	}
-
-	if _, err := r.dbService.WaitAutonomousContainerDatabaseStatus(*resp.AutonomousContainerDatabase.Id,
-		backupFinishAttempts,
-		database.AutonomousContainerDatabaseLifecycleStateBackupInProgress,
-		backupFinishNextDuration); err != nil {
-		return err
-	}
-
-	logger.Info("ACD provision successfully")
-
 	return nil
 }
 
@@ -607,8 +590,8 @@ func (r *AutonomousContainerDatabaseReconciler) updateLifecycleState(acd *dbv1al
 		return errors.New("Unknown action")
 	}
 
-	// Update the status and then erase the Action field
-	if err := r.updateResource(acd); err != nil {
+	// Update the status. The Action field will be erased at the sync operation before exiting the Reconcile.
+	if err := r.updateResourceStatus(acd); err != nil {
 		return err
 	}
 

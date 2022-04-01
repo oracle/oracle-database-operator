@@ -71,6 +71,11 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() error {
 	var allErrs field.ErrorList
 
 	// Validate the target ADB
+	if r.Spec.Target.K8sADB.Name == nil && r.Spec.Target.OCIADB.OCID == nil {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
+	}
+
 	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB.name or ociADB.ocid, but not both"))
@@ -80,18 +85,13 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() error {
 	if r.Spec.Source.K8sADBBackup.Name == nil &&
 		r.Spec.Source.PointInTime.Timestamp == nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("source"), "no retore source is chosen"))
+			field.Forbidden(field.NewPath("spec").Child("source"), "retore source is empty"))
 	}
 
 	if r.Spec.Source.K8sADBBackup.Name != nil &&
 		r.Spec.Source.PointInTime.Timestamp != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("source"), "cannot apply backupName and the PITR parameters at the same time"))
-	}
-
-	if (r.Spec.Target.OCIADB.OCID == nil && r.Spec.Source.PointInTime.Timestamp != nil) ||
-		(r.Spec.Target.OCIADB.OCID != nil && r.Spec.Source.PointInTime.Timestamp == nil) {
-		field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime").Child("timestamp"), "target.ociADB.ocid or source.pointInTime.timestamp cannot be empty")
 	}
 
 	// Verify the timestamp format if it's PITR

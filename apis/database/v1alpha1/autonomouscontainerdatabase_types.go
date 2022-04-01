@@ -41,6 +41,7 @@ package v1alpha1
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 
 	"github.com/oracle/oci-go-sdk/v63/database"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -137,27 +138,54 @@ func (acd *AutonomousContainerDatabase) GetLastSuccessfulSpec() (*AutonomousCont
 }
 
 // UpdateStatusFromOCIACD updates only the status from database.AutonomousDatabase object
-func (acd *AutonomousContainerDatabase) UpdateStatusFromOCIACD(ociObj database.AutonomousContainerDatabase) {
+func (acd *AutonomousContainerDatabase) UpdateStatusFromOCIACD(ociObj database.AutonomousContainerDatabase) bool {
+	var statusChanged bool = false
+
+	statusChanged = statusChanged || acd.Status.LifecycleState != ociObj.LifecycleState
 	acd.Status.LifecycleState = ociObj.LifecycleState
+
+	statusChanged = statusChanged || acd.Status.TimeCreated != FormatSDKTime(ociObj.TimeCreated)
 	acd.Status.TimeCreated = FormatSDKTime(ociObj.TimeCreated)
+
+	return statusChanged
 }
 
-func (acd *AutonomousContainerDatabase) UpdateFromOCIACD(ociObj database.AutonomousContainerDatabase) {
+func (acd *AutonomousContainerDatabase) UpdateFromOCIACD(ociObj database.AutonomousContainerDatabase) (bool, bool) {
 	// Spec
+	var specChanged bool = false
+
 	acd.Spec.Action = AcdActionBlank
+
+	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.AutonomousContainerDatabaseOCID, ociObj.Id)
 	acd.Spec.AutonomousContainerDatabaseOCID = ociObj.Id
+
+	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.CompartmentOCID, ociObj.CompartmentId)
 	acd.Spec.CompartmentOCID = ociObj.CompartmentId
+
+	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.DisplayName, ociObj.DisplayName)
 	acd.Spec.DisplayName = ociObj.DisplayName
+
+	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.AutonomousExadataVMClusterOCID, ociObj.CloudAutonomousVmClusterId)
 	acd.Spec.AutonomousExadataVMClusterOCID = ociObj.CloudAutonomousVmClusterId
+
+	specChanged = specChanged || acd.Spec.PatchModel != ociObj.PatchModel
 	acd.Spec.PatchModel = ociObj.PatchModel
+
+	// special case: the FreeformTag is nil after unmarshalling, but the OCI server always returns an emtpy map
+	if acd.Spec.FreeformTags == nil {
+		acd.Spec.FreeformTags = make(map[string]string)
+	}
+	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.FreeformTags, ociObj.FreeformTags)
 	acd.Spec.FreeformTags = ociObj.FreeformTags
 
 	// Status
-	acd.UpdateStatusFromOCIACD(ociObj)
+	statusChanged := acd.UpdateStatusFromOCIACD(ociObj)
+
+	return specChanged, statusChanged
 }
 
 // RemoveUnchangedSpec removes the unchanged fields in spec, and returns if the spec has been changed.
-// The function only takes the fields associated to ACD into account. That is, the ociConfig won't be impacted.
+// The function only processes the fields associated to ACD into account. That is, the ociConfig won't be impacted.
 // Always restore the autonomousContainerDatabaseOCID from the lastSucSpec because we need it to send requests.
 // A `false` is returned if the lastSucSpec is nil.
 func (acd *AutonomousContainerDatabase) RemoveUnchangedSpec() (bool, error) {
