@@ -704,7 +704,6 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					MountPath: "/run/secrets/oracle_pwd",
 					Name:      "oracle-pwd-vol",
 					SubPath:   "oracle_pwd",
-	
 				}},
 				Env: func() []corev1.EnvVar {
 					// adding XE support, useful for dev/test/CI-CD
