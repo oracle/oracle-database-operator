@@ -438,7 +438,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //    Instantiate POD spec from SingleInstanceDatabase spec
 //#############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase) *corev1.Pod {
-	// Pre-built db
+	// Pre-built db, useful for dev/test/CI-CD
 	if m.Spec.Persistence.AccessMode == "" {
 		pod := &corev1.Pod{
 			TypeMeta: metav1.TypeMeta{
@@ -453,6 +453,15 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				},
 			},
 			Spec: corev1.PodSpec{
+				Volumes: []corev1.Volume{{
+					Name: "oracle_pwd",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource {
+							SecretName: m.Spec.AdminPassword.SecretName,
+							Optional: func() *bool { i := true; return &i }(),
+						},
+					},
+				}},
 				Containers: []corev1.Container{{
 					Name:  m.Name,
 					Image: m.Spec.Image.PullFrom,
@@ -481,6 +490,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							return 30
 						}(),
 					},
+					VolumeMounts: []corev1.VolumeMount { {
+						MountPath: "/run/secrets",
+						Name:      "oracle_pwd",
+					}},
 					Env: func() []corev1.EnvVar {
 						return []corev1.EnvVar{
 							{
@@ -494,18 +507,6 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							{
 								Name:  "SKIP_DATAPATCH",
 								Value: "true",
-							},
-							{
-								// This is for the pre-built DB useful for dev/test/CI-CD
-								Name: "ORACLE_PWD",
-								ValueFrom: &corev1.EnvVarSource{
-									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: m.Spec.AdminPassword.SecretName,
-										},
-										Key: m.Spec.AdminPassword.SecretKey,
-									},
-								},
 							},
 						}
 					}(),
@@ -570,6 +571,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 						ClaimName: m.Name,
 						ReadOnly:  false,
+					},
+				},
+			}, {
+				Name: "oracle_pwd",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource {
+						SecretName: m.Spec.AdminPassword.SecretName,
+						Optional: func() *bool { i := (m.Spec.Edition != "express"); return &i }(),
 					},
 				},
 			}},
@@ -680,9 +689,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				VolumeMounts: []corev1.VolumeMount{{
 					MountPath: "/opt/oracle/oradata",
 					Name:      "datamount",
+				}, {
+					// This is for the express edition DB 
+					MountPath: "/run/secrets",
+					Name:      "oracle_pwd",
 				}},
 				Env: func() []corev1.EnvVar {
-					// adding XE support
+					// adding XE support, useful for dev/test/CI-CD
 					if m.Spec.Edition == "express" {
 						return []corev1.EnvVar{
 							{
@@ -700,18 +713,6 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							{
 								Name:  "ORACLE_EDITION",
 								Value: m.Spec.Edition,
-							},
-							{
-								// This is for the express edition DB useful for dev/test/CI-CD
-								Name: "ORACLE_PWD",
-								ValueFrom: &corev1.EnvVarSource{
-									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: m.Spec.AdminPassword.SecretName,
-										},
-										Key: m.Spec.AdminPassword.SecretKey,
-									},
-								},
 							},
 						}
 					}
