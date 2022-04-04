@@ -583,7 +583,7 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 	}
 	if readyPod.Name != "" {
 		out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "",
-			ctx, req, false, "bash", "-c", fmt.Sprintf(GetSidPdbEditionCMD))
+			ctx, req, false, "bash", "-c", GetSidPdbEditionCMD)
 		if err != nil {
 			log.Error(err, err.Error())
 			return "", "", ""
