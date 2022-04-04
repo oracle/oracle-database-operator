@@ -497,6 +497,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					},
 					VolumeMounts: []corev1.VolumeMount { {
 						MountPath: "/run/secrets/oracle_pwd",
+						ReadOnly:  true,
 						Name:      "oracle-pwd-vol",
 						SubPath:   "oracle_pwd",
 					}},
@@ -702,6 +703,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}, {
 					// This is for express edition DB
 					MountPath: "/run/secrets/oracle_pwd",
+					ReadOnly:  true,
 					Name:      "oracle-pwd-vol",
 					SubPath:   "oracle_pwd",
 				}},
