@@ -12,7 +12,8 @@ spec:
   ## Use only alphanumeric characters for sid
   sid: ORCL1
   
-  ## A source database ref to clone from, leave empty to create a fresh database
+  ## A source database ref to clone from.
+  ## If cloning from on prem source database, mention connect string `<ip>:<port>/<sid>`.
   cloneFrom: ""
 
   ## Should refer to SourceDB secret
@@ -37,6 +38,9 @@ spec:
     size: 100Gi
     storageClass: "oci"
     accessMode: "ReadWriteOnce"
+
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  serviceAccountName: default
 
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1

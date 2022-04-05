@@ -48,8 +48,8 @@ import (
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
-	"github.com/oracle/oci-go-sdk/v51/common"
-	"github.com/oracle/oci-go-sdk/v51/database"
+	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/database"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -82,9 +82,12 @@ var (
 	BeforeSuite  = ginkgo.BeforeSuite
 	AfterSuite   = ginkgo.AfterSuite
 	Describe     = ginkgo.Describe
+	PDescribe    = ginkgo.PDescribe
 	AfterEach    = ginkgo.AfterEach
 	By           = ginkgo.By
 	It           = ginkgo.It
+	FIt          = ginkgo.FIt
+	PIt          = ginkgo.PIt
 	Expect       = gomega.Expect
 	Succeed      = gomega.Succeed
 	HaveOccurred = gomega.HaveOccurred
@@ -110,6 +113,8 @@ var SharedCompartmentOCID string
 var SharedKeyOCID string
 var SharedAdminPasswordOCID string
 var SharedInstanceWalletPasswordOCID string
+var SharedSubnetOCID string
+var SharedNsgOCID string
 
 const SharedAdminPassSecretName string = "adb-admin-password"
 const SharedWalletPassSecretName = "adb-wallet-password"
@@ -156,6 +161,31 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 		KubeClient: k8sManager.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabase_test"),
 		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabase_test"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&controllers.AutonomousDatabaseBackupReconciler{
+		KubeClient: k8sManager.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseBakcup_test"),
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabaseBakcup_test"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&controllers.AutonomousDatabaseRestoreReconciler{
+		KubeClient: k8sManager.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseRestore_test"),
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabaseRestore_test"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&controllers.AutonomousContainerDatabaseReconciler{
+		KubeClient: k8sManager.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousContainerDatabase_test"),
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousContainerDatabase_test"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -183,12 +213,16 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 	SharedCompartmentOCID = testConfig.CompartmentOCID
 	SharedAdminPasswordOCID = testConfig.AdminPasswordOCID
 	SharedInstanceWalletPasswordOCID = testConfig.InstanceWalletPasswordOCID
+	SharedSubnetOCID = testConfig.SubnetOCID
+	SharedNsgOCID = testConfig.NsgOCID
 
 	By("checking if the required parameters exist")
 	Expect(testConfig.OCIConfigFile).ToNot(Equal(""))
 	Expect(testConfig.CompartmentOCID).ToNot(Equal(""))
 	Expect(testConfig.AdminPasswordOCID).ToNot(Equal(""))
 	Expect(testConfig.InstanceWalletPasswordOCID).ToNot(Equal(""))
+	Expect(testConfig.SubnetOCID).ToNot(Equal(""))
+	Expect(testConfig.NsgOCID).ToNot(Equal(""))
 
 	By("getting OCI provider")
 	ociConfigUtil, err := e2eutil.GetOCIConfigUtil(testConfig.OCIConfigFile, testConfig.Profile)

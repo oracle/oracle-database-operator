@@ -13,12 +13,13 @@ spec:
   sid: ORCL1
 
   ## Secret containing SIDB password mapped to secretKey 
+  ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
     secretName: 
     secretKey:
     keepSecret: true
 
-  ## Database image details
+  ## Database Image
   image:
     pullFrom:
     pullSecrets:
@@ -30,6 +31,9 @@ spec:
     size: 100Gi
     storageClass: "oci"
     accessMode: "ReadWriteOnce"
+
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  serviceAccountName: default
 
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1

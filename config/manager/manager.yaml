@@ -26,8 +26,6 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
-      imagePullSecrets:
-        - name: container-registry-secret
       containers:
       - command:
         - /manager

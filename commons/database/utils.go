@@ -571,6 +571,32 @@ func GetNodeIp(r client.Reader, ctx context.Context, req ctrl.Request) string {
 	return nodeip
 }
 
+// GetSidPdbEdition to display sid, pdbname, edition in ConnectionString
+func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context, req ctrl.Request) (string, string, string) {
+
+	log := ctrllog.FromContext(ctx).WithValues("GetNodeIp", req.NamespacedName)
+
+	readyPod, _, _, _, err := FindPods(r, "", "", req.Name, req.Namespace, ctx, req)
+	if err != nil {
+		log.Error(err, err.Error())
+		return "", "", ""
+	}
+	if readyPod.Name != "" {
+		out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "",
+			ctx, req, false, "bash", "-c", GetSidPdbEditionCMD)
+		if err != nil {
+			log.Error(err, err.Error())
+			return "", "", ""
+		}
+		splitstr := strings.Split(out, ",")
+		if len(splitstr) == 4 {
+			return splitstr[0], splitstr[1], splitstr[2]
+		}
+	}
+
+	return "", "", ""
+}
+
 // Get Datapatch Status
 func GetSqlpatchStatus(r client.Reader, config *rest.Config, readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (string, string, string, error) {
 	log := ctrllog.FromContext(ctx).WithValues("getSqlpatchStatus", req.NamespacedName)
@@ -612,8 +638,13 @@ func GetSqlpatchStatus(r client.Reader, config *rest.Config, readyPod corev1.Pod
 }
 
 func GetSqlClient(edition string) string {
-	if edition == "express" {
-		return "su -p oracle -c \"sqlplus -s / as sysdba\""
-	}
 	return "sqlplus -s / as sysdba"
+}
+
+// Is Source Database On same Cluster
+func IsSourceDatabaseOnCluster(cloneFrom string) bool {
+	if strings.Contains(cloneFrom, ":") && strings.Contains(cloneFrom, "/") {
+		return false
+	}
+	return true
 }

@@ -73,7 +73,23 @@ func (r *SingleInstanceDatabase) Default() {
 
 	if r.Spec.Edition == "express" {
 		r.Spec.Replicas = 1
+		if r.Spec.Sid == "" {
+			r.Spec.Sid = "XE"
+		}
 	}
+	if r.Spec.Pdbname == "" {
+		if r.Spec.Edition == "express" {
+			r.Spec.Pdbname = "XEPDB1"
+		} else {
+			r.Spec.Pdbname = "ORCLPDB1"
+		}
+
+	}
+	// Pre-built db should have 1 replica only
+	if r.Spec.Persistence.AccessMode == "" && r.Spec.Replicas > 1 {
+		r.Spec.Replicas = 1
+	}
+
 	// TODO(user): fill in your defaulting logic.
 }
 
@@ -86,6 +102,38 @@ var _ webhook.Validator = &SingleInstanceDatabase{}
 func (r *SingleInstanceDatabase) ValidateCreate() error {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
+
+	// Pre-built db
+	if r.Spec.Persistence.AccessMode == "" {
+		if r.Spec.Sid != "" && r.Spec.Edition != "express" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
+					"cannot change sid for prebuilt db"))
+		}
+		if r.Spec.Pdbname != "" && r.Spec.Edition != "express" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
+					"cannot change pdbName for prebuilt db"))
+		}
+		if r.Spec.CloneFrom != "" && r.Spec.Edition != "express" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
+					"cannot clone to create a prebuilt db"))
+		}
+		if len(allErrs) == 0 {
+			return nil
+		}
+		return apierrors.NewInvalid(
+			schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
+			r.Name, allErrs)
+	}
+
+	if r.Spec.Persistence.AccessMode != "" &&
+		r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Persistence.AccessMode,
+				"should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
+	}
 
 	if r.Spec.Persistence.AccessMode == "ReadWriteOnce" && r.Spec.Replicas != 1 {
 		allErrs = append(allErrs,
@@ -106,6 +154,12 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 				"Express edition PDB must be XEPDB1"))
+	}
+	//Edition must be passed when cloning from a source database other than same k8s cluster
+	if strings.Contains(r.Spec.CloneFrom, ":") && strings.Contains(r.Spec.CloneFrom, "/") && r.Spec.Edition == "" {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
+				"Edition must be passed when cloning from a source database other than same k8s cluster"))
 	}
 
 	if len(allErrs) == 0 {
@@ -134,11 +188,18 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 			return err
 		}
 	}
+
+	// Pre-built db
+	if r.Spec.Persistence.AccessMode == "" {
+		return nil
+	}
+
 	// Now check for updation errors
 	old, ok := oldRuntimeObject.(*SingleInstanceDatabase)
 	if !ok {
 		return nil
 	}
+
 	edition := r.Spec.Edition
 	if r.Spec.Edition == "" {
 		edition = "Enterprise"
