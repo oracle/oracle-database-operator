@@ -1630,7 +1630,7 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 
 	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 		ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.AlterSgaPgaCpuCMD, m.Spec.InitParams.SgaTarget,
-			m.Spec.InitParams.PgaAggregateTarget, m.Spec.InitParams.CpuCount, dbcommons.GetSqlClient(m.Spec.Edition)))
+			m.Spec.InitParams.PgaAggregateTarget, m.Spec.InitParams.CpuCount, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY, err
@@ -1640,8 +1640,8 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	if m.Status.InitParams.Processes != m.Spec.InitParams.Processes {
 		// Altering 'Processes' needs database to be restarted
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
-			ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.AlterProcessesCMD, m.Spec.InitParams.Processes, dbcommons.GetSqlClient(m.Spec.Edition),
-				dbcommons.GetSqlClient(m.Spec.Edition)))
+			ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.AlterProcessesCMD, m.Spec.InitParams.Processes, dbcommons.SQLPlusCLI,
+				dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1650,7 +1650,7 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	}
 
 	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
-		ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.GetInitParamsSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+		ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.GetInitParamsSQL, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY, err
@@ -1713,7 +1713,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 		log.Info(out)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.SetDBRecoveryDestSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.SetDBRecoveryDestSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1722,7 +1722,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 		log.Info(out)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf(dbcommons.ArchiveLogTrueCMD, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf(dbcommons.ArchiveLogTrueCMD, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1734,7 +1734,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	if m.Spec.ForceLogging && !forceLoggingStatus {
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ForceLoggingTrueSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ForceLoggingTrueSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1750,7 +1750,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 		}
 		if archiveLogStatus {
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-				fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+				fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
 				return requeueY, err
@@ -1775,7 +1775,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	if !m.Spec.FlashBack && flashBackStatus {
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackFalseSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackFalseSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1791,7 +1791,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 		if !flashBackStatus {
 
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-				fmt.Sprintf(dbcommons.ArchiveLogFalseCMD, dbcommons.GetSqlClient(m.Spec.Edition)))
+				fmt.Sprintf(dbcommons.ArchiveLogFalseCMD, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
 				return requeueY, err
@@ -1811,7 +1811,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	}
 	if !m.Spec.ForceLogging && forceLoggingStatus {
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ForceLoggingFalseSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ForceLoggingFalseSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1905,7 +1905,7 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 
 	// Install APEX
 	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf(dbcommons.InstallApex, dbcommons.GetSqlClient(m.Spec.Edition)))
+		fmt.Sprintf(dbcommons.InstallApex, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Info(err.Error())
 	}
@@ -1919,7 +1919,7 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 	}
 
 	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.IsApexInstalled, dbcommons.GetSqlClient(m.Spec.Edition)))
+		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.IsApexInstalled, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY
@@ -1970,7 +1970,7 @@ func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstance
 
 	// Uninstall APEX
 	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf(dbcommons.UninstallApex, dbcommons.GetSqlClient(m.Spec.Edition)))
+		fmt.Sprintf(dbcommons.UninstallApex, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Info(err.Error())
 		if !strings.Contains(err.Error(), "catcon.pl: completed") {
