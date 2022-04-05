@@ -39,16 +39,14 @@
 package oci
 
 import (
-	"context"
 	"errors"
 
-	"github.com/oracle/oci-go-sdk/v51/common"
-	"github.com/oracle/oci-go-sdk/v51/common/auth"
+	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/common/auth"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
+	"github.com/oracle/oracle-database-operator/commons/k8s"
 )
 
 const (
@@ -85,13 +83,9 @@ func GetOCIProvider(kubeClient client.Client, authData APIKeyAuth) (common.Confi
 func getProviderWithAPIKey(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
 	var region, fingerprint, user, tenancy, passphrase, privatekeyValue string
 
-	// Read ConfigMap
-	configMapNamespacedName := types.NamespacedName{
-		Namespace: authData.Namespace,
-		Name:      *authData.ConfigMapName,
-	}
-	ociConfigMap := &corev1.ConfigMap{}
-	if err := kubeClient.Get(context.TODO(), configMapNamespacedName, ociConfigMap); err != nil {
+	// Prepare ConfigMap
+	ociConfigMap, err := k8s.FetchConfigMap(kubeClient, authData.Namespace, *authData.ConfigMapName)
+	if err != nil {
 		return nil, err
 	}
 
@@ -111,23 +105,10 @@ func getProviderWithAPIKey(kubeClient client.Client, authData APIKeyAuth) (commo
 		}
 	}
 
-	// Read Secret
-	secretNamespacedName := types.NamespacedName{
-		Namespace: authData.Namespace,
-		Name:      *authData.SecretName,
-	}
-
-	privatekeySecret := &corev1.Secret{}
-	if err := kubeClient.Get(context.TODO(), secretNamespacedName, privatekeySecret); err != nil {
+	// Prepare privatekey value
+	privatekeyValue, err = k8s.GetSecretValue(kubeClient, authData.Namespace, *authData.SecretName, privatekeyKey)
+	if err != nil {
 		return nil, err
-	}
-
-	for key, val := range privatekeySecret.Data {
-		if key == privatekeyKey {
-			privatekeyValue = string(val)
-		} else {
-			return nil, errors.New("Unable to identify the key: " + key)
-		}
 	}
 
 	return common.NewRawConfigurationProvider(tenancy, user, region, fingerprint, privatekeyValue, &passphrase), nil

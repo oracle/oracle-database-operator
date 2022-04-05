@@ -3,7 +3,8 @@ layout:
 - go.kubebuilder.io/v2
 multigroup: true
 plugins:
-  go.sdk.operatorframework.io/v2-alpha: {}
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
 projectName: oracle-database-operator
 repo: github.com/oracle/oracle-database-operator
 resources:
@@ -16,6 +17,34 @@ resources:
   kind: AutonomousDatabase
   path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
   version: v1alpha1
+  webhooks:
+    validation: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: AutonomousDatabaseBackup
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1beta1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: AutonomousDatabaseRestore
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+  webhooks:
+    validation: true
+    webhookVersion: v1beta1
 - api:
     crdVersion: v1
     namespaced: true
@@ -36,6 +65,50 @@ resources:
   domain: oracle.com
   group: database
   kind: ShardingDatabase
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: PDB
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: CDB
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: OracleRestDataService
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: AutonomousContainerDatabase
   path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
   version: v1alpha1
 version: "3"

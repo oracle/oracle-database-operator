@@ -59,7 +59,7 @@ test: manifests generate fmt vet envtest ## Run unit tests.
 
 E2ETEST ?= ./test/e2e/
 e2e: manifests generate fmt vet envtest ## Run e2e tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test $(E2ETEST) -v -timeout 40m -ginkgo.v -ginkgo.failFast
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test $(E2ETEST) -v -timeout 50m -ginkgo.v -ginkgo.failFast
 
 ##@ Build
 

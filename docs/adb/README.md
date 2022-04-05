@@ -2,6 +2,8 @@
 
 Before you use the Oracle Database Operator for Kubernetes (the operator), ensure your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
 
+To interact with OCI services, either the cluster has to be authorized using Principal Instance, or using the API Key Authentication by specifying the configMap and the secret under the `ociConfig` field.
+
 ## Required Permissions
 
 The opeartor must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. See [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb) for sample Autonomous Database policies.
@@ -28,7 +30,7 @@ To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Deb
 
 ## Provision an Autonomous Database
 
-Follow the steps to provision an Autonomous Database that will bind objects in your cluster.
+Follow the steps to provision an Autonomous Database that will map objects in your cluster.
 
 1. Get the `Compartment OCID`.
 
@@ -55,9 +57,9 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
     | `spec.details.dbName` | string | The database name. The name must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy. | Yes |
     | `spec.details.displayName` | string | The user-friendly name for the Autonomous Database. The name does not have to be unique. | Yes |
     | `spec.details.cpuCoreCount` | int | The number of OCPU cores to be made available to the database. | Yes |
-    | `spec.details.adminPassword` | dictionary | The password for the ADMIN user. The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.<br><br> Either `k8sSecretName` or `ociSecretOCID` must be provided. If both `k8sSecretName` and `ociSecretOCID` appear, the Operator reads the password from the K8s secret that `k8sSecretName` refers to. | Yes |
-    | `spec.details.adminPassword.k8sSecretName` | string | The **name** of the K8s Secret where you want to hold the password for the ADMIN user. | Conditional |
-    |`spec.details.adminPassword.ociSecretOCID` | string | The **[OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm)** of the [OCI Secret](https://docs.oracle.com/en-us/iaas/Content/KeyManagement/Tasks/managingsecrets.htm) where you want to hold the password for the ADMIN user. | Conditional |
+    | `spec.details.adminPassword` | dictionary | The password for the ADMIN user. The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.<br><br> Either `k8sSecret.name` or `ociSecret.ocid` must be provided. If both `k8sSecret.name` and `ociSecret.ocid` appear, the Operator reads the password from the K8s secret that `k8sSecret.name` refers to. | Yes |
+    | `spec.details.adminPassword.k8sSecret.name` | string | The **name** of the K8s Secret where you want to hold the password for the ADMIN user. | Conditional |
+    |`spec.details.adminPassword.ociSecret.ocid` | string | The **[OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm)** of the [OCI Secret](https://docs.oracle.com/en-us/iaas/Content/KeyManagement/Tasks/managingsecrets.htm) where you want to hold the password for the ADMIN user. | Conditional |
     | `spec.details.dataStorageSizeInTBs`  | int | The size, in terabytes, of the data volume that will be created and attached to the database. This storage can later be scaled up if needed. | Yes |
     | `spec.details.isAutoScalingEnabled`  | boolean | Indicates if auto scaling is enabled for the Autonomous Database OCPU core count. The default value is `FALSE` | No |
     | `spec.details.isDedicated` | boolean | True if the database is on dedicated [Exadata infrastructure](https://docs.cloud.oracle.com/Content/Database/Concepts/adbddoverview.htm) | No |
@@ -81,14 +83,19 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
         displayName: NewADB
         cpuCoreCount: 1
         adminPassword:
-          k8sSecretName: admin-password # use the name of the secret from step 2
+          k8sSecret:
+            name: admin-password # use the name of the secret from step 2
         dataStorageSizeInTBs: 1
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
     ```
 
-4. Apply the yaml:
+4. Choose the type of network access (optional):
+
+   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the netowrk acess. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
+
+5. Apply the yaml:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_create.yaml
@@ -97,7 +104,9 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
 
 ## Bind to an existing Autonomous Database
 
-Other than provisioning a database, you can bind to an existing database in your cluster.
+Other than provisioning a database, you can create the custom resource using an existing Autonomous Database.
+
+The operator also generates the `AutonomousBackup` custom resources if a database already has backups. The operator syncs the `AutonomousBackups` in every reconciliation loop by getting the list of OCIDs of the AutonomousBackups from OCI, and then creates the `AutonomousDatabaseBackup` object automatically if it cannot find a resource that has the same `AutonomousBackupOCID` in the cluster.
 
 1. Clean up the resource you created in the earlier provision operation:
 
@@ -221,7 +230,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     \* The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.
 
-2. Update the example [config/samples/adb/autonomousdatabase_change_admin_password.yaml](./../../config/samples/adb/autonomousdatabase_change_admin_password.yaml)
+2. Update the example [config/samples/adb/autonomousdatabase_update_admin_password.yaml](./../../config/samples/adb/autonomousdatabase_update_admin_password.yaml)
 
     ```yaml
     ---
@@ -233,18 +242,19 @@ You can rename the database by changing the values of the `dbName` and `displayN
       details:
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
         adminPassword:
-          k8sSecretName: new-admin-password
+          k8sSecret:
+            name: new-admin-password
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
     ```
 
-    * `adminPassword.k8sSecretName`: the **name** of the secret that you created in **step1**.
+    * `adminPassword.k8sSecret.name`: the **name** of the secret that you created in **step1**.
 
 3. Apply the YAML.
 
     ```sh
-    kubectl apply -f config/samples/adb/autonomousdatabase_change_admin_password.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_update_admin_password.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -278,14 +288,15 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
         wallet:
           name: instance-wallet
           password:
-            k8sSecretName: instance-wallet-password
+            k8sSecret:
+              name: instance-wallet-password
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
     ```
 
     * `wallet.name`: the name of the new Secret where you want the downloaded Wallet to be stored.
-    * `wallet.password.k8sSecretName`: the **name** of the secret you created in **step1**.
+    * `wallet.password.k8sSecret.name`: the **name** of the secret you created in **step1**.
 
 3. Apply the YAML
 
@@ -382,7 +393,6 @@ Follow the steps to delete the resource and terminate the Autonomous Database.
 
 Now, you can verify that the database is in TERMINATING state on the Cloud Console.
 
-
 ## Debugging and troubleshooting
 
 ### Show the details of the resource
@@ -393,9 +403,11 @@ If you edit and re-apply the `.yaml` file, the Autonomous Database controller wi
 kubectl describe adb/autonomousdatabase-sample
 ```
 
-### The resource is in UNAVAILABLE state
+If any error occurs during the reconciliation loop, the Operator reports the error using the resource's event stream, which shows up in kubectl describe output.
 
-If an error occurs during the operation, the `lifecycleState` of the resoursce changes to UNAVAILABLE. Follow the steps to check the logs.
+### Check the logs of the pod where the operator deploys
+
+Follow the steps to check the logs.
 
 1. List the pod replicas
 

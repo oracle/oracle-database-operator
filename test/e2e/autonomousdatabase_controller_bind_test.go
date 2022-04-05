@@ -42,9 +42,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v51/common"
-	"github.com/oracle/oci-go-sdk/v51/database"
-	"github.com/oracle/oci-go-sdk/v51/workrequests"
+	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/database"
+	"github.com/oracle/oci-go-sdk/v63/workrequests"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -88,10 +88,6 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 
 		err = e2eutil.WaitUntilWorkCompleted(workClient, createResp.OpcWorkRequestId)
 		Expect(err).ShouldNot(HaveOccurred())
-
-		// listResp, err := e2eutil.ListAutonomousDatabases(dbClient, &SharedCompartmentOCID, &dbName)
-		// Expect(err).ShouldNot(HaveOccurred())
-		// fmt.Printf("List request DB %s is in %s state \n", *listResp.Items[0].DisplayName, listResp.Items[0].LifecycleState)
 	})
 
 	Describe("ADB binding with HardLink = false using Wallet Password Secret", func() {
@@ -111,7 +107,9 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 						Wallet: dbv1alpha1.WalletSpec{
 							Name: common.String(downloadedWallet),
 							Password: dbv1alpha1.PasswordSpec{
-								K8sSecretName: common.String(SharedWalletPassSecretName),
+								K8sSecret: dbv1alpha1.K8sSecretSpec{
+									Name: common.String(SharedWalletPassSecretName),
+								},
 							},
 						},
 					},
@@ -138,6 +136,16 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 
 		It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
 
+		It("Should change to RESTRICTED network access", e2ebehavior.TestNetworkAccessRestricted(&k8sClient, &dbClient, &adbLookupKey, false))
+
+		It("Should change isMTLSConnectionRequired to false", e2ebehavior.TestNetworkAccessRestricted(&k8sClient, &dbClient, &adbLookupKey, false))
+
+		It("Should should change to PRIVATE network access", e2ebehavior.TestNetworkAccessPrivate(&k8sClient, &dbClient, &adbLookupKey, false, &SharedSubnetOCID, &SharedNsgOCID))
+
+		It("Should change isMTLSConnectionRequired to true when network access is PRIVATE", e2ebehavior.TestNetworkAccessPrivate(&k8sClient, &dbClient, &adbLookupKey, true, &SharedSubnetOCID, &SharedNsgOCID))
+
+		It("Should return to PUBLIC access type", e2ebehavior.TestNetworkAccessPublic(&k8sClient, &dbClient, &adbLookupKey))
+
 		It("Should delete the resource in cluster but not terminate the database in OCI", e2ebehavior.AssertSoftLinkDelete(&k8sClient, &adbLookupKey))
 	})
 
@@ -158,7 +166,9 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 						Wallet: dbv1alpha1.WalletSpec{
 							Name: common.String(downloadedWallet),
 							Password: dbv1alpha1.PasswordSpec{
-								OCISecretOCID: common.String(SharedInstanceWalletPasswordOCID),
+								OCISecret: dbv1alpha1.OCISecretSpec{
+									OCID: common.String(SharedInstanceWalletPasswordOCID),
+								},
 							},
 						},
 					},
@@ -178,12 +188,6 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 		It("should bind to an ADB", e2ebehavior.AssertBind(&k8sClient, &adbLookupKey))
 
 		It("Should download an instance wallet using the password from OCI Secret OCID "+SharedInstanceWalletPasswordOCID, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
-
-		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
-
-		It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
-
-		It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
 
 		It("Should delete the resource in cluster and terminate the database in OCI", e2ebehavior.AssertHardLinkDelete(&k8sClient, &dbClient, &adbLookupKey))
 	})
