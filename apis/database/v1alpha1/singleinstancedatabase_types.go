@@ -99,6 +99,7 @@ type SingleInstanceDatabaseImage struct {
 	Version     string `json:"version,omitempty"`
 	PullFrom    string `json:"pullFrom"`
 	PullSecrets string `json:"pullSecrets,omitempty"`
+	PrebuiltDB  bool   `json:"prebuiltDB,omitempty"`
 }
 
 // SingleInsatnceAdminPassword defines the secret containing Admin Password mapped to secretKey for Database

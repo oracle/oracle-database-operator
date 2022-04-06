@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -85,12 +85,7 @@ func (r *SingleInstanceDatabase) Default() {
 		}
 
 	}
-	// Pre-built db should have 1 replica only
-	if r.Spec.Persistence.AccessMode == "" && r.Spec.Replicas > 1 {
-		r.Spec.Replicas = 1
-	}
 
-	// TODO(user): fill in your defaulting logic.
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -103,13 +98,22 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 
-	// Pre-built db
-	if r.Spec.Persistence.AccessMode == "" {
-		if r.Spec.Sid != "" && r.Spec.Edition != "express" {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
-					"cannot change sid for prebuilt db"))
+	if r.Spec.Replicas > 1 {
+		valMsg := ""
+		if r.Spec.Edition == "express" {
+			valMsg = "should be 1 for express edition"
 		}
+		if r.Spec.Image.PrebuiltDB {
+			valMsg = "should be 1 for prebuiltDB"
+		}
+		if valMsg != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("replicas"), r.Spec.Replicas, valMsg))
+		}
+	}
+
+	// Pre-built db
+	if r.Spec.Image.PrebuiltDB {
 		if r.Spec.Pdbname != "" && r.Spec.Edition != "express" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
@@ -128,7 +132,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 			r.Name, allErrs)
 	}
 
-	if r.Spec.Persistence.AccessMode != "" &&
+	if !r.Spec.Image.PrebuiltDB &&
 		r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Persistence.AccessMode,
@@ -190,7 +194,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 	}
 
 	// Pre-built db
-	if r.Spec.Persistence.AccessMode == "" {
+	if r.Spec.Image.PrebuiltDB {
 		return nil
 	}
 
