@@ -1,0 +1,352 @@
+[root@docker-test-server test]# cat dbcs_service_with_2_node_rac.yaml
+apiVersion: database.oracle.com/v1alpha1
+kind: DbcsSystem
+metadata:
+  name: dbcssystem-create
+spec:
+  ociConfigMap: "oci-cred"
+  ociSecret: "oci-privatekey"
+  dbSystem:
+    availabilityDomain: "OLou:PHX-AD-1"
+    clusterName: "maa-cluster"
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya"
+    dbAdminPaswordSecret: "admin-password"
+    dbBackupConfig:
+      autoBackupEnabled: True
+      autoBackupWindow: "SLOT_FOUR"
+      recoveryWindowsInDays: 15
+    dbEdition: "STANDARD_EDITION"
+    dbName: "db0130"
+    dbVersion: "21c"
+    dbWorkload: "OLTP"
+    diskRedundancy: "EXTERNAL"
+    displayName: "dbsystem0130"
+    hostName: "host0130"
+    initialDataStorageSizeInGB: 256
+    licenseModel: "BRING_YOUR_OWN_LICENSE"
+    nodeCount: 2
+    pdbName: "PDB0130"
+    privateIp: "10.0.1.99"
+    shape: "VM.Standard2.2"
+    sshPublicKeys:
+      - "oci-publickey"
+    storageManagement: "ASM"
+    subnetId: "ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a"
+    tags:
+      "TEST": "test_case_provision"
+      "CreatedBy": "MAA_TEAM"
+    tdeWalletPasswordSecret: "tde-password"
+    timeZone: "Europe/Berlin"
+[root@docker-test-server test]#
+[root@docker-test-server test]# kubectl apply -f dbcs_service_with_2_node_rac.yaml
+dbcssystem.database.oracle.com/dbcssystem-create configured
+
+
+
+
+[root@docker-test-server test]# kubectl get ns
+
+
+
+NAME                              STATUS   AGE
+cert-manager                      Active   14d
+default                           Active   139d
+kube-node-lease                   Active   139d
+kube-public                       Active   139d
+kube-system                       Active   139d
+oracle-database-operator-system   Active   14d
+shns                              Active   88d
+[root@docker-test-server test]#
+[root@docker-test-server test]#
+[root@docker-test-server test]#
+[root@docker-test-server test]#
+[root@docker-test-server test]#
+[root@docker-test-server test]# kubectl get all -n oracle-database-operator-system
+NAME                                                               READY   STATUS    RESTARTS   AGE
+pod/oracle-database-operator-controller-manager-665874bd57-dlhls   1/1     Running   3          14d
+pod/oracle-database-operator-controller-manager-665874bd57-g2cgw   1/1     Running   6          14d
+pod/oracle-database-operator-controller-manager-665874bd57-q42f8   1/1     Running   7          14d
+
+NAME                                                                  TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/oracle-database-operator-controller-manager-metrics-service   ClusterIP   10.96.130.124   <none>        8443/TCP   14d
+service/oracle-database-operator-webhook-service                      ClusterIP   10.96.4.104     <none>        443/TCP    14d
+
+NAME                                                          READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/oracle-database-operator-controller-manager   3/3     3            3           14d
+
+NAME                                                                     DESIRED   CURRENT   READY   AGE
+replicaset.apps/oracle-database-operator-controller-manager-665874bd57   3         3         3       14d
+[root@docker-test-server test]#
+[root@docker-test-server test]#
+[root@docker-test-server test]# kubectl logs -f  pod/oracle-database-operator-controller-manager-665874bd57-dlhls -n oracle-database-operator-system
+.
+.
+2022-03-09T04:56:51.425Z  INFO  controller-runtime.manager.controller.dbcssystem  OCI provider configured succesfully {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T04:56:51.912Z  INFO  controller-runtime.manager.controller.dbcssystem  DbcsSystem DBSystem provisioning  {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T04:56:58.650Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T04:57:58.865Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T04:58:59.218Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T04:59:59.440Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:01:00.337Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:02:00.893Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:03:02.191Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:04:02.716Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:05:03.081Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:06:03.311Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:07:03.748Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:08:04.219Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:09:04.561Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:10:05.402Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:11:05.798Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:12:06.382Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:13:06.739Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:14:07.309Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:15:08.005Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:16:08.293Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:17:09.084Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:18:09.600Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:19:09.996Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:20:10.354Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:21:11.059Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:22:11.365Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:23:11.665Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:24:12.008Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:25:12.551Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:26:12.988Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:27:13.371Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:28:13.745Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:29:14.034Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:30:14.407Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:31:14.713Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:32:15.202Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:33:15.451Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:34:15.791Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:35:16.216Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:36:16.526Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:37:17.150Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:38:17.447Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:39:17.790Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:40:18.475Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:41:19.115Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:42:19.717Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:43:20.357Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:44:20.661Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:45:20.888Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:46:21.140Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:47:21.431Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:48:21.902Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:49:22.473Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:50:23.330Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:51:23.947Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:52:24.471Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:53:24.961Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:54:25.256Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:55:25.720Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:56:26.148Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:57:26.807Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:58:27.458Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T05:59:28.274Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:00:28.616Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:01:28.966Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:02:29.594Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:03:29.902Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:04:30.357Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:05:30.791Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:06:31.781Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:07:32.253Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:08:32.581Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:09:32.969Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:10:33.868Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+2022-03-09T06:11:34.492Z  INFO  controller-runtime.manager.controller.dbcssystem  DbcsSystem system provisioned succesfully {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-create", "namespace": "default"}
+
+
+
+
+[root@docker-test-server test]# kubectl describe dbcssystems.database.oracle.com dbcssystem-create
+Name:         dbcssystem-create
+Namespace:    default
+Labels:       <none>
+Annotations:  lastSuccessfulSpec:
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya","availabilityDomain":"O...
+API Version:  database.oracle.com/v1alpha1
+Kind:         DbcsSystem
+Metadata:
+  Creation Timestamp:  2022-03-09T04:54:51Z
+  Generation:          2
+  Managed Fields:
+    API Version:  database.oracle.com/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .:
+          f:kubectl.kubernetes.io/last-applied-configuration:
+      f:spec:
+        .:
+        f:dbSystem:
+          .:
+          f:availabilityDomain:
+          f:clusterName:
+          f:compartmentId:
+          f:dbAdminPaswordSecret:
+          f:dbBackupConfig:
+            .:
+            f:autoBackupEnabled:
+            f:autoBackupWindow:
+            f:recoveryWindowsInDays:
+          f:dbEdition:
+          f:dbName:
+          f:dbVersion:
+          f:dbWorkload:
+          f:diskRedundancy:
+          f:displayName:
+          f:hostName:
+          f:initialDataStorageSizeInGB:
+          f:licenseModel:
+          f:nodeCount:
+          f:pdbName:
+          f:privateIp:
+          f:shape:
+          f:sshPublicKeys:
+          f:storageManagement:
+          f:subnetId:
+          f:tags:
+            .:
+            f:CreatedBy:
+            f:TEST:
+          f:tdeWalletPasswordSecret:
+          f:timeZone:
+        f:ociConfigMap:
+        f:ociSecret:
+    Manager:      kubectl-client-side-apply
+    Operation:    Update
+    Time:         2022-03-09T04:54:51Z
+    API Version:  database.oracle.com/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          f:lastSuccessfulSpec:
+      f:spec:
+        f:id:
+      f:status:
+        .:
+        f:availabilityDomain:
+        f:cpuCoreCount:
+        f:dataStoragePercentage:
+        f:dataStorageSizeInGBs:
+        f:dbEdition:
+        f:dbInfo:
+        f:displayName:
+        f:id:
+        f:licenseModel:
+        f:network:
+          .:
+          f:clientSubnet:
+          f:domainName:
+          f:hostName:
+          f:listenerPort:
+          f:scanDnsName:
+          f:vcnName:
+        f:nodeCount:
+        f:recoStorageSizeInGB:
+        f:shape:
+        f:state:
+        f:storageManagement:
+        f:subnetId:
+        f:timeZone:
+        f:workRequests:
+    Manager:         manager
+    Operation:       Update
+    Time:            2022-03-09T06:11:37Z
+  Resource Version:  55318179
+  UID:               69389564-7574-4150-b44c-3705ea358800
+Spec:
+  Db System:
+    Availability Domain:      OLou:PHX-AD-1
+    Cluster Name:             maa-cluster
+    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya
+    Db Admin Pasword Secret:  admin-password
+    Db Backup Config:
+      Auto Backup Enabled:            true
+      Auto Backup Window:             SLOT_FOUR
+      Recovery Windows In Days:       15
+    Db Edition:                       STANDARD_EDITION
+    Db Name:                          db0130
+    Db Version:                       21c
+    Db Workload:                      OLTP
+    Disk Redundancy:                  EXTERNAL
+    Display Name:                     dbsystem0130
+    Host Name:                        host0130
+    Initial Data Storage Size In GB:  256
+    License Model:                    BRING_YOUR_OWN_LICENSE
+    Node Count:                       2
+    Pdb Name:                         PDB0130
+    Private Ip:                       10.0.1.99
+    Shape:                            VM.Standard2.2
+    Ssh Public Keys:
+      oci-publickey
+    Storage Management:  ASM
+    Subnet Id:           ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
+    Tags:
+      Created By:                MAA_TEAM
+      TEST:                      test_case_provision
+    Tde Wallet Password Secret:  tde-password
+    Time Zone:                   Europe/Berlin
+  Oci Config Map:                oci-cred
+  Oci Secret:                    oci-privatekey
+Status:
+  Availability Domain:        OLou:PHX-AD-1
+  Cpu Core Count:             4
+  Data Storage Percentage:    80
+  Data Storage Size In G Bs:  256
+  Db Edition:                 ENTERPRISE_EDITION_EXTREME_PERFORMANCE
+  Db Info:
+    Db Home Id:      ocid1.dbhome.oc1.phx.anyhqljr5gy3jhqanf2nzf4535im4dgfaliqtyeqa24gu3j5cg2u7676wo2q
+    Db Name:         db0130
+    Db Unique Name:  db0130_phx1td
+    Db Workload:     OLTP
+    Id:              ocid1.database.oc1.phx.anyhqljrabf7htyalxkrhk636ibrjzbji7d4fnfm6xbhpizxybllfqzykaca
+  Display Name:      dbsystem0130
+  Id:                ocid1.dbsystem.oc1.phx.anyhqljrabf7htyahapx2mkbpvilwvfhvisk3umch23s3nnz4spx3zthw55a
+  License Model:     BRING_YOUR_OWN_LICENSE
+  Network:
+    Client Subnet:          k8test-pubvcn
+    Domain Name:            k8testpubvcn.k8test.oraclevcn.com
+    Host Name:              host0130
+    Listener Port:          1521
+    Scan Dns Name:          host0130-scan.k8testpubvcn.k8test.oraclevcn.com
+    Vcn Name:               k8test
+  Node Count:               2
+  Reco Storage Size In GB:  256
+  Shape:                    VM.Standard2.2
+  State:                    AVAILABLE
+  Storage Management:       ASM
+  Subnet Id:                ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
+  Time Zone:                Europe/Berlin
+  Work Requests:
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrapznsaptxjhk3o2ao5nzq7axpinpekj7lf36qmd6veh4ntg45hxa
+    Operation Type:    Create DB System
+    Percent Complete:  100
+    Time Accepted:     2022-03-09 04:56:56.007 +0000 UTC
+    Time Finished:     2022-03-09 06:08:59.539 +0000 UTC
+    Time Started:      2022-03-09 04:57:18.983 +0000 UTC
+Events:                <none>
+
+
+
+[root@docker-test-server DBCS]# ssh -i id_rsa opc@129.146.35.79
+The authenticity of host '129.146.35.79 (129.146.35.79)' can't be established.
+ECDSA key fingerprint is SHA256:KeuW7n18XXH8mFWnSvcMIeER7NpKyfG4njRpN9Xq/Mk.
+ECDSA key fingerprint is MD5:64:e9:52:4f:18:14:fb:eb:ed:48:34:9d:15:80:04:5c.
+Are you sure you want to continue connecting (yes/no)? yes
+Warning: Permanently added '129.146.35.79' (ECDSA) to the list of known hosts.
+[opc@host01301 ~]$
+[opc@host01301 ~]$
+[opc@host01301 ~]$
+[opc@host01301 ~]$ sudo su - grid
+Last login: Wed Mar  9 18:23:10 CET 2022
+
+[grid@host01301 ~]$
+[grid@host01301 ~]$ cemutlo -n
+dbSys3zthw55a
