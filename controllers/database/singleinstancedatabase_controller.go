@@ -316,7 +316,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 
 	r.Log.Info("Got", "edition", m.Spec.Edition)
 	// Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 
@@ -363,7 +363,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	}
 
 	// Validating the secret. Pre-built db doesnt need secret
-	if m.Spec.Persistence.AccessMode != "" && m.Status.DatafilesCreated != "true" {
+	if !m.Spec.Image.PrebuiltDB && m.Status.DatafilesCreated != "true" {
 		secret := &corev1.Secret{}
 		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
 		if err != nil {
@@ -439,7 +439,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //#############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase) *corev1.Pod {
 	// Pre-built db, useful for dev/test/CI-CD
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		pod := &corev1.Pod{
 			TypeMeta: metav1.TypeMeta{
 				Kind: "Pod",
@@ -961,7 +961,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Contex
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 
 	// No PVC for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 	log := r.Log.WithValues("createPVC", req.NamespacedName)
@@ -1061,7 +1061,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 
 	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		sid, pdbName, m.Status.Edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
 		if sid == "" || pdbName == "" || m.Status.Edition == "" {
 			return requeueN, nil
@@ -1205,7 +1205,7 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	}
 
 	// No Wallet for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 
@@ -1516,7 +1516,7 @@ func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceD
 	}
 
 	// No Wallet for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 
@@ -1565,7 +1565,7 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 	}
 
 	// No Patching for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 
@@ -1620,7 +1620,7 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	log := r.Log.WithValues("updateInitParameters", req.NamespacedName)
 
 	// No InitParameters Updation for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 
@@ -1670,7 +1670,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	log := r.Log.WithValues("updateDBConfig", req.NamespacedName)
 
 	// No updateDBConfig for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 
@@ -1868,7 +1868,7 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 	log := r.Log.WithValues("installApex", req.NamespacedName)
 
 	// No APEX for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN
 	}
 
@@ -1954,7 +1954,7 @@ func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstance
 	log := r.Log.WithValues("uninstallApex", req.NamespacedName)
 
 	// No APEX for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN
 	}
 
