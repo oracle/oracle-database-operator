@@ -276,7 +276,7 @@ func (r *OracleRestDataServiceReconciler) validateSidbReadiness(m *dbapi.OracleR
 	adminPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
 
 	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword), dbcommons.GetSqlClient(n.Spec.Edition)))
+		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword), dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY, sidbReadyPod
@@ -841,7 +841,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 
 		// Get Session id , serial# for ORDS_PUBLIC_USER to kill the sessions
 		out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s ", dbcommons.GetSessionInfoSQL, dbcommons.GetSqlClient(n.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s ", dbcommons.GetSessionInfoSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return err
@@ -860,7 +860,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 
 		//kill all the sessions with given sid,serial#
 		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s ", killSessions, dbcommons.GetSqlClient(n.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s ", killSessions, dbcommons.SQLPlusCLI))
 
 		if err != nil {
 			log.Error(err, err.Error())
@@ -931,7 +931,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 
 		// Drop Admin Users
 		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s ", dbcommons.DropAdminUsersSQL, dbcommons.GetSqlClient(n.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s ", dbcommons.DropAdminUsersSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return err
@@ -1057,7 +1057,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 
 	// Alter APEX_LISTENER,APEX_PUBLIC_USER,APEX_REST_PUBLIC_USER
 	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true,
-		"bash", "-c", fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, dbcommons.GetSqlClient(n.Spec.Edition)))
+		"bash", "-c", fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Info(err.Error())
 		return requeueY
@@ -1071,7 +1071,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 
 	// Change APEX Admin Password
 	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true,
-		"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ApexAdmin, apexPassword, pdbName), dbcommons.GetSqlClient(n.Spec.Edition)))
+		"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ApexAdmin, apexPassword, pdbName), dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Info(err.Error())
 		return requeueY
@@ -1249,7 +1249,7 @@ func (r *OracleRestDataServiceReconciler) setupORDS(m *dbapi.OracleRestDataServi
 				cdbAdminPassword := dbcommons.GenerateRandomString(8)
 				// Create PDB , CDB Admin users and grant permissions . ORDS installation on CDB level
 				out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-					fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.SetAdminUsersSQL, cdbAdminPassword), dbcommons.GetSqlClient(n.Spec.Edition)))
+					fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.SetAdminUsersSQL, cdbAdminPassword), dbcommons.SQLPlusCLI))
 				if err != nil {
 					log.Error(err, err.Error())
 					return requeueY
@@ -1326,7 +1326,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 
 	// Get Pdbs Available
 	availablePDBS, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
-		ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.GetPdbsSQL, dbcommons.GetSqlClient(n.Spec.Edition)))
+		ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.GetPdbsSQL, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY
@@ -1350,7 +1350,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 
 		// Get ORDS Schema status for PDB
 		out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", getOrdsSchemaStatus, dbcommons.GetSqlClient(n.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", getOrdsSchemaStatus, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -1396,7 +1396,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 
 		// Create users,schemas and grant enableORDS for PDB
 		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", enableORDSSchema, dbcommons.GetSqlClient(n.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", enableORDSSchema, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
