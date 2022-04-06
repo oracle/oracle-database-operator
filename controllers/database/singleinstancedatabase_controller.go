@@ -456,13 +456,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				Volumes: []corev1.Volume{{
 					Name: "oracle-pwd-vol",
 					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource {
+						Secret: &corev1.SecretVolumeSource{
 							SecretName: m.Spec.AdminPassword.SecretName,
-							Optional: func() *bool { i := true; return &i }(),
-							Items: []corev1.KeyToPath {{
-									Key: m.Spec.AdminPassword.SecretKey,
-									Path: "oracle_pwd",
-								},
+							Optional:   func() *bool { i := true; return &i }(),
+							Items: []corev1.KeyToPath{{
+								Key:  m.Spec.AdminPassword.SecretKey,
+								Path: "oracle_pwd",
+							},
 							},
 						},
 					},
@@ -495,7 +495,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							return 30
 						}(),
 					},
-					VolumeMounts: []corev1.VolumeMount { {
+					VolumeMounts: []corev1.VolumeMount{{
 						MountPath: "/run/secrets/oracle_pwd",
 						ReadOnly:  true,
 						Name:      "oracle-pwd-vol",
@@ -583,11 +583,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			}, {
 				Name: "oracle-pwd-vol",
 				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource {
+					Secret: &corev1.SecretVolumeSource{
 						SecretName: m.Spec.AdminPassword.SecretName,
-						Optional: func() *bool { i := (m.Spec.Edition != "express"); return &i }(),
-						Items: []corev1.KeyToPath {{
-							Key: m.Spec.AdminPassword.SecretKey,
+						Optional:   func() *bool { i := (m.Spec.Edition != "express"); return &i }(),
+						Items: []corev1.KeyToPath{{
+							Key:  m.Spec.AdminPassword.SecretKey,
 							Path: "oracle_pwd",
 						}},
 					},
@@ -1499,7 +1499,6 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			m.Status.ReleaseUpdate = version
 		}
 	}
-
 
 	return requeueN, readyPod, nil
 

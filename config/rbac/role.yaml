@@ -28,6 +28,20 @@ rules:
   - ""
   resources:
   - configmaps
+  - namespaces
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
   - secrets
   verbs:
   - create
@@ -242,6 +256,36 @@ rules:
   - database.oracle.com
   resources:
   - cdbs/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dbcssystems
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dbcssystems/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dbcssystems/status
   verbs:
   - get
   - patch
