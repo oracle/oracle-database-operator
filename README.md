@@ -85,7 +85,7 @@ The quickstarts are designed for specific database configurations, including:
 * [Oracle Autonomous Database](./docs/adb/README.md)
 * [Oracle Database Single Instance configuration](./docs/sidb/README.md)
 * [Oracle Database configured with Oracle Sharding](./docs/sharding/README.md)
-* [Oracle Database Cloud Services](.docs/dbcs/README.md)
+* [Oracle Database Cloud Services](./docs/dbcs/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases. 
 
