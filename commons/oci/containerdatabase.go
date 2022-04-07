@@ -40,6 +40,7 @@ package oci
 
 import (
 	"context"
+	"time"
 
 	"github.com/oracle/oci-go-sdk/v63/common"
 	"github.com/oracle/oci-go-sdk/v63/database"
@@ -63,12 +64,33 @@ func (d *databaseService) CreateAutonomousContainerDatabase(acd *dbv1alpha1.Auto
 	return d.dbClient.CreateAutonomousContainerDatabase(context.TODO(), createAutonomousContainerDatabaseRequest)
 }
 
-func (d *databaseService) GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error) {
+func (d *databaseService) GetAutonomousContainerDatabase(acdOCID string, retryPolicy *common.RetryPolicy) (database.GetAutonomousContainerDatabaseResponse, error) {
 	getAutonomousContainerDatabaseRequest := database.GetAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
+		RequestMetadata:               common.RequestMetadata{RetryPolicy: retryPolicy},
 	}
 
 	return d.dbClient.GetAutonomousContainerDatabase(context.TODO(), getAutonomousContainerDatabaseRequest)
+}
+
+func (d *databaseService) WaitAutonomousContainerDatabaseStatus(
+	acdOCID string,
+	attempts uint,
+	lifecycleState database.AutonomousContainerDatabaseLifecycleStateEnum,
+	nextDuration func(r common.OCIOperationResponse) time.Duration) (database.GetAutonomousContainerDatabaseResponse, error) {
+
+	shouldRetry := func(r common.OCIOperationResponse) bool {
+		if acdResponse, ok := r.Response.(database.GetAutonomousContainerDatabaseResponse); ok {
+			// do the retry until lifecycle state reaches the passed terminal state
+			return acdResponse.LifecycleState != lifecycleState
+		}
+
+		return true
+	}
+
+	retryPolicy := common.NewRetryPolicy(attempts, shouldRetry, nextDuration)
+
+	return d.GetAutonomousContainerDatabase(acdOCID, &retryPolicy)
 }
 
 func (d *databaseService) UpdateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
