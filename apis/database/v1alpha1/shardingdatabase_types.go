@@ -266,7 +266,7 @@ const (
 // var
 var KubeConfigOnce sync.Once
 
-const lastSuccessfulSpec = "lastSuccessfulSpec"
+// #const lastSuccessfulSpec = "lastSuccessfulSpec"
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.
 // Returns nil, nil if there is no lastSuccessfulSpec.

@@ -36,71 +36,87 @@
 ** SOFTWARE.
  */
 
-package controllers
+package finalizer
 
 import (
-	"path/filepath"
-	"testing"
+	"context"
+	"encoding/json"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	// +kubebuilder:scaffold:imports
 )
 
-// These tests use Ginkgo (BDD-style Go testing framework). Refer to
-// http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
+// name of our custom finalizer
+var finalizerName = "database.oracle.com/dbcsfinalizer"
 
-var cfg *rest.Config
-var k8sClient client.Client
-var testEnv *envtest.Environment
-
-func TestAPIs(t *testing.T) {
-	RegisterFailHandler(Fail)
-
-	RunSpecsWithDefaultAndCustomReporters(t,
-		"Controller Suite",
-		[]Reporter{printer.NewlineReporter{}})
+// HasFinalizer returns true if the finalizer exists in the object metadata
+func HasFinalizer(obj client.Object) bool {
+	finalizer := obj.GetFinalizers()
+	return containsString(finalizer, finalizerName)
 }
 
-var _ = BeforeSuite(func(done Done) {
-	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+// Register adds the finalizer and patch the object
+func Register(kubeClient client.Client, obj client.Object) error {
+	finalizer := obj.GetFinalizers()
+	finalizer = append(finalizer, finalizerName)
+	return setFinalizer(kubeClient, obj, finalizer)
+}
 
-	By("bootstrapping test environment")
-	testEnv = &envtest.Environment{
-		CRDDirectoryPaths: []string{filepath.Join("../..", "config", "crd", "bases")},
+// Unregister removes the finalizer and patch the object
+func Unregister(kubeClient client.Client, obj client.Object) error {
+	finalizer := obj.GetFinalizers()
+	finalizer = removeString(finalizer, finalizerName)
+	return setFinalizer(kubeClient, obj, finalizer)
+}
+
+// Helper functions to check and remove string from a slice of strings.
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeString(slice []string, s string) (result []string) {
+	for _, item := range slice {
+		if item == s {
+			continue
+		}
+		result = append(result, item)
+	}
+	return
+}
+
+type patchValue struct {
+	Op    string      `json:"op"`
+	Path  string      `json:"path"`
+	Value interface{} `json:"value"`
+}
+
+func setFinalizer(kubeClient client.Client, dbcs client.Object, finalizer []string) error {
+	payload := []patchValue{}
+
+	if dbcs.GetFinalizers() == nil {
+		payload = append(payload, patchValue{
+			Op:    "replace",
+			Path:  "/metadata/finalizers",
+			Value: []string{},
+		})
 	}
 
-	var err error
-	cfg, err = testEnv.Start()
-	Expect(err).ToNot(HaveOccurred())
-	Expect(cfg).ToNot(BeNil())
+	payload = append(payload, patchValue{
+		Op:    "replace",
+		Path:  "/metadata/finalizers",
+		Value: finalizer,
+	})
 
-	err = databasev1alpha1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
 
-	err = databasev1alpha1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-
-	// +kubebuilder:scaffold:scheme
-
-	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
-	Expect(err).ToNot(HaveOccurred())
-	Expect(k8sClient).ToNot(BeNil())
-
-	close(done)
-}, 60)
-
-var _ = AfterSuite(func() {
-	By("tearing down the test environment")
-	err := testEnv.Stop()
-	Expect(err).ToNot(HaveOccurred())
-})
+	patch := client.RawPatch(types.JSONPatchType, payloadBytes)
+	return kubeClient.Patch(context.TODO(), dbcs, patch)
+}

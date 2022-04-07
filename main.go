@@ -229,7 +229,15 @@ func main() {
 		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
 		os.Exit(1)
 	}
-
+	if err = (&databasecontroller.DbcsSystemReconciler{
+		KubeClient: mgr.GetClient(),
+		Logger:     ctrl.Log.WithName("controllers").WithName("database").WithName("DbcsSystem"),
+		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("DbcsSystem"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DbcsSystem")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs
