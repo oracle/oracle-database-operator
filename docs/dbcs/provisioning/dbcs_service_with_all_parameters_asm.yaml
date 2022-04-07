@@ -1,0 +1,36 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: DbcsSystem
+metadata:
+  name: dbcssystem-create
+spec:
+  ociConfigMap: "oci-cred"
+  ociSecret: "oci-privatekey"
+  dbSystem:
+    availabilityDomain: "OLou:PHX-AD-1"
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya"
+    dbAdminPaswordSecret: "admin-password"
+    dbBackupConfig:
+      autoBackupEnabled: True
+      autoBackupWindow: "SLOT_FOUR"
+      recoveryWindowsInDays: 15
+    dbEdition: "STANDARD_EDITION"
+    dbName: "db0130"
+    dbVersion: "21c"
+    dbWorkload: "OLTP"
+    diskRedundancy: "EXTERNAL"
+    displayName: "dbsystem0130"
+    hostName: "host0130"
+    initialDataStorageSizeInGB: 256
+    licenseModel: "BRING_YOUR_OWN_LICENSE"
+    pdbName: "PDB0130"
+    privateIp: "10.0.1.99"
+    shape: "VM.Standard2.1"
+    sshPublicKeys:
+      - "oci-publickey"
+    storageManagement: "ASM"
+    subnetId: "ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a"
+    tags:
+      "TEST": "test_case_provision"
+      "CreatedBy": "MAA_TEAM"
+    tdeWalletPasswordSecret: "tde-password"
+    timeZone: "Europe/Berlin"
