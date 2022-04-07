@@ -907,7 +907,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
-				   uninstallORDS)
+			uninstallORDS)
 		log.Info("UninstallORDSCMD Output : " + out)
 		if strings.Contains(strings.ToUpper(out), "ERROR") {
 			return errors.New(out)
