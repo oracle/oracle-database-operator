@@ -237,7 +237,6 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 		return r.manageError(acd, err)
 	}
 
-	r.Log.Info(fmt.Sprintf("=== specUpdated: %t", specUpdated))
 	if specUpdated {
 		return emptyResult, nil
 	}
@@ -306,11 +305,9 @@ func (r *AutonomousContainerDatabaseReconciler) syncResource(acd *dbv1alpha1.Aut
 	}
 
 	specChanged, statusChanged := acd.UpdateFromOCIACD(resp.AutonomousContainerDatabase)
-	r.Log.Info(fmt.Sprintf("==== specChanged = %t, statusChanged = %t", specChanged, statusChanged))
 
 	// Validate the status change
 	if statusChanged {
-		r.Log.Info("==== update status")
 		if err := r.updateResourceStatus(acd); err != nil {
 			return false, err
 		}
@@ -319,12 +316,10 @@ func (r *AutonomousContainerDatabaseReconciler) syncResource(acd *dbv1alpha1.Aut
 	// Validate the spec change
 	// If the spec changes, update the lastSucSpec and the resource, and then exit the Reconcile since it triggers another round of the Reconcile.
 	if specChanged {
-		r.Log.Info("==== update lastSucSpec")
 		if err := r.updateLastSuccessfulSpec(acd); err != nil {
 			return false, err
 		}
 
-		r.Log.Info("==== update resource")
 		if err := r.updateResource(acd); err != nil {
 			return false, err
 		}
