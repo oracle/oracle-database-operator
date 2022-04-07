@@ -43,8 +43,10 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/oracle/oci-go-sdk/v63/common"
 	"github.com/oracle/oci-go-sdk/v63/database"
 
 	corev1 "k8s.io/api/core/v1"
@@ -295,7 +297,7 @@ func (r *AutonomousContainerDatabaseReconciler) updateResource(acd *dbv1alpha1.A
 // looking if the lastSucSpec is present.
 func (r *AutonomousContainerDatabaseReconciler) syncResource(acd *dbv1alpha1.AutonomousContainerDatabase) error {
 	// Get the information from OCI
-	resp, err := r.dbService.GetAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID)
+	resp, err := r.dbService.GetAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID, nil)
 	if err != nil {
 		return err
 	}
@@ -466,6 +468,7 @@ func (r *AutonomousContainerDatabaseReconciler) determineAction(acd *dbv1alpha1.
 }
 
 func (r *AutonomousContainerDatabaseReconciler) createACD(acd *dbv1alpha1.AutonomousContainerDatabase) error {
+	logger := r.Log.WithName("provision-ACD")
 	resp, err := r.dbService.CreateAutonomousContainerDatabase(acd)
 	if err != nil {
 		return err
@@ -485,9 +488,46 @@ func (r *AutonomousContainerDatabaseReconciler) createACD(acd *dbv1alpha1.Autono
 		return err
 	}
 
+	// Wait for the provision operation to finish
 	if _, err := r.workService.Wait(*resp.OpcWorkRequestId); err != nil {
 		return err
 	}
+
+	// Wait for the ACD status changes to BACKUP_IN_PROGRESS
+	// Retry up to 3 times every 10 seconds.
+	logger.Info("Waiting for the status changing to BACKUP_IN_PROGRESS")
+	backupStartAttempts := uint(3)
+	backupStartNextDuration := func(r common.OCIOperationResponse) time.Duration {
+		return time.Duration(10) * time.Second
+	}
+	if _, err := r.dbService.WaitAutonomousContainerDatabaseStatus(*resp.AutonomousContainerDatabase.Id,
+		backupStartAttempts,
+		database.AutonomousContainerDatabaseLifecycleStateBackupInProgress,
+		backupStartNextDuration); err != nil {
+		return err
+	}
+
+	// Wait for the ACD status changes to AVAILABLE.
+	// Wait 20 mins in the first attempt, then retry every 30 secs after that until reaches the
+	// maximum time of retry (~60mins).
+	logger.Info("Waiting for the status changing to AVAILABLE")
+	backupFinishAttempts := uint(81)
+	backupFinishNextDuration := func(r common.OCIOperationResponse) time.Duration {
+		if r.AttemptNumber <= 1 {
+			return time.Duration(20) * time.Minute
+		}
+		return time.Duration(30) * time.Second
+	}
+
+	if _, err := r.dbService.WaitAutonomousContainerDatabaseStatus(*resp.AutonomousContainerDatabase.Id,
+		backupFinishAttempts,
+		database.AutonomousContainerDatabaseLifecycleStateBackupInProgress,
+		backupFinishNextDuration); err != nil {
+		return err
+	}
+
+	logger.Info("ACD provision successfully")
+
 	return nil
 }
 

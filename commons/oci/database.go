@@ -41,6 +41,7 @@ package oci
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/oracle/oci-go-sdk/v63/common"
@@ -72,7 +73,9 @@ type DatabaseService interface {
 	CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error)
 	GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error)
 	CreateAutonomousContainerDatabase(acb *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
-	GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error)
+	GetAutonomousContainerDatabase(acdOCID string, retryPolicy *common.RetryPolicy) (database.GetAutonomousContainerDatabaseResponse, error)
+	WaitAutonomousContainerDatabaseStatus(acdOCID string, attempts uint, lifecycleState database.AutonomousContainerDatabaseLifecycleStateEnum,
+		nextDuration func(r common.OCIOperationResponse) time.Duration) (database.GetAutonomousContainerDatabaseResponse, error)
 	UpdateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
 	RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error)
 	TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error)

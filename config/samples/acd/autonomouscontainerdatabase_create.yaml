@@ -14,11 +14,6 @@ spec:
   # # An optional field for Database Patch model preference. Should be either RELEASE_UPDATES or RELEASE_UPDATE_REVISIONS
   # patchModel: RELEASE_UPDATES
 
-  freeformTags:
-    key1: val1
-
-  hardLink: false
-
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:
     configMapName: oci-cred
