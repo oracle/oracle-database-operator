@@ -368,7 +368,7 @@ const ChownApex string = " chown oracle:oinstall /opt/oracle/oradata/${ORACLE_SI
 const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apexins.sql ]; then  ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apexins.sql SYSAUX SYSAUX TEMP /i/\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apexins.sql ]; ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
+const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apexins.sql ]; then ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
 	" cd ${ORDS_HOME}/config/apex/ && echo -e \"@apexins.sql SYSAUX SYSAUX TEMP /i/\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
 const IsApexInstalled string = "select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
