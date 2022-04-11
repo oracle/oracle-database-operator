@@ -318,7 +318,7 @@ func (r *OracleRestDataServiceReconciler) validateORDSReadiness(m *dbapi.OracleR
 		return requeueY, ordsReadyPod
 	}
 
-	if ordsReadyPod.Name == "" || m.Status.Status != dbcommons.StatusReady {
+	if ordsReadyPod.Name == "" {
 		eventReason := "Waiting"
 		eventMsg := "waiting for " + m.Name + " to be Ready"
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
