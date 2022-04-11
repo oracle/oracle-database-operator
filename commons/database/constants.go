@@ -46,6 +46,8 @@ const DBA_GUID int64 = 54322
 
 const SQLPlusCLI string = "sqlplus -s / as sysdba"
 
+const SQLPlusRemoteCLI string = "sqlplus -s sys/%[1]s@%[2]s as sysdba"
+
 const NoCloneRef string = "Unavailable"
 
 const GetVersionSQL string = "SELECT VERSION_FULL FROM V\\$INSTANCE;"
@@ -366,12 +368,15 @@ const ChownApex string = " chown oracle:oinstall /opt/oracle/oradata/${ORACLE_SI
 const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apexins.sql ]; then  ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apexins.sql SYSAUX SYSAUX TEMP /i/\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
+const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apexins.sql ]; ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
+	" cd ${ORDS_HOME}/config/apex/ && echo -e \"@apexins.sql SYSAUX SYSAUX TEMP /i/\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
+
 const IsApexInstalled string = "select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
 
 const UninstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apxremov.sql ]; then  ( while true; do  sleep 60; echo \"Uninstalling Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apxremov.sql\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const ConfigureApexRest string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apex_rest_config.sql ]; then  cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && " +
+const ConfigureApexRest string = "if [ -f ${ORDS_HOME}/config/apex/apex_rest_config.sql ]; then  cd ${ORDS_HOME}/config/apex && " +
 	"echo -e \"%[1]s\n%[1]s\" | %[2]s ; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
 const AlterApexUsers string = "echo -e \" ALTER USER APEX_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK; \n ALTER USER APEX_REST_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;" +
