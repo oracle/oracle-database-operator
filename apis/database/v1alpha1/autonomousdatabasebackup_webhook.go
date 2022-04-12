@@ -81,16 +81,9 @@ func (r *AutonomousDatabaseBackup) ValidateCreate() error {
 
 	var allErrs field.ErrorList
 
-	if r.Spec.AutonomousDatabaseBackupOCID != "" && r.Spec.AutonomousDatabaseOCID != "" {
+	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"),
-				"cannot apply autonomousDatabaseBackupOCID and autonomousDatabaseOCID to the backup at the same time"))
-	}
-
-	if r.Spec.DisplayName != "" && r.Spec.AutonomousDatabaseOCID == "" {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("displayName"),
-				"autonomousDatabaseOCID cannot be empty"))
+			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB or ociADB, but not both"))
 	}
 
 	if len(allErrs) == 0 {
@@ -106,24 +99,28 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) error {
 	autonomousdatabasebackuplog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
+	oldBackup := old.(*AutonomousDatabaseBackup)
 
-	if r.Spec.AutonomousDatabaseBackupOCID != "" &&
-		old.(*AutonomousDatabaseBackup).Status.AutonomousDatabaseBackupOCID != "" &&
-		r.Spec.AutonomousDatabaseBackupOCID != old.(*AutonomousDatabaseBackup).Status.AutonomousDatabaseBackupOCID {
+	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil && r.Spec.AutonomousDatabaseBackupOCID != nil &&
+		*oldBackup.Spec.AutonomousDatabaseBackupOCID != *r.Spec.AutonomousDatabaseBackupOCID {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"), "cannot assign a new autonomousDatabaseBackupOCID to this backup"))
 	}
 
-	if r.Spec.AutonomousDatabaseOCID != "" &&
-		old.(*AutonomousDatabaseBackup).Status.AutonomousDatabaseOCID != "" &&
-		r.Spec.AutonomousDatabaseOCID != old.(*AutonomousDatabaseBackup).Status.AutonomousDatabaseOCID {
+	if oldBackup.Spec.Target.K8sADB.Name != nil && r.Spec.Target.K8sADB.Name != nil &&
+		*oldBackup.Spec.Target.K8sADB.Name != *r.Spec.Target.K8sADB.Name {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseOCID"), "cannot assign a new autonomousDatabaseOCID to this backup"))
+			field.Forbidden(field.NewPath("spec").Child("target").Child("k8sADB").Child("name"), "cannot assign a new name to the target"))
 	}
 
-	if r.Spec.DisplayName != "" &&
-		old.(*AutonomousDatabaseBackup).Status.DisplayName != "" &&
-		r.Spec.DisplayName != old.(*AutonomousDatabaseBackup).Status.DisplayName {
+	if oldBackup.Spec.Target.OCIADB.OCID != nil && r.Spec.Target.OCIADB.OCID != nil &&
+		*oldBackup.Spec.Target.OCIADB.OCID != *r.Spec.Target.OCIADB.OCID {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("target").Child("ociADB").Child("ocid"), "cannot assign a new ocid to the target"))
+	}
+
+	if oldBackup.Spec.DisplayName != nil && r.Spec.DisplayName != nil &&
+		*oldBackup.Spec.DisplayName != *r.Spec.DisplayName {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("displayName"), "cannot assign a new displayName to this backup"))
 	}
