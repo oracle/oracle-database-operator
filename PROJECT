@@ -102,4 +102,22 @@ resources:
   kind: OracleRestDataService
   path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: AutonomousContainerDatabase
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: DbcsSystem
+  path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
+  version: v1alpha1
 version: "3"

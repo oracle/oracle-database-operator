@@ -96,10 +96,12 @@ func main() {
 	// Get Cache
 	cache := mgr.GetCache()
 
+	// ADB family controllers
 	if err = (&databasecontroller.AutonomousDatabaseReconciler{
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("database").WithName("AutonomousDatabase"),
 		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabase"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabase")
 		os.Exit(1)
@@ -108,6 +110,7 @@ func main() {
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseBackup"),
 		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabaseBackup"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabaseBackup")
 		os.Exit(1)
@@ -116,10 +119,21 @@ func main() {
 		KubeClient: mgr.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseRestore"),
 		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabaseRestore"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabaseRestore")
 		os.Exit(1)
 	}
+	if err = (&databasecontroller.AutonomousContainerDatabaseReconciler{
+		KubeClient: mgr.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousContainerDatabase"),
+		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("AutonomousContainerDatabase"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AutonomousContainerDatabase")
+		os.Exit(1)
+	}
+
 	if err = (&databasecontroller.SingleInstanceDatabaseReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("SingleInstanceDatabase"),
@@ -213,6 +227,15 @@ func main() {
 	}
 	if err = (&databasev1alpha1.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
+		os.Exit(1)
+	}
+	if err = (&databasecontroller.DbcsSystemReconciler{
+		KubeClient: mgr.GetClient(),
+		Logger:     ctrl.Log.WithName("controllers").WithName("database").WithName("DbcsSystem"),
+		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorderFor("DbcsSystem"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DbcsSystem")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

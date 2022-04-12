@@ -20,11 +20,11 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.lifecycleState
-      name: State
+    - jsonPath: .status.status
+      name: Status
       type: string
     - jsonPath: .status.displayName
-      name: DisplayName
+      name: DbDisplayName
       type: string
     - jsonPath: .status.dbName
       name: DbName
@@ -51,24 +51,51 @@ spec:
             description: AutonomousDatabaseRestoreSpec defines the desired state of
               AutonomousDatabaseRestore
             properties:
-              backupName:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file'
-                type: string
               ociConfig:
+                description: "*********************** *\tOCI config ***********************"
                 properties:
                   configMapName:
                     type: string
                   secretName:
                     type: string
                 type: object
-              pointInTime:
+              source:
                 properties:
-                  autonomousDatabaseOCID:
-                    type: string
-                  timeStamp:
-                    type: string
+                  k8sADBBackup:
+                    description: 'EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO
+                      OWN! NOTE: json tags are required.  Any new fields you add must
+                      have json tags for the fields to be serialized.'
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  pointInTime:
+                    properties:
+                      timestamp:
+                        description: 'The timestamp must follow this format: YYYY-MM-DD
+                          HH:MM:SS GMT'
+                        type: string
+                    type: object
                 type: object
+              target:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
+                properties:
+                  k8sADB:
+                    description: "*********************** *\tADB spec ***********************"
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  ociADB:
+                    properties:
+                      ocid:
+                        type: string
+                    type: object
+                type: object
+            required:
+            - source
+            - target
             type: object
           status:
             description: AutonomousDatabaseRestoreStatus defines the observed state
@@ -83,14 +110,19 @@ spec:
                   of cluster Important: Run "make" to regenerate code after modifying
                   this file'
                 type: string
-              lifecycleState:
-                description: 'WorkRequestStatusEnum Enum with underlying type: string'
+              status:
+                type: string
+              timeAccepted:
+                type: string
+              timeEnded:
+                type: string
+              timeStarted:
                 type: string
             required:
             - autonomousDatabaseOCID
             - dbName
             - displayName
-            - lifecycleState
+            - status
             type: object
         type: object
     served: true

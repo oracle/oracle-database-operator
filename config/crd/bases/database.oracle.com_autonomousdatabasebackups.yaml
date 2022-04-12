@@ -59,18 +59,31 @@ spec:
             properties:
               autonomousDatabaseBackupOCID:
                 type: string
-              autonomousDatabaseOCID:
-                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file'
-                type: string
               displayName:
                 type: string
               ociConfig:
+                description: "*********************** *\tOCI config ***********************"
                 properties:
                   configMapName:
                     type: string
                   secretName:
                     type: string
+                type: object
+              target:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
+                properties:
+                  k8sADB:
+                    description: "*********************** *\tADB spec ***********************"
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  ociADB:
+                    properties:
+                      ocid:
+                        type: string
+                    type: object
                 type: object
             type: object
           status:
@@ -78,6 +91,9 @@ spec:
               of AutonomousDatabaseBackup
             properties:
               autonomousDatabaseBackupOCID:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
                 type: string
               autonomousDatabaseOCID:
                 type: string
@@ -92,9 +108,6 @@ spec:
               isAutomatic:
                 type: boolean
               lifecycleState:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
                 type: string
               timeEnded:
                 type: string
@@ -105,7 +118,6 @@ spec:
                   type: string'
                 type: string
             required:
-            - autonomousDatabaseBackupOCID
             - autonomousDatabaseOCID
             - compartmentOCID
             - dbDisplayName

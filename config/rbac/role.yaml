@@ -28,6 +28,20 @@ rules:
   - ""
   resources:
   - configmaps
+  - namespaces
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
   - secrets
   verbs:
   - create
@@ -146,12 +160,22 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
-  - autonomousdatabaseBackups
+  - autonomouscontainerdatabases
   verbs:
   - create
   - delete
   - get
   - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomouscontainerdatabases/status
+  verbs:
+  - get
+  - patch
   - update
 - apiGroups:
   - database.oracle.com
@@ -162,6 +186,7 @@ rules:
   - delete
   - get
   - list
+  - update
   - watch
 - apiGroups:
   - database.oracle.com
@@ -180,6 +205,7 @@ rules:
   - delete
   - get
   - list
+  - update
   - watch
 - apiGroups:
   - database.oracle.com
@@ -230,6 +256,36 @@ rules:
   - database.oracle.com
   resources:
   - cdbs/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dbcssystems
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dbcssystems/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dbcssystems/status
   verbs:
   - get
   - patch
