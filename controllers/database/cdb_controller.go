@@ -327,12 +327,24 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 								LocalObjectReference: corev1.LocalObjectReference{
 									Name: cdb.Spec.SysAdminPwd.Secret.SecretName,
 								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  cdb.Spec.SysAdminPwd.Secret.Key,
+										Path: cdb.Spec.SysAdminPwd.Secret.Key,
+									},
+								},
 							},
 						},
 						{
 							Secret: &corev1.SecretProjection{
 								LocalObjectReference: corev1.LocalObjectReference{
 									Name: cdb.Spec.CDBAdminUser.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  cdb.Spec.CDBAdminUser.Secret.Key,
+										Path: cdb.Spec.CDBAdminUser.Secret.Key,
+									},
 								},
 							},
 						},
@@ -341,12 +353,24 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 								LocalObjectReference: corev1.LocalObjectReference{
 									Name: cdb.Spec.CDBAdminPwd.Secret.SecretName,
 								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  cdb.Spec.CDBAdminPwd.Secret.Key,
+										Path: cdb.Spec.CDBAdminPwd.Secret.Key,
+									},
+								},
 							},
 						},
 						{
 							Secret: &corev1.SecretProjection{
 								LocalObjectReference: corev1.LocalObjectReference{
 									Name: cdb.Spec.ORDSPwd.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  cdb.Spec.ORDSPwd.Secret.Key,
+										Path: cdb.Spec.ORDSPwd.Secret.Key,
+									},
 								},
 							},
 						},
@@ -355,12 +379,24 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 								LocalObjectReference: corev1.LocalObjectReference{
 									Name: cdb.Spec.WebServerUser.Secret.SecretName,
 								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  cdb.Spec.WebServerUser.Secret.Key,
+										Path: cdb.Spec.WebServerUser.Secret.Key,
+									},
+								},
 							},
 						},
 						{
 							Secret: &corev1.SecretProjection{
 								LocalObjectReference: corev1.LocalObjectReference{
 									Name: cdb.Spec.WebServerPwd.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  cdb.Spec.WebServerPwd.Secret.Key,
+										Path: cdb.Spec.WebServerPwd.Secret.Key,
+									},
 								},
 							},
 						},

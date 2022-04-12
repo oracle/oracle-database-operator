@@ -2021,6 +2021,32 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
+  - oraclerestdataservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - oraclerestdataservices/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - oraclerestdataservices/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
   - pdbs
   verbs:
   - create
@@ -2100,32 +2126,6 @@ rules:
   - database.oracle.com
   resources:
   - singleinstancedatabases/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - oraclerestdataservices
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - oraclerestdataservices/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - oraclerestdataservices/status
   verbs:
   - get
   - patch
@@ -2352,27 +2352,6 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v1alpha1-oraclerestdataservice
-  failurePolicy: Fail
-  name: moraclerestdataservice.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
       path: /mutate-database-oracle-com-v1alpha1-cdb
   failurePolicy: Fail
   name: mcdb.kb.io
@@ -2386,6 +2365,27 @@ webhooks:
     - UPDATE
     resources:
     - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-oraclerestdataservice
+  failurePolicy: Fail
+  name: moraclerestdataservice.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - oraclerestdataservices
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -2505,27 +2505,6 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-oraclerestdataservice
-  failurePolicy: Fail
-  name: voraclerestdataservice.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v1alpha1-cdb
   failurePolicy: Fail
   name: vcdb.kb.io
@@ -2539,6 +2518,27 @@ webhooks:
     - UPDATE
     resources:
     - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-oraclerestdataservice
+  failurePolicy: Fail
+  name: voraclerestdataservice.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - oraclerestdataservices
   sideEffects: None
 - admissionReviewVersions:
   - v1
