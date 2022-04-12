@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -314,6 +314,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	eventReason := "Spec Error"
 	var eventMsgs []string
 
+	r.Log.Info("Got", "edition", m.Spec.Edition)
 	// Pre-built db
 	if m.Spec.Persistence.AccessMode == "" {
 		return requeueN, nil
@@ -437,7 +438,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //    Instantiate POD spec from SingleInstanceDatabase spec
 //#############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase) *corev1.Pod {
-	// Pre-built db
+	// Pre-built db, useful for dev/test/CI-CD
 	if m.Spec.Persistence.AccessMode == "" {
 		pod := &corev1.Pod{
 			TypeMeta: metav1.TypeMeta{
@@ -452,6 +453,20 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				},
 			},
 			Spec: corev1.PodSpec{
+				Volumes: []corev1.Volume{{
+					Name: "oracle-pwd-vol",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: m.Spec.AdminPassword.SecretName,
+							Optional:   func() *bool { i := true; return &i }(),
+							Items: []corev1.KeyToPath{{
+								Key:  m.Spec.AdminPassword.SecretKey,
+								Path: "oracle_pwd",
+							},
+							},
+						},
+					},
+				}},
 				Containers: []corev1.Container{{
 					Name:  m.Name,
 					Image: m.Spec.Image.PullFrom,
@@ -480,6 +495,12 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							return 30
 						}(),
 					},
+					VolumeMounts: []corev1.VolumeMount{{
+						MountPath: "/run/secrets/oracle_pwd",
+						ReadOnly:  true,
+						Name:      "oracle-pwd-vol",
+						SubPath:   "oracle_pwd",
+					}},
 					Env: func() []corev1.EnvVar {
 						return []corev1.EnvVar{
 							{
@@ -517,17 +538,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}(),
 				SecurityContext: &corev1.PodSecurityContext{
 					RunAsUser: func() *int64 {
-						i := int64(0)
-						if m.Spec.Edition != "express" {
-							i = int64(dbcommons.ORACLE_UID)
-						}
+						i := int64(dbcommons.ORACLE_UID)
 						return &i
 					}(),
 					RunAsGroup: func() *int64 {
-						i := int64(0)
-						if m.Spec.Edition != "express" {
-							i = int64(dbcommons.ORACLE_GUID)
-						}
+						i := int64(dbcommons.ORACLE_GUID)
 						return &i
 					}(),
 				},
@@ -563,6 +578,18 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 						ClaimName: m.Name,
 						ReadOnly:  false,
+					},
+				},
+			}, {
+				Name: "oracle-pwd-vol",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: m.Spec.AdminPassword.SecretName,
+						Optional:   func() *bool { i := (m.Spec.Edition != "express"); return &i }(),
+						Items: []corev1.KeyToPath{{
+							Key:  m.Spec.AdminPassword.SecretKey,
+							Path: "oracle_pwd",
+						}},
 					},
 				},
 			}},
@@ -673,8 +700,35 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				VolumeMounts: []corev1.VolumeMount{{
 					MountPath: "/opt/oracle/oradata",
 					Name:      "datamount",
+				}, {
+					// This is for express edition DB
+					MountPath: "/run/secrets/oracle_pwd",
+					ReadOnly:  true,
+					Name:      "oracle-pwd-vol",
+					SubPath:   "oracle_pwd",
 				}},
 				Env: func() []corev1.EnvVar {
+					// adding XE support, useful for dev/test/CI-CD
+					if m.Spec.Edition == "express" {
+						return []corev1.EnvVar{
+							{
+								Name:  "SVC_HOST",
+								Value: m.Name,
+							},
+							{
+								Name:  "SVC_PORT",
+								Value: "1521",
+							},
+							{
+								Name:  "ORACLE_CHARACTERSET",
+								Value: m.Spec.Charset,
+							},
+							{
+								Name:  "ORACLE_EDITION",
+								Value: m.Spec.Edition,
+							},
+						}
+					}
 					if m.Spec.CloneFrom == "" {
 						return []corev1.EnvVar{
 							{
@@ -798,17 +852,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsUser: func() *int64 {
-					i := int64(0)
-					if m.Spec.Edition != "express" {
-						i = int64(dbcommons.ORACLE_UID)
-					}
+					i := int64(dbcommons.ORACLE_UID)
 					return &i
 				}(),
 				RunAsGroup: func() *int64 {
-					i := int64(0)
-					if m.Spec.Edition != "express" {
-						i = int64(dbcommons.ORACLE_GUID)
-					}
+					i := int64(dbcommons.ORACLE_GUID)
 					return &i
 				}(),
 			},
@@ -1011,7 +1059,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	m.Status.PdbConnectString = dbcommons.ValueUnavailable
 	m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 
-	pdbName := "ORCLPDB1"
+	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
 	if m.Spec.Persistence.AccessMode == "" {
 		sid, pdbName, m.Status.Edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
@@ -1020,9 +1068,6 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		}
 	}
 
-	if m.Spec.Pdbname != "" {
-		pdbName = strings.ToUpper(m.Spec.Pdbname)
-	}
 	if m.Spec.LoadBalancer {
 		m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
@@ -1455,18 +1500,6 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 		}
 	}
 
-	if m.Spec.Edition == "express" {
-		//Configure OEM Express Listener
-		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false,
-			"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | su -p oracle -c \"sqlplus -s / as sysdba\" ", dbcommons.ConfigureOEMSQL))
-		if err != nil {
-			r.Log.Error(err, err.Error())
-			return requeueY, readyPod, err
-		}
-		r.Log.Info("ConfigureOEMSQL output")
-		r.Log.Info(out)
-	}
-
 	return requeueN, readyPod, nil
 
 }
@@ -1596,7 +1629,7 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 
 	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 		ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.AlterSgaPgaCpuCMD, m.Spec.InitParams.SgaTarget,
-			m.Spec.InitParams.PgaAggregateTarget, m.Spec.InitParams.CpuCount, dbcommons.GetSqlClient(m.Spec.Edition)))
+			m.Spec.InitParams.PgaAggregateTarget, m.Spec.InitParams.CpuCount, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY, err
@@ -1606,8 +1639,8 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	if m.Status.InitParams.Processes != m.Spec.InitParams.Processes {
 		// Altering 'Processes' needs database to be restarted
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
-			ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.AlterProcessesCMD, m.Spec.InitParams.Processes, dbcommons.GetSqlClient(m.Spec.Edition),
-				dbcommons.GetSqlClient(m.Spec.Edition)))
+			ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.AlterProcessesCMD, m.Spec.InitParams.Processes, dbcommons.SQLPlusCLI,
+				dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1616,7 +1649,7 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	}
 
 	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
-		ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.GetInitParamsSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+		ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.GetInitParamsSQL, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY, err
@@ -1679,7 +1712,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 		log.Info(out)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.SetDBRecoveryDestSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.SetDBRecoveryDestSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1688,7 +1721,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 		log.Info(out)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf(dbcommons.ArchiveLogTrueCMD, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf(dbcommons.ArchiveLogTrueCMD, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1700,7 +1733,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	if m.Spec.ForceLogging && !forceLoggingStatus {
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ForceLoggingTrueSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ForceLoggingTrueSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1716,7 +1749,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 		}
 		if archiveLogStatus {
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-				fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+				fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
 				return requeueY, err
@@ -1741,7 +1774,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	if !m.Spec.FlashBack && flashBackStatus {
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackFalseSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackFalseSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1757,7 +1790,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 		if !flashBackStatus {
 
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-				fmt.Sprintf(dbcommons.ArchiveLogFalseCMD, dbcommons.GetSqlClient(m.Spec.Edition)))
+				fmt.Sprintf(dbcommons.ArchiveLogFalseCMD, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
 				return requeueY, err
@@ -1777,7 +1810,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	}
 	if !m.Spec.ForceLogging && forceLoggingStatus {
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ForceLoggingFalseSQL, dbcommons.GetSqlClient(m.Spec.Edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ForceLoggingFalseSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
@@ -1871,7 +1904,7 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 
 	// Install APEX
 	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf(dbcommons.InstallApex, dbcommons.GetSqlClient(m.Spec.Edition)))
+		fmt.Sprintf(dbcommons.InstallApex, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Info(err.Error())
 	}
@@ -1885,7 +1918,7 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 	}
 
 	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.IsApexInstalled, dbcommons.GetSqlClient(m.Spec.Edition)))
+		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.IsApexInstalled, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY
@@ -1936,7 +1969,7 @@ func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstance
 
 	// Uninstall APEX
 	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf(dbcommons.UninstallApex, dbcommons.GetSqlClient(m.Spec.Edition)))
+		fmt.Sprintf(dbcommons.UninstallApex, dbcommons.SQLPlusCLI))
 	if err != nil {
 		log.Info(err.Error())
 		if !strings.Contains(err.Error(), "catcon.pl: completed") {

@@ -364,7 +364,7 @@ func CheckDBConfig(readyPod corev1.Pod, r client.Reader, config *rest.Config,
 
 	} else {
 		out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", CheckModesSQL, GetSqlClient(edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", CheckModesSQL, SQLPlusCLI))
 		if err != nil {
 			log.Error(err, "Error in ExecCommand()")
 			return false, false, false, requeueY
@@ -462,7 +462,7 @@ func GetDatabaseVersion(readyPod corev1.Pod, r client.Reader,
 
 	// ## FIND DATABASES PRESENT IN DG CONFIGURATION
 	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", GetVersionSQL, GetSqlClient(edition)))
+		fmt.Sprintf("echo -e  \"%s\"  | %s", GetVersionSQL, SQLPlusCLI))
 	if err != nil {
 		return "", "", err
 	}
@@ -488,7 +488,7 @@ func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
 	log := ctrllog.FromContext(ctx).WithValues("GetDatabaseRole", req.NamespacedName)
 
 	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", GetDatabaseRoleCMD, GetSqlClient(edition)))
+		fmt.Sprintf("echo -e  \"%s\"  | %s", GetDatabaseRoleCMD, SQLPlusCLI))
 	if err != nil {
 		return "", err
 	}
@@ -583,7 +583,7 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 	}
 	if readyPod.Name != "" {
 		out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "",
-			ctx, req, false, "bash", "-c", fmt.Sprintf(GetSidPdbEditionCMD))
+			ctx, req, false, "bash", "-c", GetSidPdbEditionCMD)
 		if err != nil {
 			log.Error(err, err.Error())
 			return "", "", ""
@@ -635,13 +635,6 @@ func GetSqlpatchStatus(r client.Reader, config *rest.Config, readyPod corev1.Pod
 	}
 	splitstr := strings.Split(sqlpatchVersions[0], ":")
 	return sqlpatchStatuses[0], splitstr[0], splitstr[1], nil
-}
-
-func GetSqlClient(edition string) string {
-	if edition == "express" {
-		return "su -p oracle -c \"sqlplus -s / as sysdba\""
-	}
-	return "sqlplus -s / as sysdba"
 }
 
 // Is Source Database On same Cluster

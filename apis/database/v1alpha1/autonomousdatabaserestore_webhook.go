@@ -39,9 +39,6 @@
 package v1alpha1
 
 import (
-	"reflect"
-
-	"github.com/oracle/oracle-database-operator/commons/oci/ociutil"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -73,31 +70,36 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() error {
 
 	var allErrs field.ErrorList
 
+	// Validate the target ADB
+	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB.name or ociADB.ocid, but not both"))
+	}
+
 	// Validate the restore source
-	if r.Spec.BackupName == "" &&
-		r.Spec.PointInTime.AutonomousDatabaseOCID == "" &&
-		r.Spec.PointInTime.TimeStamp == "" {
+	if r.Spec.Source.K8sADBBackup.Name == nil &&
+		r.Spec.Source.PointInTime.Timestamp == nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec"), "no retore source is chosen"))
+			field.Forbidden(field.NewPath("spec").Child("source"), "no retore source is chosen"))
 	}
 
-	if r.Spec.BackupName != "" &&
-		(r.Spec.PointInTime.AutonomousDatabaseOCID != "" || r.Spec.PointInTime.TimeStamp != "") {
+	if r.Spec.Source.K8sADBBackup.Name != nil &&
+		r.Spec.Source.PointInTime.Timestamp != nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec"), "cannot apply backupName and the PITR parameters at the same time"))
+			field.Forbidden(field.NewPath("spec").Child("source"), "cannot apply backupName and the PITR parameters at the same time"))
 	}
 
-	if (r.Spec.PointInTime.AutonomousDatabaseOCID == "" && r.Spec.PointInTime.TimeStamp != "") ||
-		(r.Spec.PointInTime.AutonomousDatabaseOCID != "" && r.Spec.PointInTime.TimeStamp == "") {
-		field.Forbidden(field.NewPath("spec").Child("pointInTime"), "autonomousDatabaseOCID or timeStamp cannot be empty")
+	if (r.Spec.Target.OCIADB.OCID == nil && r.Spec.Source.PointInTime.Timestamp != nil) ||
+		(r.Spec.Target.OCIADB.OCID != nil && r.Spec.Source.PointInTime.Timestamp == nil) {
+		field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime").Child("timestamp"), "target.ociADB.ocid or source.pointInTime.timestamp cannot be empty")
 	}
 
 	// Verify the timestamp format if it's PITR
-	if r.Spec.PointInTime.TimeStamp != "" {
-		_, err := ociutil.ParseDisplayTime(r.Spec.PointInTime.TimeStamp)
+	if r.Spec.Source.PointInTime.Timestamp != nil {
+		_, err := parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 		if err != nil {
 			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec"), "invalid timestamp format"))
+				field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime").Child("timestamp"), "invalid timestamp format"))
 		}
 	}
 
@@ -114,13 +116,6 @@ func (r *AutonomousDatabaseRestore) ValidateUpdate(old runtime.Object) error {
 	autonomousdatabaserestorelog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
-
-	if old.(*AutonomousDatabaseRestore).Status.LifecycleState != "" &&
-		!reflect.DeepEqual(r.Spec, old.(*AutonomousDatabaseRestore).Spec) {
-
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec"), "the AutonomousDatabaseRestore resource cannot be modified"))
-	}
 
 	if len(allErrs) == 0 {
 		return nil

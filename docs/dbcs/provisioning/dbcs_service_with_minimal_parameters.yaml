@@ -1,0 +1,19 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: DbcsSystem
+metadata:
+  name: dbcssystem-create
+spec:
+  ociConfigMap: "oci-cred"
+  ociSecret: "oci-privatekey"
+  dbSystem:
+    availabilityDomain: "OLou:PHX-AD-1"
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya"
+    dbAdminPaswordSecret: "admin-password"
+    dbName: "db0130"
+    dbVersion: "21c"
+    dbWorkload: "OLTP"
+    hostName: "host0130"
+    shape: "VM.Standard2.1"
+    sshPublicKeys:
+      - "oci-publickey"
+    subnetId: "ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a"
