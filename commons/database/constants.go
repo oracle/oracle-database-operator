@@ -371,6 +371,11 @@ const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/ape
 const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apexins.sql ]; then ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
 	" cd ${ORDS_HOME}/config/apex/ && echo -e \"@apexins.sql SYSAUX SYSAUX TEMP /i/\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
+const InstallApexRemoteA string = "if [ -e ${ORDS_HOME}/config/apex/apxsilentins.sql ]; then ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
+	" cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[2]s %[2]s %[2]s %[2]s\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
+
+const InstallApexRemoteB string = "if [ -e ${ORDS_HOME}/config/apex/apxsilentins.sql ]; then cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[2]s %[2]s %[2]s %[2]s\" | %[1]s; else echo \"Apex Folder doesn't exist\" ; fi ;"
+
 const IsApexInstalled string = "select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
 
 const UninstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apxremov.sql ]; then  ( while true; do  sleep 60; echo \"Uninstalling Apex...\" ; done ) & " +
