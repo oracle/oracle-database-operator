@@ -1013,8 +1013,26 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	sidbPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
 	log.Info("SIDB Password: " + sidbPassword)
 
+	apexPasswordSecret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
+			return requeueY
+		}
+		log.Error(err, err.Error())
+		return requeueY
+	}
+
+	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
+	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
+
 	if !n.Status.ApexInstalled {
-		result := r.installApexSIDB(m, n, ordsReadyPod, sidbPassword, ctx, req)
+		result := r.installApexSIDB(m, n, ordsReadyPod, sidbPassword, apexPassword, ctx, req)
 		if result.Requeue {
 			log.Info("Reconcile requeued because apex installation failed")
 			return result
@@ -1070,23 +1088,6 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 
 	} */
 
-	apexPasswordSecret := &corev1.Secret{}
-	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			m.Status.Status = dbcommons.StatusError
-			eventReason := "Waiting"
-			eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
-			return requeueY
-		}
-		log.Error(err, err.Error())
-		return requeueY
-	}
-	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
-	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
-
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
 
@@ -1111,7 +1112,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	}
 
 	// Alter APEX_LISTENER,APEX_PUBLIC_USER,APEX_REST_PUBLIC_USER
-	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true,
+	/* out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true,
 		"bash", "-c", fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.ConnectString)))
 	if err != nil {
 		log.Info(err.Error())
@@ -1131,7 +1132,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		log.Info(err.Error())
 		return requeueY
 	}
-	log.Info("Change ApexAdmin Password Output : \n" + out)
+	log.Info("Change ApexAdmin Password Output : \n" + out) */
 
 	m.Status.ApexConfigured = true
 	r.Status().Update(ctx, m)
@@ -1184,7 +1185,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 //                 Install APEX in SIDB
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) installApexSIDB(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	ordsReadyPod corev1.Pod, sidbPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
+	ordsReadyPod corev1.Pod, sidbPassword string, apexPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("installApex", req.NamespacedName)
 
 	// Initial Validation
@@ -1201,7 +1202,7 @@ func (r *OracleRestDataServiceReconciler) installApexSIDB(m *dbapi.OracleRestDat
 
 	//Install Apex in SIDB ready pod
 	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf(dbcommons.InstallApexRemote, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.ConnectString)))
+		fmt.Sprintf(dbcommons.InstallApexRemoteB, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.ConnectString), apexPassword))
 	if err != nil {
 		log.Info(err.Error())
 	}
