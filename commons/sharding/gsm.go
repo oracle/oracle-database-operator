@@ -41,9 +41,10 @@ package commons
 import (
 	"context"
 	"fmt"
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"reflect"
 	"strconv"
+
+	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -429,8 +430,7 @@ func UpdateProvForGsm(instance *databasev1alpha1.ShardingDatabase,
 ) (ctrl.Result, error) {
 
 	var msg string
-	var size int32
-	size = 1
+	var size int32 = 1
 	var isUpdate bool = false
 	var err error
 	var i int
