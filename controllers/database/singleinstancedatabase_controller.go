@@ -438,7 +438,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //    Instantiate POD spec from SingleInstanceDatabase spec
 //#############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase) *corev1.Pod {
-	// Pre-built db, useful for dev/test/CI-CD
+	// prebuiltDB, useful for dev/test/CI-CD
 	if m.Spec.Image.PrebuiltDB {
 		pod := &corev1.Pod{
 			TypeMeta: metav1.TypeMeta{
@@ -559,6 +559,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 		return pod
 
 	}
+	// If not prebuiltDB
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "Pod",
@@ -697,16 +698,22 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					}(),
 				},
 
-				VolumeMounts: []corev1.VolumeMount{{
-					MountPath: "/opt/oracle/oradata",
-					Name:      "datamount",
-				}, {
-					// This is for express edition DB
-					MountPath: "/run/secrets/oracle_pwd",
-					ReadOnly:  true,
-					Name:      "oracle-pwd-vol",
-					SubPath:   "oracle_pwd",
-				}},
+				VolumeMounts: func() []corev1.VolumeMount {
+					mounts := []corev1.VolumeMount{ {
+						MountPath: "/opt/oracle/oradata",
+						Name:      "datamount",
+					}}
+					if m.Spec.Edition == "express" {
+						mounts = append(mounts, corev1.VolumeMount {
+							// This is for express edition DB
+							MountPath: "/run/secrets/oracle_pwd",
+							ReadOnly:  true,
+							Name:      "oracle-pwd-vol",
+							SubPath:   "oracle_pwd",
+						})
+					}
+					return mounts
+				}(), 
 				Env: func() []corev1.EnvVar {
 					// adding XE support, useful for dev/test/CI-CD
 					if m.Spec.Edition == "express" {
