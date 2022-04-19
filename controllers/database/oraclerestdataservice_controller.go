@@ -1092,9 +1092,9 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	r.Status().Update(ctx, m)
 
 	configureApexRestSqlClient := "sqlplus -s / as sysdba @apex_rest_config.sql"
-	configureApexRestSqlClient = fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.ConnectString) + " @apex_rest_config.sql"
+	configureApexRestSqlClient = fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.PdbConnectString) + " @apex_rest_config.sql"
 	// Configure APEX
-	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf(dbcommons.ConfigureApexRest, apexPassword, configureApexRestSqlClient))
 	if err != nil {
 		log.Info(err.Error())
@@ -1151,7 +1151,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		}
 
 		// Set Apex users in apex_rt,apex_al,apex files
-		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
 			fmt.Sprintf(dbcommons.SetApexUsers, apexPassword))
 		log.Info("SetApexUsers Output: \n" + out)
 		if strings.Contains(strings.ToUpper(out), "ERROR") {
@@ -1202,7 +1202,7 @@ func (r *OracleRestDataServiceReconciler) installApexSIDB(m *dbapi.OracleRestDat
 
 	//Install Apex in SIDB ready pod
 	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf(dbcommons.InstallApexRemoteB, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.ConnectString), apexPassword))
+		fmt.Sprintf(dbcommons.InstallApexRemoteB, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.PdbConnectString), apexPassword))
 	if err != nil {
 		log.Info(err.Error())
 	}
@@ -1217,7 +1217,7 @@ func (r *OracleRestDataServiceReconciler) installApexSIDB(m *dbapi.OracleRestDat
 
 	// Checking if Apex is installed successfully or not
 	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.IsApexInstalled, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.ConnectString)))
+		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.IsApexInstalled, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.PdbConnectString)))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY
