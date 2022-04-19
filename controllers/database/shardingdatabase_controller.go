@@ -1672,7 +1672,7 @@ func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev1alpha1
 			count = count + 1
 			continue
 		}
-		err, _, _ = shardingv1.ExecCommand(gsmPodName.Name, shardingv1.GetShardInviteNodeCmd(objName), r.kubeClient, r.kubeConfig, instance, r.Log)
+		_, _, err = shardingv1.ExecCommand(gsmPodName.Name, shardingv1.GetShardInviteNodeCmd(objName), r.kubeClient, r.kubeConfig, instance, r.Log)
 		if err != nil {
 			msg = "Invite delete and add node failed " + shardingv1.GetFmtStr(objName) + " details in GSM."
 			shardingv1.LogMessages("DEBUG", msg, err, instance, r.Log)
