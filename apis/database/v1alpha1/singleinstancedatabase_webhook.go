@@ -112,6 +112,13 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
+	// Persistence spec validation
+	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" || r.Spec.Persistence.StorageClass != "" ) || 
+		(r.Spec.Persistence.Size != "" && r.Spec.Persistence.AccessMode == "" ) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Replicas, "invalid persistence spec"))
+	}
+
 	// Pre-built db
 	if r.Spec.Image.PrebuiltDB {
 		if r.Spec.Pdbname != "" && r.Spec.Edition != "express" {
