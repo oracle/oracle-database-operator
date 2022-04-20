@@ -13,35 +13,16 @@ stringData:
 
 ---
 
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: xe-pv
-spec:
-  accessModes:
-    - ReadWriteMany
-  capacity:
-    storage: 5Gi
-  storageClassName: xe-sc
-  hostPath:
-    path: /data/oradata
-  
----
-
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
-  name: xe-sample
+  name: xe-prebuilt-sample
   namespace: default
 spec:
-  
+
   ## Use only alphanumeric characters for sid
   sid: XE
-  
-  ## NA if cloning from a SourceDB (cloneFrom is set)
-  edition: express
-  
-  ## Should refer to SourceDB secret if cloning from a SourceDB (cloneFrom is set)
+
   ## Secret containing SIDB password mapped to secretKey
   ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
@@ -49,31 +30,21 @@ spec:
     secretKey: oracle_pwd
     keepSecret: true
 
-  ## NA if cloning from a SourceDB (cloneFrom is set)
-  charset: AL32UTF8
-
-  ## Enable/Disable Flashback
-  flashBack: false
-
-  ## Enable/Disable ArchiveLog
-  archiveLog: false
-
-  ## Enable/Disable ForceLogging
-  forceLog: false
-
-  ## Database image details
-  ## Database can be patched by updating the RU version/image
-  ## Major version changes are not supported
+  ## Database Image
   image:
     pullFrom: container-registry.oracle.com/database/express:latest
     prebuiltDB: true
 
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
   persistence:
-    size: 5Gi
-    storageClass: "xe-sc"
+    size: 100Gi
+    storageClass: "oci"
     accessMode: "ReadWriteOnce"
+
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  serviceAccountName: default
 
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
   replicas: 1
