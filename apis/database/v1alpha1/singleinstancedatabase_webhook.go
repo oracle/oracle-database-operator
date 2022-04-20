@@ -116,16 +116,12 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" || r.Spec.Persistence.StorageClass != "" ) || 
 		(r.Spec.Persistence.Size != "" && r.Spec.Persistence.AccessMode == "" ) {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Replicas, "invalid persistence spec"))
+				field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Replicas, 
+								"invalid specification, size and/or accessMode missing"))
 	}
 
 	// Pre-built db
 	if r.Spec.Image.PrebuiltDB {
-		if r.Spec.Pdbname != "" && r.Spec.Edition != "express" {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
-					"cannot change pdbName for prebuilt db"))
-		}
 		if r.Spec.CloneFrom != "" && r.Spec.Edition != "express" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
@@ -176,6 +172,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	if len(allErrs) == 0 {
 		return nil
 	}
+
 	return apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)

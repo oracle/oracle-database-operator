@@ -352,7 +352,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	if m.Spec.Edition == "express" && m.Spec.CloneFrom != "" {
 		eventMsgs = append(eventMsgs, "cloning not supported for express edition")
 	}
-	if m.Status.OrdsReference != "" && m.Status.Persistence.AccessMode != "" && m.Status.Persistence != m.Spec.Persistence {
+	if m.Status.OrdsReference != "" && m.Status.Persistence.Size != "" && m.Status.Persistence != m.Spec.Persistence {
 		eventMsgs = append(eventMsgs, "uninstall ORDS to change Peristence")
 	}
 	if len(eventMsgs) > 0 {
@@ -1517,10 +1517,6 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("updateInitParameters", req.NamespacedName)
 
-	// No InitParameters Updation for Pre-built db
-	if m.Spec.Image.PrebuiltDB {
-		return requeueN, nil
-	}
 
 	if m.Status.InitParams == m.Spec.InitParams {
 		return requeueN, nil
@@ -1567,10 +1563,6 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	log := r.Log.WithValues("updateDBConfig", req.NamespacedName)
 
-	// No updateDBConfig for Pre-built db
-	if m.Spec.Image.PrebuiltDB {
-		return requeueN, nil
-	}
 
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
