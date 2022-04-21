@@ -481,33 +481,36 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				},
 			}},
 			InitContainers: func() []corev1.Container {
-				initContainers := []corev1.Container {{
-					Name:    "init-permissions",
-					Image:   m.Spec.Image.PullFrom,
-					Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
-					SecurityContext: &corev1.SecurityContext{
-						// User ID 0 means, root user
-						RunAsUser: func() *int64 { i := int64(0); return &i }(),
-					},
-					VolumeMounts: []corev1.VolumeMount{{
-						MountPath: "/opt/oracle/oradata",
-						Name:      "datamount",
-					}},
-				}}
-				if m.Spec.Image.PrebuiltDB && m.Spec.Persistence.Size != "" {
-					initContainers = append(initContainers, corev1.Container{
-						Name:    "init-prebuiltdb",
+				initContainers := []corev1.Container {}
+				if m.Spec.Persistence.Size != "" {
+					initContainers = append(initContainers, corev1.Container {
+						Name:    "init-permissions",
 						Image:   m.Spec.Image.PullFrom,
-						Command: []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
-						SecurityContext: &corev1.SecurityContext {
-							RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
-							RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
+						SecurityContext: &corev1.SecurityContext{
+							// User ID 0 means, root user
+							RunAsUser: func() *int64 { i := int64(0); return &i }(),
 						},
 						VolumeMounts: []corev1.VolumeMount{{
-							MountPath: "/mnt/oradata",
+							MountPath: "/opt/oracle/oradata",
 							Name:      "datamount",
 						}},
 					})
+					if m.Spec.Image.PrebuiltDB {
+						initContainers = append(initContainers, corev1.Container {
+							Name:    "init-prebuiltdb",
+							Image:   m.Spec.Image.PullFrom,
+							Command: []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
+							SecurityContext: &corev1.SecurityContext {
+								RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+								RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+							},
+							VolumeMounts: []corev1.VolumeMount{{
+								MountPath: "/mnt/oradata",
+								Name:      "datamount",
+							}},
+						})
+					}
 				}
 				/* Wallet only for non-express edition, non-prebuiltDB */
 				if m.Spec.Edition != "express" && !m.Spec.Image.PrebuiltDB {
@@ -590,10 +593,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				},
 
 				VolumeMounts: func() []corev1.VolumeMount {
-					mounts := []corev1.VolumeMount{ {
-						MountPath: "/opt/oracle/oradata",
-						Name:      "datamount",
-					}}
+					mounts := []corev1.VolumeMount{}
+					if m.Spec.Persistence.Size != "" {
+						mounts = append(mounts, corev1.VolumeMount {
+							MountPath: "/opt/oracle/oradata",
+							Name:      "datamount",
+						})
+					}
 					if m.Spec.Edition == "express" || m.Spec.Image.PrebuiltDB {
 						// mounts pwd as secrets for express edition
 						// or prebuilt db							
