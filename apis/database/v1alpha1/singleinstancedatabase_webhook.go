@@ -116,7 +116,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" || r.Spec.Persistence.StorageClass != "" ) || 
 		(r.Spec.Persistence.Size != "" && r.Spec.Persistence.AccessMode == "" ) {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Replicas, 
+				field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Persistence,
 								"invalid specification, size and/or accessMode missing"))
 	}
 
