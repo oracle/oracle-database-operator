@@ -23,6 +23,8 @@ spec:
   ## Use only alphanumeric characters for sid
   sid: XE
 
+  edition: express
+
   ## Secret containing SIDB password mapped to secretKey
   ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
