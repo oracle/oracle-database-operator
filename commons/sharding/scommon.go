@@ -41,6 +41,7 @@ package commons
 import (
 	"context"
 	"fmt"
+
 	databasealphav1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 
 	"regexp"
@@ -486,15 +487,21 @@ func PodListValidation(podList *corev1.PodList, sfName string, instance *databas
 func GetPodList(sfsetName string, resType string, instance *databasealphav1.ShardingDatabase, kClient client.Client,
 ) (*corev1.PodList, error) {
 	podList := &corev1.PodList{}
-	labelSelector := labels.SelectorFromSet(getlabelsForGsm(instance))
-	if resType == "GSM" {
+	//labelSelector := labels.SelectorFromSet(getlabelsForGsm(instance))
+	//labelSelector := map[string]labels.Selector{}
+	var labelSelector labels.Selector
+
+	//labels.SelectorFromSet()
+
+	switch resType {
+	case "GSM":
 		labelSelector = labels.SelectorFromSet(getlabelsForGsm(instance))
-	} else if resType == "SHARD" {
+	case "SHARD":
 		labelSelector = labels.SelectorFromSet(getlabelsForShard(instance))
-	} else if resType == "CATALOG" {
+	case "CATALOG":
 		labelSelector = labels.SelectorFromSet(getlabelsForCatalog(instance))
-	} else {
-		err1 := fmt.Errorf("Wrong resources type passed. Supported values are SHARD,GSM and CATALOG")
+	default:
+		err1 := fmt.Errorf("wrong resources type passed. Supported values are SHARD,GSM and CATALOG")
 		return nil, err1
 	}
 
@@ -612,8 +619,7 @@ func getOwnerRef(instance *databasealphav1.ShardingDatabase,
 }
 
 func buildCatalogParams(instance *databasealphav1.ShardingDatabase) string {
-	var variables []databasealphav1.EnvironmentVariable
-	variables = instance.Spec.Catalog[0].EnvVars
+	var variables []databasealphav1.EnvironmentVariable = instance.Spec.Catalog[0].EnvVars
 	var result string
 	var varinfo string
 	var sidFlag bool = false
@@ -725,13 +731,14 @@ func buildDirectorParams(instance *databasealphav1.ShardingDatabase, oraGsmSpex 
 		result = result + varinfo
 	}
 
-	if idx == 0 {
+	switch idx {
+	case 0:
 		varinfo = "director_region=primary;"
 		result = result + varinfo
-	} else if idx == 1 {
+	case 1:
 		varinfo = "director_region=standby;"
 		result = result + varinfo
-	} else {
+	default:
 		// Do nothing
 	}
 
@@ -744,8 +751,7 @@ func buildDirectorParams(instance *databasealphav1.ShardingDatabase, oraGsmSpex 
 }
 
 func BuildShardParams(sfSet *appsv1.StatefulSet) string {
-	var variables []corev1.EnvVar
-	variables = sfSet.Spec.Template.Spec.Containers[0].Env
+	var variables []corev1.EnvVar = sfSet.Spec.Template.Spec.Containers[0].Env
 	var result string
 	var varinfo string
 	var isShardPort bool = false
@@ -836,20 +842,17 @@ func GetShardInviteNodeCmd(shardName string) []string {
 }
 
 func getCancelChunksCmd(sparamStr string) []string {
-	var cancelChunkCmd []string
-	cancelChunkCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--cancelchunks=" + strconv.Quote(sparamStr), "--optype=gsm"}
+	var cancelChunkCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--cancelchunks=" + strconv.Quote(sparamStr), "--optype=gsm"}
 	return cancelChunkCmd
 }
 
 func getMoveChunksCmd(sparamStr string) []string {
-	var moveChunkCmd []string
-	moveChunkCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--movechunks=" + strconv.Quote(sparamStr), "--optype=gsm"}
+	var moveChunkCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--movechunks=" + strconv.Quote(sparamStr), "--optype=gsm"}
 	return moveChunkCmd
 }
 
 func getNoChunksCmd(sparamStr string) []string {
-	var noChunkCmd []string
-	noChunkCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--validatenochunks=" + strconv.Quote(sparamStr), "--optype=gsm"}
+	var noChunkCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--validatenochunks=" + strconv.Quote(sparamStr), "--optype=gsm"}
 	return noChunkCmd
 }
 
@@ -860,8 +863,7 @@ func shardValidationCmd() []string {
 }
 
 func getShardCheckCmd(sparamStr string) []string {
-	var checkShardCmd []string
-	checkShardCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkgsmshard=" + strconv.Quote(sparamStr), "--optype=gsm"}
+	var checkShardCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkgsmshard=" + strconv.Quote(sparamStr), "--optype=gsm"}
 	return checkShardCmd
 }
 
@@ -897,32 +899,27 @@ func getLivenessCmd(resType string) []string {
 }
 
 func getGsmShardValidateCmd(shardName string) []string {
-	var validateCmd []string
-	validateCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--validateshard=" + strconv.Quote(shardName), "--optype=gsm"}
+	var validateCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--validateshard=" + strconv.Quote(shardName), "--optype=gsm"}
 	return validateCmd
 }
 
 func getOnlineShardCmd(sparamStr string) []string {
-	var onlineCmd []string
-	onlineCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkonlineshard=" + strconv.Quote(sparamStr), "--optype=gsm"}
+	var onlineCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkonlineshard=" + strconv.Quote(sparamStr), "--optype=gsm"}
 	return onlineCmd
 }
 
 func getGsmAddShardGroupCmd(sparamStr string) []string {
-	var addSgroupCmd []string
-	addSgroupCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", sparamStr, "--optype=gsm"}
+	var addSgroupCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", sparamStr, "--optype=gsm"}
 	return addSgroupCmd
 }
 
 func getdeployShardCmd() []string {
-	var depCmd []string
-	depCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--deployshard=true", "--optype=gsm"}
+	var depCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--deployshard=true", "--optype=gsm"}
 	return depCmd
 }
 
 func getGsmvalidateCmd() []string {
-	var depCmd []string
-	depCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkliveness=true", "--optype=gsm"}
+	var depCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkliveness=true", "--optype=gsm"}
 	return depCmd
 }
 
@@ -957,8 +954,9 @@ func ReadConfigMap(cmName string, instance *databasealphav1.ShardingDatabase, kC
 ) (string, string, string, string, string, string) {
 
 	var region, fingerprint, user, tenancy, passphrase, str1, topicid, k, value string
-	cm := &corev1.ConfigMap{}
 	var err error
+	cm := &corev1.ConfigMap{}
+	//var err error
 
 	// Reding a config map
 	err = kClient.Get(context.TODO(), types.NamespacedName{
@@ -986,19 +984,20 @@ func ReadConfigMap(cmName string, instance *databasealphav1.ShardingDatabase, kC
 		value = line[s+1:]
 
 		LogMessages("DEBUG", "Key : "+GetFmtStr(k)+" Value : "+GetFmtStr(value), nil, instance, logger)
-		if k == "region" {
+		switch k {
+		case "region":
 			region = value
-		} else if k == "fingerprint" {
+		case "fingerprint":
 			fingerprint = value
-		} else if k == "user" {
+		case "user":
 			user = value
-		} else if k == "tenancy" {
+		case "tenancy":
 			tenancy = value
-		} else if k == "passpharase" {
+		case "passpharase":
 			passphrase = value
-		} else if k == "topicid" {
+		case "topicid":
 			topicid = value
-		} else {
+		default:
 			LogMessages("DEBUG", GetFmtStr(k)+" is not matching with any required value for ONS.", nil, instance, logger)
 		}
 	}
@@ -1010,10 +1009,10 @@ func ReadSecret(secName string, instance *databasealphav1.ShardingDatabase, kCli
 
 	var value string
 	sc := &corev1.Secret{}
-	var err error
+	//var err error
 
 	// Reading a Secret
-	err = kClient.Get(context.TODO(), types.NamespacedName{
+	var err error = kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      secName,
 		Namespace: instance.Spec.Namespace,
 	}, sc)
@@ -1067,7 +1066,7 @@ func Contains(list []string, s string) bool {
 func CheckShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
-	err, _, _ := ExecCommand(gsmPodName, getShardCheckCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getShardCheckCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Did not find the shard " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1080,7 +1079,7 @@ func CheckShardInGsm(gsmPodName string, sparams string, instance *databasealphav
 func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
-	err, _, _ := ExecCommand(gsmPodName, getOnlineShardCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getOnlineShardCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Shard: " + GetFmtStr(sparams) + " is not onine in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1093,7 +1092,7 @@ func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *database
 func MoveChunks(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
-	err, _, _ := ExecCommand(gsmPodName, getMoveChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getMoveChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred in during Chunk movement command submission for shard: " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1105,7 +1104,7 @@ func MoveChunks(gsmPodName string, sparams string, instance *databasealphav1.Sha
 // Function to verify the chunks
 func VerifyChunks(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
-	err, _, _ := ExecCommand(gsmPodName, getNoChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getNoChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Chunks are not moved completely from the shard: " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1117,7 +1116,7 @@ func VerifyChunks(gsmPodName string, sparams string, instance *databasealphav1.S
 // Function to verify the chunks
 func AddShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
-	err, _, _ := ExecCommand(gsmPodName, getShardAddCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getShardAddCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while adding a shard " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1129,7 +1128,7 @@ func AddShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.
 // Function to deploy the Shards
 func DeployShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
-	err, _, _ := ExecCommand(gsmPodName, getdeployShardCmd(), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getdeployShardCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while deploying the shard in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1141,7 +1140,7 @@ func DeployShardInGsm(gsmPodName string, sparams string, instance *databasealpha
 // Function to verify the chunks
 func CancelChunksInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
-	err, _, _ := ExecCommand(gsmPodName, getCancelChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getCancelChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while cancelling the chunks: " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1153,7 +1152,7 @@ func CancelChunksInGsm(gsmPodName string, sparams string, instance *databasealph
 // Function to delete the shard
 func RemoveShardFromGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
-	err, _, _ := ExecCommand(gsmPodName, getShardDelCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getShardDelCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while cancelling the chunks: " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1163,19 +1162,19 @@ func RemoveShardFromGsm(gsmPodName string, sparams string, instance *databasealp
 }
 
 func GetSvcIp(PodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
-) (error, string, string) {
-	err, stdoutput, stderror := ExecCommand(PodName, GetIpCmd(sparams), kubeClient, kubeconfig, instance, logger)
+) (string, string, error) {
+	stdoutput, stderror, err := ExecCommand(PodName, GetIpCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while getting the IP for k8s service " + GetFmtStr(sparams)
 		LogMessages("INFO", msg, nil, instance, logger)
-		return err, strings.Replace(stdoutput, "\r\n", "", -1), strings.Replace(stderror, "/r/n", "", -1)
+		return strings.Replace(stdoutput, "\r\n", "", -1), strings.Replace(stderror, "/r/n", "", -1), err
 	}
-	return nil, strings.Replace(stdoutput, "\r\n", "", -1), strings.Replace(stderror, "/r/n", "", -1)
+	return strings.Replace(stdoutput, "\r\n", "", -1), strings.Replace(stderror, "/r/n", "", -1), nil
 }
 
 func GetGsmServices(PodName string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	err, stdoutput, _ := ExecCommand(PodName, getGsmSvcCmd(), kubeClient, kubeconfig, instance, logger)
+	stdoutput, _, err := ExecCommand(PodName, getGsmSvcCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while getting the services from the GSM "
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1186,7 +1185,7 @@ func GetGsmServices(PodName string, instance *databasealphav1.ShardingDatabase, 
 
 func GetDbRole(PodName string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	err, stdoutput, _ := ExecCommand(PodName, getDbRoleCmd(), kubeClient, kubeconfig, instance, logger)
+	stdoutput, _, err := ExecCommand(PodName, getDbRoleCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while getting the DB role from the database"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1197,7 +1196,7 @@ func GetDbRole(PodName string, instance *databasealphav1.ShardingDatabase, kubeC
 
 func GetDbOpenMode(PodName string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
-	err, stdoutput, _ := ExecCommand(PodName, getDbModeCmd(), kubeClient, kubeconfig, instance, logger)
+	stdoutput, _, err := ExecCommand(PodName, getDbModeCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while getting the DB mode from the database"
 		LogMessages("DEBUG", msg, err, instance, logger)

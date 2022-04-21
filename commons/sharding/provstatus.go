@@ -335,12 +335,11 @@ func GetMetaCondition(instance *databasealphav1.ShardingDatabase, result *ctrl.R
 func CheckGsmStatus(gname string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	var err error
-	var msg string
+	var msg string = "Inside the checkGsmStatus. Checking GSM director in " + GetFmtStr(gname) + " pod."
 
-	msg = "Inside the checkGsmStatus. Checking GSM director in " + GetFmtStr(gname) + " pod."
 	LogMessages("DEBUG", msg, nil, instance, logger)
 
-	err, _, _ = ExecCommand(gname, getGsmvalidateCmd(), kubeClient, kubeconfig, instance, logger)
+	_, _, err = ExecCommand(gname, getGsmvalidateCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
 		return err
 	}
@@ -353,9 +352,9 @@ func CheckGsmStatus(gname string, instance *databasealphav1.ShardingDatabase, ku
 func ValidateDbSetup(podName string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
-	err, _, _ := ExecCommand(podName, shardValidationCmd(), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(podName, shardValidationCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
-		return fmt.Errorf("Error ocurred while validating the DB Setup")
+		return fmt.Errorf("error ocurred while validating the DB Setup")
 	}
 	return nil
 }
