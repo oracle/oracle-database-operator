@@ -316,9 +316,9 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 
 	r.Log.Info("Got", "edition", m.Spec.Edition)
 	// Pre-built db
-	if m.Spec.Image.PrebuiltDB {
-		return requeueN, nil
-	}
+	//if m.Spec.Image.PrebuiltDB {
+	//	return requeueN, nil
+	//}
 
 	//  If Express Edition , Ensure Replicas=1
 	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
