@@ -6,7 +6,7 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: admin-secret
+  name: admin-secret-1
 type: Opaque
 stringData:
   oracle_pwd: "ChangeOnInstall_1"
@@ -26,7 +26,7 @@ spec:
   ## Secret containing SIDB password mapped to secretKey 
   ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
-    secretName: admin-secret
+    secretName: admin-secret-1
     secretKey: oracle_pwd
     keepSecret: true
 
