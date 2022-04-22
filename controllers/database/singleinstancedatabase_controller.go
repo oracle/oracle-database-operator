@@ -314,11 +314,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	eventReason := "Spec Error"
 	var eventMsgs []string
 
-	r.Log.Info("Got", "edition", m.Spec.Edition)
-	// Pre-built db
-	//if m.Spec.Image.PrebuiltDB {
-	//	return requeueN, nil
-	//}
+	r.Log.Info("Entering reconcile validation")
 
 	//  If Express Edition , Ensure Replicas=1
 	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
@@ -431,6 +427,9 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		m.Status.Edition = n.Status.Edition
 
 	}
+
+	r.Log.Info("Completed reconcile validation")
+
 	return requeueN, nil
 }
 
@@ -971,6 +970,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		if sid == "" || pdbName == "" || m.Status.Edition == "" {
 			return requeueN, nil
 		}
+		m.Status.Edition = strings.Title(m.Status.Edition)
 	}
 
 	if m.Spec.LoadBalancer {
