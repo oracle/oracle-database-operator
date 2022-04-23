@@ -16,13 +16,13 @@ stringData:
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: xe-pv
+  name: minikube-pv
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   capacity:
     storage: 5Gi
-  storageClassName: xe-sc
+  storageClassName: minikube-sc
   hostPath:
     path: /data/oradata
   
@@ -31,14 +31,14 @@ spec:
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
-  name: xe-sample
+  name: xedb-minikube-sample
   namespace: default
 spec:
   
   ## Use only alphanumeric characters for sid
   sid: XE
   
-  ## NA if cloning from a SourceDB (cloneFrom is set)
+  ## DB edition. NA if cloning from a SourceDB (cloneFrom is set)
   edition: express
   
   ## Should refer to SourceDB secret if cloning from a SourceDB (cloneFrom is set)
@@ -48,18 +48,6 @@ spec:
     secretName: admin-secret-3
     secretKey: oracle_pwd
     keepSecret: true
-
-  ## NA if cloning from a SourceDB (cloneFrom is set)
-  charset: AL32UTF8
-
-  ## Enable/Disable Flashback
-  flashBack: false
-
-  ## Enable/Disable ArchiveLog
-  archiveLog: false
-
-  ## Enable/Disable ForceLogging
-  forceLog: false
 
   ## Database image details
   ## Database can be patched by updating the RU version/image
@@ -72,7 +60,7 @@ spec:
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
     size: 5Gi
-    storageClass: "xe-sc"
+    storageClass: "minikube-sc"
     accessMode: "ReadWriteOnce"
 
   ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
