@@ -202,7 +202,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 	if !ok {
 		return nil
 	}
-	if old.Status.PrebuiltDB != r.Spec.Image.PrebuiltDB {
+	if old.Status.DatafilesCreated == "true" && (old.Status.PrebuiltDB != r.Spec.Image.PrebuiltDB) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))
 	}
