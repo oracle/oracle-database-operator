@@ -120,21 +120,6 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 								"invalid specification, size and/or accessMode missing"))
 	}
 
-	// Pre-built db
-	if r.Spec.Image.PrebuiltDB {
-		if r.Spec.CloneFrom != "" && r.Spec.Edition != "express" {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
-					"cannot clone to create a prebuilt db"))
-		}
-		if len(allErrs) == 0 {
-			return nil
-		}
-		return apierrors.NewInvalid(
-			schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
-			r.Name, allErrs)
-	}
-
 	if r.Spec.Persistence.Size != "" &&
 	   r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
 		allErrs = append(allErrs,
@@ -162,11 +147,18 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 			field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 				"Express edition PDB must be XEPDB1"))
 	}
-	//Edition must be passed when cloning from a source database other than same k8s cluster
-	if strings.Contains(r.Spec.CloneFrom, ":") && strings.Contains(r.Spec.CloneFrom, "/") && r.Spec.Edition == "" {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
-				"Edition must be passed when cloning from a source database other than same k8s cluster"))
+
+	if r.Spec.CloneFrom != "" {
+		if r.Spec.Image.PrebuiltDB {
+			allErrs = append(allErrs,
+						field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
+						"cannot clone to create a prebuilt db"))
+		} else if strings.Contains(r.Spec.CloneFrom, ":") && strings.Contains(r.Spec.CloneFrom, "/") && r.Spec.Edition == "" {
+			//Edition must be passed when cloning from a source database other than same k8s cluster
+			allErrs = append(allErrs,
+						field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
+						"Edition must be passed when cloning from a source database other than same k8s cluster"))
+		}
 	}
 
 	if len(allErrs) == 0 {
