@@ -382,6 +382,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	m.Status.Charset = m.Spec.Charset
 	m.Status.Pdbname = m.Spec.Pdbname
 	m.Status.Persistence = m.Spec.Persistence
+	m.Status.PrebuiltDB = m.Spec.Image.PrebuiltDB
 	if m.Spec.CloneFrom == "" {
 		m.Status.CloneFrom = dbcommons.NoCloneRef
 	} else {
