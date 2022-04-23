@@ -138,8 +138,8 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	if !r.Spec.Image.PrebuiltDB &&
 		r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
 		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Persistence.AccessMode,
-				"should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
+			field.Invalid(field.NewPath("spec").Child("persistence").Child("accessMode"),
+				r.Spec.Persistence.AccessMode, "should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
 	}
 
 	if r.Spec.Persistence.AccessMode == "ReadWriteOnce" && r.Spec.Replicas != 1 {

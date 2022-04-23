@@ -30,6 +30,15 @@ spec:
     secretKey: oracle_pwd
     keepSecret: true
 
+  ## DB character set
+  charset: AL32UTF8
+
+  ## PDB name
+  pdbName: orclpdb1
+
+  ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
+  archiveLog: true
+
   ## Database Image
   image:
     pullFrom: container-registry.oracle.com/database/enterprise:latest

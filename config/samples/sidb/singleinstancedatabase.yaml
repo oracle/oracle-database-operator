@@ -13,10 +13,10 @@ spec:
   sid: ORCL1
   
   ## A source database ref to clone from, leave empty to create a fresh database
-  ## If cloning from on prem source database, mention connect string `<ip>:<port>/<sid>`.
+  ## If cloning from on-prem source database, mention connect string `<host>:<port>/<service_name>`.
   cloneFrom: ""
 
-  ## NA if cloning from a SourceDB (cloneFrom is set)
+  ## DB edition. N/A if cloning from a SourceDB (cloneFrom is set)
   edition: enterprise
   
   ## Should refer to SourceDB secret if cloning from a SourceDB (cloneFrom is set)
@@ -27,16 +27,16 @@ spec:
     secretKey:
     keepSecret: true
 
-  ## NA if cloning from a SourceDB (cloneFrom is set)
+  ## DB character set. N/A if cloning from a SourceDB (cloneFrom is set)
   charset: AL32UTF8
 
-  ## NA if cloning from a SourceDB (cloneFrom is set)
+  ## PDB name. N/A if cloning from a SourceDB (cloneFrom is set)
   pdbName: orclpdb1
 
   ## Enable/Disable Flashback
   flashBack: false
 
-  ## Enable/Disable ArchiveLog
+  ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
   archiveLog: false
 
   ## Enable/Disable ForceLogging
@@ -58,8 +58,12 @@ spec:
     pgaAggregateTarget: 0
 
   ## Database image details
-  ## Database can be patched by updating the RU version/image
-  ## Major version changes are not supported
+  ## Base DB images are available at container-registry.oracle.com or build from https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance
+  ## Build patched DB images from https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching
+  ## If cloning from on-prem DB, build on-prem DB image following the instructions
+  ## https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance#containerizing-an-on-premise-database-supported-from-version-1930-release
+  ## Prebuilt DB support (https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/prebuiltdb)
+  ## Specify prebuiltDB as true if the image includes a prebuilt DB
   image:
     pullFrom:
     pullSecrets:
