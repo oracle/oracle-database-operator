@@ -138,6 +138,7 @@ type SingleInstanceDatabaseStatus struct {
 	OrdsReference        string            `json:"ordsReference,omitempty"`
 	PdbConnectString     string            `json:"pdbConnectString,omitempty"`
 	ApexInstalled        bool              `json:"apexInstalled,omitempty"`
+	PrebuiltDB           bool              `json:"prebuiltDB,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge

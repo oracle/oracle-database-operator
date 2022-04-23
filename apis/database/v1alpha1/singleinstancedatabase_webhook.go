@@ -135,8 +135,8 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 			r.Name, allErrs)
 	}
 
-	if !r.Spec.Image.PrebuiltDB &&
-		r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
+	if r.Spec.Persistence.Size != "" &&
+	   r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("persistence").Child("accessMode"),
 				r.Spec.Persistence.AccessMode, "should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
@@ -197,34 +197,28 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		}
 	}
 
-	// Pre-built db
-	if r.Spec.Image.PrebuiltDB {
-		return nil
-	}
-
 	// Now check for updation errors
 	old, ok := oldRuntimeObject.(*SingleInstanceDatabase)
 	if !ok {
 		return nil
 	}
-
-	edition := r.Spec.Edition
-	if r.Spec.Edition == "" {
-		edition = "Enterprise"
+	if old.Status.PrebuiltDB != r.Spec.Image.PrebuiltDB {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))
 	}
-	if r.Spec.CloneFrom == "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, edition) {
+	if r.Spec.CloneFrom == "" && old.Status.Edition != "" && r.Spec.Edition != "" && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("edition"), "cannot be changed"))
 	}
-	if old.Status.Charset != "" && !strings.EqualFold(old.Status.Charset, r.Spec.Charset) {
+	if old.Status.Charset != "" && r.Spec.Charset != "" && !strings.EqualFold(old.Status.Charset, r.Spec.Charset) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("charset"), "cannot be changed"))
 	}
-	if old.Status.Sid != "" && !strings.EqualFold(r.Spec.Sid, old.Status.Sid) {
+	if old.Status.Sid != "" && r.Spec.Sid != "" && !strings.EqualFold(r.Spec.Sid, old.Status.Sid) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("sid"), "cannot be changed"))
 	}
-	if old.Status.Pdbname != "" && !strings.EqualFold(old.Status.Pdbname, r.Spec.Pdbname) {
+	if old.Status.Pdbname != "" && r.Spec.Pdbname != "" && !strings.EqualFold(old.Status.Pdbname, r.Spec.Pdbname) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("pdbname"), "cannot be changed"))
 	}
