@@ -222,12 +222,12 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, nil
 	}
 
-	// Uninstall Apex
+	/* // Uninstall Apex
 	result = r.uninstallApex(singleInstanceDatabase, readyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
-	}
+	} */
 
 	// If LoadBalancer = true , ensure Connect String is updated
 	if singleInstanceDatabase.Status.ConnectString == dbcommons.ValueUnavailable {
@@ -1843,12 +1843,13 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 	return requeueN
 }
 
-//#############################################################################
+/* //#############################################################################
 //             Uninstall APEX from CDB
 //#############################################################################
 func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstanceDatabase,
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("uninstallApex", req.NamespacedName)
+	return requeueN
 
 	// No APEX for Pre-built db
 	if m.Spec.Image.PrebuiltDB {
@@ -1896,7 +1897,7 @@ func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstance
 	}
 	r.updateORDSStatus(m, true, ctx, req)
 	return requeueN
-}
+} */
 
 //#############################################################################
 //             Update ORDS Status
