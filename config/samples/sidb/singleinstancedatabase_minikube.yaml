@@ -41,7 +41,6 @@ spec:
   ## DB edition. NA if cloning from a SourceDB (cloneFrom is set)
   edition: express
   
-  ## Should refer to SourceDB secret if cloning from a SourceDB (cloneFrom is set)
   ## Secret containing SIDB password mapped to secretKey
   ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
@@ -50,8 +49,6 @@ spec:
     keepSecret: true
 
   ## Database image details
-  ## Database can be patched by updating the RU version/image
-  ## Major version changes are not supported
   image:
     pullFrom: container-registry.oracle.com/database/express:latest
     prebuiltDB: true
@@ -62,6 +59,3 @@ spec:
     size: 5Gi
     storageClass: "minikube-sc"
     accessMode: "ReadWriteOnce"
-
-  ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
-  replicas: 1

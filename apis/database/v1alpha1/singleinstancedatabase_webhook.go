@@ -71,12 +71,16 @@ var _ webhook.Defaulter = &SingleInstanceDatabase{}
 func (r *SingleInstanceDatabase) Default() {
 	singleinstancedatabaselog.Info("default", "name", r.Name)
 
-	if r.Spec.Edition == "express" {
+	if r.Spec.Replicas == 0 {
 		r.Spec.Replicas = 1
+	}
+
+	if r.Spec.Edition == "express" {
 		if r.Spec.Sid == "" {
 			r.Spec.Sid = "XE"
 		}
 	}
+
 	if r.Spec.Pdbname == "" {
 		if r.Spec.Edition == "express" {
 			r.Spec.Pdbname = "XEPDB1"
@@ -198,19 +202,19 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))
 	}
-	if r.Spec.CloneFrom == "" && old.Status.Edition != "" && r.Spec.Edition != "" && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
+	if r.Spec.CloneFrom == "" && old.Status.Edition != ""  && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("edition"), "cannot be changed"))
 	}
-	if old.Status.Charset != "" && r.Spec.Charset != "" && !strings.EqualFold(old.Status.Charset, r.Spec.Charset) {
+	if old.Status.Charset != "" && !strings.EqualFold(old.Status.Charset, r.Spec.Charset) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("charset"), "cannot be changed"))
 	}
-	if old.Status.Sid != "" && r.Spec.Sid != "" && !strings.EqualFold(r.Spec.Sid, old.Status.Sid) {
+	if old.Status.Sid != ""  && !strings.EqualFold(r.Spec.Sid, old.Status.Sid) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("sid"), "cannot be changed"))
 	}
-	if old.Status.Pdbname != "" && r.Spec.Pdbname != "" && !strings.EqualFold(old.Status.Pdbname, r.Spec.Pdbname) {
+	if old.Status.Pdbname != "" && !strings.EqualFold(old.Status.Pdbname, r.Spec.Pdbname) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("pdbname"), "cannot be changed"))
 	}

@@ -117,7 +117,7 @@ type SingleInstanceDatabaseStatus struct {
 	Nodes                []string          `json:"nodes,omitempty"`
 	Role                 string            `json:"role,omitempty"`
 	Status               string            `json:"status,omitempty"`
-	Replicas             int               `json:"replicas"`
+	Replicas             int               `json:"replicas,omitempty"`
 	ReleaseUpdate        string            `json:"releaseUpdate,omitempty"`
 	DatafilesPatched     string            `json:"datafilesPatched,omitempty"`
 	ConnectString        string            `json:"connectString,omitempty"`
