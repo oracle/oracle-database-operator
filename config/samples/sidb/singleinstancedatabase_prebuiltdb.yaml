@@ -6,56 +6,40 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: admin-secret-3
+  name: admin-secret-4
 type: Opaque
 stringData:
-  oracle_pwd: "ChangeOnInstall_3"
+  oracle_pwd: "ChangeOnInstall_4"
 
----
-
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: minikube-pv
-spec:
-  accessModes:
-    - ReadWriteOnce
-  capacity:
-    storage: 5Gi
-  storageClassName: minikube-sc
-  hostPath:
-    path: /data/oradata
-  
 ---
 
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
-  name: xedb-minikube-sample
+  name: xe-prebuilt-sample
   namespace: default
 spec:
-  
+
   ## Use only alphanumeric characters for sid
   sid: XE
-  
-  ## DB edition. NA if cloning from a SourceDB (cloneFrom is set)
+
   edition: express
-  
+
   ## Secret containing SIDB password mapped to secretKey
   ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
-    secretName: admin-secret-3
+    secretName: admin-secret-4
     secretKey: oracle_pwd
     keepSecret: true
 
-  ## Database image details
+  ## Database Image
   image:
     pullFrom: container-registry.oracle.com/database/express:latest
     prebuiltDB: true
 
-  ## size : Minimum size of pvc | class : PVC storage Class
-  ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
-  persistence:
-    size: 5Gi
-    storageClass: "minikube-sc"
-    accessMode: "ReadWriteOnce"
+  ## Persistence is optional for prebuilt DB image
+  ## if specified, the prebuilt DB datafiles are copied over to the persistant volume before DB startup
+  #persistence:
+  #  size: 100Gi
+  #  storageClass: "oci"
+  #  accessMode: "ReadWriteOnce"

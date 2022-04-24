@@ -81,8 +81,8 @@ type SingleInstanceDatabaseSpec struct {
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
 type SingleInstanceDatabasePersistence struct {
-	Size         string `json:"size"`
-	StorageClass string `json:"storageClass"`
+	Size         string `json:"size,omitempty"`
+	StorageClass string `json:"storageClass,omitempty"`
 	AccessMode   string `json:"accessMode,omitempty"`
 }
 
@@ -99,6 +99,7 @@ type SingleInstanceDatabaseImage struct {
 	Version     string `json:"version,omitempty"`
 	PullFrom    string `json:"pullFrom"`
 	PullSecrets string `json:"pullSecrets,omitempty"`
+	PrebuiltDB  bool   `json:"prebuiltDB,omitempty"`
 }
 
 // SingleInsatnceAdminPassword defines the secret containing Admin Password mapped to secretKey for Database
@@ -116,7 +117,7 @@ type SingleInstanceDatabaseStatus struct {
 	Nodes                []string          `json:"nodes,omitempty"`
 	Role                 string            `json:"role,omitempty"`
 	Status               string            `json:"status,omitempty"`
-	Replicas             int               `json:"replicas"`
+	Replicas             int               `json:"replicas,omitempty"`
 	ReleaseUpdate        string            `json:"releaseUpdate,omitempty"`
 	DatafilesPatched     string            `json:"datafilesPatched,omitempty"`
 	ConnectString        string            `json:"connectString,omitempty"`
@@ -137,6 +138,7 @@ type SingleInstanceDatabaseStatus struct {
 	OrdsReference        string            `json:"ordsReference,omitempty"`
 	PdbConnectString     string            `json:"pdbConnectString,omitempty"`
 	ApexInstalled        bool              `json:"apexInstalled,omitempty"`
+	PrebuiltDB           bool              `json:"prebuiltDB,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
