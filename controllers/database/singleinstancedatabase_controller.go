@@ -314,11 +314,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	eventReason := "Spec Error"
 	var eventMsgs []string
 
-	r.Log.Info("Got", "edition", m.Spec.Edition)
-	// Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
-		return requeueN, nil
-	}
+	r.Log.Info("Entering reconcile validation")
 
 	//  If Express Edition , Ensure Replicas=1
 	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
@@ -352,7 +348,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	if m.Spec.Edition == "express" && m.Spec.CloneFrom != "" {
 		eventMsgs = append(eventMsgs, "cloning not supported for express edition")
 	}
-	if m.Status.OrdsReference != "" && m.Status.Persistence.AccessMode != "" && m.Status.Persistence != m.Spec.Persistence {
+	if m.Status.OrdsReference != "" && m.Status.Persistence.Size != "" && m.Status.Persistence != m.Spec.Persistence {
 		eventMsgs = append(eventMsgs, "uninstall ORDS to change Peristence")
 	}
 	if len(eventMsgs) > 0 {
@@ -363,7 +359,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	}
 
 	// Validating the secret. Pre-built db doesnt need secret
-	if m.Spec.Persistence.AccessMode != "" && m.Status.DatafilesCreated != "true" {
+	if !m.Spec.Image.PrebuiltDB && m.Status.DatafilesCreated != "true" {
 		secret := &corev1.Secret{}
 		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
 		if err != nil {
@@ -386,6 +382,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	m.Status.Charset = m.Spec.Charset
 	m.Status.Pdbname = m.Spec.Pdbname
 	m.Status.Persistence = m.Spec.Persistence
+	m.Status.PrebuiltDB = m.Spec.Image.PrebuiltDB
 	if m.Spec.CloneFrom == "" {
 		m.Status.CloneFrom = dbcommons.NoCloneRef
 	} else {
@@ -431,6 +428,9 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		m.Status.Edition = n.Status.Edition
 
 	}
+
+	r.Log.Info("Completed reconcile validation")
+
 	return requeueN, nil
 }
 
@@ -438,127 +438,8 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //    Instantiate POD spec from SingleInstanceDatabase spec
 //#############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase) *corev1.Pod {
-	// Pre-built db, useful for dev/test/CI-CD
-	if m.Spec.Persistence.AccessMode == "" {
-		pod := &corev1.Pod{
-			TypeMeta: metav1.TypeMeta{
-				Kind: "Pod",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      m.Name + "-" + dbcommons.GenerateRandomString(5),
-				Namespace: m.Namespace,
-				Labels: map[string]string{
-					"app":     m.Name,
-					"version": m.Spec.Image.Version,
-				},
-			},
-			Spec: corev1.PodSpec{
-				Volumes: []corev1.Volume{{
-					Name: "oracle-pwd-vol",
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: m.Spec.AdminPassword.SecretName,
-							Optional:   func() *bool { i := true; return &i }(),
-							Items: []corev1.KeyToPath{{
-								Key:  m.Spec.AdminPassword.SecretKey,
-								Path: "oracle_pwd",
-							},
-							},
-						},
-					},
-				}},
-				Containers: []corev1.Container{{
-					Name:  m.Name,
-					Image: m.Spec.Image.PullFrom,
-					Lifecycle: &corev1.Lifecycle{
-						PreStop: &corev1.LifecycleHandler{
-							Exec: &corev1.ExecAction{
-								Command: []string{"/bin/sh", "-c", "/bin/echo -en 'shutdown abort;\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"},
-							},
-						},
-					},
-					ImagePullPolicy: corev1.PullAlways,
-					Ports:           []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
-
-					ReadinessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							Exec: &corev1.ExecAction{
-								Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
-							},
-						},
-						InitialDelaySeconds: 20,
-						TimeoutSeconds:      20,
-						PeriodSeconds: func() int32 {
-							if m.Spec.ReadinessCheckPeriod > 0 {
-								return int32(m.Spec.ReadinessCheckPeriod)
-							}
-							return 30
-						}(),
-					},
-					VolumeMounts: []corev1.VolumeMount{{
-						MountPath: "/run/secrets/oracle_pwd",
-						ReadOnly:  true,
-						Name:      "oracle-pwd-vol",
-						SubPath:   "oracle_pwd",
-					}},
-					Env: func() []corev1.EnvVar {
-						return []corev1.EnvVar{
-							{
-								Name:  "SVC_HOST",
-								Value: m.Name,
-							},
-							{
-								Name:  "SVC_PORT",
-								Value: "1521",
-							},
-							{
-								Name:  "SKIP_DATAPATCH",
-								Value: "true",
-							},
-						}
-					}(),
-				}},
-
-				TerminationGracePeriodSeconds: func() *int64 { i := int64(30); return &i }(),
-
-				NodeSelector: func() map[string]string {
-					ns := make(map[string]string)
-					if len(m.Spec.NodeSelector) != 0 {
-						for key, value := range m.Spec.NodeSelector {
-							ns[key] = value
-						}
-					}
-					return ns
-				}(),
-				ServiceAccountName: func() string {
-					if m.Spec.ServiceAccountName != "" {
-						return m.Spec.ServiceAccountName
-					}
-					return "default"
-				}(),
-				SecurityContext: &corev1.PodSecurityContext{
-					RunAsUser: func() *int64 {
-						i := int64(dbcommons.ORACLE_UID)
-						return &i
-					}(),
-					RunAsGroup: func() *int64 {
-						i := int64(dbcommons.ORACLE_GUID)
-						return &i
-					}(),
-				},
-				ImagePullSecrets: []corev1.LocalObjectReference{
-					{
-						Name: m.Spec.Image.PullSecrets,
-					},
-				},
-			},
-		}
-
-		// Set SingleInstanceDatabase instance as the owner and controller
-		ctrl.SetControllerReference(m, pod, r.Scheme)
-		return pod
-
-	}
+	
+	// POD spec
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "Pod",
@@ -574,12 +455,18 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 		Spec: corev1.PodSpec{
 			Volumes: []corev1.Volume{{
 				Name: "datamount",
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: m.Name,
-						ReadOnly:  false,
-					},
-				},
+				VolumeSource: func() corev1.VolumeSource {  
+					if m.Spec.Persistence.Size == "" {
+						return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+					} 
+					/* Persistence is specified */
+					return corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: m.Name,
+							ReadOnly:  false,
+						},
+					}
+				}(),
 			}, {
 				Name: "oracle-pwd-vol",
 				VolumeSource: corev1.VolumeSource{
@@ -594,8 +481,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				},
 			}},
 			InitContainers: func() []corev1.Container {
-				if m.Spec.Edition != "express" {
-					return []corev1.Container{{
+				initContainers := []corev1.Container {}
+				if m.Spec.Persistence.Size != "" {
+					initContainers = append(initContainers, corev1.Container {
 						Name:    "init-permissions",
 						Image:   m.Spec.Image.PullFrom,
 						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
@@ -607,7 +495,26 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							MountPath: "/opt/oracle/oradata",
 							Name:      "datamount",
 						}},
-					}, {
+					})
+					if m.Spec.Image.PrebuiltDB {
+						initContainers = append(initContainers, corev1.Container {
+							Name:    "init-prebuiltdb",
+							Image:   m.Spec.Image.PullFrom,
+							Command: []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
+							SecurityContext: &corev1.SecurityContext {
+								RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+								RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+							},
+							VolumeMounts: []corev1.VolumeMount{{
+								MountPath: "/mnt/oradata",
+								Name:      "datamount",
+							}},
+						})
+					}
+				}
+				/* Wallet only for non-express edition, non-prebuiltDB */
+				if m.Spec.Edition != "express" && !m.Spec.Image.PrebuiltDB {
+					initContainers = append(initContainers, corev1.Container{ 
 						Name:  "init-wallet",
 						Image: m.Spec.Image.PullFrom,
 						Env: []corev1.EnvVar{
@@ -652,21 +559,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							MountPath: "/opt/oracle/oradata",
 							Name:      "datamount",
 						}},
-					}}
+					})
 				}
-				return []corev1.Container{{
-					Name:    "init-permissions",
-					Image:   m.Spec.Image.PullFrom,
-					Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
-					SecurityContext: &corev1.SecurityContext{
-						// User ID 0 means, root user
-						RunAsUser: func() *int64 { i := int64(0); return &i }(),
-					},
-					VolumeMounts: []corev1.VolumeMount{{
-						MountPath: "/opt/oracle/oradata",
-						Name:      "datamount",
-					}},
-				}}
+				return initContainers
 			}(),
 			Containers: []corev1.Container{{
 				Name:  m.Name,
@@ -697,16 +592,26 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					}(),
 				},
 
-				VolumeMounts: []corev1.VolumeMount{{
-					MountPath: "/opt/oracle/oradata",
-					Name:      "datamount",
-				}, {
-					// This is for express edition DB
-					MountPath: "/run/secrets/oracle_pwd",
-					ReadOnly:  true,
-					Name:      "oracle-pwd-vol",
-					SubPath:   "oracle_pwd",
-				}},
+				VolumeMounts: func() []corev1.VolumeMount {
+					mounts := []corev1.VolumeMount{}
+					if m.Spec.Persistence.Size != "" {
+						mounts = append(mounts, corev1.VolumeMount {
+							MountPath: "/opt/oracle/oradata",
+							Name:      "datamount",
+						})
+					}
+					if m.Spec.Edition == "express" || m.Spec.Image.PrebuiltDB {
+						// mounts pwd as secrets for express edition
+						// or prebuilt db							
+						mounts = append(mounts, corev1.VolumeMount {
+							MountPath: "/run/secrets/oracle_pwd",
+							ReadOnly:  true,
+							Name:      "oracle-pwd-vol",
+							SubPath:   "oracle_pwd",
+						})
+					}
+					return mounts
+				}(), 
 				Env: func() []corev1.EnvVar {
 					// adding XE support, useful for dev/test/CI-CD
 					if m.Spec.Edition == "express" {
@@ -960,8 +865,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Context, req ctrl.Request,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 
-	// No PVC for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	// Don't create PVC if persistence is not chosen 
+	if m.Spec.Persistence.Size == "" {
 		return requeueN, nil
 	}
 	log := r.Log.WithValues("createPVC", req.NamespacedName)
@@ -1061,11 +966,12 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 
 	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		sid, pdbName, m.Status.Edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
 		if sid == "" || pdbName == "" || m.Status.Edition == "" {
 			return requeueN, nil
 		}
+		m.Status.Edition = strings.Title(m.Status.Edition)
 	}
 
 	if m.Spec.LoadBalancer {
@@ -1205,7 +1111,7 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	}
 
 	// No Wallet for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 
@@ -1515,7 +1421,7 @@ func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceD
 	}
 
 	// No Wallet for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 
@@ -1564,7 +1470,7 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 	}
 
 	// No Patching for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN, nil
 	}
 
@@ -1618,10 +1524,6 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("updateInitParameters", req.NamespacedName)
 
-	// No InitParameters Updation for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
-		return requeueN, nil
-	}
 
 	if m.Status.InitParams == m.Spec.InitParams {
 		return requeueN, nil
@@ -1668,10 +1570,6 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	log := r.Log.WithValues("updateDBConfig", req.NamespacedName)
 
-	// No updateDBConfig for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
-		return requeueN, nil
-	}
 
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
@@ -1867,7 +1765,7 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 	log := r.Log.WithValues("installApex", req.NamespacedName)
 
 	// No APEX for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN
 	}
 
@@ -1953,7 +1851,7 @@ func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstance
 	log := r.Log.WithValues("uninstallApex", req.NamespacedName)
 
 	// No APEX for Pre-built db
-	if m.Spec.Persistence.AccessMode == "" {
+	if m.Spec.Image.PrebuiltDB {
 		return requeueN
 	}
 

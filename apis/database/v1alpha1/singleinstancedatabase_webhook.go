@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -71,12 +71,16 @@ var _ webhook.Defaulter = &SingleInstanceDatabase{}
 func (r *SingleInstanceDatabase) Default() {
 	singleinstancedatabaselog.Info("default", "name", r.Name)
 
-	if r.Spec.Edition == "express" {
+	if r.Spec.Replicas == 0 {
 		r.Spec.Replicas = 1
+	}
+
+	if r.Spec.Edition == "express" {
 		if r.Spec.Sid == "" {
 			r.Spec.Sid = "XE"
 		}
 	}
+
 	if r.Spec.Pdbname == "" {
 		if r.Spec.Edition == "express" {
 			r.Spec.Pdbname = "XEPDB1"
@@ -85,12 +89,7 @@ func (r *SingleInstanceDatabase) Default() {
 		}
 
 	}
-	// Pre-built db should have 1 replica only
-	if r.Spec.Persistence.AccessMode == "" && r.Spec.Replicas > 1 {
-		r.Spec.Replicas = 1
-	}
 
-	// TODO(user): fill in your defaulting logic.
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -103,36 +102,33 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 
-	// Pre-built db
-	if r.Spec.Persistence.AccessMode == "" {
-		if r.Spec.Sid != "" && r.Spec.Edition != "express" {
+	if r.Spec.Replicas > 1 {
+		valMsg := ""
+		if r.Spec.Edition == "express" {
+			valMsg = "should be 1 for express edition"
+		}
+		if r.Spec.Image.PrebuiltDB {
+			valMsg = "should be 1 for prebuiltDB"
+		}
+		if valMsg != "" {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
-					"cannot change sid for prebuilt db"))
+				field.Invalid(field.NewPath("spec").Child("replicas"), r.Spec.Replicas, valMsg))
 		}
-		if r.Spec.Pdbname != "" && r.Spec.Edition != "express" {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
-					"cannot change pdbName for prebuilt db"))
-		}
-		if r.Spec.CloneFrom != "" && r.Spec.Edition != "express" {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
-					"cannot clone to create a prebuilt db"))
-		}
-		if len(allErrs) == 0 {
-			return nil
-		}
-		return apierrors.NewInvalid(
-			schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
-			r.Name, allErrs)
 	}
 
-	if r.Spec.Persistence.AccessMode != "" &&
-		r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
+	// Persistence spec validation
+	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" || r.Spec.Persistence.StorageClass != "" ) || 
+		(r.Spec.Persistence.Size != "" && r.Spec.Persistence.AccessMode == "" ) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Persistence,
+								"invalid specification, size and/or accessMode missing"))
+	}
+
+	if r.Spec.Persistence.Size != "" &&
+	   r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
 		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Persistence.AccessMode,
-				"should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
+			field.Invalid(field.NewPath("spec").Child("persistence").Child("accessMode"),
+				r.Spec.Persistence.AccessMode, "should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
 	}
 
 	if r.Spec.Persistence.AccessMode == "ReadWriteOnce" && r.Spec.Replicas != 1 {
@@ -155,16 +151,24 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 			field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 				"Express edition PDB must be XEPDB1"))
 	}
-	//Edition must be passed when cloning from a source database other than same k8s cluster
-	if strings.Contains(r.Spec.CloneFrom, ":") && strings.Contains(r.Spec.CloneFrom, "/") && r.Spec.Edition == "" {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
-				"Edition must be passed when cloning from a source database other than same k8s cluster"))
+
+	if r.Spec.CloneFrom != "" {
+		if r.Spec.Image.PrebuiltDB {
+			allErrs = append(allErrs,
+						field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
+						"cannot clone to create a prebuilt db"))
+		} else if strings.Contains(r.Spec.CloneFrom, ":") && strings.Contains(r.Spec.CloneFrom, "/") && r.Spec.Edition == "" {
+			//Edition must be passed when cloning from a source database other than same k8s cluster
+			allErrs = append(allErrs,
+						field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
+						"Edition must be passed when cloning from a source database other than same k8s cluster"))
+		}
 	}
 
 	if len(allErrs) == 0 {
 		return nil
 	}
+
 	return apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
@@ -189,22 +193,16 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		}
 	}
 
-	// Pre-built db
-	if r.Spec.Persistence.AccessMode == "" {
-		return nil
-	}
-
 	// Now check for updation errors
 	old, ok := oldRuntimeObject.(*SingleInstanceDatabase)
 	if !ok {
 		return nil
 	}
-
-	edition := r.Spec.Edition
-	if r.Spec.Edition == "" {
-		edition = "Enterprise"
+	if old.Status.DatafilesCreated == "true" && (old.Status.PrebuiltDB != r.Spec.Image.PrebuiltDB) {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))
 	}
-	if r.Spec.CloneFrom == "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, edition) {
+	if r.Spec.CloneFrom == "" && old.Status.Edition != ""  && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("edition"), "cannot be changed"))
 	}
@@ -212,7 +210,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("charset"), "cannot be changed"))
 	}
-	if old.Status.Sid != "" && !strings.EqualFold(r.Spec.Sid, old.Status.Sid) {
+	if old.Status.Sid != ""  && !strings.EqualFold(r.Spec.Sid, old.Status.Sid) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("sid"), "cannot be changed"))
 	}
