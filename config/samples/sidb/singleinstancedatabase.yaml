@@ -60,7 +60,7 @@ spec:
   ## Database image details
   ## Base DB images are available at container-registry.oracle.com or build from https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance
   ## Build patched DB images from https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching
-  ## If cloning from on-prem DB, build on-prem DB image following the instructions
+  ## If cloning from on-prem DB, build on-prem DB image following the instructions at
   ## https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance#containerizing-an-on-premise-database-supported-from-version-1930-release
   ## Prebuilt DB support (https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/prebuiltdb)
   ## Specify prebuiltDB as true if the image includes a prebuilt DB

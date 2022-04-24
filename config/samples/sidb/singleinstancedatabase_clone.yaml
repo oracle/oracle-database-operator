@@ -27,6 +27,8 @@ spec:
 
   ## Database image details
   ## This image should be the same as the source DB image being cloned
+  ## or a patched DB image built from the souce DB image following instructions at
+  ## https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching
   image:
     pullFrom: container-registry.oracle.com/database/enterprise:latest
     pullSecrets: oracle-container-registry-secret
@@ -38,9 +40,3 @@ spec:
     size: 100Gi
     storageClass: "oci"
     accessMode: "ReadWriteOnce"
-
-  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
-  serviceAccountName: default
-
-  ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
-  replicas: 1
