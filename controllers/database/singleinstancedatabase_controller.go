@@ -1843,7 +1843,7 @@ func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDa
 	return requeueN
 }
 
-/* //#############################################################################
+//#############################################################################
 //             Uninstall APEX from CDB
 //#############################################################################
 func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstanceDatabase,
@@ -1897,7 +1897,7 @@ func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstance
 	}
 	r.updateORDSStatus(m, true, ctx, req)
 	return requeueN
-} */
+}
 
 //#############################################################################
 //             Update ORDS Status
