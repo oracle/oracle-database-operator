@@ -115,7 +115,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return requeueN, err
 	}
 
-	// Manage SingleInstanceDatabase Deletion
+	// Manage OracleRestDataService Deletion
 	result := r.manageOracleRestDataServiceDeletion(req, ctx, oracleRestDataService, singleInstanceDatabase)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
@@ -164,8 +164,15 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
+	// Validate ORDS pod readiness
+	result, ordsReadyPod := r.validateORDSReadiness(oracleRestDataService, ctx, req)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+
 	// Configure Apex
-	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, ordsReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -211,9 +218,10 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	if m.Status.LoadBalancer != "" && m.Status.LoadBalancer != strconv.FormatBool(m.Spec.LoadBalancer) {
 		eventMsgs = append(eventMsgs, "service patching is not avaiable currently")
 	}
-	if !n.Status.ApexInstalled && m.Spec.ApexPassword.SecretName != "" {
+	//Not needed as apex will be installed from ORDS now
+	/* if !n.Status.ApexInstalled && m.Spec.ApexPassword.SecretName != "" {
 		eventMsgs = append(eventMsgs, "apex is not installed yet")
-	}
+	} */
 	if m.Status.Image.PullFrom != "" && m.Status.Image != m.Spec.Image {
 		eventMsgs = append(eventMsgs, "image patching is not avaiable currently")
 	}
@@ -294,6 +302,33 @@ func (r *OracleRestDataServiceReconciler) validateSidbReadiness(m *dbapi.OracleR
 	}
 
 	return requeueN, sidbReadyPod
+}
+
+//#####################################################################################################
+//    Validate Readiness of the ORDS pods
+//#####################################################################################################
+func (r *OracleRestDataServiceReconciler) validateORDSReadiness(m *dbapi.OracleRestDataService, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
+	log := r.Log.WithValues("validateORDSReadiness", req.NamespacedName)
+
+	// ## FETCH THE ORDS REPLICAS .
+	ordsReadyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
+		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY, ordsReadyPod
+	}
+
+	if ordsReadyPod.Name == "" {
+		eventReason := "Waiting"
+		eventMsg := "waiting for " + m.Name + " to be Ready"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		// Logging the event messages
+		log.Info(eventMsg)
+		return requeueY, ordsReadyPod
+	}
+
+	return requeueN, ordsReadyPod
+
 }
 
 //#####################################################################################################
@@ -949,7 +984,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 //             Configure APEX
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("configureApex", req.NamespacedName)
 
 	if m.Spec.ApexPassword.SecretName == "" {
@@ -959,15 +994,52 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	if m.Status.ApexConfigured {
 		return requeueN
 	}
-	if !n.Status.ApexInstalled {
-		m.Status.Status = dbcommons.StatusError
-		eventReason := "Failed"
-		eventMsg := "apex is not installed yet on " + m.Spec.DatabaseRef
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+
+	// Obtain admin password of the referred database
+	adminPasswordSecret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + m.Spec.AdminPassword.SecretName + " Not Found")
+			return requeueY
+		}
+		log.Error(err, err.Error())
+		return requeueY
+	}
+	sidbPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
+	log.Info("SIDB Password: " + sidbPassword)
+
+	apexPasswordSecret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
+			return requeueY
+		}
+		log.Error(err, err.Error())
 		return requeueY
 	}
 
-	// If Seperate PV for ORDS, we need to unzip apex-latest.zip
+	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
+	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
+
+	if !n.Status.ApexInstalled {
+		result := r.installApexSIDB(m, n, ordsReadyPod, sidbPassword, apexPassword, ctx, req)
+		if result.Requeue {
+			log.Info("Reconcile requeued because apex installation failed")
+			return result
+		}
+	}
+
+	/* // If Seperate PV for ORDS, we need to unzip apex-latest.zip
 	if m.Spec.Persistence.AccessMode != "" {
 		ordsReadyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
 			m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
@@ -1014,31 +1086,15 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		}
 		log.Info(" CopyApexImages Output : \n" + out)
 
-	}
-
-	apexPasswordSecret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			m.Status.Status = dbcommons.StatusError
-			eventReason := "Waiting"
-			eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
-			return requeueY
-		}
-		log.Error(err, err.Error())
-		return requeueY
-	}
-	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
-	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
+	} */
 
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
 
 	configureApexRestSqlClient := "sqlplus -s / as sysdba @apex_rest_config.sql"
+	configureApexRestSqlClient = fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.PdbConnectString) + " @apex_rest_config.sql"
 	// Configure APEX
-	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf(dbcommons.ConfigureApexRest, apexPassword, configureApexRestSqlClient))
 	if err != nil {
 		log.Info(err.Error())
@@ -1056,8 +1112,8 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	}
 
 	// Alter APEX_LISTENER,APEX_PUBLIC_USER,APEX_REST_PUBLIC_USER
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true,
-		"bash", "-c", fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, dbcommons.SQLPlusCLI))
+	/* out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true,
+		"bash", "-c", fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.ConnectString)))
 	if err != nil {
 		log.Info(err.Error())
 		return requeueY
@@ -1070,13 +1126,13 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	}
 
 	// Change APEX Admin Password
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true,
-		"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ApexAdmin, apexPassword, pdbName), dbcommons.SQLPlusCLI))
+	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true,
+		"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ApexAdmin, apexPassword, pdbName), fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.ConnectString)))
 	if err != nil {
 		log.Info(err.Error())
 		return requeueY
 	}
-	log.Info("Change ApexAdmin Password Output : \n" + out)
+	log.Info("Change ApexAdmin Password Output : \n" + out) */
 
 	m.Status.ApexConfigured = true
 	r.Status().Update(ctx, m)
@@ -1095,7 +1151,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		}
 
 		// Set Apex users in apex_rt,apex_al,apex files
-		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
 			fmt.Sprintf(dbcommons.SetApexUsers, apexPassword))
 		log.Info("SetApexUsers Output: \n" + out)
 		if strings.Contains(strings.ToUpper(out), "ERROR") {
@@ -1119,6 +1175,70 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		}
 
 		return requeueY
+	}
+
+	log.Info("ConfigureApex Successful !")
+	return requeueN
+}
+
+//#############################################################################
+//                 Install APEX in SIDB
+//#############################################################################
+func (r *OracleRestDataServiceReconciler) installApexSIDB(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
+	ordsReadyPod corev1.Pod, sidbPassword string, apexPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
+	log := r.Log.WithValues("installApex", req.NamespacedName)
+
+	// Initial Validation
+	if n.Status.ApexInstalled {
+		return requeueN
+	}
+
+	// Status Updation
+	m.Status.Status = dbcommons.StatusUpdating
+	r.Status().Update(ctx, m)
+	eventReason := "Installing Apex"
+	eventMsg := "Waiting for Apex Installation to complete in SIDB pod"
+	r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+
+	//Install Apex in SIDB ready pod
+	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf(dbcommons.InstallApexRemoteB, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.PdbConnectString), apexPassword))
+	if err != nil {
+		log.Info(err.Error())
+	}
+	log.Info(" InstallApex Output : \n" + out)
+
+	if strings.Contains(out, "Apex Folder doesn't exist") {
+		eventReason := "Waiting"
+		eventMsg := "apex Folder doesn't exist in the location /opt/oracle/ords/config"
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		return requeueY
+	}
+
+	// Checking if Apex is installed successfully or not
+	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.IsApexInstalled, fmt.Sprintf(dbcommons.SQLPlusRemoteCLI, sidbPassword, n.Status.PdbConnectString)))
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY
+	}
+	log.Info("IsApexInstalled Output: \n" + out)
+
+	apexInstalled := "APEXVERSION:"
+	if !strings.Contains(out, apexInstalled) {
+		return requeueY
+	}
+
+	n.Status.ApexInstalled = true
+	// Make sure m.Status.ApexInstalled is set to true .
+	for i := 0; i < 10; i++ {
+		err = r.Status().Update(ctx, n)
+		if err != nil {
+			log.Info(err.Error() + "\n updating m.Status.ApexInstalled = true")
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		break
 	}
 
 	return requeueN
