@@ -14,6 +14,9 @@ spec:
   ## Use only alphanumeric characters for sid
   sid: ORCL1
 
+  ## DB edition.
+  edition: enterprise
+
   ## Secret containing SIDB password mapped to secretKey 
   ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
