@@ -254,6 +254,7 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property pdb.open.asneeded true" +
 	"\numask 177" +
 	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
 	"\necho db.cdb.adminUser.password=\"%[4]s\" >> cdbAdmin.properties" +
@@ -280,7 +281,7 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 	"\nrm -f sqladmin.passwd" +
 	"\numask 022" +
 	"\nsed -i 's,jetty.port=8888,jetty.secure.port=8443\\nssl.cert=\\nssl.cert.key=\\nssl.host=%[3]s,g' /opt/oracle/ords/config/ords/standalone/standalone.properties " +
-	"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/ords/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
+	"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
 
 const InitORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
