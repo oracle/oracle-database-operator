@@ -157,6 +157,14 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
+	// setup DB for ORDS
+	var cdbAdminPassword string
+	result, cdbAdminPassword = r.setupDBPrequisites(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	if result.Requeue {
+			r.Log.Info("Reconcile queued")
+			return result, nil
+	}
+
 	// Create ORDS Pods
 	result = r.createPods(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
@@ -178,7 +186,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
-	result = r.setupORDS(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	result = r.setupORDS(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, cdbAdminPassword, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -302,6 +310,36 @@ func (r *OracleRestDataServiceReconciler) validateSidbReadiness(m *dbapi.OracleR
 	}
 
 	return requeueN, sidbReadyPod
+}
+
+//#####################################################################################################
+//   Set up DB prereqs
+//#####################################################################################################
+func (r *OracleRestDataServiceReconciler) setupDBPrequisites(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
+	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, string) {
+	log := r.Log.WithValues("setupDBPrequisites", req.NamespacedName)
+
+	if !m.Status.OrdsSetupCompleted {
+
+		cdbAdminPassword := dbcommons.GenerateRandomString(8)
+		// Create PDB , CDB Admin users and grant permissions . ORDS installation on CDB level
+		out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+				fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.SetAdminUsersSQL, cdbAdminPassword), dbcommons.SQLPlusCLI))
+		if err != nil {
+			log.Error(err, err.Error())
+			return requeueY, ""
+		}
+		log.Info("SetAdminUsers Output :\n" + out)
+
+		if !strings.Contains(out, "ERROR") || !strings.Contains(out, "ORA-") ||
+			strings.Contains(out, "ERROR") && strings.Contains(out, "ORA-01920") {
+			m.Status.CommonUsersCreated = true
+		}
+
+		return requeueN, cdbAdminPassword
+	}
+
+	return requeueN, ""
 }
 
 //#####################################################################################################
@@ -1294,7 +1332,7 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 //             Setup ORDS in CDB , enable ORDS for PDBs Specified
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) setupORDS(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	sidbReadyPod corev1.Pod, cdbAdminPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
 
 	log := r.Log.WithValues("setupORDS", req.NamespacedName)
 
@@ -1365,20 +1403,6 @@ func (r *OracleRestDataServiceReconciler) setupORDS(m *dbapi.OracleRestDataServi
 		if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
 
 			if !m.Status.OrdsSetupCompleted {
-				cdbAdminPassword := dbcommons.GenerateRandomString(8)
-				// Create PDB , CDB Admin users and grant permissions . ORDS installation on CDB level
-				out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-					fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.SetAdminUsersSQL, cdbAdminPassword), dbcommons.SQLPlusCLI))
-				if err != nil {
-					log.Error(err, err.Error())
-					return requeueY
-				}
-				log.Info("SetAdminUsers Output :\n" + out)
-
-				if !strings.Contains(out, "ERROR") || !strings.Contains(out, "ORA-") ||
-					strings.Contains(out, "ERROR") && strings.Contains(out, "ORA-01920") {
-					m.Status.CommonUsersCreated = true
-				}
 
 				// Setup ORDS
 				out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
