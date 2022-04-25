@@ -319,7 +319,7 @@ func (r *OracleRestDataServiceReconciler) setupDBPrequisites(m *dbapi.OracleRest
 	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, string) {
 	log := r.Log.WithValues("setupDBPrequisites", req.NamespacedName)
 
-	if !m.Status.OrdsSetupCompleted {
+	if !m.Status.CommonUsersCreated {
 
 		cdbAdminPassword := dbcommons.GenerateRandomString(8)
 		// Create PDB , CDB Admin users and grant permissions . ORDS installation on CDB level
