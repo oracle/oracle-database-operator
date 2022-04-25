@@ -460,7 +460,6 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 			Containers: []corev1.Container{{
 				Name:            m.Name,
 				Image:           m.Spec.Image.PullFrom,
-				ImagePullPolicy: corev1.PullAlways,
 				Ports:           []corev1.ContainerPort{{ContainerPort: 8443}},
 				VolumeMounts: []corev1.VolumeMount{{
 					MountPath: "/opt/oracle/ords/config/ords/",

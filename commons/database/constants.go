@@ -282,6 +282,34 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 	"\nsed -i 's,jetty.port=8888,jetty.secure.port=8443\\nssl.cert=\\nssl.cert.key=\\nssl.host=%[3]s,g' /opt/oracle/ords/config/ords/standalone/standalone.properties " +
 	"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/ords/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
 
+const InitORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.admin.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property dbc.auth.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property restEnabledSql.active true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property db.serviceNameSuffix \"\" " + // Mandatory when ORDS Installing at CDB Level -> Maps PDB's
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InitialLimit 5" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.MaxLimit 20" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InactivityTimeout 300" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
+	"\numask 177" +
+	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
+	"\necho db.cdb.adminUser.password=\"%[4]s\" >> cdbAdmin.properties" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
+	"\nrm -f cdbAdmin.properties" +
+	"\necho db.adminUser=C##_DBAPI_PDB_ADMIN > pdbAdmin.properties" +
+	"\necho db.adminUser.password=\"%[4]s\">> pdbAdmin.properties" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu pdbAdmin.properties" +
+	"\nrm -f pdbAdmin.properties" +
+	"\necho -e \"%[1]s\n%[1]s\" > sqladmin.passwd" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
+	"\nrm -f sqladmin.passwd" +
+	"\numask 022" +
+	"\nsed -i 's,jetty.port=8888,jetty.secure.port=8443\\nssl.cert=\\nssl.cert.key=\\nssl.host=%[3]s,g' /opt/oracle/ords/config/ords/standalone/standalone.properties "
+
 const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p WHERE s.username = 'ORDS_PUBLIC_USER' AND p.addr(+) = s.paddr;"
 
 const KillSessionSQL string = "alter system kill session '%[1]s';"
