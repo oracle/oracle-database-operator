@@ -224,7 +224,9 @@ const SetAdminUsersSQL string = "CREATE USER C##DBAPI_CDB_ADMIN IDENTIFIED BY \\
 	"\nGRANT PDB_DBA  TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" +
 	"\nCREATE USER C##_DBAPI_PDB_ADMIN IDENTIFIED BY \\\"%[1]s\\\" CONTAINER=ALL ACCOUNT UNLOCK;" +
 	"\nalter user C##_DBAPI_PDB_ADMIN identified by \\\"%[1]s\\\" account unlock;" +
-	"\nGRANT DBA TO C##_DBAPI_PDB_ADMIN CONTAINER = ALL;"
+	"\nGRANT DBA TO C##_DBAPI_PDB_ADMIN CONTAINER = ALL;" +
+	"\nalter pluggable database pdb$seed close;" +
+	"\nalter pluggable database pdb$seed open read write force;"
 
 const GetUserOrdsSchemaStatusSQL string = "alter session set container=%[2]s;" +
 	"\nselect 'STATUS:'||status as status from ords_metadata.ords_schemas where upper(parsing_schema) = upper('%[1]s');"
