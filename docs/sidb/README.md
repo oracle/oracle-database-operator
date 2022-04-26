@@ -10,7 +10,7 @@ Oracle Database Operator for Kubernetes (the operator) includes the Single Insta
   - [Patch/Rollback Database](#patchrollback-database)
   - [Kind OracleRestDataService](#kind-oraclerestdataservice)
   - [REST Enable Database](#rest-enable-database)
-  - [Performing manual operations](#performing-manual-operations)
+  - [Performing maintenance operations](#performing-maintenance-operations)
 
 ## Prerequisites
 
@@ -649,12 +649,6 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     **NOTE**
     * Apex Administrator for pdbs other than `.spec.databaseRef.pdbName` has to be created manually. More Info on creating Apex Administrator can be found at [APEX_UTIL.CREATE_USER]<https://docs.oracle.com/en/database/oracle/application-express/21.1/aeapi/CREATE_USER-Procedure.html#GUID-95721E36-4DAB-4BCA-A6F3-AC2BACC52A66>
     * By default, the full development runtime environment is initialized in APEX. It can be changed manually to the runtime environment. For this, `apxdevrm.sql` script should be run after connecting to the primary database from the ORDS pod as the sys user with sysdba privilage. Please click the [link](https://docs.oracle.com/en/database/oracle/application-express/21.2/htmig/converting-between-runtime-and-full-development-environments.html#GUID-B0621B40-3441-44ED-9D86-29B058E26BE9) for detailed instructions.
-  **Uninstall APEX:**
-  * Set `.spec.installApex` to false in [config/samples/sidb/singleinstancedatabase.yaml](config/samples/sidb/singleinstancedatabase.yaml)
-  * If you install APEX again, re-configure APEX with ORDS again.
-
-    More info on Application Express can be found at <https://apex.oracle.com/en/>
-
 * ### Multiple Replicas
   
     Currently only single replica mode is supported
@@ -666,7 +660,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
   * A schema can be rest enabled or disabled by setting the `.spec.restEnableSchemas[].enable` to true or false respectively in ords sample .yaml file and apply using the kubectl apply command or edit/patch commands. This requires `.spec.ordsPassword` secret.
 
 
-## Performing manual operations
+## Performing maintenance operations
 If some manual operations are required to be performed, the procedure is as follows:
 - Exec into the pod from where you want to perform the manual operation using the similar command to the following command:
 
