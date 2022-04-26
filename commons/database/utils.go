@@ -98,6 +98,11 @@ func ResourceEventHandler() predicate.Predicate {
 				if oldStatus != newStatus {
 					return true
 				}
+
+				if newPodObject.Status.Phase == corev1.PodSucceeded {
+					//if (oldPodObject.Status.Phase != 
+					return true
+				}
 			}
 			// Ignore updates to CR status in which case metadata.Generation does not change
 			// Reconcile if object Deletion Timestamp Set
