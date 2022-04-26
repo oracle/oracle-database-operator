@@ -411,7 +411,7 @@ const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/ape
 
 const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apxsilentins.sql ]; then cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[2]s %[2]s %[2]s %[2]s\" | %[1]s; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ ${ORD_PWD} ${ORD_PWD} ${ORD_PWD} ${ORD_PWD}\" | sqlplus -s sys/${ORACLE_PWD}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
+const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ ${ORDS_PWD} ${ORDS_PWD} ${ORDS_PWD} ${ORDS_PWD};\n@apex_rest_config_core.sql;\n\" | sqlplus -s sys/${ORACLE_PWD}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
 
 
 const IsApexInstalled string = "select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
