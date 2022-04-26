@@ -135,6 +135,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 
 	// Always refresh status before a reconcile
 	defer r.Status().Update(ctx, oracleRestDataService)
+	defer r.Status().Update(ctx, singleInstanceDatabase)
 
 	// Create Service
 	result = r.createSVC(ctx, req, oracleRestDataService)
@@ -161,8 +162,8 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	var cdbAdminPassword string
 	result, cdbAdminPassword = r.setupDBPrequisites(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
-			r.Log.Info("Reconcile queued")
-			return result, nil
+		r.Log.Info("Reconcile queued")
+		return result, nil
 	}
 
 	// Create ORDS Pods
@@ -172,15 +173,8 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
-	// Validate ORDS pod readiness
-	result, ordsReadyPod := r.validateORDSReadiness(oracleRestDataService, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
-
 	// Configure Apex
-	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, ordsReadyPod, ctx, req)
+	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -1122,7 +1116,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 //             Configure APEX
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	 ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("configureApex", req.NamespacedName)
 
 	if m.Spec.ApexPassword.SecretName == "" {
@@ -1134,7 +1128,8 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	}
 	
 	if !n.Status.ApexInstalled {
-		result := r.installApex(m, n, ordsReadyPod, ctx, req)
+		m.Status.Status = dbcommons.StatusUpdating
+		result := r.installApex(m, n, ctx, req)
 		if result.Requeue {
 			log.Info("Reconcile requeued because apex installation failed")
 			return result
@@ -1142,9 +1137,6 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	}
 
 	
-	m.Status.Status = dbcommons.StatusUpdating
-	r.Status().Update(ctx, m)
-
 	
 	m.Status.ApexConfigured = true
 	r.Status().Update(ctx, m)
@@ -1184,7 +1176,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 //                 Install APEX in SIDB
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	 ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("installApex", req.NamespacedName)
 
 	// Initial Validation
@@ -1206,7 +1198,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
 	eventReason := "Installing Apex"
-	eventMsg := "Waiting for Apex Installation to complete in SIDB pod"
+	eventMsg := "Waiting for Apex Installation to complete"
 	r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 	
 	n.Status.ApexInstalled = true
