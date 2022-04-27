@@ -128,7 +128,7 @@ func init() {
 // GetPIT returns the spec.pointInTime.timeStamp in SDKTime format
 func (r *AutonomousDatabaseRestore) GetPIT() (*common.SDKTime, error) {
 	if r.Spec.Source.PointInTime.Timestamp == nil {
-		return nil, errors.New("The timestamp is empty")
+		return nil, errors.New("the timestamp is empty")
 	}
 	return parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 }
