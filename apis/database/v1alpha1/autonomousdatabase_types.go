@@ -40,7 +40,7 @@ package v1alpha1
 
 import (
 	"encoding/json"
-	"errors"
+	"reflect"
 
 	"github.com/oracle/oci-go-sdk/v63/database"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -184,6 +184,7 @@ type ConnectionStringSpec struct {
 // +kubebuilder:resource:shortName="adb";"adbs"
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".spec.details.displayName",name="Display Name",type=string
+// +kubebuilder:printcolumn:JSONPath=".spec.details.dbName",name="Db Name",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.lifecycleState",name="State",type=string
 // +kubebuilder:printcolumn:JSONPath=".spec.details.isDedicated",name="Dedicated",type=string
 // +kubebuilder:printcolumn:JSONPath=".spec.details.cpuCoreCount",name="OCPUs",type=integer
@@ -230,7 +231,28 @@ func (adb *AutonomousDatabase) GetLastSuccessfulSpec() (*AutonomousDatabaseSpec,
 	return &sucSpec, nil
 }
 
-// UpdateStatusFromOCIADB updates only the status from database.AutonomousDatabase object
+func (adb *AutonomousDatabase) UpdateLastSuccessfulSpec() error {
+	specBytes, err := json.Marshal(adb.Spec)
+	if err != nil {
+		return err
+	}
+
+	anns := adb.GetAnnotations()
+
+	if anns == nil {
+		anns = map[string]string{
+			LastSuccessfulSpec: string(specBytes),
+		}
+	} else {
+		anns[LastSuccessfulSpec] = string(specBytes)
+	}
+
+	adb.SetAnnotations(anns)
+
+	return nil
+}
+
+// UpdateStatusFromOCIADB updates the status subresource
 func (adb *AutonomousDatabase) UpdateStatusFromOCIADB(ociObj database.AutonomousDatabase) {
 	adb.Status.LifecycleState = ociObj.LifecycleState
 	adb.Status.TimeCreated = FormatSDKTime(ociObj.TimeCreated)
@@ -276,8 +298,10 @@ func (adb *AutonomousDatabase) UpdateStatusFromOCIADB(ociObj database.Autonomous
 	}
 }
 
-// UpdateFromOCIADB updates the attributes from database.AutonomousDatabase object
-func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDatabase) {
+// UpdateFromOCIADB updates the attributes using database.AutonomousDatabase object
+func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDatabase) (specChanged bool) {
+	oldADB := adb.DeepCopy()
+
 	/***********************************
 	* update the spec
 	***********************************/
@@ -293,8 +317,11 @@ func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDataba
 	adb.Spec.Details.CPUCoreCount = ociObj.CpuCoreCount
 	adb.Spec.Details.IsAutoScalingEnabled = ociObj.IsAutoScalingEnabled
 	adb.Spec.Details.IsDedicated = ociObj.IsDedicated
-	adb.Spec.Details.LifecycleState = ociObj.LifecycleState
-	adb.Spec.Details.FreeformTags = ociObj.FreeformTags
+	adb.Spec.Details.LifecycleState = NextADBStableState(ociObj.LifecycleState)
+	// special case: an emtpy map will be nil after unmarshalling while the OCI always returns an emty map.
+	if len(ociObj.FreeformTags) != 0 {
+		adb.Spec.Details.FreeformTags = ociObj.FreeformTags
+	}
 
 	// Determine network.accessType
 	if *ociObj.IsDedicated {
@@ -310,34 +337,31 @@ func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDataba
 	}
 
 	adb.Spec.Details.NetworkAccess.IsAccessControlEnabled = ociObj.IsAccessControlEnabled
-	adb.Spec.Details.NetworkAccess.AccessControlList = ociObj.WhitelistedIps
+	if len(ociObj.WhitelistedIps) != 0 {
+		adb.Spec.Details.NetworkAccess.AccessControlList = ociObj.WhitelistedIps
+	}
 	adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = ociObj.IsMtlsConnectionRequired
 	adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = ociObj.SubnetId
-	adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = ociObj.NsgIds
+	if len(ociObj.NsgIds) != 0 {
+		adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = ociObj.NsgIds
+	}
 	adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = ociObj.PrivateEndpointLabel
 
 	/***********************************
 	* update the status subresource
 	***********************************/
-
 	adb.UpdateStatusFromOCIADB(ociObj)
+
+	return !reflect.DeepEqual(oldADB.Spec, adb.Spec)
 }
 
 // RemoveUnchangedDetails removes the unchanged fields in spec.details, and returns if the details has been changed.
-// Always restore the details.autonomousDatabaseOCID from the lastSucSpec because we need it to send requests.
-// A `false` is returned if the lastSucSpec is nil.
-func (adb *AutonomousDatabase) RemoveUnchangedDetails() (bool, error) {
-	lastSucSpec, err := adb.GetLastSuccessfulSpec()
-	if lastSucSpec == nil {
-		return false, errors.New("lastSucSpec is nil")
-	}
+func (adb *AutonomousDatabase) RemoveUnchangedDetails(prevSpec AutonomousDatabaseSpec) (bool, error) {
 
-	changed, err := removeUnchangedFields(lastSucSpec.Details, &adb.Spec.Details)
+	changed, err := removeUnchangedFields(prevSpec.Details, &adb.Spec.Details)
 	if err != nil {
 		return changed, err
 	}
-
-	adb.Spec.Details.AutonomousDatabaseOCID = lastSucSpec.Details.AutonomousDatabaseOCID
 
 	return changed, nil
 }

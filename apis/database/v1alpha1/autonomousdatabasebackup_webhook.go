@@ -81,6 +81,11 @@ func (r *AutonomousDatabaseBackup) ValidateCreate() error {
 
 	var allErrs field.ErrorList
 
+	if r.Spec.Target.K8sADB.Name == nil && r.Spec.Target.OCIADB.OCID == nil {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
+	}
+
 	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB or ociADB, but not both"))
@@ -104,7 +109,8 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) error {
 	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil && r.Spec.AutonomousDatabaseBackupOCID != nil &&
 		*oldBackup.Spec.AutonomousDatabaseBackupOCID != *r.Spec.AutonomousDatabaseBackupOCID {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"), "cannot assign a new autonomousDatabaseBackupOCID to this backup"))
+			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"),
+				"cannot assign a new autonomousDatabaseBackupOCID to this backup"))
 	}
 
 	if oldBackup.Spec.Target.K8sADB.Name != nil && r.Spec.Target.K8sADB.Name != nil &&

@@ -71,13 +71,13 @@ func (d *databaseService) GetAutonomousContainerDatabase(acdOCID string) (databa
 	return d.dbClient.GetAutonomousContainerDatabase(context.TODO(), getAutonomousContainerDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
+func (d *databaseService) UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
 	updateAutonomousContainerDatabaseRequest := database.UpdateAutonomousContainerDatabaseRequest{
-		AutonomousContainerDatabaseId: acd.Spec.AutonomousContainerDatabaseOCID,
+		AutonomousContainerDatabaseId: common.String(acdOCID),
 		UpdateAutonomousContainerDatabaseDetails: database.UpdateAutonomousContainerDatabaseDetails{
-			DisplayName:  acd.Spec.DisplayName,
-			PatchModel:   database.UpdateAutonomousContainerDatabaseDetailsPatchModelEnum(acd.Spec.PatchModel),
-			FreeformTags: acd.Spec.FreeformTags,
+			DisplayName:  difACD.Spec.DisplayName,
+			PatchModel:   database.UpdateAutonomousContainerDatabaseDetailsPatchModelEnum(difACD.Spec.PatchModel),
+			FreeformTags: difACD.Spec.FreeformTags,
 		},
 	}
 

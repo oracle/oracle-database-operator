@@ -54,15 +54,15 @@ import (
 type DatabaseService interface {
 	CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDatabase) (database.CreateAutonomousDatabaseResponse, error)
 	GetAutonomousDatabase(adbOCID string) (database.GetAutonomousDatabaseResponse, error)
-	UpdateAutonomousDatabaseGeneralFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseDBWorkload(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseLicenseModel(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseAdminPassword(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseScalingFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseGeneralFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseDBWorkload(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseLicenseModel(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseAdminPassword(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseScalingFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	UpdateNetworkAccessMTLSRequired(adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccessMTLS(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccessPublic(lastSucSpec dbv1alpha1.NetworkAccessTypeEnum, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccess(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccessMTLS(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccessPublic(lastAccessType dbv1alpha1.NetworkAccessTypeEnum, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccess(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error)
 	StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error)
 	DeleteAutonomousDatabase(adbOCID string) (database.DeleteAutonomousDatabaseResponse, error)
@@ -71,9 +71,9 @@ type DatabaseService interface {
 	ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error)
 	CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error)
 	GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error)
-	CreateAutonomousContainerDatabase(acb *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
+	CreateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
 	GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error)
-	UpdateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
+	UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
 	RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error)
 	TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error)
 }
@@ -215,47 +215,47 @@ func (d *databaseService) GetAutonomousDatabase(adbOCID string) (database.GetAut
 	return d.dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseGeneralFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateAutonomousDatabaseGeneralFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			DisplayName:  adb.Spec.Details.DisplayName,
-			DbName:       adb.Spec.Details.DbName,
-			DbVersion:    adb.Spec.Details.DbVersion,
-			FreeformTags: adb.Spec.Details.FreeformTags,
+			DisplayName:  difADB.Spec.Details.DisplayName,
+			DbName:       difADB.Spec.Details.DbName,
+			DbVersion:    difADB.Spec.Details.DbVersion,
+			FreeformTags: difADB.Spec.Details.FreeformTags,
 		},
 	}
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseDBWorkload(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateAutonomousDatabaseDBWorkload(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			DbWorkload: database.UpdateAutonomousDatabaseDetailsDbWorkloadEnum(adb.Spec.Details.DbWorkload),
+			DbWorkload: database.UpdateAutonomousDatabaseDetailsDbWorkloadEnum(difADB.Spec.Details.DbWorkload),
 		},
 	}
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseLicenseModel(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateAutonomousDatabaseLicenseModel(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			LicenseModel: database.UpdateAutonomousDatabaseDetailsLicenseModelEnum(adb.Spec.Details.LicenseModel),
+			LicenseModel: database.UpdateAutonomousDatabaseDetailsLicenseModelEnum(difADB.Spec.Details.LicenseModel),
 		},
 	}
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.AdminPassword)
+func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	adminPassword, err := d.readPassword(difADB.Namespace, difADB.Spec.Details.AdminPassword)
 	if err != nil {
 		return resp, err
 	}
 
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
 			AdminPassword: adminPassword,
 		},
@@ -263,13 +263,13 @@ func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adb *dbv1alpha1.
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseScalingFields(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateAutonomousDatabaseScalingFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			DataStorageSizeInTBs: adb.Spec.Details.DataStorageSizeInTBs,
-			CpuCoreCount:         adb.Spec.Details.CPUCoreCount,
-			IsAutoScalingEnabled: adb.Spec.Details.IsAutoScalingEnabled,
+			DataStorageSizeInTBs: difADB.Spec.Details.DataStorageSizeInTBs,
+			CpuCoreCount:         difADB.Spec.Details.CPUCoreCount,
+			IsAutoScalingEnabled: difADB.Spec.Details.IsAutoScalingEnabled,
 		},
 	}
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
@@ -285,18 +285,20 @@ func (d *databaseService) UpdateNetworkAccessMTLSRequired(adbOCID string) (resp 
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateNetworkAccessMTLS(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateNetworkAccessMTLS(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			IsMtlsConnectionRequired: adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
+			IsMtlsConnectionRequired: difADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
 		},
 	}
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateNetworkAccessPublic(lastAccessType dbv1alpha1.NetworkAccessTypeEnum,
+func (d *databaseService) UpdateNetworkAccessPublic(
+	lastAccessType dbv1alpha1.NetworkAccessTypeEnum,
 	adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+
 	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
 
 	if lastAccessType == dbv1alpha1.NetworkAccessTypeRestricted {
@@ -313,15 +315,15 @@ func (d *databaseService) UpdateNetworkAccessPublic(lastAccessType dbv1alpha1.Ne
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateNetworkAccess(adb *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateNetworkAccess(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			IsAccessControlEnabled: adb.Spec.Details.NetworkAccess.IsAccessControlEnabled,
-			WhitelistedIps:         adb.Spec.Details.NetworkAccess.AccessControlList,
-			SubnetId:               adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID,
-			NsgIds:                 adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs,
-			PrivateEndpointLabel:   adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix,
+			IsAccessControlEnabled: difADB.Spec.Details.NetworkAccess.IsAccessControlEnabled,
+			WhitelistedIps:         difADB.Spec.Details.NetworkAccess.AccessControlList,
+			SubnetId:               difADB.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID,
+			NsgIds:                 difADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs,
+			PrivateEndpointLabel:   difADB.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix,
 		},
 	}
 
