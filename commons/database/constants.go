@@ -286,6 +286,9 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 	"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
 
 const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then exit ;fi;" +
+	"\nexport APEXI=$ORDS_HOME/config/apex/images" +
+	"\nset -x" +
+	"\n. $ORDS_HOME/runOrds.sh" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
@@ -312,10 +315,7 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\necho -e \"${ORDS_PWD}\n${ORDS_PWD}\" > sqladmin.passwd" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
 	"\nrm -f sqladmin.passwd" +
-	"\numask 022" +
-	"\nexport APEXI=$ORDS_HOME/config/apex/images" +
-	"\nset -x" +
-	"\n. $ORDS_HOME/runOrds.sh"
+	"\numask 022"
 
 const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p WHERE s.username = 'ORDS_PUBLIC_USER' AND p.addr(+) = s.paddr;"
 
