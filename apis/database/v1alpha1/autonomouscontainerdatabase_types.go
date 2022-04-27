@@ -40,7 +40,6 @@ package v1alpha1
 
 import (
 	"encoding/json"
-	"errors"
 	"reflect"
 
 	"github.com/oracle/oci-go-sdk/v63/database"
@@ -57,7 +56,6 @@ type acdActionEnum string
 
 const (
 	AcdActionBlank     acdActionEnum = ""
-	AcdActionSync      acdActionEnum = "SYNC"
 	AcdActionRestart   acdActionEnum = "RESTART"
 	AcdActionTerminate acdActionEnum = "TERMINATE"
 )
@@ -137,73 +135,75 @@ func (acd *AutonomousContainerDatabase) GetLastSuccessfulSpec() (*AutonomousCont
 	return &sucSpec, nil
 }
 
-// UpdateStatusFromOCIACD updates only the status from database.AutonomousDatabase object
-func (acd *AutonomousContainerDatabase) UpdateStatusFromOCIACD(ociObj database.AutonomousContainerDatabase) bool {
-	var statusChanged bool = false
+func (acd *AutonomousContainerDatabase) UpdateLastSuccessfulSpec() error {
+	specBytes, err := json.Marshal(acd.Spec)
+	if err != nil {
+		return err
+	}
 
-	statusChanged = statusChanged || acd.Status.LifecycleState != ociObj.LifecycleState
-	acd.Status.LifecycleState = ociObj.LifecycleState
+	anns := acd.GetAnnotations()
 
-	statusChanged = statusChanged || acd.Status.TimeCreated != FormatSDKTime(ociObj.TimeCreated)
-	acd.Status.TimeCreated = FormatSDKTime(ociObj.TimeCreated)
+	if anns == nil {
+		anns = map[string]string{
+			LastSuccessfulSpec: string(specBytes),
+		}
+	} else {
+		anns[LastSuccessfulSpec] = string(specBytes)
+	}
 
-	return statusChanged
+	acd.SetAnnotations(anns)
+
+	return nil
 }
 
-func (acd *AutonomousContainerDatabase) UpdateFromOCIACD(ociObj database.AutonomousContainerDatabase) (bool, bool) {
-	// Spec
-	var specChanged bool = false
+// UpdateStatusFromOCIACD updates the status subresource
+func (acd *AutonomousContainerDatabase) UpdateStatusFromOCIACD(ociObj database.AutonomousContainerDatabase) {
+	acd.Status.LifecycleState = ociObj.LifecycleState
+	acd.Status.TimeCreated = FormatSDKTime(ociObj.TimeCreated)
+}
 
+// UpdateFromOCIADB updates the attributes using database.AutonomousContainerDatabase object
+func (acd *AutonomousContainerDatabase) UpdateFromOCIACD(ociObj database.AutonomousContainerDatabase) (specChanged bool) {
+	oldACD := acd.DeepCopy()
+
+	/***********************************
+	* update the spec
+	***********************************/
 	acd.Spec.Action = AcdActionBlank
-
-	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.AutonomousContainerDatabaseOCID, ociObj.Id)
 	acd.Spec.AutonomousContainerDatabaseOCID = ociObj.Id
-
-	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.CompartmentOCID, ociObj.CompartmentId)
 	acd.Spec.CompartmentOCID = ociObj.CompartmentId
-
-	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.DisplayName, ociObj.DisplayName)
 	acd.Spec.DisplayName = ociObj.DisplayName
-
-	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.AutonomousExadataVMClusterOCID, ociObj.CloudAutonomousVmClusterId)
 	acd.Spec.AutonomousExadataVMClusterOCID = ociObj.CloudAutonomousVmClusterId
-
-	specChanged = specChanged || acd.Spec.PatchModel != ociObj.PatchModel
 	acd.Spec.PatchModel = ociObj.PatchModel
 
-	// special case: the FreeformTag is nil after unmarshalling, but the OCI server always returns an emtpy map
-	if acd.Spec.FreeformTags == nil {
-		acd.Spec.FreeformTags = make(map[string]string)
+	// special case: an emtpy map will be nil after unmarshalling while the OCI always returns an emty map.
+	if len(ociObj.FreeformTags) != 0 {
+		acd.Spec.FreeformTags = ociObj.FreeformTags
 	}
-	specChanged = specChanged || !reflect.DeepEqual(acd.Spec.FreeformTags, ociObj.FreeformTags)
-	acd.Spec.FreeformTags = ociObj.FreeformTags
 
-	// Status
-	statusChanged := acd.UpdateStatusFromOCIACD(ociObj)
+	/***********************************
+	* update the status subresource
+	***********************************/
+	acd.UpdateStatusFromOCIACD(ociObj)
 
-	return specChanged, statusChanged
+	return !reflect.DeepEqual(oldACD.Spec, acd.Spec)
 }
 
 // RemoveUnchangedSpec removes the unchanged fields in spec, and returns if the spec has been changed.
-// The function only processes the fields associated to ACD into account. That is, the ociConfig won't be impacted.
-// Always restore the autonomousContainerDatabaseOCID from the lastSucSpec because we need it to send requests.
-// A `false` is returned if the lastSucSpec is nil.
-func (acd *AutonomousContainerDatabase) RemoveUnchangedSpec() (bool, error) {
-	lastSucSpec, err := acd.GetLastSuccessfulSpec()
-	if lastSucSpec == nil {
-		return false, errors.New("lastSucSpec is nil")
-	}
-
-	oldConifg := acd.Spec.OCIConfig.DeepCopy()
-
-	changed, err := removeUnchangedFields(*lastSucSpec, &acd.Spec)
+func (acd *AutonomousContainerDatabase) RemoveUnchangedSpec(prevSpec AutonomousContainerDatabaseSpec) (bool, error) {
+	changed, err := removeUnchangedFields(prevSpec, &acd.Spec)
 	if err != nil {
 		return changed, err
 	}
 
-	acd.Spec.AutonomousContainerDatabaseOCID = lastSucSpec.AutonomousContainerDatabaseOCID
-
-	oldConifg.DeepCopyInto(&acd.Spec.OCIConfig)
-
 	return changed, nil
+}
+
+// A helper function which is useful for debugging. The function prints out a structural JSON format.
+func (acd *AutonomousContainerDatabase) String() (string, error) {
+	out, err := json.MarshalIndent(acd, "", "    ")
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
 }

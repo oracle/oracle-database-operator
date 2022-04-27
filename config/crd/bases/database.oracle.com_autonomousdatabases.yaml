@@ -23,6 +23,9 @@ spec:
     - jsonPath: .spec.details.displayName
       name: Display Name
       type: string
+    - jsonPath: .spec.details.dbName
+      name: Db Name
+      type: string
     - jsonPath: .status.lifecycleState
       name: State
       type: string
