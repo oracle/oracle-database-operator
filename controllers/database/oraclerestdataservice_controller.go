@@ -508,10 +508,6 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 					}},
 					Env: []corev1.EnvVar{
 						{
-							Name:  "SETUP_ONLY",
-							Value: "true",
-						},
-						{
 							Name:  "ORACLE_HOST",
 							Value: n.Name,
 						},
@@ -1050,23 +1046,51 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		return requeueN
 	}
 
+	apexPasswordSecret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
+			return requeueY
+		}
+		log.Error(err, err.Error())
+		return requeueY
+	}
+	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
+	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
+
 	if !n.Status.ApexInstalled {
 		m.Status.Status = dbcommons.StatusUpdating
-		result := r.installApex(m, n, ordsReadyPod, ctx, req)
+		result := r.installApex(m, n, ordsReadyPod, apexPassword, ctx, req)
 		if result.Requeue {
 			log.Info("Reconcile requeued because apex installation failed")
 			return result
 		}
-		// ORDS Needs to be restarted to configure APEX
-		err := r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{})
-		if err != nil {
-			r.Log.Error(err, "Failed to delete existing POD", "POD.Name", ordsReadyPod.Name)
-			return requeueY
-		}
-		r.Log.Info("ORDS Pod Deleted : " + ordsReadyPod.Name)
+	}
+	// Set Apex users in apex_rt,apex_al,apex files
+	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf(dbcommons.SetApexUsers, apexPassword))
+	log.Info("SetApexUsers Output: \n" + out)
+	if strings.Contains(strings.ToUpper(out), "ERROR") {
 		return requeueY
 	}
-
+	if err != nil {
+		log.Info(err.Error())
+		if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
+			return requeueY
+		}
+	}
+	// ORDS Needs to be restarted to configure APEX
+	err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{})
+	if err != nil {
+		r.Log.Error(err, "Failed to delete existing POD", "POD.Name", ordsReadyPod.Name)
+		return requeueY
+	}
+	r.Log.Info("ORDS Pod Deleted : " + ordsReadyPod.Name)
 	m.Status.ApexConfigured = true
 	r.Status().Update(ctx, m)
 
@@ -1078,7 +1102,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 //                 Install APEX in SIDB
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	ordsReadyPod corev1.Pod, apexPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("installApex", req.NamespacedName)
 
 	// Obtain admin password of the referred database
@@ -1097,23 +1121,6 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 		return requeueY
 	}
 	sidbPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
-
-	apexPasswordSecret := &corev1.Secret{}
-	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			m.Status.Status = dbcommons.StatusError
-			eventReason := "Waiting"
-			eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
-			return requeueY
-		}
-		log.Error(err, err.Error())
-		return requeueY
-	}
-	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
-	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
 
 	// Status Updation
 	m.Status.Status = dbcommons.StatusUpdating
