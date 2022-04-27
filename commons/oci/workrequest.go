@@ -40,8 +40,6 @@ package oci
 
 import (
 	"context"
-	"math"
-	"time"
 
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,7 +50,6 @@ import (
 
 type WorkRequestService interface {
 	Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
-	Wait(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error)
 	List(compartmentID string, resourceID string) (workrequests.ListWorkRequestsResponse, error)
 }
 
@@ -75,61 +72,6 @@ func NewWorkRequestService(
 		logger:     logger,
 		workClient: workClient,
 	}, nil
-}
-
-func (w workRequestService) getRetryPolicy() common.RetryPolicy {
-	shouldRetry := func(r common.OCIOperationResponse) bool {
-		if _, isServiceError := common.IsServiceError(r.Error); isServiceError {
-			// Don't retry if it's service error. Sometimes it could be network error or other errors which prevents
-			// request send to server; we do the retry in these cases.
-			return false
-		}
-
-		if converted, ok := r.Response.(workrequests.GetWorkRequestResponse); ok {
-			// do the retry until WorkReqeut Status is Succeeded  - ignore case (BMI-2652)
-			return converted.Status != workrequests.WorkRequestStatusSucceeded &&
-				converted.Status != workrequests.WorkRequestStatusFailed &&
-				converted.Status != workrequests.WorkRequestStatusCanceled
-		}
-
-		return true
-	}
-
-	// maximum times of retry (~60mins)
-	attempts := uint(124)
-
-	nextDuration := func(r common.OCIOperationResponse) time.Duration {
-		// Wait longer for next retry when your previous one failed
-		// this function will return the duration as:
-		// 1s, 2s, 4s, 8s, 16s, 30s, 30s etc...
-		if r.AttemptNumber <= 5 {
-			return time.Duration(math.Pow(float64(2), float64(r.AttemptNumber-1))) * time.Second
-		}
-		return time.Duration(30) * time.Second
-	}
-
-	return common.NewRetryPolicy(attempts, shouldRetry, nextDuration)
-}
-
-func (w *workRequestService) Wait(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error) {
-	w.logger.Info("Waiting for the work request to finish. opcWorkRequestID = " + opcWorkRequestID)
-
-	// retries until the work status is SUCCEEDED, FAILED or CANCELED
-	retryPolicy := w.getRetryPolicy()
-
-	workRequest := workrequests.GetWorkRequestRequest{
-		WorkRequestId: common.String(opcWorkRequestID),
-		RequestMetadata: common.RequestMetadata{
-			RetryPolicy: &retryPolicy,
-		},
-	}
-
-	resp, err := w.workClient.GetWorkRequest(context.TODO(), workRequest)
-	if err != nil {
-		return resp, err
-	}
-
-	return resp, nil
 }
 
 func (w *workRequestService) Get(opcWorkRequestID string) (workrequests.GetWorkRequestResponse, error) {
