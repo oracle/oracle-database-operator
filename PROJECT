@@ -111,6 +111,9 @@ resources:
   kind: AutonomousContainerDatabase
   path: github.com/oracle/oracle-database-operator/apis/database/v1alpha1
   version: v1alpha1
+  webhooks:
+    validation: true
+    webhookVersion: v1
 - api:
     crdVersion: v1beta1
     namespaced: true
