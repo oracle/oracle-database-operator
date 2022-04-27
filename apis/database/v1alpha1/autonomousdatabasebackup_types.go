@@ -61,30 +61,17 @@ type AutonomousDatabaseBackupSpec struct {
 
 type BackupStateEnum string
 
-const (
-	BackupStateError    BackupStateEnum = "ERROR"
-	BackupStateCreating BackupStateEnum = "CREATING"
-	BackupStateActive   BackupStateEnum = "ACTIVE"
-	BackupStateDeleting BackupStateEnum = "DELETING"
-	BackupStateDeleted  BackupStateEnum = "DELETED"
-	BackupStateFailed   BackupStateEnum = "FAILED"
-)
-
 // AutonomousDatabaseBackupStatus defines the observed state of AutonomousDatabaseBackup
 type AutonomousDatabaseBackupStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	AutonomousDatabaseBackupOCID string                                    `json:"autonomousDatabaseBackupOCID,omitempty"`
-	DisplayName                  string                                    `json:"displayName"`
-	LifecycleState               BackupStateEnum                           `json:"lifecycleState"`
-	Type                         database.AutonomousDatabaseBackupTypeEnum `json:"type"`
-	IsAutomatic                  bool                                      `json:"isAutomatic"`
-	TimeStarted                  string                                    `json:"timeStarted,omitempty"`
-	TimeEnded                    string                                    `json:"timeEnded,omitempty"`
-	AutonomousDatabaseOCID       string                                    `json:"autonomousDatabaseOCID"`
-	CompartmentOCID              string                                    `json:"compartmentOCID"`
-	DBName                       string                                    `json:"dbName"`
-	DBDisplayName                string                                    `json:"dbDisplayName"`
+	LifecycleState         database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
+	Type                   database.AutonomousDatabaseBackupTypeEnum           `json:"type"`
+	IsAutomatic            bool                                                `json:"isAutomatic"`
+	TimeStarted            string                                              `json:"timeStarted,omitempty"`
+	TimeEnded              string                                              `json:"timeEnded,omitempty"`
+	AutonomousDatabaseOCID string                                              `json:"autonomousDatabaseOCID"`
+	CompartmentOCID        string                                              `json:"compartmentOCID"`
+	DBName                 string                                              `json:"dbName"`
+	DBDisplayName          string                                              `json:"dbDisplayName"`
 }
 
 //+kubebuilder:object:root=true
@@ -119,15 +106,12 @@ func init() {
 }
 
 func (b *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociADB database.AutonomousDatabase) {
-	b.Status.AutonomousDatabaseBackupOCID = *ociBackup.Id
-	b.Status.DisplayName = *ociBackup.DisplayName
-
 	b.Status.AutonomousDatabaseOCID = *ociBackup.AutonomousDatabaseId
 	b.Status.CompartmentOCID = *ociBackup.CompartmentId
 	b.Status.Type = ociBackup.Type
 	b.Status.IsAutomatic = *ociBackup.IsAutomatic
 
-	b.Status.LifecycleState = b.ConvertBackupStatus(ociBackup.LifecycleState)
+	b.Status.LifecycleState = ociBackup.LifecycleState
 
 	b.Status.TimeStarted = FormatSDKTime(ociBackup.TimeStarted)
 	b.Status.TimeEnded = FormatSDKTime(ociBackup.TimeEnded)
@@ -139,23 +123,4 @@ func (b *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.
 // GetTimeEnded returns the status.timeEnded in SDKTime format
 func (b *AutonomousDatabaseBackup) GetTimeEnded() (*common.SDKTime, error) {
 	return parseDisplayTime(b.Status.TimeEnded)
-}
-
-func (b *AutonomousDatabaseBackup) ConvertBackupStatus(state database.AutonomousDatabaseBackupLifecycleStateEnum) BackupStateEnum {
-	switch state {
-	case database.AutonomousDatabaseBackupLifecycleStateCreating:
-		return BackupStateCreating
-	case database.AutonomousDatabaseBackupLifecycleStateActive:
-		return BackupStateActive
-
-	case database.AutonomousDatabaseBackupLifecycleStateDeleting:
-		return BackupStateDeleting
-
-	case database.AutonomousDatabaseBackupLifecycleStateDeleted:
-		return BackupStateDeleted
-	case database.AutonomousDatabaseBackupLifecycleStateFailed:
-		return BackupStateFailed
-	default:
-		return "UNKNOWN"
-	}
 }

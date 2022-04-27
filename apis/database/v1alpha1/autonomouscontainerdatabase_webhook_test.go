@@ -38,78 +38,82 @@
 package v1alpha1
 
 import (
+	"context"
+	"encoding/json"
+	"time"
+
 	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/database"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	// +kubebuilder:scaffold:imports
 )
 
-var _ = Describe("test AutonomousDatabaseRestore webhook", func() {
-	Describe("Test ValidateCreate of the AutonomousDatabaseRestore validating webhook", func() {
+var _ = Describe("test AutonomousContainerDatabase webhook", func() {
+	Describe("Test ValidateUpdate of the AutonomousContainerDatabase validating webhook", func() {
 		var (
-			resourceName = "testadbrestore"
+			resourceName = "testacd"
 			namespace    = "default"
+			acdLookupKey = types.NamespacedName{Name: resourceName, Namespace: namespace}
 
-			restore *AutonomousDatabaseRestore
+			acd *AutonomousContainerDatabase
+
+			timeout = time.Second * 5
 		)
 
 		BeforeEach(func() {
-			restore = &AutonomousDatabaseRestore{
+			acd = &AutonomousContainerDatabase{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: "database.oracle.com/v1alpha1",
-					Kind:       "AutonomousDatabaseRestore",
+					Kind:       "AutonomousContainerDatabase",
 				},
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      resourceName,
 					Namespace: namespace,
 				},
-				Spec: AutonomousDatabaseRestoreSpec{
-					Target: TargetSpec{},
+				Spec: AutonomousContainerDatabaseSpec{
+					AutonomousContainerDatabaseOCID: common.String("fake-acd-ocid"),
+					CompartmentOCID:                 common.String("fake-compartment-ocid"),
+					DisplayName:                     common.String("fake-displayName"),
+					AutonomousExadataVMClusterOCID:  common.String("fake-vmcluster-ocid"),
+					PatchModel:                      database.AutonomousContainerDatabasePatchModelUpdates,
 				},
 			}
+
+			specBytes, err := json.Marshal(acd.Spec)
+			Expect(err).To(BeNil())
+
+			anns := map[string]string{
+				LastSuccessfulSpec: string(specBytes),
+			}
+			acd.SetAnnotations(anns)
+
+			Expect(k8sClient.Create(context.TODO(), acd)).To(Succeed())
+
+			// Change the lifecycleState to AVAILABLE
+			acd.Status.LifecycleState = database.AutonomousContainerDatabaseLifecycleStateAvailable
+			Expect(k8sClient.Status().Update(context.TODO(), acd)).To(Succeed())
+
+			// Make sure the object is created
+			Eventually(func() error {
+				createdACD := &AutonomousContainerDatabase{}
+				return k8sClient.Get(context.TODO(), acdLookupKey, createdACD)
+			}, timeout).Should(BeNil())
 		})
 
-		It("Should specify at least one of the k8sADB and ociADB", func() {
-			var errMsg string = "target ADB is empty"
-
-			restore.Spec.Target.K8sADB.Name = nil
-			restore.Spec.Target.OCIADB.OCID = nil
-
-			validateInvalidTest(restore, false, errMsg)
+		AfterEach(func() {
+			Expect(k8sClient.Delete(context.TODO(), acd)).To(Succeed())
 		})
 
-		It("Should specify either k8sADB.name or ociADB.ocid, but not both", func() {
-			var errMsg string = "specify either k8sADB.name or ociADB.ocid, but not both"
+		It("Cannot change the spec when the lifecycleState is in an intermdeiate state", func() {
+			var errMsg string = "cannot change the spec when the lifecycleState is in an intermdeiate state"
 
-			restore.Spec.Target.K8sADB.Name = common.String("fake-target-adb")
-			restore.Spec.Target.OCIADB.OCID = common.String("fake.ocid1.autonomousdatabase.oc1...")
+			acd.Status.LifecycleState = database.AutonomousContainerDatabaseLifecycleStateProvisioning
+			Expect(k8sClient.Status().Update(context.TODO(), acd)).To(Succeed())
 
-			validateInvalidTest(restore, false, errMsg)
-		})
+			acd.Spec.DisplayName = common.String("modified-display-name")
 
-		It("Should select at least one restore source", func() {
-			var errMsg string = "retore source is empty"
-
-			restore.Spec.Source.K8sADBBackup.Name = nil
-			restore.Spec.Source.PointInTime.Timestamp = nil
-
-			validateInvalidTest(restore, false, errMsg)
-		})
-
-		It("Cannot apply backupName and the PITR parameters at the same time", func() {
-			var errMsg string = "cannot apply backupName and the PITR parameters at the same time"
-
-			restore.Spec.Source.K8sADBBackup.Name = common.String("fake-source-adb-backup")
-			restore.Spec.Source.PointInTime.Timestamp = common.String("2021-12-23 11:03:13 UTC")
-
-			validateInvalidTest(restore, false, errMsg)
-		})
-
-		It("Invalid timestamp format", func() {
-			var errMsg string = "invalid timestamp format"
-
-			restore.Spec.Source.PointInTime.Timestamp = common.String("12/23/2021 11:03:13")
-
-			validateInvalidTest(restore, false, errMsg)
+			validateInvalidTest(acd, true, errMsg)
 		})
 	})
 })

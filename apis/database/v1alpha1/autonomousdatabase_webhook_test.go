@@ -34,7 +34,7 @@
 ** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
-*/
+ */
 package v1alpha1
 
 import (
@@ -280,6 +280,10 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 
 			Expect(k8sClient.Create(context.TODO(), adb)).To(Succeed())
 
+			// Change the lifecycleState to AVAILABLE
+			adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateAvailable
+			Expect(k8sClient.Status().Update(context.TODO(), adb)).To(Succeed())
+
 			// Make sure the object is created
 			Eventually(func() error {
 				createdADB := &AutonomousDatabase{}
@@ -289,6 +293,17 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 
 		AfterEach(func() {
 			Expect(k8sClient.Delete(context.TODO(), adb)).To(Succeed())
+		})
+
+		It("Cannot change spec.details when the lifecycleState is in an intermdeiate state", func() {
+			var errMsg string = "cannot change spec.details when the lifecycleState is in an intermdeiate state"
+
+			adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUpdating
+			Expect(k8sClient.Status().Update(context.TODO(), adb)).To(Succeed())
+
+			adb.Spec.Details.DbName = common.String("modified-db-name")
+
+			validateInvalidTest(adb, true, errMsg)
 		})
 
 		It("AutonomousDatabaseOCID cannot be modified", func() {

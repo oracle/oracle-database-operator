@@ -21,7 +21,6 @@ After you create the resource, you can use the operator to perform the following
 
 * [Change the display name](#change-the-display-name) of an Autonomous Container Database
 * [Restart/Terminate](#restartterminate) an Autonomous Container Database
-* [Sync](#sync-the-resource-manually) of an Autonomous Container Database manually
 * [Delete the resource](#delete-the-resource) from the cluster
 
 ## Provision an Autonomous Container Database
@@ -194,35 +193,6 @@ Here's a list of the values you can set for `action`:
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml
-    autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample configured
-    ```
-
-## Sync the resource manually
-
-> Note: this operation requires an `AutonomousContainerDatabase` object to be in your cluster. This example assumes the provision operation or the bind operation has been done by the users and the operator is authorized with API Key Authentication.
-
-Users can sync the resource manually by setting the value of the `action` attribute to SYNC. The Operator may not response immediately if it is still waiting for a work to finish.
-
-1. A sample .yaml file is available here: [config/samples/acd/autonomouscontainerdatabase_sync.yaml](./../../config/samples/acd/autonomouscontainerdatabase_sync.yaml)
-
-    ```yaml
-    ---
-    apiVersion: database.oracle.com/v1alpha1
-    kind: AutonomousContainerDatabase
-    metadata:
-      name: autonomouscontainerdatabase-sample
-    spec:
-      autonomousContainerDatabaseOCID: ocid1.autonomouscontainerdatabase...
-      action: SYNC
-      ociConfig:
-        configMapName: oci-cred
-        secretName: oci-privatekey
-    ```
-
-2. Apply the change to sync the database.
-
-    ```sh
-    kubectl apply -f config/samples/acd/autonomouscontainerdatabase_sync.yaml
     autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample configured
     ```
 

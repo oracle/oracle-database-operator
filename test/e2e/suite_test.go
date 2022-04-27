@@ -45,7 +45,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	"github.com/oracle/oci-go-sdk/v63/common"
@@ -56,7 +56,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -121,13 +120,10 @@ const SharedWalletPassSecretName = "adb-wallet-password"
 
 func TestAPIs(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
-
-	ginkgo.RunSpecsWithDefaultAndCustomReporters(t,
-		"Controller Suite",
-		[]ginkgo.Reporter{printer.NewlineReporter{}})
+	ginkgo.RunSpecs(t, "Controller Suite")
 }
 
-var _ = BeforeSuite(func(done ginkgo.Done) {
+var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
@@ -261,9 +257,7 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(k8sClient.Create(context.TODO(), walletSecret)).To(Succeed())
 	})
-
-	close(done)
-}, 60)
+})
 
 var _ = AfterSuite(func() {
 	/*
