@@ -287,7 +287,7 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 
 const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then exit ;fi;" +
 	"\nexport APEXI=$ORDS_HOME/config/apex/images" +
-	"\n$ORDS_HOME/runOrds.sh" +
+	"\n$ORDS_HOME/runOrds.sh --setuponly" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
@@ -408,12 +408,13 @@ const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/ape
 
 const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apxsilentins.sql ]; then cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[2]s %[2]s %[2]s %[2]s\" | %[1]s; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ ${ORDS_PWD} ${ORDS_PWD} ${ORDS_PWD} ${ORDS_PWD};"+
+const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;"+
 	"\n@apex_rest_config_core.sql;\nexec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n"+
 	"exec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_change_password_on_first_use => 'Y');\n\"" +
-	" | sqlplus -s sys/${ORACLE_PWD}@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
+	" | sqlplus -s sys/%[2]s@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
 
-const IsApexInstalled string = "select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
+const IsApexInstalled string = "echo -e \"select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';\"" +
+	" | sqlplus -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
 
 const UninstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apxremov.sql ]; then  ( while true; do  sleep 60; echo \"Uninstalling Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apxremov.sql\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
