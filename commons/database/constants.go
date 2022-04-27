@@ -314,7 +314,8 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\nrm -f sqladmin.passwd" +
 	"\numask 022" +
 	"\nexport APEXI=$ORDS_HOME/config/apex/images" +
-	"\n$ORDS_HOME/runOrds.sh"
+	"\nset -x" +
+	"\n. $ORDS_HOME/runOrds.sh"
 
 const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p WHERE s.username = 'ORDS_PUBLIC_USER' AND p.addr(+) = s.paddr;"
 
