@@ -56,6 +56,7 @@ import (
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -125,8 +126,25 @@ func (r *AutonomousDatabaseReconciler) watchPredicate() predicate.Predicate {
 		CreateFunc: func(e event.CreateEvent) bool {
 			_, backupOk := e.Object.(*dbv1alpha1.AutonomousDatabaseBackup)
 			_, restoreOk := e.Object.(*dbv1alpha1.AutonomousDatabaseRestore)
-			// Don't enqueue if it's a create Backup event or a create Restore event
+			// Don't enqueue if the event is from Backup or Restore
 			return !(backupOk || restoreOk)
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			// Enqueue the update event only when the status changes the first time
+			desiredBackup, backupOk := e.ObjectNew.(*dbv1alpha1.AutonomousDatabaseBackup)
+			if backupOk {
+				oldBackup := e.ObjectOld.(*dbv1alpha1.AutonomousDatabaseBackup)
+				return oldBackup.Status.LifecycleState == "" && desiredBackup.Status.LifecycleState != ""
+			}
+
+			desiredRestore, restoreOk := e.ObjectNew.(*dbv1alpha1.AutonomousDatabaseRestore)
+			if restoreOk {
+				oldRestore := e.ObjectOld.(*dbv1alpha1.AutonomousDatabaseRestore)
+				return oldRestore.Status.Status == "" && desiredRestore.Status.Status != ""
+			}
+
+			// Enqueue if the event is not from Backup or Restore
+			return true
 		},
 	}
 }
@@ -788,7 +806,7 @@ func (r *AutonomousDatabaseReconciler) validateDesiredLifecycleState(
 
 		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateTerminating
 	default:
-		return false, errors.New("Unknown lifecycleState")
+		return false, errors.New("unknown lifecycleState")
 	}
 
 	return true, nil
