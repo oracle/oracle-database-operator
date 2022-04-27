@@ -39,6 +39,8 @@
 package v1alpha1
 
 import (
+	"reflect"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -49,85 +51,57 @@ import (
 )
 
 // log is for logging in this package.
-var autonomousdatabaserestorelog = logf.Log.WithName("autonomousdatabaserestore-resource")
+var autonomouscontainerdatabaselog = logf.Log.WithName("autonomouscontainerdatabase-resource")
 
-func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomouscontainerdatabases,versions=v1alpha1,name=vautonomouscontainerdatabase.kb.io,admissionReviewVersions={v1}
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v1alpha1,name=vautonomousdatabaserestore.kb.io,admissionReviewVersions={v1}
-
-var _ webhook.Validator = &AutonomousDatabaseRestore{}
+var _ webhook.Validator = &AutonomousContainerDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateCreate() error {
-	autonomousdatabaserestorelog.Info("validate create", "name", r.Name)
+func (r *AutonomousContainerDatabase) ValidateCreate() error {
+	autonomouscontainerdatabaselog.Info("validate create", "name", r.Name)
 
-	var allErrs field.ErrorList
-
-	// Validate the target ADB
-	if r.Spec.Target.K8sADB.Name == nil && r.Spec.Target.OCIADB.OCID == nil {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
-	}
-
-	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB.name or ociADB.ocid, but not both"))
-	}
-
-	// Validate the restore source
-	if r.Spec.Source.K8sADBBackup.Name == nil &&
-		r.Spec.Source.PointInTime.Timestamp == nil {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("source"), "retore source is empty"))
-	}
-
-	if r.Spec.Source.K8sADBBackup.Name != nil &&
-		r.Spec.Source.PointInTime.Timestamp != nil {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("source"), "cannot apply backupName and the PITR parameters at the same time"))
-	}
-
-	// Verify the timestamp format if it's PITR
-	if r.Spec.Source.PointInTime.Timestamp != nil {
-		_, err := parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
-		if err != nil {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime").Child("timestamp"), "invalid timestamp format"))
-		}
-	}
-
-	if len(allErrs) == 0 {
-		return nil
-	}
-	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseRestore"},
-		r.Name, allErrs)
+	// TODO(user): fill in your validation logic upon object creation.
+	return nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateUpdate(old runtime.Object) error {
-	autonomousdatabaserestorelog.Info("validate update", "name", r.Name)
-
+func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) error {
 	var allErrs field.ErrorList
+	var oldACD *AutonomousContainerDatabase = old.(*AutonomousContainerDatabase)
+
+	autonomouscontainerdatabaselog.Info("validate update", "name", r.Name)
+
+	// skip the update of adding ADB OCID or binding
+	if oldACD.Status.LifecycleState == "" {
+		return nil
+	}
+
+	// cannot update when the old state is in intermediate state, except for the terminate operatrion
+	if IsACDIntermediateState(oldACD.Status.LifecycleState) &&
+		!reflect.DeepEqual(oldACD.Spec, r.Spec) {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec"),
+				"cannot change the spec when the lifecycleState is in an intermdeiate state"))
+	}
 
 	if len(allErrs) == 0 {
 		return nil
 	}
 	return apierrors.NewInvalid(
-		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseRestore"},
+		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousContainerDatabase"},
 		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateDelete() error {
-	autonomousdatabaserestorelog.Info("validate delete", "name", r.Name)
+func (r *AutonomousContainerDatabase) ValidateDelete() error {
+	autonomouscontainerdatabaselog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
 	return nil

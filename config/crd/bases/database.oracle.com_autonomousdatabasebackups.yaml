@@ -90,11 +90,6 @@ spec:
             description: AutonomousDatabaseBackupStatus defines the observed state
               of AutonomousDatabaseBackup
             properties:
-              autonomousDatabaseBackupOCID:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
-                type: string
               autonomousDatabaseOCID:
                 type: string
               compartmentOCID:
@@ -103,11 +98,11 @@ spec:
                 type: string
               dbName:
                 type: string
-              displayName:
-                type: string
               isAutomatic:
                 type: boolean
               lifecycleState:
+                description: 'AutonomousDatabaseBackupLifecycleStateEnum Enum with
+                  underlying type: string'
                 type: string
               timeEnded:
                 type: string
@@ -122,7 +117,6 @@ spec:
             - compartmentOCID
             - dbDisplayName
             - dbName
-            - displayName
             - isAutomatic
             - lifecycleState
             - type

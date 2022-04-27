@@ -52,13 +52,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/commons/adb_family"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
@@ -69,46 +67,16 @@ type AutonomousDatabaseBackupReconciler struct {
 	Scheme     *runtime.Scheme
 	Recorder   record.EventRecorder
 
-	adbService  oci.DatabaseService
-	workService oci.WorkRequestService
-}
-
-func (r *AutonomousDatabaseBackupReconciler) eventFilterPredicate() predicate.Predicate {
-	pred := predicate.Funcs{
-		CreateFunc: func(e event.CreateEvent) bool {
-			return true
-		},
-		UpdateFunc: func(e event.UpdateEvent) bool {
-			oldStatus := e.ObjectOld.(*dbv1alpha1.AutonomousDatabaseBackup).Status.LifecycleState
-
-			if oldStatus == dbv1alpha1.BackupStateCreating ||
-				oldStatus == dbv1alpha1.BackupStateDeleting {
-				return false
-			}
-
-			return true
-		},
-	}
-
-	return pred
+	dbService oci.DatabaseService
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AutonomousDatabaseBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&databasev1alpha1.AutonomousDatabaseBackup{}).
-		WithEventFilter(r.eventFilterPredicate()).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 100}). // ReconcileHandler is never invoked concurrently with the same object.
 		Complete(r)
-}
-
-func (r *AutonomousDatabaseBackupReconciler) backupStarted(backup *dbv1alpha1.AutonomousDatabaseBackup) bool {
-	return backup.Spec.AutonomousDatabaseBackupOCID != nil ||
-		(backup.Status.LifecycleState == dbv1alpha1.BackupStateCreating ||
-			backup.Status.LifecycleState == dbv1alpha1.BackupStateActive ||
-			backup.Status.LifecycleState == dbv1alpha1.BackupStateDeleting ||
-			backup.Status.LifecycleState == dbv1alpha1.BackupStateDeleted ||
-			backup.Status.LifecycleState == dbv1alpha1.BackupStateFailed)
 }
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabasebackups,verbs=get;list;watch;create;delete
@@ -116,7 +84,7 @@ func (r *AutonomousDatabaseBackupReconciler) backupStarted(backup *dbv1alpha1.Au
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabases,verbs=get;list
 
 func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := r.Log.WithValues("Namespaced/Name", req.NamespacedName)
+	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	backup := &dbv1alpha1.AutonomousDatabaseBackup{}
 	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, backup); err != nil {
@@ -139,7 +107,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	}
 
 	/******************************************************************
-	* Get OCI database client and work request client
+	* Get OCI database client
 	******************************************************************/
 	if err := r.setupOCIClients(backup); err != nil {
 		return r.manageError(backup, err)
@@ -148,67 +116,85 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	logger.Info("OCI clients configured succesfully")
 
 	/******************************************************************
-	 * If the Spec.AutonomousDatabaseBackupOCID is empty and the LifecycleState is never assigned , create a backup.
-	 * LifecycleState is checked to avoid sending a duplicated backup request when the backup is creating.
-	 * Otherwise, bind to an exisiting backup if the  Spec.AutonomousDatabaseBackupOCID isn't empty.
+	* Get status from OCI AutonomousDatabaseBackup
+	******************************************************************/
+	if backup.Spec.AutonomousDatabaseBackupOCID != nil {
+		backupResp, err := r.dbService.GetAutonomousDatabaseBackup(*backup.Spec.AutonomousDatabaseBackupOCID)
+		if err != nil {
+			return r.manageError(backup, err)
+		}
+
+		adbResp, err := r.dbService.GetAutonomousDatabase(*backupResp.AutonomousDatabaseId)
+		if err != nil {
+			return r.manageError(backup, err)
+		}
+
+		backup.UpdateStatusFromOCIBackup(backupResp.AutonomousDatabaseBackup, adbResp.AutonomousDatabase)
+	}
+
+	/******************************************************************
+	* Requeue if the Backup is in an intermediate state
+	* No-op if the ADB OCID is nil
+	* To get the latest status, execute before all the reconcile logic
+	******************************************************************/
+	if dbv1alpha1.IsBackupIntermediateState(backup.Status.LifecycleState) {
+		logger.WithName("validateLifecycleState").Info("Reconcile queued")
+		return requeueResult, nil
+	}
+
+	/******************************************************************
+	 * If the spec.autonomousDatabaseBackupOCID is empty.
+	 * Otherwise, bind to an exisiting backup.
 	 ******************************************************************/
-	if !r.backupStarted(backup) {
+	if backup.Spec.AutonomousDatabaseBackupOCID == nil {
 		// Create a new backup
-		backupResp, err := r.adbService.CreateAutonomousDatabaseBackup(backup, adbOCID)
+		backupResp, err := r.dbService.CreateAutonomousDatabaseBackup(backup, adbOCID)
 		if err != nil {
 			return r.manageError(backup, err)
 		}
 
-		adbResp, err := r.adbService.GetAutonomousDatabase(*backupResp.AutonomousDatabaseId)
+		logger.Info("AutonomousDatabaseBackup " + *backupResp.DisplayName + " started")
+
+		// After the creation, update the status first
+		adbResp, err := r.dbService.GetAutonomousDatabase(*backupResp.AutonomousDatabaseId)
 		if err != nil {
 			return r.manageError(backup, err)
 		}
 
-		// update the Backup status
 		backup.UpdateStatusFromOCIBackup(backupResp.AutonomousDatabaseBackup, adbResp.AutonomousDatabase)
 		if err := r.KubeClient.Status().Update(context.TODO(), backup); err != nil {
 			return r.manageError(backup, err)
 		}
 
-		// Wait until the work is done
-		if _, err := r.workService.Wait(*backupResp.OpcWorkRequestId); err != nil {
-			return r.manageError(backup, err)
+		// Then update the OCID
+		backup.Spec.AutonomousDatabaseBackupOCID = backupResp.Id
+		backup.UpdateStatusFromOCIBackup(backupResp.AutonomousDatabaseBackup, adbResp.AutonomousDatabase)
+
+		if err := r.KubeClient.Update(context.TODO(), backup); err != nil {
+			// Do no requeue otherwise it will create multiple backups
+			r.Recorder.Event(backup, corev1.EventTypeWarning, "ReconcileFailed", err.Error())
+			logger.Error(err, "cannot update AutonomousDatabaseBackupOCID; stop reconcile", "AutonomousDatabaseBackupOCID", *backupResp.Id)
+
+			return emptyResult, nil
 		}
 
-		logger.Info("AutonomousDatabaseBackup " + *backupResp.DisplayName + " created successfully")
-	}
-
-	/******************************************************************
-	* Sync the resource status
-	*******************************************************************/
-	// get the backup ID
-	var backupID string
-	if backup.Spec.AutonomousDatabaseBackupOCID != nil {
-		backupID = *backup.Spec.AutonomousDatabaseBackupOCID
-	} else if backup.Status.AutonomousDatabaseBackupOCID != "" {
-		backupID = backup.Status.AutonomousDatabaseBackupOCID
-	} else {
-		// Send the event and exit the Reconcile
-		err := errors.New("the backup is incomplete and missing the OCID; the resource should be removed")
-		logger.Error(err, "Reconcile stopped")
-		r.Recorder.Event(backup, corev1.EventTypeWarning, "ReconcileFailed", err.Error())
+		logger.WithName("createAutonomousDatabaseBackup").Info("AutonomousDatabaseBackupOCID updated")
 		return emptyResult, nil
 	}
 
-	backupResp, err := r.adbService.GetAutonomousDatabaseBackup(backupID)
-	if err != nil {
-		return r.manageError(backup, err)
-	}
-
-	adbResp, err := r.adbService.GetAutonomousDatabase(*backupResp.AutonomousDatabaseId)
-	if err != nil {
-		return r.manageError(backup, err)
-	}
-
-	backup.UpdateStatusFromOCIBackup(backupResp.AutonomousDatabaseBackup, adbResp.AutonomousDatabase)
+	/******************************************************************
+	*	Update the status and requeue if it's in an intermediate state
+	******************************************************************/
 	if err := r.KubeClient.Status().Update(context.TODO(), backup); err != nil {
 		return r.manageError(backup, err)
 	}
+
+	if dbv1alpha1.IsBackupIntermediateState(backup.Status.LifecycleState) {
+		logger.WithName("IsIntermediateState").Info("Reconcile queued")
+		return requeueResult, nil
+	}
+
+	logger.Info("AutonomousDatabaseBackup reconciles successfully")
 
 	return emptyResult, nil
 }
@@ -230,7 +216,7 @@ func (r *AutonomousDatabaseBackupReconciler) setOwnerAutonomousDatabase(backup *
 // The function returns the OCID of the target ADB.
 func (r *AutonomousDatabaseBackupReconciler) verifyTargetADB(backup *dbv1alpha1.AutonomousDatabaseBackup) (string, error) {
 	// Get the target ADB OCID and the ADB resource
-	ocid, ownerADB, err := adbfamily.VerifyTargetADB(r.KubeClient, backup.Spec.Target, backup.Namespace)
+	ownerADB, err := adbfamily.VerifyTargetADB(r.KubeClient, backup.Spec.Target, backup.Namespace)
 
 	if err != nil {
 		return "", err
@@ -243,7 +229,14 @@ func (r *AutonomousDatabaseBackupReconciler) verifyTargetADB(backup *dbv1alpha1.
 		}
 	}
 
-	return ocid, nil
+	if backup.Spec.Target.OCIADB.OCID != nil {
+		return *backup.Spec.Target.OCIADB.OCID, nil
+	}
+	if ownerADB != nil && ownerADB.Spec.Details.AutonomousDatabaseOCID != nil {
+		return *ownerADB.Spec.Details.AutonomousDatabaseOCID, nil
+	}
+
+	return "", errors.New("cannot get the OCID of the targetADB")
 }
 
 func (r *AutonomousDatabaseBackupReconciler) setupOCIClients(backup *dbv1alpha1.AutonomousDatabaseBackup) error {
@@ -260,12 +253,7 @@ func (r *AutonomousDatabaseBackupReconciler) setupOCIClients(backup *dbv1alpha1.
 		return err
 	}
 
-	r.adbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
-	if err != nil {
-		return err
-	}
-
-	r.workService, err = oci.NewWorkRequestService(r.Log, r.KubeClient, provider)
+	r.dbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
 	if err != nil {
 		return err
 	}
@@ -276,12 +264,6 @@ func (r *AutonomousDatabaseBackupReconciler) setupOCIClients(backup *dbv1alpha1.
 func (r *AutonomousDatabaseBackupReconciler) manageError(backup *dbv1alpha1.AutonomousDatabaseBackup, issue error) (ctrl.Result, error) {
 	// Send event
 	r.Recorder.Event(backup, corev1.EventTypeWarning, "ReconcileFailed", issue.Error())
-
-	// Change the status to ERROR
-	backup.Status.LifecycleState = dbv1alpha1.BackupStateError
-	if statusErr := r.KubeClient.Status().Update(context.TODO(), backup); statusErr != nil {
-		return emptyResult, k8s.CombineErrors(issue, statusErr)
-	}
 
 	return emptyResult, issue
 }

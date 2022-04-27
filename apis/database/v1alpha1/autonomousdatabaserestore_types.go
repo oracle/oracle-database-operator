@@ -44,6 +44,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/database"
 	"github.com/oracle/oci-go-sdk/v63/workrequests"
 )
 
@@ -72,26 +73,27 @@ type AutonomousDatabaseRestoreSpec struct {
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 
-type restoreStatusEnum string
+type RestoreStatusEnum string
 
 const (
-	RestoreStatusError      restoreStatusEnum = "ERROR"
-	RestoreStatusInProgress restoreStatusEnum = "IN_PROGRESS"
-	RestoreStatusFailed     restoreStatusEnum = "FAILED"
-	RestoreStatusSucceeded  restoreStatusEnum = "SUCCEEDED"
+	RestoreStatusError      RestoreStatusEnum = "ERROR"
+	RestoreStatusAccepted   RestoreStatusEnum = "ACCEPTED"
+	RestoreStatusInProgress RestoreStatusEnum = "IN_PROGRESS"
+	RestoreStatusFailed     RestoreStatusEnum = "FAILED"
+	RestoreStatusSucceeded  RestoreStatusEnum = "SUCCEEDED"
 )
 
 // AutonomousDatabaseRestoreStatus defines the observed state of AutonomousDatabaseRestore
 type AutonomousDatabaseRestoreStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	DisplayName            string            `json:"displayName"`
-	TimeAccepted           string            `json:"timeAccepted,omitempty"`
-	TimeStarted            string            `json:"timeStarted,omitempty"`
-	TimeEnded              string            `json:"timeEnded,omitempty"`
-	DbName                 string            `json:"dbName"`
-	AutonomousDatabaseOCID string            `json:"autonomousDatabaseOCID"`
-	Status                 restoreStatusEnum `json:"status"`
+	DisplayName     string                             `json:"displayName"`
+	TimeAccepted    string                             `json:"timeAccepted,omitempty"`
+	TimeStarted     string                             `json:"timeStarted,omitempty"`
+	TimeEnded       string                             `json:"timeEnded,omitempty"`
+	DbName          string                             `json:"dbName"`
+	WorkRequestOCID string                             `json:"workRequestOCID"`
+	Status          workrequests.WorkRequestStatusEnum `json:"status"`
 }
 
 //+kubebuilder:object:root=true
@@ -131,23 +133,16 @@ func (r *AutonomousDatabaseRestore) GetPIT() (*common.SDKTime, error) {
 	return parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 }
 
-func (r *AutonomousDatabaseRestore) ConvertWorkRequestStatus(s workrequests.WorkRequestStatusEnum) restoreStatusEnum {
-	switch s {
-	case workrequests.WorkRequestStatusAccepted:
-		fallthrough
-	case workrequests.WorkRequestStatusInProgress:
-		return RestoreStatusInProgress
+func (r *AutonomousDatabaseRestore) UpdateStatus(
+	adb database.AutonomousDatabase,
+	workResp workrequests.GetWorkRequestResponse) {
 
-	case workrequests.WorkRequestStatusSucceeded:
-		return RestoreStatusSucceeded
+	r.Status.DisplayName = *adb.DisplayName
+	r.Status.DbName = *adb.DbName
 
-	case workrequests.WorkRequestStatusCanceling:
-		fallthrough
-	case workrequests.WorkRequestStatusCanceled:
-		fallthrough
-	case workrequests.WorkRequestStatusFailed:
-		return RestoreStatusFailed
-	default:
-		return "UNKNOWN"
-	}
+	r.Status.WorkRequestOCID = *workResp.Id
+	r.Status.Status = workResp.Status
+	r.Status.TimeAccepted = FormatSDKTime(workResp.TimeAccepted)
+	r.Status.TimeStarted = FormatSDKTime(workResp.TimeStarted)
+	r.Status.TimeEnded = FormatSDKTime(workResp.TimeFinished)
 }

@@ -144,6 +144,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase
+  failurePolicy: Fail
+  name: vautonomouscontainerdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomouscontainerdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-database-oracle-com-v1alpha1-autonomousdatabase
   failurePolicy: Fail
   name: vautonomousdatabase.kb.io
@@ -155,7 +175,6 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
-    - DELETE
     resources:
     - autonomousdatabases
   sideEffects: None
