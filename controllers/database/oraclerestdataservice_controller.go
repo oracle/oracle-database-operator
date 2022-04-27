@@ -167,7 +167,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	// Create ORDS Pods
-	result = r.createPods(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	result = r.createPods(oracleRestDataService, singleInstanceDatabase, cdbAdminPassword, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -180,7 +180,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
-	result = r.setupORDS(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, cdbAdminPassword, ctx, req)
+	result = r.restEnableSchemas(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -446,7 +446,8 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 //#############################################################################
 //    Instantiate POD spec from OracleRestDataService spec
 //#############################################################################
-func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase, ordsInstalled bool) *corev1.Pod {
+func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRestDataService, 
+	n *dbapi.SingleInstanceDatabase, ordsInstalled bool, cdbAdminPassword string) *corev1.Pod {
 
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
@@ -475,20 +476,90 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 					},
 				},
 			}},
-			InitContainers: []corev1.Container{{
-				Name:    "init-permissions",
-				Image:   m.Spec.Image.PullFrom,
-				Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/ords/config/ords", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
-				SecurityContext: &corev1.SecurityContext{
-					// User ID 0 means, root user
-					RunAsUser: func() *int64 { i := int64(0); return &i }(),
+			InitContainers: []corev1.Container{
+				{
+					Name:    "init-permissions",
+					Image:   m.Spec.Image.PullFrom,
+					Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/ords/config/ords", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
+					SecurityContext: &corev1.SecurityContext{
+						// User ID 0 means, root user
+						RunAsUser: func() *int64 { i := int64(0); return &i }(),
+					},
+					VolumeMounts: []corev1.VolumeMount{{
+						MountPath: "/opt/oracle/ords/config/ords",
+						Name:      "datamount",
+						SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
+					}},
 				},
-				VolumeMounts: []corev1.VolumeMount{{
-					MountPath: "/opt/oracle/ords/config/ords",
-					Name:      "datamount",
-					SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
-				}},
-			}},
+				{
+					Name:    "init-ords",
+					Image:   m.Spec.Image.PullFrom,
+					Command: []string{"/bin/sh", "-c", dbcommons.InitORDSCMD},
+					SecurityContext: &corev1.SecurityContext{
+						RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+						RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
+					},
+					VolumeMounts: []corev1.VolumeMount{{
+						MountPath: "/opt/oracle/ords/config/ords",
+						Name:      "datamount",
+						SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
+					}},
+					Env: []corev1.EnvVar {
+						{
+							Name: "SETUP_ONLY",
+							Value: "true",
+						},
+						{
+							Name:  "ORACLE_HOST",
+							Value: n.Name,
+						},
+						{
+							Name:  "ORACLE_PORT",
+							Value: "1521",
+						},
+						{
+							Name: "ORACLE_SERVICE",
+							Value: func() string {
+								if m.Spec.OracleService != "" {
+									return m.Spec.OracleService
+								}
+								return n.Spec.Sid
+							}(),
+						},
+						{
+							Name: "ORDS_USER",
+							Value: func() string {
+								if m.Spec.OrdsUser != "" {
+									return m.Spec.OrdsUser
+								}
+								return "ORDS_PUBLIC_USER"
+							}(),
+						},
+						{
+							Name: "ORDS_PWD",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: m.Spec.OrdsPassword.SecretName,
+									},
+									Key: m.Spec.OrdsPassword.SecretKey,
+								},
+							},
+						},
+						{
+							Name: "ORACLE_PWD",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: m.Spec.AdminPassword.SecretName,
+									},
+									Key: m.Spec.AdminPassword.SecretKey,
+								},
+							},
+						},
+					},
+				},
+			},
 			Containers: []corev1.Container{{
 				Name:            m.Name,
 				Image:           m.Spec.Image.PullFrom,
@@ -499,59 +570,6 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 					SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
 				}},
 				Env: func() []corev1.EnvVar {
-					// ORDS_PWD, ORACLE_PWD is required only during the First ORDS Installation.
-					if !ordsInstalled {
-						return []corev1.EnvVar{
-							{
-								Name:  "ORACLE_HOST",
-								Value: n.Name,
-							},
-							{
-								Name:  "ORACLE_PORT",
-								Value: "1521",
-							},
-							{
-								Name: "ORACLE_SERVICE",
-								Value: func() string {
-									if m.Spec.OracleService != "" {
-										return m.Spec.OracleService
-									}
-									return n.Spec.Sid
-								}(),
-							},
-							{
-								Name: "ORDS_USER",
-								Value: func() string {
-									if m.Spec.OrdsUser != "" {
-										return m.Spec.OrdsUser
-									}
-									return "ORDS_PUBLIC_USER"
-								}(),
-							},
-							{
-								Name: "ORDS_PWD",
-								ValueFrom: &corev1.EnvVarSource{
-									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: m.Spec.OrdsPassword.SecretName,
-										},
-										Key: m.Spec.OrdsPassword.SecretKey,
-									},
-								},
-							},
-							{
-								Name: "ORACLE_PWD",
-								ValueFrom: &corev1.EnvVarSource{
-									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: m.Spec.AdminPassword.SecretName,
-										},
-										Key: m.Spec.AdminPassword.SecretKey,
-									},
-								},
-							},
-						}
-					}
 					// After ORDS is Installed, we DELETE THE OLD ORDS Pod and create new ones ONLY USING BELOW ENV VARIABLES.
 					return []corev1.EnvVar{
 						{
@@ -846,7 +864,7 @@ func (r *OracleRestDataServiceReconciler) createPVC(ctx context.Context, req ctr
 //    Create the requested POD replicas
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataService,
-	n *dbapi.SingleInstanceDatabase, sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	n *dbapi.SingleInstanceDatabase, cdbAdminPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
 
 	log := r.Log.WithValues("createPods", req.NamespacedName)
 
@@ -880,7 +898,7 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 			if m.Status.OrdsInstalled {
 				ordsInstalled = true
 			}
-			pod := r.instantiatePodSpec(m, n, ordsInstalled)
+			pod := r.instantiatePodSpec(m, n, ordsInstalled, cdbAdminPassword)
 			log.Info("Creating a new "+m.Name+" POD", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			err := r.Create(ctx, pod)
 			if err != nil {
