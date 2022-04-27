@@ -299,6 +299,7 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
+	"\nmkdir -p $ORDS_HOME/config/ords/conf" +
 	"\numask 177" +
 	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
 	"\necho db.cdb.adminUser.password=\"${ORDS_PWD}\" >> cdbAdmin.properties" +
@@ -312,6 +313,7 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
 	"\nrm -f sqladmin.passwd" +
 	"\numask 022" +
+	"\nexport APEXI=$ORDS_HOME/config/apex/images" +
 	"\n$ORDS_HOME/runOrds.sh"
 
 const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p WHERE s.username = 'ORDS_PUBLIC_USER' AND p.addr(+) = s.paddr;"
