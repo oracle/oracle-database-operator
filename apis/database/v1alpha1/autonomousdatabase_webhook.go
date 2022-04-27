@@ -34,7 +34,7 @@
 ** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
-*/
+ */
 
 package v1alpha1
 
@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/oracle/oci-go-sdk/v63/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -59,8 +60,6 @@ func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		For(r).
 		Complete()
 }
-
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
 //+kubebuilder:webhook:verbs=create;update,path=/mutate-database-oracle-com-v1alpha1-autonomousdatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v1alpha1,name=mautonomousdatabase.kb.io,admissionReviewVersions=v1
 
@@ -82,8 +81,7 @@ func (r *AutonomousDatabase) Default() {
 
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v1alpha1-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v1alpha1,name=vautonomousdatabase.kb.io,admissionReviewVersions={v1}
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v1alpha1,name=vautonomousdatabase.kb.io,admissionReviewVersions={v1}
 
 var _ webhook.Validator = &AutonomousDatabase{}
 
@@ -117,19 +115,24 @@ func (r *AutonomousDatabase) ValidateCreate() error {
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
-	// Validate creation instead of update if there is no last successful spec, i.e. the database isn't provisioned or bound yet
-	lastSucSpec, err := r.GetLastSuccessfulSpec()
-	if err != nil {
-		return err
-	}
-	if lastSucSpec == nil {
-		return r.ValidateCreate()
-	}
-
 	var allErrs field.ErrorList
 	var oldADB *AutonomousDatabase = old.(*AutonomousDatabase)
 
 	autonomousdatabaselog.Info("validate update", "name", r.Name)
+
+	// skip the update of adding ADB OCID or binding
+	if oldADB.Status.LifecycleState == "" {
+		return nil
+	}
+
+	// cannot update when the old state is in intermediate, except for the terminate operatrion
+	if IsADBIntermediateState(oldADB.Status.LifecycleState) &&
+		r.Spec.Details.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminated &&
+		!reflect.DeepEqual(oldADB.Spec.Details, r.Spec.Details) {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("details"),
+				"cannot change spec.details when the lifecycleState is in an intermdeiate state"))
+	}
 
 	// cannot modify autonomousDatabaseOCID
 	if r.Spec.Details.AutonomousDatabaseOCID != nil &&
@@ -142,7 +145,7 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 
 	// cannot change lifecycleState with other fields together
 	var lifecycleChanged, otherDetailsChanged bool
-	lifecycleChanged = oldADB.Spec.Details.LifecycleState != r.Spec.Details.LifecycleState
+	lifecycleChanged = oldADB.Spec.Details.LifecycleState != "" && oldADB.Spec.Details.LifecycleState != r.Spec.Details.LifecycleState
 	copyLifecycleState := oldADB.Spec.Details.LifecycleState
 	oldADB.Spec.Details.LifecycleState = r.Spec.Details.LifecycleState
 	otherDetailsChanged = !reflect.DeepEqual(oldADB.Spec.Details, r.Spec.Details)

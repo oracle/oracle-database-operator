@@ -190,6 +190,22 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "CDB")
 			os.Exit(1)
 		}
+		if err = (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
+			os.Exit(1)
+		}
 	}
 
 	// PDB Reconciler
@@ -214,28 +230,6 @@ func main() {
 		Recorder: mgr.GetEventRecorderFor("CDB"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CDB")
-		os.Exit(1)
-	}
-
-	if err = (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
-		os.Exit(1)
-	}
-	if err = (&databasev1alpha1.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
-		os.Exit(1)
-	}
-	if err = (&databasev1alpha1.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
-		os.Exit(1)
-	}
-	if err = (&databasecontroller.DbcsSystemReconciler{
-		KubeClient: mgr.GetClient(),
-		Logger:     ctrl.Log.WithName("controllers").WithName("database").WithName("DbcsSystem"),
-		Scheme:     mgr.GetScheme(),
-		Recorder:   mgr.GetEventRecorderFor("DbcsSystem"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "DbcsSystem")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

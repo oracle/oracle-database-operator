@@ -69,7 +69,7 @@ build: generate fmt vet ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
-docker-build: #test ## Build docker image with the manager.
+docker-build: manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
 	docker build --no-cache=true --build-arg http_proxy=${HTTP_PROXY} --build-arg https_proxy=${HTTPS_PROXY} . -t ${IMG}
 
 #docker-build-proxy: test
