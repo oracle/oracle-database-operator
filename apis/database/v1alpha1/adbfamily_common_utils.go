@@ -47,6 +47,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/database"
+	"github.com/oracle/oci-go-sdk/v63/workrequests"
 )
 
 // LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
@@ -203,4 +205,86 @@ func parseDisplayTime(val string) (*common.SDKTime, error) {
 	}
 	sdkTime := common.SDKTime{Time: parsedTime}
 	return &sdkTime, nil
+}
+
+/************************
+*	LifecycleState check
+************************/
+func IsADBIntermediateState(state database.AutonomousDatabaseLifecycleStateEnum) bool {
+	if state == database.AutonomousDatabaseLifecycleStateProvisioning ||
+		state == database.AutonomousDatabaseLifecycleStateUpdating ||
+		state == database.AutonomousDatabaseLifecycleStateScaleInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateStarting ||
+		state == database.AutonomousDatabaseLifecycleStateStopping ||
+		state == database.AutonomousDatabaseLifecycleStateTerminating ||
+		state == database.AutonomousDatabaseLifecycleStateRestoreInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateBackupInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateMaintenanceInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateRestarting ||
+		state == database.AutonomousDatabaseLifecycleStateRecreating ||
+		state == database.AutonomousDatabaseLifecycleStateRoleChangeInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateUpgrading {
+		return true
+	}
+	return false
+}
+
+// NextADBStableState returns the next stable state if it's an intermediate state.
+// Otherwise returns the same state.
+func NextADBStableState(state database.AutonomousDatabaseLifecycleStateEnum) database.AutonomousDatabaseLifecycleStateEnum {
+	if state == database.AutonomousDatabaseLifecycleStateProvisioning ||
+		state == database.AutonomousDatabaseLifecycleStateStarting ||
+		state == database.AutonomousDatabaseLifecycleStateRestoreInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateBackupInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateScaleInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateUpdating ||
+		state == database.AutonomousDatabaseLifecycleStateMaintenanceInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateRestarting ||
+		state == database.AutonomousDatabaseLifecycleStateRecreating ||
+		state == database.AutonomousDatabaseLifecycleStateRoleChangeInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateUpgrading {
+
+		return database.AutonomousDatabaseLifecycleStateAvailable
+	}
+
+	if state == database.AutonomousDatabaseLifecycleStateStopping {
+		return database.AutonomousDatabaseLifecycleStateStopped
+	}
+
+	if state == database.AutonomousDatabaseLifecycleStateTerminating {
+		return database.AutonomousDatabaseLifecycleStateTerminated
+	}
+
+	return state
+}
+
+func IsBackupIntermediateState(state database.AutonomousDatabaseBackupLifecycleStateEnum) bool {
+	if state == database.AutonomousDatabaseBackupLifecycleStateCreating ||
+		state == database.AutonomousDatabaseBackupLifecycleStateDeleting {
+		return true
+	}
+	return false
+}
+
+func IsRestoreIntermediateState(state workrequests.WorkRequestStatusEnum) bool {
+	if state == workrequests.WorkRequestStatusAccepted ||
+		state == workrequests.WorkRequestStatusInProgress ||
+		state == workrequests.WorkRequestStatusCanceling {
+		return true
+	}
+	return false
+}
+
+func IsACDIntermediateState(state database.AutonomousContainerDatabaseLifecycleStateEnum) bool {
+	if state == database.AutonomousContainerDatabaseLifecycleStateProvisioning ||
+		state == database.AutonomousContainerDatabaseLifecycleStateUpdating ||
+		state == database.AutonomousContainerDatabaseLifecycleStateTerminating ||
+		state == database.AutonomousContainerDatabaseLifecycleStateBackupInProgress ||
+		state == database.AutonomousContainerDatabaseLifecycleStateRestoring ||
+		state == database.AutonomousContainerDatabaseLifecycleStateRestarting ||
+		state == database.AutonomousContainerDatabaseLifecycleStateMaintenanceInProgress ||
+		state == database.AutonomousContainerDatabaseLifecycleStateRoleChangeInProgress {
+		return true
+	}
+	return false
 }

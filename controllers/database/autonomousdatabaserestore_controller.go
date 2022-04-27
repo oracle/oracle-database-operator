@@ -47,9 +47,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -70,7 +68,7 @@ type AutonomousDatabaseRestoreReconciler struct {
 	Scheme     *runtime.Scheme
 	Recorder   record.EventRecorder
 
-	adbService  oci.DatabaseService
+	dbService   oci.DatabaseService
 	workService oci.WorkRequestService
 }
 
@@ -80,13 +78,6 @@ func (r *AutonomousDatabaseRestoreReconciler) SetupWithManager(mgr ctrl.Manager)
 		For(&databasev1alpha1.AutonomousDatabaseRestore{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
-}
-
-func (r *AutonomousDatabaseRestoreReconciler) restoreStarted(restore *dbv1alpha1.AutonomousDatabaseRestore) bool {
-	return restore.Status.TimeAccepted != "" ||
-		(restore.Status.Status == dbv1alpha1.RestoreStatusInProgress ||
-			restore.Status.Status == dbv1alpha1.RestoreStatusFailed ||
-			restore.Status.Status == dbv1alpha1.RestoreStatusSucceeded)
 }
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=autonomousdatabaserestores,verbs=get;list;watch;create;delete
@@ -103,7 +94,7 @@ func (r *AutonomousDatabaseRestoreReconciler) restoreStarted(restore *dbv1alpha1
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.6.4/pkg/reconcile
 func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := r.Log.WithValues("Namespaced/Name", req.NamespacedName)
+	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	restore := &dbv1alpha1.AutonomousDatabaseRestore{}
 	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, restore); err != nil {
@@ -115,12 +106,6 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 		// Failed to get ADBRestore, so we don't need to update the status
 		return emptyResult, err
 	}
-
-	if r.restoreStarted(restore) {
-		return emptyResult, nil
-	}
-
-	// ===================== Run Restore for the Target ADB ============================
 
 	/******************************************************************
 	* Look up the owner AutonomousDatabase and set the ownerReference
@@ -149,10 +134,68 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	logger.Info("OCI clients configured succesfully")
 
 	/******************************************************************
-	 * Start restore
+	* Get status from OCI WorkRequest
+	******************************************************************/
+	if restore.Status.WorkRequestOCID != "" {
+		resp, err := r.workService.Get(restore.Status.WorkRequestOCID)
+		if err != nil {
+			return r.manageError(restore, err)
+		}
+
+		restore.Status.Status = resp.Status
+
+		if dbv1alpha1.IsRestoreIntermediateState(resp.Status) {
+			logger.WithName("validateStatus").Info("Reconcile queued")
+			return requeueResult, nil
+		}
+	}
+
+	/******************************************************************
+	 * Start the restore or update the status
 	 ******************************************************************/
-	if err := r.restoreAutonomousDatabase(restore, restoreTime, adbOCID); err != nil {
-		return r.manageError(restore, err)
+	if restore.Status.WorkRequestOCID == "" {
+		// Start restore
+		adbResp, err := r.dbService.RestoreAutonomousDatabase(adbOCID, *restoreTime)
+		if err != nil {
+			return r.manageError(restore, err)
+		}
+
+		workResp, err := r.workService.Get(*adbResp.OpcWorkRequestId)
+		if err != nil {
+			return r.manageError(restore, err)
+		}
+
+		restore.UpdateStatus(adbResp.AutonomousDatabase, workResp)
+		if err := r.KubeClient.Update(context.TODO(), restore); err != nil {
+			return r.manageError(restore, err)
+		}
+
+	} else {
+		// Update the status
+		adbResp, err := r.dbService.GetAutonomousDatabase(adbOCID)
+		if err != nil {
+			return r.manageError(restore, err)
+		}
+
+		workResp, err := r.workService.Get(restore.Status.WorkRequestOCID)
+		if err != nil {
+			return r.manageError(restore, err)
+		}
+
+		restore.UpdateStatus(adbResp.AutonomousDatabase, workResp)
+		if err := r.KubeClient.Update(context.TODO(), restore); err != nil {
+			return r.manageError(restore, err)
+		}
+
+		if err := r.KubeClient.Update(context.TODO(), restore); err != nil {
+			return r.manageError(restore, err)
+		}
+	}
+
+	// Requeue if it's in intermediate state
+	if dbv1alpha1.IsRestoreIntermediateState(restore.Status.Status) {
+		logger.WithName("validateStatus").Info("Reconcile queued")
+		return requeueResult, nil
 	}
 
 	logger.Info("AutonomousDatabaseRestore reconciles successfully")
@@ -201,7 +244,7 @@ func (r *AutonomousDatabaseRestoreReconciler) setOwnerAutonomousDatabase(restore
 // The function returns the OCID of the target ADB.
 func (r *AutonomousDatabaseRestoreReconciler) verifyTargetADB(restore *dbv1alpha1.AutonomousDatabaseRestore) (string, error) {
 	// Get the target ADB OCID and the ADB resource
-	ocid, ownerADB, err := adbfamily.VerifyTargetADB(r.KubeClient, restore.Spec.Target, restore.Namespace)
+	ownerADB, err := adbfamily.VerifyTargetADB(r.KubeClient, restore.Spec.Target, restore.Namespace)
 
 	if err != nil {
 		return "", err
@@ -214,25 +257,14 @@ func (r *AutonomousDatabaseRestoreReconciler) verifyTargetADB(restore *dbv1alpha
 		}
 	}
 
-	return ocid, nil
-}
+	if restore.Spec.Target.OCIADB.OCID != nil {
+		return *restore.Spec.Target.OCIADB.OCID, nil
+	}
+	if ownerADB != nil && ownerADB.Spec.Details.AutonomousDatabaseOCID != nil {
+		return *ownerADB.Spec.Details.AutonomousDatabaseOCID, nil
+	}
 
-func (r *AutonomousDatabaseRestoreReconciler) updateResourceStatus(restore *dbv1alpha1.AutonomousDatabaseRestore) error {
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		curBackup := &dbv1alpha1.AutonomousDatabaseRestore{}
-
-		namespacedName := types.NamespacedName{
-			Namespace: restore.GetNamespace(),
-			Name:      restore.GetName(),
-		}
-
-		if err := r.KubeClient.Get(context.TODO(), namespacedName, curBackup); err != nil {
-			return err
-		}
-
-		curBackup.Status = restore.Status
-		return r.KubeClient.Status().Update(context.TODO(), curBackup)
-	})
+	return "", errors.New("cannot get the OCID of the targetADB")
 }
 
 func (r *AutonomousDatabaseRestoreReconciler) setupOCIClients(restore *dbv1alpha1.AutonomousDatabaseRestore) error {
@@ -249,7 +281,7 @@ func (r *AutonomousDatabaseRestoreReconciler) setupOCIClients(restore *dbv1alpha
 		return err
 	}
 
-	r.adbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
+	r.dbService, err = oci.NewDatabaseService(r.Log, r.KubeClient, provider)
 	if err != nil {
 		return err
 	}
@@ -264,65 +296,8 @@ func (r *AutonomousDatabaseRestoreReconciler) setupOCIClients(restore *dbv1alpha
 
 // manageError doesn't return the error so that the request won't be requeued
 func (r *AutonomousDatabaseRestoreReconciler) manageError(restore *dbv1alpha1.AutonomousDatabaseRestore, issue error) (ctrl.Result, error) {
-	nsn := types.NamespacedName{
-		Namespace: restore.Namespace,
-		Name:      restore.Name,
-	}
-	logger := r.Log.WithValues("Namespaced/Name", nsn)
-
 	// Send event
 	r.Recorder.Event(restore, corev1.EventTypeWarning, "ReconcileFailed", issue.Error())
 
-	// Change the status to ERROR
-	var combinedErr error = issue
-
-	restore.Status.Status = dbv1alpha1.RestoreStatusError
-	if statusErr := r.updateResourceStatus(restore); statusErr != nil {
-		combinedErr = k8s.CombineErrors(issue, statusErr)
-	}
-
-	logger.Error(combinedErr, "Fail to restore Autonomous Database")
-
-	return emptyResult, nil
-}
-
-func (r *AutonomousDatabaseRestoreReconciler) restoreAutonomousDatabase(
-	restore *dbv1alpha1.AutonomousDatabaseRestore,
-	restoreTime *common.SDKTime,
-	adbOCID string) error {
-	var err error
-
-	resp, err := r.adbService.RestoreAutonomousDatabase(adbOCID, *restoreTime)
-	if err != nil {
-		return err
-	}
-
-	// Update status and wait for the work finish if a request is sent. Note that some of the requests (e.g. update displayName) won't return a work request ID.
-	// It's important to update the status by reference otherwise Reconcile() won't be able to get the latest values
-	restore.Status.DisplayName = *resp.AutonomousDatabase.DisplayName
-	restore.Status.DbName = *resp.AutonomousDatabase.DbName
-	restore.Status.AutonomousDatabaseOCID = *resp.AutonomousDatabase.Id
-
-	workStart, err := r.workService.Get(*resp.OpcWorkRequestId)
-	if err != nil {
-		return err
-	}
-	restore.Status.Status = restore.ConvertWorkRequestStatus(workStart.Status)
-	restore.Status.TimeAccepted = dbv1alpha1.FormatSDKTime(workStart.TimeAccepted)
-
-	r.updateResourceStatus(restore)
-
-	workEnd, err := r.workService.Wait(*resp.OpcWorkRequestId)
-	if err != nil {
-		return err
-	}
-
-	// Update status when the work is finished
-	restore.Status.Status = restore.ConvertWorkRequestStatus(workEnd.Status)
-	restore.Status.TimeStarted = dbv1alpha1.FormatSDKTime(workEnd.TimeStarted)
-	restore.Status.TimeEnded = dbv1alpha1.FormatSDKTime(workEnd.TimeFinished)
-
-	r.updateResourceStatus(restore)
-
-	return nil
+	return emptyResult, issue
 }
