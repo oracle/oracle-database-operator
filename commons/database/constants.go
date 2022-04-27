@@ -287,8 +287,7 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 
 const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then exit ;fi;" +
 	"\nexport APEXI=$ORDS_HOME/config/apex/images" +
-	"\nset -x" +
-	"\n. $ORDS_HOME/runOrds.sh" +
+	"\n$ORDS_HOME/runOrds.sh" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
