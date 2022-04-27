@@ -1057,12 +1057,6 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 			log.Info("Reconcile requeued because apex installation failed")
 			return result
 		}
-	}
-
-	m.Status.ApexConfigured = true
-	r.Status().Update(ctx, m)
-
-	if m.Status.OrdsInstalled {
 		// ORDS Needs to be restarted to configure APEX
 		err := r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{})
 		if err != nil {
@@ -1072,6 +1066,9 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		r.Log.Info("ORDS Pod Deleted : " + ordsReadyPod.Name)
 		return requeueY
 	}
+
+	m.Status.ApexConfigured = true
+	r.Status().Update(ctx, m)
 
 	log.Info("ConfigureApex Successful !")
 	return requeueN
@@ -1083,11 +1080,6 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
 	ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("installApex", req.NamespacedName)
-
-	// Initial Validation
-	if n.Status.ApexInstalled {
-		return requeueN
-	}
 
 	// Obtain admin password of the referred database
 	adminPasswordSecret := &corev1.Secret{}
@@ -1127,11 +1119,11 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
 	eventReason := "Installing Apex"
-	eventMsg := "Waiting for Apex Installation to complete"
+	eventMsg := "Waiting for Apex installation to complete"
 	r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 
 	//Install Apex in SIDB ready pod
-	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf(dbcommons.InstallApexInContainer,  apexPassword,  sidbPassword))
 	if err != nil {
 		log.Info(err.Error())
@@ -1139,7 +1131,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	log.Info(" InstallApex Output : \n" + out)
 
 	// Checking if Apex is installed successfully or not
-	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf(dbcommons.IsApexInstalled, sidbPassword))
 	if err != nil {
 		log.Error(err, err.Error())
@@ -1152,6 +1144,10 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 		return requeueY
 	}
 
+	m.Status.Status = dbcommons.StatusReady
+	eventReason = "Installed Apex"
+	eventMsg = "Apex installation completed"
+	r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 	n.Status.ApexInstalled = true
 	return requeueN
 }
