@@ -180,13 +180,13 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
-	result = r.restEnableSchemas(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	result = r.checkHealthStatus(oracleRestDataService, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
 
-	result = r.checkHealthStatus(oracleRestDataService, ctx, req)
+	result = r.restEnableSchemas(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
