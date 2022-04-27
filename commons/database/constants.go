@@ -285,7 +285,8 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 	"\nsed -i 's,jetty.port=8888,jetty.secure.port=8443\\nssl.cert=\\nssl.cert.key=\\nssl.host=%[3]s,g' /opt/oracle/ords/config/ords/standalone/standalone.properties " +
 	"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
 
-const InitORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
+const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then exit fi; \n" +
+	"$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.admin.enabled true" +
@@ -300,18 +301,18 @@ const InitORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pro
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
 	"\numask 177" +
 	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
-	"\necho db.cdb.adminUser.password=\"%[4]s\" >> cdbAdmin.properties" +
+	"\necho db.cdb.adminUser.password=\"${ORDS_PWD}\" >> cdbAdmin.properties" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
 	"\nrm -f cdbAdmin.properties" +
 	"\necho db.adminUser=C##_DBAPI_PDB_ADMIN > pdbAdmin.properties" +
-	"\necho db.adminUser.password=\"%[4]s\">> pdbAdmin.properties" +
+	"\necho db.adminUser.password=\"${ORDS_PWD}\">> pdbAdmin.properties" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu pdbAdmin.properties" +
 	"\nrm -f pdbAdmin.properties" +
-	"\necho -e \"%[1]s\n%[1]s\" > sqladmin.passwd" +
+	"\necho -e \"${ORDS_PWD}\n${ORDS_PWD}\" > sqladmin.passwd" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
 	"\nrm -f sqladmin.passwd" +
 	"\numask 022" +
-	"\nsed -i 's,jetty.port=8888,jetty.secure.port=8443\\nssl.cert=\\nssl.cert.key=\\nssl.host=%[3]s,g' /opt/oracle/ords/config/ords/standalone/standalone.properties "
+	"\n$ORDS_HOME/runOrds.sh"
 
 const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p WHERE s.username = 'ORDS_PUBLIC_USER' AND p.addr(+) = s.paddr;"
 
@@ -331,8 +332,8 @@ const UninstallORDSCMD string = "\numask 177" +
 	"\nrm -rf /opt/oracle/ords/config/ords/standalone" +
 	"\nrm -rf /opt/oracle/ords/config/ords/apex"
 
-// To handle timing issue, checking if either of https://localhost:8443 or http://localhost:8888 is used for ORDS Installation
-const GetORDSStatus string = "  curl -sSkv -k -X GET https://localhost:8443/ords/_/db-api/stable/metadata-catalog/ || curl  -sSkv -X GET http://localhost:8888/ords/_/db-api/stable/metadata-catalog/ "
+
+const GetORDSStatus string = "curl -sSkv -k -X GET https://localhost:8443/ords/_/db-api/stable/metadata-catalog/"
 
 const ValidateAdminPassword string = "conn sys/%s@${ORACLE_SID} as sysdba\nshow user"
 
