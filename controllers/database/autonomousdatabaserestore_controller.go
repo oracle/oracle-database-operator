@@ -54,7 +54,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/oracle/oci-go-sdk/v63/common"
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/commons/adb_family"
 	"github.com/oracle/oracle-database-operator/commons/k8s"
@@ -75,7 +74,7 @@ type AutonomousDatabaseRestoreReconciler struct {
 // SetupWithManager sets up the controller with the Manager.
 func (r *AutonomousDatabaseRestoreReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&databasev1alpha1.AutonomousDatabaseRestore{}).
+		For(&dbv1alpha1.AutonomousDatabaseRestore{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
 }
@@ -117,14 +116,6 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	}
 
 	/******************************************************************
-	* Extract the restoreTime from the spec
-	******************************************************************/
-	restoreTime, err := r.getRestoreSDKTime(restore)
-	if err != nil {
-		return r.manageError(restore, err)
-	}
-
-	/******************************************************************
 	* Get OCI database client and work request client
 	******************************************************************/
 	if err := r.setupOCIClients(restore); err != nil {
@@ -134,44 +125,36 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	logger.Info("OCI clients configured succesfully")
 
 	/******************************************************************
-	* Get status from OCI WorkRequest
-	******************************************************************/
-	if restore.Status.WorkRequestOCID != "" {
-		resp, err := r.workService.Get(restore.Status.WorkRequestOCID)
+	 * Start the restore or update the status
+	 ******************************************************************/
+	if restore.Status.WorkRequestOCID == "" {
+		logger.Info("Start restoring the database")
+		// Extract the restoreTime from the spec
+		restoreTime, err := r.getRestoreSDKTime(restore)
 		if err != nil {
 			return r.manageError(restore, err)
 		}
 
-		restore.Status.Status = resp.Status
-
-		if dbv1alpha1.IsRestoreIntermediateState(resp.Status) {
-			logger.WithName("validateStatus").Info("Reconcile queued")
-			return requeueResult, nil
-		}
-	}
-
-	/******************************************************************
-	 * Start the restore or update the status
-	 ******************************************************************/
-	if restore.Status.WorkRequestOCID == "" {
-		// Start restore
+		logger.Info("Sending RestoreAutonomousDatabase request to OCI")
 		adbResp, err := r.dbService.RestoreAutonomousDatabase(adbOCID, *restoreTime)
 		if err != nil {
 			return r.manageError(restore, err)
 		}
 
+		// Update the restore status
 		workResp, err := r.workService.Get(*adbResp.OpcWorkRequestId)
 		if err != nil {
 			return r.manageError(restore, err)
 		}
 
 		restore.UpdateStatus(adbResp.AutonomousDatabase, workResp)
-		if err := r.KubeClient.Update(context.TODO(), restore); err != nil {
+		if err := r.KubeClient.Status().Update(context.TODO(), restore); err != nil {
 			return r.manageError(restore, err)
 		}
 
 	} else {
 		// Update the status
+		logger.Info("Update the status of the restore session")
 		adbResp, err := r.dbService.GetAutonomousDatabase(adbOCID)
 		if err != nil {
 			return r.manageError(restore, err)
@@ -183,18 +166,14 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 		}
 
 		restore.UpdateStatus(adbResp.AutonomousDatabase, workResp)
-		if err := r.KubeClient.Update(context.TODO(), restore); err != nil {
-			return r.manageError(restore, err)
-		}
-
-		if err := r.KubeClient.Update(context.TODO(), restore); err != nil {
+		if err := r.KubeClient.Status().Update(context.TODO(), restore); err != nil {
 			return r.manageError(restore, err)
 		}
 	}
 
 	// Requeue if it's in intermediate state
 	if dbv1alpha1.IsRestoreIntermediateState(restore.Status.Status) {
-		logger.WithName("validateStatus").Info("Reconcile queued")
+		logger.WithName("IsIntermediateState").Info("Current status is " + string(restore.Status.Status) + "; reconcile queued")
 		return requeueResult, nil
 	}
 

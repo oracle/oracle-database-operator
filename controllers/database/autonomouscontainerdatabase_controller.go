@@ -644,7 +644,7 @@ func (r *AutonomousContainerDatabaseReconciler) validateDesiredLifecycleState(
 
 		acd.Status.LifecycleState = database.AutonomousContainerDatabaseLifecycleStateTerminating
 	default:
-		return false, false, errors.New("Unknown lifecycleState")
+		return false, false, errors.New("unknown lifecycleState")
 	}
 
 	acd.Spec.Action = dbv1alpha1.AcdActionBlank
