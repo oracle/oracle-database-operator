@@ -54,7 +54,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/commons/adb_family"
 	"github.com/oracle/oracle-database-operator/commons/oci"
@@ -73,7 +72,7 @@ type AutonomousDatabaseBackupReconciler struct {
 // SetupWithManager sets up the controller with the Manager.
 func (r *AutonomousDatabaseBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&databasev1alpha1.AutonomousDatabaseBackup{}).
+		For(&dbv1alpha1.AutonomousDatabaseBackup{}).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 100}). // ReconcileHandler is never invoked concurrently with the same object.
 		Complete(r)
@@ -138,7 +137,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	* To get the latest status, execute before all the reconcile logic
 	******************************************************************/
 	if dbv1alpha1.IsBackupIntermediateState(backup.Status.LifecycleState) {
-		logger.WithName("validateLifecycleState").Info("Reconcile queued")
+		logger.WithName("IsIntermediateState").Info("Current lifecycleState is " + string(backup.Status.LifecycleState) + "; reconcile queued")
 		return requeueResult, nil
 	}
 
@@ -148,12 +147,11 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	 ******************************************************************/
 	if backup.Spec.AutonomousDatabaseBackupOCID == nil {
 		// Create a new backup
+		logger.Info("Sending CreateAutonomousDatabaseBackup request to OCI")
 		backupResp, err := r.dbService.CreateAutonomousDatabaseBackup(backup, adbOCID)
 		if err != nil {
 			return r.manageError(backup, err)
 		}
-
-		logger.Info("AutonomousDatabaseBackup " + *backupResp.DisplayName + " started")
 
 		// After the creation, update the status first
 		adbResp, err := r.dbService.GetAutonomousDatabase(*backupResp.AutonomousDatabaseId)
@@ -178,7 +176,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 			return emptyResult, nil
 		}
 
-		logger.WithName("createAutonomousDatabaseBackup").Info("AutonomousDatabaseBackupOCID updated")
+		logger.Info("AutonomousDatabaseBackupOCID updated")
 		return emptyResult, nil
 	}
 

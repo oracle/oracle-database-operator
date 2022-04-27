@@ -102,7 +102,6 @@ func (r *AutonomousDatabase) ValidateCreate() error {
 				field.Forbidden(field.NewPath("spec").Child("details").Child("LifecycleState"),
 					"cannot apply lifecycleState to a provision operation"))
 		}
-	} else { // binding operation
 	}
 
 	if len(allErrs) == 0 {
@@ -212,7 +211,7 @@ func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) fie
 		if adb.Spec.Details.NetworkAccess.IsAccessControlEnabled != nil {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("IsAccessControlEnabled"),
-					fmt.Sprintf("isAccessControlEnabled is not applicable on a shared Autonomous Database")))
+					"isAccessControlEnabled is not applicable on a shared Autonomous Database"))
 		}
 	} else {
 		// Dedicated database
