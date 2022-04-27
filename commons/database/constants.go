@@ -408,10 +408,11 @@ const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/ape
 
 const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apxsilentins.sql ]; then cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[2]s %[2]s %[2]s %[2]s\" | %[1]s; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;"+
-	"\n@apex_rest_config_core.sql;\nexec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n"+
-	"exec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_change_password_on_first_use => 'Y');\n\"" +
-	" | sqlplus -s sys/%[2]s@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
+const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;\n"+
+	"@apex_rest_config_core.sql;\n" +
+	//"exec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n" +
+	//"exec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_change_password_on_first_use => 'Y');\n" +
+	"\" | sqlplus -s sys/%[2]s@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
 
 const IsApexInstalled string = "echo -e \"select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';\"" +
 	" | sqlplus -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
