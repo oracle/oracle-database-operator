@@ -304,11 +304,11 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\nmkdir -p $ORDS_HOME/config/ords/conf" +
 	"\numask 177" +
 	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
-	"\necho db.cdb.adminUser.password=\"${ORDS_PWD}\" >> cdbAdmin.properties" +
+	"\necho db.cdb.adminUser.password=\"${ORACLE_PWD}\" >> cdbAdmin.properties" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
 	"\nrm -f cdbAdmin.properties" +
 	"\necho db.adminUser=C##_DBAPI_PDB_ADMIN > pdbAdmin.properties" +
-	"\necho db.adminUser.password=\"${ORDS_PWD}\">> pdbAdmin.properties" +
+	"\necho db.adminUser.password=\"${ORACLE_PWD}\">> pdbAdmin.properties" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu pdbAdmin.properties" +
 	"\nrm -f pdbAdmin.properties" +
 	"\necho -e \"${ORDS_PWD}\n${ORDS_PWD}\" > sqladmin.passwd" +
@@ -368,6 +368,8 @@ const StatusUpdating string = "Updating"
 const StatusReady string = "Healthy"
 
 const StatusError string = "Error"
+
+const StatusUnavailable string = "Unavailable"
 
 const ValueUnavailable string = "Unknown"
 
