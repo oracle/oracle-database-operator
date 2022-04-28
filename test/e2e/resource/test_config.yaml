@@ -9,7 +9,7 @@ ociConfigFile: ~/.oci/config
 profile: DEFAULT
 
 # Compartment OCID where the database creates
-compartmentOCID: ocid1.compartment..
+compartmentOCID: ocid1.compartment...
 # The OCID of the OCI Vault Secret that holds the password of the ADMIN account (should start with ocid1.vaultsecret...)
 adminPasswordOCID: ocid1.vaultsecret...
 # The OCID of the OCI Vault Secret that holds the password of the wallet (should start with ocid1.vaultsecret...)
@@ -18,3 +18,9 @@ instanceWalletPasswordOCID: ocid1.vaultsecret...
 subnetOCID: ocid1.subnet...
 # The OCID of the network security group used to test the network access settings
 nsgOCID: ocid1.networksecuritygroup...
+# The URL of the bucket used for configure ADB manual backup
+bucketURL: https://swiftobjectstorage.region.oraclecloud.com/v1/namespace-string/bucket_name
+# The auth token generated in OCI Console > Profile > User Settings > Auth Token
+authToken: token
+# The OCI user used to login to OCI Console
+ociUser: user

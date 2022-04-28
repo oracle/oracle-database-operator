@@ -59,8 +59,6 @@ type AutonomousDatabaseBackupSpec struct {
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 
-type BackupStateEnum string
-
 // AutonomousDatabaseBackupStatus defines the observed state of AutonomousDatabaseBackup
 type AutonomousDatabaseBackupStatus struct {
 	LifecycleState         database.AutonomousDatabaseBackupLifecycleStateEnum `json:"lifecycleState"`
