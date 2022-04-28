@@ -73,16 +73,6 @@ type AutonomousDatabaseRestoreSpec struct {
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 
-type RestoreStatusEnum string
-
-const (
-	RestoreStatusError      RestoreStatusEnum = "ERROR"
-	RestoreStatusAccepted   RestoreStatusEnum = "ACCEPTED"
-	RestoreStatusInProgress RestoreStatusEnum = "IN_PROGRESS"
-	RestoreStatusFailed     RestoreStatusEnum = "FAILED"
-	RestoreStatusSucceeded  RestoreStatusEnum = "SUCCEEDED"
-)
-
 // AutonomousDatabaseRestoreStatus defines the observed state of AutonomousDatabaseRestore
 type AutonomousDatabaseRestoreStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
