@@ -1072,7 +1072,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		}
 	}
 	// Set Apex users in apex_rt,apex_al,apex files
-	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf(dbcommons.SetApexUsers, apexPassword))
 	log.Info("SetApexUsers Output: \n" + out)
 	if strings.Contains(strings.ToUpper(out), "ERROR") {
@@ -1131,7 +1131,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 
 	//Install Apex in SIDB ready pod
 	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf(dbcommons.InstallApexInContainer,  apexPassword,  sidbPassword))
+		fmt.Sprintf(dbcommons.InstallApexInContainer,  apexPassword,  sidbPassword, n.Status.Pdbname))
 	if err != nil {
 		log.Info(err.Error())
 	}
@@ -1139,7 +1139,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 
 	// Checking if Apex is installed successfully or not
 	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf(dbcommons.IsApexInstalled, sidbPassword))
+		fmt.Sprintf(dbcommons.IsApexInstalled, sidbPassword, n.Status.Pdbname))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY
