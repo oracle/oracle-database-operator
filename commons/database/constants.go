@@ -412,10 +412,10 @@ const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \
 	"@apex_rest_config_core.sql;\n" +
 	//"exec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n" +
 	//"exec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_change_password_on_first_use => 'Y');\n" +
-	"\" | sqlplus -s sys/%[2]s@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
+	"\" | sqlplus -s sys/%[2]s@${ORACLE_HOST}:${ORACLE_PORT}/%[3]s as sysdba;"
 
 const IsApexInstalled string = "echo -e \"select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';\"" +
-	" | sqlplus -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/${ORACLE_SERVICE} as sysdba;"
+	" | sqlplus -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/%[2]s as sysdba;"
 
 const UninstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apxremov.sql ]; then  ( while true; do  sleep 60; echo \"Uninstalling Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apxremov.sql\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
