@@ -123,7 +123,7 @@ type OracleRestDataServiceStatus struct {
 //+kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type="string"
 // +kubebuilder:printcolumn:JSONPath=".spec.databaseRef",name="Database",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.databaseApiUrl",name="Database API",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.databaseApiUrl",name="Database API URL",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.databaseActionsUrl",name="Database Actions URL",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.apexUrl",name="Apex URL",type="string"
 
