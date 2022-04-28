@@ -215,22 +215,6 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
-	/*
-	// Install Apex
-	result = r.installApex(singleInstanceDatabase, readyPod, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
-
-	// Uninstall Apex
-	result = r.uninstallApex(singleInstanceDatabase, readyPod, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
-	*/
-
 	// If LoadBalancer = true , ensure Connect String is updated
 	if singleInstanceDatabase.Status.ConnectString == dbcommons.ValueUnavailable {
 		return requeueY, nil
@@ -238,7 +222,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	// update status to Ready after all operations succeed
 	singleInstanceDatabase.Status.Status = dbcommons.StatusReady
-	r.updateORDSStatus(singleInstanceDatabase, false, ctx, req)
+	r.updateORDSStatus(singleInstanceDatabase, ctx, req)
 
 	completed = true
 	r.Log.Info("Reconcile completed")
@@ -1355,7 +1339,7 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			if m.Spec.Edition == "express" {
 				eventReason = "Database Unhealthy"
 				m.Status.Status = dbcommons.StatusNotReady
-				r.updateORDSStatus(m, false, ctx, req)
+				r.updateORDSStatus(m, ctx, req)
 			}
 			out, err := dbcommons.ExecCommand(r, r.Config, runningPod.Name, runningPod.Namespace, "",
 				ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD)
@@ -1370,7 +1354,7 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 				eventMsg = "datafiles exists"
 				m.Status.DatafilesCreated = "true"
 				m.Status.Status = dbcommons.StatusNotReady
-				r.updateORDSStatus(m, false, ctx, req)
+				r.updateORDSStatus(m, ctx, req)
 			}
 
 		}
@@ -1760,150 +1744,9 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 }
 
 //#############################################################################
-//             Install APEX to CDB
-//#############################################################################
-func (r *SingleInstanceDatabaseReconciler) installApex(m *dbapi.SingleInstanceDatabase,
-	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
-	log := r.Log.WithValues("installApex", req.NamespacedName)
-
-	// No APEX for Pre-built db
-	if m.Spec.Image.PrebuiltDB {
-		return requeueN
-	}
-
-	if !m.Spec.InstallApex || m.Status.ApexInstalled {
-		return requeueN
-	}
-
-	m.Status.Status = dbcommons.StatusUpdating
-	r.Status().Update(ctx, m)
-	eventReason := "Installing Apex"
-	eventMsg := "Waiting for Apex Installation to complete"
-	r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-
-	unzipApex := dbcommons.UnzipApexOnSIDBPod
-	if m.Spec.Edition == "express" {
-		unzipApex += dbcommons.ChownApex
-	}
-
-	// Unzip /opt/oracle/oradata/apex-latest.zip to /opt/oracle/oradata/${ORACLE_SID^^}
-	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		unzipApex)
-	if err != nil {
-		log.Error(err, err.Error())
-		return requeueY
-	}
-	log.Info(" UnzipApex Output : \n" + out)
-
-	if strings.Contains(out, "apex-latest.zip not found") {
-		eventReason := "Waiting"
-		eventMsg := "apex-latest.zip doesn't exist in the location /opt/oracle/oradata/"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-		return requeueY
-	}
-
-	// Install APEX
-	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf(dbcommons.InstallApex, dbcommons.SQLPlusCLI))
-	if err != nil {
-		log.Info(err.Error())
-	}
-	log.Info(" InstallApex Output : \n" + out)
-
-	if strings.Contains(out, "Apex Folder doesn't exist") {
-		eventReason := "Waiting"
-		eventMsg := "apex Folder doesn't exist in the location /opt/oracle/oradata/" + strings.ToUpper(m.Spec.Sid)
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-		return requeueY
-	}
-
-	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.IsApexInstalled, dbcommons.SQLPlusCLI))
-	if err != nil {
-		log.Error(err, err.Error())
-		return requeueY
-	}
-	log.Info("IsApexInstalled Output: \n" + out)
-
-	apexInstalled := "APEXVERSION:"
-	if !strings.Contains(out, apexInstalled) {
-		return requeueY
-	}
-
-	m.Status.ApexInstalled = true
-	// Make sure m.Status.ApexInstalled is set to true .
-	for i := 0; i < 10; i++ {
-		err = r.Status().Update(ctx, m)
-		if err != nil {
-			log.Info(err.Error() + "\n updating m.Status.ApexInstalled = true")
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		break
-	}
-
-	return requeueN
-}
-
-//#############################################################################
-//             Uninstall APEX from CDB
-//#############################################################################
-func (r *SingleInstanceDatabaseReconciler) uninstallApex(m *dbapi.SingleInstanceDatabase,
-	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
-	log := r.Log.WithValues("uninstallApex", req.NamespacedName)
-
-	// No APEX for Pre-built db
-	if m.Spec.Image.PrebuiltDB {
-		return requeueN
-	}
-
-	if m.Spec.InstallApex || !m.Status.ApexInstalled {
-		return requeueN
-	}
-
-	m.Status.Status = dbcommons.StatusUpdating
-	r.Status().Update(ctx, m)
-	eventReason := "Uninstalling Apex"
-	eventMsg := "Waiting for Apex Uninstallation to complete"
-	r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-
-	// Uninstall APEX
-	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf(dbcommons.UninstallApex, dbcommons.SQLPlusCLI))
-	if err != nil {
-		log.Info(err.Error())
-		if !strings.Contains(err.Error(), "catcon.pl: completed") {
-			return requeueY
-		}
-	}
-	log.Info(" UninstallApex Output : \n" + out)
-
-	if strings.Contains(out, "Apex Folder doesn't exist") {
-		eventReason := "Waiting"
-		eventMsg := "apex Folder doesn't exist in the location /opt/oracle/oradata/" + strings.ToUpper(m.Spec.Sid)
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-		return requeueY
-	}
-
-	m.Status.ApexInstalled = false
-	// Make sure m.Status.ApexInstalled is set to false.
-	for i := 0; i < 10; i++ {
-		err = r.Status().Update(ctx, m)
-		if err != nil {
-			log.Info(err.Error() + "\n updating m.Status.ApexInstalled = false")
-			time.Sleep(5 * time.Second)
-			continue
-		}
-		break
-	}
-	r.updateORDSStatus(m, true, ctx, req)
-	return requeueN
-}
-
-//#############################################################################
 //             Update ORDS Status
 //#############################################################################
-func (r *SingleInstanceDatabaseReconciler) updateORDSStatus(m *dbapi.SingleInstanceDatabase, updateApexStatus bool, ctx context.Context, req ctrl.Request) {
+func (r *SingleInstanceDatabaseReconciler) updateORDSStatus(m *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) {
 
 	if m.Status.OrdsReference == "" {
 		return
@@ -1913,13 +1756,8 @@ func (r *SingleInstanceDatabaseReconciler) updateORDSStatus(m *dbapi.SingleInsta
 	if err != nil {
 		return
 	}
-	if updateApexStatus && n.Status.ApexConfigured && !m.Status.ApexInstalled {
-		n.Status.ApexConfigured = false
-		r.Status().Update(ctx, n)
-		n.Spec.ApexPassword.SecretName = ""
-		r.Update(ctx, n)
-	}
-	if !updateApexStatus && n.Status.OrdsInstalled {
+
+	if n.Status.OrdsInstalled {
 		// Update Status to Healthy/Unhealthy when SIDB turns Healthy/Unhealthy after ORDS is Installed
 		n.Status.Status = m.Status.Status
 		r.Status().Update(ctx, n)
