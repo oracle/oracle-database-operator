@@ -34,6 +34,8 @@ spec:
     keepSecret: true
 
   ## ORDS image details
+  ## Build the ORDS image following instructions at
+  ## https://github.com/oracle/docker-images/tree/main/OracleRestDataServices
   image:
     pullFrom:
     pullSecrets:
