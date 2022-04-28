@@ -25,8 +25,8 @@ spec:
     secretKey:
     keepSecret: true
 
-  ## Secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
-  ## Mention a non-null string for apexPassword.secretName to configure APEX with ORDS.
+  ## To configure APEX with ORDS, specfiy the apexPassword secret details. Leave empty if Apex is not needed.
+  ## This is a secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
   ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   apexPassword:
     secretName: 
@@ -38,17 +38,13 @@ spec:
     pullFrom:
     pullSecrets:
 
-  ## Uncomment only if you want to use seperate pvc for ords. else same pvc for sidb is used here
-  ## apex-latest.zip file should be present in the location '/opt/oracle/ords/config/ords'
-  ## Download using `wget https://download.oracle.com/otn_software/apex/apex-latest.zip`
-  ## use `kubectl cp <full/path/to/local/apex-latest.zip> <ordspodname>:/opt/oracle/ords/config/ords
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
   ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
-  # persistence:
-  #   size: 100Gi
-  #   storageClass: "oci"
-  #   accessMode: "ReadWriteOnce"
+  persistence:
+    size: 100Gi
+    storageClass: "oci-bv"
+    accessMode: "ReadWriteOnce"
 
   ## Type of service  Applicable on cloud enviroments only.
   ## if loadBalService: false, service type = "NodePort". else "LoadBalancer"
