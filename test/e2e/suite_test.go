@@ -41,6 +41,7 @@ package e2etest
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -114,6 +115,10 @@ var SharedAdminPasswordOCID string
 var SharedInstanceWalletPasswordOCID string
 var SharedSubnetOCID string
 var SharedNsgOCID string
+
+var SharedBucketUrl string
+var SharedAuthToken string
+var SharedOciUser string
 
 const SharedAdminPassSecretName string = "adb-admin-password"
 const SharedWalletPassSecretName = "adb-wallet-password"
@@ -211,6 +216,9 @@ var _ = BeforeSuite(func() {
 	SharedInstanceWalletPasswordOCID = testConfig.InstanceWalletPasswordOCID
 	SharedSubnetOCID = testConfig.SubnetOCID
 	SharedNsgOCID = testConfig.NsgOCID
+	SharedBucketUrl = testConfig.BucketURL
+	SharedAuthToken = testConfig.AuthToken
+	SharedOciUser = testConfig.OciUser
 
 	By("checking if the required parameters exist")
 	Expect(testConfig.OCIConfigFile).ToNot(Equal(""))
@@ -219,6 +227,9 @@ var _ = BeforeSuite(func() {
 	Expect(testConfig.InstanceWalletPasswordOCID).ToNot(Equal(""))
 	Expect(testConfig.SubnetOCID).ToNot(Equal(""))
 	Expect(testConfig.NsgOCID).ToNot(Equal(""))
+	Expect(testConfig.BucketURL).ToNot(Equal(""))
+	Expect(testConfig.AuthToken).ToNot(Equal(""))
+	Expect(testConfig.OciUser).ToNot(Equal(""))
 
 	By("getting OCI provider")
 	ociConfigUtil, err := e2eutil.GetOCIConfigUtil(testConfig.OCIConfigFile, testConfig.Profile)
@@ -288,4 +299,8 @@ var _ = AfterSuite(func() {
 			Expect(e2eutil.DeleteAutonomousDatabase(dbClient, adb.Spec.Details.AutonomousDatabaseOCID)).Should(Succeed())
 		}
 	}
+
+	// Delete sqlcl-latest.zip and sqlcl folder if exists
+	os.Remove("sqlcl-latest.zip")
+	os.RemoveAll("sqlcl")
 })

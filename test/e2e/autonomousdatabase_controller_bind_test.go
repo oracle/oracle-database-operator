@@ -196,7 +196,7 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 	Describe("bind to a terminated adb", func() {
 
 		//Wait until remote state is terminated
-		It("Should check that OCI adb state is terminated", e2ebehavior.AssertRemoteStateOCID(&k8sClient, &dbClient, &terminatedAdbID, database.AutonomousDatabaseLifecycleStateTerminated))
+		It("Should check that OCI adb state is terminated", e2ebehavior.AssertRemoteStateOCID(&k8sClient, &dbClient, &terminatedAdbID, database.AutonomousDatabaseLifecycleStateTerminated, time.Second*300))
 
 		It("Should create a AutonomousDatabase resource", func() {
 			adb := &dbv1alpha1.AutonomousDatabase{
