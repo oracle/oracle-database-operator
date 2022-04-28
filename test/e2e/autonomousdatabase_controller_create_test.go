@@ -43,6 +43,7 @@ import (
 	"time"
 
 	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/database"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -68,6 +69,8 @@ var _ = Describe("test ADB provisioning", func() {
 		const downloadedWallet = "instance-wallet-secret-1"
 
 		const resourceName = "createadb1"
+		const backupName = "adb-backup"
+		const restoreName = "adb-restore"
 		duplicateAdbResourceName := "duplicateadb"
 
 		var adbLookupKey = types.NamespacedName{Name: resourceName, Namespace: ADBNamespace}
@@ -168,6 +171,81 @@ var _ = Describe("test ADB provisioning", func() {
 				},
 			}
 			Expect(k8sClient.Delete(context.TODO(), duplicateAdb)).To(Succeed())
+		})
+
+		It("Should create an Autonomous Database Backup", func() {
+			e2ebehavior.AssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+
+			// Get adb ocid
+			adb := &dbv1alpha1.AutonomousDatabase{}
+			Expect(k8sClient.Get(context.TODO(), adbLookupKey, adb)).To(Succeed())
+			databaseOCID := adb.Spec.Details.AutonomousDatabaseOCID
+			tnsEntry := dbName + "_high"
+			err := e2ebehavior.ConfigureADBBackup(&dbClient, databaseOCID, &tnsEntry, &SharedPlainTextAdminPassword, &SharedPlainTextWalletPassword, &SharedBucketUrl, &SharedAuthToken, &SharedOciUser)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			adbBackup := &dbv1alpha1.AutonomousDatabaseBackup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "database.oracle.com/v1alpha1",
+					Kind:       "AutonomousDatabaseBackup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      backupName,
+					Namespace: ADBNamespace,
+				},
+				Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
+					Target: dbv1alpha1.TargetSpec{
+						OCIADB: dbv1alpha1.OCIADBSpec{
+							OCID: common.String(*databaseOCID),
+						},
+					},
+					DisplayName: common.String(backupName),
+					OCIConfig: dbv1alpha1.OCIConfigSpec{
+						ConfigMapName: common.String(SharedOCIConfigMapName),
+						SecretName:    common.String(SharedOCISecretName),
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(context.TODO(), adbBackup)).To(Succeed())
+
+			backupLookupKey := types.NamespacedName{Name: backupName, Namespace: ADBNamespace}
+			e2ebehavior.AssertBackupRestore(&k8sClient, &dbClient, &backupLookupKey, &adbLookupKey, database.AutonomousDatabaseLifecycleStateBackupInProgress)()
+		})
+
+		It("Should restore a database", func() {
+			e2ebehavior.AssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+
+			adbRestore := &dbv1alpha1.AutonomousDatabaseRestore{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "database.oracle.com/v1alpha1",
+					Kind:       "AutonomousDatabaseRestore",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      restoreName,
+					Namespace: ADBNamespace,
+				},
+				Spec: dbv1alpha1.AutonomousDatabaseRestoreSpec{
+					Target: dbv1alpha1.TargetSpec{
+						K8sADB: dbv1alpha1.K8sADBSpec{
+							Name: common.String(resourceName),
+						},
+					},
+					Source: dbv1alpha1.SourceSpec{
+						K8sADBBackup: dbv1alpha1.K8sADBBackupSpec{
+							Name: common.String(backupName),
+						},
+					},
+					OCIConfig: dbv1alpha1.OCIConfigSpec{
+						ConfigMapName: common.String(SharedOCIConfigMapName),
+						SecretName:    common.String(SharedOCISecretName),
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(context.TODO(), adbRestore)).To(Succeed())
+			restoreLookupKey := types.NamespacedName{Name: restoreName, Namespace: ADBNamespace}
+			e2ebehavior.AssertBackupRestore(&k8sClient, &dbClient, &restoreLookupKey, &adbLookupKey, database.AutonomousDatabaseLifecycleStateRestoreInProgress)()
 		})
 
 		It("Should download an instance wallet using the password from K8s Secret "+SharedWalletPassSecretName, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
