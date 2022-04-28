@@ -49,6 +49,7 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/oracle/oci-go-sdk/v63/common"
 	"github.com/oracle/oci-go-sdk/v63/database"
+	"github.com/oracle/oci-go-sdk/v63/workrequests"
 	corev1 "k8s.io/api/core/v1"
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -56,6 +57,9 @@ import (
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/test/e2e/util"
+	"os"
+	"os/exec"
+	"strings"
 )
 
 /**************************************************************
@@ -66,24 +70,29 @@ import (
 **************************************************************/
 
 var (
-	Describe      = ginkgo.Describe
-	By            = ginkgo.By
-	GinkgoWriter  = ginkgo.GinkgoWriter
-	Expect        = gomega.Expect
-	BeNil         = gomega.BeNil
-	Eventually    = gomega.Eventually
-	Equal         = gomega.Equal
-	Succeed       = gomega.Succeed
-	BeNumerically = gomega.BeNumerically
-	BeTrue        = gomega.BeTrue
+	Describe                = ginkgo.Describe
+	By                      = ginkgo.By
+	GinkgoWriter            = ginkgo.GinkgoWriter
+	Expect                  = gomega.Expect
+	BeNil                   = gomega.BeNil
+	Eventually              = gomega.Eventually
+	Equal                   = gomega.Equal
+	Succeed                 = gomega.Succeed
+	BeNumerically           = gomega.BeNumerically
+	BeTrue                  = gomega.BeTrue
+	changeTimeout           = time.Second * 300
+	provisionTimeout        = time.Second * 15
+	bindTimeout             = time.Second * 30
+	backupTimeout           = time.Minute * 20
+	intervalTime            = time.Second * 10
+	updateTimeout           = time.Minute * 7
+	changeLocalStateTimeout = time.Second * 600
 )
 
 func AssertProvision(k8sClient *client.Client, adbLookupKey *types.NamespacedName) func() {
 	return func() {
-		// Set the timeout to 15 minutes. The provision operation might take up to 10 minutes
+		// Set provisionTimeout to 15 minutes. The provision operation might take up to 10 minutes
 		// if we have already send too many requests to OCI.
-		provisionTimeout := time.Minute * 15
-		provisionInterval := time.Second * 10
 
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(adbLookupKey).NotTo(BeNil())
@@ -100,7 +109,7 @@ func AssertProvision(k8sClient *client.Client, adbLookupKey *types.NamespacedNam
 			}
 
 			return createdADB.Spec.Details.AutonomousDatabaseOCID, nil
-		}, provisionTimeout, provisionInterval).ShouldNot(BeNil())
+		}, provisionTimeout, intervalTime).ShouldNot(BeNil())
 
 		fmt.Fprintf(GinkgoWriter, "AutonomousDatabase DbName = %s, and AutonomousDatabaseOCID = %s\n",
 			*createdADB.Spec.Details.DbName, *createdADB.Spec.Details.AutonomousDatabaseOCID)
@@ -109,8 +118,6 @@ func AssertProvision(k8sClient *client.Client, adbLookupKey *types.NamespacedNam
 
 func AssertBind(k8sClient *client.Client, adbLookupKey *types.NamespacedName) func() {
 	return func() {
-		bindTimeout := time.Second * 30
-
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(adbLookupKey).NotTo(BeNil())
 
@@ -223,8 +230,6 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 	return func() *dbv1alpha1.AutonomousDatabase {
 		// Considering that there are at most two update requests will be sent during the update
 		// From the observation per request takes ~3mins to finish
-		updateTimeout := time.Minute * 7
-		updateInterval := time.Second * 20
 
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
@@ -251,7 +256,7 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 			}
 
 			return database.AutonomousDatabaseLifecycleStateEnum(listResp.Items[0].LifecycleState), nil
-		}, updateTimeout, updateInterval).Should(Equal(database.AutonomousDatabaseLifecycleStateAvailable))
+		}, updateTimeout, intervalTime).Should(Equal(database.AutonomousDatabaseLifecycleStateAvailable))
 
 		// Update
 		var newDisplayName = *expectedADB.Spec.Details.DisplayName + "_new"
@@ -284,8 +289,6 @@ func AssertADBDetails(k8sClient *client.Client, dbClient *database.DatabaseClien
 	return func() {
 		// Considering that there are at most two update requests will be sent during the update
 		// From the observation per request takes ~3mins to finish
-		updateTimeout := time.Minute * 7
-		updateInterval := time.Second * 20
 
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
@@ -380,7 +383,7 @@ func AssertADBDetails(k8sClient *client.Client, dbClient *database.DatabaseClien
 				compareString(expectedADBDetails.NetworkAccess.PrivateEndpoint.HostnamePrefix, resp.AutonomousDatabase.PrivateEndpointLabel)
 
 			return same, nil
-		}, updateTimeout, updateInterval).Should(BeTrue())
+		}, updateTimeout, intervalTime).Should(BeTrue())
 
 		// IMPORTANT: make sure the local resource has finished reconciling, otherwise the changes will
 		// be conflicted with the next test and cause unknow result.
@@ -483,8 +486,6 @@ func AssertState(k8sClient *client.Client, dbClient *database.DatabaseClient, ad
 // AssertHardLinkDelete asserts the database is terminated in OCI when hardLink is set to true
 func AssertHardLinkDelete(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName) func() {
 	return func() {
-		changeStateTimeout := time.Second * 300
-
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
 		Expect(adbLookupKey).NotTo(BeNil())
@@ -501,7 +502,7 @@ func AssertHardLinkDelete(k8sClient *client.Client, dbClient *database.DatabaseC
 		Eventually(func() (database.AutonomousDatabaseLifecycleStateEnum, error) {
 			retryPolicy := e2eutil.NewLifecycleStateRetryPolicy(database.AutonomousDatabaseLifecycleStateTerminating)
 			return returnRemoteState(derefK8sClient, derefDBClient, adb.Spec.Details.AutonomousDatabaseOCID, &retryPolicy)
-		}, changeStateTimeout).Should(Equal(database.AutonomousDatabaseLifecycleStateTerminating))
+		}, changeTimeout).Should(Equal(database.AutonomousDatabaseLifecycleStateTerminating))
 
 		AssertSoftLinkDelete(k8sClient, adbLookupKey)()
 	}
@@ -510,9 +511,6 @@ func AssertHardLinkDelete(k8sClient *client.Client, dbClient *database.DatabaseC
 // AssertSoftLinkDelete asserts the database remains in OCI when hardLink is set to false
 func AssertSoftLinkDelete(k8sClient *client.Client, adbLookupKey *types.NamespacedName) func() {
 	return func() {
-		changeStateTimeout := time.Second * 300
-		changeStateInterval := time.Second * 10
-
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(adbLookupKey).NotTo(BeNil())
 
@@ -532,15 +530,13 @@ func AssertSoftLinkDelete(k8sClient *client.Client, adbLookupKey *types.Namespac
 				return
 			}
 			return
-		}, changeStateTimeout, changeStateInterval).Should(Equal(true))
+		}, changeTimeout, intervalTime).Should(Equal(true))
 	}
 }
 
 // AssertLocalState asserts the lifecycle state of the local resource using adbLookupKey
 func AssertLocalState(k8sClient *client.Client, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
 	return func() {
-		changeLocalStateTimeout := time.Second * 600
-
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(adbLookupKey).NotTo(BeNil())
 
@@ -553,10 +549,8 @@ func AssertLocalState(k8sClient *client.Client, adbLookupKey *types.NamespacedNa
 	}
 }
 
-// AssertRemoteState asserts the lifecycle state in OCI using adbLookupKey
 func AssertRemoteState(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
 	return func() {
-
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
 		Expect(adbLookupKey).NotTo(BeNil())
@@ -566,16 +560,28 @@ func AssertRemoteState(k8sClient *client.Client, dbClient *database.DatabaseClie
 		adb := &dbv1alpha1.AutonomousDatabase{}
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 		By("Checking if the lifecycleState of remote resource is " + string(state))
-		AssertRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.AutonomousDatabaseOCID, state)()
+		AssertRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.AutonomousDatabaseOCID, state, changeTimeout)()
 	}
 }
 
-// AssertRemoteStateOCID asserts the lifecycle state in OCI using autonomousDatabaseOCID
-func AssertRemoteStateOCID(k8sClient *client.Client, dbClient *database.DatabaseClient, adbID *string, state database.AutonomousDatabaseLifecycleStateEnum) func() {
+// Backup takes ~15 minutes to complete, this function waits 20 minutes until ADB state is AVAILABLE
+func AssertRemoteStateForBackupRestore(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
 	return func() {
-		changeRemoteStateTimeout := time.Second * 300
-		changeRemoteStateInterval := time.Second * 10
+		Expect(k8sClient).NotTo(BeNil())
+		Expect(dbClient).NotTo(BeNil())
+		Expect(adbLookupKey).NotTo(BeNil())
 
+		derefK8sClient := *k8sClient
+
+		adb := &dbv1alpha1.AutonomousDatabase{}
+		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
+		By("Checking if the lifecycleState of remote resource is " + string(state))
+		AssertRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.AutonomousDatabaseOCID, state, backupTimeout)()
+	}
+}
+
+func AssertRemoteStateOCID(k8sClient *client.Client, dbClient *database.DatabaseClient, adbID *string, state database.AutonomousDatabaseLifecycleStateEnum, timeout time.Duration) func() {
+	return func() {
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
 		Expect(adbID).NotTo(BeNil())
@@ -588,7 +594,7 @@ func AssertRemoteStateOCID(k8sClient *client.Client, dbClient *database.Database
 		By("Checking if the lifecycleState of the ADB in OCI is " + string(state))
 		Eventually(func() (database.AutonomousDatabaseLifecycleStateEnum, error) {
 			return returnRemoteState(derefK8sClient, derefDBClient, adbID, nil)
-		}, changeRemoteStateTimeout, changeRemoteStateInterval).Should(Equal(state))
+		}, timeout, intervalTime).Should(Equal(state))
 	}
 }
 
@@ -624,4 +630,61 @@ func returnRemoteState(k8sClient client.Client, dbClient database.DatabaseClient
 		return "", err
 	}
 	return resp.LifecycleState, nil
+}
+
+/* Runs a script that connects to an ADB and configures the backup bucket  */
+func ConfigureADBBackup(dbClient *database.DatabaseClient, databaseOCID *string, tnsEntry *string, adminPassword *string, walletPassword *string, bucket *string, authToken *string, ociUser *string) error {
+
+	By("Downloading wallet zip")
+	walletZip, err := e2eutil.DownloadWalletZip(*dbClient, databaseOCID, walletPassword)
+	if err != nil {
+		fmt.Fprint(GinkgoWriter, err)
+		panic(err)
+	}
+	fmt.Fprint(GinkgoWriter, walletZip+" successfully downloaded.\n")
+
+	By("Installing SQLcl")
+	cmd := exec.Command("wget", "https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip")
+	stdout, err := cmd.Output()
+	cmd = exec.Command("unzip", "sqlcl-latest.zip")
+	stdout, err = cmd.Output()
+
+	proxy := os.Getenv("HTTP_PROXY")
+
+	By("Configuring adb backup bucket")
+	cmd = exec.Command("./sqlcl/bin/sql", "/nolog", "@backup.sql", proxy, walletZip, *adminPassword, strings.ToLower(*tnsEntry), *bucket, *ociUser, *authToken)
+	stdout, err = cmd.Output()
+
+	fmt.Fprint(GinkgoWriter, string(stdout))
+
+	return err
+}
+
+func AssertBackupRestore(k8sClient *client.Client, dbClient *database.DatabaseClient, backupRestoreLookupKey *types.NamespacedName, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
+	return func() {
+		// After creating a backup, ADB status will change to BACKUP IN PROGRESS
+		// for ~7 minutes. After that time, the state should return to AVAILBLE
+		derefK8sClient := *k8sClient
+
+		AssertRemoteState(k8sClient, dbClient, adbLookupKey, state)()
+
+		By("Wait until ADB state returns to AVAILABLE")
+		AssertRemoteStateForBackupRestore(k8sClient, dbClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+
+		if state == database.AutonomousDatabaseLifecycleStateBackupInProgress {
+			By("Checking adb backup State is ACTIVE")
+			createdBackup := &dbv1alpha1.AutonomousDatabaseBackup{}
+			Eventually(func() (database.AutonomousDatabaseBackupLifecycleStateEnum, error) {
+				derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdBackup)
+				return createdBackup.Status.LifecycleState, nil
+			}, backupTimeout, time.Second*20).Should(Equal(database.AutonomousDatabaseBackupLifecycleStateActive))
+		} else {
+			By("Checking adb restore State is SUCCEEDED")
+			createdRestore := &dbv1alpha1.AutonomousDatabaseRestore{}
+			Eventually(func() (workrequests.WorkRequestStatusEnum, error) {
+				derefK8sClient.Get(context.TODO(), *backupRestoreLookupKey, createdRestore)
+				return createdRestore.Status.Status, nil
+			}, backupTimeout, time.Second*20).Should(Equal(workrequests.WorkRequestStatusSucceeded))
+		}
+	}
 }

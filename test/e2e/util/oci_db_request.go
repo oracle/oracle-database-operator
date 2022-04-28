@@ -43,7 +43,8 @@ import (
 
 	"github.com/oracle/oci-go-sdk/v63/common"
 	"github.com/oracle/oci-go-sdk/v63/database"
-
+	"io"
+	"io/ioutil"
 	"time"
 )
 
@@ -139,4 +140,34 @@ func NewLifecycleStateRetryPolicy(lifecycleState database.AutonomousDatabaseLife
 		return true
 	}
 	return generateRetryPolicy(shouldRetry)
+}
+
+func DownloadWalletZip(dbClient database.DatabaseClient, databaseOCID *string, walletPassword *string) (string, error) {
+
+	req := database.GenerateAutonomousDatabaseWalletRequest{
+		AutonomousDatabaseId: common.String(*databaseOCID),
+		GenerateAutonomousDatabaseWalletDetails: database.GenerateAutonomousDatabaseWalletDetails{
+			Password: common.String(*walletPassword),
+		},
+	}
+
+	resp, err := dbClient.GenerateAutonomousDatabaseWallet(context.TODO(), req)
+	if err != nil {
+		return "", err
+	}
+
+	// Create a temp file wallet*.zip
+	const walletFileName = "wallet*.zip"
+	outZip, err := ioutil.TempFile("", walletFileName)
+	if err != nil {
+		return "", err
+	}
+	defer outZip.Close()
+
+	// Save the wallet in wallet*.zip
+	if _, err := io.Copy(outZip, resp.Content); err != nil {
+		return "", err
+	}
+
+	return outZip.Name(), nil
 }
