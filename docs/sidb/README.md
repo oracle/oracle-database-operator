@@ -109,7 +109,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
 ## Provision New Database
 
-  - Easily provision a new database instance on **minikube** using [singleinstancedatabase_minikube.yaml](../../config/samples/sidb/singleinstancedatabase_minikube.yaml).
+  - Easily provision a new database instance on the Kubernetes cluster using [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml).
 
     Sign into [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:7154182141811:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:9,9,Oracle%20Database%20Enterprise%20Edition,Oracle%20Database%20Enterprise%20Edition,1,0&cs=3Y_90hkCQLfJzrvTLiEipIGgWGUytfrtAPuHFocuWd0NDSacbBPlamohfLuiJA-bAsVL6Z_yKEMsTbb52bm6IRA) and accept the license agreement for the Database image, ignore if you have accepted already.
 
@@ -121,10 +121,10 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
       secret/oracle-container-registry-secret created
     ```
 
-    Now, Easily provision a new database instance on minikube by using following one command.
+    Now, easily provision a new database instance on the cluster by using the following command.
 
     ```sh
-    $ kubectl create -f singleinstancedatabase_minikube.yaml
+    $ kubectl create -f singleinstancedatabase_create.yaml
     
       singleinstancedatabase.database.oracle.com/sidb-sample created
     ```
@@ -137,14 +137,16 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
       singleinstancedatabase.database.oracle.com/sidb-sample created
     ```
 
-    **NOTE:** Make sure you have created the required `.spec.adminPassword` [secret](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/) and `.spec.persistence` [persistent volume](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
+    **NOTE:** 
+    - Make sure you have created the required `.spec.adminPassword` [secret](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/) and `.spec.persistence` [persistent volume](https://kubernetes.io/docs/concepts/storage/persistent-volumes/).
+    - For the ease of use, the storage class **oci-bv** is specified in the [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml). This storage class facilitates dynamic provisioning of the OCI block volume for the persistent storage of the database. For other cloud providers, there dynamic provisioning storage class can be used similarly.
 
 * ### Provision a Pre-built Database
 
   Provision a new Pre-built  database instance by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
 
   ```sh
-  $ kubectl create -f singleinstancedatabase_prov_prebuilt_db.yaml
+  $ kubectl create -f singleinstancedatabase_prebuiltdb.yaml
   
     singleinstancedatabase.database.oracle.com/sidb-sample created
   ```
@@ -155,8 +157,8 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
   Some limitations are listed as follows:
 
-  External volume can not be used for database persistence (as data files are inside the image itself).
-  Only the single replica mode (i.e. replicas=1) can be used.
+  - External volume can not be used for database persistence (as data files are inside the image itself).
+  - Only the single replica mode (i.e. replicas=1) can be used.
 
 * ### Creation Status
   
@@ -219,8 +221,8 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
     
     Multiple database pod replicas can be provisioned when the persistent volume access mode is ReadWriteMany. Database is open and mounted by one of the replicas. Other replicas will have instance started but not mounted and serve to provide quick cold fail-over in case the active pod dies. Update the replica attribute in the .yaml and apply using the kubectl apply command or edit/patch commands
 
-    Note: This functionality requires the [K8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s)
-          Pre-built images from container-registry.oracle.com include the K8s extension
+    **Note:** This functionality requires the [K8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s)
+          extended images from container-registry.oracle.com include the K8s extension
 
   * ### Patch Attributes
 
@@ -259,30 +261,30 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
   Quickly create copies of your existing database using this cloning functionality. A cloned database is an exact, block-for-block copy of the source database.
   This is much faster than creating a fresh new database and copying over the data.
   
-  To clone, specify the source database reference as value for the cloneFrom attribute in the sample .yaml.  
-  The source database must have archiveLog mode set to true.
+  To clone, specify the source database reference as value for the cloneFrom attribute in the sample [singleinstancedatabase_clone.yaml](../../config/samples/sidb/singleinstancedatabase_clone.yaml) file.  
+  **The source database must have archiveLog mode set to true.**
 
   ```sh
-  $ grep 'cloneFrom:' singleinstancedatabase.yaml
+  $ grep 'cloneFrom:' singleinstancedatabase_clone.yaml
   
     cloneFrom: "sidb-sample"
     
-  $ kubectl create -f singleinstancedatabase.yaml
+  $ kubectl create -f singleinstancedatabase_clone.yaml
 
     singleinstancedatabase.database.oracle.com/sidb-sample-clone created
   ```
 
-  Note: The clone database can specify a database image different from the source database. In such cases, cloning is supported only between databases of the same major release.
+  **Note:** The clone database can specify a database image different from the source database. In such cases, cloning is supported only between databases of the same major release.
   
 ## Patch/Rollback Database
 
   Databases running in your cluster and managed by this operator can be patched or rolled back between release updates of the same major release. To patch databases, specify an image of the higher release update, and to roll back, specify an image of the lower release update.
   
-  Patched Oracle Docker images can be built using this [patching extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching)
+  Patched Oracle Docker images can be built using this [patching extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching).
 
   * ### Patch existing Database
 
-    Edit and apply the `singleinstancedatabase.yaml` file of the database resource/object by specifying a new release update for image attributes or run the following command.
+    Edit and apply the [singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml) file of the database resource/object by specifying a new release update for image attributes or run the following command.
     
     ```sh
     kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
@@ -340,8 +342,9 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     ```sh
     $ kubectl get oraclerestdataservice ords-sample
 
-    NAME          STATUS    DATABASE      DATABASE API URL                     DATABASE ACTIONS URL
-    ords-sample   Healthy   sidb-sample   https://10.0.25.54:8443/ords/     https://10.0.25.54:8443/ords/sql-developer
+    NAME          STATUS      DATABASE            DATABASE API URL                                            DATABASE ACTIONS URL                            APEX URL
+    ords-sample   Healthy    sidb-sample   https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/   https://10.0.25.54:8443/ords/sql-developer   https://10.0.25.54:8443/ords/ORCLPDB1/apex
+    
     ```
 
 * ### Detailed Status
@@ -358,9 +361,10 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
       Metadata: ...
       Spec: ...
       Status:
-        Cluster Db API URL:    https://ords21c-1.default:8443/ords/
+        Cluster Db API URL:    https://ords21c-1.default:8443/ords/ORCLPDB1/_/db-api/stable/
         Database Actions URL:  https://10.0.25.54:8443/ords/sql-developer
-        Database API URL:      https://10.0.25.54:8443/ords/
+        Database API URL:      https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/
+        Apex URL:              https://10.0.25.54:8443/ords/ORCLPDB1/apex
         Database Ref:          sidb21c-1
         Image:
           Pull From:     ...
@@ -403,7 +407,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     ```sh
     $ kubectl get oraclerestdataservice/ords-sample --template={{.status.databaseApiUrl}}
 
-      https://10.0.25.54:8443/ords/
+      https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/
     ```
 
     All the REST Endpoints can be found at <https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/rest-endpoints.html>
@@ -429,90 +433,28 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
 
   Note :  Browser may not prompt for credentials while accessing certain REST Endpoints and in such case one can use clients like curl and pass credentials while calling REST Endpoints .
 
-* #### Some Usecases
-
-* ##### PDB Lifecycle Management
-
-  * To Enable PDB Lifecycle Management, Grant SYSDBA to CDB Administrator
-
+* #### Some use cases
+  Some generic use cases for the Database API are as follows:
+* ##### Getting all Database components
     ```sh
-    $ echo "GRANT SYSDBA TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" | sqlplus -s sys/<SysPassword of .spec.databaseRef>@<connectString of .spec.databaseRef> as sysdba
-    
-    Grant succeeded.
+    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/components/ | python -m json.tool
     ```
-
-    The Oracle REST Data Services (ORDS) database API allows us to manage the lifecycle of PDBs via REST web service calls.
-    Few APIs :
-  * List PDB's
-
-      ```sh
-        `$ curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/_/db-api/stable/database/pdbs/ | python -m json.tool`
-      ```
-
-  * Create PDB
-
-      Create a file called "pdbsample.json" with the following contents.
-
-      ```sh
-        { "method": "CREATE",
-        "adminName": "pdbsample_admin",
-        "adminPwd": "<Admin Password for PDB>",
-        "pdb_name": "pdbsample",
-        "fileNameConversions": "('/opt/oracle/oradata/<.spec.databaseRef.sid>/pdbseed/', '/opt/oracle/oradata/<.spec.databaseRef.sid>/pdbsample/')",
-        "reuseTempFile": true,
-        "totalSize": "10G",
-        "tempSize": "100M",
-        "getScript": false
-        }
-      ```
-
-      Execute the follwing API to run the above json script to create pdb.
-
-      ```sh
-        $ curl -k --request POST --url https://10.0.25.54:8443/ords/_/db-api/latest/database/pdbs/ \
-        --user 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' \
-        --header 'content-type: application/json' \
-        --data @pdbsample.json
-      ```
-
-  * Open/Close PDB
-
-      ```sh
-        $ curl -k --request POST --url https://10.0.25.54:8443/ords/_/db-api/latest/database/pdbs/pdbsample/status \
-        --user 'ORDS_PUBLIC_USER:<.spec.ordsPassword>'\
-        --header 'content-type: application/json' \
-        --data '  {
-          "state": "OPEN/CLOSE",
-          "modifyOption": "NORMAL"
-        } '
-      ```
-
-  * Clone PDB
-
-      Create a file called "pdbclone.json" with the following contents.
-
-      ```sh
-        {
-          "method": "CLONE",
-          "clonePDBName": "pdbclone",
-          "fileNameConversions": "('/opt/oracle/oradata/<.spec.databaseRef.sid>/pdbsample/', '/opt/oracle/oradata/<.spec.databaseRef.sid>/pdbclone/')",
-          "unlimitedStorage": true,
-          "reuseTempFile": true,
-          "totalSize": "UNLIMITED",
-          "tempSize": "UNLIMITED"
-        } 
-      ```
-
-      Execute the follwing API to run the above json script to clone pdb from pdbsample.
-
-      ```sh
-        $ curl -k --request POST --url https://10.0.25.54:8443/ords/_/db-api/latest/database/pdbs/pdbsample/ \
-        --user 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' \
-        --header 'content-type: application/json' \
-        --data @pdbclone.json
-      ```
-
-      More REST APIs for PDB Lifecycle Management can be found at [https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/api-pluggable-database-lifecycle-management.html](https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/api-pluggable-database-lifecycle-management.html)
+* ##### Getting all Database users
+    ```sh
+    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/security/users/ | python -m json.tool
+    ```
+* ##### Getting all tablespaces
+    ```sh
+    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/storage/tablespaces/ | python -m json.tool
+    ```
+* ##### Getting all Database parameters
+    ```sh
+    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/parameters/ | python -m json.tool
+    ```
+* ##### Getting all feature usage statitics
+    ```sh
+    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/feature_usage/ | python -m json.tool
+    ```
 
 * #### REST Enabled SQL
 
@@ -566,7 +508,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
 
 * ### Database Actions
 
-    Database Actions is a web-based interface that uses Oracle REST Data Services to provide development, data tools, administration and monitoring features for Oracle Database .
+    Database Actions is a web-based interface that uses Oracle REST Data Services to provide development, data tools, administration and monitoring features for Oracle Database.
 
   * To use Database Actions, one must sign in as a database user whose schema has been REST-enabled.
   * This can be done by specifying appropriate values for the `.spec.restEnableSchemas` attributes details in the sample yaml [config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml) which are needed for authorising Database Actions.
@@ -600,25 +542,11 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
 
     Using APEX, developers can quickly develop and deploy compelling apps that solve real problems and provide immediate value. Developers won't need to be an expert in a vast array of technologies to deliver sophisticated solutions. Focus on solving the problem and let APEX take care of the rest.
 
-  **Download APEX:**
-  * Download latest version of apex using <https://download.oracle.com/otn_software/apex/apex-latest.zip>
-  * Copy apex-latest.zip file to the location '/opt/oracle/oradata' of SingleInstanceDatabase pod .
-  * Use `kubectl cp </full/path/to/local/apex-latest.zip> <anyone-of-running-sidbpodname>:/opt/oracle/oradata` to copy apex-latest.zip
-
-  **Install APEX:**
-  * Set `.spec.installApex` to true in [config/samples/sidb/singleinstancedatabase.yaml](config/samples/sidb/singleinstancedatabase.yaml)
-  * Status of SIDB turns to 'Updating' during apex installation and turns 'Healthy' after successful installation. You can also check status using below cmd
-
-    ```sh
-    $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath=[{.status.apexInstalled}]"
-
-      [true]
-    ```
-
-  * To access APEX , You need to configure APEX with ORDS
+    To access APEX, You need to configure APEX with ORDS. The following section will explain configuring APEX with ORDS in details:
 
   **Configure APEX with ORDS:**
-  * Set `.spec.apexPassword.secretName` to a non-null string in [config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)
+  * For quick provisioning, apply the [config/samples/sidb/oraclerestdataservice_apex.yaml](../../confi/samples/sidb/oraclerestdataservice_apex.yaml) file. First, it creates `ords-secret`, `apex-secret`, and then provision the ORDS configured with Oracle APEX. It uses the ORDS image hosted on the [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:113387942129427:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:1183,1183,Oracle%20REST%20Data%20Services%20(ORDS)%20with%20Application%20Express,Oracle%20REST%20Data%20Services%20(ORDS)%20with%20Application%20Express,1,0&cs=3_y-KlneZIxRRfXzerC_0ro7P1MGh-B_9lTEQObVTdoQCWkmsQ3lHpFs90Z8QFheteVQEzPvtUVHEQAqqXegYbA).
+  * On the other hand, to provision ORDS step by step, set `.spec.apexPassword.secretName` to a non-null string in [config/samples/sidb/oraclerestdataservice.yaml](../../config/samples/sidb/oraclerestdataservice.yaml)
   * This is used as a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
   * Status of ORDS turns to 'Updating' during apex configuration and turns 'Healthy' after successful configuration. You can also check status using below cmd
 
@@ -635,7 +563,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     ```sh
     $ kubectl get oraclerestdataservice/ords-sample --template={{.status.databaseApiUrl}}
 
-      https://10.0.25.54:8888/ords/
+      https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/
     ```
 
     Sign in to Administration servies using \
@@ -654,7 +582,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
 
 * ### Patch Attributes
 
-    The following attributes cannot be patched post SingleInstanceDatabase instance Creation : databaseRef, loadBalancer, image, ordsPassword, adminPassword, apexPassword.
+  * The following attributes cannot be patched post SingleInstanceDatabase instance Creation : databaseRef, loadBalancer, image, ordsPassword, adminPassword, apexPassword.
 
   * A schema can be rest enabled or disabled by setting the `.spec.restEnableSchemas[].enable` to true or false respectively in ords sample .yaml file and apply using the kubectl apply command or edit/patch commands. This requires `.spec.ordsPassword` secret.
 
