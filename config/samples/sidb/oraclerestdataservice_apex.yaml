@@ -19,7 +19,7 @@ metadata:
   name: apex-secret
 type: Opaque
 stringData:
-  oracle_pwd: "ChangeOnApexInstall_1"
+  oracle_pwd: "ChangeOnInstall_2"
 
 ---
 
