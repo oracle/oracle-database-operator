@@ -113,7 +113,6 @@ type OracleRestDataServiceStatus struct {
 	ApexConfigured     bool   `json:"apexConfigured,omitempty"`
 	ApxeUrl            string `json:"apexUrl,omitempty"`
 	CommonUsersCreated bool   `json:"commonUsersCreated,omitempty"`
-	OrdsSetupCompleted bool   `json:"ordsSetupCompleted,omitempty"`
 	Replicas           int    `json:"replicas,omitempty"`
 
 	Image OracleRestDataServiceImage `json:"image,omitempty"`

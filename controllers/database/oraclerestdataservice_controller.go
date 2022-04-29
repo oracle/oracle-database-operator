@@ -375,7 +375,7 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 
 	if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
 		m.Status.Status = dbcommons.StatusReady
-		m.Status.OrdsSetupCompleted = true
+		m.Status.OrdsInstalled = true
 	} else {
 		m.Status.Status = dbcommons.StatusNotReady
 		return requeueY, readyPod
@@ -688,7 +688,7 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	if m.Spec.LoadBalancer {
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
 			m.Status.DatabaseApiUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
-				 fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/"+n.Status.Pdbname+"_/db-api/stable/"
+				 fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/"+n.Status.Pdbname+"/_/db-api/stable/"
 			m.Status.ServiceIP = svc.Status.LoadBalancer.Ingress[0].IP
 			m.Status.DatabaseActionsUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
 				 fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/sql-developer"
@@ -705,7 +705,7 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	if nodeip != "" {
 		m.Status.ServiceIP = nodeip
 		m.Status.DatabaseApiUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
-			"/ords/"+n.Status.Pdbname+"_/db-api/stable/"
+			"/ords/"+n.Status.Pdbname+"/_/db-api/stable/"
 		m.Status.DatabaseActionsUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
 			"/ords/sql-developer"
 		if m.Status.ApexConfigured {
