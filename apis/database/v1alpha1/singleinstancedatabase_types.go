@@ -57,7 +57,6 @@ type SingleInstanceDatabaseSpec struct {
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]+$`
 	Sid          string `json:"sid,omitempty"`
-	InstallApex  bool   `json:"installApex,omitempty"`
 	Charset      string `json:"charset,omitempty"`
 	Pdbname      string `json:"pdbName,omitempty"`
 	LoadBalancer bool   `json:"loadBalancer,omitempty"`

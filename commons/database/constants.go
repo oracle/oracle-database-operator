@@ -222,7 +222,9 @@ const SetAdminUsersSQL string = "CREATE USER C##DBAPI_CDB_ADMIN IDENTIFIED BY \\
 	"\nGRANT PDB_DBA  TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" +
 	"\nCREATE USER C##_DBAPI_PDB_ADMIN IDENTIFIED BY \\\"%[1]s\\\" CONTAINER=ALL ACCOUNT UNLOCK;" +
 	"\nalter user C##_DBAPI_PDB_ADMIN identified by \\\"%[1]s\\\" account unlock;" +
-	"\nGRANT DBA TO C##_DBAPI_PDB_ADMIN CONTAINER = ALL;"
+	"\nGRANT DBA TO C##_DBAPI_PDB_ADMIN CONTAINER = ALL;" +
+	"\nalter pluggable database pdb\\$seed close;" +
+	"\nalter pluggable database pdb\\$seed open read write force;"
 
 const GetUserOrdsSchemaStatusSQL string = "alter session set container=%[2]s;" +
 	"\nselect 'STATUS:'||status as status from ords_metadata.ords_schemas where upper(parsing_schema) = upper('%[1]s');"
@@ -252,6 +254,7 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property pdb.open.asneeded true" +
 	"\numask 177" +
 	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
 	"\necho db.cdb.adminUser.password=\"%[4]s\" >> cdbAdmin.properties" +
@@ -278,14 +281,46 @@ const SetupORDSCMD string = "$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-pr
 	"\nrm -f sqladmin.passwd" +
 	"\numask 022" +
 	"\nsed -i 's,jetty.port=8888,jetty.secure.port=8443\\nssl.cert=\\nssl.cert.key=\\nssl.host=%[3]s,g' /opt/oracle/ords/config/ords/standalone/standalone.properties " +
-	"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/ords/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
+	"\nsed -i 's,standalone.static.path=/opt/oracle/ords/doc_root/i,standalone.static.path=/opt/oracle/ords/config/apex/images,g' /opt/oracle/ords/config/ords/standalone/standalone.properties"
 
-const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p WHERE s.username = 'ORDS_PUBLIC_USER' AND p.addr(+) = s.paddr;"
+const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then exit ;fi;" +
+	"\nexport APEXI=$ORDS_HOME/config/apex/images" +
+	"\n$ORDS_HOME/runOrds.sh --setuponly" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.auth.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.management.services.disabled false" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property database.api.admin.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property dbc.auth.enabled true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property restEnabledSql.active true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property db.serviceNameSuffix \"\" " + // Mandatory when ORDS Installing at CDB Level -> Maps PDB's
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InitialLimit 5" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.MaxLimit 20" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.InactivityTimeout 300" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property feature.sdw true" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property security.verifySSL false" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-property jdbc.maxRows 1000" +
+	"\nmkdir -p $ORDS_HOME/config/ords/conf" +
+	"\numask 177" +
+	"\necho db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA > cdbAdmin.properties" +
+	"\necho db.cdb.adminUser.password=\"${ORACLE_PWD}\" >> cdbAdmin.properties" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu cdbAdmin.properties" +
+	"\nrm -f cdbAdmin.properties" +
+	"\necho db.adminUser=C##_DBAPI_PDB_ADMIN > pdbAdmin.properties" +
+	"\necho db.adminUser.password=\"${ORACLE_PWD}\">> pdbAdmin.properties" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex_pu pdbAdmin.properties" +
+	"\nrm -f pdbAdmin.properties" +
+	"\necho -e \"${ORDS_PWD}\n${ORDS_PWD}\" > sqladmin.passwd" +
+	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war user ${ORDS_USER} \"SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema \" < sqladmin.passwd" +
+	"\nrm -f sqladmin.passwd" +
+	"\numask 022"
+
+const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p "+
+	"WHERE (s.username = 'ORDS_PUBLIC_USER' or s.username = 'C##_DBAPI_PDB_ADMIN' ) AND p.addr(+) = s.paddr;"
 
 const KillSessionSQL string = "alter system kill session '%[1]s';"
 
-const DropAdminUsersSQL string = "drop user C##DBAPI_CDB_ADMIN;" +
-	"\ndrop user C##_DBAPI_PDB_ADMIN;"
+const DropAdminUsersSQL string = "drop user C##DBAPI_CDB_ADMIN cascade;" +
+	"\ndrop user C##_DBAPI_PDB_ADMIN cascade;"
 
 const UninstallORDSCMD string = "\numask 177" +
 	"\necho -e \"1\n${ORACLE_HOST}\n${ORACLE_PORT}\n1\n${ORACLE_SERVICE}\nsys\n%[1]s\n%[1]s\n1\" > ords.cred" +
@@ -298,8 +333,8 @@ const UninstallORDSCMD string = "\numask 177" +
 	"\nrm -rf /opt/oracle/ords/config/ords/standalone" +
 	"\nrm -rf /opt/oracle/ords/config/ords/apex"
 
-// To handle timing issue, checking if either of https://localhost:8443 or http://localhost:8888 is used for ORDS Installation
-const GetORDSStatus string = "  curl -sSkv -k -X GET https://localhost:8443/ords/_/db-api/stable/metadata-catalog/ || curl  -sSkv -X GET http://localhost:8888/ords/_/db-api/stable/metadata-catalog/ "
+
+const GetORDSStatus string = "curl -sSkv -k -X GET https://localhost:8443/ords/_/db-api/stable/metadata-catalog/"
 
 const ValidateAdminPassword string = "conn sys/%s@${ORACLE_SID} as sysdba\nshow user"
 
@@ -332,6 +367,8 @@ const StatusUpdating string = "Updating"
 const StatusReady string = "Healthy"
 
 const StatusError string = "Error"
+
+const StatusUnavailable string = "Unavailable"
 
 const ValueUnavailable string = "Unknown"
 
@@ -370,12 +407,21 @@ const ChownApex string = " chown oracle:oinstall /opt/oracle/oradata/${ORACLE_SI
 const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apexins.sql ]; then  ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apexins.sql SYSAUX SYSAUX TEMP /i/\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const IsApexInstalled string = "select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
+const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apxsilentins.sql ]; then cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[2]s %[2]s %[2]s %[2]s\" | %[1]s; else echo \"Apex Folder doesn't exist\" ; fi ;"
+
+const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;\n"+
+	"@apex_rest_config_core.sql;\n" +
+	"exec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n" +
+	"exec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_change_password_on_first_use => 'Y');\n" +
+	"\" | sqlplus -s sys/%[2]s@${ORACLE_HOST}:${ORACLE_PORT}/%[3]s as sysdba;"
+
+const IsApexInstalled string = "echo -e \"select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';\"" +
+	" | sqlplus -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/%[2]s as sysdba;"
 
 const UninstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apxremov.sql ]; then  ( while true; do  sleep 60; echo \"Uninstalling Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apxremov.sql\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const ConfigureApexRest string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apex_rest_config.sql ]; then  cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && " +
+const ConfigureApexRest string = "if [ -f ${ORDS_HOME}/config/apex/apex_rest_config.sql ]; then  cd ${ORDS_HOME}/config/apex && " +
 	"echo -e \"%[1]s\n%[1]s\" | %[2]s ; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
 const AlterApexUsers string = "echo -e \" ALTER USER APEX_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK; \n ALTER USER APEX_REST_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;" +

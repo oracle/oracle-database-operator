@@ -115,7 +115,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return requeueN, err
 	}
 
-	// Manage SingleInstanceDatabase Deletion
+	// Manage OracleRestDataService Deletion
 	result := r.manageOracleRestDataServiceDeletion(req, ctx, oracleRestDataService, singleInstanceDatabase)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
@@ -135,9 +135,10 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 
 	// Always refresh status before a reconcile
 	defer r.Status().Update(ctx, oracleRestDataService)
+	defer r.Status().Update(ctx, singleInstanceDatabase)
 
 	// Create Service
-	result = r.createSVC(ctx, req, oracleRestDataService)
+	result = r.createSVC(ctx, req, oracleRestDataService, singleInstanceDatabase)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -151,33 +152,35 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	// Validate if Primary Database Reference is ready
-	result, sidbReadyPod := r.validateSidbReadiness(oracleRestDataService, singleInstanceDatabase, ctx, req)
+	result, sidbReadyPod := r.validateSIDBReadiness(oracleRestDataService, singleInstanceDatabase, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
 
+
 	// Create ORDS Pods
-	result = r.createPods(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	result = r.createPods(oracleRestDataService, singleInstanceDatabase, ctx, req)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+
+	var ordsReadyPod corev1.Pod
+	result, ordsReadyPod = r.checkHealthStatus(oracleRestDataService, ctx, req)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+
+	result = r.restEnableSchemas(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
 
 	// Configure Apex
-	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
-
-	result = r.setupORDS(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
-
-	result = r.checkHealthStatus(oracleRestDataService, ctx, req)
+	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, ordsReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -211,9 +214,6 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	if m.Status.LoadBalancer != "" && m.Status.LoadBalancer != strconv.FormatBool(m.Spec.LoadBalancer) {
 		eventMsgs = append(eventMsgs, "service patching is not avaiable currently")
 	}
-	if !n.Status.ApexInstalled && m.Spec.ApexPassword.SecretName != "" {
-		eventMsgs = append(eventMsgs, "apex is not installed yet")
-	}
 	if m.Status.Image.PullFrom != "" && m.Status.Image != m.Spec.Image {
 		eventMsgs = append(eventMsgs, "image patching is not avaiable currently")
 	}
@@ -235,7 +235,7 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 //#####################################################################################################
 //    Validate Readiness of the primary DB specified
 //#####################################################################################################
-func (r *OracleRestDataServiceReconciler) validateSidbReadiness(m *dbapi.OracleRestDataService,
+func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleRestDataService,
 	n *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
 
 	log := r.Log.WithValues("validateSidbReadiness", req.NamespacedName)
@@ -293,24 +293,38 @@ func (r *OracleRestDataServiceReconciler) validateSidbReadiness(m *dbapi.OracleR
 		return requeueY, sidbReadyPod
 	}
 
+	// Create PDB , CDB Admin users and grant permissions. ORDS installation on CDB level
+	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.SetAdminUsersSQL, adminPassword), dbcommons.SQLPlusCLI))
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY, sidbReadyPod
+	}
+	log.Info("SetAdminUsers Output :\n" + out)
+
+	if !strings.Contains(out, "ERROR") || !strings.Contains(out, "ORA-") ||
+		strings.Contains(out, "ERROR") && strings.Contains(out, "ORA-01920") {
+		m.Status.CommonUsersCreated = true
+	}
 	return requeueN, sidbReadyPod
 }
+
 
 //#####################################################################################################
 //    Check ORDS Health Status
 //#####################################################################################################
 func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestDataService,
-	ctx context.Context, req ctrl.Request) ctrl.Result {
+	ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
 	log := r.Log.WithValues("checkHealthStatus", req.NamespacedName)
 
 	readyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
 		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
-		return requeueY
+		return requeueY, readyPod
 	}
 	if readyPod.Name == "" {
-		return requeueY
+		return requeueY, readyPod
 	}
 
 	// Get ORDS Status
@@ -319,22 +333,23 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 	log.Info("GetORDSStatus Output")
 	log.Info(out)
 	if strings.Contains(strings.ToUpper(out), "ERROR") {
-		return requeueY
+		return requeueY, readyPod
 	}
 	if err != nil {
 		log.Info(err.Error())
 		if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
-			return requeueY
+			return requeueY, readyPod
 		}
 	}
 
 	if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
 		m.Status.Status = dbcommons.StatusReady
+		m.Status.OrdsInstalled = true
 	} else {
 		m.Status.Status = dbcommons.StatusNotReady
-		return requeueY
+		return requeueY, readyPod
 	}
-	return requeueN
+	return requeueN, readyPod
 }
 
 //#############################################################################
@@ -379,7 +394,8 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 //#############################################################################
 //    Instantiate POD spec from OracleRestDataService spec
 //#############################################################################
-func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase, ordsInstalled bool) *corev1.Pod {
+func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRestDataService,
+		n *dbapi.SingleInstanceDatabase) *corev1.Pod {
 
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
@@ -408,84 +424,96 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 					},
 				},
 			}},
-			InitContainers: []corev1.Container{{
-				Name:    "init-permissions",
-				Image:   m.Spec.Image.PullFrom,
-				Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/ords/config/ords", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
-				SecurityContext: &corev1.SecurityContext{
-					// User ID 0 means, root user
-					RunAsUser: func() *int64 { i := int64(0); return &i }(),
+			InitContainers: []corev1.Container{
+				{
+					Name:    "init-permissions",
+					Image:   m.Spec.Image.PullFrom,
+					Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/ords/config/ords", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
+					SecurityContext: &corev1.SecurityContext{
+						// User ID 0 means, root user
+						RunAsUser: func() *int64 { i := int64(0); return &i }(),
+					},
+					VolumeMounts: []corev1.VolumeMount{{
+						MountPath: "/opt/oracle/ords/config/ords",
+						Name:      "datamount",
+						SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
+					}},
 				},
-				VolumeMounts: []corev1.VolumeMount{{
-					MountPath: "/opt/oracle/ords/config/ords",
-					Name:      "datamount",
-					SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
-				}},
-			}},
+				{
+					Name:    "init-ords",
+					Image:   m.Spec.Image.PullFrom,
+					Command: []string{"/bin/sh", "-c", dbcommons.InitORDSCMD},
+					SecurityContext: &corev1.SecurityContext{
+						RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+						RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
+					},
+					VolumeMounts: []corev1.VolumeMount{{
+						MountPath: "/opt/oracle/ords/config/ords",
+						Name:      "datamount",
+						SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
+					}},
+					Env: []corev1.EnvVar{
+						{
+							Name:  "ORACLE_HOST",
+							Value: n.Name,
+						},
+						{
+							Name:  "ORACLE_PORT",
+							Value: "1521",
+						},
+						{
+							Name: "ORACLE_SERVICE",
+							Value: func() string {
+								if m.Spec.OracleService != "" {
+									return m.Spec.OracleService
+								}
+								return n.Spec.Sid
+							}(),
+						},
+						{
+							Name: "ORDS_USER",
+							Value: func() string {
+								if m.Spec.OrdsUser != "" {
+									return m.Spec.OrdsUser
+								}
+								return "ORDS_PUBLIC_USER"
+							}(),
+						},
+						{
+							Name: "ORDS_PWD",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: m.Spec.OrdsPassword.SecretName,
+									},
+									Key: m.Spec.OrdsPassword.SecretKey,
+								},
+							},
+						},
+						{
+							Name: "ORACLE_PWD",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: m.Spec.AdminPassword.SecretName,
+									},
+									Key: m.Spec.AdminPassword.SecretKey,
+								},
+							},
+						},
+					},
+				},
+			},
 			Containers: []corev1.Container{{
-				Name:            m.Name,
-				Image:           m.Spec.Image.PullFrom,
-				ImagePullPolicy: corev1.PullAlways,
-				Ports:           []corev1.ContainerPort{{ContainerPort: 8443}},
+				Name:  m.Name,
+				Image: m.Spec.Image.PullFrom,
+				Ports: []corev1.ContainerPort{{ContainerPort: 8443}},
 				VolumeMounts: []corev1.VolumeMount{{
 					MountPath: "/opt/oracle/ords/config/ords/",
 					Name:      "datamount",
 					SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
 				}},
 				Env: func() []corev1.EnvVar {
-					// ORDS_PWD, ORACLE_PWD is required only during the First ORDS Installation.
-					if !ordsInstalled {
-						return []corev1.EnvVar{
-							{
-								Name:  "ORACLE_HOST",
-								Value: n.Name,
-							},
-							{
-								Name:  "ORACLE_PORT",
-								Value: "1521",
-							},
-							{
-								Name: "ORACLE_SERVICE",
-								Value: func() string {
-									if m.Spec.OracleService != "" {
-										return m.Spec.OracleService
-									}
-									return n.Spec.Sid
-								}(),
-							},
-							{
-								Name: "ORDS_USER",
-								Value: func() string {
-									if m.Spec.OrdsUser != "" {
-										return m.Spec.OrdsUser
-									}
-									return "ORDS_PUBLIC_USER"
-								}(),
-							},
-							{
-								Name: "ORDS_PWD",
-								ValueFrom: &corev1.EnvVarSource{
-									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: m.Spec.OrdsPassword.SecretName,
-										},
-										Key: m.Spec.OrdsPassword.SecretKey,
-									},
-								},
-							},
-							{
-								Name: "ORACLE_PWD",
-								ValueFrom: &corev1.EnvVarSource{
-									SecretKeyRef: &corev1.SecretKeySelector{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: m.Spec.AdminPassword.SecretName,
-										},
-										Key: m.Spec.AdminPassword.SecretKey,
-									},
-								},
-							},
-						}
-					}
 					// After ORDS is Installed, we DELETE THE OLD ORDS Pod and create new ones ONLY USING BELOW ENV VARIABLES.
 					return []corev1.EnvVar{
 						{
@@ -554,6 +582,10 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 }
 
 //#############################################################################
+//    Instantiate POD spec from OracleRestDataService spec
+//#############################################################################
+
+//#############################################################################
 //    Instantiate Persistent Volume Claim spec from SingleInstanceDatabase spec
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRestDataService) *corev1.PersistentVolumeClaim {
@@ -593,7 +625,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 //    Create a Service for OracleRestDataService
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctrl.Request,
-	m *dbapi.OracleRestDataService) ctrl.Result {
+	m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase) ctrl.Result {
 
 	log := r.Log.WithValues("createSVC", req.NamespacedName)
 	// Check if the Service already exists, if not create a new one
@@ -624,19 +656,33 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	m.Status.ServiceIP = ""
 	if m.Spec.LoadBalancer {
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
-			m.Status.DatabaseApiUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/"
+			m.Status.DatabaseApiUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
+				 fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/"+n.Status.Pdbname+"/_/db-api/stable/"
 			m.Status.ServiceIP = svc.Status.LoadBalancer.Ingress[0].IP
-			m.Status.DatabaseActionsUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/sql-developer"
+			m.Status.DatabaseActionsUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
+				 fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/sql-developer"
+			if m.Status.ApexConfigured {
+				m.Status.ApxeUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
+					fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + n.Status.Pdbname + "/apex"
+			} else {
+				m.Status.ApxeUrl = dbcommons.StatusUnavailable	
+			}
 		}
-		m.Status.ClusterDbApiUrl = "https://" + svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/"
 		return requeueN
 	}
-	m.Status.ClusterDbApiUrl = "https://" + svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/"
 	nodeip := dbcommons.GetNodeIp(r, ctx, req)
 	if nodeip != "" {
 		m.Status.ServiceIP = nodeip
-		m.Status.DatabaseApiUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/ords/"
-		m.Status.DatabaseActionsUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/ords/sql-developer"
+		m.Status.DatabaseApiUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
+			"/ords/"+n.Status.Pdbname+"/_/db-api/stable/"
+		m.Status.DatabaseActionsUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
+			"/ords/sql-developer"
+		if m.Status.ApexConfigured {
+			m.Status.ApxeUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/ords/" +
+				n.Status.Pdbname + "/apex"
+		} else {
+			m.Status.ApxeUrl = dbcommons.StatusUnavailable
+		}
 	}
 	return requeueN
 }
@@ -679,7 +725,7 @@ func (r *OracleRestDataServiceReconciler) createPVC(ctx context.Context, req ctr
 //    Create the requested POD replicas
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataService,
-	n *dbapi.SingleInstanceDatabase, sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	n *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) ctrl.Result {
 
 	log := r.Log.WithValues("createPods", req.NamespacedName)
 
@@ -696,8 +742,8 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 	replicasReq := m.Spec.Replicas
 	if replicasFound == 0 {
 		m.Status.Status = dbcommons.StatusNotReady
-		m.Status.DatabaseApiUrl = dbcommons.ValueUnavailable
-		m.Status.DatabaseActionsUrl = dbcommons.ValueUnavailable
+		m.Status.DatabaseApiUrl = dbcommons.StatusUnavailable
+		m.Status.DatabaseActionsUrl = dbcommons.StatusUnavailable
 	}
 
 	if replicasFound == replicasReq {
@@ -705,15 +751,7 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 	} else if replicasFound < replicasReq {
 		// Create New Pods , Name of Pods are generated Randomly
 		for i := replicasFound; i < replicasReq; i++ {
-			if i > 0 && !m.Status.OrdsInstalled {
-				// Wait till the first created pod to installs ORDS .
-				break
-			}
-			ordsInstalled := false
-			if m.Status.OrdsInstalled {
-				ordsInstalled = true
-			}
-			pod := r.instantiatePodSpec(m, n, ordsInstalled)
+			pod := r.instantiatePodSpec(m, n)
 			log.Info("Creating a new "+m.Name+" POD", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			err := r.Create(ctx, pod)
 			if err != nil {
@@ -949,7 +987,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 //             Configure APEX
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("configureApex", req.NamespacedName)
 
 	if m.Spec.ApexPassword.SecretName == "" {
@@ -958,62 +996,6 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	}
 	if m.Status.ApexConfigured {
 		return requeueN
-	}
-	if !n.Status.ApexInstalled {
-		m.Status.Status = dbcommons.StatusError
-		eventReason := "Failed"
-		eventMsg := "apex is not installed yet on " + m.Spec.DatabaseRef
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-		return requeueY
-	}
-
-	// If Seperate PV for ORDS, we need to unzip apex-latest.zip
-	if m.Spec.Persistence.AccessMode != "" {
-		ordsReadyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
-			m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
-		if err != nil {
-			log.Error(err, err.Error())
-			return requeueY
-		}
-		if ordsReadyPod.Name == "" {
-			eventReason := "Waiting"
-			eventMsg := "waiting for " + m.Name + " to be Ready"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			return requeueY
-		}
-
-		unzipApex := dbcommons.UnzipApexOnORDSPod
-		if n.Spec.Edition == "express" {
-			unzipApex += dbcommons.ChownApex
-		}
-
-		// Unzip /opt/oracle/ords/config/ords/apex-latest.zip to /opt/oracle/ords/config/ords
-		out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			unzipApex)
-		if err != nil {
-			log.Error(err, err.Error())
-			return requeueY
-		}
-		log.Info(" UnzipApex Output : \n" + out)
-
-		if strings.Contains(out, "apex-latest.zip not found") {
-			eventReason := "Waiting"
-			eventMsg := "apex-latest.zip doesn't exist in the location /opt/oracle/ords/config/ords"
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-			return requeueY
-		}
-
-	} else {
-
-		// Copy APEX Images to ORACLE_SID only if PV for ORDS and SIDB is shared
-		out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf(dbcommons.CopyApexImages))
-		if err != nil {
-			log.Info(err.Error())
-			return requeueY
-		}
-		log.Info(" CopyApexImages Output : \n" + out)
-
 	}
 
 	apexPasswordSecret := &corev1.Secret{}
@@ -1033,94 +1015,99 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
 	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
 
-	m.Status.Status = dbcommons.StatusUpdating
-	r.Status().Update(ctx, m)
-
-	configureApexRestSqlClient := "sqlplus -s / as sysdba @apex_rest_config.sql"
-	// Configure APEX
-	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf(dbcommons.ConfigureApexRest, apexPassword, configureApexRestSqlClient))
+	if !n.Status.ApexInstalled {
+		m.Status.Status = dbcommons.StatusUpdating
+		result := r.installApex(m, n, ordsReadyPod, apexPassword, ctx, req)
+		if result.Requeue {
+			log.Info("Reconcile requeued because apex installation failed")
+			return result
+		}
+	}
+	// Set Apex users in apex_rt,apex_al,apex files
+	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		fmt.Sprintf(dbcommons.SetApexUsers, apexPassword))
+	log.Info("SetApexUsers Output: \n" + out)
+	if strings.Contains(strings.ToUpper(out), "ERROR") {
+		return requeueY
+	}
 	if err != nil {
 		log.Info(err.Error())
-		if !strings.Contains(err.Error(), "catcon.pl: completed") {
+		if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
 			return requeueY
 		}
 	}
-	log.Info(" ConfigureApexRest Output : \n" + out)
-
-	if strings.Contains(out, "Apex Folder doesn't exist") {
-		eventReason := "Waiting"
-		eventMsg := "apex Folder doesn't exist in the location /opt/oracle/oradata/" + strings.ToUpper(n.Spec.Sid)
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-		return requeueY
-	}
-
-	// Alter APEX_LISTENER,APEX_PUBLIC_USER,APEX_REST_PUBLIC_USER
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true,
-		"bash", "-c", fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, dbcommons.SQLPlusCLI))
+	// ORDS Needs to be restarted to configure APEX
+	err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{})
 	if err != nil {
-		log.Info(err.Error())
+		r.Log.Error(err, "Failed to delete existing POD", "POD.Name", ordsReadyPod.Name)
 		return requeueY
 	}
-	log.Info(" AlterApexUsers Output : \n" + out)
-
-	pdbName := "orclpdb1"
-	if n.Spec.Pdbname != "" {
-		pdbName = n.Spec.Pdbname
-	}
-
-	// Change APEX Admin Password
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true,
-		"bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ApexAdmin, apexPassword, pdbName), dbcommons.SQLPlusCLI))
-	if err != nil {
-		log.Info(err.Error())
-		return requeueY
-	}
-	log.Info("Change ApexAdmin Password Output : \n" + out)
-
+	r.Log.Info("ORDS Pod Deleted : " + ordsReadyPod.Name)
 	m.Status.ApexConfigured = true
 	r.Status().Update(ctx, m)
 
-	if m.Status.OrdsInstalled {
+	log.Info("ConfigureApex Successful !")
+	return requeueN
+}
 
-		readyPod, _, available, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
-			m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
-		if err != nil {
-			log.Error(err, err.Error())
+//#############################################################################
+//                 Install APEX in SIDB
+//#############################################################################
+func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
+	ordsReadyPod corev1.Pod, apexPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
+	log := r.Log.WithValues("installApex", req.NamespacedName)
+
+	// Obtain admin password of the referred database
+	adminPasswordSecret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + m.Spec.AdminPassword.SecretName + " Not Found")
 			return requeueY
 		}
-		if readyPod.Name != "" {
-			log.Info("Ready Pod marked for deletion")
-			available = append(available, readyPod)
-		}
+		log.Error(err, err.Error())
+		return requeueY
+	}
+	sidbPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
 
-		// Set Apex users in apex_rt,apex_al,apex files
-		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
-			fmt.Sprintf(dbcommons.SetApexUsers, apexPassword))
-		log.Info("SetApexUsers Output: \n" + out)
-		if strings.Contains(strings.ToUpper(out), "ERROR") {
-			return requeueY
-		}
-		if err != nil {
-			log.Info(err.Error())
-			if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
-				return requeueY
-			}
-		}
+	// Status Updation
+	m.Status.Status = dbcommons.StatusUpdating
+	r.Status().Update(ctx, m)
+	eventReason := "Installing Apex"
+	eventMsg := "Waiting for Apex installation to complete"
+	r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 
-		for _, pod := range available {
-			// ORDS Needs to be restarted to configure APEX
-			err = r.Delete(ctx, &pod, &client.DeleteOptions{})
-			if err != nil {
-				r.Log.Error(err, "Failed to delete existing POD", "POD.Name", pod.Name)
-				return requeueY
-			}
-			r.Log.Info("ORDS Pod Deleted : " + pod.Name)
-		}
+	//Install Apex in SIDB ready pod
+	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		fmt.Sprintf(dbcommons.InstallApexInContainer,  apexPassword,  sidbPassword, n.Status.Pdbname))
+	if err != nil {
+		log.Info(err.Error())
+	}
+	log.Info(" InstallApex Output : \n" + out)
 
+	// Checking if Apex is installed successfully or not
+	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		fmt.Sprintf(dbcommons.IsApexInstalled, sidbPassword, n.Status.Pdbname))
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY
+	}
+	log.Info("IsApexInstalled Output: \n" + out)
+
+	apexInstalled := "APEXVERSION:"
+	if !strings.Contains(out, apexInstalled) {
 		return requeueY
 	}
 
+	m.Status.Status = dbcommons.StatusReady
+	eventReason = "Installed Apex"
+	eventMsg = "Apex installation completed"
+	r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+	n.Status.ApexInstalled = true
 	return requeueN
 }
 
@@ -1172,151 +1159,6 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 }
 
 //#############################################################################
-//             Setup ORDS in CDB , enable ORDS for PDBs Specified
-//#############################################################################
-func (r *OracleRestDataServiceReconciler) setupORDS(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
-
-	log := r.Log.WithValues("setupORDS", req.NamespacedName)
-
-	readyPod, replicasFound, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
-		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
-	if err != nil {
-		log.Error(err, err.Error())
-		return requeueY
-	}
-	if readyPod.Name == "" {
-		eventReason := "Waiting"
-		eventMsg := "waiting for " + m.Name + " to be Ready"
-		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-		return requeueY
-	}
-	OrdsPasswordSecret := &corev1.Secret{}
-	if !m.Status.OrdsInstalled {
-		err := r.Get(ctx, types.NamespacedName{Name: m.Spec.OrdsPassword.SecretName, Namespace: m.Namespace}, OrdsPasswordSecret)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				m.Status.Status = dbcommons.StatusError
-				eventReason := "Waiting"
-				eventMsg := "waiting for secret : " + m.Spec.OrdsPassword.SecretName + " to get created"
-				r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-				r.Log.Info("Secret " + m.Spec.OrdsPassword.SecretName + " Not Found")
-				return requeueY
-			}
-			log.Error(err, err.Error())
-			return requeueY
-		}
-		ordsPassword := string(OrdsPasswordSecret.Data[m.Spec.OrdsPassword.SecretKey])
-
-		// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER , APEX ADMIN passwords
-		apexPassword := ordsPassword
-		if m.Spec.ApexPassword.SecretName != "" {
-			apexPasswordSecret := &corev1.Secret{}
-			err = r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					m.Status.Status = dbcommons.StatusError
-					eventReason := "Waiting"
-					eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
-					r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-					r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
-					return requeueY
-				}
-				log.Error(err, err.Error())
-				return requeueY
-			}
-			apexPassword = string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
-		}
-
-		// Get ORDS Status
-		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			dbcommons.GetORDSStatus)
-		log.Info("GetORDSStatus Output")
-		log.Info(out)
-		if strings.Contains(strings.ToUpper(out), "ERROR") {
-			return requeueY
-		}
-		if err != nil {
-			log.Info(err.Error())
-			if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
-				return requeueY
-			}
-		}
-
-		if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
-
-			if !m.Status.OrdsSetupCompleted {
-				cdbAdminPassword := dbcommons.GenerateRandomString(8)
-				// Create PDB , CDB Admin users and grant permissions . ORDS installation on CDB level
-				out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-					fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.SetAdminUsersSQL, cdbAdminPassword), dbcommons.SQLPlusCLI))
-				if err != nil {
-					log.Error(err, err.Error())
-					return requeueY
-				}
-				log.Info("SetAdminUsers Output :\n" + out)
-
-				if !strings.Contains(out, "ERROR") || !strings.Contains(out, "ORA-") ||
-					strings.Contains(out, "ERROR") && strings.Contains(out, "ORA-01920") {
-					m.Status.CommonUsersCreated = true
-				}
-
-				// Setup ORDS
-				out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
-					fmt.Sprintf(dbcommons.SetupORDSCMD, ordsPassword, apexPassword, m.Name, cdbAdminPassword))
-				log.Info("SetupORDSCMD Output")
-				log.Info(out)
-				if strings.Contains(strings.ToUpper(out), "ERROR") {
-					return requeueY
-				}
-				if err != nil {
-					log.Info(err.Error())
-					if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
-						return requeueY
-					}
-				}
-
-				if !strings.Contains(strings.ToUpper(out), "ERROR") && !strings.Contains(strings.ToUpper(err.Error()), "ERROR") &&
-					!strings.Contains(strings.ToUpper(out), "could not execute") && !strings.Contains(strings.ToUpper(err.Error()), "could not execute") {
-					m.Status.OrdsSetupCompleted = true
-				}
-			}
-
-			// ORDS Needs to be restarted to ensure ORDS Installation works fine
-			err := r.Delete(ctx, &readyPod, &client.DeleteOptions{})
-			if err != nil {
-				r.Log.Error(err, "Failed to delete existing POD", "POD.Name", readyPod.Name)
-				return requeueY
-			}
-			r.Log.Info("ORDS Installation Pod Deleted : " + readyPod.Name)
-
-			eventReason := "ORDS Installed"
-			eventMsg := ""
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			m.Status.OrdsInstalled = true
-			r.Status().Update(ctx, m)
-
-			// Wait for 15 sec to update OrdsInstalled to true
-			time.Sleep(15 * time.Second)
-
-		}
-		return requeueY
-	}
-
-	result := r.restEnableSchemas(m, n, sidbReadyPod, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result
-	}
-
-	if replicasFound < m.Spec.Replicas {
-		// Requeue if all replicas not created
-		return requeueY
-	}
-	return requeueN
-}
-
-//#############################################################################
 //             Rest Enable/Disable Schemas
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
@@ -1336,7 +1178,6 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 	}
 
 	for i := 0; i < len(m.Spec.RestEnableSchemas); i++ {
-
 		//  If the PDB mentioned in yaml doesnt contain in the database , continue
 		if !strings.Contains(strings.ToUpper(availablePDBS), strings.ToUpper(m.Spec.RestEnableSchemas[i].Pdb)) {
 			eventReason := "Warning"
@@ -1355,7 +1196,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			log.Error(err, err.Error())
 			return requeueY
 		} else {
-			log.Info("getOrdsSchemaStatus Output")
+			log.Info("getOrdsSchemaStatus Output", "schema", m.Spec.RestEnableSchemas[i].Schema)
 			log.Info(out)
 		}
 
@@ -1406,7 +1247,6 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 	}
 
 	return requeueN
-
 }
 
 //#############################################################################

@@ -20,7 +20,7 @@ spec:
   ## Secret containing SIDB password mapped to secretKey 
   ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
-    secretName: admin-secret-1
+    secretName: db-admin-secret
     secretKey: oracle_pwd
     keepSecret: true
 
@@ -46,5 +46,5 @@ spec:
   ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
   persistence:
     size: 100Gi
-    storageClass: "oci"
+    storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
