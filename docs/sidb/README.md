@@ -2,13 +2,14 @@
 
 Oracle Database Operator for Kubernetes (the operator) includes the Single Instance Database Controller that enables provisioning, cloning, and patching of Oracle Single Instance Databases on Kubernetes. The following sections explain the setup and functionality of the operator
 
-* [Prerequisites](#prerequisites)
-* [Kind SingleInstanceDatabase Resource](#kind-singleinstancedatabase-resource)
-* [Provision New Database](#provision-new-database)
-* [Clone Existing Database](#clone-existing-database)
-* [Patch/Rollback Database](#patchrollback-database)
-* [Kind OracleRestDataService](#kind-oraclerestdataservice)
-* [REST Enable Database](#rest-enable-database)
+  * [Prerequisites](#prerequisites)
+  * [Kind SingleInstanceDatabase Resource](#kind-singleinstancedatabase-resource)
+  * [Provision New Database](#provision-new-database)
+  * [Clone Existing Database](#clone-existing-database)
+  * [Patch/Rollback Database](#patchrollback-database)
+  * [Kind OracleRestDataService](#kind-oraclerestdataservice)
+  * [REST Enable Database](#rest-enable-database)
+  * [Performing maintenance operations](#performing-maintenance-operations)
 
 ## Prerequisites
 
@@ -44,7 +45,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
   $ kubectl get singleinstancedatabase sidb-sample
 
   NAME           EDITION        STATUS      ROLE         VERSION                  CLUSTER CONNECT STR              CONNECT STR               OEM EXPRESS URL
-  sidb-sample    Enterprise     Healthy     PRIMARY      19.3.0.0.0 (29517242)    sidb-sample.default:1521/ORCL1   144.25.10.119:1521/ORCL   https://144.25.10.119:5500/em
+  sidb-sample    Enterprise     Healthy     PRIMARY      19.3.0.0.0 (29517242)    sidb-sample.default:1521/ORCL1   10.0.25.54:1521/ORCL   https://10.0.25.54:5500/em
   ```
 
 * ### Detailed Status
@@ -81,13 +82,13 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
           Reason:                 LastReconcileCycleCompleted
           Status:                 True
           Type:                   ReconcileComplete
-        Connect String:          144.25.10.119:1521/ORCL1C
+        Connect String:          10.0.25.54:1521/ORCL1
         Datafiles Created:       true
         Datafiles Patched:       true
         Edition:                 Enterprise
         Flash Back:              true
         Force Log:               false
-        Oem Express URL:         https://144.25.10.119:5500/em
+        Oem Express URL:         https://10.0.25.54:5500/em
         Pdb Name:                orclpdb1
         Release Update:          19.11.0.0.0 (32545013)
         Replicas:                2
@@ -175,7 +176,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
     ```sh
     $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.connectString}"
 
-      144.25.10.119:1521/ORCL
+      10.0.25.54:1521/ORCL
     ```
 
     The Oracle Database inside the container also has Oracle Enterprise Manager Express configured. To access OEM Express, start the browser and follow the URL:
@@ -183,7 +184,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
     ```sh
     $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.oemExpressUrl}"
 
-      https://144.25.10.119:5500/em
+      https://10.0.25.54:5500/em
     ```
 
   * ### Update Database Config
@@ -320,7 +321,10 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     For the use cases detailed below a sample .yaml file is available at
     [config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)
 
-    **Note:** The `adminPassword` , `ordsPassword` fields of the above `oraclerestdataservice.yaml` yaml contains secrets for authenticating Single Instance Database and for ORDS user with roles `SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema` respectively . These secrets gets delete after the first deployed ORDS pod REST enables the database successfully for security reasons.  
+    **Note:** 
+    - The `adminPassword` , `ordsPassword` fields of the above `oraclerestdataservice.yaml` yaml contains secrets for authenticating Single Instance Database and for ORDS user with roles `SQL Administrator , System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema` respectively . These secrets gets delete after the first deployed ORDS pod REST enables the database successfully for security reasons.  
+    - To build the ORDS image, please follow the these [instructions](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices#building-oracle-rest-data-services-install-images).
+    - By default, the ORDS uses self-signed certificates. To use certificates from the Certificate Authority, the ORDS image needs to be rebuilt after specifying the values of `ssl.cert` and `ssl.cert.key` in the [standalone.properties](https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/standalone.properties.tmpl) file. This newly built ORDS image should be used in the [config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml) file.
 
 * ### List OracleRestDataServices
 
@@ -337,7 +341,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     $ kubectl get oraclerestdataservice ords-sample
 
     NAME          STATUS    DATABASE      DATABASE API URL                     DATABASE ACTIONS URL
-    ords-sample   Healthy   sidb-sample   https://144.25.121.118:8443/ords/     https://144.25.121.118:8443/ords/sql-developer
+    ords-sample   Healthy   sidb-sample   https://10.0.25.54:8443/ords/     https://10.0.25.54:8443/ords/sql-developer
     ```
 
 * ### Detailed Status
@@ -355,8 +359,8 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
       Spec: ...
       Status:
         Cluster Db API URL:    https://ords21c-1.default:8443/ords/
-        Database Actions URL:  https://144.25.121.118:8443/ords/sql-developer
-        Database API URL:      https://144.25.121.118:8443/ords/
+        Database Actions URL:  https://10.0.25.54:8443/ords/sql-developer
+        Database API URL:      https://10.0.25.54:8443/ords/
         Database Ref:          sidb21c-1
         Image:
           Pull From:     ...
@@ -367,7 +371,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
           Access Mode:    ReadWriteMany
           Size:           100Gi
           Storage Class:  
-        Service IP:       144.25.121.118
+        Service IP:       10.0.25.54
         Status:           Healthy
 
     ```
@@ -399,7 +403,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     ```sh
     $ kubectl get oraclerestdataservice/ords-sample --template={{.status.databaseApiUrl}}
 
-      https://144.25.121.118:8443/ords/
+      https://10.0.25.54:8443/ords/
     ```
 
     All the REST Endpoints can be found at <https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/rest-endpoints.html>
@@ -442,7 +446,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
   * List PDB's
 
       ```sh
-        `$ curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://144.25.121.118:8443/ords/_/db-api/stable/database/pdbs/ | python -m json.tool`
+        `$ curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/_/db-api/stable/database/pdbs/ | python -m json.tool`
       ```
 
   * Create PDB
@@ -465,7 +469,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
       Execute the follwing API to run the above json script to create pdb.
 
       ```sh
-        $ curl -k --request POST --url https://144.25.121.118:8443/ords/_/db-api/latest/database/pdbs/ \
+        $ curl -k --request POST --url https://10.0.25.54:8443/ords/_/db-api/latest/database/pdbs/ \
         --user 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' \
         --header 'content-type: application/json' \
         --data @pdbsample.json
@@ -474,7 +478,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
   * Open/Close PDB
 
       ```sh
-        $ curl -k --request POST --url https://144.25.121.118:8443/ords/_/db-api/latest/database/pdbs/pdbsample/status \
+        $ curl -k --request POST --url https://10.0.25.54:8443/ords/_/db-api/latest/database/pdbs/pdbsample/status \
         --user 'ORDS_PUBLIC_USER:<.spec.ordsPassword>'\
         --header 'content-type: application/json' \
         --data '  {
@@ -502,7 +506,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
       Execute the follwing API to run the above json script to clone pdb from pdbsample.
 
       ```sh
-        $ curl -k --request POST --url https://144.25.121.118:8443/ords/_/db-api/latest/database/pdbs/pdbsample/ \
+        $ curl -k --request POST --url https://10.0.25.54:8443/ords/_/db-api/latest/database/pdbs/pdbsample/ \
         --user 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' \
         --header 'content-type: application/json' \
         --data @pdbclone.json
@@ -535,7 +539,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
       Execute the follwing API to run the above script.
 
       ```sh
-        curl -s -k -X "POST" "https://144.25.121.118:8443/ords/<.spec.restEnableSchemas[].pdb>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+        curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdb>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
         -H "Content-Type: application/sql" \
         -u '<.spec.restEnableSchemas[].schema>:<.spec.ordsPassword>' \
         -d @/tmp/table.sql
@@ -546,7 +550,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
       Fetch all entries from 'DEPT' table by calling the following API
 
       ```sh
-        curl -s -k -X "POST" "https://144.25.121.118:8443/ords/<.spec.restEnableSchemas[].pdb>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+        curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdb>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
         -H "Content-Type: application/sql" \
         -u '<.spec.restEnableSchemas[].schema>:<.spec.ordsPassword>' \
         -d $'select * from dept;' | python -m json.tool
@@ -574,7 +578,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     ```sh
     $ kubectl get oraclerestdataservice/ords-sample --template={{.status.databaseActionsUrl}}
 
-      https://144.25.121.118:8443/ords/sql-developer
+      https://10.0.25.54:8443/ords/sql-developer
     ```
 
     Sign in to Database Actions using
@@ -631,7 +635,7 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     ```sh
     $ kubectl get oraclerestdataservice/ords-sample --template={{.status.databaseApiUrl}}
 
-      https://144.25.121.118:8888/ords/
+      https://10.0.25.54:8888/ords/
     ```
 
     Sign in to Administration servies using \
@@ -642,16 +646,8 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     ![application-express-admin-home](/images/sidb/application-express-admin-home.png)
 
     **NOTE**
-    * Apex Administrator for pdbs other than `.spec.databaseRef.pdbName` has to be created Manually
-
-    More Info on creating Apex Administrator can be found at [APEX_UTIL.CREATE_USER]<https://docs.oracle.com/en/database/oracle/application-express/21.1/aeapi/CREATE_USER-Procedure.html#GUID-95721E36-4DAB-4BCA-A6F3-AC2BACC52A66>
-  
-  **Uninstall APEX:**
-  * Set `.spec.installApex` to false in [config/samples/sidb/singleinstancedatabase.yaml](config/samples/sidb/singleinstancedatabase.yaml)
-  * If you install APEX again, re-configure APEX with ORDS again.
-
-    More info on Application Express can be found at <https://apex.oracle.com/en/>
-
+    * Apex Administrator for pdbs other than `.spec.databaseRef.pdbName` has to be created manually. More Info on creating Apex Administrator can be found at [APEX_UTIL.CREATE_USER]<https://docs.oracle.com/en/database/oracle/application-express/21.1/aeapi/CREATE_USER-Procedure.html#GUID-95721E36-4DAB-4BCA-A6F3-AC2BACC52A66>
+    * By default, the full development runtime environment is initialized in APEX. It can be changed manually to the runtime environment. For this, `apxdevrm.sql` script should be run after connecting to the primary database from the ORDS pod as the sys user with sysdba privilage. Please click the [link](https://docs.oracle.com/en/database/oracle/application-express/21.2/htmig/converting-between-runtime-and-full-development-environments.html#GUID-B0621B40-3441-44ED-9D86-29B058E26BE9) for detailed instructions.
 * ### Multiple Replicas
   
     Currently only single replica mode is supported
@@ -661,3 +657,15 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     The following attributes cannot be patched post SingleInstanceDatabase instance Creation : databaseRef, loadBalancer, image, ordsPassword, adminPassword, apexPassword.
 
   * A schema can be rest enabled or disabled by setting the `.spec.restEnableSchemas[].enable` to true or false respectively in ords sample .yaml file and apply using the kubectl apply command or edit/patch commands. This requires `.spec.ordsPassword` secret.
+
+
+## Performing maintenance operations
+If some manual operations are required to be performed, the procedure is as follows:
+- Exec into the pod from where you want to perform the manual operation using the similar command to the following command:
+
+      kubectl exec -it <pod-name> /bin/bash
+
+- The important locations like ORACLE_HOME, ORDS_HOME etc. can be seen in the environment, by using the `env` command.
+- Login to `sqlplus` to perform manual operations using the following command:
+        
+      sqlplus / as sysdba
