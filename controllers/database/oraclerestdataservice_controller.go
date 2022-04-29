@@ -214,10 +214,6 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	if m.Status.LoadBalancer != "" && m.Status.LoadBalancer != strconv.FormatBool(m.Spec.LoadBalancer) {
 		eventMsgs = append(eventMsgs, "service patching is not avaiable currently")
 	}
-	//Not needed as apex will be installed from ORDS now
-	/* if !n.Status.ApexInstalled && m.Spec.ApexPassword.SecretName != "" {
-		eventMsgs = append(eventMsgs, "apex is not installed yet")
-	} */
 	if m.Status.Image.PullFrom != "" && m.Status.Image != m.Spec.Image {
 		eventMsgs = append(eventMsgs, "image patching is not avaiable currently")
 	}
@@ -313,33 +309,6 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 	return requeueN, sidbReadyPod
 }
 
-
-//#####################################################################################################
-//    Validate Readiness of the ORDS pods
-//#####################################################################################################
-func (r *OracleRestDataServiceReconciler) validateORDSReadiness(m *dbapi.OracleRestDataService, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
-	log := r.Log.WithValues("validateORDSReadiness", req.NamespacedName)
-
-	// ## FETCH THE ORDS REPLICAS .
-	ordsReadyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
-		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
-	if err != nil {
-		log.Error(err, err.Error())
-		return requeueY, ordsReadyPod
-	}
-
-	if ordsReadyPod.Name == "" {
-		eventReason := "Waiting"
-		eventMsg := "waiting for " + m.Name + " to be Ready"
-		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-		// Logging the event messages
-		log.Info(eventMsg)
-		return requeueY, ordsReadyPod
-	}
-
-	return requeueN, ordsReadyPod
-
-}
 
 //#####################################################################################################
 //    Check ORDS Health Status
