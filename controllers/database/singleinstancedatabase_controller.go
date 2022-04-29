@@ -235,6 +235,9 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 func (r *SingleInstanceDatabaseReconciler) updateReconcileStatus(m *dbapi.SingleInstanceDatabase, ctx context.Context,
 	result *ctrl.Result, err *error, blocked *bool, completed *bool) {
 
+	// Always refresh status before a reconcile
+	defer r.Status().Update(ctx, m)
+
 	errMsg := func() string {
 		if *err != nil {
 			return (*err).Error()
@@ -285,8 +288,6 @@ func (r *SingleInstanceDatabaseReconciler) updateReconcileStatus(m *dbapi.Single
 		meta.RemoveStatusCondition(&m.Status.Conditions, condition.Type)
 	}
 	meta.SetStatusCondition(&m.Status.Conditions, condition)
-	// Always refresh status before a reconcile
-	r.Status().Update(ctx, m)
 }
 
 //#############################################################################
