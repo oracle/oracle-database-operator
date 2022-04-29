@@ -46,8 +46,6 @@ const DBA_GUID int64 = 54322
 
 const SQLPlusCLI string = "sqlplus -s / as sysdba"
 
-const SQLPlusRemoteCLI string = "sqlplus -s sys/%[1]s@%[2]s as sysdba"
-
 const NoCloneRef string = "Unavailable"
 
 const GetVersionSQL string = "SELECT VERSION_FULL FROM V\\$INSTANCE;"
@@ -316,12 +314,13 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\nrm -f sqladmin.passwd" +
 	"\numask 022"
 
-const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p WHERE s.username = 'ORDS_PUBLIC_USER' AND p.addr(+) = s.paddr;"
+const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p "+
+	"WHERE (s.username = 'ORDS_PUBLIC_USER' or s.username = 'C##_DBAPI_PDB_ADMIN' ) AND p.addr(+) = s.paddr;"
 
 const KillSessionSQL string = "alter system kill session '%[1]s';"
 
-const DropAdminUsersSQL string = "drop user C##DBAPI_CDB_ADMIN;" +
-	"\ndrop user C##_DBAPI_PDB_ADMIN;"
+const DropAdminUsersSQL string = "drop user C##DBAPI_CDB_ADMIN cascade;" +
+	"\ndrop user C##_DBAPI_PDB_ADMIN cascade;"
 
 const UninstallORDSCMD string = "\numask 177" +
 	"\necho -e \"1\n${ORACLE_HOST}\n${ORACLE_PORT}\n1\n${ORACLE_SERVICE}\nsys\n%[1]s\n%[1]s\n1\" > ords.cred" +
@@ -412,8 +411,8 @@ const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apxsilentins.
 
 const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;\n"+
 	"@apex_rest_config_core.sql;\n" +
-	//"exec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n" +
-	//"exec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_change_password_on_first_use => 'Y');\n" +
+	"exec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n" +
+	"exec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_change_password_on_first_use => 'Y');\n" +
 	"\" | sqlplus -s sys/%[2]s@${ORACLE_HOST}:${ORACLE_PORT}/%[3]s as sysdba;"
 
 const IsApexInstalled string = "echo -e \"select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';\"" +
