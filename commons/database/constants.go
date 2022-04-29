@@ -370,7 +370,7 @@ const StatusError string = "Error"
 
 const StatusUnavailable string = "Unavailable"
 
-const ValueUnavailable string = "Unknown"
+const ValueUnavailable string = "Unavailable"
 
 const NoExternalIp string = "Node ExternalIP unavailable"
 
