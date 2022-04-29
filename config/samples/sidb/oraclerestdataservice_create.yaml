@@ -1,7 +1,18 @@
 #
-# Copyright (c) 2021, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ords-secret
+type: Opaque
+stringData:
+  oracle_pwd: "ChangeOnInstall_1"
+
+---
+
 apiVersion: database.oracle.com/v1alpha1
 kind: OracleRestDataService
 metadata:
@@ -9,36 +20,26 @@ metadata:
 spec:
   
   ## Database ref. This can be of kind SingleInstanceDatabase.
-  databaseRef: "singleinstancedatabase-sample"
+  ## Make sure the source database has been created by applying singeinstancedatabase_prebuilt.yaml
+  databaseRef: "prebuiltdb-sample"
   
   ## Secret containing databaseRef password mapped to secretKey. 
   ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   adminPassword:
-    secretName: 
-    secretKey:
+    secretName: prebuiltdb-admin-secret
+    secretKey: oracle_pwd
     keepSecret: true
 
   ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
   ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   ordsPassword:
-    secretName: 
-    secretKey:
-    keepSecret: true
-
-  ## To configure APEX with ORDS, specfiy the apexPassword secret details. Leave empty if Apex is not needed.
-  ## This is a secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
-  apexPassword:
-    secretName: 
-    secretKey:
+    secretName: ords-secret
+    secretKey: oracle_pwd
     keepSecret: true
 
   ## ORDS image details
-  ## Build the ORDS image following instructions at
-  ## https://github.com/oracle/docker-images/tree/main/OracleRestDataServices
   image:
-    pullFrom:
-    pullSecrets:
+    pullFrom: container-registry.oracle.com/database/ords:21.4.2-gh
 
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
@@ -48,17 +49,18 @@ spec:
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
 
-  ## Type of service  Applicable on cloud enviroments only.
-  ## if loadBalService: false, service type = "NodePort". else "LoadBalancer"
-  loadBalancer: false
-
+  
   ## PDB Schemas to be ORDS Enabled.
   ## Schema will be created (if not exists) with username as schema and password as .spec.ordsPassword.
   restEnableSchemas:
-  - schema:
+  - schema: schema1
     enable: true
-    urlMapping:
-    pdb:
+    urlMapping: 
+    pdb: xepdb1
+  - schema: schema2
+    enable: true
+    urlMapping: 
+    pdb: xepdb1
 
-  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
-  serviceAccountName: default
+
+  

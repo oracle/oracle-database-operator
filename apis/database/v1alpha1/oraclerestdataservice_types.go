@@ -105,15 +105,14 @@ type OracleRestDataServiceStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	Status             string `json:"status,omitempty"`
 	DatabaseApiUrl     string `json:"databaseApiUrl,omitempty"`
-	ClusterDbApiUrl    string `json:"clusterDbApiUrl,omitempty"`
 	LoadBalancer       string `json:"loadBalancer,omitempty"`
 	DatabaseRef        string `json:"databaseRef,omitempty"`
 	ServiceIP          string `json:"serviceIP,omitempty"`
 	DatabaseActionsUrl string `json:"databaseActionsUrl,omitempty"`
 	OrdsInstalled      bool   `json:"ordsInstalled,omitempty"`
 	ApexConfigured     bool   `json:"apexConfigured,omitempty"`
+	ApxeUrl            string `json:"apexUrl,omitempty"`
 	CommonUsersCreated bool   `json:"commonUsersCreated,omitempty"`
-	OrdsSetupCompleted bool   `json:"ordsSetupCompleted,omitempty"`
 	Replicas           int    `json:"replicas,omitempty"`
 
 	Image OracleRestDataServiceImage `json:"image,omitempty"`
@@ -123,8 +122,9 @@ type OracleRestDataServiceStatus struct {
 //+kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type="string"
 // +kubebuilder:printcolumn:JSONPath=".spec.databaseRef",name="Database",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.databaseApiUrl",name="Database Api & Apex Url ",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.databaseActionsUrl",name="Database Actions Url",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.databaseApiUrl",name="Database API URL",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.databaseActionsUrl",name="Database Actions URL",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.apexUrl",name="Apex URL",type="string"
 
 // OracleRestDataService is the Schema for the oraclerestdataservices API
 type OracleRestDataService struct {
