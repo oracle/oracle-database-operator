@@ -125,8 +125,12 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
+	// Always refresh status before a reconcile
+	defer r.Status().Update(ctx, oracleRestDataService)
+	defer r.Status().Update(ctx, singleInstanceDatabase)
+
 	// First validate
-	result, err = r.validate(oracleRestDataService, singleInstanceDatabase)
+	result, err = r.validate(oracleRestDataService, singleInstanceDatabase, ctx)
 	if result.Requeue {
 		r.Log.Info("Spec validation failed, Reconcile queued")
 		return result, nil
@@ -135,10 +139,6 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		r.Log.Info("Spec validation failed")
 		return result, nil
 	}
-
-	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, oracleRestDataService)
-	defer r.Status().Update(ctx, singleInstanceDatabase)
 
 	// Create Service
 	result = r.createSVC(ctx, req, oracleRestDataService, singleInstanceDatabase)
@@ -201,11 +201,30 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 //#############################################################################
 //    Validate the CRD specs
 //#############################################################################
-func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
+func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataService,
+	n *dbapi.SingleInstanceDatabase, ctx context.Context) (ctrl.Result, error) {
 
 	var err error
 	eventReason := "Spec Error"
 	var eventMsgs []string
+
+	//First check image pull secrets
+	if m.Spec.Image.PullSecrets != "" {
+		secret := &corev1.Secret{}
+		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.Image.PullSecrets, Namespace: m.Namespace}, secret)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				// Secret not found
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
+				r.Log.Info(err.Error())
+				m.Status.Status = dbcommons.StatusError
+				return requeueY, err
+			}
+			r.Log.Error(err, err.Error())
+			return requeueY, err
+		}
+	}
+
 	//  If using same pvc for ords as sidb, ensure sidb has ReadWriteMany Accessmode
 	if n.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Persistence.AccessMode == "" {
 		eventMsgs = append(eventMsgs, "ords can be installed only on ReadWriteMany Access Mode of : "+m.Spec.DatabaseRef)
