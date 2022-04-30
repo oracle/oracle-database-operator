@@ -43,5 +43,5 @@ spec:
   ## if specified, the prebuilt DB datafiles are copied over to the persistant volume before DB startup
   #persistence:
   #  size: 50Gi
-  #  storageClass: "oci"
+  #  storageClass: "oci-bv"
   #  accessMode: "ReadWriteOnce"

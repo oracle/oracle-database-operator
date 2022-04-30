@@ -43,5 +43,5 @@ spec:
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
     size: 50Gi
-    storageClass: "oci"
+    storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
