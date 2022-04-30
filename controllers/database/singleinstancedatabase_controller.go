@@ -560,7 +560,6 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					},
 				},
-				ImagePullPolicy: corev1.PullAlways,
 				Ports:           []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
 
 				ReadinessProbe: &corev1.Probe{
@@ -839,17 +838,22 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: func() map[string]string {
-					ns := make(map[string]string)
-					if len(m.Spec.NodeSelector) != 0 {
-						for key, value := range m.Spec.NodeSelector {
-							ns[key] = value
+			Selector: func() *metav1.LabelSelector {
+				if m.Spec.Persistence.StorageClass == "oci-bv" {
+					return nil
+				}
+				return &metav1.LabelSelector{
+							MatchLabels: func() map[string]string {
+								ns := make(map[string]string)
+								if len(m.Spec.NodeSelector) != 0 {
+									for key, value := range m.Spec.NodeSelector {
+										ns[key] = value
+									}
+								}
+								return ns
+							}(),
 						}
-					}
-					return ns
-				}(),
-			},
+			}(),
 		},
 	}
 	// Set SingleInstanceDatabase instance as the owner and controller
@@ -1058,7 +1062,31 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	// Version/Image changed
 	// PATCHING START (Only Software Patch)
 	// call FindPods() to find pods of newer version . if running , delete the older version replicas.
-	readyPod, replicasFound, available, _, err = dbcommons.FindPods(r, m.Spec.Image.Version,
+
+	// call FindPods() to find pods of older version . delete all the Pods
+	readyPod, oldReplicasFound, available, _, err := dbcommons.FindPods(r, oldVersion,
+		oldImage, m.Name, m.Namespace, ctx, req)
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY, err
+	}
+	if readyPod.Name != "" {
+		log.Info("Ready pod marked for deletion", "name", readyPod.Name)
+		available = append(available, readyPod)
+	}
+
+	// For ReadWriteOnce, delete first and then create
+	if m.Spec.Persistence.Size == "" || m.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+		result, err := r.deletePods(ctx, req, m, available, corev1.Pod{}, oldReplicasFound, 0)
+		if result.Requeue {
+			return result, err
+		}
+		result, err = r.createPods(m, n, ctx, req, 0)
+		return result, err
+	}
+
+	// For ReadWriteMany
+	readyPod, newReplicasFound, available, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
 		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
@@ -1066,7 +1094,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	}
 
 	// create new Pods with the new Version and no.of Replicas required
-	result, err := r.createPods(m, n, ctx, req, replicasFound)
+	result, err := r.createPods(m, n, ctx, req, newReplicasFound)
 	if result.Requeue {
 		return result, err
 	}
@@ -1084,18 +1112,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		return requeueY, errors.New(eventMsg)
 	}
 
-	// call FindPods() to find pods of older version . delete all the Pods
-	readyPod, replicasFound, available, _, err = dbcommons.FindPods(r, oldVersion,
-		oldImage, m.Name, m.Namespace, ctx, req)
-	if err != nil {
-		log.Error(err, err.Error())
-		return requeueY, err
-	}
-	if readyPod.Name != "" {
-		log.Info("Ready pod marked for deletion", "name", readyPod.Name)
-		available = append(available, readyPod)
-	}
-	return r.deletePods(ctx, req, m, available, corev1.Pod{}, replicasFound, 0)
+	return r.deletePods(ctx, req, m, available, corev1.Pod{}, oldReplicasFound, 0)
 	// PATCHING END
 }
 

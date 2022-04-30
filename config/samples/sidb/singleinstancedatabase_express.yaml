@@ -42,6 +42,6 @@ spec:
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
-    size: 5Gi
+    size: 50Gi
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"

@@ -616,17 +616,22 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: func() map[string]string {
-					ns := make(map[string]string)
-					if len(m.Spec.NodeSelector) != 0 {
-						for key, value := range m.Spec.NodeSelector {
-							ns[key] = value
+			Selector: func() *metav1.LabelSelector {
+				if m.Spec.Persistence.StorageClass == "oci-bv" {
+					return nil
+				}
+				return &metav1.LabelSelector{
+							MatchLabels: func() map[string]string {
+								ns := make(map[string]string)
+								if len(m.Spec.NodeSelector) != 0 {
+									for key, value := range m.Spec.NodeSelector {
+										ns[key] = value
+									}
+								}
+								return ns
+							}(),
 						}
-					}
-					return ns
-				}(),
-			},
+			}(),
 		},
 	}
 	// Set SingleInstanceDatabase instance as the owner and controller
