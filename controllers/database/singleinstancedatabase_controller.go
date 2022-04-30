@@ -839,6 +839,17 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: func() map[string]string {
+					ns := make(map[string]string)
+					if len(m.Spec.NodeSelector) != 0 {
+						for key, value := range m.Spec.NodeSelector {
+							ns[key] = value
+						}
+					}
+					return ns
+				}(),
+			},
 		},
 	}
 	// Set SingleInstanceDatabase instance as the owner and controller
@@ -1302,7 +1313,14 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 			break
 		}
 		r.Log.Info("Deleting Pod : ", "POD.NAME", availablePod.Name)
-		err := r.Delete(ctx, &availablePod, &client.DeleteOptions{})
+		var delOpts *client.DeleteOptions = &client.DeleteOptions{}
+		if replicasRequired == 0 {
+			var gracePeriodSeconds int64 = 0
+			policy := metav1.DeletePropagationForeground
+			delOpts.GracePeriodSeconds = &gracePeriodSeconds
+			delOpts.PropagationPolicy = &policy
+		}
+		err := r.Delete(ctx, &availablePod, delOpts)
 		noDeleted += 1
 		if err != nil {
 			r.Log.Error(err, "Failed to delete existing POD", "POD.Name", availablePod.Name)

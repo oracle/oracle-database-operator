@@ -76,11 +76,11 @@ spec:
   loadBalancer: false
 
   ## Deploy only on nodes having required labels. Format label_name : label_value
-  ## Leave empty if there is no such requirement.
-  ## Uncomment to use
-  # nodeSelector: 
-  #   failure-domain.beta.kubernetes.io/zone: bVCG:PHX-AD-1
-  #   pool: sidb
+  ## The same lables are applied to the created PVC
+  ## For instance if the Pods and storage need to be restricted to a particular AD
+  ## Leave commented if there is no such requirement.
+  # nodeSelector:
+  #   failure-domain.beta.kubernetes.io/zone: PHX-AD-1
 
   ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
   serviceAccountName: default
