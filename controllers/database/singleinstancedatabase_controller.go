@@ -980,9 +980,9 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	}
 	log.Info("Found Existing Service ", "Service Name ", svc.Name)
 
-	m.Status.ConnectString = dbcommons.ValueUnavailable
-	m.Status.PdbConnectString = dbcommons.ValueUnavailable
-	m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	//m.Status.ConnectString = dbcommons.ValueUnavailable
+	//m.Status.PdbConnectString = dbcommons.ValueUnavailable
+	//m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 
 	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
@@ -1257,11 +1257,11 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 		m.Status.Status = dbcommons.StatusPending
 		m.Status.DatafilesCreated = "false"
 		m.Status.DatafilesPatched = "false"
-		m.Status.Role = dbcommons.ValueUnavailable
-		m.Status.ConnectString = dbcommons.ValueUnavailable
-		m.Status.PdbConnectString = dbcommons.ValueUnavailable
-		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
-		m.Status.ReleaseUpdate = dbcommons.ValueUnavailable
+		//m.Status.Role = dbcommons.ValueUnavailable
+		//m.Status.ConnectString = dbcommons.ValueUnavailable
+		//m.Status.PdbConnectString = dbcommons.ValueUnavailable
+		//m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+		//m.Status.ReleaseUpdate = dbcommons.ValueUnavailable
 	}
 	//  if Found < Required , Create New Pods , Name of Pods are generated Randomly
 	for i := replicasFound; i < replicasReq; i++ {
