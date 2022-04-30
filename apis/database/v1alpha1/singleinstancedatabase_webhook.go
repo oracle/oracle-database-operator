@@ -87,14 +87,7 @@ func (r *SingleInstanceDatabase) Default() {
 		} else {
 			r.Spec.Pdbname = "ORCLPDB1"
 		}
-
 	}
-
-	r.Status.Role = dbcommons.ValueUnavailable
-	r.Status.ConnectString = dbcommons.ValueUnavailable
-	r.Status.PdbConnectString = dbcommons.ValueUnavailable
-	r.Status.OemExpressUrl = dbcommons.ValueUnavailable
-	r.Status.ReleaseUpdate = dbcommons.ValueUnavailable
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.

@@ -303,6 +303,23 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 
 	r.Log.Info("Entering reconcile validation")
 
+	/* Initialize statuses */
+	if m.Status.Role == "" {
+		m.Status.Role = dbcommons.ValueUnavailable
+	}
+	if m.Status.ConnectString == "" {
+		m.Status.ConnectString = dbcommons.ValueUnavailable
+	}
+	if m.Status.PdbConnectString == "" {
+		m.Status.PdbConnectString = dbcommons.ValueUnavailable
+	}
+	if m.Status.OemExpressUrl == "" {
+		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	}
+	if m.Status.ReleaseUpdate == "" {
+		m.Status.ReleaseUpdate = dbcommons.ValueUnavailable
+	}
+
 	//First check image pull secrets
 	if m.Spec.Image.PullSecrets != "" {
 		secret := &corev1.Secret{}
