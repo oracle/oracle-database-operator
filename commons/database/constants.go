@@ -208,7 +208,7 @@ const GetSqlpatchStatusSQL string = "select status from dba_registry_sqlpatch or
 
 const GetSqlpatchVersionSQL string = "select SOURCE_VERSION || ':' || TARGET_VERSION as versions from dba_registry_sqlpatch order by action_time desc;"
 
-const GetCheckpointFileCMD string = "find ${ORACLE_BASE}/oradata -name .${ORACLE_SID}${CHECKPOINT_FILE_EXTN} "
+const GetCheckpointFileCMD string = "find ${ORACLE_BASE}/oradata -name .${ORACLE_SID}${CHECKPOINT_FILE_EXTN} 2> /dev/null"
 
 const GetEnterpriseEditionFileCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_enterprise ]; then ls ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_enterprise; fi "
 
