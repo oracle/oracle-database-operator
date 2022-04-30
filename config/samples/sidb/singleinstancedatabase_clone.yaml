@@ -38,5 +38,5 @@ spec:
   ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
   persistence:
     size: 100Gi
-    storageClass: "oci-bv"
+    storageClass: "oci"
     accessMode: "ReadWriteOnce"
