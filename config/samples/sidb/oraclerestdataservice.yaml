@@ -53,6 +53,13 @@ spec:
   ## if loadBalService: false, service type = "NodePort". else "LoadBalancer"
   loadBalancer: false
 
+  ## Deploy only on nodes having required labels. Format label_name : label_value
+  ## The same lables are applied to the created PVC
+  ## For instance if the Pods and storage need to be restricted to a particular AD
+  ## Leave commented if there is no such requirement.
+  # nodeSelector:
+  #   failure-domain.beta.kubernetes.io/zone: PHX-AD-1
+
   ## PDB Schemas to be ORDS Enabled.
   ## Schema will be created (if not exists) with username as schema and password as .spec.ordsPassword.
   restEnableSchemas:

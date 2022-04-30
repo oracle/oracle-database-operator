@@ -616,6 +616,17 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: func() map[string]string {
+					ns := make(map[string]string)
+					if len(m.Spec.NodeSelector) != 0 {
+						for key, value := range m.Spec.NodeSelector {
+							ns[key] = value
+						}
+					}
+					return ns
+				}(),
+			},
 		},
 	}
 	// Set SingleInstanceDatabase instance as the owner and controller
@@ -866,7 +877,15 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		return err
 	}
 
-	if m.Status.OrdsInstalled && readyPod.Name != "" {
+	if readyPod.Name == "" {
+		eventReason := "Waiting"
+		eventMsg := "waiting for " + m.Name + " to be Ready"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		err = errors.New(eventMsg)
+		return err
+	}
+
+	if m.Status.OrdsInstalled {
 		// ## FETCH THE SIDB REPLICAS .
 		sidbReadyPod, _, _, _, err := dbcommons.FindPods(r, n.Spec.Image.Version,
 			n.Spec.Image.PullFrom, n.Name, n.Namespace, ctx, req)
@@ -910,14 +929,6 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 			return err
 		}
 		log.Info("KillSession Output : " + out)
-
-		if readyPod.Name == "" {
-			eventReason := "Waiting"
-			eventMsg := "waiting for " + m.Name + " to be Ready"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			err = errors.New(eventMsg)
-			return err
-		}
 
 		// Fetch admin Password of database to uninstall ORDS
 		adminPasswordSecret := &corev1.Secret{}
@@ -963,6 +974,12 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		}
 
 		log.Info("UninstallORDSCMD Output : " + out)
+
+		//Delete ORDS pod
+		var gracePeriodSeconds int64 = 0
+			policy := metav1.DeletePropagationForeground
+		r.Delete(ctx, &readyPod, &client.DeleteOptions{
+			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 
 		//Delete Database Admin Password Secret
 		if !m.Spec.AdminPassword.KeepSecret {
@@ -1244,13 +1261,13 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			strconv.FormatBool(m.Spec.RestEnableSchemas[i].Enable), urlMappingPattern, m.Spec.RestEnableSchemas[i].Pdb)
 
 		// Create users,schemas and grant enableORDS for PDB
-		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 			fmt.Sprintf("echo -e  \"%s\"  | %s", enableORDSSchema, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
 		}
-		log.Info("getOrdsSchemaStatus Output : " + out)
+		log.Info("REST Enabled", "schema", m.Spec.RestEnableSchemas[i].Schema)
 
 	}
 
