@@ -617,7 +617,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
 			Selector: func() *metav1.LabelSelector {
-				if m.Spec.Persistence.StorageClass == "oci-bv" {
+				if m.Spec.Persistence.StorageClass != "oci" {
 					return nil
 				}
 				return &metav1.LabelSelector{
