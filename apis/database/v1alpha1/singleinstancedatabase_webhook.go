@@ -102,20 +102,6 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 
-	if r.Spec.Replicas > 1 {
-		valMsg := ""
-		if r.Spec.Edition == "express" {
-			valMsg = "should be 1 for express edition"
-		}
-		if r.Spec.Image.PrebuiltDB {
-			valMsg = "should be 1 for prebuiltDB"
-		}
-		if valMsg != "" {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("replicas"), r.Spec.Replicas, valMsg))
-		}
-	}
-
 	// Persistence spec validation
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" || r.Spec.Persistence.StorageClass != "" ) || 
 		(r.Spec.Persistence.Size != "" && r.Spec.Persistence.AccessMode == "" ) {
@@ -131,11 +117,21 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 				r.Spec.Persistence.AccessMode, "should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
 	}
 
-	if r.Spec.Persistence.AccessMode == "ReadWriteOnce" && r.Spec.Replicas != 1 {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("replicas"), r.Spec.Replicas,
-				"should be 1 for accessMode \"ReadWriteOnce\""))
+	// Replica validation
+	if r.Spec.Replicas > 1 {
+		valMsg := ""
+		if r.Spec.Edition == "express" {
+			valMsg = "should be 1 for express edition"
+		}
+		if r.Spec.Persistence.Size == "" {
+			valMsg = "should be 1 if no persistence is specified"
+		}
+		if valMsg != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("replicas"), r.Spec.Replicas, valMsg))
+		}
 	}
+
 	if r.Spec.Edition == "express" && r.Spec.CloneFrom != "" {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
