@@ -109,8 +109,11 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: oracleRestDataService.Spec.DatabaseRef}, singleInstanceDatabase)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			r.Log.Info("Resource deleted")
-			return requeueN, nil
+			eventReason := "Waiting"
+			eventMsg := "waiting for database " + oracleRestDataService.Spec.DatabaseRef
+			r.Recorder.Eventf(oracleRestDataService, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Resource not found", "DatabaseRef", oracleRestDataService.Spec.DatabaseRef)
+			return requeueY, nil
 		}
 		return requeueN, err
 	}
@@ -157,7 +160,6 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
-
 
 	// Create ORDS Pods
 	result = r.createPods(oracleRestDataService, singleInstanceDatabase, ctx, req)
@@ -774,7 +776,10 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 				break
 			}
 			r.Log.Info("Deleting Pod : ", "POD.NAME", pod.Name)
-			err := r.Delete(ctx, &pod, &client.DeleteOptions{})
+			var gracePeriodSeconds int64 = 0
+			policy := metav1.DeletePropagationForeground
+			err := r.Delete(ctx, &pod, &client.DeleteOptions{
+				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 			noDeleted += 1
 			if err != nil {
 				r.Log.Error(err, "Failed to delete existing POD", "POD.Name", pod.Name)
@@ -1037,7 +1042,10 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		}
 	}
 	// ORDS Needs to be restarted to configure APEX
-	err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{})
+	var gracePeriodSeconds int64 = 0
+	policy := metav1.DeletePropagationForeground
+	err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{
+		GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 	if err != nil {
 		r.Log.Error(err, "Failed to delete existing POD", "POD.Name", ordsReadyPod.Name)
 		return requeueY

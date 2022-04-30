@@ -954,11 +954,12 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
 	if m.Spec.Image.PrebuiltDB {
-		sid, pdbName, m.Status.Edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
-		if sid == "" || pdbName == "" || m.Status.Edition == "" {
+		edition := ""
+		sid, pdbName, edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
+		if sid == "" || pdbName == "" || edition == "" {
 			return requeueN, nil
 		}
-		m.Status.Edition = strings.Title(m.Status.Edition)
+		m.Status.Edition = strings.Title(edition)
 	}
 
 	if m.Spec.LoadBalancer {
