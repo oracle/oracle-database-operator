@@ -303,6 +303,24 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 
 	r.Log.Info("Entering reconcile validation")
 
+	//First check image pull secrets
+	if m.Spec.Image.PullSecrets != "" {
+		secret := &corev1.Secret{}
+		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.Image.PullSecrets, Namespace: m.Namespace}, secret)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				// Secret not found
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
+				r.Log.Info(err.Error())
+				m.Status.Status = dbcommons.StatusError
+				return requeueY, err
+			}
+			r.Log.Error(err, err.Error())
+			return requeueY, err
+		}
+	}
+
+
 	//  If Express Edition , Ensure Replicas=1
 	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
 		eventMsgs = append(eventMsgs, "XE supports only one replica")
@@ -1373,16 +1391,11 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			eventReason = "Database Creating"
 			eventMsg = "waiting for database to be ready"
 			m.Status.Status = dbcommons.StatusCreating
-			if m.Spec.Edition == "express" {
-				eventReason = "Database Unhealthy"
-				m.Status.Status = dbcommons.StatusNotReady
-				r.updateORDSStatus(m, ctx, req)
-			}
+
 			out, err := dbcommons.ExecCommand(r, r.Config, runningPod.Name, runningPod.Namespace, "",
 				ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD)
 			if err != nil {
-				r.Log.Error(err, err.Error())
-				return requeueY, readyPod, err
+				r.Log.Info(err.Error())
 			}
 			r.Log.Info("GetCheckpointFileCMD Output : \n" + out)
 
