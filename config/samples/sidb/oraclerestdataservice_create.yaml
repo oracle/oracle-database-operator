@@ -18,6 +18,7 @@ apiVersion: database.oracle.com/v1alpha1
 kind: OracleRestDataService
 metadata:
   name: ords-sample
+  namespace: default
 spec:
   
   ## Database ref. This can be of kind SingleInstanceDatabase.
