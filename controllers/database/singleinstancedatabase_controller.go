@@ -476,14 +476,18 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			Affinity: func() *corev1.Affinity {
 				if m.Spec.Persistence.AccessMode == "ReadWriteOnce" {
 					return &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+									MatchExpressions: []corev1.NodeSelectorRequirement{{
+										Key: "kubernetes.io/hostname",
+										Operator: corev1.NodeSelectorOpExists,
+									}},
+								}},
+							},
+						} ,
 						PodAffinity: &corev1.PodAffinity{
 							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-									LabelSelector: &metav1.LabelSelector{
-										MatchExpressions: []metav1.LabelSelectorRequirement{{
-											Key: "kubernetes.io/hostname",
-											Operator: metav1.LabelSelectorOpExists,
-										}},
-									},
 									TopologyKey: "kubernetes.io/hostname",
 								},
 							},
