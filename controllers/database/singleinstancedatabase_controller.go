@@ -344,7 +344,6 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		}
 	}
 
-
 	//  If Express Edition , Ensure Replicas=1
 	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
 		eventMsgs = append(eventMsgs, "XE supports only one replica")
@@ -458,7 +457,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //    Instantiate POD spec from SingleInstanceDatabase spec
 //#############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase) *corev1.Pod {
-	
+
 	// POD spec
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
@@ -476,30 +475,20 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			Affinity: func() *corev1.Affinity {
 				if m.Spec.Persistence.AccessMode == "ReadWriteOnce" {
 					return &corev1.Affinity{
-						NodeAffinity: &corev1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-								NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-									MatchExpressions: []corev1.NodeSelectorRequirement{{
-										Key: "kubernetes.io/hostname",
-										Operator: corev1.NodeSelectorOpExists,
-									}},
-								}},
-							},
-						} ,
 						PodAffinity: &corev1.PodAffinity{
 							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
-									Weight: 50,
-									PodAffinityTerm: corev1.PodAffinityTerm {
-										LabelSelector: &metav1.LabelSelector{
-											MatchExpressions: []metav1.LabelSelectorRequirement{{
-												Key: "app",
-												Operator: metav1.LabelSelectorOpIn,
-												Values: []string{m.Name},
-											}},
-										},
-										TopologyKey: "kubernetes.io/hostname",
+								Weight: 100,
+								PodAffinityTerm: corev1.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{{
+											Key:      "app",
+											Operator: metav1.LabelSelectorOpIn,
+											Values:   []string{m.Name},
+										}},
 									},
+									TopologyKey: "kubernetes.io/hostname",
 								},
+							},
 							},
 						},
 					}
@@ -508,10 +497,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			}(),
 			Volumes: []corev1.Volume{{
 				Name: "datamount",
-				VolumeSource: func() corev1.VolumeSource {  
+				VolumeSource: func() corev1.VolumeSource {
 					if m.Spec.Persistence.Size == "" {
 						return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
-					} 
+					}
 					/* Persistence is specified */
 					return corev1.VolumeSource{
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
@@ -534,9 +523,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				},
 			}},
 			InitContainers: func() []corev1.Container {
-				initContainers := []corev1.Container {}
+				initContainers := []corev1.Container{}
 				if m.Spec.Persistence.Size != "" {
-					initContainers = append(initContainers, corev1.Container {
+					initContainers = append(initContainers, corev1.Container{
 						Name:    "init-permissions",
 						Image:   m.Spec.Image.PullFrom,
 						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
@@ -550,11 +539,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						}},
 					})
 					if m.Spec.Image.PrebuiltDB {
-						initContainers = append(initContainers, corev1.Container {
+						initContainers = append(initContainers, corev1.Container{
 							Name:    "init-prebuiltdb",
 							Image:   m.Spec.Image.PullFrom,
 							Command: []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
-							SecurityContext: &corev1.SecurityContext {
+							SecurityContext: &corev1.SecurityContext{
 								RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
 								RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
 							},
@@ -573,7 +562,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}
 				/* Wallet only for non-express edition, non-prebuiltDB */
 				if m.Spec.Edition != "express" && !m.Spec.Image.PrebuiltDB {
-					initContainers = append(initContainers, corev1.Container{ 
+					initContainers = append(initContainers, corev1.Container{
 						Name:  "init-wallet",
 						Image: m.Spec.Image.PullFrom,
 						Env: []corev1.EnvVar{
@@ -632,7 +621,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					},
 				},
-				Ports:           []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
+				Ports: []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
 
 				ReadinessProbe: &corev1.Probe{
 					ProbeHandler: corev1.ProbeHandler{
@@ -653,15 +642,15 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				VolumeMounts: func() []corev1.VolumeMount {
 					mounts := []corev1.VolumeMount{}
 					if m.Spec.Persistence.Size != "" {
-						mounts = append(mounts, corev1.VolumeMount {
+						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: "/opt/oracle/oradata",
 							Name:      "datamount",
 						})
 					}
 					if m.Spec.Edition == "express" || m.Spec.Image.PrebuiltDB {
 						// mounts pwd as secrets for express edition
-						// or prebuilt db							
-						mounts = append(mounts, corev1.VolumeMount {
+						// or prebuilt db
+						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: "/run/secrets/oracle_pwd",
 							ReadOnly:  true,
 							Name:      "oracle-pwd-vol",
@@ -669,7 +658,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						})
 					}
 					return mounts
-				}(), 
+				}(),
 				Env: func() []corev1.EnvVar {
 					// adding XE support, useful for dev/test/CI-CD
 					if m.Spec.Edition == "express" {
@@ -915,16 +904,16 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 					return nil
 				}
 				return &metav1.LabelSelector{
-							MatchLabels: func() map[string]string {
-								ns := make(map[string]string)
-								if len(m.Spec.NodeSelector) != 0 {
-									for key, value := range m.Spec.NodeSelector {
-										ns[key] = value
-									}
-								}
-								return ns
-							}(),
+					MatchLabels: func() map[string]string {
+						ns := make(map[string]string)
+						if len(m.Spec.NodeSelector) != 0 {
+							for key, value := range m.Spec.NodeSelector {
+								ns[key] = value
+							}
 						}
+						return ns
+					}(),
+				}
 			}(),
 		},
 	}
@@ -939,7 +928,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Context, req ctrl.Request,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 
-	// Don't create PVC if persistence is not chosen 
+	// Don't create PVC if persistence is not chosen
 	if m.Spec.Persistence.Size == "" {
 		return requeueN, nil
 	}
@@ -1157,6 +1146,16 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		eventMsg := "waiting for newer version/image DB pods get to running state"
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		log.Info(eventMsg)
+
+		for i := 0; i < len(available); i++ {
+			if strings.Contains(available[i].Status.Reason, "ImagePullBackOff") {
+				var gracePeriodSeconds int64 = 0
+				policy := metav1.DeletePropagationForeground
+				r.Delete(ctx, &available[i], &client.DeleteOptions{
+					GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
+			}
+		}
+
 		return requeueY, errors.New(eventMsg)
 	}
 
@@ -1546,16 +1545,11 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 		return requeueN, nil
 	}
 
-	// No Patching for Pre-built db
-	if m.Spec.Image.PrebuiltDB {
-		return requeueN, nil
-	}
-
 	m.Status.Status = dbcommons.StatusPatching
-	r.Status().Update(ctx, m)
 	eventReason := "Datapatch Executing"
-	eventMsg := "datapatch begin execution"
+	eventMsg := "datapatch begins execution"
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+	r.Status().Update(ctx, m)
 
 	//RUN DATAPATCH
 	out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
@@ -1601,7 +1595,6 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("updateInitParameters", req.NamespacedName)
 
-
 	if m.Status.InitParams == m.Spec.InitParams {
 		return requeueN, nil
 	}
@@ -1646,7 +1639,6 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	log := r.Log.WithValues("updateDBConfig", req.NamespacedName)
-
 
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
