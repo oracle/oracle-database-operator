@@ -1023,10 +1023,6 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	}
 	log.Info("Found Existing Service ", "Service Name ", svc.Name)
 
-	//m.Status.ConnectString = dbcommons.ValueUnavailable
-	//m.Status.PdbConnectString = dbcommons.ValueUnavailable
-	//m.Status.OemExpressUrl = dbcommons.ValueUnavailable
-
 	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
 	if m.Spec.Image.PrebuiltDB {
@@ -1072,7 +1068,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	oldImage := ""
 
 	// call FindPods() to fetch pods all version/images of the same SIDB kind
-	readyPod, replicasFound, available, podsMarkedToBeDeleted, err := dbcommons.FindPods(r, "", "", m.Name, m.Namespace, ctx, req)
+	readyPod, replicasFound, allAvailable, podsMarkedToBeDeleted, err := dbcommons.FindPods(r, "", "", m.Name, m.Namespace, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY, err
@@ -1082,10 +1078,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		return requeueY, err
 	}
 	if readyPod.Name != "" {
-		available = append(available, readyPod)
+		allAvailable = append(allAvailable, readyPod)
 	}
 
-	for _, pod := range available {
+	for _, pod := range allAvailable {
 		if pod.Labels["version"] != m.Spec.Image.Version {
 			oldVersion = pod.Labels["version"]
 		}
@@ -1117,53 +1113,14 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		eventMsg = "from " + strconv.Itoa(replicasFound) + " pods to " + strconv.Itoa(m.Spec.Replicas)
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 		// Delete extra PODs
-		return r.deletePods(ctx, req, m, available, readyPod, replicasFound, m.Spec.Replicas)
+		return r.deletePods(ctx, req, m, allAvailable, readyPod, replicasFound, m.Spec.Replicas)
 	}
 
 	// Version/Image changed
 	// PATCHING START (Only Software Patch)
-	// call FindPods() to find pods of newer version . if running , delete the older version replicas.
-	readyPod, replicasFound, available, _, err = dbcommons.FindPods(r, m.Spec.Image.Version,
-		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
-	if err != nil {
-		log.Error(err, err.Error())
-		return requeueY, nil
-	}
 
-	// create new Pods with the new Version and no.of Replicas required
-	result, err := r.createPods(m, n, ctx, req, replicasFound)
-	if result.Requeue {
-		return result, err
-	}
-
-	// Findpods() only returns non ready pods
-	if readyPod.Name != "" {
-		log.Info("New ready pod found", "name", readyPod.Name)
-		available = append(available, readyPod)
-	}
-	if ok, _ := dbcommons.IsAnyPodWithStatus(available, corev1.PodRunning); !ok {
-		eventReason := "Database Pending"
-		eventMsg := "waiting for newer version/image DB pods get to running state"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-		log.Info(eventMsg)
-
-		for i := 0; i < len(available); i++ {
-			waitingReason := available[i].Status.InitContainerStatuses[i].State.Waiting.Reason
-			r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
-			if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
-				r.Log.Info("Deleting pod", "name", available[0].Name)
-				var gracePeriodSeconds int64 = 0
-				policy := metav1.DeletePropagationForeground
-				r.Delete(ctx, &available[i], &client.DeleteOptions{
-					GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
-			}
-		}
-
-		return requeueY, errors.New(eventMsg)
-	}
-
-	// call FindPods() to find pods of older version . delete all the Pods
-	readyPod, replicasFound, available, _, err = dbcommons.FindPods(r, oldVersion,
+	// call FindPods() to find pods of older version. Delete all the Pods
+	readyPod, oldReplicasFound, oldAvailable, _, err := dbcommons.FindPods(r, oldVersion,
 		oldImage, m.Name, m.Namespace, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
@@ -1171,9 +1128,61 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	}
 	if readyPod.Name != "" {
 		log.Info("Ready pod marked for deletion", "name", readyPod.Name)
-		available = append(available, readyPod)
+		oldAvailable = append(oldAvailable, readyPod)
 	}
-	return r.deletePods(ctx, req, m, available, corev1.Pod{}, replicasFound, 0)
+
+	if m.Spec.Edition == "express" {
+		r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
+	}
+
+	// call FindPods() to find pods of newer version . if running , delete the older version replicas.
+	readyPod, newReplicasFound, newAvailable, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
+		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY, nil
+	}
+	// Findpods() only returns non ready pods
+	if readyPod.Name != "" {
+		log.Info("New ready pod found", "name", readyPod.Name)
+		newAvailable = append(newAvailable, readyPod)
+	}
+
+	// create new Pods with the new Version and no.of Replicas required
+	result, err := r.createPods(m, n, ctx, req, newReplicasFound)
+	if result.Requeue {
+		return result, err
+	}
+
+	if ok, _ := dbcommons.IsAnyPodWithStatus(newAvailable, corev1.PodRunning); !ok {
+		eventReason := "Database Pending"
+		eventMsg := "waiting for newer version/image DB pods get to running state"
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		log.Info(eventMsg)
+
+		for i := 0; i < len(newAvailable); i++ {
+			waitingReason := ""
+			if (len(newAvailable[i].Status.InitContainerStatuses) > 0) {
+				waitingReason = newAvailable[i].Status.InitContainerStatuses[0].State.Waiting.Reason
+			} else {
+				waitingReason = newAvailable[i].Status.ContainerStatuses[0].State.Waiting.Reason
+			}
+			r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
+			if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
+				r.Log.Info("Deleting pod", "name", newAvailable[i].Name)
+				var gracePeriodSeconds int64 = 0
+				policy := metav1.DeletePropagationForeground
+				r.Delete(ctx, &newAvailable[i], &client.DeleteOptions{
+					GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
+			}
+		}
+
+		return requeueY, errors.New(eventMsg)
+	}
+	if  m.Spec.Edition == "express" {
+		return requeueN, nil
+	}
+	return r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
 	// PATCHING END
 }
 
@@ -1313,11 +1322,6 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 		m.Status.Status = dbcommons.StatusPending
 		m.Status.DatafilesCreated = "false"
 		m.Status.DatafilesPatched = "false"
-		//m.Status.Role = dbcommons.ValueUnavailable
-		//m.Status.ConnectString = dbcommons.ValueUnavailable
-		//m.Status.PdbConnectString = dbcommons.ValueUnavailable
-		//m.Status.OemExpressUrl = dbcommons.ValueUnavailable
-		//m.Status.ReleaseUpdate = dbcommons.ValueUnavailable
 	}
 	//  if Found < Required , Create New Pods , Name of Pods are generated Randomly
 	for i := replicasFound; i < replicasReq; i++ {
@@ -1375,7 +1379,7 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 		}
 	}
 
-	// For deleting all pods , call with readyPod as nil ( corev1.Pod{} ) and append readyPod to avaiable while calling deletePods()
+	// For deleting all pods , call with readyPod as nil ( corev1.Pod{} ) and append readyPod to available while calling deletePods()
 	//  if Found > Required , Delete Extra Pods
 	if replicasFound > len(available) {
 		// if available does not contain readyPOD, add it
