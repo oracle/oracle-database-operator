@@ -295,13 +295,14 @@ func GenerateRandomString(n int) string {
 
 // retuns Ready Pod,No of replicas ( Only running and Pending Pods) ,available pods , Total No of Pods of a particular CRD
 func FindPods(r client.Reader, version string, image string, name string, namespace string, ctx context.Context,
-	req ctrl.Request) (corev1.Pod, int, []corev1.Pod, int, error) {
+	req ctrl.Request) (corev1.Pod, int, []corev1.Pod, []corev1.Pod, error) {
 
 	log := ctrllog.FromContext(ctx).WithValues("FindPods", req.NamespacedName)
 
 	// "available" stores list of pods which can be deleted while scaling down i.e the pods other than one of Ready Pods
 	// There are multiple ready pods possible in OracleRestDataService , while others have atmost one readyPod
 	var available []corev1.Pod
+	var podsMarkedToBeDeleted []corev1.Pod
 	var readyPod corev1.Pod // To Store the Ready Pod ( Pod that Passed Readiness Probe . Will be shown as 1/1 Running )
 
 	podList := &corev1.PodList{}
@@ -310,18 +311,17 @@ func FindPods(r client.Reader, version string, image string, name string, namesp
 	// List retrieves list of objects for a given namespace and list options.
 	if err := r.List(ctx, podList, listOpts...); err != nil {
 		log.Error(err, "Failed to list pods of "+name, "Namespace", namespace, "Name", name)
-		return readyPod, 0, available, 0, err
+		return readyPod, 0, available, podsMarkedToBeDeleted, err
 	}
 
 	// r.List() lists all the pods in running, pending,terminating stage matching listOpts . so filter them
 	// Fetch the Running and Pending Pods
 
-	podsMarkedToBeDeleted := 0
 	for _, pod := range podList.Items {
 		// Return pods having Image = image (or) if image = ""(Needed in case when called findpods with "" image)
 		if pod.Spec.Containers[0].Image == image || image == "" {
 			if pod.ObjectMeta.DeletionTimestamp != nil {
-				podsMarkedToBeDeleted += 1
+				podsMarkedToBeDeleted = append(podsMarkedToBeDeleted, pod)
 				continue
 			}
 			if pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodPending {

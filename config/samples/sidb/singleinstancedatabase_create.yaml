@@ -7,6 +7,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: db-admin-secret
+  namespace: default
 type: Opaque
 stringData:
   oracle_pwd: "ChangeOnInstall_1"
@@ -29,11 +30,9 @@ spec:
   edition: enterprise
 
   ## Secret containing SIDB password mapped to secretKey 
-  ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
     secretName: db-admin-secret
     secretKey: oracle_pwd
-    keepSecret: true
 
   ## DB character set
   charset: AL32UTF8
@@ -56,3 +55,6 @@ spec:
     size: 100Gi
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
+
+  ## Count of Database Pods.
+  replicas: 1
