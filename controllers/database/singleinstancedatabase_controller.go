@@ -1076,10 +1076,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 
 	// Recreate new pods only after earlier pods are terminated completely
 	for i := 0; i < len(podsMarkedToBeDeleted); i++ {
-		r.Log.Info("Force deleting pod ", "name", allAvailable[i].Name, "phase", allAvailable[i].Status.Phase)
+		r.Log.Info("Force deleting pod ", "name", podsMarkedToBeDeleted[i].Name, "phase", podsMarkedToBeDeleted[i].Status.Phase)
 		var gracePeriodSeconds int64 = 0
 		policy := metav1.DeletePropagationForeground
-		r.Delete(ctx, &allAvailable[i], &client.DeleteOptions{
+		r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
 				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 	}
 
