@@ -1073,9 +1073,18 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		log.Error(err, err.Error())
 		return requeueY, err
 	}
-	if m.Spec.Replicas == 1 && podsMarkedToBeDeleted > 0 {
+	if  podsMarkedToBeDeleted > 0 {
 		// Recreate new pods only after earlier pods are terminated completely
-		return requeueY, err
+		for i := 0; i < len(allAvailable); i++ {
+			if allAvailable[i].ObjectMeta.DeletionTimestamp != nil {
+				r.Log.Info("Force deleting pod ", "name", allAvailable[i].Name, "phase", allAvailable[i].Status.Phase)
+				var gracePeriodSeconds int64 = 0
+				policy := metav1.DeletePropagationForeground
+				r.Delete(ctx, &allAvailable[i], &client.DeleteOptions{
+					GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
+			}
+		}
+		return requeueY, nil
 	}
 	if readyPod.Name != "" {
 		allAvailable = append(allAvailable, readyPod)
