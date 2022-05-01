@@ -57,3 +57,6 @@ spec:
     size: 100Gi
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
+
+  ## Count of Database Pods.
+  replicas: 1
