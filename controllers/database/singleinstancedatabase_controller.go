@@ -1073,7 +1073,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		log.Error(err, err.Error())
 		return requeueY, err
 	}
-	if m.Spec.Edition == "express" && podsMarkedToBeDeleted > 0 {
+	if m.Spec.Replicas == 1 && podsMarkedToBeDeleted > 0 {
 		// Recreate new pods only after earlier pods are terminated completely
 		return requeueY, err
 	}
@@ -1131,7 +1131,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		oldAvailable = append(oldAvailable, readyPod)
 	}
 
-	if m.Spec.Edition == "express" {
+	if m.Spec.Replicas == 1 {
 		r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
 	}
 
@@ -1161,11 +1161,15 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		log.Info(eventMsg)
 
 		for i := 0; i < len(newAvailable); i++ {
+			r.Log.Info("Pod status: ", "name", newAvailable[i].Name, "phase", newAvailable[i].Status.Phase)
 			waitingReason := ""
 			if (len(newAvailable[i].Status.InitContainerStatuses) > 0) {
 				waitingReason = newAvailable[i].Status.InitContainerStatuses[0].State.Waiting.Reason
-			} else {
+			} else if len(newAvailable[i].Status.ContainerStatuses) > 0 {
 				waitingReason = newAvailable[i].Status.ContainerStatuses[0].State.Waiting.Reason
+			}
+			if waitingReason == "" {
+				continue
 			}
 			r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
 			if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
@@ -1176,10 +1180,9 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 					GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
 			}
 		}
-
 		return requeueY, errors.New(eventMsg)
 	}
-	if  m.Spec.Edition == "express" {
+	if  m.Spec.Replicas == 1 {
 		return requeueN, nil
 	}
 	return r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
@@ -1510,7 +1513,7 @@ func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceD
 
 	// Deleting the secret and then deleting the wallet
 	// If the secret is not found it means that the secret and wallet both are deleted, hence no need to requeue
-	if !m.Spec.AdminPassword.KeepSecret {
+	if !*m.Spec.AdminPassword.KeepSecret {
 		r.Log.Info("Querying the database secret ...")
 		secret := &corev1.Secret{}
 		err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)

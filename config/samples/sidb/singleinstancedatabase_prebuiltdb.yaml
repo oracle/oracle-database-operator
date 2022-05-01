@@ -28,11 +28,9 @@ spec:
   edition: express
 
   ## Secret containing SIDB password mapped to secretKey
-  ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
     secretName: prebuiltdb-admin-secret
     secretKey: oracle_pwd
-    keepSecret: true
 
   ## Database Image
   image:

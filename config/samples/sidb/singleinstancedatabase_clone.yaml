@@ -19,11 +19,9 @@ spec:
 
   ## Should refer to SourceDB secret
   ## Secret containing SIDB password mapped to secretKey 
-  ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
     secretName: db-admin-secret
     secretKey: oracle_pwd
-    keepSecret: true
 
   ## Database image details
   ## This image should be the same as the source DB image being cloned
