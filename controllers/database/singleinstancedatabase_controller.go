@@ -1148,6 +1148,9 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		log.Info(eventMsg)
 
 		for i := 0; i < len(available); i++ {
+			r.Log.Info("Unavailable reason: ", "reason", available[i].Status.Reason)
+			r.Log.Info("Unavailable reason: ", "phase", available[i].Status.Phase)
+			r.Log.Info("Unavailable reason: ", "msg", available[i].Status.Message)
 			if strings.Contains(available[i].Status.Reason, "ImagePullBackOff") {
 				var gracePeriodSeconds int64 = 0
 				policy := metav1.DeletePropagationForeground
