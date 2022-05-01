@@ -478,6 +478,12 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					return &corev1.Affinity{
 						PodAffinity: &corev1.PodAffinity{
 							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{{
+											Key: "kubernetes.io/hostname",
+											Operator: metav1.LabelSelectorOpExists,
+										}},
+									},
 									TopologyKey: "kubernetes.io/hostname",
 								},
 							},
