@@ -894,20 +894,6 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 	m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase) error {
 	log := r.Log.WithValues("cleanupOracleRestDataService", req.NamespacedName)
 
-	readyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
-		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
-	if err != nil {
-		log.Error(err, err.Error())
-		return err
-	}
-
-	if readyPod.Name == "" {
-		eventReason := "Waiting"
-		eventMsg := "waiting for " + m.Name + " to be Ready"
-		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-		err = errors.New(eventMsg)
-		return err
-	}
 
 	if m.Status.OrdsInstalled {
 		// ## FETCH THE SIDB REPLICAS .
@@ -976,28 +962,36 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 				break
 			}
 		}
-		if !adminPasswordSecretFound {
-			log.Info("AdminPassword Secret not found . Omitting OracleRestDataService uninstallation")
-			return nil
+		// Find ORDS ready pod
+		readyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
+			m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
+		if err != nil {
+			log.Error(err, err.Error())
+			return err
 		}
+		if adminPasswordSecretFound && readyPod.Name != "" {
+			adminPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
+			uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
 
-		adminPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
-		uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
-
-		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
+			out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
 			uninstallORDS)
-		log.Info("UninstallORDSCMD Output : " + out)
-		if strings.Contains(strings.ToUpper(out), "ERROR") {
-			return errors.New(out)
+			log.Info("UninstallORDSCMD Output : " + out)
+			if strings.Contains(strings.ToUpper(out), "ERROR") {
+				return errors.New(out)
+			}
+			if err != nil {
+				log.Info(err.Error())
+			}
+			log.Info("UninstallORDSCMD Output : " + out)
 		}
+
+		// Drop Admin Users
+		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			fmt.Sprintf("echo -e  \"%s\"  | %s ", dbcommons.DropAdminUsersSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Info(err.Error())
-			if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
-				return err
-			}
 		}
-
-		log.Info("UninstallORDSCMD Output : " + out)
+		log.Info("DropAdminUsersSQL Output : " + out)
 
 		//Delete ORDS pod
 		var gracePeriodSeconds int64 = 0
@@ -1012,16 +1006,6 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 				r.Log.Info("Deleted Admin Password Secret :" + adminPasswordSecret.Name)
 			}
 		}
-
-		// Drop Admin Users
-		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s ", dbcommons.DropAdminUsersSQL, dbcommons.SQLPlusCLI))
-		if err != nil {
-			log.Error(err, err.Error())
-			return err
-		}
-		log.Info("DropAdminUsersSQL Output : " + out)
-
 	}
 
 	// Cleanup steps that the operator needs to do before the CR can be deleted.
