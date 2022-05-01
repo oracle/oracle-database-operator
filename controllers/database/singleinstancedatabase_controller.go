@@ -304,6 +304,13 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	r.Log.Info("Entering reconcile validation")
 
 	/* Initialize statuses */
+	if m.Status.Edition == "" {
+		if m.Spec.Edition != "" {
+			m.Status.Edition = strings.Title(m.Spec.Edition)
+		} else {
+			m.Status.Edition = dbcommons.ValueUnavailable
+		}
+	}
 	if m.Status.Role == "" {
 		m.Status.Role = dbcommons.ValueUnavailable
 	}
@@ -342,18 +349,10 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
 		eventMsgs = append(eventMsgs, "XE supports only one replica")
 	}
-	//  If Block Volume , Ensure Replicas=1
-	if m.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Replicas > 1 {
-		eventMsgs = append(eventMsgs, "accessMode ReadWriteOnce supports only one replica")
-	}
 	if m.Status.Sid != "" && !strings.EqualFold(m.Spec.Sid, m.Status.Sid) {
 		eventMsgs = append(eventMsgs, "sid cannot be updated")
 	}
-	edition := m.Spec.Edition
-	if m.Spec.Edition == "" {
-		edition = "Enterprise"
-	}
-	if m.Spec.CloneFrom == "" && m.Status.Edition != "" && !strings.EqualFold(m.Status.Edition, edition) {
+	if m.Spec.CloneFrom == "" && m.Status.Edition != "" && !strings.EqualFold(m.Status.Edition, m.Spec.Edition) {
 		eventMsgs = append(eventMsgs, "edition cannot be updated")
 	}
 	if m.Status.Charset != "" && !strings.EqualFold(m.Status.Charset, m.Spec.Charset) {
@@ -400,7 +399,6 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 
 	// update status fields
 	m.Status.Sid = m.Spec.Sid
-	m.Status.Edition = strings.Title(edition)
 	m.Status.Charset = m.Spec.Charset
 	m.Status.Pdbname = m.Spec.Pdbname
 	m.Status.Persistence = m.Spec.Persistence
@@ -531,6 +529,12 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								MountPath: "/mnt/oradata",
 								Name:      "datamount",
 							}},
+							Env: []corev1.EnvVar{
+								{
+									Name:  "ORACLE_SID",
+									Value: strings.ToUpper(m.Spec.Sid),
+								},
+							},
 						})
 					}
 				}
