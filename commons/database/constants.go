@@ -208,7 +208,7 @@ const GetSqlpatchStatusSQL string = "select status from dba_registry_sqlpatch or
 
 const GetSqlpatchVersionSQL string = "select SOURCE_VERSION || ':' || TARGET_VERSION as versions from dba_registry_sqlpatch order by action_time desc;"
 
-const GetCheckpointFileCMD string = "find ${ORACLE_BASE}/oradata -name .${ORACLE_SID}${CHECKPOINT_FILE_EXTN} "
+const GetCheckpointFileCMD string = "find ${ORACLE_BASE}/oradata -name .${ORACLE_SID}${CHECKPOINT_FILE_EXTN} 2> /dev/null"
 
 const GetEnterpriseEditionFileCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_enterprise ]; then ls ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_enterprise; fi "
 
@@ -370,7 +370,7 @@ const StatusError string = "Error"
 
 const StatusUnavailable string = "Unavailable"
 
-const ValueUnavailable string = "Unknown"
+const ValueUnavailable string = "Unavailable"
 
 const NoExternalIp string = "Node ExternalIP unavailable"
 
@@ -386,7 +386,7 @@ const WalletEntriesCMD string = "umask 177\ncat > wallet.passwd <<EOF\n${WALLET_
 const InitWalletCMD string = "if [ ! -f $ORACLE_BASE/oradata/.${ORACLE_SID}${CHECKPOINT_FILE_EXTN} ] || [ ! -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_%s ];" +
 	" then while [ ! -f ${WALLET_DIR}/ewallet.p12 ] || pgrep -f $WALLET_CLI > /dev/null; do sleep 0.5; done; fi "
 
-const InitPrebuiltDbCMD string = "if [ ! -d /mnt/oradata/${ORACLE_SID} ]; then cp -v $ORACLE_BASE/oradata/.${ORACLE_SID}$CHECKPOINT_FILE_EXTN /mnt/oradata && " +
+const InitPrebuiltDbCMD string = "if [ ! -d /mnt/oradata/${ORACLE_SID} -a -d $ORACLE_BASE/oradata/${ORACLE_SID} ]; then cp -v $ORACLE_BASE/oradata/.${ORACLE_SID}$CHECKPOINT_FILE_EXTN /mnt/oradata && " +
 	" cp -vr $ORACLE_BASE/oradata/${ORACLE_SID} /mnt/oradata && cp -vr $ORACLE_BASE/oradata/dbconfig /mnt/oradata; fi "
 
 

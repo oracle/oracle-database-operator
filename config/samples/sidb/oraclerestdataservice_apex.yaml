@@ -7,6 +7,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: ords-secret
+  namespace: default
 type: Opaque
 stringData:
   oracle_pwd: "ChangeOnInstall_1"
@@ -17,6 +18,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: apex-secret
+  namespace: default
 type: Opaque
 stringData:
   oracle_pwd: "ChangeOnInstall_2"
@@ -27,10 +29,11 @@ apiVersion: database.oracle.com/v1alpha1
 kind: OracleRestDataService
 metadata:
   name: ords-sample
+  namespace: default
 spec:
   
   ## Database ref. This can be of kind SingleInstanceDatabase.
-  ## Make sure the source database has been created by applying singeinstancedatabase_prebuilt.yaml
+  ## Make sure the source database has been created by applying singeinstancedatabase_prebuiltdb.yaml
   databaseRef: "prebuiltdb-sample"
   
   ## Secret containing databaseRef password mapped to secretKey. 
@@ -63,7 +66,7 @@ spec:
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
   ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
   persistence:
-    size: 100Gi
+    size: 50Gi
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
 
