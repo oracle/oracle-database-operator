@@ -1148,9 +1148,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		log.Info(eventMsg)
 
 		for i := 0; i < len(available); i++ {
-			r.Log.Info("Unavailable reason: ", "reason", available[i].Status.Reason)
-			r.Log.Info("Unavailable reason: ", "phase", available[i].Status.Phase)
-			r.Log.Info("Unavailable reason: ", "msg", available[i].Status.Message)
+			for j :=0; j < len(available[i].Status.InitContainerStatuses); j++ {
+				r.Log.Info("Unavailable reason: ", "state", available[i].Status.InitContainerStatuses[i])
+				r.Log.Info("Unavailable reason: ", "reason", available[i].Status.InitContainerStatuses[i].State.Waiting.Reason)	
+			}
 			if strings.Contains(available[i].Status.Reason, "ImagePullBackOff") {
 				var gracePeriodSeconds int64 = 0
 				policy := metav1.DeletePropagationForeground
