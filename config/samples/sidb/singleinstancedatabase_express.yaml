@@ -43,3 +43,6 @@ spec:
     size: 50Gi
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
+
+  ## Count of Database Pods. Should be 1 for express edition.
+  replicas: 1
