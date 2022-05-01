@@ -1073,21 +1073,16 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		log.Error(err, err.Error())
 		return requeueY, err
 	}
-	if  podsMarkedToBeDeleted > 0 {
-		// Recreate new pods only after earlier pods are terminated completely
-		for i := 0; i < len(allAvailable); i++ {
-			r.Log.Info("This pod ", "name", allAvailable[i].Name, "phase", allAvailable[i].Status.Phase)
-			r.Log.Info("This pod ", "name", allAvailable[i].Name, "status", allAvailable[i].Status)
-			if strings.Contains(allAvailable[i].Status.Message, "Terminating") {
-				r.Log.Info("Force deleting pod ", "name", allAvailable[i].Name, "phase", allAvailable[i].Status.Phase)
-				var gracePeriodSeconds int64 = 0
-				policy := metav1.DeletePropagationForeground
-				r.Delete(ctx, &allAvailable[i], &client.DeleteOptions{
-					GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
-			}
-		}
-		return requeueY, nil
+
+	// Recreate new pods only after earlier pods are terminated completely
+	for i := 0; i < len(podsMarkedToBeDeleted); i++ {
+		r.Log.Info("Force deleting pod ", "name", allAvailable[i].Name, "phase", allAvailable[i].Status.Phase)
+		var gracePeriodSeconds int64 = 0
+		policy := metav1.DeletePropagationForeground
+		r.Delete(ctx, &allAvailable[i], &client.DeleteOptions{
+				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 	}
+
 	if readyPod.Name != "" {
 		allAvailable = append(allAvailable, readyPod)
 	}
