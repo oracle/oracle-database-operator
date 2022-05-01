@@ -71,8 +71,9 @@ var _ webhook.Defaulter = &SingleInstanceDatabase{}
 func (r *SingleInstanceDatabase) Default() {
 	singleinstancedatabaselog.Info("default", "name", r.Name)
 
-	if r.Spec.Replicas == 0 {
-		r.Spec.Replicas = 1
+	if r.Spec.AdminPassword.KeepSecret == nil {
+		keepSecret := true
+		r.Spec.AdminPassword.KeepSecret = &keepSecret
 	}
 
 	if r.Spec.Edition == "express" {
