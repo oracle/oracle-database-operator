@@ -7,6 +7,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: prebuiltdb-admin-secret
+  namespace: default
 type: Opaque
 stringData:
   oracle_pwd: "ChangeOnInstall_1"
@@ -27,11 +28,9 @@ spec:
   edition: express
 
   ## Secret containing SIDB password mapped to secretKey
-  ## This secret will be deleted after creation of the database unless keepSecret is set to true
   adminPassword:
     secretName: prebuiltdb-admin-secret
     secretKey: oracle_pwd
-    keepSecret: true
 
   ## Database Image
   image:
@@ -41,6 +40,9 @@ spec:
   ## Persistence is optional for prebuilt DB image
   ## if specified, the prebuilt DB datafiles are copied over to the persistant volume before DB startup
   #persistence:
-  #  size: 100Gi
+  #  size: 50Gi
   #  storageClass: "oci-bv"
   #  accessMode: "ReadWriteOnce"
+
+  ## Count of Database Pods.
+  replicas: 1

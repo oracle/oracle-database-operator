@@ -109,8 +109,11 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: oracleRestDataService.Spec.DatabaseRef}, singleInstanceDatabase)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			r.Log.Info("Resource deleted")
-			return requeueN, nil
+			eventReason := "Waiting"
+			eventMsg := "waiting for database " + oracleRestDataService.Spec.DatabaseRef
+			r.Recorder.Eventf(oracleRestDataService, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Resource not found", "DatabaseRef", oracleRestDataService.Spec.DatabaseRef)
+			return requeueY, nil
 		}
 		return requeueN, err
 	}
@@ -122,8 +125,12 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
+	// Always refresh status before a reconcile
+	defer r.Status().Update(ctx, oracleRestDataService)
+	defer r.Status().Update(ctx, singleInstanceDatabase)
+
 	// First validate
-	result, err = r.validate(oracleRestDataService, singleInstanceDatabase)
+	result, err = r.validate(oracleRestDataService, singleInstanceDatabase, ctx)
 	if result.Requeue {
 		r.Log.Info("Spec validation failed, Reconcile queued")
 		return result, nil
@@ -132,10 +139,6 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		r.Log.Info("Spec validation failed")
 		return result, nil
 	}
-
-	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, oracleRestDataService)
-	defer r.Status().Update(ctx, singleInstanceDatabase)
 
 	// Create Service
 	result = r.createSVC(ctx, req, oracleRestDataService, singleInstanceDatabase)
@@ -157,7 +160,6 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
-
 
 	// Create ORDS Pods
 	result = r.createPods(oracleRestDataService, singleInstanceDatabase, ctx, req)
@@ -199,13 +201,32 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 //#############################################################################
 //    Validate the CRD specs
 //#############################################################################
-func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
+func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataService,
+	n *dbapi.SingleInstanceDatabase, ctx context.Context) (ctrl.Result, error) {
 
 	var err error
 	eventReason := "Spec Error"
 	var eventMsgs []string
+
+	//First check image pull secrets
+	if m.Spec.Image.PullSecrets != "" {
+		secret := &corev1.Secret{}
+		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.Image.PullSecrets, Namespace: m.Namespace}, secret)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				// Secret not found
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
+				r.Log.Info(err.Error())
+				m.Status.Status = dbcommons.StatusError
+				return requeueY, err
+			}
+			r.Log.Error(err, err.Error())
+			return requeueY, err
+		}
+	}
+
 	//  If using same pvc for ords as sidb, ensure sidb has ReadWriteMany Accessmode
-	if n.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Persistence.AccessMode == "" {
+	if n.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Persistence.Size == "" {
 		eventMsgs = append(eventMsgs, "ords can be installed only on ReadWriteMany Access Mode of : "+m.Spec.DatabaseRef)
 	}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
@@ -614,6 +635,22 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
+			Selector: func() *metav1.LabelSelector {
+				if m.Spec.Persistence.StorageClass != "oci" {
+					return nil
+				}
+				return &metav1.LabelSelector{
+							MatchLabels: func() map[string]string {
+								ns := make(map[string]string)
+								if len(m.Spec.NodeSelector) != 0 {
+									for key, value := range m.Spec.NodeSelector {
+										ns[key] = value
+									}
+								}
+								return ns
+							}(),
+						}
+			}(),
 		},
 	}
 	// Set SingleInstanceDatabase instance as the owner and controller
@@ -774,7 +811,10 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 				break
 			}
 			r.Log.Info("Deleting Pod : ", "POD.NAME", pod.Name)
-			err := r.Delete(ctx, &pod, &client.DeleteOptions{})
+			var gracePeriodSeconds int64 = 0
+			policy := metav1.DeletePropagationForeground
+			err := r.Delete(ctx, &pod, &client.DeleteOptions{
+				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 			noDeleted += 1
 			if err != nil {
 				r.Log.Error(err, "Failed to delete existing POD", "POD.Name", pod.Name)
@@ -854,14 +894,8 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 	m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase) error {
 	log := r.Log.WithValues("cleanupOracleRestDataService", req.NamespacedName)
 
-	readyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
-		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
-	if err != nil {
-		log.Error(err, err.Error())
-		return err
-	}
 
-	if m.Status.OrdsInstalled && readyPod.Name != "" {
+	if m.Status.OrdsInstalled {
 		// ## FETCH THE SIDB REPLICAS .
 		sidbReadyPod, _, _, _, err := dbcommons.FindPods(r, n.Spec.Image.Version,
 			n.Spec.Image.PullFrom, n.Name, n.Namespace, ctx, req)
@@ -906,14 +940,6 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		}
 		log.Info("KillSession Output : " + out)
 
-		if readyPod.Name == "" {
-			eventReason := "Waiting"
-			eventMsg := "waiting for " + m.Name + " to be Ready"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			err = errors.New(eventMsg)
-			return err
-		}
-
 		// Fetch admin Password of database to uninstall ORDS
 		adminPasswordSecret := &corev1.Secret{}
 		adminPasswordSecretFound := false
@@ -936,28 +962,42 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 				break
 			}
 		}
-		if !adminPasswordSecretFound {
-			log.Info("AdminPassword Secret not found . Omitting OracleRestDataService uninstallation")
-			return nil
+		// Find ORDS ready pod
+		readyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
+			m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
+		if err != nil {
+			log.Error(err, err.Error())
+			return err
 		}
+		if adminPasswordSecretFound && readyPod.Name != "" {
+			adminPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
+			uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
 
-		adminPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
-		uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
-
-		out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
+			out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
 			uninstallORDS)
-		log.Info("UninstallORDSCMD Output : " + out)
-		if strings.Contains(strings.ToUpper(out), "ERROR") {
-			return errors.New(out)
+			log.Info("UninstallORDSCMD Output : " + out)
+			if strings.Contains(strings.ToUpper(out), "ERROR") {
+				return errors.New(out)
+			}
+			if err != nil {
+				log.Info(err.Error())
+			}
+			log.Info("UninstallORDSCMD Output : " + out)
 		}
+
+		// Drop Admin Users
+		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			fmt.Sprintf("echo -e  \"%s\"  | %s ", dbcommons.DropAdminUsersSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Info(err.Error())
-			if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
-				return err
-			}
 		}
+		log.Info("DropAdminUsersSQL Output : " + out)
 
-		log.Info("UninstallORDSCMD Output : " + out)
+		//Delete ORDS pod
+		var gracePeriodSeconds int64 = 0
+			policy := metav1.DeletePropagationForeground
+		r.Delete(ctx, &readyPod, &client.DeleteOptions{
+			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 
 		//Delete Database Admin Password Secret
 		if !m.Spec.AdminPassword.KeepSecret {
@@ -966,16 +1006,6 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 				r.Log.Info("Deleted Admin Password Secret :" + adminPasswordSecret.Name)
 			}
 		}
-
-		// Drop Admin Users
-		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s ", dbcommons.DropAdminUsersSQL, dbcommons.SQLPlusCLI))
-		if err != nil {
-			log.Error(err, err.Error())
-			return err
-		}
-		log.Info("DropAdminUsersSQL Output : " + out)
-
 	}
 
 	// Cleanup steps that the operator needs to do before the CR can be deleted.
@@ -1037,7 +1067,10 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		}
 	}
 	// ORDS Needs to be restarted to configure APEX
-	err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{})
+	var gracePeriodSeconds int64 = 0
+	policy := metav1.DeletePropagationForeground
+	err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{
+		GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 	if err != nil {
 		r.Log.Error(err, "Failed to delete existing POD", "POD.Name", ordsReadyPod.Name)
 		return requeueY
@@ -1236,13 +1269,13 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			strconv.FormatBool(m.Spec.RestEnableSchemas[i].Enable), urlMappingPattern, m.Spec.RestEnableSchemas[i].Pdb)
 
 		// Create users,schemas and grant enableORDS for PDB
-		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 			fmt.Sprintf("echo -e  \"%s\"  | %s", enableORDSSchema, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
 		}
-		log.Info("getOrdsSchemaStatus Output : " + out)
+		log.Info("REST Enabled", "schema", m.Spec.RestEnableSchemas[i].Schema)
 
 	}
 

@@ -12,16 +12,17 @@ spec:
   ## Use only alphanumeric characters for sid
   sid: ORCL1
   
-  ## A source database ref to clone from, leave empty to create a fresh database
-  ## If cloning from on-prem source database, mention connect string `<host>:<port>/<service_name>`.
+  ## Specify a source database ref to copy/clone from any SIDB in current K8s cluster instead of creating a fresh one.
+  ## If cloning from an external containerized DB which could be either standalone or in any K8s cluster,
+  ## specify connect string as `<host>:<port>/<service_name>` instead of source database ref
   cloneFrom: ""
 
   ## DB edition. N/A if cloning from a SourceDB (cloneFrom is set)
   edition: enterprise
   
-  ## Should refer to SourceDB secret if cloning from a SourceDB (cloneFrom is set)
   ## Secret containing SIDB password mapped to secretKey
-  ## This secret will be deleted after creation of the database unless keepSecret is set to true
+  ## Should refer to adminPassword of Source DB if cloning from a Source DB (i.e if cloneFrom is set)
+  ## This secret will be deleted after creation of the database unless keepSecret is set to true which is the default
   adminPassword:
     secretName: 
     secretKey:
@@ -54,10 +55,9 @@ spec:
   ## Database image details
   ## Base DB images are available at container-registry.oracle.com or build from https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance
   ## Build patched DB images from https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching
-  ## If cloning from on-prem DB, build on-prem DB image following the instructions at
-  ## https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance#containerizing-an-on-premise-database-supported-from-version-1930-release
   ## Prebuilt DB support (https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/prebuiltdb)
   ## Specify prebuiltDB as true if the image includes a prebuilt DB
+  ## If cloning specify an image that is of same major version as the source DB at same or different patch levels.
   image:
     pullFrom:
     pullSecrets:
@@ -76,14 +76,17 @@ spec:
   loadBalancer: false
 
   ## Deploy only on nodes having required labels. Format label_name : label_value
-  ## Leave empty if there is no such requirement.
-  ## Uncomment to use
-  # nodeSelector: 
-  #   failure-domain.beta.kubernetes.io/zone: bVCG:PHX-AD-1
-  #   pool: sidb
+  ## For instance if the Pods need to be restricted to a particular AD
+  ## Leave commented if there is no such requirement.
+  # nodeSelector:
+  #   failure-domain.beta.kubernetes.io/zone: PHX-AD-1
 
   ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
   serviceAccountName: default
 
-  ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
+  ## Count of Database Pods. Only one pod will have the DB mounted and open.
+  ## The other replica pods will have instance up and will mount and open the DB if the primary pod dies
+  ## For "ReadWriteOnce" AccessMode, all the replicas will schedule on the same node that has the storage attached
+  ## For minimal downtime during patching set the count of replicas > 1
+  ## Express edition can only have one replica and does not support patching
   replicas: 1

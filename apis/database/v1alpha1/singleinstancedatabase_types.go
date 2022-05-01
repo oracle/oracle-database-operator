@@ -105,7 +105,7 @@ type SingleInstanceDatabaseImage struct {
 type SingleInstanceDatabaseAdminPassword struct {
 	SecretName string `json:"secretName"`
 	SecretKey  string `json:"secretKey"`
-	KeepSecret bool   `json:"keepSecret,omitempty"`
+	KeepSecret *bool   `json:"keepSecret,omitempty"`
 }
 
 // SingleInstanceDatabaseStatus defines the observed state of SingleInstanceDatabase
