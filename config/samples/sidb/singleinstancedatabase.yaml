@@ -85,5 +85,8 @@ spec:
   ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
   serviceAccountName: default
 
-  ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
+  ## Count of Database Pods. Only one pod will have the DB mounted and open.
+  ## The other replica pods will have instance up and will mount and open the DB if the primary pod dies
+  ## For "ReadWriteOnce" AccessMode, all the replicas will schedule on the same node that has the storage attached
+  ## Express edition can only have one replica
   replicas: 1
