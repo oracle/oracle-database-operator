@@ -487,8 +487,18 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 						} ,
 						PodAffinity: &corev1.PodAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-									TopologyKey: "kubernetes.io/hostname",
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
+									Weight: 50,
+									PodAffinityTerm: corev1.PodAffinityTerm {
+										LabelSelector: &metav1.LabelSelector{
+											MatchExpressions: []metav1.LabelSelectorRequirement{{
+												Key: "app",
+												Operator: metav1.LabelSelectorOpIn,
+												Values: []string{m.Name},
+											}},
+										},
+										TopologyKey: "kubernetes.io/hostname",
+									},
 								},
 							},
 						},
