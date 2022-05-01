@@ -473,6 +473,19 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			},
 		},
 		Spec: corev1.PodSpec{
+			Affinity: func() *corev1.Affinity {
+				if m.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+					return &corev1.Affinity{
+						PodAffinity: &corev1.PodAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+									TopologyKey: "kubernetes.io/hostname",
+								},
+							},
+						},
+					}
+				}
+				return nil
+			}(),
 			Volumes: []corev1.Volume{{
 				Name: "datamount",
 				VolumeSource: func() corev1.VolumeSource {  
