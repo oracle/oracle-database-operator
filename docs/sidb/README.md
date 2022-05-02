@@ -86,13 +86,13 @@ $ kubectl describe singleinstancedatabase sidb-sample-clone
         Reason:                 LastReconcileCycleCompleted
         Status:                 True
         Type:                   ReconcileComplete
-      Connect String:          10.0.25.54:1521/ORCL1
+      Connect String:          10.0.25.58:1521/ORCL1C
       Datafiles Created:       true
       Datafiles Patched:       true
       Edition:                 Enterprise
       Flash Back:              true
       Force Log:               false
-      Oem Express URL:         https://10.0.25.54:5500/em
+      Oem Express URL:         https://10.0.25.58:5500/em
       Pdb Name:                orclpdb1
       Release Update:          19.11.0.0.0 (32545013)
       Replicas:                2
@@ -137,7 +137,8 @@ $ kubectl describe singleinstancedatabase sidb-sample-clone
   ```
 
   **NOTE:** 
-  For the ease of use, the storage class **oci-bv** is specified in the [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml). This storage class facilitates dynamic provisioning of the OCI block volume for the persistent storage of the database. For other cloud providers, there dynamic provisioning storage class can be used similarly.
+  - For the ease of use, the storage class **oci-bv** is specified in the [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml). This storage class facilitates dynamic provisioning of the OCI block volume for the persistent storage of the database. For other cloud providers, there dynamic provisioning storage class can be used similarly.
+  - Oracle Database Express edition is supported from version 21.3.0 onwards, and the other editions (i.e. Enterprise and Standard editions) are supported from version 19.3.0 onwards.
 
 ### Provision a pre-built database
 
