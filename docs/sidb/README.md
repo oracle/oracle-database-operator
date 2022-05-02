@@ -138,7 +138,17 @@ $ kubectl describe singleinstancedatabase sidb-sample-clone
 
   **NOTE:** 
   - For the ease of use, the storage class **oci-bv** is specified in the [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml). This storage class facilitates dynamic provisioning of the OCI block volume for the persistent storage of the database. For other cloud providers, there dynamic provisioning storage class can be used similarly.
-  - Oracle Database Express edition is supported from version 21.3.0 onwards, and the other editions (i.e. Enterprise and Standard editions) are supported from version 19.3.0 onwards.
+  - Oracle Database Enterprise and Standard editions are supported from version 19.3.0 onwards.
+
+### Provisioning a new XE database
+To provision a new XE database, use the [config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) file. The sample command is as follows:
+
+      kubectl apply -f singleinstancedatabase_express.yaml
+
+It pulls the XE image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:7460390069267:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:803,803,Oracle%20Database%20Express%20Edition,Oracle%20Database%20Express%20Edition,1,0&cs=3-UN6D9nAfyqxcYnrks18OAmfFcri96NZojBQALxMdakix8wgYRBxhD8rpTFd2ak1FAtfOVFexbuOM2opsjxT9w).
+
+**NOTE:**
+Oracle Database XE edition is supported version 21.3.0 onwards.
 
 ### Provision a pre-built database
 
