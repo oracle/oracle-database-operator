@@ -24,10 +24,13 @@ spec:
       name: Database
       type: string
     - jsonPath: .status.databaseApiUrl
-      name: 'Database Api & Apex Url '
+      name: Database API URL
       type: string
     - jsonPath: .status.databaseActionsUrl
-      name: Database Actions Url
+      name: Database Actions URL
+      type: string
+    - jsonPath: .status.apexUrl
+      name: Apex URL
       type: string
     name: v1alpha1
     schema:
@@ -57,12 +60,12 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
                 required:
-                - keepSecret
-                - secretKey
+                - secretName
                 type: object
               apexPassword:
                 description: OracleRestDataServicePassword defines the secret containing
@@ -71,12 +74,12 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
                 required:
-                - keepSecret
-                - secretKey
+                - secretName
                 type: object
               databaseRef:
                 type: string
@@ -108,12 +111,12 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
                 required:
-                - keepSecret
-                - secretKey
+                - secretName
                 type: object
               ordsUser:
                 type: string
@@ -166,7 +169,7 @@ spec:
             properties:
               apexConfigured:
                 type: boolean
-              clusterDbApiUrl:
+              apexUrl:
                 type: string
               commonUsersCreated:
                 type: boolean
@@ -192,8 +195,6 @@ spec:
               loadBalancer:
                 type: string
               ordsInstalled:
-                type: boolean
-              ordsSetupCompleted:
                 type: boolean
               replicas:
                 type: integer

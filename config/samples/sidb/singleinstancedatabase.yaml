@@ -9,7 +9,7 @@ metadata:
   namespace: default
 spec:
   
-  ## Use only alphanumeric characters for sid
+  ## Use only alphanumeric characters for sid up to a maximum of 8 characters
   sid: ORCL1
   
   ## Specify a source database ref to copy/clone from any SIDB in current K8s cluster instead of creating a fresh one.
@@ -17,10 +17,11 @@ spec:
   ## specify connect string as `<host>:<port>/<service_name>` instead of source database ref
   cloneFrom: ""
 
-  ## DB edition. N/A if cloning from a SourceDB (cloneFrom is set)
+  ## DB edition. N/A if cloning from a Source DB (if cloneFrom is set)
+  ## Valid values for edition are enterprise, standard or express
   edition: enterprise
   
-  ## Secret containing SIDB password mapped to secretKey
+  ## Secret containing SIDB password mapped to secretKey. secretKey defaults to oracle_pwd
   ## Should refer to adminPassword of Source DB if cloning from a Source DB (i.e if cloneFrom is set)
   ## This secret will be deleted after creation of the database unless keepSecret is set to true which is the default
   adminPassword:
@@ -28,10 +29,10 @@ spec:
     secretKey:
     keepSecret: true
 
-  ## DB character set. N/A if cloning from a SourceDB (cloneFrom is set)
+  ## DB character set. N/A if cloning from a Source DB (if cloneFrom is set)
   charset: AL32UTF8
 
-  ## PDB name. N/A if cloning from a SourceDB (cloneFrom is set)
+  ## PDB name. N/A if cloning from a Source DB (if cloneFrom is set)
   pdbName: orclpdb1
 
   ## Enable/Disable Flashback

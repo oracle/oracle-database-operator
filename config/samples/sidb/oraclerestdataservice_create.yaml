@@ -29,15 +29,12 @@ spec:
   ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   adminPassword:
     secretName: prebuiltdb-admin-secret
-    secretKey: oracle_pwd
-    keepSecret: true
 
   ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
   ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   ordsPassword:
     secretName: ords-secret
     secretKey: oracle_pwd
-    keepSecret: true
 
   ## ORDS image details
   image:

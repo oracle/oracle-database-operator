@@ -30,7 +30,6 @@ spec:
   ## Secret containing SIDB password mapped to secretKey
   adminPassword:
     secretName: xedb-admin-secret
-    secretKey: oracle_pwd
 
   ## Database image details
   image:

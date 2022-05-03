@@ -68,11 +68,11 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
                 required:
-                - secretKey
                 - secretName
                 type: object
               archiveLog:
@@ -95,6 +95,8 @@ spec:
                 description: SingleInstanceDatabaseImage defines the Image source
                   and pullSecrets for POD
                 properties:
+                  prebuiltDB:
+                    type: boolean
                   pullFrom:
                     type: string
                   pullSecrets:
@@ -116,8 +118,6 @@ spec:
                   sgaTarget:
                     type: integer
                 type: object
-              installApex:
-                type: boolean
               loadBalancer:
                 type: boolean
               nodeSelector:
@@ -136,9 +136,6 @@ spec:
                     type: string
                   storageClass:
                     type: string
-                required:
-                - size
-                - storageClass
                 type: object
               readinessCheckPeriod:
                 type: integer
@@ -290,10 +287,9 @@ spec:
                     type: string
                   storageClass:
                     type: string
-                required:
-                - size
-                - storageClass
                 type: object
+              prebuiltDB:
+                type: boolean
               releaseUpdate:
                 type: string
               replicas:
@@ -310,7 +306,6 @@ spec:
                 type: string
             required:
             - persistence
-            - replicas
             type: object
         type: object
     served: true

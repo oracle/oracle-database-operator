@@ -139,12 +139,17 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	if r.Spec.Edition == "express" && strings.ToUpper(r.Spec.Sid) != "XE" {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
-				"Express edition SID must be XE"))
+				"Express edition SID must only be XE"))
 	}
 	if r.Spec.Edition == "express" && strings.ToUpper(r.Spec.Pdbname) != "XEPDB1" {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 				"Express edition PDB must be XEPDB1"))
+	}
+	if r.Spec.Edition != "express" && r.Spec.Sid == "XE" {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
+				"XE is reserved as the SID for Express edition of the database"))
 	}
 
 	if r.Spec.CloneFrom != "" {

@@ -70,7 +70,16 @@ func (r *OracleRestDataService) Default() {
 	oraclerestdataservicelog.Info("default", "name", r.Name)
 	// OracleRestDataService Currently supports single replica
 	r.Spec.Replicas = 1
-	// TODO(user): fill in your defaulting logic.
+	keepSecret := true
+	if r.Spec.OrdsPassword.KeepSecret == nil {
+		r.Spec.OrdsPassword.KeepSecret = &keepSecret
+	}
+	if r.Spec.ApexPassword.KeepSecret == nil {
+		r.Spec.ApexPassword.KeepSecret = &keepSecret
+	}
+	if r.Spec.AdminPassword.KeepSecret == nil {
+		r.Spec.AdminPassword.KeepSecret = &keepSecret
+	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.

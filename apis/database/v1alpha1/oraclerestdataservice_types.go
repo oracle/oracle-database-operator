@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -86,9 +86,10 @@ type OracleRestDataServiceImage struct {
 
 // OracleRestDataServicePassword defines the secret containing Password mapped to secretKey
 type OracleRestDataServicePassword struct {
-	SecretName string `json:"secretName,omitempty"`
-	SecretKey  string `json:"secretKey"`
-	KeepSecret bool   `json:"keepSecret"`
+	SecretName string `json:"secretName"`
+	// +kubebuilder:default:="oracle_pwd"
+	SecretKey  string `json:"secretKey,omitempty"`
+	KeepSecret *bool   `json:"keepSecret,omitempty"`
 }
 
 // OracleRestDataServicePDBSchemas defines the PDB Schemas to be ORDS Enabled

@@ -37,18 +37,13 @@ spec:
   databaseRef: "prebuiltdb-sample"
   
   ## Secret containing databaseRef password mapped to secretKey. 
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   adminPassword:
     secretName: prebuiltdb-admin-secret
-    secretKey: oracle_pwd
-    keepSecret: true
 
   ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   ordsPassword:
     secretName: ords-secret
     secretKey: oracle_pwd
-    keepSecret: true
 
   ## To configure APEX with ORDS, specfiy the apexPassword secret details. Leave empty if Apex is not needed.
   ## This is a secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
@@ -56,7 +51,6 @@ spec:
   apexPassword:
     secretName: apex-secret
     secretKey: oracle_pwd
-    keepSecret: true
 
   ## ORDS image details
   image:

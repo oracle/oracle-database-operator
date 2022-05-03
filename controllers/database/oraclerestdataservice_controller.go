@@ -208,6 +208,21 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	eventReason := "Spec Error"
 	var eventMsgs []string
 
+	/* Initialize Status */
+	if m.Status.Status == "" {
+		m.Status.Status = dbcommons.StatusPending
+	}
+	if m.Status.ApxeUrl == "" {
+		m.Status.ApxeUrl = dbcommons.ValueUnavailable
+	}
+	if m.Status.DatabaseApiUrl == "" {
+		m.Status.DatabaseApiUrl = dbcommons.ValueUnavailable
+	}
+	if m.Status.DatabaseActionsUrl == "" {
+		m.Status.DatabaseActionsUrl = dbcommons.ValueUnavailable
+	}
+
+
 	//First check image pull secrets
 	if m.Spec.Image.PullSecrets != "" {
 		secret := &corev1.Secret{}
@@ -701,8 +716,6 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 			if m.Status.ApexConfigured {
 				m.Status.ApxeUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
 					fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + n.Status.Pdbname + "/apex"
-			} else {
-				m.Status.ApxeUrl = dbcommons.StatusUnavailable	
 			}
 		}
 		return requeueN
@@ -717,8 +730,6 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 		if m.Status.ApexConfigured {
 			m.Status.ApxeUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/ords/" +
 				n.Status.Pdbname + "/apex"
-		} else {
-			m.Status.ApxeUrl = dbcommons.StatusUnavailable
 		}
 	}
 	return requeueN
@@ -766,11 +777,20 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 
 	log := r.Log.WithValues("createPods", req.NamespacedName)
 
-	readyPod, replicasFound, available, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
+	readyPod, replicasFound, available, podsMarkedToBeDeleted, err := dbcommons.FindPods(r, m.Spec.Image.Version,
 		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY
+	}
+
+	// Recreate new pods only after earlier pods are terminated completely
+	for i := 0; i < len(podsMarkedToBeDeleted); i++ {
+		r.Log.Info("Force deleting pod ", "name", podsMarkedToBeDeleted[i].Name, "phase", podsMarkedToBeDeleted[i].Status.Phase)
+		var gracePeriodSeconds int64 = 0
+		policy := metav1.DeletePropagationForeground
+		r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
+				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 	}
 
 	log.Info(m.Name, " pods other than one of Ready Pods : ", dbcommons.GetPodNames(available))
@@ -779,8 +799,6 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 	replicasReq := m.Spec.Replicas
 	if replicasFound == 0 {
 		m.Status.Status = dbcommons.StatusNotReady
-		m.Status.DatabaseApiUrl = dbcommons.StatusUnavailable
-		m.Status.DatabaseActionsUrl = dbcommons.StatusUnavailable
 	}
 
 	if replicasFound == replicasReq {
@@ -825,9 +843,7 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 	n.Status.OrdsReference = m.Name
 	r.Status().Update(ctx, n)
 	m.Status.Replicas = m.Spec.Replicas
-	if !m.Status.OrdsInstalled {
-		m.Status.Replicas = 1
-	}
+
 	return requeueN
 }
 
@@ -1000,7 +1016,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
 
 		//Delete Database Admin Password Secret
-		if !m.Spec.AdminPassword.KeepSecret {
+		if !*m.Spec.AdminPassword.KeepSecret {
 			err = r.Delete(ctx, adminPasswordSecret, &client.DeleteOptions{})
 			if err == nil {
 				r.Log.Info("Deleted Admin Password Secret :" + adminPasswordSecret.Name)
@@ -1150,7 +1166,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataService, ctx context.Context, req ctrl.Request) {
 	log := r.Log.WithValues("deleteSecrets", req.NamespacedName)
 
-	if !m.Spec.AdminPassword.KeepSecret {
+	if !*m.Spec.AdminPassword.KeepSecret {
 		// Fetch adminPassword Secret
 		adminPasswordSecret := &corev1.Secret{}
 		err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
@@ -1163,7 +1179,7 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 		}
 	}
 
-	if !m.Spec.OrdsPassword.KeepSecret {
+	if !*m.Spec.OrdsPassword.KeepSecret {
 		// Fetch ordsPassword Secret
 		ordsPasswordSecret := &corev1.Secret{}
 		err := r.Get(ctx, types.NamespacedName{Name: m.Spec.OrdsPassword.SecretName, Namespace: m.Namespace}, ordsPasswordSecret)
@@ -1176,7 +1192,7 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 		}
 	}
 
-	if !m.Spec.ApexPassword.KeepSecret {
+	if !*m.Spec.ApexPassword.KeepSecret {
 		// Fetch apexPassword Secret
 		apexPasswordSecret := &corev1.Secret{}
 		err := r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
