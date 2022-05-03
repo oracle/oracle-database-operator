@@ -510,7 +510,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 				{
 					Name:    "init-ords",
 					Image:   m.Spec.Image.PullFrom,
-					Command: []string{"/bin/sh", "-c", "/run/secrets/init-cmd"},
+					Command: []string{"/bin/sh", "/run/secrets/init-cmd"},
 					SecurityContext: &corev1.SecurityContext{
 						RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
 						RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
