@@ -524,7 +524,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 						{
 							MountPath: "/run/secrets/init-cmd",
 							ReadOnly:  true,
-							Name:      "init-ord-vol",
+							Name:      "init-ords-vol",
 							SubPath:   "init-cmd",
 						},
 					},
