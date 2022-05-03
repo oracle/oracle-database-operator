@@ -101,7 +101,22 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 			r.Log.Info("Resource deleted")
 			return requeueN, nil
 		}
-		return requeueN, err
+		r.Log.Error(err, err.Error())
+		return requeueY, err
+	}
+
+	/* Initialize Status */
+	if oracleRestDataService.Status.Status == "" {
+		oracleRestDataService.Status.Status = dbcommons.StatusPending
+	}
+	if oracleRestDataService.Status.ApxeUrl == "" {
+		oracleRestDataService.Status.ApxeUrl = dbcommons.ValueUnavailable
+	}
+	if oracleRestDataService.Status.DatabaseApiUrl == "" {
+		oracleRestDataService.Status.DatabaseApiUrl = dbcommons.ValueUnavailable
+	}
+	if oracleRestDataService.Status.DatabaseActionsUrl == "" {
+		oracleRestDataService.Status.DatabaseActionsUrl = dbcommons.ValueUnavailable
 	}
 
 	// Fetch Primary Database Reference
@@ -115,7 +130,8 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 			r.Log.Info("Resource not found", "DatabaseRef", oracleRestDataService.Spec.DatabaseRef)
 			return requeueY, nil
 		}
-		return requeueN, err
+		r.Log.Error(err, err.Error())
+		return requeueY, err
 	}
 
 	// Manage OracleRestDataService Deletion
@@ -207,21 +223,6 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	var err error
 	eventReason := "Spec Error"
 	var eventMsgs []string
-
-	/* Initialize Status */
-	if m.Status.Status == "" {
-		m.Status.Status = dbcommons.StatusPending
-	}
-	if m.Status.ApxeUrl == "" {
-		m.Status.ApxeUrl = dbcommons.ValueUnavailable
-	}
-	if m.Status.DatabaseApiUrl == "" {
-		m.Status.DatabaseApiUrl = dbcommons.ValueUnavailable
-	}
-	if m.Status.DatabaseActionsUrl == "" {
-		m.Status.DatabaseActionsUrl = dbcommons.ValueUnavailable
-	}
-
 
 	//First check image pull secrets
 	if m.Spec.Image.PullSecrets != "" {
