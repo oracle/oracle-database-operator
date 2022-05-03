@@ -431,7 +431,24 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 //    Instantiate POD spec from OracleRestDataService spec
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRestDataService,
-		n *dbapi.SingleInstanceDatabase) *corev1.Pod {
+		n *dbapi.SingleInstanceDatabase) (*corev1.Pod, *corev1.Secret) {
+
+	initSecret := &corev1.Secret {
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Secret",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.Name,
+			Namespace: m.Namespace,
+			Labels: map[string]string{
+				"app":     m.Name,
+			},
+		},
+		Type: corev1.SecretTypeOpaque,
+		StringData: map[string]string {
+			"init-cmd": dbcommons.InitORDSCMD,
+		},
+	}
 
 	pod := &corev1.Pod{
 		TypeMeta: metav1.TypeMeta{
@@ -446,20 +463,35 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 			},
 		},
 		Spec: corev1.PodSpec{
-			Volumes: []corev1.Volume{{
-				Name: "datamount",
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: func() string {
-							if m.Spec.Persistence.AccessMode != "" {
-								return m.Name
-							}
-							return n.Name
-						}(),
-						ReadOnly: false,
+			Volumes: []corev1.Volume{
+				{
+					Name: "datamount",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: func() string {
+								if m.Spec.Persistence.AccessMode != "" {
+									return m.Name
+								}
+								return n.Name
+							}(),
+							ReadOnly: false,
+						},
 					},
 				},
-			}},
+				{
+					Name: "init-ords-vol",
+					VolumeSource: corev1.VolumeSource{
+						Secret: &corev1.SecretVolumeSource{
+							SecretName: m.Name,
+							Optional:   func() *bool { i := true; return &i }(),
+							Items: []corev1.KeyToPath{{
+								Key:  "init-cmd",
+								Path: "init-cmd",
+							}},
+						},
+					},
+				},
+			},
 			InitContainers: []corev1.Container{
 				{
 					Name:    "init-permissions",
@@ -478,16 +510,24 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 				{
 					Name:    "init-ords",
 					Image:   m.Spec.Image.PullFrom,
-					Command: []string{"/bin/sh", "-c", dbcommons.InitORDSCMD},
+					Command: []string{"/bin/sh", "-c", "/run/secrets/init-cmd"},
 					SecurityContext: &corev1.SecurityContext{
 						RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
 						RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
 					},
-					VolumeMounts: []corev1.VolumeMount{{
-						MountPath: "/opt/oracle/ords/config/ords",
-						Name:      "datamount",
-						SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
-					}},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							MountPath: "/opt/oracle/ords/config/ords",
+							Name:      "datamount",
+							SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
+						},
+						{
+							MountPath: "/run/secrets/init-cmd",
+							ReadOnly:  true,
+							Name:      "init-ord-vol",
+							SubPath:   "init-cmd",
+						},
+					},
 					Env: []corev1.EnvVar{
 						{
 							Name:  "ORACLE_HOST",
@@ -613,8 +653,9 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 	}
 
 	// Set oracleRestDataService instance as the owner and controller
+	ctrl.SetControllerReference(m, initSecret, r.Scheme)
 	ctrl.SetControllerReference(m, pod, r.Scheme)
-	return pod
+	return pod, initSecret
 }
 
 //#############################################################################
@@ -806,9 +847,18 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 	} else if replicasFound < replicasReq {
 		// Create New Pods , Name of Pods are generated Randomly
 		for i := replicasFound; i < replicasReq; i++ {
-			pod := r.instantiatePodSpec(m, n)
+			pod, initSecret := r.instantiatePodSpec(m, n)
+			// Check if init-secret is present
+			err := r.Get(ctx, types.NamespacedName{Name: m.Name, Namespace: m.Namespace}, &corev1.Secret{})
+			if err != nil && apierrors.IsNotFound(err) {
+				log.Info("Creating a new secret", "name", m.Name)
+				if err = r.Create(ctx, initSecret); err != nil {
+					log.Error(err, "Failed to create secret ", "Namespace", initSecret.Namespace, "Name", initSecret.Name)
+					return requeueY
+				}
+			}
 			log.Info("Creating a new "+m.Name+" POD", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
-			err := r.Create(ctx, pod)
+			err = r.Create(ctx, pod)
 			if err != nil {
 				log.Error(err, "Failed to create new "+m.Name+" POD", "pod.Namespace", pod.Namespace, "POD.Name", pod.Name)
 				return requeueY

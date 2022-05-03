@@ -26,15 +26,12 @@ spec:
   databaseRef: "prebuiltdb-sample"
   
   ## Secret containing databaseRef password mapped to secretKey. 
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   adminPassword:
     secretName: prebuiltdb-admin-secret
 
   ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   ordsPassword:
     secretName: ords-secret
-    secretKey: oracle_pwd
 
   ## ORDS image details
   image:
@@ -48,7 +45,6 @@ spec:
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
 
-  
   ## PDB Schemas to be ORDS Enabled.
   ## Schema will be created (if not exists) with username as schema and password as .spec.ordsPassword.
   restEnableSchemas:
