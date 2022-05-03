@@ -1901,7 +1901,7 @@ func (r *SingleInstanceDatabaseReconciler) manageSingleInstanceDatabaseDeletion(
 			}
 			log.Info("Successfully Removed SingleInstanceDatabase Finalizer")
 		}
-		return requeueN, nil
+		return requeueY, errors.New("deletion pending")
 	}
 
 	// Add finalizer for this CR
