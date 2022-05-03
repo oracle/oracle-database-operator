@@ -105,6 +105,9 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return requeueY, err
 	}
 
+	// Always refresh status before a reconcile
+	defer r.Status().Update(ctx, oracleRestDataService)
+
 	/* Initialize Status */
 	if oracleRestDataService.Status.Status == "" {
 		oracleRestDataService.Status.Status = dbcommons.StatusPending
@@ -134,16 +137,15 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return requeueY, err
 	}
 
+	// Always refresh status before a reconcile
+	defer r.Status().Update(ctx, singleInstanceDatabase)
+
 	// Manage OracleRestDataService Deletion
 	result := r.manageOracleRestDataServiceDeletion(req, ctx, oracleRestDataService, singleInstanceDatabase)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
-
-	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, oracleRestDataService)
-	defer r.Status().Update(ctx, singleInstanceDatabase)
 
 	// First validate
 	result, err = r.validate(oracleRestDataService, singleInstanceDatabase, ctx)
