@@ -30,7 +30,6 @@ spec:
   ## Secret containing SIDB password mapped to secretKey
   adminPassword:
     secretName: prebuiltdb-admin-secret
-    secretKey: oracle_pwd
 
   ## Database Image
   image:

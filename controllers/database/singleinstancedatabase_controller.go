@@ -303,7 +303,10 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 
 	r.Log.Info("Entering reconcile validation")
 
-	/* Initialize statuses */
+	/* Initialize Status */
+	if m.Status.Status == "" {
+		m.Status.Status = dbcommons.StatusPending
+	}
 	if m.Status.Edition == "" {
 		if m.Spec.Edition != "" {
 			m.Status.Edition = strings.Title(m.Spec.Edition)
@@ -344,9 +347,13 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		}
 	}
 
-	//  If Express Edition , Ensure Replicas=1
+	//  If Express Edition, ensure Replicas=1
 	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
-		eventMsgs = append(eventMsgs, "XE supports only one replica")
+		eventMsgs = append(eventMsgs, "express edition supports only one replica")
+	}
+	//  If no persistence, ensure Replicas=1
+	if m.Spec.Persistence.Size == "" && m.Spec.Replicas > 1 {
+		eventMsgs = append(eventMsgs, "replicas should be 1 if no persistence is specified")
 	}
 	if m.Status.Sid != "" && !strings.EqualFold(m.Spec.Sid, m.Status.Sid) {
 		eventMsgs = append(eventMsgs, "sid cannot be updated")
@@ -1946,11 +1953,6 @@ func (r *SingleInstanceDatabaseReconciler) cleanupSingleInstanceDatabase(req ctr
 		for _, pod := range podList.Items {
 			podNames += pod.Name + " "
 		}
-		eventReason := "Waiting"
-		eventMsg := "waiting for " + req.Name + " database pods ( " + podNames + " ) to terminate"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-		r.Log.Info(eventMsg)
-		time.Sleep(15 * time.Second)
 	}
 
 	log.Info("Successfully cleaned up SingleInstanceDatabase")

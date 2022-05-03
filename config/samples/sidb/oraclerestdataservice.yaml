@@ -19,7 +19,7 @@ spec:
     secretKey:
     keepSecret: true
 
-  ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
+  ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey. secretKey defaults to oracle_pwd
   ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   ordsPassword:
     secretName: 

@@ -104,7 +104,8 @@ type SingleInstanceDatabaseImage struct {
 // SingleInsatnceAdminPassword defines the secret containing Admin Password mapped to secretKey for Database
 type SingleInstanceDatabaseAdminPassword struct {
 	SecretName string `json:"secretName"`
-	SecretKey  string `json:"secretKey"`
+	// +kubebuilder:default:="oracle_pwd"
+	SecretKey  string `json:"secretKey,omitempty"`
 	KeepSecret *bool   `json:"keepSecret,omitempty"`
 }
 
