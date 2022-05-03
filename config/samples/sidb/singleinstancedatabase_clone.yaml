@@ -21,7 +21,6 @@ spec:
   ## Secret containing SIDB password mapped to secretKey 
   adminPassword:
     secretName: db-admin-secret
-    secretKey: oracle_pwd
 
   ## Database image details
   ## This image should be the same as the source DB image being cloned

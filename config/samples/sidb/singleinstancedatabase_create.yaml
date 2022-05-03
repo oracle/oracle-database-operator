@@ -32,7 +32,6 @@ spec:
   ## Secret containing SIDB password mapped to secretKey 
   adminPassword:
     secretName: db-admin-secret
-    secretKey: oracle_pwd
 
   ## DB character set
   charset: AL32UTF8
