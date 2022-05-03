@@ -852,7 +852,7 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 
 	replicasReq := m.Spec.Replicas
 	if replicasFound == 0 {
-		m.Status.Status = dbcommons.StatusNotReady
+		m.Status.Status = dbcommons.StatusPending
 	}
 
 	if replicasFound == replicasReq {
