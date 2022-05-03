@@ -144,16 +144,15 @@ spec:
                   properties:
                     enable:
                       type: boolean
-                    pdb:
+                    pdbName:
                       type: string
-                    schema:
+                    schemaName:
                       type: string
                     urlMapping:
                       type: string
                   required:
                   - enable
-                  - pdb
-                  - schema
+                  - schemaName
                   type: object
                 type: array
               serviceAccountName:

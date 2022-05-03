@@ -169,7 +169,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	var ordsReadyPod corev1.Pod
-	result, ordsReadyPod = r.checkHealthStatus(oracleRestDataService, ctx, req)
+	result, ordsReadyPod = r.checkHealthStatus(oracleRestDataService, sidbReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -322,7 +322,7 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 	} else if strings.Contains(out, "ORA-01017") {
 		m.Status.Status = dbcommons.StatusError
 		eventReason := "Logon denied"
-		eventMsg := "invalid databaseRef admin password. secret: " + m.Spec.AdminPassword.SecretName
+		eventMsg := "invalid databaseRef admin password secret: " + m.Spec.AdminPassword.SecretName
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		return requeueY, sidbReadyPod
 	} else {
@@ -350,7 +350,7 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 //    Check ORDS Health Status
 //#####################################################################################################
 func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestDataService,
-	ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
+	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
 	log := r.Log.WithValues("checkHealthStatus", req.NamespacedName)
 
 	readyPod, _, _, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
@@ -380,7 +380,17 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 
 	if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
 		m.Status.Status = dbcommons.StatusReady
-		m.Status.OrdsInstalled = true
+		if !m.Status.OrdsInstalled {
+			m.Status.OrdsInstalled = true
+			out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
+					ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.OpenPDBSeed, dbcommons.SQLPlusCLI))
+			if err != nil {
+				log.Error(err, err.Error())
+			} else {
+				log.Info("Close PDB seed")
+				log.Info(out)
+			}
+		}
 	} else {
 		m.Status.Status = dbcommons.StatusNotReady
 		return requeueY, readyPod
@@ -923,7 +933,7 @@ func (r *OracleRestDataServiceReconciler) manageOracleRestDataServiceDeletion(re
 				err := r.Status().Update(ctx, n)
 				if err != nil {
 					log.Info(err.Error() + "\n updating n.Status.OrdsInstalled = false")
-					time.Sleep(5 * time.Second)
+					time.Sleep(1 * time.Second)
 					continue
 				}
 				break
@@ -938,7 +948,7 @@ func (r *OracleRestDataServiceReconciler) manageOracleRestDataServiceDeletion(re
 				return requeueY
 			}
 		}
-		return requeueY
+		return requeueN
 	}
 
 	// Add finalizer for this CR
@@ -1277,16 +1287,23 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 	}
 
 	for i := 0; i < len(m.Spec.RestEnableSchemas); i++ {
+
+		pdbName := m.Spec.RestEnableSchemas[i].PdbName
+		if pdbName == "" {
+			pdbName = n.Spec.Pdbname
+			r.Log.Info("Defaulting PDB name", "name", pdbName)
+		}
+
 		//  If the PDB mentioned in yaml doesnt contain in the database , continue
-		if !strings.Contains(strings.ToUpper(availablePDBS), strings.ToUpper(m.Spec.RestEnableSchemas[i].Pdb)) {
+		if !strings.Contains(strings.ToUpper(availablePDBS), strings.ToUpper(pdbName)) {
 			eventReason := "Warning"
-			eventMsg := "enabling ORDS schema for PDB : " + m.Spec.RestEnableSchemas[i].Pdb + " failed ; as pdb not found"
+			eventMsg := "enabling ORDS schema for PDB : " + pdbName + " failed. PDB not found."
 			log.Info(eventMsg)
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 			continue
 		}
 
-		getOrdsSchemaStatus := fmt.Sprintf(dbcommons.GetUserOrdsSchemaStatusSQL, m.Spec.RestEnableSchemas[i].Schema, m.Spec.RestEnableSchemas[i].Pdb)
+		getOrdsSchemaStatus := fmt.Sprintf(dbcommons.GetUserOrdsSchemaStatusSQL, m.Spec.RestEnableSchemas[i].SchemaName, pdbName)
 
 		// Get ORDS Schema status for PDB
 		out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
@@ -1295,7 +1312,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			log.Error(err, err.Error())
 			return requeueY
 		} else {
-			log.Info("getOrdsSchemaStatus Output", "schema", m.Spec.RestEnableSchemas[i].Schema)
+			log.Info("getOrdsSchemaStatus Output", "schema", m.Spec.RestEnableSchemas[i].SchemaName)
 			log.Info(out)
 		}
 
@@ -1327,12 +1344,12 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 		password := string(OrdsPasswordSecret.Data[m.Spec.OrdsPassword.SecretKey])
 		urlMappingPattern := ""
 		if m.Spec.RestEnableSchemas[i].UrlMapping == "" {
-			urlMappingPattern = strings.ToLower(m.Spec.RestEnableSchemas[i].Schema)
+			urlMappingPattern = strings.ToLower(m.Spec.RestEnableSchemas[i].SchemaName)
 		} else {
 			urlMappingPattern = strings.ToLower(m.Spec.RestEnableSchemas[i].UrlMapping)
 		}
-		enableORDSSchema := fmt.Sprintf(dbcommons.EnableORDSSchemaSQL, strings.ToUpper(m.Spec.RestEnableSchemas[i].Schema), password,
-			strconv.FormatBool(m.Spec.RestEnableSchemas[i].Enable), urlMappingPattern, m.Spec.RestEnableSchemas[i].Pdb)
+		enableORDSSchema := fmt.Sprintf(dbcommons.EnableORDSSchemaSQL, strings.ToUpper(m.Spec.RestEnableSchemas[i].SchemaName), password,
+			strconv.FormatBool(m.Spec.RestEnableSchemas[i].Enable), urlMappingPattern, pdbName)
 
 		// Create users,schemas and grant enableORDS for PDB
 		_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
@@ -1341,7 +1358,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			log.Error(err, err.Error())
 			return requeueY
 		}
-		log.Info("REST Enabled", "schema", m.Spec.RestEnableSchemas[i].Schema)
+		log.Info("REST Enabled", "schema", m.Spec.RestEnableSchemas[i].SchemaName)
 
 	}
 
