@@ -145,7 +145,7 @@ You can easily provision a new database instance on the Kubernetes cluster by us
 - Supports Oracle Database Enterprise Edition (19.3.0), and later releases.
 
 ### Provisioning a new XE database
-To provision new Oracle Database Express Edition (XE) database, use the template **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)** file. For example:
+To provision new Oracle Database Express Edition (XE) database, use the sample **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)** file. For example:
 
       kubectl apply -f singleinstancedatabase_express.yaml
 
@@ -156,7 +156,7 @@ Oracle Database XE edition is supported Release 21c (21.3.0) and later releases.
 
 ### Provision a pre-built database
 
-To provision a new pre-built database instance, use the template **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
+To provision a new pre-built database instance, use the sample **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
 ```sh
 $ kubectl apply -f singleinstancedatabase_prebuiltdb.yaml
 
@@ -264,21 +264,14 @@ $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabas
   The SingleInstanceDatabase "sidb-sample" is invalid: spec.sid: Forbidden: cannot be changed
 ```
 
-#### Patch Service
+#### Enable LoadBalancer Service
 
-You can patch the Service can be patched after creating the Single Instance Database instance. 
-
-**Caution**: Patching the service **replaces the existing Service with a new type**.
-
-Options: 
-
-* NodePort - '{"spec":{"loadBalancer": false}}'
-* LoadBalancer - '{"spec":{"loadBalancer": true}}'
+For the Single Instance Database, the default service is the `NodePort` service. You can enable the `LoadBalancer` service by using `kubectl patch` command.
 
 For example:
 
 ```sh
-$ kubectl --type=merge -p '{"spec":{"loadBalancer": false}}' patch singleinstancedatabase sidb-sample 
+$ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstancedatabase sidb-sample 
 
   singleinstancedatabase.database.oracle.com/sidb-sample patched
 ```
@@ -416,7 +409,7 @@ $ kubectl describe oraclerestdataservice ords-sample
 
 ## REST Enable Database
 
-To provision a new ORDS instance, use the template **[config/samples/sidb/oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file. For example: 
+To provision a new ORDS instance, use the sample **[config/samples/sidb/oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file. For example: 
 
 ```sh
 $ kubectl apply -f oraclerestdataservice_create.yaml
@@ -430,7 +423,7 @@ After this command completes, ORDS is installed in the container database (CDB) 
 Creating a new ORDS instance takes a while. To check the status of the ORDS instance, use the following command:
 
 ```sh
-$ kubectl get oraclerestdataservice/ords-sample --template={{.status.status}}
+$ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.status}"
 
   Healthy
 ```
@@ -441,7 +434,7 @@ ORDS is open for connections when the `status` column returns `Healthy`.
 Clients can access the REST Endpoints using `.status.databaseApiUrl` as shown in the following command.
 
 ```sh
-$ kubectl get oraclerestdataservice/ords-sample --template={{.status.databaseApiUrl}}
+$ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.databaseApiUrl}"
 
   https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/
 ```
@@ -551,7 +544,7 @@ Database Actions is a web-based interface that uses Oracle REST Data Services to
 Database Actions can be accessed with a browser by using `.status.databaseActionsUrl`. For example:
 
 ```sh
-$ kubectl get oraclerestdataservice/ords-sample --template={{.status.databaseActionsUrl}}
+$ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.databaseActionsUrl}"
 
   https://10.0.25.54:8443/ords/sql-developer
 ```
@@ -580,7 +573,7 @@ To access APEX, You need to configure APEX with the ORDS. The following section 
 
 #### Configure APEX with ORDS
 
-* For quick provisioning, apply the **[config/samples/sidb/oraclerestdataservice_apex.yaml](../../confi/samples/sidb/oraclerestdataservice_apex.yaml)** file. First, it creates `ords-secret`, `apex-secret`, and then provision the ORDS configured with Oracle APEX. It uses the ORDS image hosted on the [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:113387942129427:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:1183,1183,Oracle%20REST%20Data%20Services%20(ORDS)%20with%20Application%20Express,Oracle%20REST%20Data%20Services%20(ORDS)%20with%20Application%20Express,1,0&cs=3_y-KlneZIxRRfXzerC_0ro7P1MGh-B_9lTEQObVTdoQCWkmsQ3lHpFs90Z8QFheteVQEzPvtUVHEQAqqXegYbA).
+* For quick provisioning, use the sample **[config/samples/sidb/oraclerestdataservice_apex.yaml](../../confi/samples/sidb/oraclerestdataservice_apex.yaml)** file. For example:
 
       kubectl apply -f oraclerestdataservice_apex.yaml
 
@@ -589,7 +582,7 @@ To access APEX, You need to configure APEX with the ORDS. The following section 
 
 
   ```sh
-  $ kubectl get oraclerestdataservice ords-sample -o "jsonpath=[{.status.apexConfigured}]"
+  $ kubectl get oraclerestdataservice ords-sample -o "jsonpath={.status.apexConfigured}"
 
     [true]
   ```
@@ -599,9 +592,9 @@ To access APEX, You need to configure APEX with the ORDS. The following section 
 Application Express can be accessed via browser using `.status.apexUrl` in the following command.
 
 ```sh
-$ kubectl get oraclerestdataservice/ords-sample --template={{.status.apexUrl}}
+$ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.apexUrl}"
 
-  https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/
+  https://10.0.25.54:8443/ords/ORCLPDB1/apex
 ```
 
 Sign in to Administration services using
