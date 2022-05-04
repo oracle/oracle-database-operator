@@ -216,6 +216,9 @@ const GetStandardEditionFileCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfi
 
 const GetPdbsSQL string = "select name from v\\$pdbs where name not like 'PDB\\$SEED' and open_mode like 'READ WRITE';"
 
+const OpenPDBSeed = "alter pluggable database pdb\\$seed close;" +
+	"\nalter pluggable database pdb\\$seed open read only;"
+
 const SetAdminUsersSQL string = "CREATE USER C##DBAPI_CDB_ADMIN IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK CONTAINER=ALL;" +
 	"\nalter user C##DBAPI_CDB_ADMIN identified by \\\"%[1]s\\\" account unlock;" +
 	"\nGRANT DBA TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;" +

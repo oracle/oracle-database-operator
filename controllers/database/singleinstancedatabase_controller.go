@@ -114,7 +114,35 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 			r.Log.Info("Resource not found")
 			return requeueN, nil
 		}
+		r.Log.Error(err, err.Error())
 		return requeueY, err
+	}
+
+	/* Initialize Status */
+	if singleInstanceDatabase.Status.Status == "" {
+		singleInstanceDatabase.Status.Status = dbcommons.StatusPending
+	}
+	if singleInstanceDatabase.Status.Edition == "" {
+		if singleInstanceDatabase.Spec.Edition != "" {
+			singleInstanceDatabase.Status.Edition = strings.Title(singleInstanceDatabase.Spec.Edition)
+		} else {
+			singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
+		}
+	}
+	if singleInstanceDatabase.Status.Role == "" {
+		singleInstanceDatabase.Status.Role = dbcommons.ValueUnavailable
+	}
+	if singleInstanceDatabase.Status.ConnectString == "" {
+		singleInstanceDatabase.Status.ConnectString = dbcommons.ValueUnavailable
+	}
+	if singleInstanceDatabase.Status.PdbConnectString == "" {
+		singleInstanceDatabase.Status.PdbConnectString = dbcommons.ValueUnavailable
+	}
+	if singleInstanceDatabase.Status.OemExpressUrl == "" {
+		singleInstanceDatabase.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	}
+	if singleInstanceDatabase.Status.ReleaseUpdate == "" {
+		singleInstanceDatabase.Status.ReleaseUpdate = dbcommons.ValueUnavailable
 	}
 
 	// Manage SingleInstanceDatabase Deletion
@@ -302,33 +330,6 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	var eventMsgs []string
 
 	r.Log.Info("Entering reconcile validation")
-
-	/* Initialize Status */
-	if m.Status.Status == "" {
-		m.Status.Status = dbcommons.StatusPending
-	}
-	if m.Status.Edition == "" {
-		if m.Spec.Edition != "" {
-			m.Status.Edition = strings.Title(m.Spec.Edition)
-		} else {
-			m.Status.Edition = dbcommons.ValueUnavailable
-		}
-	}
-	if m.Status.Role == "" {
-		m.Status.Role = dbcommons.ValueUnavailable
-	}
-	if m.Status.ConnectString == "" {
-		m.Status.ConnectString = dbcommons.ValueUnavailable
-	}
-	if m.Status.PdbConnectString == "" {
-		m.Status.PdbConnectString = dbcommons.ValueUnavailable
-	}
-	if m.Status.OemExpressUrl == "" {
-		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
-	}
-	if m.Status.ReleaseUpdate == "" {
-		m.Status.ReleaseUpdate = dbcommons.ValueUnavailable
-	}
 
 	//First check image pull secrets
 	if m.Spec.Image.PullSecrets != "" {
