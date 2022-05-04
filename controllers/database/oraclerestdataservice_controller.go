@@ -109,7 +109,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	/* Initialize Status */
-	if strings.TrimSpace(oracleRestDataService.Status.Status) == "" {
+	if oracleRestDataService.Status.Status == "" {
 		oracleRestDataService.Status.Status = dbcommons.StatusPending
 		oracleRestDataService.Status.ApxeUrl = dbcommons.ValueUnavailable
 		oracleRestDataService.Status.DatabaseApiUrl = dbcommons.ValueUnavailable
