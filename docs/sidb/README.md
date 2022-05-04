@@ -470,9 +470,9 @@ Create a file called "/tmp/table.sql" with the following contents.
 Execute the follwing API to run the above script.
 
 ```sh
-  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdb>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdbName>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
   -H "Content-Type: application/sql" \
-  -u '<.spec.restEnableSchemas[].schema>:<.spec.ordsPassword>' \
+  -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' \
   -d @/tmp/table.sql
 ```
 
@@ -481,13 +481,13 @@ Execute the follwing API to run the above script.
 Fetch all entries from 'DEPT' table by calling the following API
 
 ```sh
-  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdb>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdbName>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
   -H "Content-Type: application/sql" \
-  -u '<.spec.restEnableSchemas[].schema>:<.spec.ordsPassword>' \
+  -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' \
   -d $'select * from dept;' | python -m json.tool
 ```
 
-**NOTE:** `.spec.restEnableSchema[].urlMapping` is optional and is defaulted to `.spec.restEnableSchema[].schema`
+**NOTE:** `.spec.restEnableSchema[].urlMapping` is optional and is defaulted to `.spec.restEnableSchemas[].schemaName`
 
 #### Data Pump
 
@@ -501,8 +501,8 @@ Database Actions is a web-based interface that uses Oracle REST Data Services to
 
 * To use Database Actions, one must sign in as a database user whose schema has been REST-enabled.
 * This can be done by specifying appropriate values for the `.spec.restEnableSchemas` attributes details in the sample yaml [config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml) which are needed for authorising Database Actions.
-* Schema will be created (if not exists) with username as `.spec.restEnableSchema[].schema` and password as `.spec.ordsPassword.`.
-* UrlMapping `.spec.restEnableSchema[].urlMapping` is optional and is defaulted to `.spec.restEnableSchema[].schema`.
+* Schema will be created (if not exists) with username as `.spec.restEnableSchemas[].schemaName` and password as `.spec.ordsPassword.`.
+* UrlMapping `.spec.restEnableSchema[].urlMapping` is optional and is defaulted to `.spec.restEnableSchemas[].schemaName`.
 
 Database Actions can be accessed via browser using `.status.databaseActionsUrl` in the following command
 
@@ -514,11 +514,11 @@ $ kubectl get oraclerestdataservice/ords-sample --template={{.status.databaseAct
 
 Sign in to Database Actions using
 * First Page: \
-PDB Name: `.spec.restEnableSchema[].pdb` \
-Username: `.spec.restEnableSchema[].urlMapping`
+PDB Name: `.spec.restEnableSchemas[].pdbName` \
+Username: `.spec.restEnableSchemas[].urlMapping`
 
 * Second Page: \
-Username: `.spec.restEnableSchema[].schema` \
+Username: `.spec.restEnableSchemas[].schemaName` \
 Password: `.spec.ordsPassword`
 
 ![database-actions-home](/images/sidb/database-actions-home.png)
