@@ -41,7 +41,7 @@ spec:
     pullFrom:
     pullSecrets:
 
-  ## Dedicated persistence storage is optional. If not specified, ORDS will use the databaseRef persistence storage
+  ## Dedicated persistent storage is optional. If not specified, ORDS will use the databaseRef persistent storage
   ## size : Minimum size of pvc | class : PVC storage Class
   ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
   ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
