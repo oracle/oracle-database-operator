@@ -1666,6 +1666,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	flashBackStatus, archiveLogStatus, forceLoggingStatus, result := dbcommons.CheckDBConfig(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
 	if result.Requeue {
+		m.Status.Status = dbcommons.StatusNotReady
 		return result, nil
 	}
 	m.Status.ArchiveLog = strconv.FormatBool(archiveLogStatus)
@@ -1725,6 +1726,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	if m.Spec.FlashBack && !flashBackStatus {
 		_, archiveLogStatus, _, result := dbcommons.CheckDBConfig(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
 		if result.Requeue {
+			m.Status.Status = dbcommons.StatusNotReady
 			return result, nil
 		}
 		if archiveLogStatus {
@@ -1732,6 +1734,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 				fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
+				m.Status.Status = dbcommons.StatusNotReady
 				return requeueY, err
 			}
 			log.Info("FlashBackTrue Output")
@@ -1765,6 +1768,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	if !m.Spec.ArchiveLog && archiveLogStatus {
 		flashBackStatus, _, _, result := dbcommons.CheckDBConfig(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
 		if result.Requeue {
+			m.Status.Status = dbcommons.StatusNotReady
 			return result, nil
 		}
 		if !flashBackStatus {
@@ -1773,6 +1777,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 				fmt.Sprintf(dbcommons.ArchiveLogFalseCMD, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
+				m.Status.Status = dbcommons.StatusNotReady
 				return requeueY, err
 			}
 			log.Info("ArchiveLogFalse Output")
@@ -1805,6 +1810,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	flashBackStatus, archiveLogStatus, forceLoggingStatus, result = dbcommons.CheckDBConfig(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
 	if result.Requeue {
+		m.Status.Status = dbcommons.StatusNotReady
 		return result, nil
 	}
 

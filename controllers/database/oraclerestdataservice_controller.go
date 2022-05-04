@@ -279,14 +279,16 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 		return requeueY, sidbReadyPod
 	}
 
+	if m.Status.OrdsInstalled || m.Status.CommonUsersCreated {
+		return requeueN, sidbReadyPod
+	}
+
 	if sidbReadyPod.Name == "" || n.Status.Status != dbcommons.StatusReady {
 		eventReason := "Waiting"
 		eventMsg := "waiting for " + n.Name + " to be Ready"
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		m.Status.Status = dbcommons.StatusNotReady
 		return requeueY, sidbReadyPod
-	}
-	if m.Status.OrdsInstalled || m.Status.CommonUsersCreated {
-		return requeueN, sidbReadyPod
 	}
 
 	// Validate databaseRef Admin Password
@@ -1308,6 +1310,14 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 
 	log := r.Log.WithValues("restEnableSchemas", req.NamespacedName)
+
+	if sidbReadyPod.Name == "" || n.Status.Status != dbcommons.StatusReady {
+		eventReason := "Waiting"
+		eventMsg := "waiting for " + n.Name + " to be Ready"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		m.Status.Status = dbcommons.StatusNotReady
+		return requeueY
+	}
 
 	// Get Pdbs Available
 	availablePDBS, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
