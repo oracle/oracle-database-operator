@@ -356,6 +356,7 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 		return requeueY, readyPod
 	}
 	if readyPod.Name == "" {
+		m.Status.Status = dbcommons.StatusNotReady
 		return requeueY, readyPod
 	}
 
