@@ -46,7 +46,3 @@ spec:
   - schemaName: schema2
     enable: true
     urlMapping:
-
-
-
-  
