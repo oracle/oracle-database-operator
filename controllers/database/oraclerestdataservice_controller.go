@@ -114,6 +114,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		oracleRestDataService.Status.ApxeUrl = dbcommons.ValueUnavailable
 		oracleRestDataService.Status.DatabaseApiUrl = dbcommons.ValueUnavailable
 		oracleRestDataService.Status.DatabaseActionsUrl = dbcommons.ValueUnavailable
+		r.Status().Update(ctx, oracleRestDataService)
 	}
 	oracleRestDataService.Status.DatabaseRef = oracleRestDataService.Spec.DatabaseRef
 	oracleRestDataService.Status.LoadBalancer = strconv.FormatBool(oracleRestDataService.Spec.LoadBalancer)
