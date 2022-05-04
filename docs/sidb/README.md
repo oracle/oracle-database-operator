@@ -116,7 +116,7 @@ $ kubectl describe singleinstancedatabase sidb-sample-clone
 
 ## Provision New Database
 
-You can easily provision a new database instance on the Kubernetes cluster by using **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**.
+You can easily provision a new database instance on the Kubernetes cluster by using **[config/samples/sidb/singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**.
 
 1. Log into [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:7154182141811:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:9,9,Oracle%20Database%20Enterprise%20Edition,Oracle%20Database%20Enterprise%20Edition,1,0&cs=3Y_90hkCQLfJzrvTLiEipIGgWGUytfrtAPuHFocuWd0NDSacbBPlamohfLuiJA-bAsVL6Z_yKEMsTbb52bm6IRA) and accept the license agreement for the Database image, ignore if you have accepted already.
 
@@ -280,7 +280,7 @@ $ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstance
 
 To create copies of your existing database quickly, you can use the cloning functionality. A cloned database is an exact, block-for-block copy of the source database. Cloning is much faster than creating a fresh database and copying over the data.
 
-To clone an existing database, specify the source database reference as the value for the `cloneFrom` attribute in the sample **[singleinstancedatabase_clone.yaml](../../config/samples/sidb/singleinstancedatabase_clone.yaml)** file.
+To quickly clone the existing database sidb-sample created above, use the sample **[config/samples/sidb/singleinstancedatabase_clone.yaml](../../config/samples/sidb/singleinstancedatabase_clone.yaml)** file.
 
 **Note**: To clone a database, The source database must have archiveLog mode set to true.
 
@@ -303,7 +303,7 @@ Patched Oracle Docker images can be built by using this [patching extension](htt
 
 ### Patch existing Database
 
-To patch an existing database, edit and apply the **[singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
+To patch an existing database, edit and apply the **[config/samples/sidb/singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
 
 ```sh
 kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
@@ -341,8 +341,7 @@ The Oracle Database Operator creates the `OracleRestDataService` (ORDS) kind as 
   
 The template `.yaml` file for Oracle Rest Data Services (`OracleRestDataService` kind) is available at **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)**.
 
-**Note:** 
-- For **quick provisioning** of the ORDS, apply the **[config/samples/sidb/oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file, using the following command:
+For **quick provisioning** of ORDS, apply the sample **[config/samples/sidb/oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file, using the following command:
 
       kubectl apply -f oraclerestdataservice_create.yaml
 
@@ -447,7 +446,7 @@ There are two basic approaches for authentication to the REST Endpoints. Certain
 
 To call certain REST endpoints, you must use the ORDS_PUBLIC_USER with role `SQL Administrator`, and `.spec.ordsPassword` credentials.
 
-The ORDS user also has the following additional roles: `System Administrator , SQL Developer , oracle.dbtools.autorest.any.schema`.
+The ORDS user also has the following additional roles: `System Administrator, SQL Developer, oracle.dbtools.autorest.any.schema`.
 
 Use this ORDS user to authenticate the following: 
 * Database APIs
