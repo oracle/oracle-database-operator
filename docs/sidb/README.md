@@ -179,17 +179,34 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
   
 ### Connection Information
 
-External and internal (running in Kubernetes pods) clients can connect to the database by using `.status.connectString`. For example:
+Clients can get the connect string to the CDB from `.status.connectString` and PDB from `.status.pdbConnectString`. For example:
 
 ```sh
 $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.connectString}"
 
   10.0.25.54:1521/ORCL
 ```
+```sh
+$ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.pdbConnectString}"
 
-Use any supported client or SQLPlus to connect to the database as follows
+  10.0.25.54:1521/ORCLPDB
+```
+
+Use any supported client or SQLPlus to connect to the database using the above connect strings as follows
 ```sh
 $ sqlplus sys/<.spec.adminPassword>@10.0.25.54:1521/ORCL as sysdba
+
+SQL*Plus: Release 19.0.0.0.0 - Production on Wed May 4 16:00:49 2022
+Version 19.14.0.0.0
+
+Copyright (c) 1982, 2021, Oracle.  All rights reserved.
+
+
+Connected to:
+Oracle Database 21c Express Edition Release 21.0.0.0.0 - Production
+Version 21.3.0.0.0
+
+SQL>
 ```
 
 The Oracle Database inside the container also has Oracle Enterprise Manager Express (OEM Express) configured. To access OEM Express, start the browser, and paste in a URL similar to the following example:
