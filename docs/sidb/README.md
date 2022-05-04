@@ -187,6 +187,11 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.connectSt
   10.0.25.54:1521/ORCL
 ```
 
+Use any supported client or SQLPlus to connect to the database as follows
+```sh
+$ sqlplus sys/<.spec.adminPassword>@10.0.25.54:1521/ORCL as sysdba
+```
+
 The Oracle Database inside the container also has Oracle Enterprise Manager Express (OEM Express) configured. To access OEM Express, start the browser, and paste in a URL similar to the following example:
 
 ```sh
