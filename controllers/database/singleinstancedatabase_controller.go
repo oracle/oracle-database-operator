@@ -121,28 +121,17 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	/* Initialize Status */
 	if singleInstanceDatabase.Status.Status == "" {
 		singleInstanceDatabase.Status.Status = dbcommons.StatusPending
-	}
-	if singleInstanceDatabase.Status.Edition == "" {
 		if singleInstanceDatabase.Spec.Edition != "" {
 			singleInstanceDatabase.Status.Edition = strings.Title(singleInstanceDatabase.Spec.Edition)
 		} else {
 			singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
 		}
-	}
-	if singleInstanceDatabase.Status.Role == "" {
 		singleInstanceDatabase.Status.Role = dbcommons.ValueUnavailable
-	}
-	if singleInstanceDatabase.Status.ConnectString == "" {
 		singleInstanceDatabase.Status.ConnectString = dbcommons.ValueUnavailable
-	}
-	if singleInstanceDatabase.Status.PdbConnectString == "" {
 		singleInstanceDatabase.Status.PdbConnectString = dbcommons.ValueUnavailable
-	}
-	if singleInstanceDatabase.Status.OemExpressUrl == "" {
 		singleInstanceDatabase.Status.OemExpressUrl = dbcommons.ValueUnavailable
-	}
-	if singleInstanceDatabase.Status.ReleaseUpdate == "" {
 		singleInstanceDatabase.Status.ReleaseUpdate = dbcommons.ValueUnavailable
+		r.Status().Update(ctx, singleInstanceDatabase)
 	}
 
 	// Manage SingleInstanceDatabase Deletion

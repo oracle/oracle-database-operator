@@ -241,15 +241,12 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 		}
 	}
 
-	//  If using same pvc for ords as sidb, ensure sidb has ReadWriteMany Accessmode
-	//if n.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Persistence.Size == "" {
-	//	eventMsgs = append(eventMsgs, "ords can be installed only on ReadWriteMany Access Mode of : "+m.Spec.DatabaseRef)
-	//}
+	// If ORDS has no peristence specified, ensure SIDB has persistence configured
+	if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == ""  {
+		eventMsgs = append(eventMsgs, "ORDS cannot be configured for database " + m.Spec.DatabaseRef + " that has not attached persistent volume")
+	}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
 		eventMsgs = append(eventMsgs, "databaseRef cannot be updated")
-	}
-	if m.Status.LoadBalancer != "" && m.Status.LoadBalancer != strconv.FormatBool(m.Spec.LoadBalancer) {
-		eventMsgs = append(eventMsgs, "service patching is not available currently")
 	}
 	if m.Status.Image.PullFrom != "" && m.Status.Image != m.Spec.Image {
 		eventMsgs = append(eventMsgs, "image patching is not available currently")
@@ -471,6 +468,29 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 			},
 		},
 		Spec: corev1.PodSpec{
+			Affinity: func() *corev1.Affinity {
+				if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+					return &corev1.Affinity{
+						PodAffinity: &corev1.PodAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
+								Weight: 100,
+								PodAffinityTerm: corev1.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{{
+											Key:      "app",
+											Operator: metav1.LabelSelectorOpIn,
+											Values:   []string{n.Name},  // Schedule on same host as DB Pod
+										}},
+									},
+									TopologyKey: "kubernetes.io/hostname",
+								},
+							},
+							},
+						},
+					}
+				}
+				return nil
+			}(),
 			Volumes: []corev1.Volume{
 				{
 					Name: "datamount",
@@ -731,11 +751,29 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	log := r.Log.WithValues("createSVC", req.NamespacedName)
 	// Check if the Service already exists, if not create a new one
 	svc := &corev1.Service{}
-	// Get retrieves an obj for the given object key from the Kubernetes Cluster.
-	// obj must be a struct pointer so that obj can be updated with the response returned by the Server.
-	// Here foundsvc is the struct pointer to corev1.Service{}
+	svcDeleted := false
+	// Check if the Service already exists, if not create a new one
+	// Get retrieves an obj ( a struct pointer ) for the given object key from the Kubernetes Cluster.
 	err := r.Get(ctx, types.NamespacedName{Name: m.Name, Namespace: m.Namespace}, svc)
-	if err != nil && apierrors.IsNotFound(err) {
+	if err == nil {
+		log.Info("Found Existing Service ", "Service.Name", svc.Name)
+		svcType := corev1.ServiceType("NodePort")
+		if m.Spec.LoadBalancer {
+			svcType = corev1.ServiceType("LoadBalancer")
+		}
+
+		if svc.Spec.Type != svcType {
+			log.Info("Deleting SVC", " name ", svc.Name)
+			err = r.Delete(ctx, svc)
+			if err != nil {
+				r.Log.Error(err, "Failed to delete svc", " Name", svc.Name)
+				return requeueN
+			}
+			svcDeleted = true
+		}
+	}
+
+	if svcDeleted || (err != nil && apierrors.IsNotFound(err)) {
 		// Define a new Service
 		svc = r.instantiateSVCSpec(m)
 		log.Info("Creating a new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
@@ -750,8 +788,6 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	} else if err != nil {
 		log.Error(err, "Failed to get Service")
 		return requeueY
-	} else if err == nil {
-		log.Info("Found Existing Service ", "Service.Name", svc.Name)
 	}
 
 	m.Status.ServiceIP = ""
