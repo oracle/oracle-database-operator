@@ -185,7 +185,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	var ordsReadyPod corev1.Pod
-	result, ordsReadyPod = r.checkHealthStatus(oracleRestDataService, sidbReadyPod, ctx, req)
+	result, ordsReadyPod = r.checkHealthStatus(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -241,21 +241,19 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 		}
 	}
 
-	//  If using same pvc for ords as sidb, ensure sidb has ReadWriteMany Accessmode
-	if n.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Persistence.Size == "" {
-		eventMsgs = append(eventMsgs, "ords can be installed only on ReadWriteMany Access Mode of : "+m.Spec.DatabaseRef)
+	// If ORDS has no peristence specified, ensure SIDB has persistence configured
+	if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == ""  {
+		eventMsgs = append(eventMsgs, "ORDS cannot be configured for database " + m.Spec.DatabaseRef + " that has no attached persistent volume")
 	}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
 		eventMsgs = append(eventMsgs, "databaseRef cannot be updated")
-	}
-	if m.Status.LoadBalancer != "" && m.Status.LoadBalancer != strconv.FormatBool(m.Spec.LoadBalancer) {
-		eventMsgs = append(eventMsgs, "service patching is not available currently")
 	}
 	if m.Status.Image.PullFrom != "" && m.Status.Image != m.Spec.Image {
 		eventMsgs = append(eventMsgs, "image patching is not available currently")
 	}
 
 	if len(eventMsgs) > 0 {
+		m.Status.Status = dbcommons.StatusError
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, strings.Join(eventMsgs, ","))
 		r.Log.Info(strings.Join(eventMsgs, "\n"))
 		err = errors.New(strings.Join(eventMsgs, ","))
@@ -281,14 +279,16 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 		return requeueY, sidbReadyPod
 	}
 
+	if m.Status.OrdsInstalled || m.Status.CommonUsersCreated {
+		return requeueN, sidbReadyPod
+	}
+
 	if sidbReadyPod.Name == "" || n.Status.Status != dbcommons.StatusReady {
 		eventReason := "Waiting"
 		eventMsg := "waiting for " + n.Name + " to be Ready"
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		m.Status.Status = dbcommons.StatusNotReady
 		return requeueY, sidbReadyPod
-	}
-	if m.Status.OrdsInstalled || m.Status.CommonUsersCreated {
-		return requeueN, sidbReadyPod
 	}
 
 	// Validate databaseRef Admin Password
@@ -345,7 +345,7 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 //#####################################################################################################
 //    Check ORDS Health Status
 //#####################################################################################################
-func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestDataService,
+func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
 	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
 	log := r.Log.WithValues("checkHealthStatus", req.NamespacedName)
 
@@ -375,8 +375,11 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 		}
 	}
 
+	m.Status.Status = dbcommons.StatusNotReady
 	if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
-		m.Status.Status = dbcommons.StatusReady
+		if n.Status.Status == dbcommons.StatusReady || n.Status.Status == dbcommons.StatusUpdating || n.Status.Status == dbcommons.StatusPatching {
+			m.Status.Status = dbcommons.StatusReady
+		}
 		if !m.Status.OrdsInstalled {
 			m.Status.OrdsInstalled = true
 			out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
@@ -388,8 +391,8 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 				log.Info(out)
 			}
 		}
-	} else {
-		m.Status.Status = dbcommons.StatusNotReady
+	}
+	if m.Status.Status == dbcommons.StatusNotReady {
 		return requeueY, readyPod
 	}
 	return requeueN, readyPod
@@ -470,6 +473,29 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 			},
 		},
 		Spec: corev1.PodSpec{
+			Affinity: func() *corev1.Affinity {
+				if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+					return &corev1.Affinity{
+						PodAffinity: &corev1.PodAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
+								Weight: 100,
+								PodAffinityTerm: corev1.PodAffinityTerm{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{{
+											Key:      "app",
+											Operator: metav1.LabelSelectorOpIn,
+											Values:   []string{n.Name},  // Schedule on same host as DB Pod
+										}},
+									},
+									TopologyKey: "kubernetes.io/hostname",
+								},
+							},
+							},
+						},
+					}
+				}
+				return nil
+			}(),
 			Volumes: []corev1.Volume{
 				{
 					Name: "datamount",
@@ -730,11 +756,29 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	log := r.Log.WithValues("createSVC", req.NamespacedName)
 	// Check if the Service already exists, if not create a new one
 	svc := &corev1.Service{}
-	// Get retrieves an obj for the given object key from the Kubernetes Cluster.
-	// obj must be a struct pointer so that obj can be updated with the response returned by the Server.
-	// Here foundsvc is the struct pointer to corev1.Service{}
+	svcDeleted := false
+	// Check if the Service already exists, if not create a new one
+	// Get retrieves an obj ( a struct pointer ) for the given object key from the Kubernetes Cluster.
 	err := r.Get(ctx, types.NamespacedName{Name: m.Name, Namespace: m.Namespace}, svc)
-	if err != nil && apierrors.IsNotFound(err) {
+	if err == nil {
+		log.Info("Found Existing Service ", "Service.Name", svc.Name)
+		svcType := corev1.ServiceType("NodePort")
+		if m.Spec.LoadBalancer {
+			svcType = corev1.ServiceType("LoadBalancer")
+		}
+
+		if svc.Spec.Type != svcType {
+			log.Info("Deleting SVC", " name ", svc.Name)
+			err = r.Delete(ctx, svc)
+			if err != nil {
+				r.Log.Error(err, "Failed to delete svc", " Name", svc.Name)
+				return requeueN
+			}
+			svcDeleted = true
+		}
+	}
+
+	if svcDeleted || (err != nil && apierrors.IsNotFound(err)) {
 		// Define a new Service
 		svc = r.instantiateSVCSpec(m)
 		log.Info("Creating a new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
@@ -749,8 +793,6 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	} else if err != nil {
 		log.Error(err, "Failed to get Service")
 		return requeueY
-	} else if err == nil {
-		log.Info("Found Existing Service ", "Service.Name", svc.Name)
 	}
 
 	m.Status.ServiceIP = ""
@@ -1271,6 +1313,14 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 
 	log := r.Log.WithValues("restEnableSchemas", req.NamespacedName)
+
+	if sidbReadyPod.Name == "" || n.Status.Status != dbcommons.StatusReady {
+		eventReason := "Waiting"
+		eventMsg := "waiting for " + n.Name + " to be Ready"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		m.Status.Status = dbcommons.StatusNotReady
+		return requeueY
+	}
 
 	// Get Pdbs Available
 	availablePDBS, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",

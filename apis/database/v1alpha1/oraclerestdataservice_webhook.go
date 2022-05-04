@@ -39,7 +39,6 @@
 package v1alpha1
 
 import (
-	"strconv"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -122,10 +121,6 @@ func (r *OracleRestDataService) ValidateUpdate(oldRuntimeObject runtime.Object) 
 	if old.Status.DatabaseRef != "" && old.Status.DatabaseRef != r.Spec.DatabaseRef {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("databaseRef"), "cannot be changed"))
-	}
-	if old.Status.LoadBalancer != "" && old.Status.LoadBalancer != strconv.FormatBool(r.Spec.LoadBalancer) {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("loadBalancer"), "cannot be changed"))
 	}
 	if old.Status.Image.PullFrom != "" && old.Status.Image != r.Spec.Image {
 		allErrs = append(allErrs,

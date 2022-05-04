@@ -53,14 +53,6 @@ spec:
   image:
     pullFrom: container-registry.oracle.com/database/ords:21.4.2-gh
 
-  ## size : Minimum size of pvc | class : PVC storage Class
-  ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
-  ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
-  persistence:
-    size: 50Gi
-    storageClass: "oci-bv"
-    accessMode: "ReadWriteOnce"
-
   ## PDB Schemas to be ORDS Enabled.
   ## Schema will be created (if not exists) with password as .spec.ordsPassword.
   restEnableSchemas:
@@ -70,5 +62,3 @@ spec:
   - schemaName: schema2
     enable: true
     urlMapping:
-
-  
