@@ -301,7 +301,6 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			m.Status.Status = dbcommons.StatusError
 			eventReason := "Waiting"
 			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
