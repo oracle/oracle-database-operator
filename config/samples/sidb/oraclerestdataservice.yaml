@@ -60,13 +60,14 @@ spec:
   # nodeSelector:
   #   failure-domain.beta.kubernetes.io/zone: PHX-AD-1
 
-  ## PDB Schemas to be ORDS Enabled.
-  ## Schema will be created (if not exists) with username as schema and password as .spec.ordsPassword.
+  ## Schemas to be ORDS Enabled.
+  ## Schema will be created (if not exists) with password as .spec.ordsPassword.
+  ## pdbName defaults to the singleinstancedatabase .spec.pdbName
   restEnableSchemas:
-  - schema:
+  - schemaName:
     enable: true
     urlMapping:
-    pdb:
+    pdbName:
 
   ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
   serviceAccountName: default
