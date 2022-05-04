@@ -109,16 +109,10 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	/* Initialize Status */
-	if oracleRestDataService.Status.Status == "" {
+	if strings.TrimSpace(oracleRestDataService.Status.Status) == "" {
 		oracleRestDataService.Status.Status = dbcommons.StatusPending
-	}
-	if oracleRestDataService.Status.ApxeUrl == "" {
 		oracleRestDataService.Status.ApxeUrl = dbcommons.ValueUnavailable
-	}
-	if oracleRestDataService.Status.DatabaseApiUrl == "" {
 		oracleRestDataService.Status.DatabaseApiUrl = dbcommons.ValueUnavailable
-	}
-	if oracleRestDataService.Status.DatabaseActionsUrl == "" {
 		oracleRestDataService.Status.DatabaseActionsUrl = dbcommons.ValueUnavailable
 	}
 	oracleRestDataService.Status.DatabaseRef = oracleRestDataService.Spec.DatabaseRef
@@ -301,6 +295,7 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
+			m.Status.Status = dbcommons.StatusPending
 			eventReason := "Waiting"
 			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
