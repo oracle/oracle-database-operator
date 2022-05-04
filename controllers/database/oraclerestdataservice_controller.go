@@ -242,9 +242,9 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	}
 
 	//  If using same pvc for ords as sidb, ensure sidb has ReadWriteMany Accessmode
-	if n.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Persistence.Size == "" {
-		eventMsgs = append(eventMsgs, "ords can be installed only on ReadWriteMany Access Mode of : "+m.Spec.DatabaseRef)
-	}
+	//if n.Spec.Persistence.AccessMode == "ReadWriteOnce" && m.Spec.Persistence.Size == "" {
+	//	eventMsgs = append(eventMsgs, "ords can be installed only on ReadWriteMany Access Mode of : "+m.Spec.DatabaseRef)
+	//}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
 		eventMsgs = append(eventMsgs, "databaseRef cannot be updated")
 	}
@@ -256,6 +256,7 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	}
 
 	if len(eventMsgs) > 0 {
+		m.Status.Status = dbcommons.StatusError
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, strings.Join(eventMsgs, ","))
 		r.Log.Info(strings.Join(eventMsgs, "\n"))
 		err = errors.New(strings.Join(eventMsgs, ","))
