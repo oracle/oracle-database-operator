@@ -243,7 +243,7 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 
 	// If ORDS has no peristence specified, ensure SIDB has persistence configured
 	if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == ""  {
-		eventMsgs = append(eventMsgs, "ORDS cannot be configured for database " + m.Spec.DatabaseRef + " that has not attached persistent volume")
+		eventMsgs = append(eventMsgs, "ORDS cannot be configured for database " + m.Spec.DatabaseRef + " that has no attached persistent volume")
 	}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
 		eventMsgs = append(eventMsgs, "databaseRef cannot be updated")
