@@ -951,7 +951,7 @@ func (r *OracleRestDataServiceReconciler) manageOracleRestDataServiceDeletion(re
 				return requeueY
 			}
 		}
-		return requeueN
+		return requeueY
 	}
 
 	// Add finalizer for this CR
