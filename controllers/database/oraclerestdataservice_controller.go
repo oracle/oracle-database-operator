@@ -95,6 +95,9 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	_ = log.FromContext(ctx)
 
 	oracleRestDataService := &dbapi.OracleRestDataService{}
+	// Always refresh status before a reconcile
+	defer r.Status().Update(ctx, oracleRestDataService)
+
 	err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, oracleRestDataService)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -104,9 +107,6 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		r.Log.Error(err, err.Error())
 		return requeueY, err
 	}
-
-	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, oracleRestDataService)
 
 	/* Initialize Status */
 	if oracleRestDataService.Status.Status == "" {
@@ -124,6 +124,9 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 
 	// Fetch Primary Database Reference
 	singleInstanceDatabase := &dbapi.SingleInstanceDatabase{}
+	// Always refresh status before a reconcile
+	defer r.Status().Update(ctx, singleInstanceDatabase)
+
 	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: oracleRestDataService.Spec.DatabaseRef}, singleInstanceDatabase)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -136,9 +139,6 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		r.Log.Error(err, err.Error())
 		return requeueY, err
 	}
-
-	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, singleInstanceDatabase)
 
 	// Manage OracleRestDataService Deletion
 	result := r.manageOracleRestDataServiceDeletion(req, ctx, oracleRestDataService, singleInstanceDatabase)
@@ -933,9 +933,10 @@ func (r *OracleRestDataServiceReconciler) manageOracleRestDataServiceDeletion(re
 			n.Status.OrdsReference = ""
 			// Make sure n.Status.OrdsInstalled is set to false or else it blocks .spec.databaseRef deletion
 			for i := 0; i < 10; i++ {
+				log.Info("Clearing the OrdsReference from DB", "name", n.Name)
 				err := r.Status().Update(ctx, n)
 				if err != nil {
-					log.Info(err.Error() + "\n updating n.Status.OrdsInstalled = false")
+					log.Error(err, err.Error())
 					time.Sleep(1 * time.Second)
 					continue
 				}
