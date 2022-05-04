@@ -185,7 +185,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	var ordsReadyPod corev1.Pod
-	result, ordsReadyPod = r.checkHealthStatus(oracleRestDataService, sidbReadyPod, ctx, req)
+	result, ordsReadyPod = r.checkHealthStatus(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -345,7 +345,7 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 //#####################################################################################################
 //    Check ORDS Health Status
 //#####################################################################################################
-func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestDataService,
+func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
 	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
 	log := r.Log.WithValues("checkHealthStatus", req.NamespacedName)
 
@@ -375,8 +375,11 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 		}
 	}
 
+	m.Status.Status = dbcommons.StatusNotReady
 	if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
-		m.Status.Status = dbcommons.StatusReady
+		if n.Status.Status == dbcommons.StatusReady || n.Status.Status == dbcommons.StatusUpdating || n.Status.Status == dbcommons.StatusPatching {
+			m.Status.Status = dbcommons.StatusReady
+		}
 		if !m.Status.OrdsInstalled {
 			m.Status.OrdsInstalled = true
 			out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
@@ -388,8 +391,8 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 				log.Info(out)
 			}
 		}
-	} else {
-		m.Status.Status = dbcommons.StatusNotReady
+	}
+	if m.Status.Status == dbcommons.StatusNotReady {
 		return requeueY, readyPod
 	}
 	return requeueN, readyPod
