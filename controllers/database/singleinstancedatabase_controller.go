@@ -121,28 +121,17 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	/* Initialize Status */
 	if singleInstanceDatabase.Status.Status == "" {
 		singleInstanceDatabase.Status.Status = dbcommons.StatusPending
-	}
-	if singleInstanceDatabase.Status.Edition == "" {
 		if singleInstanceDatabase.Spec.Edition != "" {
 			singleInstanceDatabase.Status.Edition = strings.Title(singleInstanceDatabase.Spec.Edition)
 		} else {
 			singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
 		}
-	}
-	if singleInstanceDatabase.Status.Role == "" {
 		singleInstanceDatabase.Status.Role = dbcommons.ValueUnavailable
-	}
-	if singleInstanceDatabase.Status.ConnectString == "" {
 		singleInstanceDatabase.Status.ConnectString = dbcommons.ValueUnavailable
-	}
-	if singleInstanceDatabase.Status.PdbConnectString == "" {
 		singleInstanceDatabase.Status.PdbConnectString = dbcommons.ValueUnavailable
-	}
-	if singleInstanceDatabase.Status.OemExpressUrl == "" {
 		singleInstanceDatabase.Status.OemExpressUrl = dbcommons.ValueUnavailable
-	}
-	if singleInstanceDatabase.Status.ReleaseUpdate == "" {
 		singleInstanceDatabase.Status.ReleaseUpdate = dbcommons.ValueUnavailable
+		r.Status().Update(ctx, singleInstanceDatabase)
 	}
 
 	// Manage SingleInstanceDatabase Deletion
@@ -1677,6 +1666,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	flashBackStatus, archiveLogStatus, forceLoggingStatus, result := dbcommons.CheckDBConfig(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
 	if result.Requeue {
+		m.Status.Status = dbcommons.StatusNotReady
 		return result, nil
 	}
 	m.Status.ArchiveLog = strconv.FormatBool(archiveLogStatus)
@@ -1736,6 +1726,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	if m.Spec.FlashBack && !flashBackStatus {
 		_, archiveLogStatus, _, result := dbcommons.CheckDBConfig(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
 		if result.Requeue {
+			m.Status.Status = dbcommons.StatusNotReady
 			return result, nil
 		}
 		if archiveLogStatus {
@@ -1743,6 +1734,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 				fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
+				m.Status.Status = dbcommons.StatusNotReady
 				return requeueY, err
 			}
 			log.Info("FlashBackTrue Output")
@@ -1776,6 +1768,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	if !m.Spec.ArchiveLog && archiveLogStatus {
 		flashBackStatus, _, _, result := dbcommons.CheckDBConfig(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
 		if result.Requeue {
+			m.Status.Status = dbcommons.StatusNotReady
 			return result, nil
 		}
 		if !flashBackStatus {
@@ -1784,6 +1777,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 				fmt.Sprintf(dbcommons.ArchiveLogFalseCMD, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
+				m.Status.Status = dbcommons.StatusNotReady
 				return requeueY, err
 			}
 			log.Info("ArchiveLogFalse Output")
@@ -1816,6 +1810,7 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 	flashBackStatus, archiveLogStatus, forceLoggingStatus, result = dbcommons.CheckDBConfig(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
 	if result.Requeue {
+		m.Status.Status = dbcommons.StatusNotReady
 		return result, nil
 	}
 
