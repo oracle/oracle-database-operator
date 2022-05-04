@@ -95,6 +95,9 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	_ = log.FromContext(ctx)
 
 	oracleRestDataService := &dbapi.OracleRestDataService{}
+	// Always refresh status before a reconcile
+	defer r.Status().Update(ctx, oracleRestDataService)
+
 	err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, oracleRestDataService)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -105,25 +108,23 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return requeueY, err
 	}
 
-	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, oracleRestDataService)
-
 	/* Initialize Status */
 	if oracleRestDataService.Status.Status == "" {
 		oracleRestDataService.Status.Status = dbcommons.StatusPending
-	}
-	if oracleRestDataService.Status.ApxeUrl == "" {
 		oracleRestDataService.Status.ApxeUrl = dbcommons.ValueUnavailable
-	}
-	if oracleRestDataService.Status.DatabaseApiUrl == "" {
 		oracleRestDataService.Status.DatabaseApiUrl = dbcommons.ValueUnavailable
-	}
-	if oracleRestDataService.Status.DatabaseActionsUrl == "" {
 		oracleRestDataService.Status.DatabaseActionsUrl = dbcommons.ValueUnavailable
+		r.Status().Update(ctx, oracleRestDataService)
 	}
+	oracleRestDataService.Status.DatabaseRef = oracleRestDataService.Spec.DatabaseRef
+	oracleRestDataService.Status.LoadBalancer = strconv.FormatBool(oracleRestDataService.Spec.LoadBalancer)
+	oracleRestDataService.Status.Image = oracleRestDataService.Spec.Image
 
 	// Fetch Primary Database Reference
 	singleInstanceDatabase := &dbapi.SingleInstanceDatabase{}
+	// Always refresh status before a reconcile
+	defer r.Status().Update(ctx, singleInstanceDatabase)
+
 	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: oracleRestDataService.Spec.DatabaseRef}, singleInstanceDatabase)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -136,9 +137,6 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		r.Log.Error(err, err.Error())
 		return requeueY, err
 	}
-
-	// Always refresh status before a reconcile
-	defer r.Status().Update(ctx, singleInstanceDatabase)
 
 	// Manage OracleRestDataService Deletion
 	result := r.manageOracleRestDataServiceDeletion(req, ctx, oracleRestDataService, singleInstanceDatabase)
@@ -251,21 +249,17 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 		eventMsgs = append(eventMsgs, "databaseRef cannot be updated")
 	}
 	if m.Status.LoadBalancer != "" && m.Status.LoadBalancer != strconv.FormatBool(m.Spec.LoadBalancer) {
-		eventMsgs = append(eventMsgs, "service patching is not avaiable currently")
+		eventMsgs = append(eventMsgs, "service patching is not available currently")
 	}
 	if m.Status.Image.PullFrom != "" && m.Status.Image != m.Spec.Image {
-		eventMsgs = append(eventMsgs, "image patching is not avaiable currently")
+		eventMsgs = append(eventMsgs, "image patching is not available currently")
 	}
-
-	m.Status.DatabaseRef = m.Spec.DatabaseRef
-	m.Status.LoadBalancer = strconv.FormatBool(m.Spec.LoadBalancer)
-	m.Status.Image = m.Spec.Image
 
 	if len(eventMsgs) > 0 {
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, strings.Join(eventMsgs, ","))
 		r.Log.Info(strings.Join(eventMsgs, "\n"))
 		err = errors.New(strings.Join(eventMsgs, ","))
-		return requeueN, err
+		return requeueY, err
 	}
 
 	return requeueN, err
@@ -302,7 +296,7 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			m.Status.Status = dbcommons.StatusError
+			m.Status.Status = dbcommons.StatusPending
 			eventReason := "Waiting"
 			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
@@ -348,7 +342,6 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 	return requeueN, sidbReadyPod
 }
 
-
 //#####################################################################################################
 //    Check ORDS Health Status
 //#####################################################################################################
@@ -363,6 +356,7 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 		return requeueY, readyPod
 	}
 	if readyPod.Name == "" {
+		m.Status.Status = dbcommons.StatusNotReady
 		return requeueY, readyPod
 	}
 
@@ -386,7 +380,7 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 		if !m.Status.OrdsInstalled {
 			m.Status.OrdsInstalled = true
 			out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
-					ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.OpenPDBSeed, dbcommons.SQLPlusCLI))
+				ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.OpenPDBSeed, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
 			} else {
@@ -444,9 +438,9 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 //    Instantiate POD spec from OracleRestDataService spec
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRestDataService,
-		n *dbapi.SingleInstanceDatabase) (*corev1.Pod, *corev1.Secret) {
+	n *dbapi.SingleInstanceDatabase) (*corev1.Pod, *corev1.Secret) {
 
-	initSecret := &corev1.Secret {
+	initSecret := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "Secret",
 		},
@@ -454,11 +448,11 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 			Name:      m.Name,
 			Namespace: m.Namespace,
 			Labels: map[string]string{
-				"app":     m.Name,
+				"app": m.Name,
 			},
 		},
 		Type: corev1.SecretTypeOpaque,
-		StringData: map[string]string {
+		StringData: map[string]string{
 			"init-cmd": dbcommons.InitORDSCMD,
 		},
 	}
@@ -709,16 +703,16 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 					return nil
 				}
 				return &metav1.LabelSelector{
-							MatchLabels: func() map[string]string {
-								ns := make(map[string]string)
-								if len(m.Spec.NodeSelector) != 0 {
-									for key, value := range m.Spec.NodeSelector {
-										ns[key] = value
-									}
-								}
-								return ns
-							}(),
+					MatchLabels: func() map[string]string {
+						ns := make(map[string]string)
+						if len(m.Spec.NodeSelector) != 0 {
+							for key, value := range m.Spec.NodeSelector {
+								ns[key] = value
+							}
 						}
+						return ns
+					}(),
+				}
 			}(),
 		},
 	}
@@ -763,10 +757,10 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	if m.Spec.LoadBalancer {
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
 			m.Status.DatabaseApiUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
-				 fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/"+n.Status.Pdbname+"/_/db-api/stable/"
+				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + n.Status.Pdbname + "/_/db-api/stable/"
 			m.Status.ServiceIP = svc.Status.LoadBalancer.Ingress[0].IP
 			m.Status.DatabaseActionsUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
-				 fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/sql-developer"
+				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/sql-developer"
 			if m.Status.ApexConfigured {
 				m.Status.ApxeUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
 					fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + n.Status.Pdbname + "/apex"
@@ -778,7 +772,7 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	if nodeip != "" {
 		m.Status.ServiceIP = nodeip
 		m.Status.DatabaseApiUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
-			"/ords/"+n.Status.Pdbname+"/_/db-api/stable/"
+			"/ords/" + n.Status.Pdbname + "/_/db-api/stable/"
 		m.Status.DatabaseActionsUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
 			"/ords/sql-developer"
 		if m.Status.ApexConfigured {
@@ -844,7 +838,7 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 		var gracePeriodSeconds int64 = 0
 		policy := metav1.DeletePropagationForeground
 		r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
-				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
+			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
 	}
 
 	log.Info(m.Name, " pods other than one of Ready Pods : ", dbcommons.GetPodNames(available))
@@ -895,7 +889,7 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 			var gracePeriodSeconds int64 = 0
 			policy := metav1.DeletePropagationForeground
 			err := r.Delete(ctx, &pod, &client.DeleteOptions{
-				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
+				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
 			noDeleted += 1
 			if err != nil {
 				r.Log.Error(err, "Failed to delete existing POD", "POD.Name", pod.Name)
@@ -933,9 +927,10 @@ func (r *OracleRestDataServiceReconciler) manageOracleRestDataServiceDeletion(re
 			n.Status.OrdsReference = ""
 			// Make sure n.Status.OrdsInstalled is set to false or else it blocks .spec.databaseRef deletion
 			for i := 0; i < 10; i++ {
+				log.Info("Clearing the OrdsReference from DB", "name", n.Name)
 				err := r.Status().Update(ctx, n)
 				if err != nil {
-					log.Info(err.Error() + "\n updating n.Status.OrdsInstalled = false")
+					log.Error(err, err.Error())
 					time.Sleep(1 * time.Second)
 					continue
 				}
@@ -951,7 +946,7 @@ func (r *OracleRestDataServiceReconciler) manageOracleRestDataServiceDeletion(re
 				return requeueY
 			}
 		}
-		return requeueN
+		return requeueY
 	}
 
 	// Add finalizer for this CR
@@ -972,7 +967,6 @@ func (r *OracleRestDataServiceReconciler) manageOracleRestDataServiceDeletion(re
 func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.Request, ctx context.Context,
 	m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase) error {
 	log := r.Log.WithValues("cleanupOracleRestDataService", req.NamespacedName)
-
 
 	if m.Status.OrdsInstalled {
 		// ## FETCH THE SIDB REPLICAS .
@@ -1053,7 +1047,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 			uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
 
 			out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
-			uninstallORDS)
+				uninstallORDS)
 			log.Info("UninstallORDSCMD Output : " + out)
 			if strings.Contains(strings.ToUpper(out), "ERROR") {
 				return errors.New(out)
@@ -1074,9 +1068,9 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 
 		//Delete ORDS pod
 		var gracePeriodSeconds int64 = 0
-			policy := metav1.DeletePropagationForeground
+		policy := metav1.DeletePropagationForeground
 		r.Delete(ctx, &readyPod, &client.DeleteOptions{
-			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
+			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
 
 		//Delete Database Admin Password Secret
 		if !*m.Spec.AdminPassword.KeepSecret {
@@ -1149,7 +1143,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	var gracePeriodSeconds int64 = 0
 	policy := metav1.DeletePropagationForeground
 	err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{
-		GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
+		GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
 	if err != nil {
 		r.Log.Error(err, "Failed to delete existing POD", "POD.Name", ordsReadyPod.Name)
 		return requeueY
@@ -1195,7 +1189,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 
 	//Install Apex in SIDB ready pod
 	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf(dbcommons.InstallApexInContainer,  apexPassword,  sidbPassword, n.Status.Pdbname))
+		fmt.Sprintf(dbcommons.InstallApexInContainer, apexPassword, sidbPassword, n.Status.Pdbname))
 	if err != nil {
 		log.Info(err.Error())
 	}
