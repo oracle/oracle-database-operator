@@ -515,9 +515,9 @@ Create a file called "/tmp/table.sql" with the following contents.
 Run the following API to run the script created in the previous example:
 
 ```sh
-  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdb>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdbName>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
   -H "Content-Type: application/sql" \
-  -u '<.spec.restEnableSchemas[].schema>:<.spec.ordsPassword>' \
+  -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' \
   -d @/tmp/table.sql
 ```
 
@@ -526,13 +526,13 @@ Run the following API to run the script created in the previous example:
 Fetch all entries from 'DEPT' table by calling the following API
 
 ```sh
-  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdb>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdbName>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
   -H "Content-Type: application/sql" \
-  -u '<.spec.restEnableSchemas[].schema>:<.spec.ordsPassword>' \
+  -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' \
   -d $'select * from dept;' | python -m json.tool
 ```
 
-**NOTE:** `.spec.restEnableSchema[].urlMapping` is optional and is defaulted to `.spec.restEnableSchema[].schema`
+**NOTE:** `.spec.restEnableSchema[].urlMapping` is optional and is defaulted to `.spec.restEnableSchemas[].schemaName`
 
 #### Oracle Data Pump
 
@@ -560,11 +560,11 @@ $ kubectl get oraclerestdataservice/ords-sample --template={{.status.databaseAct
 To access Database Actions, sign in by using the following code as a database user whose schema has been REST-enabled: 
 
 * First Page: \
-PDB Name: `.spec.restEnableSchema[].pdb` \
-Username: `.spec.restEnableSchema[].urlMapping`
+PDB Name: `.spec.restEnableSchemas[].pdbName` \
+Username: `.spec.restEnableSchemas[].urlMapping`
 
 * Second Page: \
-Username: `.spec.restEnableSchema[].schema` \
+Username: `.spec.restEnableSchemas[].schemaName` \
 Password: `.spec.ordsPassword`
 
 ![database-actions-home](/images/sidb/database-actions-home.png)
