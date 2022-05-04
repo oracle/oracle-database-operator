@@ -123,10 +123,6 @@ func (r *OracleRestDataService) ValidateUpdate(oldRuntimeObject runtime.Object) 
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("databaseRef"), "cannot be changed"))
 	}
-	if old.Status.LoadBalancer != "" && old.Status.LoadBalancer != strconv.FormatBool(r.Spec.LoadBalancer) {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("loadBalancer"), "cannot be changed"))
-	}
 	if old.Status.Image.PullFrom != "" && old.Status.Image != r.Spec.Image {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image"), "cannot be changed"))
