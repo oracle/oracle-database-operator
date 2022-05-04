@@ -94,10 +94,10 @@ type OracleRestDataServicePassword struct {
 
 // OracleRestDataServicePDBSchemas defines the PDB Schemas to be ORDS Enabled
 type OracleRestDataServiceRestEnableSchemas struct {
-	Pdb        string `json:"pdb"`
-	Schema     string `json:"schema"`
-	UrlMapping string `json:"urlMapping,omitempty"`
-	Enable     bool   `json:"enable"`
+	PdbName        string `json:"pdbName,omitempty"`
+	SchemaName     string `json:"schemaName"`
+	UrlMapping     string `json:"urlMapping,omitempty"`
+	Enable         bool   `json:"enable"`
 }
 
 // OracleRestDataServiceStatus defines the observed state of OracleRestDataService

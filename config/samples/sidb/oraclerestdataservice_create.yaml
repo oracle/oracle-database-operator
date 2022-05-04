@@ -22,12 +22,12 @@ metadata:
 spec:
   
   ## Database ref. This can be of kind SingleInstanceDatabase.
-  ## Make sure the source database has been created by applying singeinstancedatabase_prebuilt.yaml
-  databaseRef: "prebuiltdb-sample"
+  ## Make sure the source database has been created by applying singeinstancedatabase_express.yaml
+  databaseRef: "xedb-sample"
   
   ## Secret containing databaseRef password mapped to secretKey. 
   adminPassword:
-    secretName: prebuiltdb-admin-secret
+    secretName: xedb-admin-secret
 
   ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
   ordsPassword:
@@ -46,16 +46,15 @@ spec:
     accessMode: "ReadWriteOnce"
 
   ## PDB Schemas to be ORDS Enabled.
-  ## Schema will be created (if not exists) with username as schema and password as .spec.ordsPassword.
+  ## Schema will be created (if not exists) with password as .spec.ordsPassword.
   restEnableSchemas:
-  - schema: schema1
+  - schemaName: schema1
     enable: true
     urlMapping: 
-    pdb: xepdb1
-  - schema: schema2
+  - schemaName: schema2
     enable: true
-    urlMapping: 
-    pdb: xepdb1
+    urlMapping:
+
 
 
   
