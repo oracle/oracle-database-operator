@@ -82,8 +82,8 @@ func (r *SingleInstanceDatabase) Default() {
 		}
 	}
 
-	if r.Spec.Edition == "express" {
-		if r.Spec.Sid == "" {
+	if r.Spec.Sid == "" {
+		if r.Spec.Edition == "express" {
 			r.Spec.Sid = "XE"
 		} else {
 			r.Spec.Sid = "ORCLCDB"
