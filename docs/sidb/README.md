@@ -152,7 +152,7 @@ To provision new Oracle Database Express Edition (XE) database, use the sample *
 This command pulls the XE image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:7460390069267:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:803,803,Oracle%20Database%20Express%20Edition,Oracle%20Database%20Express%20Edition,1,0&cs=3-UN6D9nAfyqxcYnrks18OAmfFcri96NZojBQALxMdakix8wgYRBxhD8rpTFd2ak1FAtfOVFexbuOM2opsjxT9w).
 
 **NOTE:**
-Oracle Database XE edition is supported Release 21c (21.3.0) and later releases.
+Provisioning Oracle Database express edition is supported for release 21c (21.3.0) and later releases.
 
 ### Provision a pre-built database
 
