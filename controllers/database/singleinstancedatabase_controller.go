@@ -679,6 +679,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						}
 					}
 					if m.Spec.CloneFrom == "" {
+						// For new DB use case
 						return []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
@@ -703,7 +704,12 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "WALLET_DIR",
-								Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
+								Value: func() string {
+										if m.Spec.Image.PrebuiltDB {
+											return "" // No wallets for prebuilt DB
+										}
+										return "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet"
+								}(),
 							},
 							{
 								Name:  "ORACLE_PDB",
@@ -741,6 +747,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 						}
 					}
+					// For clone DB use case
 					return []corev1.EnvVar{
 						{
 							Name:  "SVC_HOST",
@@ -1014,6 +1021,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			log.Error(err, "Failed to create new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 			return requeueY, err
 		}
+		// Reset connect strings whenever service is recreated /*
+		m.Status.ConnectString = dbcommons.ValueUnavailable
+		m.Status.PdbConnectString = dbcommons.ValueUnavailable
+		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 	} else if err != nil {
 		log.Error(err, "Failed to get Service")
 		return requeueY, err
