@@ -29,7 +29,7 @@ The `adminPassword` field in the above `singleinstancedatabase.yaml` file refers
 
 Create this secret using the following command as an example:
 
-    kubectl create secret generic admin-secret --from-literal=oracle_pwd="ChangeOnInstall_1"
+    kubectl create secret generic admin-secret --from-literal=oracle_pwd=<specify password here>
 
 This command creates a secret named `admin-secret`, with the key `oracle_pwd` mapped to the actual password specified in the command.
 
