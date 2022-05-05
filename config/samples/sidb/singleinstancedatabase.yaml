@@ -17,7 +17,7 @@ spec:
   ## specify connect string as `<host>:<port>/<service_name>` instead of source database ref
   cloneFrom: ""
 
-  ## DB edition. N/A if cloning from a Source DB (if cloneFrom is set)
+  ## DB edition. N/A if cloning from a Source DB in current K8s cluster (if cloneFrom is set to a database ref)
   ## Valid values for edition are enterprise, standard or express
   edition: enterprise
   

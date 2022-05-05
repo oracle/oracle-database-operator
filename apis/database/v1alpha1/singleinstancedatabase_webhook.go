@@ -76,9 +76,17 @@ func (r *SingleInstanceDatabase) Default() {
 		r.Spec.AdminPassword.KeepSecret = &keepSecret
 	}
 
-	if r.Spec.Edition == "express" {
-		if r.Spec.Sid == "" {
+	if r.Spec.Edition == "" {
+		if r.Spec.CloneFrom == "" && !r.Spec.Image.PrebuiltDB {
+			r.Spec.Edition = "enterprise"
+		}
+	}
+
+	if r.Spec.Sid == "" {
+		if r.Spec.Edition == "express" {
 			r.Spec.Sid = "XE"
+		} else {
+			r.Spec.Sid = "ORCLCDB"
 		}
 	}
 
