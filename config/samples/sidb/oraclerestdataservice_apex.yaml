@@ -10,7 +10,8 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  oracle_pwd: "ChangeOnInstall_1"
+  ## Specify your ORDS password here
+  oracle_pwd: 
 
 ---
 
@@ -21,7 +22,8 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  oracle_pwd: "ChangeOnInstall_2"
+  ## Specify your APEX password here
+  oracle_pwd: 
 
 ---
 

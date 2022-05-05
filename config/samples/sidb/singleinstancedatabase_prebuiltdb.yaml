@@ -10,7 +10,8 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  oracle_pwd: "ChangeOnInstall_1"
+  ## Specify your DB password here
+  oracle_pwd: 
 
 ---
 
@@ -20,9 +21,6 @@ metadata:
   name: prebuiltdb-sample
   namespace: default
 spec:
-
-  ## Use only alphanumeric characters for sid
-  sid: XE
 
   ## DB edition
   edition: express

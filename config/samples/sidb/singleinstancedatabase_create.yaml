@@ -10,7 +10,8 @@ metadata:
   namespace: default
 type: Opaque
 stringData:
-  oracle_pwd: "ChangeOnInstall_1"
+  # Specify your DB password here
+  oracle_pwd: 
 
 ---
 
