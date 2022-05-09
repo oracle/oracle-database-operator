@@ -179,6 +179,8 @@ func (acd *AutonomousContainerDatabase) UpdateFromOCIACD(ociObj database.Autonom
 	// special case: an emtpy map will be nil after unmarshalling while the OCI always returns an emty map.
 	if len(ociObj.FreeformTags) != 0 {
 		acd.Spec.FreeformTags = ociObj.FreeformTags
+	} else {
+		acd.Spec.FreeformTags = nil
 	}
 
 	/***********************************
