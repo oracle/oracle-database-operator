@@ -101,7 +101,7 @@ func NewDatabaseService(
 	}
 
 	return &databaseService{
-		logger:       logger,
+		logger:       logger.WithName("dbService"),
 		kubeClient:   kubeClient,
 		dbClient:     dbClient,
 		vaultService: vaultService,
@@ -115,7 +115,7 @@ func NewDatabaseService(
 // ReadPassword reads the password from passwordSpec, and returns the pointer to the read password string.
 // The function returns a nil if nothing is read
 func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1.PasswordSpec) (*string, error) {
-	logger := d.logger.WithName("read-password")
+	logger := d.logger.WithName("readPassword")
 
 	if passwordSpec.K8sSecret.Name != nil {
 		logger.Info(fmt.Sprintf("Getting password from Secret %s", *passwordSpec.K8sSecret.Name))
@@ -253,6 +253,8 @@ func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adbOCID string, 
 	if err != nil {
 		return resp, err
 	}
+
+	d.logger.Info("==== test: new admin password = " + *adminPassword)
 
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
