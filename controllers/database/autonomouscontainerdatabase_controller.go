@@ -91,8 +91,9 @@ func (r *AutonomousContainerDatabaseReconciler) eventFilterPredicate() predicate
 				oldACD := e.ObjectOld.(*dbv1alpha1.AutonomousContainerDatabase)
 
 				if !reflect.DeepEqual(oldACD.Status, desiredACD.Status) ||
+					(controllerutil.ContainsFinalizer(oldACD, dbv1alpha1.LastSuccessfulSpec) != controllerutil.ContainsFinalizer(desiredACD, dbv1alpha1.LastSuccessfulSpec)) ||
 					(controllerutil.ContainsFinalizer(oldACD, dbv1alpha1.ACDFinalizer) != controllerutil.ContainsFinalizer(desiredACD, dbv1alpha1.ACDFinalizer)) {
-					// Don't enqueue if the status or the lastSucSpec changes
+					// Don't enqueue if the status, lastSucSpec, or the finalizler changes
 					return false
 				}
 
@@ -220,6 +221,10 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 	if dbv1alpha1.IsACDIntermediateState(acd.Status.LifecycleState) {
 		logger.WithName("IsIntermediateState").Info("Current lifecycleState is " + string(acd.Status.LifecycleState) + "; reconcile queued")
 		return requeueResult, nil
+	}
+
+	if err := r.patchLastSuccessfulSpec(acd); err != nil {
+		return r.manageError(logger, acd, err)
 	}
 
 	logger.Info("AutonomousContainerDatabase reconciles successfully")
@@ -374,11 +379,11 @@ func (r *AutonomousContainerDatabaseReconciler) validateCleanup(logger logr.Logg
 func (r *AutonomousContainerDatabaseReconciler) validateFinalizer(acd *dbv1alpha1.AutonomousContainerDatabase) error {
 	// Delete is not schduled. Update the finalizer for this CR if hardLink is present
 	if acd.Spec.HardLink != nil {
-		if *acd.Spec.HardLink {
+		if *acd.Spec.HardLink && !controllerutil.ContainsFinalizer(acd, dbv1alpha1.ACDFinalizer) {
 			if err := k8s.AddFinalizerAndPatch(r.KubeClient, acd, dbv1alpha1.ACDFinalizer); err != nil {
 				return err
 			}
-		} else {
+		} else if !*acd.Spec.HardLink && controllerutil.ContainsFinalizer(acd, dbv1alpha1.ACDFinalizer) {
 			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, acd, dbv1alpha1.ACDFinalizer); err != nil {
 				return err
 			}

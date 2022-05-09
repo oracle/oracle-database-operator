@@ -81,22 +81,6 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 			Expect(k8sClient.Delete(context.TODO(), adb)).To(Succeed())
 		})
 
-		It("Should set the default network access type to PUBLIC, if not specified", func() {
-			By("Creating an AutonomousDatabase")
-
-			Expect(k8sClient.Create(context.TODO(), adb)).To(Succeed())
-
-			By("Checking the AutonomousDatabase has a network access type PUBLIC")
-			Eventually(func() NetworkAccessTypeEnum {
-				err := k8sClient.Get(context.TODO(), adbLookupKey, adb)
-				if err != nil {
-					return ""
-				}
-
-				return adb.Spec.Details.NetworkAccess.AccessType
-			}, timeout).Should(Equal(NetworkAccessTypePublic))
-		})
-
 		It("Should set the default network access type to PRIVATE, if it's a dedicated ADB", func() {
 			By("Creating an AutonomousDatabase with ACD_OCID")
 			adb.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID = common.String("ocid1.autonomouscontainerdatabase.oc1.dummy-acd-ocid")
@@ -295,8 +279,8 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 			Expect(k8sClient.Delete(context.TODO(), adb)).To(Succeed())
 		})
 
-		It("Cannot change spec.details when the lifecycleState is in an intermdeiate state", func() {
-			var errMsg string = "cannot change spec.details when the lifecycleState is in an intermdeiate state"
+		It("Cannot change the spec when the lifecycleState is in an intermdeiate state", func() {
+			var errMsg string = "cannot change the spec when the lifecycleState is in an intermdeiate state"
 
 			adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateUpdating
 			Expect(k8sClient.Status().Update(context.TODO(), adb)).To(Succeed())
@@ -314,8 +298,8 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 			validateInvalidTest(adb, true, errMsg)
 		})
 
-		It("Cannot change lifecycleState with other spec.details attributes at the same time", func() {
-			var errMsg string = "cannot change lifecycleState with other spec.details attributes at the same time"
+		It("Cannot change lifecycleState with other spec attributes at the same time", func() {
+			var errMsg string = "cannot change lifecycleState with other spec attributes at the same time"
 
 			adb.Spec.Details.LifecycleState = database.AutonomousDatabaseLifecycleStateStopped
 			adb.Spec.Details.CPUCoreCount = common.Int(2)

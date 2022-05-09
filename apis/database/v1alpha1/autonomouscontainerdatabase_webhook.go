@@ -39,8 +39,6 @@
 package v1alpha1
 
 import (
-	"reflect"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -84,8 +82,13 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) error {
 	}
 
 	// cannot update when the old state is in intermediate state, except for the terminate operatrion
-	if IsACDIntermediateState(oldACD.Status.LifecycleState) &&
-		!reflect.DeepEqual(oldACD.Spec, r.Spec) {
+	var copiedSpec *AutonomousContainerDatabaseSpec = r.Spec.DeepCopy()
+	changed, err := removeUnchangedFields(oldACD.Spec, copiedSpec)
+	if err != nil {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec"), err.Error()))
+	}
+	if IsACDIntermediateState(oldACD.Status.LifecycleState) && changed {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec"),
 				"cannot change the spec when the lifecycleState is in an intermdeiate state"))
