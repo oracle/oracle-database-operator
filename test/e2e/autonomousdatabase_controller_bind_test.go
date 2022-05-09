@@ -130,7 +130,7 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 
 		It("Should download an instance wallet using the password from K8s Secret "+SharedWalletPassSecretName, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
 
-		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey))
+		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey, SharedNewAdminPassSecretName, &SharedPlainTextNewAdminPassword, &SharedPlainTextWalletPassword))
 
 		It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
 

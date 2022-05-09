@@ -40,8 +40,8 @@ package v1alpha1
 
 import (
 	"fmt"
-	"reflect"
 
+	"github.com/oracle/oci-go-sdk/v63/common"
 	"github.com/oracle/oci-go-sdk/v63/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -71,8 +71,18 @@ func (r *AutonomousDatabase) Default() {
 
 	if !isDedicated(r) { // Shared database
 		// AccessType is PUBLIC by default
-		if r.Spec.Details.NetworkAccess.AccessType == "" {
-			r.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePublic
+		if r.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypePublic {
+			r.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = common.Bool(true)
+			r.Spec.Details.NetworkAccess.AccessControlList = nil
+			r.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = nil
+			r.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = nil
+			r.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = nil
+		} else if r.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypeRestricted {
+			r.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = nil
+			r.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = nil
+			r.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = nil
+		} else if r.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypePrivate {
+			r.Spec.Details.NetworkAccess.AccessControlList = nil
 		}
 	} else { // Dedicated database
 		// AccessType can only be PRIVATE for a dedicated database
@@ -99,7 +109,7 @@ func (r *AutonomousDatabase) ValidateCreate() error {
 
 		if r.Spec.Details.LifecycleState != "" {
 			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("details").Child("LifecycleState"),
+				field.Forbidden(field.NewPath("spec").Child("details").Child("lifecycleState"),
 					"cannot apply lifecycleState to a provision operation"))
 		}
 	}
@@ -124,13 +134,20 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 		return nil
 	}
 
-	// cannot update when the old state is in intermediate, except for the terminate operatrion
-	if IsADBIntermediateState(oldADB.Status.LifecycleState) &&
-		r.Spec.Details.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminated &&
-		!reflect.DeepEqual(oldADB.Spec.Details, r.Spec.Details) {
+	// cannot update when the old state is in intermediate, except for the terminate operatrion during valid lifecycleState
+	var copySpec *AutonomousDatabaseSpec = r.Spec.DeepCopy()
+	specChanged, err := removeUnchangedFields(oldADB.Spec, copySpec)
+	if err != nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("details"),
-				"cannot change spec.details when the lifecycleState is in an intermdeiate state"))
+			field.Forbidden(field.NewPath("spec"), err.Error()))
+	}
+
+	terminateOp := ValidADBTerminateState(oldADB.Status.LifecycleState) && copySpec.Details.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated
+
+	if specChanged && IsADBIntermediateState(oldADB.Status.LifecycleState) && !terminateOp {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec"),
+				"cannot change the spec when the lifecycleState is in an intermdeiate state"))
 	}
 
 	// cannot modify autonomousDatabaseOCID
@@ -143,17 +160,23 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 	}
 
 	// cannot change lifecycleState with other fields together
-	var lifecycleChanged, otherDetailsChanged bool
-	lifecycleChanged = oldADB.Spec.Details.LifecycleState != "" && oldADB.Spec.Details.LifecycleState != r.Spec.Details.LifecycleState
-	copyLifecycleState := oldADB.Spec.Details.LifecycleState
-	oldADB.Spec.Details.LifecycleState = r.Spec.Details.LifecycleState
-	otherDetailsChanged = !reflect.DeepEqual(oldADB.Spec.Details, r.Spec.Details)
-	oldADB.Spec.Details.LifecycleState = copyLifecycleState // restore
+	var lifecycleChanged, otherFieldsChanged bool
 
-	if lifecycleChanged && otherDetailsChanged {
+	lifecycleChanged = oldADB.Spec.Details.LifecycleState != "" && oldADB.Spec.Details.LifecycleState != r.Spec.Details.LifecycleState
+	var copiedADB *AutonomousDatabaseSpec = r.Spec.DeepCopy()
+	copiedADB.Details.LifecycleState = oldADB.Spec.Details.LifecycleState
+	copiedADB.OCIConfig = oldADB.Spec.OCIConfig
+
+	otherFieldsChanged, err = removeUnchangedFields(oldADB.Spec, copiedADB)
+	if err != nil {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec"), err.Error()))
+	}
+
+	if lifecycleChanged && otherFieldsChanged {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("details").Child("LifecycleState"),
-				"cannot change lifecycleState with other spec.details attributes at the same time"))
+				"cannot change lifecycleState with other spec attributes at the same time"))
 	}
 
 	allErrs = validateCommon(r, allErrs)

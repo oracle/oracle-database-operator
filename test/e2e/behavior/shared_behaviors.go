@@ -78,6 +78,7 @@ var (
 	Eventually              = gomega.Eventually
 	Equal                   = gomega.Equal
 	Succeed                 = gomega.Succeed
+	HaveOccurred            = gomega.HaveOccurred
 	BeNumerically           = gomega.BeNumerically
 	BeTrue                  = gomega.BeTrue
 	changeTimeout           = time.Second * 300
@@ -226,7 +227,7 @@ func compareStringMap(obj1 map[string]string, obj2 map[string]string) bool {
 }
 
 // UpdateDetails updates spec.details from local resource and OCI
-func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName) func() *dbv1alpha1.AutonomousDatabase {
+func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, newSecretName string, newAdminPassword *string) func() *dbv1alpha1.AutonomousDatabase {
 	return func() *dbv1alpha1.AutonomousDatabase {
 		// Considering that there are at most two update requests will be sent during the update
 		// From the observation per request takes ~3mins to finish
@@ -234,6 +235,7 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
 		Expect(adbLookupKey).NotTo(BeNil())
+		Expect(newAdminPassword).NotTo(BeNil())
 
 		derefK8sClient := *k8sClient
 		derefDBClient := *dbClient
@@ -277,6 +279,7 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 		expectedADB.Spec.Details.DisplayName = common.String(newDisplayName)
 		expectedADB.Spec.Details.CPUCoreCount = common.Int(newCPUCoreCount)
 		expectedADB.Spec.Details.FreeformTags = map[string]string{newKey: newVal}
+		expectedADB.Spec.Details.AdminPassword.K8sSecret.Name = common.String(newSecretName)
 
 		Expect(derefK8sClient.Update(context.TODO(), expectedADB)).To(Succeed())
 
@@ -285,7 +288,10 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 }
 
 // AssertADBDetails asserts the changes in spec.details
-func AssertADBDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, expectedADB *dbv1alpha1.AutonomousDatabase) func() {
+func AssertADBDetails(k8sClient *client.Client,
+	dbClient *database.DatabaseClient,
+	adbLookupKey *types.NamespacedName,
+	expectedADB *dbv1alpha1.AutonomousDatabase) func() {
 	return func() {
 		// Considering that there are at most two update requests will be sent during the update
 		// From the observation per request takes ~3mins to finish
@@ -403,6 +409,37 @@ func TestNetworkAccessRestricted(k8sClient *client.Client, dbClient *database.Da
 	}
 }
 
+/* Runs a script that connects to an ADB */
+func AssertAdminPassword(dbClient *database.DatabaseClient, databaseOCID *string, tnsEntry *string, adminPassword *string, walletPassword *string) error {
+	By("Downloading wallet zip")
+	walletZip, err := e2eutil.DownloadWalletZip(*dbClient, databaseOCID, walletPassword)
+	if err != nil {
+		fmt.Fprint(GinkgoWriter, err)
+		panic(err)
+	}
+	fmt.Fprint(GinkgoWriter, walletZip+" successfully downloaded.\n")
+
+	By("Installing SQLcl")
+	if _, err := os.Stat("sqlcl-latest.zip"); errors.Is(err, os.ErrNotExist) {
+		cmd := exec.Command("wget", "https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip")
+		_, err = cmd.Output()
+		Expect(err).To(BeNil())
+		cmd = exec.Command("unzip", "sqlcl-latest.zip")
+		_, err = cmd.Output()
+		Expect(err).To(BeNil())
+	}
+
+	proxy := os.Getenv("HTTP_PROXY")
+
+	By("Verify the adb connection")
+	cmd := exec.Command("./sqlcl/bin/sql", "/nolog", "@verify_connection.sql", proxy, walletZip, *adminPassword, strings.ToLower(*tnsEntry))
+	stdout, err := cmd.Output()
+
+	fmt.Fprint(GinkgoWriter, string(stdout))
+
+	return err
+}
+
 func TestNetworkAccessPrivate(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, isMTLSConnectionRequired bool, subnetOCID *string, nsgOCIDs *string) func() {
 	return func() {
 		Expect(*subnetOCID).ToNot(Equal(""))
@@ -456,11 +493,19 @@ func TestNetworkAccess(k8sClient *client.Client, dbClient *database.DatabaseClie
 	}
 }
 
-// UpdateAndAssertDetails changes the displayName from "foo" to "foo_new", and scale the cpuCoreCount to 2
-func UpdateAndAssertDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName) func() {
+// UpdateAndAssertDetails changes the below fields:
+// displayName: "bar" -> "bar_new"
+// adminPassword: "foo" -> "foo_new",
+// cpuCoreCount: from 1 to 2, or from 2 to 1
+func UpdateAndAssertDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, newSecretName string, newAdminPassword *string, walletPassword *string) func() {
 	return func() {
-		expectedADB := UpdateDetails(k8sClient, dbClient, adbLookupKey)()
+		expectedADB := UpdateDetails(k8sClient, dbClient, adbLookupKey, newSecretName, newAdminPassword)()
 		AssertADBDetails(k8sClient, dbClient, adbLookupKey, expectedADB)()
+
+		ocid := expectedADB.Spec.Details.AutonomousDatabaseOCID
+		tnsEntry := *expectedADB.Spec.Details.DbName + "_high"
+		err := AssertAdminPassword(dbClient, ocid, &tnsEntry, newAdminPassword, walletPassword)
+		Expect(err).ShouldNot(HaveOccurred())
 	}
 }
 
@@ -644,16 +689,20 @@ func ConfigureADBBackup(dbClient *database.DatabaseClient, databaseOCID *string,
 	fmt.Fprint(GinkgoWriter, walletZip+" successfully downloaded.\n")
 
 	By("Installing SQLcl")
-	cmd := exec.Command("wget", "https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip")
-	stdout, err := cmd.Output()
-	cmd = exec.Command("unzip", "sqlcl-latest.zip")
-	stdout, err = cmd.Output()
+	if _, err := os.Stat("sqlcl-latest.zip"); errors.Is(err, os.ErrNotExist) {
+		cmd := exec.Command("wget", "https://download.oracle.com/otn_software/java/sqldeveloper/sqlcl-latest.zip")
+		_, err = cmd.Output()
+		Expect(err).To(BeNil())
+		cmd = exec.Command("unzip", "sqlcl-latest.zip")
+		_, err = cmd.Output()
+		Expect(err).To(BeNil())
+	}
 
 	proxy := os.Getenv("HTTP_PROXY")
 
 	By("Configuring adb backup bucket")
-	cmd = exec.Command("./sqlcl/bin/sql", "/nolog", "@backup.sql", proxy, walletZip, *adminPassword, strings.ToLower(*tnsEntry), *bucket, *ociUser, *authToken)
-	stdout, err = cmd.Output()
+	cmd := exec.Command("./sqlcl/bin/sql", "/nolog", "@backup.sql", proxy, walletZip, *adminPassword, strings.ToLower(*tnsEntry), *bucket, *ociUser, *authToken)
+	stdout, err := cmd.Output()
 
 	fmt.Fprint(GinkgoWriter, string(stdout))
 

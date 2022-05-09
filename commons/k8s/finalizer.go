@@ -75,24 +75,18 @@ func patchFinalizer(kubeClient client.Client, obj client.Object) error {
 	return kubeClient.Patch(context.TODO(), obj, patch)
 }
 
-// No-op if the obj already has the finalizer
 func AddFinalizerAndPatch(kubeClient client.Client, obj client.Object, finalizer string) error {
-	if !controllerutil.ContainsFinalizer(obj, finalizer) {
-		controllerutil.AddFinalizer(obj, finalizer)
-		if err := patchFinalizer(kubeClient, obj); err != nil {
-			return err
-		}
+	controllerutil.AddFinalizer(obj, finalizer)
+	if err := patchFinalizer(kubeClient, obj); err != nil {
+		return err
 	}
 	return nil
 }
 
-// No-op if the obj doesn't have the finalizer
 func RemoveFinalizerAndPatch(kubeClient client.Client, obj client.Object, finalizer string) error {
-	if controllerutil.ContainsFinalizer(obj, finalizer) {
-		controllerutil.RemoveFinalizer(obj, finalizer)
-		if err := patchFinalizer(kubeClient, obj); err != nil {
-			return err
-		}
+	controllerutil.RemoveFinalizer(obj, finalizer)
+	if err := patchFinalizer(kubeClient, obj); err != nil {
+		return err
 	}
 	return nil
 }
