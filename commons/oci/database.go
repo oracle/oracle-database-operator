@@ -254,8 +254,6 @@ func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adbOCID string, 
 		return resp, err
 	}
 
-	d.logger.Info("==== test: new admin password = " + *adminPassword)
-
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
