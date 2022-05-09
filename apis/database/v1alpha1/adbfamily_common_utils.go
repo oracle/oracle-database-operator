@@ -229,6 +229,20 @@ func IsADBIntermediateState(state database.AutonomousDatabaseLifecycleStateEnum)
 	return false
 }
 
+func ValidADBTerminateState(state database.AutonomousDatabaseLifecycleStateEnum) bool {
+	if state == database.AutonomousDatabaseLifecycleStateProvisioning ||
+		state == database.AutonomousDatabaseLifecycleStateUpdating ||
+		state == database.AutonomousDatabaseLifecycleStateScaleInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateRestoreInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateBackupInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateMaintenanceInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateRoleChangeInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateUpgrading {
+		return true
+	}
+	return false
+}
+
 // NextADBStableState returns the next stable state if it's an intermediate state.
 // Otherwise returns the same state.
 func NextADBStableState(state database.AutonomousDatabaseLifecycleStateEnum) database.AutonomousDatabaseLifecycleStateEnum {

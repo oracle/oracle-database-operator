@@ -69,7 +69,7 @@ func NewWorkRequestService(
 	}
 
 	return &workRequestService{
-		logger:     logger,
+		logger:     logger.WithName("workRequestService"),
 		workClient: workClient,
 	}, nil
 }
