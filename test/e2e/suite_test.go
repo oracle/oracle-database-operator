@@ -107,6 +107,7 @@ const ADBNamespace string = "default"
 var SharedOCIConfigMapName = "oci-cred"
 var SharedOCISecretName = "oci-privatekey"
 var SharedPlainTextAdminPassword = "Welcome_1234"
+var SharedPlainTextNewAdminPassword = "Welcome_1234_new"
 var SharedPlainTextWalletPassword = "Welcome_1234"
 var SharedCompartmentOCID string
 
@@ -121,7 +122,8 @@ var SharedAuthToken string
 var SharedOciUser string
 
 const SharedAdminPassSecretName string = "adb-admin-password"
-const SharedWalletPassSecretName = "adb-wallet-password"
+const SharedNewAdminPassSecretName string = "new-adb-admin-password"
+const SharedWalletPassSecretName string = "adb-wallet-password"
 
 func TestAPIs(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
@@ -258,6 +260,15 @@ var _ = BeforeSuite(func() {
 		adminSecret, err := e2eutil.CreateKubeSecret(ADBNamespace, SharedAdminPassSecretName, data)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(k8sClient.Create(context.TODO(), adminSecret)).To(Succeed())
+	})
+
+	By("Creating a k8s secret to hold new admin password", func() {
+		data := map[string]string{
+			SharedNewAdminPassSecretName: SharedPlainTextNewAdminPassword,
+		}
+		newAdminSecret, err := e2eutil.CreateKubeSecret(ADBNamespace, SharedNewAdminPassSecretName, data)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(k8sClient.Create(context.TODO(), newAdminSecret)).To(Succeed())
 	})
 
 	By("Creating a k8s secret to hold wallet password", func() {

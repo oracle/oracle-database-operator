@@ -318,9 +318,11 @@ func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDataba
 	adb.Spec.Details.IsAutoScalingEnabled = ociObj.IsAutoScalingEnabled
 	adb.Spec.Details.IsDedicated = ociObj.IsDedicated
 	adb.Spec.Details.LifecycleState = NextADBStableState(ociObj.LifecycleState)
-	// special case: an emtpy map will be nil after unmarshalling while the OCI always returns an emty map.
+	// Special case: an emtpy map will be nil after unmarshalling while the OCI always returns an emty map.
 	if len(ociObj.FreeformTags) != 0 {
 		adb.Spec.Details.FreeformTags = ociObj.FreeformTags
+	} else {
+		adb.Spec.Details.FreeformTags = nil
 	}
 
 	// Determine network.accessType
@@ -339,13 +341,26 @@ func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDataba
 	adb.Spec.Details.NetworkAccess.IsAccessControlEnabled = ociObj.IsAccessControlEnabled
 	if len(ociObj.WhitelistedIps) != 0 {
 		adb.Spec.Details.NetworkAccess.AccessControlList = ociObj.WhitelistedIps
+	} else {
+		adb.Spec.Details.NetworkAccess.AccessControlList = nil
 	}
 	adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = ociObj.IsMtlsConnectionRequired
 	adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = ociObj.SubnetId
 	if len(ociObj.NsgIds) != 0 {
 		adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = ociObj.NsgIds
+	} else {
+		adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = nil
 	}
 	adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = ociObj.PrivateEndpointLabel
+
+	// The admin password is not going to be updated in a bind operation. Erase the field if the lastSucSpec is nil.
+	// Leave the wallet field as is because the download wallet operation is independent from the update operation.
+	lastSucSpec, _ := adb.GetLastSuccessfulSpec()
+	if lastSucSpec == nil {
+		adb.Spec.Details.AdminPassword = PasswordSpec{}
+	} else {
+		adb.Spec.Details.AdminPassword = lastSucSpec.Details.AdminPassword
+	}
 
 	/***********************************
 	* update the status subresource

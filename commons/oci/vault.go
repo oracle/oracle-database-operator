@@ -66,7 +66,7 @@ func NewVaultService(
 	}
 
 	return &vaultService{
-		logger:       logger,
+		logger:       logger.WithName("vaultService"),
 		secretClient: secretClient,
 	}, nil
 }
