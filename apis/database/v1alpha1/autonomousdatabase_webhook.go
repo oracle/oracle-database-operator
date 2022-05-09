@@ -134,7 +134,7 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 		return nil
 	}
 
-	// cannot update when the old state is in intermediate, except for the terminate operatrion during valid lifecycleState
+	// cannot update when the old state is in intermediate, except for the change to the hardLink or the terminate operatrion during valid lifecycleState
 	var copySpec *AutonomousDatabaseSpec = r.Spec.DeepCopy()
 	specChanged, err := removeUnchangedFields(oldADB.Spec, copySpec)
 	if err != nil {
@@ -142,9 +142,11 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 			field.Forbidden(field.NewPath("spec"), err.Error()))
 	}
 
+	hardLinkChanged := copySpec.HardLink != nil
+
 	terminateOp := ValidADBTerminateState(oldADB.Status.LifecycleState) && copySpec.Details.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated
 
-	if specChanged && IsADBIntermediateState(oldADB.Status.LifecycleState) && !terminateOp {
+	if specChanged && IsADBIntermediateState(oldADB.Status.LifecycleState) && !terminateOp && !hardLinkChanged {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec"),
 				"cannot change the spec when the lifecycleState is in an intermdeiate state"))
@@ -159,7 +161,7 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 				"autonomousDatabaseOCID cannot be modified"))
 	}
 
-	// cannot change lifecycleState with other fields together
+	// cannot change lifecycleState with other fields together (except the oci config)
 	var lifecycleChanged, otherFieldsChanged bool
 
 	lifecycleChanged = oldADB.Spec.Details.LifecycleState != "" && oldADB.Spec.Details.LifecycleState != r.Spec.Details.LifecycleState

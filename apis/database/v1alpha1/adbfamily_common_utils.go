@@ -140,6 +140,25 @@ func traverse(lastSpec interface{}, curSpec interface{}) bool {
 		} else {
 			fieldChanged := hasChanged(lastField, curField)
 
+			// if fieldChanged {
+			// 	if curField.Kind() == reflect.Ptr {
+			// 		fmt.Printf("== field %s changed\n", field.Name)
+			// 		if lastField.IsZero() {
+			// 			fmt.Printf("=== lastField is nil\n")
+			// 		} else {
+			// 			fmt.Printf("=== lastField = %v\n", lastField.Elem().Interface())
+			// 		}
+			// 		if curField.IsZero() {
+			// 			fmt.Printf("===== curField is nil\n")
+			// 		} else {
+			// 			fmt.Printf("===== curField = %v\n", curField.Elem().Interface())
+			// 		}
+			// 	} else {
+			// 		fmt.Printf("=== lastField = %v\n", lastField.Interface())
+			// 		fmt.Printf("===== curField = %v\n", curField.Interface())
+			// 	}
+			// }
+
 			if fieldChanged && !changed {
 				changed = true
 			}
@@ -231,10 +250,15 @@ func IsADBIntermediateState(state database.AutonomousDatabaseLifecycleStateEnum)
 
 func ValidADBTerminateState(state database.AutonomousDatabaseLifecycleStateEnum) bool {
 	if state == database.AutonomousDatabaseLifecycleStateProvisioning ||
-		state == database.AutonomousDatabaseLifecycleStateUpdating ||
-		state == database.AutonomousDatabaseLifecycleStateScaleInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateAvailable ||
+		state == database.AutonomousDatabaseLifecycleStateStopped ||
+		state == database.AutonomousDatabaseLifecycleStateUnavailable ||
 		state == database.AutonomousDatabaseLifecycleStateRestoreInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateRestoreFailed ||
 		state == database.AutonomousDatabaseLifecycleStateBackupInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateScaleInProgress ||
+		state == database.AutonomousDatabaseLifecycleStateAvailableNeedsAttention ||
+		state == database.AutonomousDatabaseLifecycleStateUpdating ||
 		state == database.AutonomousDatabaseLifecycleStateMaintenanceInProgress ||
 		state == database.AutonomousDatabaseLifecycleStateRoleChangeInProgress ||
 		state == database.AutonomousDatabaseLifecycleStateUpgrading {
