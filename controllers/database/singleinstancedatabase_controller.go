@@ -1457,7 +1457,7 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			m.Status.Status = dbcommons.StatusCreating
 
 			out, err := dbcommons.ExecCommand(r, r.Config, runningPod.Name, runningPod.Namespace, "",
-				ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD, "2> /dev/null")
+				ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD)
 			if err != nil {
 				r.Log.Info(err.Error())
 			}
