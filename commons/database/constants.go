@@ -208,7 +208,7 @@ const GetSqlpatchStatusSQL string = "select status from dba_registry_sqlpatch or
 
 const GetSqlpatchVersionSQL string = "select SOURCE_VERSION || ':' || TARGET_VERSION as versions from dba_registry_sqlpatch order by action_time desc;"
 
-const GetCheckpointFileCMD string = "find ${ORACLE_BASE}/oradata -name .${ORACLE_SID}${CHECKPOINT_FILE_EXTN} 2> /dev/null"
+const GetCheckpointFileCMD string = "find ${ORACLE_BASE}/oradata -name .${ORACLE_SID}${CHECKPOINT_FILE_EXTN}"
 
 const GetEnterpriseEditionFileCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_enterprise ]; then ls ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_enterprise; fi "
 
@@ -317,7 +317,7 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\nrm -f sqladmin.passwd" +
 	"\numask 022"
 
-const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p "+
+const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p " +
 	"WHERE (s.username = 'ORDS_PUBLIC_USER' or s.username = 'C##_DBAPI_PDB_ADMIN' ) AND p.addr(+) = s.paddr;"
 
 const KillSessionSQL string = "alter system kill session '%[1]s';"
@@ -335,7 +335,6 @@ const UninstallORDSCMD string = "\numask 177" +
 	"\nrm -rf /opt/oracle/ords/config/ords/conf" +
 	"\nrm -rf /opt/oracle/ords/config/ords/standalone" +
 	"\nrm -rf /opt/oracle/ords/config/ords/apex"
-
 
 const GetORDSStatus string = "curl -sSkv -k -X GET https://localhost:8443/ords/_/db-api/stable/metadata-catalog/"
 
@@ -390,7 +389,6 @@ const InitWalletCMD string = "if [ ! -f $ORACLE_BASE/oradata/.${ORACLE_SID}${CHE
 const InitPrebuiltDbCMD string = "if [ ! -d /mnt/oradata/${ORACLE_SID} -a -d $ORACLE_BASE/oradata/${ORACLE_SID} ]; then cp -v $ORACLE_BASE/oradata/.${ORACLE_SID}$CHECKPOINT_FILE_EXTN /mnt/oradata && " +
 	" cp -vr $ORACLE_BASE/oradata/${ORACLE_SID} /mnt/oradata && cp -vr $ORACLE_BASE/oradata/dbconfig /mnt/oradata; fi "
 
-
 const AlterSgaPgaCpuCMD string = "echo -e  \"alter system set sga_target=%dM scope=both; \n alter system set pga_aggregate_target=%dM scope=both; \n alter system set cpu_count=%d; \" | %s "
 
 const AlterProcessesCMD string = "echo -e  \"alter system set processes=%d scope=spfile; \" | %s && " + CreateChkFileCMD + " && " +
@@ -410,7 +408,7 @@ const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/ape
 
 const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apxsilentins.sql ]; then cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[2]s %[2]s %[2]s %[2]s\" | %[1]s; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;\n"+
+const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;\n" +
 	"@apex_rest_config_core.sql;\n" +
 	"exec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n" +
 	"exec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_change_password_on_first_use => 'Y');\n" +

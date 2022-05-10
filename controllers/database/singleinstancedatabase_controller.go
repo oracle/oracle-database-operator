@@ -703,12 +703,12 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: strings.ToUpper(m.Spec.Sid),
 							},
 							{
-								Name:  "WALLET_DIR",
+								Name: "WALLET_DIR",
 								Value: func() string {
-										if m.Spec.Image.PrebuiltDB {
-											return "" // No wallets for prebuilt DB
-										}
-										return "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet"
+									if m.Spec.Image.PrebuiltDB {
+										return "" // No wallets for prebuilt DB
+									}
+									return "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet"
 								}(),
 							},
 							{
@@ -1088,7 +1088,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		var gracePeriodSeconds int64 = 0
 		policy := metav1.DeletePropagationForeground
 		r.Delete(ctx, &podsMarkedToBeDeleted[i], &client.DeleteOptions{
-				GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy })
+			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
 	}
 
 	if readyPod.Name != "" {
@@ -1177,7 +1177,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		for i := 0; i < len(newAvailable); i++ {
 			r.Log.Info("Pod status: ", "name", newAvailable[i].Name, "phase", newAvailable[i].Status.Phase)
 			waitingReason := ""
-			if (len(newAvailable[i].Status.InitContainerStatuses) > 0) {
+			if len(newAvailable[i].Status.InitContainerStatuses) > 0 {
 				waitingReason = newAvailable[i].Status.InitContainerStatuses[0].State.Waiting.Reason
 			} else if len(newAvailable[i].Status.ContainerStatuses) > 0 {
 				waitingReason = newAvailable[i].Status.ContainerStatuses[0].State.Waiting.Reason
@@ -1196,7 +1196,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		}
 		return requeueY, errors.New(eventMsg)
 	}
-	if  m.Spec.Replicas == 1 {
+	if m.Spec.Replicas == 1 {
 		return requeueN, nil
 	}
 	return r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
@@ -1457,7 +1457,7 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			m.Status.Status = dbcommons.StatusCreating
 
 			out, err := dbcommons.ExecCommand(r, r.Config, runningPod.Name, runningPod.Namespace, "",
-				ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD)
+				ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD, "2> /dev/null")
 			if err != nil {
 				r.Log.Info(err.Error())
 			}

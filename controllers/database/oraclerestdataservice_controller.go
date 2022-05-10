@@ -242,8 +242,8 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	}
 
 	// If ORDS has no peristence specified, ensure SIDB has persistence configured
-	if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == ""  {
-		eventMsgs = append(eventMsgs, "ORDS cannot be configured for database " + m.Spec.DatabaseRef + " that has no attached persistent volume")
+	if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == "" {
+		eventMsgs = append(eventMsgs, "ORDS cannot be configured for database "+m.Spec.DatabaseRef+" that has no attached persistent volume")
 	}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
 		eventMsgs = append(eventMsgs, "databaseRef cannot be updated")
@@ -484,7 +484,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 										MatchExpressions: []metav1.LabelSelectorRequirement{{
 											Key:      "app",
 											Operator: metav1.LabelSelectorOpIn,
-											Values:   []string{n.Name},  // Schedule on same host as DB Pod
+											Values:   []string{n.Name}, // Schedule on same host as DB Pod
 										}},
 									},
 									TopologyKey: "kubernetes.io/hostname",
@@ -1399,7 +1399,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			strconv.FormatBool(m.Spec.RestEnableSchemas[i].Enable), urlMappingPattern, pdbName)
 
 		// Create users,schemas and grant enableORDS for PDB
-		_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 			fmt.Sprintf("echo -e  \"%s\"  | %s", enableORDSSchema, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
