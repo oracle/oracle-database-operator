@@ -83,6 +83,7 @@ var (
 	AfterSuite   = ginkgo.AfterSuite
 	Describe     = ginkgo.Describe
 	PDescribe    = ginkgo.PDescribe
+	FDescribe    = ginkgo.FDescribe
 	AfterEach    = ginkgo.AfterEach
 	By           = ginkgo.By
 	It           = ginkgo.It
