@@ -52,12 +52,12 @@ import (
 // name of our custom finalizer
 const ACDFinalizer = "database.oracle.com/acd-finalizer"
 
-type acdActionEnum string
+type AcdActionEnum string
 
 const (
-	AcdActionBlank     acdActionEnum = ""
-	AcdActionRestart   acdActionEnum = "RESTART"
-	AcdActionTerminate acdActionEnum = "TERMINATE"
+	AcdActionBlank     AcdActionEnum = ""
+	AcdActionRestart   AcdActionEnum = "RESTART"
+	AcdActionTerminate AcdActionEnum = "TERMINATE"
 )
 
 // AutonomousContainerDatabaseSpec defines the desired state of AutonomousContainerDatabase
@@ -71,7 +71,7 @@ type AutonomousContainerDatabaseSpec struct {
 	// +kubebuilder:validation:Enum:="RELEASE_UPDATES";"RELEASE_UPDATE_REVISIONS"
 	PatchModel database.AutonomousContainerDatabasePatchModelEnum `json:"patchModel,omitempty"`
 	// +kubebuilder:validation:Enum:="SYNC";"RESTART";"TERMINATE"
-	Action       acdActionEnum     `json:"action,omitempty"`
+	Action       AcdActionEnum     `json:"action,omitempty"`
 	FreeformTags map[string]string `json:"freeformTags,omitempty"`
 
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
