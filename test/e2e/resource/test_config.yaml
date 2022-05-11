@@ -24,3 +24,5 @@ bucketURL: https://swiftobjectstorage.region.oraclecloud.com/v1/namespace-string
 authToken: token
 # The OCI user used to login to OCI Console
 ociUser: user
+# The Autonomous Exadata VM Cluster used for AutonomousContainerDatabase provision
+exadataVMClusterOCID: ocid1.autonomousexainfrastructure...

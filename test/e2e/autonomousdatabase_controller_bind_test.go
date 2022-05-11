@@ -132,9 +132,9 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 
 		It("should update ADB", e2ebehavior.UpdateAndAssertDetails(&k8sClient, &dbClient, &adbLookupKey, SharedNewAdminPassSecretName, &SharedPlainTextNewAdminPassword, &SharedPlainTextWalletPassword))
 
-		It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
+		It("Should stop ADB", e2ebehavior.UpdateAndAssertADBState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
 
-		It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
+		It("Should restart ADB", e2ebehavior.UpdateAndAssertADBState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
 
 		It("Should change to RESTRICTED network access", e2ebehavior.TestNetworkAccessRestricted(&k8sClient, &dbClient, &adbLookupKey, false))
 
@@ -196,7 +196,7 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 	Describe("bind to a terminated adb", func() {
 
 		//Wait until remote state is terminated
-		It("Should check that OCI adb state is terminated", e2ebehavior.AssertRemoteStateOCID(&k8sClient, &dbClient, &terminatedAdbID, database.AutonomousDatabaseLifecycleStateTerminated, time.Second*300))
+		It("Should check that OCI adb state is terminated", e2ebehavior.AssertADBRemoteStateOCID(&k8sClient, &dbClient, &terminatedAdbID, database.AutonomousDatabaseLifecycleStateTerminated, time.Second*300))
 
 		It("Should create a AutonomousDatabase resource", func() {
 			adb := &dbv1alpha1.AutonomousDatabase{
@@ -225,7 +225,7 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 			Expect(k8sClient.Create(context.TODO(), adb)).Should(Succeed())
 		})
 
-		It("Should check for TERMINATED state in local resource", e2ebehavior.AssertLocalState(&k8sClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateTerminated))
+		It("Should check for TERMINATED state in local resource", e2ebehavior.AssertADBLocalState(&k8sClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateTerminated))
 
 		It("Should delete local resource", e2ebehavior.AssertSoftLinkDelete(&k8sClient, &adbLookupKey))
 	})
