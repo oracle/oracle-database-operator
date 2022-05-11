@@ -4,8 +4,6 @@ To create manual backups of Autonomous Databases, use this procedure.
 
 Oracle Cloud Infrastructure (OCI) automatically backs up your Autonomous Databases, and retains these backups for 60 days. You can restore and recover your database to any point-in-time in this retention period. Automatic backups are full backups taken every 60 days, with daily incremental backups. You can also create manual backups to supplement your automatic backups. Manual backups are stored in an Object Storage bucket that you create, and are retained for 60 days. For more information, please visit [this page](https://docs.oracle.com/en-us/iaas/Content/Database/Tasks/adbbackingup.htm).
 
-In every OCI reconciliation loop, the operator obtains the list of the `AutonomousBackupOCIDs`. If an Autonomous Database backup resource with the same OCID (`AutonomousBackupOCID`) doesn't exist in the cluster, then OCI also creates the `AutonomousDatabaseBackup` resource automatically.
-
 ## Prerequisites
 
 To hold your Autonomous Database manual backups, you must create an Oracle Cloud Infrastructure Object Storage bucket, and configure your database to connect to it. To finish setting up manual backup storage, follow the steps in this page: [Setting Up a Bucket to Store Manual Backups](https://docs.oracle.com/en-us/iaas/Content/Database/Tasks/adbbackingup.htm#creatingbucket). Creating an Autonomous Database manual backup object storage bucket is a one-time operation.
