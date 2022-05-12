@@ -359,7 +359,7 @@ func (r *AutonomousContainerDatabaseReconciler) validateCleanup(logger logr.Logg
 		if acd.Spec.Action != dbv1alpha1.AcdActionTerminate {
 			// Run finalization logic for finalizer. If the finalization logic fails, don't remove the finalizer so
 			// that we can retry during the next reconciliation.
-			l.Info("Terminating Autonomous Database: " + *acd.Spec.DisplayName)
+			l.Info("Terminating Autonomous Container Database")
 			acd.Spec.Action = dbv1alpha1.AcdActionTerminate
 			if err := r.KubeClient.Update(context.TODO(), acd); err != nil {
 				return false, err
