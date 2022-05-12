@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -182,7 +182,7 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 	* Deletion timestamp will be added to a object before it is deleted.
 	* Kubernetes server calls the clean up function if a finalizer exitsts, and won't delete the real object until
 	* all the finalizers are removed from the object metadata.
-	* Refer to this page for more details of using finalizers: https://kubernetes.io/blog/2021/05/14/using-finalizers-to-control-deletion/
+	* Refer to this page for more details of using finalizers: https://kubernetes.io/blog/2022/05/14/using-finalizers-to-control-deletion/
 	******************************************************************/
 	exitReconcile, err := r.validateCleanup(logger, acd)
 	if err != nil {
