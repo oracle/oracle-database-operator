@@ -37,7 +37,7 @@ To restore an Autonomous Database from a backup, or by using point-in-time resto
           name: autonomousdatabasebackup-sample
         # # Uncomment the following field to perform point-in-time restore
         # pointInTime: 
-        #   timestamp: 2021-12-23 11:03:13 UTC
+        #   timestamp: 2022-12-23 11:03:13 UTC
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
