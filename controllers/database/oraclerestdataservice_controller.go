@@ -252,6 +252,35 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 		eventMsgs = append(eventMsgs, "image patching is not available currently")
 	}
 
+	// Check for the apex ADMIN password
+	//
+	apexPasswordSecret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
+			return requeueY, nil
+		}
+		r.Log.Error(err, err.Error())
+		return requeueY, err
+	}
+	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
+	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
+
+	// Validate apexPassword
+	if !dbcommons.ApexPasswordValidator(apexPassword) {
+		m.Status.Status = dbcommons.StatusError
+		eventReason := "Apex Password does not conform to the requirements, please update the secret according to the requirements"
+		eventMsg := "Password should contain: at least 6 chars, at least one numeric character, at least one punctuation character (!\"#$%&()``*+,-/:;?_), at least one upper-case alphabet"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		r.Log.Info("APEX password does not conform to the requirements")
+		return requeueY, nil
+	}
+
 	if len(eventMsgs) > 0 {
 		m.Status.Status = dbcommons.StatusError
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, strings.Join(eventMsgs, ","))
@@ -1195,7 +1224,8 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	r.Status().Update(ctx, m)
 
 	log.Info("ConfigureApex Successful !")
-	return requeueN
+	// Can not return requeueN as the secrets will be deleted if keepSecert is false, which cause problem in pod restart
+	return requeueY
 }
 
 //#############################################################################

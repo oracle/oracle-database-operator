@@ -29,6 +29,12 @@ spec:
   ## To configure APEX with ORDS, specfiy the apexPassword secret details. Leave empty if Apex is not needed.
   ## This is a secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
   ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  ## This password should complete the following requirements:
+  ## 1. Contain at least 6 characters.
+  ## 2. Contain at least one numeric character (0123456789).
+  ## 3. Contain at least one punctuation character (!"#$%&()``*+,-/:;?_).
+  ## 4. Contain at least one uppercase alphabetic character.
+  
   apexPassword:
     secretName: 
     secretKey:
