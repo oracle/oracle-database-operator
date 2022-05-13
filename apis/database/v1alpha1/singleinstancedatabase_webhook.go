@@ -110,15 +110,15 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	var allErrs field.ErrorList
 
 	// Persistence spec validation
-	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" || r.Spec.Persistence.StorageClass != "" ) || 
-		(r.Spec.Persistence.Size != "" && r.Spec.Persistence.AccessMode == "" ) {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Persistence,
-								"invalid specification, size and/or accessMode missing"))
+	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" || r.Spec.Persistence.StorageClass != "") ||
+		(r.Spec.Persistence.Size != "" && r.Spec.Persistence.AccessMode == "") {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("persistence"), r.Spec.Persistence,
+				"invalid specification, size and/or accessMode missing"))
 	}
 
 	if r.Spec.Persistence.Size != "" &&
-	   r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
+		r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("persistence").Child("accessMode"),
 				r.Spec.Persistence.AccessMode, "should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
@@ -127,9 +127,6 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	// Replica validation
 	if r.Spec.Replicas > 1 {
 		valMsg := ""
-		if r.Spec.Edition == "express" {
-			valMsg = "should be 1 for express edition"
-		}
 		if r.Spec.Persistence.Size == "" {
 			valMsg = "should be 1 if no persistence is specified"
 		}
@@ -163,13 +160,13 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	if r.Spec.CloneFrom != "" {
 		if r.Spec.Image.PrebuiltDB {
 			allErrs = append(allErrs,
-						field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
-						"cannot clone to create a prebuilt db"))
+				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
+					"cannot clone to create a prebuilt db"))
 		} else if strings.Contains(r.Spec.CloneFrom, ":") && strings.Contains(r.Spec.CloneFrom, "/") && r.Spec.Edition == "" {
 			//Edition must be passed when cloning from a source database other than same k8s cluster
 			allErrs = append(allErrs,
-						field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
-						"Edition must be passed when cloning from a source database other than same k8s cluster"))
+				field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
+					"Edition must be passed when cloning from a source database other than same k8s cluster"))
 		}
 	}
 
@@ -210,7 +207,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))
 	}
-	if r.Spec.CloneFrom == "" && old.Status.Edition != ""  && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
+	if r.Spec.CloneFrom == "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("edition"), "cannot be changed"))
 	}
@@ -218,7 +215,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("charset"), "cannot be changed"))
 	}
-	if old.Status.Sid != ""  && !strings.EqualFold(r.Spec.Sid, old.Status.Sid) {
+	if old.Status.Sid != "" && !strings.EqualFold(r.Spec.Sid, old.Status.Sid) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("sid"), "cannot be changed"))
 	}
