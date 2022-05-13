@@ -152,7 +152,15 @@ To provision new Oracle Database Express Edition (XE) database, use the sample *
 This command pulls the XE image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:7460390069267:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:803,803,Oracle%20Database%20Express%20Edition,Oracle%20Database%20Express%20Edition,1,0&cs=3-UN6D9nAfyqxcYnrks18OAmfFcri96NZojBQALxMdakix8wgYRBxhD8rpTFd2ak1FAtfOVFexbuOM2opsjxT9w).
 
 **NOTE:**
-Provisioning Oracle Database express edition is supported for release 21c (21.3.0) and later releases.
+- Provisioning Oracle Database express edition is supported for release 21c (21.3.0) and later releases.
+- For XE database `SGA_TARGET + PGA_AGGREGATE_TARGET <= 2GB`. The default values for these parameters are 1536M and 512M respectively.
+- If you want to set the `sgaTarget` and the `pgaAggregateTarget` for the XE edition, set the `sgaTarget` to the required value in the first go. After this, you can set the `pgaAggregateTarget` next. You need to add the following section to modify the `init-parameters` in the **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)**:
+
+      initParams:
+        cpuCount: <cpu-count>
+        processes: <num-processes>
+        sgaTarget: <sga-target>
+        pgaAggregateTarget: <pga-aggregate-target>
 
 ### Provision a pre-built database
 
@@ -372,6 +380,7 @@ Note the following:
 - The `adminPassword` and `ordsPassword` fields in the `oraclerestdataservice.yaml` file contains secrets for authenticating the Single Instance Database and the ORDS user with the following roles: `SQL Administrator, System Administrator, SQL Developer, oracle.dbtools.autorest.any.schema`.  
 - To build the ORDS image, use the following instructions: [Building Oracle REST Data Services Install Images](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices#building-oracle-rest-data-services-install-images).
 - By default, ORDS uses self-signed certificates. To use certificates from the Certificate Authority, the ORDS image needs to be rebuilt after specifying the values of `ssl.cert` and `ssl.cert.key` in the [standalone.properties](https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/standalone.properties.tmpl) file. After you rebuild the ORDS image, use the rebuilt image in the **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)** file.
+- If you want to install ORDS in a [prebuilt database](#provision-a-pre-built-database), make sure to attach the **database persistence** by uncommenting the `persistence` section in the **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file, while provisioning the prebuilt database.
 
 ### List OracleRestDataServices
 To list the ORDS service, use the following command: 
@@ -427,6 +436,13 @@ $ kubectl describe oraclerestdataservice ords-sample
     Status:           Healthy
 
 ```
+
+### Delete ORDS
+- To delete ORDS run the following command:
+      
+      kubectl delete oraclerestdataservice ords-samples
+
+- You can not delete referred Single Instance Database (SIDB) before deleting its ORDS resource.
 
 ## REST Enable Database
 
@@ -626,7 +642,8 @@ password: `.spec.apexPassword`
 ![application-express-admin-home](/images/sidb/application-express-admin-home.png)
 
 **NOTE:**
-By default, the full development environment is initialized in APEX. After deployment, you can change it manually to the runtime environment. To change environments, run the script `apxdevrm.sql` after connecting to the primary database from the ORDS pod as the `SYS` user with `SYSDBA` privilege. For detailed instructions, see: [Converting a Full Development Environment to a Runtime Environment](https://docs.oracle.com/en/database/oracle/application-express/21.2/htmig/converting-between-runtime-and-full-development-environments.html#GUID-B0621B40-3441-44ED-9D86-29B058E26BE9).
+- By default, the full development environment is initialized in APEX. After deployment, you can change it manually to the runtime environment. To change environments, run the script `apxdevrm.sql` after connecting to the primary database from the ORDS pod as the `SYS` user with `SYSDBA` privilege. For detailed instructions, see: [Converting a Full Development Environment to a Runtime Environment](https://docs.oracle.com/en/database/oracle/application-express/21.2/htmig/converting-between-runtime-and-full-development-environments.html#GUID-B0621B40-3441-44ED-9D86-29B058E26BE9).
+- Deleting ORDS resource will not delete APEX from the SIDB. Currently, performing APEX uninstall is not supported through the Operator.
 
 ## Performing maintenance operations
 If you need to perform some maintenance operations manually, then the procedure is as follows:
@@ -640,3 +657,13 @@ If you need to perform some maintenance operations manually, then the procedure 
 
         
       sqlplus / as sysdba
+
+
+## Additional use-cases
+- If you use **oci-bv** storage class for dynamic provisioning of the persistent volume, this volume gets deleted with the deletion of its associated resource (Database/ORDS). This happens because the Reclaim Policy of the provisioned volume is Delete by default. If you want to retain this dynamically provisioned volume, the following command should be used:
+
+      kubectl patch pv <pv-name>  -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
+
+  To make this retained PV available for the next Database/ORDS deployment, you can run the following command:
+
+      kubectl patch pv <pv-name>  -p '{"spec":{"claimRef":null}}'
