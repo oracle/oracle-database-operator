@@ -163,6 +163,8 @@ This command pulls the XE image uploaded on the [Oracle Container Registry](http
         sgaTarget: <sga-target>
         pgaAggregateTarget: <pga-aggregate-target>
 
+- Updating the init-parameters like `sgaTarget` and `pgaAggregateTarget` requires restart of the database to apply the new values. This database restart is handled by the Operator automatically.
+
 ### Provision a pre-built database
 
 To provision a new pre-built database instance, use the sample **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
