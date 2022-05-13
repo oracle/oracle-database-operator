@@ -337,6 +337,10 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		}
 	}
 
+	//  If Express Edition, ensure Replicas=1
+	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
+		eventMsgs = append(eventMsgs, "express edition supports only one replica")
+	}
 	//  If no persistence, ensure Replicas=1
 	if m.Spec.Persistence.Size == "" && m.Spec.Replicas > 1 {
 		eventMsgs = append(eventMsgs, "replicas should be 1 if no persistence is specified")

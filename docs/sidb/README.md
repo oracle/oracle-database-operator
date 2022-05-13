@@ -153,6 +153,7 @@ This command pulls the XE image uploaded on the [Oracle Container Registry](http
 
 **NOTE:**
 - Provisioning Oracle Database express edition is supported for release 21c (21.3.0) and later releases.
+- For XE database, only single replica mode (i.e. `replicas: 1`) is supported.
 - For XE database `SGA_TARGET + PGA_AGGREGATE_TARGET <= 2GB`. The default values for these parameters are 1536M and 512M respectively.
 - If you want to set the `sgaTarget` and the `pgaAggregateTarget` for the XE edition, set the `sgaTarget` to the required value in the first go. After this, you can set the `pgaAggregateTarget` next. You need to add the following section to modify the `init-parameters` in the **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)**:
 

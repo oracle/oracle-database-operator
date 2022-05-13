@@ -127,6 +127,9 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	// Replica validation
 	if r.Spec.Replicas > 1 {
 		valMsg := ""
+		if r.Spec.Edition == "express" {
+			valMsg = "should be 1 for express edition"
+		}
 		if r.Spec.Persistence.Size == "" {
 			valMsg = "should be 1 if no persistence is specified"
 		}
