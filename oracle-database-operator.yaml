@@ -1178,7 +1178,7 @@ spec:
                     type: string
                 type: object
               replicas:
-                minimum: 3
+                minimum: 1
                 type: integer
               restEnableSchemas:
                 items:
