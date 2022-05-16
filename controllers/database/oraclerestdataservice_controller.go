@@ -242,14 +242,43 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	}
 
 	// If ORDS has no peristence specified, ensure SIDB has persistence configured
-	if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == ""  {
-		eventMsgs = append(eventMsgs, "ORDS cannot be configured for database " + m.Spec.DatabaseRef + " that has no attached persistent volume")
+	if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == "" {
+		eventMsgs = append(eventMsgs, "ORDS cannot be configured for database "+m.Spec.DatabaseRef+" that has no attached persistent volume")
 	}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
 		eventMsgs = append(eventMsgs, "databaseRef cannot be updated")
 	}
 	if m.Status.Image.PullFrom != "" && m.Status.Image != m.Spec.Image {
 		eventMsgs = append(eventMsgs, "image patching is not available currently")
+	}
+
+	// Check for the apex ADMIN password
+	//
+	apexPasswordSecret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
+			return requeueY, nil
+		}
+		r.Log.Error(err, err.Error())
+		return requeueY, err
+	}
+	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
+	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
+
+	// Validate apexPassword
+	if !dbcommons.ApexPasswordValidator(apexPassword) {
+		m.Status.Status = dbcommons.StatusError
+		eventReason := "Apex Password does not conform to the requirements, please update the secret according to the requirements"
+		eventMsg := "Password should contain: at least 6 chars, at least one numeric character, at least one punctuation character (!\"#$%&()``*+,-/:;?_), at least one upper-case alphabet"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		r.Log.Info("APEX password does not conform to the requirements")
+		return requeueY, nil
 	}
 
 	if len(eventMsgs) > 0 {
@@ -484,7 +513,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 										MatchExpressions: []metav1.LabelSelectorRequirement{{
 											Key:      "app",
 											Operator: metav1.LabelSelectorOpIn,
-											Values:   []string{n.Name},  // Schedule on same host as DB Pod
+											Values:   []string{n.Name}, // Schedule on same host as DB Pod
 										}},
 									},
 									TopologyKey: "kubernetes.io/hostname",
@@ -1195,7 +1224,8 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	r.Status().Update(ctx, m)
 
 	log.Info("ConfigureApex Successful !")
-	return requeueN
+	// Can not return requeueN as the secrets will be deleted if keepSecert is false, which cause problem in pod restart
+	return requeueY
 }
 
 //#############################################################################
@@ -1399,7 +1429,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			strconv.FormatBool(m.Spec.RestEnableSchemas[i].Enable), urlMappingPattern, pdbName)
 
 		// Create users,schemas and grant enableORDS for PDB
-		_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 			fmt.Sprintf("echo -e  \"%s\"  | %s", enableORDSSchema, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())

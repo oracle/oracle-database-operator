@@ -47,6 +47,7 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+	"unicode"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -644,4 +645,33 @@ func IsSourceDatabaseOnCluster(cloneFrom string) bool {
 		return false
 	}
 	return true
+}
+
+// Apex password validation function
+func ApexPasswordValidator(pwd string) bool {
+	var (
+		hasMinLen  = false
+		hasUpper   = false
+		hasLower   = false
+		hasNumber  = false
+		hasSpecial = false
+	)
+	if len(pwd) > 7 {
+		hasMinLen = true
+	}
+
+	for _, c := range pwd {
+		switch {
+		case unicode.IsUpper(c):
+			hasUpper = true
+		case unicode.IsLower(c):
+			hasLower = true
+		case unicode.IsNumber(c):
+			hasNumber = true
+		case unicode.IsPunct(c):
+			hasSpecial = true
+		}
+	}
+
+	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
 }

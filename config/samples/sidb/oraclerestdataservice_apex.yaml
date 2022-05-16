@@ -23,6 +23,11 @@ metadata:
 type: Opaque
 stringData:
   ## Specify your APEX password here
+  ## This password should complete the following requirements:
+  ## 1. Contain at least 6 characters.
+  ## 2. Contain at least one numeric character (0123456789).
+  ## 3. Contain at least one punctuation character (!"#$%&()``*+,-/:;?_).
+  ## 4. Contain at least one uppercase alphabetic character.
   oracle_pwd: 
 
 ---
