@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -121,6 +121,7 @@ var SharedNsgOCID string
 var SharedBucketUrl string
 var SharedAuthToken string
 var SharedOciUser string
+var SharedExadataVMClusterOCID string
 
 const SharedAdminPassSecretName string = "adb-admin-password"
 const SharedNewAdminPassSecretName string = "new-adb-admin-password"
@@ -222,6 +223,7 @@ var _ = BeforeSuite(func() {
 	SharedBucketUrl = testConfig.BucketURL
 	SharedAuthToken = testConfig.AuthToken
 	SharedOciUser = testConfig.OciUser
+	SharedExadataVMClusterOCID = testConfig.ExadataVMClusterOCID
 
 	By("checking if the required parameters exist")
 	Expect(testConfig.OCIConfigFile).ToNot(Equal(""))
@@ -233,6 +235,7 @@ var _ = BeforeSuite(func() {
 	Expect(testConfig.BucketURL).ToNot(Equal(""))
 	Expect(testConfig.AuthToken).ToNot(Equal(""))
 	Expect(testConfig.OciUser).ToNot(Equal(""))
+	Expect(testConfig.ExadataVMClusterOCID).ToNot(Equal(""))
 
 	By("getting OCI provider")
 	ociConfigUtil, err := e2eutil.GetOCIConfigUtil(testConfig.OCIConfigFile, testConfig.Profile)

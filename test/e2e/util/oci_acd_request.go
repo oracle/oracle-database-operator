@@ -36,57 +36,43 @@
 ** SOFTWARE.
  */
 
-package k8s
+package e2eutil
 
 import (
 	"context"
-	"encoding/json"
 
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"github.com/oracle/oci-go-sdk/v63/common"
+	"github.com/oracle/oci-go-sdk/v63/database"
+	// "io"
+	// "io/ioutil"
+	// "time"
 )
 
-func patchFinalizer(kubeClient client.Client, obj client.Object) error {
-	finalizer := obj.GetFinalizers()
-
-	payload := []patchValue{}
-
-	if obj.GetFinalizers() == nil {
-		payload = append(payload, patchValue{
-			Op:    "replace",
-			Path:  "/metadata/finalizers",
-			Value: []string{},
-		})
+func CreateAutonomousContainerDatabase(dbClient database.DatabaseClient, compartmentId *string, acdName *string, exadataVmClusterID *string) (response database.CreateAutonomousContainerDatabaseResponse, err error) {
+	acdDetails := database.CreateAutonomousContainerDatabaseDetails{
+		DisplayName:                acdName,
+		CloudAutonomousVmClusterId: exadataVmClusterID,
+		CompartmentId:              compartmentId,
+		PatchModel:                 database.CreateAutonomousContainerDatabaseDetailsPatchModelUpdates,
 	}
 
-	payload = append(payload, patchValue{
-		Op:    "replace",
-		Path:  "/metadata/finalizers",
-		Value: finalizer,
-	})
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
-		return err
+	createACDRequest := database.CreateAutonomousContainerDatabaseRequest{
+		CreateAutonomousContainerDatabaseDetails: acdDetails,
 	}
 
-	patch := client.RawPatch(types.JSONPatchType, payloadBytes)
-	return kubeClient.Patch(context.TODO(), obj, patch)
+	return dbClient.CreateAutonomousContainerDatabase(context.Background(), createACDRequest)
 }
 
-func AddFinalizerAndPatch(kubeClient client.Client, obj client.Object, finalizer string) error {
-	controllerutil.AddFinalizer(obj, finalizer)
-	if err := patchFinalizer(kubeClient, obj); err != nil {
-		return err
+func GetAutonomousContainerDatabase(dbClient database.DatabaseClient, acdOCID *string, retryPolicy *common.RetryPolicy) (database.GetAutonomousContainerDatabaseResponse, error) {
+	getRequest := database.GetAutonomousContainerDatabaseRequest{
+		AutonomousContainerDatabaseId: acdOCID,
 	}
-	return nil
-}
 
-func RemoveFinalizerAndPatch(kubeClient client.Client, obj client.Object, finalizer string) error {
-	controllerutil.RemoveFinalizer(obj, finalizer)
-	if err := patchFinalizer(kubeClient, obj); err != nil {
-		return err
+	if retryPolicy != nil {
+		getRequest.RequestMetadata = common.RequestMetadata{
+			RetryPolicy: retryPolicy,
+		}
 	}
-	return nil
+
+	return dbClient.GetAutonomousContainerDatabase(context.TODO(), getRequest)
 }
