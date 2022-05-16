@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -86,8 +86,9 @@ var (
 	bindTimeout             = time.Second * 30
 	backupTimeout           = time.Minute * 20
 	intervalTime            = time.Second * 10
-	updateTimeout           = time.Minute * 7
+	updateADBTimeout        = time.Minute * 7
 	changeLocalStateTimeout = time.Second * 600
+	updateACDTimeout        = time.Minute * 3
 )
 
 func AssertProvision(k8sClient *client.Client, adbLookupKey *types.NamespacedName) func() {
@@ -258,7 +259,7 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 			}
 
 			return database.AutonomousDatabaseLifecycleStateEnum(listResp.Items[0].LifecycleState), nil
-		}, updateTimeout, intervalTime).Should(Equal(database.AutonomousDatabaseLifecycleStateAvailable))
+		}, updateADBTimeout, intervalTime).Should(Equal(database.AutonomousDatabaseLifecycleStateAvailable))
 
 		// Update
 		var newDisplayName = *expectedADB.Spec.Details.DisplayName + "_new"
@@ -305,7 +306,7 @@ func AssertADBDetails(k8sClient *client.Client,
 		expectedADBDetails := expectedADB.Spec.Details
 		Eventually(func() (bool, error) {
 			// Fetch the ADB from OCI when it's in AVAILABLE state, and retry if its attributes doesn't match the new ADB's attributes
-			retryPolicy := e2eutil.NewLifecycleStateRetryPolicy(database.AutonomousDatabaseLifecycleStateAvailable)
+			retryPolicy := e2eutil.NewLifecycleStateRetryPolicyADB(database.AutonomousDatabaseLifecycleStateAvailable)
 			resp, err := e2eutil.GetAutonomousDatabase(derefDBClient, expectedADB.Spec.Details.AutonomousDatabaseOCID, &retryPolicy)
 			if err != nil {
 				return false, err
@@ -389,11 +390,11 @@ func AssertADBDetails(k8sClient *client.Client,
 				compareString(expectedADBDetails.NetworkAccess.PrivateEndpoint.HostnamePrefix, resp.AutonomousDatabase.PrivateEndpointLabel)
 
 			return same, nil
-		}, updateTimeout, intervalTime).Should(BeTrue())
+		}, updateADBTimeout, intervalTime).Should(BeTrue())
 
 		// IMPORTANT: make sure the local resource has finished reconciling, otherwise the changes will
 		// be conflicted with the next test and cause unknow result.
-		AssertLocalState(k8sClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+		AssertADBLocalState(k8sClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
 	}
 }
 
@@ -484,7 +485,7 @@ func TestNetworkAccess(k8sClient *client.Client, dbClient *database.DatabaseClie
 		derefK8sClient := *k8sClient
 
 		adb := &dbv1alpha1.AutonomousDatabase{}
-		AssertState(k8sClient, dbClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+		AssertADBState(k8sClient, dbClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 
 		adb.Spec.Details.NetworkAccess = networkSpec
@@ -509,22 +510,22 @@ func UpdateAndAssertDetails(k8sClient *client.Client, dbClient *database.Databas
 	}
 }
 
-// UpdateAndAssertState updates adb state and then asserts if change is propagated to OCI
-func UpdateAndAssertState(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
+// UpdateAndAssertADBState updates adb state and then asserts if change is propagated to OCI
+func UpdateAndAssertADBState(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
 	return func() {
 		UpdateState(k8sClient, adbLookupKey, state)()
-		AssertState(k8sClient, dbClient, adbLookupKey, state)()
+		AssertADBState(k8sClient, dbClient, adbLookupKey, state)()
 	}
 }
 
-// AssertState asserts local and remote state
-func AssertState(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
+// AssertADBState asserts local and remote state
+func AssertADBState(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
 	return func() {
 		// Waits longer for the local resource to reach the desired state
-		AssertLocalState(k8sClient, adbLookupKey, state)()
+		AssertADBLocalState(k8sClient, adbLookupKey, state)()
 
 		// Double-check the state of the DB in OCI so the timeout can be shorter
-		AssertRemoteState(k8sClient, dbClient, adbLookupKey, state)()
+		AssertADBRemoteState(k8sClient, dbClient, adbLookupKey, state)()
 	}
 }
 
@@ -545,8 +546,8 @@ func AssertHardLinkDelete(k8sClient *client.Client, dbClient *database.DatabaseC
 		By("Checking if the ADB in OCI is in TERMINATING state")
 		// Check every 10 secs for total 60 secs
 		Eventually(func() (database.AutonomousDatabaseLifecycleStateEnum, error) {
-			retryPolicy := e2eutil.NewLifecycleStateRetryPolicy(database.AutonomousDatabaseLifecycleStateTerminating)
-			return returnRemoteState(derefK8sClient, derefDBClient, adb.Spec.Details.AutonomousDatabaseOCID, &retryPolicy)
+			retryPolicy := e2eutil.NewLifecycleStateRetryPolicyADB(database.AutonomousDatabaseLifecycleStateTerminating)
+			return returnADBRemoteState(derefK8sClient, derefDBClient, adb.Spec.Details.AutonomousDatabaseOCID, &retryPolicy)
 		}, changeTimeout).Should(Equal(database.AutonomousDatabaseLifecycleStateTerminating))
 
 		AssertSoftLinkDelete(k8sClient, adbLookupKey)()
@@ -579,8 +580,8 @@ func AssertSoftLinkDelete(k8sClient *client.Client, adbLookupKey *types.Namespac
 	}
 }
 
-// AssertLocalState asserts the lifecycle state of the local resource using adbLookupKey
-func AssertLocalState(k8sClient *client.Client, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
+// AssertADBLocalState asserts the lifecycle state of the local resource using adbLookupKey
+func AssertADBLocalState(k8sClient *client.Client, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
 	return func() {
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(adbLookupKey).NotTo(BeNil())
@@ -589,12 +590,12 @@ func AssertLocalState(k8sClient *client.Client, adbLookupKey *types.NamespacedNa
 
 		By("Checking if the lifecycleState of local resource is " + string(state))
 		Eventually(func() (database.AutonomousDatabaseLifecycleStateEnum, error) {
-			return returnLocalState(derefK8sClient, *adbLookupKey)
+			return returnADBLocalState(derefK8sClient, *adbLookupKey)
 		}, changeLocalStateTimeout).Should(Equal(state))
 	}
 }
 
-func AssertRemoteState(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
+func AssertADBRemoteState(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
 	return func() {
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
@@ -605,12 +606,12 @@ func AssertRemoteState(k8sClient *client.Client, dbClient *database.DatabaseClie
 		adb := &dbv1alpha1.AutonomousDatabase{}
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 		By("Checking if the lifecycleState of remote resource is " + string(state))
-		AssertRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.AutonomousDatabaseOCID, state, changeTimeout)()
+		AssertADBRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.AutonomousDatabaseOCID, state, changeTimeout)()
 	}
 }
 
 // Backup takes ~15 minutes to complete, this function waits 20 minutes until ADB state is AVAILABLE
-func AssertRemoteStateForBackupRestore(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
+func AssertADBRemoteStateForBackupRestore(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, state database.AutonomousDatabaseLifecycleStateEnum) func() {
 	return func() {
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
@@ -621,11 +622,11 @@ func AssertRemoteStateForBackupRestore(k8sClient *client.Client, dbClient *datab
 		adb := &dbv1alpha1.AutonomousDatabase{}
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 		By("Checking if the lifecycleState of remote resource is " + string(state))
-		AssertRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.AutonomousDatabaseOCID, state, backupTimeout)()
+		AssertADBRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.AutonomousDatabaseOCID, state, backupTimeout)()
 	}
 }
 
-func AssertRemoteStateOCID(k8sClient *client.Client, dbClient *database.DatabaseClient, adbID *string, state database.AutonomousDatabaseLifecycleStateEnum, timeout time.Duration) func() {
+func AssertADBRemoteStateOCID(k8sClient *client.Client, dbClient *database.DatabaseClient, adbID *string, state database.AutonomousDatabaseLifecycleStateEnum, timeout time.Duration) func() {
 	return func() {
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
@@ -638,7 +639,7 @@ func AssertRemoteStateOCID(k8sClient *client.Client, dbClient *database.Database
 
 		By("Checking if the lifecycleState of the ADB in OCI is " + string(state))
 		Eventually(func() (database.AutonomousDatabaseLifecycleStateEnum, error) {
-			return returnRemoteState(derefK8sClient, derefDBClient, adbID, nil)
+			return returnADBRemoteState(derefK8sClient, derefDBClient, adbID, nil)
 		}, timeout, intervalTime).Should(Equal(state))
 	}
 }
@@ -660,7 +661,7 @@ func UpdateState(k8sClient *client.Client, adbLookupKey *types.NamespacedName, s
 	}
 }
 
-func returnLocalState(k8sClient client.Client, adbLookupKey types.NamespacedName) (database.AutonomousDatabaseLifecycleStateEnum, error) {
+func returnADBLocalState(k8sClient client.Client, adbLookupKey types.NamespacedName) (database.AutonomousDatabaseLifecycleStateEnum, error) {
 	adb := &dbv1alpha1.AutonomousDatabase{}
 	err := k8sClient.Get(context.TODO(), adbLookupKey, adb)
 	if err != nil {
@@ -669,8 +670,25 @@ func returnLocalState(k8sClient client.Client, adbLookupKey types.NamespacedName
 	return adb.Status.LifecycleState, nil
 }
 
-func returnRemoteState(k8sClient client.Client, dbClient database.DatabaseClient, adbID *string, retryPolicy *common.RetryPolicy) (database.AutonomousDatabaseLifecycleStateEnum, error) {
+func returnADBRemoteState(k8sClient client.Client, dbClient database.DatabaseClient, adbID *string, retryPolicy *common.RetryPolicy) (database.AutonomousDatabaseLifecycleStateEnum, error) {
 	resp, err := e2eutil.GetAutonomousDatabase(dbClient, adbID, retryPolicy)
+	if err != nil {
+		return "", err
+	}
+	return resp.LifecycleState, nil
+}
+
+func returnACDLocalState(k8sClient client.Client, acdLookupKey types.NamespacedName) (database.AutonomousContainerDatabaseLifecycleStateEnum, error) {
+	acd := &dbv1alpha1.AutonomousContainerDatabase{}
+	err := k8sClient.Get(context.TODO(), acdLookupKey, acd)
+	if err != nil {
+		return "", err
+	}
+	return acd.Status.LifecycleState, nil
+}
+
+func returnACDRemoteState(k8sClient client.Client, dbClient database.DatabaseClient, acdID *string, retryPolicy *common.RetryPolicy) (database.AutonomousContainerDatabaseLifecycleStateEnum, error) {
+	resp, err := e2eutil.GetAutonomousContainerDatabase(dbClient, acdID, retryPolicy)
 	if err != nil {
 		return "", err
 	}
@@ -715,10 +733,10 @@ func AssertBackupRestore(k8sClient *client.Client, dbClient *database.DatabaseCl
 		// for ~7 minutes. After that time, the state should return to AVAILBLE
 		derefK8sClient := *k8sClient
 
-		AssertRemoteState(k8sClient, dbClient, adbLookupKey, state)()
+		AssertADBRemoteState(k8sClient, dbClient, adbLookupKey, state)()
 
 		By("Wait until ADB state returns to AVAILABLE")
-		AssertRemoteStateForBackupRestore(k8sClient, dbClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+		AssertADBRemoteStateForBackupRestore(k8sClient, dbClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
 
 		if state == database.AutonomousDatabaseLifecycleStateBackupInProgress {
 			By("Checking adb backup State is ACTIVE")
@@ -735,5 +753,216 @@ func AssertBackupRestore(k8sClient *client.Client, dbClient *database.DatabaseCl
 				return createdRestore.Status.Status, nil
 			}, backupTimeout, time.Second*20).Should(Equal(workrequests.WorkRequestStatusSucceeded))
 		}
+	}
+}
+
+func AssertACDState(k8sClient *client.Client, dbClient *database.DatabaseClient, acdLookupKey *types.NamespacedName, state database.AutonomousContainerDatabaseLifecycleStateEnum, timeout time.Duration) func() {
+	return func() {
+		AssertACDLocalState(k8sClient, acdLookupKey, state, timeout)()
+		AssertACDRemoteState(k8sClient, dbClient, acdLookupKey, state, timeout)()
+	}
+}
+
+func AssertACDLocalState(k8sClient *client.Client, acdLookupKey *types.NamespacedName, state database.AutonomousContainerDatabaseLifecycleStateEnum, timeout time.Duration) func() {
+	return func() {
+		Expect(k8sClient).NotTo(BeNil())
+		Expect(acdLookupKey).NotTo(BeNil())
+
+		derefK8sClient := *k8sClient
+
+		By("Checking if the lifecycleState of local resource is " + string(state))
+		Eventually(func() (database.AutonomousContainerDatabaseLifecycleStateEnum, error) {
+			return returnACDLocalState(derefK8sClient, *acdLookupKey)
+		}, timeout).Should(Equal(state))
+	}
+}
+
+func AssertACDRemoteState(k8sClient *client.Client, dbClient *database.DatabaseClient, acdLookupKey *types.NamespacedName, state database.AutonomousContainerDatabaseLifecycleStateEnum, timeout time.Duration) func() {
+	return func() {
+		derefK8sClient := *k8sClient
+
+		acd := &dbv1alpha1.AutonomousContainerDatabase{}
+		Expect(derefK8sClient.Get(context.TODO(), *acdLookupKey, acd)).To(Succeed())
+		By("Checking if the lifecycleState of remote resource is " + string(state))
+		AssertACDRemoteStateOCID(k8sClient, dbClient, acd.Spec.AutonomousContainerDatabaseOCID, state, timeout)()
+	}
+}
+
+func AssertACDRemoteStateOCID(k8sClient *client.Client, dbClient *database.DatabaseClient, acdID *string, state database.AutonomousContainerDatabaseLifecycleStateEnum, timeout time.Duration) func() {
+	return func() {
+		Expect(k8sClient).NotTo(BeNil())
+		Expect(dbClient).NotTo(BeNil())
+		Expect(acdID).NotTo(BeNil())
+
+		fmt.Fprintf(GinkgoWriter, "ACD ID is %s\n", *acdID)
+
+		derefK8sClient := *k8sClient
+		derefDBClient := *dbClient
+
+		By("Checking if the lifecycleState of the ACD in OCI is " + string(state))
+		Eventually(func() (database.AutonomousContainerDatabaseLifecycleStateEnum, error) {
+			return returnACDRemoteState(derefK8sClient, derefDBClient, acdID, nil)
+		}, timeout, intervalTime).Should(Equal(state))
+	}
+}
+
+func AssertACDBind(k8sClient *client.Client, dbClient *database.DatabaseClient, acdLookupKey *types.NamespacedName, state database.AutonomousContainerDatabaseLifecycleStateEnum) func() {
+	return func() {
+
+		// ACD state should be AVAILABLE
+		acdBindTimeout := time.Minute * 3
+
+		By("Wait until ACD is in state AVAILABLE")
+		AssertACDState(k8sClient, dbClient, acdLookupKey, state, acdBindTimeout)()
+	}
+}
+
+func UpdateAndAssertACDSpec(k8sClient *client.Client, dbClient *database.DatabaseClient, acdLookupKey *types.NamespacedName) func() {
+	return func() {
+		expectedACD := UpdateACDSpec(k8sClient, dbClient, acdLookupKey)()
+		AssertACDSpec(k8sClient, dbClient, acdLookupKey, expectedACD)()
+	}
+}
+
+func UpdateACDSpec(k8sClient *client.Client, dbClient *database.DatabaseClient, acdLookupKey *types.NamespacedName) func() *dbv1alpha1.AutonomousContainerDatabase {
+	return func() *dbv1alpha1.AutonomousContainerDatabase {
+		Expect(k8sClient).NotTo(BeNil())
+		Expect(dbClient).NotTo(BeNil())
+
+		derefK8sClient := *k8sClient
+		expectedAcd := &dbv1alpha1.AutonomousContainerDatabase{}
+		Expect(derefK8sClient.Get(context.TODO(), *acdLookupKey, expectedAcd)).To(Succeed())
+
+		expectedAcd.Spec.DisplayName = common.String(*expectedAcd.Spec.DisplayName + "_new")
+
+		Expect(derefK8sClient.Update(context.TODO(), expectedAcd)).To(Succeed())
+		return expectedAcd
+	}
+}
+
+func AssertACDSpec(k8sClient *client.Client, dbClient *database.DatabaseClient, acdLookupKey *types.NamespacedName, expectedACD *dbv1alpha1.AutonomousContainerDatabase) func() {
+	return func() {
+		Expect(k8sClient).NotTo(BeNil())
+		Expect(dbClient).NotTo(BeNil())
+		Expect(acdLookupKey).NotTo(BeNil())
+
+		derefDBClient := *dbClient
+
+		expectedACDSpec := expectedACD.Spec
+		Eventually(func() (bool, error) {
+			// Fetch the ACD from OCI when it's in AVAILABLE state, and retry if its attributes doesn't match the new ACD's attributes
+			retryPolicy := e2eutil.NewLifecycleStateRetryPolicyACD(database.AutonomousContainerDatabaseLifecycleStateAvailable)
+			resp, err := e2eutil.GetAutonomousContainerDatabase(derefDBClient, expectedACD.Spec.AutonomousContainerDatabaseOCID, &retryPolicy)
+			if err != nil {
+				return false, err
+			}
+
+			debug := true
+			if debug {
+				if !compareString(expectedACDSpec.AutonomousContainerDatabaseOCID, resp.AutonomousContainerDatabase.Id) {
+					fmt.Fprintf(GinkgoWriter, "Expected OCID: %v\nGot: %v\n", expectedACDSpec.AutonomousContainerDatabaseOCID, resp.AutonomousContainerDatabase.Id)
+				}
+				if !compareString(expectedACDSpec.CompartmentOCID, resp.AutonomousContainerDatabase.CompartmentId) {
+					fmt.Fprintf(GinkgoWriter, "Expected CompartmentOCID: %v\nGot: %v\n", expectedACDSpec.CompartmentOCID, resp.CompartmentId)
+				}
+				if !compareString(expectedACDSpec.DisplayName, resp.AutonomousContainerDatabase.DisplayName) {
+					fmt.Fprintf(GinkgoWriter, "Expected DisplayName: %v\nGot: %v\n", expectedACDSpec.DisplayName, resp.AutonomousContainerDatabase.DisplayName)
+				}
+				if !compareString(expectedACDSpec.AutonomousExadataVMClusterOCID, resp.AutonomousContainerDatabase.CloudAutonomousVmClusterId) {
+					fmt.Fprintf(GinkgoWriter, "Expected AutonomousExadataVMClusterOCID: %v\nGot: %v\n", expectedACDSpec.AutonomousExadataVMClusterOCID, resp.AutonomousContainerDatabase.CloudAutonomousVmClusterId)
+				}
+				if !compareStringMap(expectedACDSpec.FreeformTags, resp.AutonomousContainerDatabase.FreeformTags) {
+					fmt.Fprintf(GinkgoWriter, "Expected FreeformTags: %v\nGot: %v\n", expectedACDSpec.FreeformTags, resp.AutonomousContainerDatabase.FreeformTags)
+				}
+				if expectedACDSpec.PatchModel != resp.AutonomousContainerDatabase.PatchModel {
+					fmt.Fprintf(GinkgoWriter, "Expected PatchModel: %v\nGot: %v\n", expectedACDSpec.PatchModel, resp.AutonomousContainerDatabase.PatchModel)
+				}
+			}
+
+			// Compare the elements one by one rather than doing reflect.DeelEqual(adb1, adb2), since some parameters
+			// (e.g. adminPassword, wallet) are missing from e2eutil.GetAutonomousDatabase().
+			// We don't compare LifecycleState in this case. We only make sure that the ADB is in AVAIABLE state before
+			// proceeding to the next test.
+			same := compareString(expectedACDSpec.AutonomousContainerDatabaseOCID, resp.AutonomousContainerDatabase.Id) &&
+				compareString(expectedACDSpec.CompartmentOCID, resp.AutonomousContainerDatabase.CompartmentId) &&
+				compareString(expectedACDSpec.DisplayName, resp.AutonomousContainerDatabase.DisplayName) &&
+				compareString(expectedACDSpec.AutonomousExadataVMClusterOCID, resp.AutonomousContainerDatabase.CloudAutonomousVmClusterId) &&
+				compareStringMap(expectedACDSpec.FreeformTags, resp.AutonomousContainerDatabase.FreeformTags) &&
+				expectedACDSpec.PatchModel == resp.AutonomousContainerDatabase.PatchModel
+
+			return same, nil
+		}, updateACDTimeout, intervalTime).Should(BeTrue())
+
+		// IMPORTANT: make sure the local resource has finished reconciling, otherwise the changes will
+		// be conflicted with the next test and cause unknow result.
+		AssertACDLocalState(k8sClient, acdLookupKey, database.AutonomousContainerDatabaseLifecycleStateAvailable, time.Minute*2)()
+	}
+}
+
+func AssertACDRestart(k8sClient *client.Client, dbClient *database.DatabaseClient, acdLookupKey *types.NamespacedName) func() {
+	return func() {
+		Expect(k8sClient).NotTo(BeNil())
+		Expect(dbClient).NotTo(BeNil())
+		Expect(acdLookupKey).NotTo(BeNil())
+
+		derefK8sClient := *k8sClient
+		acd := &dbv1alpha1.AutonomousContainerDatabase{}
+		Expect(derefK8sClient.Get(context.TODO(), *acdLookupKey, acd)).To(Succeed())
+
+		acd.Spec.Action = dbv1alpha1.AcdActionRestart
+
+		Expect(derefK8sClient.Update(context.TODO(), acd))
+
+		// Check ACD status is RESTARTING
+		AssertACDState(k8sClient, dbClient, acdLookupKey, database.AutonomousContainerDatabaseLifecycleStateRestarting, time.Minute*2)()
+		// Wait until restart is completed
+		AssertACDState(k8sClient, dbClient, acdLookupKey, database.AutonomousContainerDatabaseLifecycleStateAvailable, time.Minute*7)()
+	}
+}
+
+func AssertACDTerminate(k8sClient *client.Client, dbClient *database.DatabaseClient, acdLookupKey *types.NamespacedName) func() {
+	return func() {
+		Expect(k8sClient).NotTo(BeNil())
+		Expect(dbClient).NotTo(BeNil())
+		Expect(acdLookupKey).NotTo(BeNil())
+
+		derefK8sClient := *k8sClient
+		acd := &dbv1alpha1.AutonomousContainerDatabase{}
+		Expect(derefK8sClient.Get(context.TODO(), *acdLookupKey, acd))
+
+		acd.Spec.Action = dbv1alpha1.AcdActionTerminate
+		Expect(derefK8sClient.Update(context.TODO(), acd))
+
+		// Check ACD status is TERMINATING
+		AssertACDState(k8sClient, dbClient, acdLookupKey, database.AutonomousContainerDatabaseLifecycleStateTerminating, time.Minute*2)()
+		// Wait until status is TERMINATED
+		AssertACDState(k8sClient, dbClient, acdLookupKey, database.AutonomousContainerDatabaseLifecycleStateTerminated, time.Minute*40)()
+	}
+}
+
+func AssertACDLocalDelete(k8sClient *client.Client, dbClient *database.DatabaseClient, acdLookupKey *types.NamespacedName) func() {
+	return func() {
+		Expect(k8sClient).NotTo(BeNil())
+		Expect(dbClient).NotTo(BeNil())
+		Expect(acdLookupKey).NotTo(BeNil())
+
+		derefK8sClient := *k8sClient
+		existingAcd := &dbv1alpha1.AutonomousContainerDatabase{}
+		Expect(derefK8sClient.Get(context.TODO(), *acdLookupKey, existingAcd)).To(Succeed())
+		Expect(derefK8sClient.Delete(context.TODO(), existingAcd))
+
+		By("Checking if the AutonomousContainerDatabase resource is deleted")
+		Eventually(func() (isDeleted bool) {
+			acd := &dbv1alpha1.AutonomousContainerDatabase{}
+			isDeleted = false
+			err := derefK8sClient.Get(context.TODO(), *acdLookupKey, acd)
+			if err != nil && k8sErrors.IsNotFound(err) {
+				isDeleted = true
+				return
+			}
+			return
+		}, changeTimeout, intervalTime).Should(Equal(true))
+
+		AssertACDRemoteState(k8sClient, dbClient, acdLookupKey, database.AutonomousContainerDatabaseLifecycleStateAvailable, time.Minute*2)
 	}
 }

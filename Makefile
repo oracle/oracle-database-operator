@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Copyright (c) 2022, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 
@@ -59,7 +59,7 @@ test: manifests generate fmt vet envtest ## Run unit tests.
 
 E2ETEST ?= ./test/e2e/
 e2e: manifests generate fmt vet envtest ## Run e2e tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test $(E2ETEST) -v -timeout 80m -ginkgo.v -ginkgo.failFast
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" ginkgo -v --timeout=2h30m --fail-fast $(E2ETEST)
 
 ##@ Build
 

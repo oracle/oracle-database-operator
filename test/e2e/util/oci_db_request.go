@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -131,9 +131,20 @@ func generateRetryPolicy(retryFunc func(r common.OCIOperationResponse) bool) com
 	return common.NewRetryPolicy(attempts, retryFunc, nextDuration)
 }
 
-func NewLifecycleStateRetryPolicy(lifecycleState database.AutonomousDatabaseLifecycleStateEnum) common.RetryPolicy {
+func NewLifecycleStateRetryPolicyADB(lifecycleState database.AutonomousDatabaseLifecycleStateEnum) common.RetryPolicy {
 	shouldRetry := func(r common.OCIOperationResponse) bool {
 		if databaseResponse, ok := r.Response.(database.GetAutonomousDatabaseResponse); ok {
+			// do the retry until lifecycle state reaches the passed terminal state
+			return databaseResponse.LifecycleState != lifecycleState
+		}
+		return true
+	}
+	return generateRetryPolicy(shouldRetry)
+}
+
+func NewLifecycleStateRetryPolicyACD(lifecycleState database.AutonomousContainerDatabaseLifecycleStateEnum) common.RetryPolicy {
+	shouldRetry := func(r common.OCIOperationResponse) bool {
+		if databaseResponse, ok := r.Response.(database.GetAutonomousContainerDatabaseResponse); ok {
 			// do the retry until lifecycle state reaches the passed terminal state
 			return databaseResponse.LifecycleState != lifecycleState
 		}
