@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -157,7 +157,7 @@ var _ = Describe("test ADB provisioning", func() {
 			Expect(k8sClient.Create(context.TODO(), duplicateAdb)).To(Succeed())
 		})
 
-		It("Should check for local resource state \"\"", e2ebehavior.AssertLocalState(&k8sClient, &dupAdbLookupKey, ""))
+		It("Should check for local resource state \"\"", e2ebehavior.AssertADBLocalState(&k8sClient, &dupAdbLookupKey, ""))
 
 		It("Should cleanup the resource with duplicated db name", func() {
 			duplicateAdb := &dbv1alpha1.AutonomousDatabase{
@@ -174,7 +174,7 @@ var _ = Describe("test ADB provisioning", func() {
 		})
 
 		It("Should create an Autonomous Database Backup", func() {
-			e2ebehavior.AssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+			e2ebehavior.AssertADBState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
 
 			// Get adb ocid
 			adb := &dbv1alpha1.AutonomousDatabase{}
@@ -214,7 +214,7 @@ var _ = Describe("test ADB provisioning", func() {
 		})
 
 		It("Should restore a database", func() {
-			e2ebehavior.AssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+			e2ebehavior.AssertADBState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
 
 			adbRestore := &dbv1alpha1.AutonomousDatabaseRestore{
 				TypeMeta: metav1.TypeMeta{
