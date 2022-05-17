@@ -254,7 +254,7 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 
 	// Validate the apex ADMIN password if it is specified
 
-	if m.Status.ApexConfigured && m.Spec.ApexPassword.SecretName != "" {
+	if !m.Status.ApexConfigured && m.Spec.ApexPassword.SecretName != "" {
 		apexPasswordSecret := &corev1.Secret{}
 		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
 		if err != nil {
