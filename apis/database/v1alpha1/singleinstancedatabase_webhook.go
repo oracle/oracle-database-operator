@@ -154,6 +154,12 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 			field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 				"Express edition PDB must be XEPDB1"))
 	}
+	if r.Spec.Edition == "express" &&
+		(r.Spec.InitParams.CpuCount != 0 || r.Spec.InitParams.Processes != 0 || r.Spec.InitParams.SgaTarget != 0 || r.Spec.InitParams.PgaAggregateTarget != 0) {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("initParams"), r.Spec.Pdbname,
+				"Express edition does not support changing init-parameters."))
+	}
 	if r.Spec.Edition != "express" && r.Spec.Sid == "XE" {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,

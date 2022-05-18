@@ -5,3 +5,4 @@ testbin/*
 onpremtest/*
 ords/*zip
 .gitattributes
+.vscode
