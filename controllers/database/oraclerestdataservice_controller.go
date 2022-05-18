@@ -506,20 +506,18 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 		Spec: corev1.PodSpec{
 			Affinity: func() *corev1.Affinity {
 				if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+					// Only allowing pods to be scheduled on the node where SIDB pods are running
 					return &corev1.Affinity{
 						PodAffinity: &corev1.PodAffinity{
-							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
-								Weight: 100,
-								PodAffinityTerm: corev1.PodAffinityTerm{
-									LabelSelector: &metav1.LabelSelector{
-										MatchExpressions: []metav1.LabelSelectorRequirement{{
-											Key:      "app",
-											Operator: metav1.LabelSelectorOpIn,
-											Values:   []string{n.Name}, // Schedule on same host as DB Pod
-										}},
-									},
-									TopologyKey: "kubernetes.io/hostname",
+							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{{
+										Key:      "app",
+										Operator: metav1.LabelSelectorOpIn,
+										Values:   []string{n.Name}, // Schedule on same host as DB Pod
+									}},
 								},
+								TopologyKey: "kubernetes.io/hostname",
 							},
 							},
 						},
@@ -1431,7 +1429,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			strconv.FormatBool(m.Spec.RestEnableSchemas[i].Enable), urlMappingPattern, pdbName)
 
 		// Create users,schemas and grant enableORDS for PDB
-		_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 			fmt.Sprintf("echo -e  \"%s\"  | %s", enableORDSSchema, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
