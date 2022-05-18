@@ -1630,6 +1630,12 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 		log.Error(err, err.Error())
 		return requeueY, err
 	}
+	// Notify the user about unsucessfull init-parameter value change
+	if strings.Contains(out, "ORA-") {
+		eventReason := "Invalid init-param value"
+		eventMsg := "Unable to change the init-param as specified. Error log: \n" + out
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+	}
 	log.Info("AlterSgaPgaCpuCMD Output:" + out)
 
 	if m.Status.InitParams.Processes != m.Spec.InitParams.Processes {
