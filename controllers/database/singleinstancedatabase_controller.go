@@ -453,7 +453,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //#############################################################################
 //    Instantiate POD spec from SingleInstanceDatabase spec
 //#############################################################################
-func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase) *corev1.Pod {
+func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, patching bool) *corev1.Pod {
 
 	// POD spec
 	pod := &corev1.Pod{
@@ -471,11 +471,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 		Spec: corev1.PodSpec{
 			Affinity: func() *corev1.Affinity {
 				if m.Spec.Persistence.AccessMode == "ReadWriteOnce" {
-					return &corev1.Affinity{
-						PodAffinity: &corev1.PodAffinity{
-							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
-								Weight: 100,
-								PodAffinityTerm: corev1.PodAffinityTerm{
+					if patching {
+						return &corev1.Affinity{
+							PodAffinity: &corev1.PodAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
 									LabelSelector: &metav1.LabelSelector{
 										MatchExpressions: []metav1.LabelSelectorRequirement{{
 											Key:      "app",
@@ -484,10 +483,28 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 										}},
 									},
 									TopologyKey: "kubernetes.io/hostname",
+								}},
+							},
+						}
+					} else {
+						return &corev1.Affinity{
+							PodAffinity: &corev1.PodAffinity{
+								PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
+									Weight: 100,
+									PodAffinityTerm: corev1.PodAffinityTerm{
+										LabelSelector: &metav1.LabelSelector{
+											MatchExpressions: []metav1.LabelSelectorRequirement{{
+												Key:      "app",
+												Operator: metav1.LabelSelectorOpIn,
+												Values:   []string{m.Name},
+											}},
+										},
+										TopologyKey: "kubernetes.io/hostname",
+									},
+								},
 								},
 							},
-							},
-						},
+						}
 					}
 				}
 				return nil
@@ -1121,7 +1138,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 				r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 			}
 			// If version is same , call createPods() with the same version ,  and no of Replicas required
-			return r.createPods(m, n, ctx, req, replicasFound)
+			return r.createPods(m, n, ctx, req, replicasFound, false)
 		}
 		eventReason = "Scaling In"
 		eventMsg = "from " + strconv.Itoa(replicasFound) + " pods to " + strconv.Itoa(m.Spec.Replicas)
@@ -1163,7 +1180,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	}
 
 	// create new Pods with the new Version and no.of Replicas required
-	result, err := r.createPods(m, n, ctx, req, newReplicasFound)
+	result, err := r.createPods(m, n, ctx, req, newReplicasFound, true)
 	if result.Requeue {
 		return result, err
 	}
@@ -1319,13 +1336,14 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	return requeueN, nil
 }
 
-//#############################################################################
+//##############################################################################
 //    Create the requested POD replicas
 //    m = SingleInstanceDatabase
 //    n = CloneFromDatabase
-//#############################################################################
+//    patching =  Boolean variable to differentiate normal usecase with patching
+//##############################################################################
 func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase,
-	ctx context.Context, req ctrl.Request, replicasFound int) (ctrl.Result, error) {
+	ctx context.Context, req ctrl.Request, replicasFound int, patching bool) (ctrl.Result, error) {
 
 	log := r.Log.WithValues("createPods", req.NamespacedName)
 
@@ -1342,7 +1360,7 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 	}
 	//  if Found < Required , Create New Pods , Name of Pods are generated Randomly
 	for i := replicasFound; i < replicasReq; i++ {
-		pod := r.instantiatePodSpec(m, n)
+		pod := r.instantiatePodSpec(m, n, patching)
 		log.Info("Creating a new "+m.Name+" POD", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 		err := r.Create(ctx, pod)
 		if err != nil {
