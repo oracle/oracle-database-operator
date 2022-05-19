@@ -97,6 +97,13 @@ func (r *SingleInstanceDatabase) Default() {
 			r.Spec.Pdbname = "ORCLPDB1"
 		}
 	}
+
+	if r.Spec.Edition == "express" {
+		if r.Status.Replicas == 1 {
+			// default the replicas for XE
+			r.Spec.Replicas = 1
+		}
+	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
