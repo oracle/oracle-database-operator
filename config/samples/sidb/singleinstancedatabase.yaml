@@ -47,6 +47,7 @@ spec:
   ## NA if cloning from a SourceDB (cloneFrom is set)
   ## Specify both sgaSize and pgaSize (in MB) or dont specify both
   ## Specify Non-Zero value to use
+  ## You cannot change these initParams for Oracle Database Express (XE) edition
   initParams:
     cpuCount: 0
     processes: 0
