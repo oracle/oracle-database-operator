@@ -146,31 +146,48 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	if r.Spec.Edition == "express" && r.Spec.CloneFrom != "" {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
-				"Cloning not supported for Express edition"))
-	}
-	if r.Spec.Edition == "express" && strings.ToUpper(r.Spec.Sid) != "XE" {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
-				"Express edition SID must only be XE"))
-	}
-	if r.Spec.Edition == "express" && strings.ToUpper(r.Spec.Pdbname) != "XEPDB1" {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
-				"Express edition PDB must be XEPDB1"))
-	}
-	if r.Spec.Edition == "express" &&
-		(r.Spec.InitParams.CpuCount != 0 || r.Spec.InitParams.Processes != 0 || r.Spec.InitParams.SgaTarget != 0 || r.Spec.InitParams.PgaAggregateTarget != 0) {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("initParams"), r.Spec.Pdbname,
-				"Express edition does not support changing init-parameters."))
-	}
-	if r.Spec.Edition != "express" && r.Spec.Sid == "XE" {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
-				"XE is reserved as the SID for Express edition of the database"))
+	if r.Spec.Edition == "express" {
+		if r.Spec.CloneFrom != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
+					"Cloning not supported for Express edition"))
+		}
+		if strings.ToUpper(r.Spec.Sid) != "XE" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
+					"Express edition SID must only be XE"))
+		}
+		if strings.ToUpper(r.Spec.Pdbname) != "XEPDB1" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
+					"Express edition PDB must be XEPDB1"))
+		}
+		if r.Spec.InitParams.CpuCount != 0 {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("initParams").Child("cpuCount"), r.Spec.InitParams.CpuCount,
+					"Express edition does not support changing init parameter cpuCount."))
+		}
+		if r.Spec.InitParams.Processes != 0 {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("initParams").Child("processes"), r.Spec.InitParams.Processes,
+					"Express edition does not support changing init parameter process."))
+		}
+		if r.Spec.InitParams.SgaTarget != 0 {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("initParams").Child("sgaTarget"), r.Spec.InitParams.SgaTarget,
+					"Express edition does not support changing init parameter sgaTarget."))
+		}
+		if r.Spec.InitParams.PgaAggregateTarget != 0 {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("initParams").Child("pgaAggregateTarget"), r.Spec.InitParams.PgaAggregateTarget,
+					"Express edition does not support changing init parameter pgaAggregateTarget."))
+		}
+	} else {
+		if r.Spec.Sid == "XE" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
+					"XE is reserved as the SID for Express edition of the database"))
+		}
 	}
 
 	if r.Spec.CloneFrom != "" {
