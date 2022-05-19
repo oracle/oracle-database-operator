@@ -1402,6 +1402,7 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 			log.Error(err, "Failed to create new "+m.Name+" POD", "pod.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			return requeueY, err
 		}
+		m.Status.Replicas += 1
 		if waitForFirstPod {
 			log.Info("Wait for first pod to get to running state", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			return requeueY, err
@@ -1417,8 +1418,6 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 	if readyPod.Name != "" {
 		availableFinal = append(availableFinal, readyPod)
 	}
-
-	m.Status.Replicas = m.Spec.Replicas
 
 	podNamesFinal := dbcommons.GetPodNames(availableFinal)
 	log.Info("Final "+m.Name+" Pods After Deleting (or) Adding Extra Pods ( Including The Ready Pod ) ", "Pod Names", podNamesFinal)
@@ -1481,10 +1480,10 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 		if err != nil {
 			r.Log.Error(err, "Failed to delete existing POD", "POD.Name", availablePod.Name)
 			// Don't requeue
+		} else {
+			m.Status.Replicas -= 1
 		}
 	}
-
-	m.Status.Replicas = m.Spec.Replicas
 
 	return requeueN, nil
 }
