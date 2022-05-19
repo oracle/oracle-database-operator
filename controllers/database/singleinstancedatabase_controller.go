@@ -173,19 +173,6 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, nil
 	}
 
-	if singleInstanceDatabase.Status.DatafilesCreated != "true" {
-		// Creation of Oracle Wallet for Single Instance Database credentials
-		result, err = r.createWallet(singleInstanceDatabase, ctx, req)
-		if result.Requeue {
-			r.Log.Info("Reconcile queued")
-			return result, nil
-		}
-		if err != nil {
-			r.Log.Info("Spec validation failed")
-			return result, nil
-		}
-	}
-
 	// Validate readiness
 	var readyPod corev1.Pod
 	result, readyPod, err = r.validateDBReadiness(singleInstanceDatabase, ctx, req)
@@ -1128,28 +1115,68 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	if !imageChanged {
 		eventReason := ""
 		eventMsg := ""
+		if replicasFound > m.Spec.Replicas {
+			eventReason = "Scaling in pods"
+			eventMsg = "from " + strconv.Itoa(replicasFound) + " to " + strconv.Itoa(m.Spec.Replicas)
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			// Delete extra PODs
+			return r.deletePods(ctx, req, m, allAvailable, readyPod, replicasFound, m.Spec.Replicas)
+		}
+		if replicasFound != 0 {
+			if replicasFound == 1 {
+				if m.Status.DatafilesCreated != "true" {
+					log.Info("No datafiles created, single replica found, creating wallet")
+					// Creation of Oracle Wallet for Single Instance Database credentials
+					r.createWallet(m, ctx, req)
+				}
+			}
+			if ok, _ := dbcommons.IsAnyPodWithStatus(allAvailable, corev1.PodRunning); !ok {
+				eventReason = "Database Pending"
+				eventMsg = "waiting for a pod to get to running state"
+				log.Info(eventMsg)
+				r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+				for i := 0; i < len(allAvailable); i++ {
+					r.Log.Info("Pod status: ", "name", allAvailable[i].Name, "phase", allAvailable[i].Status.Phase)
+					waitingReason := ""
+					var stateWaiting *corev1.ContainerStateWaiting
+					if len(allAvailable[i].Status.InitContainerStatuses) > 0 {
+						stateWaiting = allAvailable[i].Status.InitContainerStatuses[0].State.Waiting
+					} else if len(allAvailable[i].Status.ContainerStatuses) > 0 {
+						stateWaiting = allAvailable[i].Status.ContainerStatuses[0].State.Waiting
+					}
+					if stateWaiting != nil {
+						waitingReason = stateWaiting.Reason
+					}
+					if waitingReason == "" {
+						continue
+					}
+					r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
+					if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
+						r.Log.Info("Deleting pod", "name", allAvailable[i].Name)
+						var gracePeriodSeconds int64 = 0
+						policy := metav1.DeletePropagationForeground
+						r.Delete(ctx, &allAvailable[i], &client.DeleteOptions{
+							GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
+					}
+				}
+				return requeueY, err
+			}
+		}
 		if replicasFound == m.Spec.Replicas {
 			return requeueN, nil
 		}
-		if replicasFound < m.Spec.Replicas {
-			if replicasFound != 0 {
-				eventReason = "Scaling Out"
-				eventMsg = "from " + strconv.Itoa(replicasFound) + " pods to " + strconv.Itoa(m.Spec.Replicas)
-				r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			}
-			// If version is same , call createPods() with the same version ,  and no of Replicas required
-			return r.createPods(m, n, ctx, req, replicasFound, false)
+		if replicasFound != 0 && replicasFound < m.Spec.Replicas {
+			eventReason = "Scaling out pods"
+			eventMsg = "from " + strconv.Itoa(replicasFound) + " to " + strconv.Itoa(m.Spec.Replicas)
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 		}
-		eventReason = "Scaling In"
-		eventMsg = "from " + strconv.Itoa(replicasFound) + " pods to " + strconv.Itoa(m.Spec.Replicas)
-		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-		// Delete extra PODs
-		return r.deletePods(ctx, req, m, allAvailable, readyPod, replicasFound, m.Spec.Replicas)
+		// If version is same , call createPods() with the same version ,  and no of Replicas required
+		return r.createPods(m, n, ctx, req, replicasFound, false)
 	}
 
 	// Version/Image changed
 	// PATCHING START (Only Software Patch)
-
+	log.Info("Pod image change detected")
 	// call FindPods() to find pods of older version. Delete all the Pods
 	readyPod, oldReplicasFound, oldAvailable, _, err := dbcommons.FindPods(r, oldVersion,
 		oldImage, m.Name, m.Namespace, ctx, req)
@@ -1162,7 +1189,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		oldAvailable = append(oldAvailable, readyPod)
 	}
 
-	if m.Spec.Replicas == 1 {
+	if m.Status.Replicas == 1 {
 		r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
 	}
 
@@ -1179,41 +1206,47 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		newAvailable = append(newAvailable, readyPod)
 	}
 
+	if newReplicasFound != 0 {
+		if ok, _ := dbcommons.IsAnyPodWithStatus(newAvailable, corev1.PodRunning); !ok {
+			eventReason := "Database Pending"
+			eventMsg := "waiting for pod with changed image to get to running state"
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			log.Info(eventMsg)
+
+			for i := 0; i < len(newAvailable); i++ {
+				r.Log.Info("Pod status: ", "name", newAvailable[i].Name, "phase", newAvailable[i].Status.Phase)
+				waitingReason := ""
+				var stateWaiting *corev1.ContainerStateWaiting
+				if len(newAvailable[i].Status.InitContainerStatuses) > 0 {
+					stateWaiting = newAvailable[i].Status.InitContainerStatuses[0].State.Waiting
+				} else if len(newAvailable[i].Status.ContainerStatuses) > 0 {
+					stateWaiting = newAvailable[i].Status.ContainerStatuses[0].State.Waiting
+				}
+				if stateWaiting != nil {
+					waitingReason = stateWaiting.Reason
+				}
+				if waitingReason == "" {
+					continue
+				}
+				r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
+				if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
+					r.Log.Info("Deleting pod", "name", newAvailable[i].Name)
+					var gracePeriodSeconds int64 = 0
+					policy := metav1.DeletePropagationForeground
+					r.Delete(ctx, &newAvailable[i], &client.DeleteOptions{
+						GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
+				}
+			}
+			return requeueY, errors.New(eventMsg)
+		}
+	}
+
 	// create new Pods with the new Version and no.of Replicas required
 	result, err := r.createPods(m, n, ctx, req, newReplicasFound, true)
 	if result.Requeue {
 		return result, err
 	}
-
-	if ok, _ := dbcommons.IsAnyPodWithStatus(newAvailable, corev1.PodRunning); !ok {
-		eventReason := "Database Pending"
-		eventMsg := "waiting for newer version/image DB pods get to running state"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-		log.Info(eventMsg)
-
-		for i := 0; i < len(newAvailable); i++ {
-			r.Log.Info("Pod status: ", "name", newAvailable[i].Name, "phase", newAvailable[i].Status.Phase)
-			waitingReason := ""
-			if len(newAvailable[i].Status.InitContainerStatuses) > 0 {
-				waitingReason = newAvailable[i].Status.InitContainerStatuses[0].State.Waiting.Reason
-			} else if len(newAvailable[i].Status.ContainerStatuses) > 0 {
-				waitingReason = newAvailable[i].Status.ContainerStatuses[0].State.Waiting.Reason
-			}
-			if waitingReason == "" {
-				continue
-			}
-			r.Log.Info("Pod unavailable reason: ", "reason", waitingReason)
-			if strings.Contains(waitingReason, "ImagePullBackOff") || strings.Contains(waitingReason, "ErrImagePull") {
-				r.Log.Info("Deleting pod", "name", newAvailable[i].Name)
-				var gracePeriodSeconds int64 = 0
-				policy := metav1.DeletePropagationForeground
-				r.Delete(ctx, &newAvailable[i], &client.DeleteOptions{
-					GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
-			}
-		}
-		return requeueY, errors.New(eventMsg)
-	}
-	if m.Spec.Replicas == 1 {
+	if m.Status.Replicas == 1 {
 		return requeueN, nil
 	}
 	return r.deletePods(ctx, req, m, oldAvailable, corev1.Pod{}, oldReplicasFound, 0)
@@ -1252,12 +1285,12 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 		return requeueY, nil
 	}
 
-	// Iterate through the avaialableFinal (list of pods) to find out the pod whose status is updated about the init containers
+	// Iterate through the availableFinal (list of pods) to find out the pod whose status is updated about the init containers
 	// If no required pod found then requeue the reconcile request
 	var pod corev1.Pod
 	var podFound bool
 	for _, pod = range availableFinal {
-		// Check if pod status contianer is updated about init containers
+		// Check if pod status container is updated about init containers
 		if len(pod.Status.InitContainerStatuses) > 0 {
 			podFound = true
 			break
@@ -1296,9 +1329,9 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 
 		if err == nil && out != "" {
 			m.Status.Status = dbcommons.StatusError
-			eventMsg := "wrong edition"
+			eventMsg := "incorrect database edition"
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-			return requeueN, errors.New("wrong Edition")
+			return requeueY, errors.New(eventMsg)
 		}
 	}
 
@@ -1353,10 +1386,12 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 		log.Info("No of " + m.Name + " replicas found are same as required")
 		return requeueN, nil
 	}
+	waitForFirstPod := false
 	if replicasFound == 0 {
 		m.Status.Status = dbcommons.StatusPending
 		m.Status.DatafilesCreated = "false"
 		m.Status.DatafilesPatched = "false"
+		waitForFirstPod = true
 	}
 	//  if Found < Required , Create New Pods , Name of Pods are generated Randomly
 	for i := replicasFound; i < replicasReq; i++ {
@@ -1365,6 +1400,10 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 		err := r.Create(ctx, pod)
 		if err != nil {
 			log.Error(err, "Failed to create new "+m.Name+" POD", "pod.Namespace", pod.Namespace, "POD.Name", pod.Name)
+			return requeueY, err
+		}
+		if waitForFirstPod {
+			log.Info("Wait for first pod to get to running state", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			return requeueY, err
 		}
 	}
@@ -1624,7 +1663,11 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 
 	m.Status.DatafilesPatched = "true"
 	status, versionFrom, versionTo, _ := dbcommons.GetSqlpatchStatus(r, r.Config, readyPod, ctx, req)
-	eventMsg = "data files patched from " + versionFrom + " to " + versionTo + " : " + status
+	if versionTo != "" {
+		eventMsg = "data files patched from " + versionFrom + " to " + versionTo + " : " + status
+	} else {
+		eventMsg = "datapatch execution completed"
+	}
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
 	return requeueN, nil
