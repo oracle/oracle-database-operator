@@ -214,6 +214,8 @@ const GetEnterpriseEditionFileCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbcon
 
 const GetStandardEditionFileCMD string = "if [ -f ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_standard ]; then ls ${ORACLE_BASE}/oradata/dbconfig/$ORACLE_SID/.docker_standard; fi "
 
+const CreateSIDlinkCMD string = "cd ${ORACLE_BASE}/oradata && test ! -e $ORACLE_SID && ln -s $(basename $PRIMARY_DB_CONN_STR)/$ORACLE_SID"
+
 const GetPdbsSQL string = "select name from v\\$pdbs where name not like 'PDB\\$SEED' and open_mode like 'READ WRITE';"
 
 const OpenPDBSeed = "alter pluggable database pdb\\$seed close;" +
