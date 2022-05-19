@@ -1511,7 +1511,15 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			eventReason = "Database Creating"
 			eventMsg = "waiting for database to be ready"
 			m.Status.Status = dbcommons.StatusCreating
-
+			if m.Spec.CloneFrom != "" {
+				// Required since clone creates the datafiles under primary database SID folder
+				r.Log.Info("Creating the SID directory link for clone database", "name", m.Spec.Sid)
+				_, err := dbcommons.ExecCommand(r, r.Config, runningPod.Name, runningPod.Namespace, "",
+				ctx, req, false, "bash", "-c", dbcommons.CreateSIDlinkCMD)
+				if err != nil {
+					r.Log.Info(err.Error())
+				}
+			}
 			out, err := dbcommons.ExecCommand(r, r.Config, runningPod.Name, runningPod.Namespace, "",
 				ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD)
 			if err != nil {
