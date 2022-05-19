@@ -246,9 +246,7 @@ func ExecCommand(r client.Reader, config *rest.Config, podName string, namespace
 	pod := &corev1.Pod{}
 	err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: namespace}, pod)
 	if err != nil {
-		return "", fmt.Errorf("could not get pod info: %v", err)
-	} else {
-		log.Info("Pod Found", "Name : ", podName)
+		return "", fmt.Errorf("could not find pod to execute command: %v", err)
 	}
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -275,7 +273,7 @@ func ExecCommand(r client.Reader, config *rest.Config, podName string, namespace
 		Tty:    false,
 	})
 	if err != nil {
-		return "", fmt.Errorf("could not execute: %v", err)
+		return "", err
 	}
 	if execErr.Len() > 0 {
 		return "", fmt.Errorf("stderr: %v", execErr.String())
