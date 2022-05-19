@@ -143,6 +143,8 @@ You can easily provision a new database instance on the Kubernetes cluster by us
 **NOTE:** 
 - For ease of use, the storage class **oci-bv** is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**. This storage class facilitates dynamic provisioning of the OCI block volumes on the Oracle OKE for persistent storage of the database. For other cloud providers, you can similarly use their dynamic provisioning storage class.
 - Supports Oracle Database Enterprise Edition (19.3.0), and later releases.
+- To pull the database image faster from the container registry in order to bring up the SIDB instance quickly, you can use container-registry mirror of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, you can use `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, please follow the link [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
+- Updating the init parameters like `sgaTarget` and `pgaAggregateTarget` (please refer [singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)) requires restart of the database to apply the new values. This database restart is handled by the Operator automatically.
 
 ### Provisioning a new XE database
 To provision new Oracle Database Express Edition (XE) database, use the sample **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)** file. For example:
@@ -154,16 +156,7 @@ This command pulls the XE image uploaded on the [Oracle Container Registry](http
 **NOTE:**
 - Provisioning Oracle Database express edition is supported for release 21c (21.3.0) and later releases.
 - For XE database, only single replica mode (i.e. `replicas: 1`) is supported.
-- For XE database `SGA_TARGET + PGA_AGGREGATE_TARGET <= 2GB`. The default values for these parameters are 1536M and 512M respectively.
-- If you want to set the `sgaTarget` and the `pgaAggregateTarget` for the XE edition, set the `sgaTarget` to the required value in the first go. After this, you can set the `pgaAggregateTarget` next. You need to add the following section to modify the `init-parameters` in the **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)**:
-
-      initParams:
-        cpuCount: <cpu-count>
-        processes: <num-processes>
-        sgaTarget: <sga-target>
-        pgaAggregateTarget: <pga-aggregate-target>
-
-- Updating the init-parameters like `sgaTarget` and `pgaAggregateTarget` requires restart of the database to apply the new values. This database restart is handled by the Operator automatically.
+- For XE database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
 
 ### Provision a pre-built database
 
@@ -445,7 +438,7 @@ $ kubectl describe oraclerestdataservice ords-sample
       
       kubectl delete oraclerestdataservice ords-samples
 
-- You can not delete referred Single Instance Database (SIDB) before deleting its ORDS resource.
+- You cannot delete referred Single Instance Database (SIDB) before deleting its ORDS resource.
 
 ## REST Enable Database
 
