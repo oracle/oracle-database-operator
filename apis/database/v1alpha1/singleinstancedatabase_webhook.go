@@ -203,6 +203,22 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
+	if r.Status.FlashBack == "true" {
+		if !r.Spec.ArchiveLog {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("archiveLog"), r.Spec.ArchiveLog,
+					"Cannot disable Archivelog. Please disable Flashback first."))
+		}
+	}
+
+	if !r.Spec.ArchiveLog {
+		if r.Spec.FlashBack {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("flashBack"), r.Spec.FlashBack,
+					"Cannot enable Flashback. Please enable Archivelog first."))
+		}
+	}
+
 	if len(allErrs) == 0 {
 		return nil
 	}
