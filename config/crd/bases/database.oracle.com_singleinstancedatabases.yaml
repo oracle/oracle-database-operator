@@ -240,8 +240,10 @@ spec:
               connectString:
                 type: string
               datafilesCreated:
+                default: "false"
                 type: string
               datafilesPatched:
+                default: "false"
                 type: string
               edition:
                 type: string
