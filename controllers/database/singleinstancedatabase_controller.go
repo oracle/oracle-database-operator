@@ -440,7 +440,8 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //#############################################################################
 //    Instantiate POD spec from SingleInstanceDatabase spec
 //#############################################################################
-func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, patching bool) *corev1.Pod {
+func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase,
+	requiredAffinity bool) *corev1.Pod {
 
 	// POD spec
 	pod := &corev1.Pod{
@@ -458,7 +459,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 		Spec: corev1.PodSpec{
 			Affinity: func() *corev1.Affinity {
 				if m.Spec.Persistence.AccessMode == "ReadWriteOnce" {
-					if patching {
+					if requiredAffinity {
 						return &corev1.Affinity{
 							PodAffinity: &corev1.PodAffinity{
 								RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
@@ -1242,7 +1243,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	}
 
 	// create new Pods with the new Version and no.of Replicas required
-	result, err := r.createPods(m, n, ctx, req, newReplicasFound, true)
+	// if m.Status.Replicas > 1, then it is replica based patching
+	result, err := r.createPods(m, n, ctx, req, newReplicasFound, m.Status.Replicas > 1)
 	if result.Requeue {
 		return result, err
 	}
@@ -1376,7 +1378,7 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 //    patching =  Boolean variable to differentiate normal usecase with patching
 //##############################################################################
 func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase,
-	ctx context.Context, req ctrl.Request, replicasFound int, patching bool) (ctrl.Result, error) {
+	ctx context.Context, req ctrl.Request, replicasFound int, replicaPatching bool) (ctrl.Result, error) {
 
 	log := r.Log.WithValues("createPods", req.NamespacedName)
 
@@ -1386,14 +1388,15 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 		log.Info("No of " + m.Name + " replicas found are same as required")
 		return requeueN, nil
 	}
-	waitForFirstPod := false
+	firstPod := false
 	if replicasFound == 0 {
 		m.Status.Status = dbcommons.StatusPending
-		waitForFirstPod = true
+		firstPod = true
 	}
 	//  if Found < Required , Create New Pods , Name of Pods are generated Randomly
 	for i := replicasFound; i < replicasReq; i++ {
-		pod := r.instantiatePodSpec(m, n, patching)
+		// mandatory pod affinity if it is replica based patching or not the first pod
+		pod := r.instantiatePodSpec(m, n, replicaPatching || !firstPod)
 		log.Info("Creating a new "+m.Name+" POD", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 		err := r.Create(ctx, pod)
 		if err != nil {
@@ -1401,8 +1404,8 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 			return requeueY, err
 		}
 		m.Status.Replicas += 1
-		if waitForFirstPod {
-			log.Info("Wait for first pod to get to running state", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
+		if firstPod {
+			log.Info("Requeue for first pod to get to running state", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			return requeueY, err
 		}
 	}
