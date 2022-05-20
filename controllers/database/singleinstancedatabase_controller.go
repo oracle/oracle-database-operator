@@ -1389,8 +1389,6 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 	waitForFirstPod := false
 	if replicasFound == 0 {
 		m.Status.Status = dbcommons.StatusPending
-		m.Status.DatafilesCreated = "false"
-		m.Status.DatafilesPatched = "false"
 		waitForFirstPod = true
 	}
 	//  if Found < Required , Create New Pods , Name of Pods are generated Randomly
@@ -1515,7 +1513,7 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 				// Required since clone creates the datafiles under primary database SID folder
 				r.Log.Info("Creating the SID directory link for clone database", "name", m.Spec.Sid)
 				_, err := dbcommons.ExecCommand(r, r.Config, runningPod.Name, runningPod.Namespace, "",
-				ctx, req, false, "bash", "-c", dbcommons.CreateSIDlinkCMD)
+					ctx, req, false, "bash", "-c", dbcommons.CreateSIDlinkCMD)
 				if err != nil {
 					r.Log.Info(err.Error())
 				}
@@ -1826,11 +1824,11 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 			log.Info(out)
 
 		} else {
-			// Occurs when flashback is attermpted to be turned on without turning on archiving first
+			// Occurs when flashback is attempted to be turned on without turning on archiving first
 			eventReason := "Waiting"
 			eventMsg := "enable ArchiveLog to turn ON Flashback"
-			log.Info(eventMsg)
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			log.Info(eventMsg)
 
 			changeArchiveLog = true
 		}
@@ -1869,11 +1867,11 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 			log.Info(out)
 
 		} else {
-			// Occurs when archiving is attermpted to be turned off without turning off flashback first
+			// Occurs when archiving is attempted to be turned off without turning off flashback first
 			eventReason := "Waiting"
 			eventMsg := "turn OFF Flashback to disable ArchiveLog"
-			log.Info(eventMsg)
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			log.Info(eventMsg)
 
 			changeArchiveLog = true
 		}
