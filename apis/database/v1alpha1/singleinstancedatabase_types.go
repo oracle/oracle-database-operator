@@ -80,9 +80,10 @@ type SingleInstanceDatabaseSpec struct {
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
 type SingleInstanceDatabasePersistence struct {
-	Size         string `json:"size,omitempty"`
-	StorageClass string `json:"storageClass,omitempty"`
-	AccessMode   string `json:"accessMode,omitempty"`
+	Size               string `json:"size,omitempty"`
+	StorageClass       string `json:"storageClass,omitempty"`
+	AccessMode         string `json:"accessMode,omitempty"`
+	VolClaimAnnotation string `json:"volClaimAnnotation,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters
