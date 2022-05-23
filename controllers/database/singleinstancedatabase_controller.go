@@ -894,6 +894,15 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 			Labels: map[string]string{
 				"app": m.Name,
 			},
+			Annotations: func() map[string]string {
+				if m.Spec.Persistence.VolClaimAnnotation != "" {
+					strParts := strings.Split(m.Spec.Persistence.VolClaimAnnotation, ":")
+					annotationMap := make(map[string]string)
+					annotationMap[strParts[0]] = strParts[1]
+					return annotationMap
+				}
+				return nil
+			}(),
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: func() []corev1.PersistentVolumeAccessMode {
