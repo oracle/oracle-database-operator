@@ -1177,7 +1177,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 
 	// Version/Image changed
 	// PATCHING START (Only Software Patch)
-	log.Info("Pod image change detected")
+	log.Info("Pod image change detected, datapatch to be rerun...")
+	m.Status.DatafilesPatched = "false"
 	// call FindPods() to find pods of older version. Delete all the Pods
 	readyPod, oldReplicasFound, oldAvailable, _, err := dbcommons.FindPods(r, oldVersion,
 		oldImage, m.Name, m.Namespace, ctx, req)
@@ -1566,7 +1567,7 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 	}
 	version, out, err := dbcommons.GetDatabaseVersion(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
 	if err == nil {
-		if !strings.Contains(out, "ORA-") && m.Status.DatafilesPatched != "true" {
+		if !strings.Contains(out, "ORA-") {
 			m.Status.ReleaseUpdate = version
 		}
 	}
@@ -1631,6 +1632,10 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 
 	// Datapatch not supported for XE Database
 	if m.Spec.Edition == "express" {
+		eventReason := "Datapatch Check"
+		eventMsg := "datapatch not supported for express edition"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		r.Log.Info(eventMsg)
 		return requeueN, nil
 	}
 
@@ -1653,12 +1658,13 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 	// Get Sqlpatch Description
 	out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba ", dbcommons.GetSqlpatchDescriptionSQL))
+	releaseUpdate := ""
 	if err == nil {
 		r.Log.Info("GetSqlpatchDescriptionSQL Output")
 		r.Log.Info(out)
 		SqlpatchDescriptions, _ := dbcommons.StringToLines(out)
 		if len(SqlpatchDescriptions) > 0 {
-			m.Status.ReleaseUpdate = SqlpatchDescriptions[0]
+			releaseUpdate = SqlpatchDescriptions[0]
 		}
 	}
 
@@ -1672,7 +1678,7 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 	m.Status.DatafilesPatched = "true"
 	status, versionFrom, versionTo, _ := dbcommons.GetSqlpatchStatus(r, r.Config, readyPod, ctx, req)
 	if versionTo != "" {
-		eventMsg = "data files patched from " + versionFrom + " to " + versionTo + " : " + status
+		eventMsg = "data files patched from release update " + versionFrom + " to " + versionTo + ", "+ status + ": " +releaseUpdate
 	} else {
 		eventMsg = "datapatch execution completed"
 	}
