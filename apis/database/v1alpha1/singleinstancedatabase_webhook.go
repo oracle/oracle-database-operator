@@ -219,6 +219,15 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
+	if r.Spec.Persistence.VolClaimAnnotation != "" {
+		strParts := strings.Split(r.Spec.Persistence.VolClaimAnnotation, ":")
+		if len(strParts) != 2 {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("persistence").Child("volClaimAnnotation"), r.Spec.Persistence.VolClaimAnnotation,
+					"volClaimAnnotation should be in <key>:<value> format."))
+		}
+	}
+
 	if len(allErrs) == 0 {
 		return nil
 	}
@@ -297,7 +306,7 @@ func (r *SingleInstanceDatabase) ValidateDelete() error {
 	var allErrs field.ErrorList
 	if r.Status.OrdsReference != "" {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("status").Child("ordsReference"), "delete " + r.Status.OrdsReference+ " to cleanup this SIDB"))
+			field.Forbidden(field.NewPath("status").Child("ordsReference"), "delete "+r.Status.OrdsReference+" to cleanup this SIDB"))
 	}
 	if len(allErrs) == 0 {
 		return nil
