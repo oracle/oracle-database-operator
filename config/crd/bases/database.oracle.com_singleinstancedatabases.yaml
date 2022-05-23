@@ -136,6 +136,8 @@ spec:
                     type: string
                   storageClass:
                     type: string
+                  volClaimAnnotation:
+                    type: string
                 type: object
               readinessCheckPeriod:
                 type: integer
@@ -288,6 +290,8 @@ spec:
                   size:
                     type: string
                   storageClass:
+                    type: string
+                  volClaimAnnotation:
                     type: string
                 type: object
               prebuiltDB:
