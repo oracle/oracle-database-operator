@@ -231,18 +231,16 @@ const SetAdminUsersSQL string = "CREATE USER C##DBAPI_CDB_ADMIN IDENTIFIED BY \\
 	"\nalter pluggable database pdb\\$seed close;" +
 	"\nalter pluggable database pdb\\$seed open read write force;"
 
-const GetUserOrdsSchemaStatusSQL string = "alter session set container=%[2]s;" +
+const GetUserORDSSchemaStatusSQL string = "alter session set container=%[2]s;" +
 	"\nselect 'STATUS:'||status as status from ords_metadata.ords_schemas where upper(parsing_schema) = upper('%[1]s');"
 
-const EnableORDSSchemaSQL string = "\nALTER SESSION SET CONTAINER=%[5]s;" +
+const CreateORDSSchemaSQL = "\nALTER SESSION SET CONTAINER=%[3]s;" +
 	"\nCREATE USER %[1]s IDENTIFIED BY \\\"%[2]s\\\";" +
-	"\nGRANT CONNECT, RESOURCE, DBA, PDB_DBA TO %[1]s;" +
-	"\nCONN %[1]s/\\\"%[2]s\\\"@localhost:1521/%[5]s;" +
-	"\nBEGIN" +
-	"\nORDS.enable_schema(p_enabled => %[3]s ,p_schema => '%[1]s',p_url_mapping_type => 'BASE_PATH',p_url_mapping_pattern => '%[4]s',p_auto_rest_auth => FALSE);" +
-	"\nCOMMIT;" +
-	"\nEND;" +
-	"\n/"
+	"\nGRANT CONNECT, RESOURCE, DBA, PDB_DBA TO %[1]s;"
+
+const EnableORDSSchemaSQL string = "\nALTER SESSION SET CONTAINER=%[4]s;" +
+	"\nGRANT INHERIT PRIVILEGES ON USER SYS TO ORDS_METADATA;" +
+	"\nexec ORDS.enable_schema(p_enabled => %[2]s ,p_schema => '%[1]s',p_url_mapping_type => 'BASE_PATH',p_url_mapping_pattern => '%[3]s',p_auto_rest_auth => FALSE);"
 
 	// SetupORDSCMD is run only for the FIRST TIME, ORDS is installed. Once ORDS is installed, we delete the pod that ran SetupORDSCMD and create new ones.
 	// Newly created pod doesn't run this SetupORDSCMD.

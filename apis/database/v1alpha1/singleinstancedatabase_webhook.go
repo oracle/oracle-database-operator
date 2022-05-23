@@ -297,7 +297,7 @@ func (r *SingleInstanceDatabase) ValidateDelete() error {
 	var allErrs field.ErrorList
 	if r.Status.OrdsReference != "" {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("status").Child("ordsInstalled"), "uninstall ORDS to cleanup this SIDB"))
+			field.Forbidden(field.NewPath("status").Child("ordsReference"), "delete " + r.Status.OrdsReference+ " to cleanup this SIDB"))
 	}
 	if len(allErrs) == 0 {
 		return nil
