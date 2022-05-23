@@ -202,7 +202,7 @@ const GetDatabaseRoleCMD string = "SELECT DATABASE_ROLE FROM V\\$DATABASE; "
 const RunDatapatchCMD string = " ( while true; do  sleep 60; echo \"Installing patches...\" ; done ) & if ! $ORACLE_HOME/OPatch/datapatch -skip_upgrade_check;" +
 	" then echo \"Datapatch execution has failed.\" ; else echo \"DONE: Datapatch execution.\" ; fi ; kill -9 $!;"
 
-const GetSqlpatchDescriptionSQL string = "select TARGET_VERSION || ' (' || PATCH_ID || ')' as patchinfo  from dba_registry_sqlpatch order by action_time desc;"
+const GetSqlpatchDescriptionSQL string = "select TARGET_VERSION || ' (' || ACTION || ' of ' || PATCH_ID || ')' as patchinfo from dba_registry_sqlpatch order by action_time desc;"
 
 const GetSqlpatchStatusSQL string = "select status from dba_registry_sqlpatch order by action_time desc;"
 
