@@ -412,7 +412,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		if n.Status.Status != dbcommons.StatusReady {
 			m.Status.Status = dbcommons.StatusPending
 			eventReason := "Source Database Pending"
-			eventMsg := "waiting for source database " + m.Spec.CloneFrom + " to be Ready"
+			eventMsg := "status of database " + m.Spec.CloneFrom + " is not ready, retrying..."
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 			err = errors.New(eventMsg)
 			return requeueY, err
@@ -420,8 +420,8 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 
 		if !n.Spec.ArchiveLog {
 			m.Status.Status = dbcommons.StatusPending
-			eventReason := "Source Database Pending"
-			eventMsg := "waiting for ArchiveLog to turn ON " + n.Name
+			eventReason := "Source Database Check"
+			eventMsg := "enable ArchiveLog for database " + n.Name
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 			r.Log.Info(eventMsg)
 			err = errors.New(eventMsg)
@@ -489,13 +489,29 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 										},
 										TopologyKey: "kubernetes.io/hostname",
 									},
-								},
-								},
+								}},
 							},
 						}
 					}
 				}
-				return nil
+				// For ReadWriteMany Access, spread out the PODs
+				return &corev1.Affinity{
+					PodAntiAffinity: &corev1.PodAntiAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
+							Weight: 100,
+							PodAffinityTerm: corev1.PodAffinityTerm{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{{
+										Key:      "app",
+										Operator: metav1.LabelSelectorOpIn,
+										Values:   []string{m.Name},
+									}},
+								},
+								TopologyKey: "kubernetes.io/hostname",
+							},
+						}},
+					},
+				}
 			}(),
 			Volumes: []corev1.Volume{{
 				Name: "datamount",
@@ -1221,7 +1237,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 		if ok, _ := dbcommons.IsAnyPodWithStatus(newAvailable, corev1.PodRunning); !ok {
 			eventReason := "Database Pending"
 			eventMsg := "waiting for pod with changed image to get to running state"
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 			log.Info(eventMsg)
 
 			for i := 0; i < len(newAvailable); i++ {
@@ -1513,14 +1529,14 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 	}
 	if readyPod.Name == "" {
 		eventReason := "Database Pending"
-		eventMsg := "waiting for database pod to be ready"
+		eventMsg := "status of database is not ready, retrying..."
 		m.Status.Status = dbcommons.StatusPending
 		if ok, _ := dbcommons.IsAnyPodWithStatus(available, corev1.PodFailed); ok {
 			eventReason = "Database Failed"
 			eventMsg = "pod creation failed"
 		} else if ok, runningPod := dbcommons.IsAnyPodWithStatus(available, corev1.PodRunning); ok {
 			eventReason = "Database Creating"
-			eventMsg = "waiting for database to be ready"
+			eventMsg = "database creation in progress..."
 			m.Status.Status = dbcommons.StatusCreating
 			if m.Spec.CloneFrom != "" {
 				// Required since clone creates the datafiles under primary database SID folder
@@ -1843,8 +1859,8 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 		} else {
 			// Occurs when flashback is attempted to be turned on without turning on archiving first
-			eventReason := "Waiting"
-			eventMsg := "enable ArchiveLog to turn ON Flashback"
+			eventReason := "Database Check"
+			eventMsg := "enable ArchiveLog to turn on Flashback"
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 			log.Info(eventMsg)
 
@@ -1886,8 +1902,8 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 
 		} else {
 			// Occurs when archiving is attempted to be turned off without turning off flashback first
-			eventReason := "Waiting"
-			eventMsg := "turn OFF Flashback to disable ArchiveLog"
+			eventReason := "Database Check"
+			eventMsg := "turn off Flashback to disable ArchiveLog"
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 			log.Info(eventMsg)
 
