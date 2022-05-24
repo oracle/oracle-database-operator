@@ -828,10 +828,13 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 		log.Info("Creating a new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 		err = r.Create(ctx, svc)
 		if err != nil {
-			log.Error(err, "Failed to create new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+			log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 			return requeueY
 		} else {
-			log.Info("Succesfully Created New Service ", "Service.Name : ", svc.Name)
+			eventReason := "Service creation"
+			eventMsg := "successfully created service type " + string(svc.Spec.Type)
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			log.Info(eventMsg)
 		}
 
 	} else if err != nil {
@@ -1163,12 +1166,12 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		}
 
 		// Drop Admin Users
-		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 			fmt.Sprintf("echo -e  \"%s\"  | %s ", dbcommons.DropAdminUsersSQL, dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Info(err.Error())
 		}
-		log.Info("DropAdminUsersSQL Output : " + out)
+		log.Info("Drop admin users: " + out)
 
 		//Delete ORDS pod
 		var gracePeriodSeconds int64 = 0
@@ -1255,10 +1258,6 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		}
 	}
 
-	m.Status.ApexConfigured = true
-	r.Status().Update(ctx, m)
-	log.Info("ConfigureApex Successful !")
-
 	// ORDS needs to be restarted to configure APEX
 	r.Log.Info("Restarting ORDS Pod to complete APEX configuration: " + ordsReadyPod.Name)
 	var gracePeriodSeconds int64 = 0
@@ -1268,6 +1267,14 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	if err != nil {
 		r.Log.Error(err, err.Error())
 	}
+
+	m.Status.ApexConfigured = true
+	r.Status().Update(ctx, m)
+	eventReason := "Apex Configuration"
+	eventMsg := "configuration of Apex completed!"
+	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+	log.Info(eventMsg)
+
 	// Cannot return requeue as the secrets will be deleted if keepSecert is false, which cause problem in pod restart
 	return requeueY
 }
@@ -1300,7 +1307,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
 	eventReason := "Apex Installation"
-	eventMsg := "Performing install of Apex in database " + m.Spec.DatabaseRef
+	eventMsg := "performing install of Apex in database " + m.Spec.DatabaseRef
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
 	//Install Apex in SIDB ready pod
@@ -1309,7 +1316,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	if err != nil {
 		log.Info(err.Error())
 	}
-	log.Info(" InstallApex Output : \n" + out)
+	log.Info("Apex installation output : \n" + out)
 
 	// Checking if Apex is installed successfully or not
 	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
@@ -1318,7 +1325,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 		log.Error(err, err.Error())
 		return requeueY
 	}
-	log.Info("IsApexInstalled Output: \n" + out)
+	log.Info("Is Apex installed: \n" + out)
 
 	apexInstalled := "APEXVERSION:"
 	if !strings.Contains(out, apexInstalled) {
@@ -1334,6 +1341,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	eventMsg = "installation of Apex "+ strings.TrimSpace(outArr[len(outArr)-1]) +" completed"
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 	n.Status.ApexInstalled = true
+	r.Status().Update(ctx, n)
 	return requeueN
 }
 
