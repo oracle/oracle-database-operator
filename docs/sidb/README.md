@@ -97,7 +97,7 @@ $ kubectl describe singleinstancedatabase sidb-sample-clone
       Force Log:               false
       Oem Express URL:         https://10.0.25.58:5500/em
       Pdb Name:                orclpdb1
-      Release Update:          19.11.0.0.0 (32545013)
+      Release Update:          19.11.0.0.0
       Replicas:                2
       Role:                    PRIMARY
       Sid:                     ORCL1C
@@ -356,7 +356,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.datafiles
   
 $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.releaseUpdate}"
 
-  19.3.0.0.0 (29517242)
+  19.3.0.0.0
 ```
   
 ## Kind OracleRestDataService
