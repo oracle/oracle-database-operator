@@ -639,7 +639,6 @@ password: `.spec.apexPassword`
 
 **NOTE:**
 - By default, the full development environment is initialized in APEX. After deployment, you can change it manually to the runtime environment. To change environments, run the script `apxdevrm.sql` after connecting to the primary database from the ORDS pod as the `SYS` user with `SYSDBA` privilege. For detailed instructions, see: [Converting a Full Development Environment to a Runtime Environment](https://docs.oracle.com/en/database/oracle/application-express/21.2/htmig/converting-between-runtime-and-full-development-environments.html#GUID-B0621B40-3441-44ED-9D86-29B058E26BE9).
-- Deleting ORDS resource will not delete APEX from the SIDB. Currently, performing APEX uninstall is not supported through the Operator.
 
 ## Performing maintenance operations
 If you need to perform some maintenance operations manually, then the procedure is as follows:
