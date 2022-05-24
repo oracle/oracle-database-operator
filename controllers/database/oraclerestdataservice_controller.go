@@ -203,7 +203,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	// Configure Apex
-	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, ordsReadyPod, ctx, req)
+	result = r.configureApex(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ordsReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -268,10 +268,10 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				m.Status.Status = dbcommons.StatusError
-				eventReason := "Waiting"
-				eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
-				r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-				r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
+				eventReason := "Apex Password"
+				eventMsg := "password secret " + m.Spec.ApexPassword.SecretName + " not found, retrying..."
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+				r.Log.Info(eventMsg)
 				return requeueY, nil
 			}
 			r.Log.Error(err, err.Error())
@@ -283,9 +283,9 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 		// Validate apexPassword
 		if !dbcommons.ApexPasswordValidator(apexPassword) {
 			m.Status.Status = dbcommons.StatusError
-			eventReason := "Apex Password Invalid"
-			eventMsg := "Password should contain: at least 6 chars, at least one numeric character, at least one punctuation character (!\"#$%&()``*+,-/:;?_), at least one upper-case alphabet"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			eventReason := "Apex Password"
+			eventMsg := "password for Apex is invalid, it should contain at least 6 chars, at least one numeric character, at least one punctuation character (!\"#$%&()``*+,-/:;?_), at least one upper-case alphabet"
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 			r.Log.Info("APEX password does not conform to the requirements")
 			return requeueY, nil
 		}
@@ -324,13 +324,13 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 
 	m.Status.Status = dbcommons.StatusPending
 	if sidbReadyPod.Name == "" || n.Status.Status != dbcommons.StatusReady {
-		eventReason := "Waiting"
-		eventMsg := "waiting for database " + n.Name + " status to be Ready"
+		eventReason := "Database Check"
+		eventMsg := "status of database " + n.Name + " is not ready, retrying..."
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		return requeueY, sidbReadyPod
 	} else {
-		eventReason := "Database Healthy"
-		eventMsg := "database " + n.Name + " status is Ready"
+		eventReason := "Database Check"
+		eventMsg := "status of database " + n.Name + " is ready"
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 	}
 
@@ -339,10 +339,10 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			eventReason := "Waiting"
-			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			r.Log.Info("Secret " + m.Spec.AdminPassword.SecretName + " Not Found")
+			eventReason := "Database Password"
+			eventMsg := "password secret " + m.Spec.AdminPassword.SecretName + " not found, retrying..."
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			r.Log.Info(eventMsg)
 			return requeueY, sidbReadyPod
 		}
 		log.Error(err, err.Error())
@@ -1062,8 +1062,8 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		}
 
 		if sidbReadyPod.Name == "" {
-			eventReason := "No Ready Pod"
-			eventMsg := "ommitting ORDS uninstallation as No Ready Pod of " + n.Name + " available"
+			eventReason := "ORDS Uninstallation"
+			eventMsg := "skipping ORDS uninstallation as no ready pod for " + n.Name + " is available"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 			return nil
 		}
@@ -1103,7 +1103,6 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		for i := 0; i < 5; i++ {
 			err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: n.Namespace}, adminPasswordSecret)
 			if err != nil {
-				log.Error(err, err.Error())
 				if apierrors.IsNotFound(err) {
 					m.Status.Status = dbcommons.StatusError
 					eventReason := "Error"
@@ -1114,6 +1113,8 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 						time.Sleep(15 * time.Second)
 						continue
 					}
+				} else {
+					log.Error(err, err.Error())
 				}
 			} else {
 				adminPasswordSecretFound = true
@@ -1129,18 +1130,33 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		}
 		if adminPasswordSecretFound && readyPod.Name != "" {
 			adminPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
+			//Uninstall Apex
+			eventReason := "Apex Uninstallation"
+			eventMsg := "Uninstalling Apex..."
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			log.Info(eventMsg)
+			out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
+				fmt.Sprintf(dbcommons.UninstallApex, adminPassword, n.Status.Pdbname))
+			if err != nil {
+				log.Info(err.Error())
+			}
+			n.Status.ApexInstalled = false // To reinstall Apex when ORDS is reinstalled
+			log.Info("Apex Uninstall : " + out)
+			//Uninstall Apex
+			eventReason = "ORDS Uninstallation"
+			eventMsg = "Uninstalling ORDS..."
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			log.Info(eventMsg)
 			uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
-
 			out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
 				uninstallORDS)
-			log.Info("UninstallORDSCMD Output : " + out)
+			log.Info("ORDS Uninstall : " + out)
 			if strings.Contains(strings.ToUpper(out), "ERROR") {
 				return errors.New(out)
 			}
 			if err != nil {
 				log.Info(err.Error())
 			}
-			log.Info("UninstallORDSCMD Output : " + out)
 		}
 
 		// Drop Admin Users
@@ -1175,7 +1191,7 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 //             Configure APEX
 //#############################################################################
 func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	sidbReadyPod corev1.Pod, ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("configureApex", req.NamespacedName)
 
 	if m.Spec.ApexPassword.SecretName == "" {
@@ -1191,10 +1207,10 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			m.Status.Status = dbcommons.StatusError
-			eventReason := "Waiting"
-			eventMsg := "waiting for secret : " + m.Spec.ApexPassword.SecretName + " to get created"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			r.Log.Info("Secret " + m.Spec.ApexPassword.SecretName + " Not Found")
+			eventReason := "Apex Password"
+			eventMsg := "password secret " + m.Spec.ApexPassword.SecretName + " not found, retrying..."
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			r.Log.Info(eventMsg)
 			return requeueY
 		}
 		log.Error(err, err.Error())
@@ -1210,7 +1226,18 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 			log.Info("Reconcile requeued because apex installation failed")
 			return result
 		}
+	} else {
+		// Alter Apex Users
+		log.Info("Alter APEX Users")
+		_, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
+						ctx, req, true, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s",
+						fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, n.Spec.Pdbname), dbcommons.SQLPlusCLI))
+		if err != nil {
+			log.Error(err, err.Error())
+			return requeueY
+		}
 	}
+
 	// Set Apex users in apex_rt,apex_al,apex files
 	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf(dbcommons.SetApexUsers, apexPassword))
@@ -1255,10 +1282,10 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			m.Status.Status = dbcommons.StatusError
-			eventReason := "Waiting"
-			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			r.Log.Info("Secret " + m.Spec.AdminPassword.SecretName + " Not Found")
+			eventReason := "Database Password"
+			eventMsg := "password secret " + m.Spec.AdminPassword.SecretName + " not found, retrying..."
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			r.Log.Info(eventMsg)
 			return requeueY
 		}
 		log.Error(err, err.Error())
@@ -1270,7 +1297,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	m.Status.Status = dbcommons.StatusUpdating
 	r.Status().Update(ctx, m)
 	eventReason := "Apex Installation"
-	eventMsg := "waiting for Apex installation to complete"
+	eventMsg := "Performing install of Apex in database " + m.Spec.DatabaseRef
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
 	//Install Apex in SIDB ready pod
@@ -1292,12 +1319,16 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 
 	apexInstalled := "APEXVERSION:"
 	if !strings.Contains(out, apexInstalled) {
+		eventReason = "Apex Installation"
+		eventMsg = "Unable to determine Apex version, retrying install..."
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		return requeueY
 	}
 
 	m.Status.Status = dbcommons.StatusReady
 	eventReason = "Apex Installation"
-	eventMsg = "installation of Apex completed"
+	outArr := strings.Split(out, apexInstalled)
+	eventMsg = "installation of Apex "+ strings.TrimSpace(outArr[len(outArr)-1]) +" completed"
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 	n.Status.ApexInstalled = true
 	return requeueN
@@ -1317,7 +1348,7 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 			//Delete Database Admin Password Secret .
 			err := r.Delete(ctx, adminPasswordSecret, &client.DeleteOptions{})
 			if err == nil {
-				log.Info("Database Admin Password secret Deleted : " + adminPasswordSecret.Name)
+				log.Info("Database admin password secret deleted : " + adminPasswordSecret.Name)
 			}
 		}
 	}
@@ -1330,7 +1361,7 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 			//Delete ORDS Password Secret .
 			err := r.Delete(ctx, ordsPasswordSecret, &client.DeleteOptions{})
 			if err == nil {
-				log.Info("ORDS Password secret Deleted : " + ordsPasswordSecret.Name)
+				log.Info("ORDS password secret deleted : " + ordsPasswordSecret.Name)
 			}
 		}
 	}
@@ -1343,7 +1374,7 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 			//Delete APEX Password Secret .
 			err := r.Delete(ctx, apexPasswordSecret, &client.DeleteOptions{})
 			if err == nil {
-				log.Info("APEX Password secret Deleted : " + apexPasswordSecret.Name)
+				log.Info("APEX password secret deleted : " + apexPasswordSecret.Name)
 			}
 		}
 	}
@@ -1359,9 +1390,9 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 	log := r.Log.WithValues("restEnableSchemas", req.NamespacedName)
 
 	if sidbReadyPod.Name == "" || n.Status.Status != dbcommons.StatusReady {
-		eventReason := "Waiting"
-		eventMsg := "waiting for " + n.Name + " to be Ready"
-		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		eventReason := "Database Check"
+		eventMsg := "status of database " + n.Name + " is not ready, retrying..."
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		m.Status.Status = dbcommons.StatusNotReady
 		return requeueY
 	}
@@ -1388,7 +1419,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 
 		//  If the PDB mentioned in yaml doesnt contain in the database , continue
 		if !strings.Contains(strings.ToUpper(availablePDBS), strings.ToUpper(pdbName)) {
-			eventReason := "PDB check failed"
+			eventReason := "PDB Check"
 			eventMsg := "PDB "+ pdbName +" not found for specified schema " + m.Spec.RestEnableSchemas[i].SchemaName
 			log.Info(eventMsg)
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
