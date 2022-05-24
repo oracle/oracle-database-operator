@@ -318,7 +318,12 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\numask 022"
 
 const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p " +
-	"WHERE (s.username = 'ORDS_PUBLIC_USER' or s.username = 'C##_DBAPI_PDB_ADMIN' ) AND p.addr(+) = s.paddr;"
+	"WHERE (s.username = 'ORDS_PUBLIC_USER' or "+
+	       "s.username = 'APEX_PUBLIC_USER' or "+
+		   "s.username = 'APEX_REST_PUBLIC_USER' or "+
+		   "s.username = 'APEX_LISTENER' or "+
+	       "s.username = 'C##_DBAPI_CDB_ADMIN' or "+
+		   "s.username = 'C##_DBAPI_PDB_ADMIN' ) AND p.addr(+) = s.paddr;"
 
 const KillSessionSQL string = "alter system kill session '%[1]s';"
 
