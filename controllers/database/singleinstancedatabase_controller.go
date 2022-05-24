@@ -1033,10 +1033,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		}
 
 		if svc.Spec.Type != svcType {
-			log.Info("Deleting SVC", " name ", svc.Name)
+			log.Info("Deleting service", "name", svc.Name)
 			err = r.Delete(ctx, svc)
 			if err != nil {
-				r.Log.Error(err, "Failed to delete svc", " Name", svc.Name)
+				r.Log.Error(err, "Failed to delete service", "name", svc.Name)
 				return requeueN, err
 			}
 			svcDeleted = true
@@ -1045,12 +1045,16 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	if svcDeleted || err != nil && apierrors.IsNotFound(err) {
 		// Define a new Service
 		svc = r.instantiateSVCSpec(m)
-		log.Info("Creating a new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+		log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 		err = r.Create(ctx, svc)
 		if err != nil {
-			log.Error(err, "Failed to create new Service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+			log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 			return requeueY, err
 		}
+		eventReason := "Service creation"
+		eventMsg := "successfully created service type " + string(svc.Spec.Type)
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		log.Info(eventMsg)
 		// Reset connect strings whenever service is recreated /*
 		m.Status.ConnectString = dbcommons.ValueUnavailable
 		m.Status.PdbConnectString = dbcommons.ValueUnavailable
