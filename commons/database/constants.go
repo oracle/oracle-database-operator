@@ -406,8 +406,6 @@ const ChownApex string = " chown oracle:oinstall /opt/oracle/oradata/${ORACLE_SI
 const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apexins.sql ]; then  ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apexins.sql SYSAUX SYSAUX TEMP /i/\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const InstallApexRemote string = "if [ -e ${ORDS_HOME}/config/apex/apxsilentins.sql ]; then cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[2]s %[2]s %[2]s %[2]s\" | %[1]s; else echo \"Apex Folder doesn't exist\" ; fi ;"
-
 const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;\n" +
 	"@apex_rest_config_core.sql;\n" +
 	"exec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n" +
@@ -417,14 +415,18 @@ const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \
 const IsApexInstalled string = "echo -e \"select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';\"" +
 	" | sqlplus -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/%[2]s as sysdba;"
 
-const UninstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apxremov.sql ]; then  ( while true; do  sleep 60; echo \"Uninstalling Apex...\" ; done ) & " +
-	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apxremov.sql\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
+const UninstallApex string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxremov.sql\n\" | sqlplus -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/%[2]s as sysdba;"
 
 const ConfigureApexRest string = "if [ -f ${ORDS_HOME}/config/apex/apex_rest_config.sql ]; then  cd ${ORDS_HOME}/config/apex && " +
 	"echo -e \"%[1]s\n%[1]s\" | %[2]s ; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const AlterApexUsers string = "echo -e \" ALTER USER APEX_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK; \n ALTER USER APEX_REST_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;" +
-	" \n ALTER USER APEX_LISTENER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;\" | %[2]s"
+const AlterApexUsers string = "\nALTER SESSION SET CONTAINER=%[2]s;" +
+	"\n ALTER USER APEX_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK; "+
+	"\n ALTER USER APEX_REST_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;" +
+	"\n ALTER USER APEX_LISTENER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;" +
+	"\nexec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');" +
+	"\nexec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_web_password => '%[1]s', p_new_password => '%[1]s');\n"
+
 
 const CopyApexImages string = " ( while true; do  sleep 60; echo \"Copying Apex Images...\" ; done ) & mkdir -p /opt/oracle/oradata/${ORACLE_SID^^}_ORDS/apex/images && " +
 	" cp -R /opt/oracle/oradata/${ORACLE_SID^^}/apex/images/* /opt/oracle/oradata/${ORACLE_SID^^}_ORDS/apex/images; chown -R oracle:oinstall /opt/oracle/oradata/${ORACLE_SID^^}_ORDS/apex; kill -9 $!;"
