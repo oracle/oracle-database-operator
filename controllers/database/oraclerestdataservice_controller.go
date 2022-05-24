@@ -360,9 +360,10 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 		log.Info("validated Admin password successfully")
 	} else if strings.Contains(out, "ORA-01017") {
 		m.Status.Status = dbcommons.StatusError
-		eventReason := "Logon denied"
-		eventMsg := "invalid databaseRef admin password secret: " + m.Spec.AdminPassword.SecretName
+		eventReason := "Database Check"
+		eventMsg := "login denied, invalid database admin password in secret " + m.Spec.AdminPassword.SecretName
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		log.Info(eventMsg)
 		return requeueY, sidbReadyPod
 	} else {
 		return requeueY, sidbReadyPod
@@ -1130,27 +1131,29 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 		}
 		if adminPasswordSecretFound && readyPod.Name != "" {
 			adminPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
-			//Uninstall Apex
-			eventReason := "Apex Uninstallation"
-			eventMsg := "Uninstalling Apex..."
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-			log.Info(eventMsg)
-			out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
-				fmt.Sprintf(dbcommons.UninstallApex, adminPassword, n.Status.Pdbname))
-			if err != nil {
-				log.Info(err.Error())
+			if n.Status.ApexInstalled {
+				//Uninstall Apex
+				eventReason := "Apex Uninstallation"
+				eventMsg := "Uninstalling Apex..."
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+				log.Info(eventMsg)
+				out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
+					fmt.Sprintf(dbcommons.UninstallApex, adminPassword, n.Status.Pdbname))
+				if err != nil {
+					log.Info(err.Error())
+				}
+				n.Status.ApexInstalled = false // To reinstall Apex when ORDS is reinstalled
+				log.Info("Apex uninstall output: " + out)
 			}
-			n.Status.ApexInstalled = false // To reinstall Apex when ORDS is reinstalled
-			log.Info("Apex Uninstall : " + out)
-			//Uninstall Apex
-			eventReason = "ORDS Uninstallation"
-			eventMsg = "Uninstalling ORDS..."
+			//Uninstall ORDS
+			eventReason := "ORDS Uninstallation"
+			eventMsg := "Uninstalling ORDS..."
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 			log.Info(eventMsg)
 			uninstallORDS := fmt.Sprintf(dbcommons.UninstallORDSCMD, adminPassword)
 			out, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, true, "bash", "-c",
 				uninstallORDS)
-			log.Info("ORDS Uninstall : " + out)
+			log.Info("ORDS uninstall output: " + out)
 			if strings.Contains(strings.ToUpper(out), "ERROR") {
 				return errors.New(out)
 			}
