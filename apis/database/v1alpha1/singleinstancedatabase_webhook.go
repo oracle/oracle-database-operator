@@ -203,7 +203,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	if r.Status.FlashBack == "true" {
+	if r.Status.FlashBack == "true" && r.Spec.FlashBack {
 		if !r.Spec.ArchiveLog {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("archiveLog"), r.Spec.ArchiveLog,
@@ -211,7 +211,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	if !r.Spec.ArchiveLog {
+	if r.Status.ArchiveLog == "false" && !r.Spec.ArchiveLog {
 		if r.Spec.FlashBack {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("flashBack"), r.Spec.FlashBack,
