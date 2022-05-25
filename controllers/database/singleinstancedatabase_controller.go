@@ -1423,7 +1423,8 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 		m.Status.Status = dbcommons.StatusPending
 		firstPod = true
 	}
-	//  if Found < Required , Create New Pods , Name of Pods are generated Randomly
+	m.Status.Replicas = replicasFound
+	//  if Found < Required, create new pods, name of pods are generated randomly
 	for i := replicasFound; i < replicasReq; i++ {
 		// mandatory pod affinity if it is replica based patching or not the first pod
 		pod := r.instantiatePodSpec(m, n, replicaPatching || !firstPod)
