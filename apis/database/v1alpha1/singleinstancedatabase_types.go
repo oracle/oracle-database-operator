@@ -53,9 +53,10 @@ type SingleInstanceDatabaseSpec struct {
 	// +kubebuilder:validation:Enum=standard;enterprise;express
 	Edition string `json:"edition,omitempty"`
 
-	// SID can only have a-z , A-Z, 0-9 . It cant have any special characters
+	// SID must be alphanumeric (no special characters, only a-z, A-Z, 0-9), and no longer than 12 characters.
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]+$`
+	// +kubebuilder:validation:MaxLength:=12
 	Sid          string `json:"sid,omitempty"`
 	Charset      string `json:"charset,omitempty"`
 	Pdbname      string `json:"pdbName,omitempty"`
