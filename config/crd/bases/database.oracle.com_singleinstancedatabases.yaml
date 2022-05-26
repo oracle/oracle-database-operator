@@ -146,8 +146,9 @@ spec:
               serviceAccountName:
                 type: string
               sid:
-                description: SID can only have a-z , A-Z, 0-9 . It cant have any special
-                  characters
+                description: SID must be alphanumeric (no special characters, only
+                  a-z, A-Z, 0-9), and no longer than 12 characters.
+                maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
             required:
