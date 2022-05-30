@@ -46,4 +46,4 @@ spec:
     urlMapping: 
   - schemaName: schema2
     enable: true
-    urlMapping:
+    urlMapping: myschema
