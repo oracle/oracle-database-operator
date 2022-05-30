@@ -85,8 +85,8 @@ type SingleInstanceDatabasePersistence struct {
 	StorageClass       string `json:"storageClass,omitempty"`
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
 	AccessMode         string `json:"accessMode,omitempty"`
-	VolName            string `json:"volName,omitempty"`
-	VolClaimAnnotation string `json:"volClaimAnnotation,omitempty"`
+	VolumeName            string `json:"volumeName,omitempty"`
+	VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters

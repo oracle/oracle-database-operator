@@ -911,8 +911,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 				"app": m.Name,
 			},
 			Annotations: func() map[string]string {
-				if m.Spec.Persistence.VolClaimAnnotation != "" {
-					strParts := strings.Split(m.Spec.Persistence.VolClaimAnnotation, ":")
+				if m.Spec.Persistence.VolumeClaimAnnotation != "" {
+					strParts := strings.Split(m.Spec.Persistence.VolumeClaimAnnotation, ":")
 					annotationMap := make(map[string]string)
 					annotationMap[strParts[0]] = strParts[1]
 					return annotationMap
@@ -933,7 +933,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
-			VolumeName: m.Spec.Persistence.VolName,
+			VolumeName: m.Spec.Persistence.VolumeName,
 			Selector: func() *metav1.LabelSelector {
 				if m.Spec.Persistence.StorageClass != "oci" {
 					return nil
@@ -977,7 +977,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Contex
 	if err == nil {
 		if *pvc.Spec.StorageClassName != m.Spec.Persistence.StorageClass ||
 			pvc.Spec.Resources.Requests["storage"] != resource.MustParse(m.Spec.Persistence.Size) ||
-			(m.Spec.Persistence.VolName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.VolName) ||
+			(m.Spec.Persistence.VolumeName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.VolumeName) ||
 			pvc.Spec.AccessModes[0] != corev1.PersistentVolumeAccessMode(m.Spec.Persistence.AccessMode) {
 			// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
 			result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
