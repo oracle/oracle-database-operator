@@ -12,7 +12,7 @@ spec:
   ## Use only alphanumeric characters for sid up to a maximum of 8 characters
   sid: ORCL1
   
-  ## Specify a source database ref to copy/clone from any SIDB in current K8s cluster instead of creating a fresh one.
+  ## Specify a source database ref to copy/clone from any SIDB in current K8s cluster instead of creating a fresh one
   ## If cloning from an external containerized DB which could be either standalone or in any K8s cluster,
   ## specify connect string as `<host>:<port>/<service_name>` instead of source database ref
   cloneFrom: ""
@@ -59,7 +59,7 @@ spec:
   ## Build patched DB images from https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching
   ## Prebuilt DB support (https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/prebuiltdb)
   ## Specify prebuiltDB as true if the image includes a prebuilt DB
-  ## If cloning specify an image that is of same major version as the source DB at same or different patch levels.
+  ## If cloning specify an image that is of same major version as the source DB at same or different patch levels
   image:
     pullFrom:
     pullSecrets:
@@ -80,7 +80,7 @@ spec:
   ## if loadBalService : false, service type = "NodePort" else "LoadBalancer"
   loadBalancer: false
 
-  ## Deploy only on nodes having required labels. Format label_name : label_value
+  ## Deploy only on nodes having required labels. Format label_name: label_value
   ## For instance if the pods need to be restricted to a particular AD
   ## Leave commented if there is no such requirement.
   # nodeSelector:
