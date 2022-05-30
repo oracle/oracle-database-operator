@@ -13,20 +13,20 @@ spec:
   databaseRef: "singleinstancedatabase-sample"
   
   ## Secret containing databaseRef password mapped to secretKey. 
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true
   adminPassword:
     secretName: 
     secretKey:
     keepSecret: true
 
   ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey. secretKey defaults to oracle_pwd
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true
   ordsPassword:
     secretName: 
     secretKey:
     keepSecret: true
 
-  ## To configure APEX with ORDS, specfiy the apexPassword secret details. Leave empty if Apex is not needed.
+  ## To configure APEX with ORDS, specfiy the apexPassword secret details. Leave empty if Apex is not needed
   ## This is a secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
   ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
   ## This password should complete the following requirements:
@@ -47,7 +47,7 @@ spec:
     pullFrom:
     pullSecrets:
 
-  ## Dedicated persistent storage is optional. If not specified, ORDS will use the databaseRef persistent storage
+  ## Dedicated persistent storage is optional. If not specified, ORDS will use persistent storage from .spec.databaseRef
   ## size is the required minimum size of the persistent volume
   ## storageClass is used for automatic volume provisioning
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
@@ -63,15 +63,15 @@ spec:
   ## if loadBalService: false, service type = "NodePort" else "LoadBalancer"
   loadBalancer: false
 
-  ## Deploy only on nodes having required labels. Format label_name : label_value
+  ## Deploy only on nodes having required labels. Format label_name: label_value
   ## The same lables are applied to the created PVC
   ## For instance if the pods need to be restricted to a particular AD
-  ## Leave commented if there is no such requirement.
+  ## Leave commented if there is no such requirement
   # nodeSelector:
   #   topology.kubernetes.io/zone: PHX-AD-1
 
-  ## PDB (<databaseRef>.spec.pdbName) schemas to be ORDS Enabled.
-  ## schema will be created (if not exists) with password as .spec.ordsPassword.
+  ## Schemas to be ORDS Enabled in PDB of .spec.databaseRef (.spec.pdbName)
+  ## Schema will be created (if not exists) with password as .spec.ordsPassword
   restEnableSchemas:
   - schemaName:
     enable: true
