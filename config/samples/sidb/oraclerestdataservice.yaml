@@ -51,13 +51,13 @@ spec:
   ## size is the required minimum size of the persistent volume
   ## storageClass is used for automatic volume provisioning
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
-  ## volName is optional. Specify for binding to a specific PV and set storageClass to an empty string to disable automatic volume provisioning
+  ## volumeName is optional. Specify for binding to a specific PV and set storageClass to an empty string to disable automatic volume provisioning
   # persistence:
   #  size: 50Gi
   ## oci-bv applies to OCI block volumes. Update as appropriate for other cloud service providers
   #  storageClass: "oci-bv"
   #  accessMode: "ReadWriteOnce"
-  #  volName: ""
+  #  volumeName: ""
 
   ## Type of service  Applicable on cloud enviroments only.
   ## if loadBalService: false, service type = "NodePort" else "LoadBalancer"
