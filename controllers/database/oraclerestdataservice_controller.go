@@ -768,6 +768,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
+			VolumeName: m.Spec.Persistence.VolName,
 			Selector: func() *metav1.LabelSelector {
 				if m.Spec.Persistence.StorageClass != "oci" {
 					return nil
