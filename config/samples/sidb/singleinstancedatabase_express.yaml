@@ -37,10 +37,12 @@ spec:
     pullFrom: container-registry.oracle.com/database/express:latest
     prebuiltDB: true
 
-  ## size : Minimum size of pvc | class : PVC storage Class
-  ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  ## size is the required minimum size of the persistent volume
+  ## storageClass is specified for automatic volume provisioning
+  ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
     size: 50Gi
+    ## oci-bv applies to OCI block volumes. Update as appropriate for other cloud service providers
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
 
