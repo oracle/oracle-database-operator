@@ -131,12 +131,17 @@ spec:
                   size and class for PVC
                 properties:
                   accessMode:
+                    enum:
+                    - ReadWriteOnce
+                    - ReadWriteMany
                     type: string
                   size:
                     type: string
                   storageClass:
                     type: string
                   volClaimAnnotation:
+                    type: string
+                  volName:
                     type: string
                 type: object
               readinessCheckPeriod:
@@ -287,12 +292,17 @@ spec:
                   size and class for PVC
                 properties:
                   accessMode:
+                    enum:
+                    - ReadWriteOnce
+                    - ReadWriteMany
                     type: string
                   size:
                     type: string
                   storageClass:
                     type: string
                   volClaimAnnotation:
+                    type: string
+                  volName:
                     type: string
                 type: object
               prebuiltDB:

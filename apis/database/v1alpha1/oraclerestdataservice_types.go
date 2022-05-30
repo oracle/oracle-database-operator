@@ -75,6 +75,7 @@ type OracleRestDataServicePersistence struct {
 
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
 	AccessMode string `json:"accessMode,omitempty"`
+	VolName            string `json:"volName,omitempty"`
 }
 
 // OracleRestDataServiceImage defines the Image source and pullSecrets for POD
