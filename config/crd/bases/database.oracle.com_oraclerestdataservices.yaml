@@ -133,7 +133,7 @@ spec:
                     type: string
                   storageClass:
                     type: string
-                  volName:
+                  volumeName:
                     type: string
                 type: object
               replicas:
