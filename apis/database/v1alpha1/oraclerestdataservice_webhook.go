@@ -94,7 +94,7 @@ func (r *OracleRestDataService) ValidateCreate() error {
 
 	// Persistence spec validation
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" ||
-		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.VolName != "") {
+		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.VolumeName != "") {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), r.Spec.Persistence,
 				"invalid persistence specification, specify required size"))

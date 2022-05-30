@@ -118,7 +118,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 
 	// Persistence spec validation
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" ||
-		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.VolName != "") {
+		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.VolumeName != "") {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), r.Spec.Persistence,
 				"invalid persistence specification, specify required size"))
@@ -225,12 +225,12 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	if r.Spec.Persistence.VolClaimAnnotation != "" {
-		strParts := strings.Split(r.Spec.Persistence.VolClaimAnnotation, ":")
+	if r.Spec.Persistence.VolumeClaimAnnotation != "" {
+		strParts := strings.Split(r.Spec.Persistence.VolumeClaimAnnotation, ":")
 		if len(strParts) != 2 {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("persistence").Child("volClaimAnnotation"), r.Spec.Persistence.VolClaimAnnotation,
-					"volClaimAnnotation should be in <key>:<value> format."))
+				field.Invalid(field.NewPath("spec").Child("persistence").Child("volumeClaimAnnotation"), r.Spec.Persistence.VolumeClaimAnnotation,
+					"volumeClaimAnnotation should be in <key>:<value> format."))
 		}
 	}
 
