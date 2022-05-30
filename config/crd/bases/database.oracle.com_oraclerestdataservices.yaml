@@ -133,6 +133,8 @@ spec:
                     type: string
                   storageClass:
                     type: string
+                  volName:
+                    type: string
                 type: object
               replicas:
                 minimum: 1

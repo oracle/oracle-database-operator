@@ -83,7 +83,9 @@ type SingleInstanceDatabaseSpec struct {
 type SingleInstanceDatabasePersistence struct {
 	Size               string `json:"size,omitempty"`
 	StorageClass       string `json:"storageClass,omitempty"`
+	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
 	AccessMode         string `json:"accessMode,omitempty"`
+	VolName            string `json:"volName,omitempty"`
 	VolClaimAnnotation string `json:"volClaimAnnotation,omitempty"`
 }
 
