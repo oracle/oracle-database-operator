@@ -3,13 +3,13 @@ To deploy Oracle Database Operator for Kubernetes on Oracle Docker images, compl
 
 * ### Prepare Oracle Docker Images
 
-  Build SingleInstanceDatabase Docker Images from source, following the instructions at [https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance), or
+  Build Single Instance Database Docker Images from source, following the instructions at [https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance), or
   use the pre-built images available at [https://container-registry.oracle.com](https://container-registry.oracle.com) by signing in and accepting the required license agreement.
 
   Oracle Database Releases Supported: Oracle Database 19c Enterprise Edition or Standard Edition, and later releases. Oracle Database 21.3 Express Edition.
   
-  Build OracleRestDataService Docker Images from source following the instructions at [https://github.com/oracle/docker-images/tree/main/OracleRestDataServices](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices).
-  Supported OracleRestDataService version is 21.4.2
+  Build Oracle REST Data Service Docker Images from source following the instructions at [https://github.com/oracle/docker-images/tree/main/OracleRestDataServices](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices).     
+  Supported Oracle REST Data Service version is 21.4.2
 
 * ### Set Up Kubernetes and Volumes
 
