@@ -2,7 +2,7 @@
 
 Before you use the Oracle Database Operator for Kubernetes (the operator), ensure your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./../adb/ADB_PREREQUISITES.md).
 
-To interact with OCI services, either the cluster has to be authorized using Principal Instance, or using the API Key Authentication by specifying the configMap and the secret under the `ociConfig` field.
+As indicated in the prerequisites (see above), to interact with OCI services, either the cluster has to be authorized using Principal Instance, or using the API Key Authentication by specifying the configMap and the secret under the `ociConfig` field.
 
 ## Required Permissions
 
@@ -12,7 +12,7 @@ The permission to view the workrequests is also required, so that the operator w
 
 ## Supported Features
 
-After the operator is deployed, choose either one of the following operations to create an `AutonomousContainerDatabase` custom resource for Oracle Autonomous Container Database in your cluster.
+After the operator is deployed, choose one of the following operations to create an `AutonomousContainerDatabase` custom resource for Oracle Autonomous Container Database in your cluster.
 
 * [Provision](#provision-an-autonomous-container-database) an Autonomous Container Database
 * [Bind](#bind-to-an-existing-autonomous-container-database) to an existing Autonomous Container Database
