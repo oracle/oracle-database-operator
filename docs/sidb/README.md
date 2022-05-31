@@ -206,7 +206,7 @@ $ kubectl apply -f singleinstancedatabase_prebuiltdb.yaml
 
 This pre-built image includes the data files of the database inside the image itself. As a result, the database startup time of the container is reduced, down to a couple of seconds. The pre-built database image can be very useful in contiguous integration/continuous delivery (CI/CD) scenarios, in which databases are used for conducting tests or experiments, and the workflow is simple. 
 
-To create the pre-built database image for the Enterprise/Standard edition using a pre-built image, please follow these instructions: [Pre-built Database (prebuiltdb) Extension](https://github.com/oracle/docker-images/blob/main/OracleDatabase/SingleInstance/extensions/prebuiltdb/README.md).
+To build the pre-built database image for the Enterprise/Standard edition, please follow these instructions: [Pre-built Database (prebuiltdb) Extension](https://github.com/oracle/docker-images/blob/main/OracleDatabase/SingleInstance/extensions/prebuiltdb/README.md).
 
 ### Provisioning a new XE Database
 To provision new Oracle Database Express Edition (XE) database, use the sample **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)** file. For example:
@@ -543,23 +543,23 @@ Use this ORDS user to authenticate the following:
   
 #### Database API Examples
 Some examples for the Database API usage are as follows:
-* ##### Getting all Database Components
+* ##### Get all Database Components
     ```sh
     curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/components/ | python -m json.tool
     ```
-* ##### Getting all Database Users
+* ##### Get all Database Users
     ```sh
     curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/security/users/ | python -m json.tool
     ```
-* ##### Getting all Tablespaces
+* ##### Get all Tablespaces
     ```sh
     curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/storage/tablespaces/ | python -m json.tool
     ```
-* ##### Getting all Database Parameters
+* ##### Get all Database Parameters
     ```sh
     curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/parameters/ | python -m json.tool
     ```
-* ##### Getting all Feature Usage Statistics
+* ##### Get all Feature Usage Statistics
     ```sh
     curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/feature_usage/ | python -m json.tool
     ```
