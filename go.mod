@@ -3,10 +3,10 @@ module github.com/oracle/oracle-database-operator
 go 1.17
 
 require (
-	github.com/go-logr/logr v1.2.2
+	github.com/go-logr/logr v1.2.3
 	github.com/onsi/ginkgo/v2 v2.1.3
 	github.com/onsi/gomega v1.19.0
-	github.com/oracle/oci-go-sdk/v63 v63.0.0
+	github.com/oracle/oci-go-sdk/v64 v64.0.0
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.23.6
 	k8s.io/apimachinery v0.23.6
