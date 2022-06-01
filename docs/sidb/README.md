@@ -5,10 +5,13 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
   * [Prerequisites](#prerequisites)
   * [Kind SingleInstanceDatabase Resource](#kind-singleinstancedatabase-resource)
   * [Provision New Database](#provision-new-database)
+  * [Provision Pre-built Database](#provision-pre-built-database)
+  * [Provision XE Database](#provision-xe-database)
   * [Clone Existing Database](#clone-existing-database)
   * [Patch/Rollback Database](#patchrollback-database)
   * [Kind OracleRestDataService](#kind-oraclerestdataservice)
-  * [REST Enable Database](#rest-enable-database)
+  * [REST Enabled Database](#rest-enabled-database)
+  * [APEX Enabled Database](#apex-enabled-database)
   * [Performing Maintenance Operations](#performing-maintenance-operations)
 
 ## Prerequisites
@@ -17,21 +20,7 @@ Oracle strongly recommends that you follow the [Prerequisites](./SIDB_PREREQUISI
 
 ## Kind SingleInstanceDatabase Resource
 
-The Oracle Database Operator creates the `SingleInstanceDatabase` kind as a custom resource. Doing this enables Oracle Database to be managed as a native Kubernetes object.
-
-### SingleInstanceDatabase Template YAML
-  
-The template `.yaml` file for Single Instance Database (Enterprise and Standard Editions), including all the configurable options, is available at:
-**[config/samples/sidb/singleinstancedatabase.yaml](./../../config/samples/sidb/singleinstancedatabase.yaml)**
-
-**Note:** 
-The `adminPassword` field in the above `singleinstancedatabase.yaml` file refers to a secret for the SYS, SYSTEM and PDBADMIN users of the Single Instance Database. This secret is required when you provision a new database, or when you clone an existing database.
-
-Create this secret using the following command as an example:
-
-    kubectl create secret generic admin-secret --from-literal=oracle_pwd=<specify password here>
-
-This command creates a secret named `admin-secret`, with the key `oracle_pwd` mapped to the actual password specified in the command.
+The Oracle Database Operator creates the `SingleInstanceDatabase` kind as a custom resource. Doing this enables Oracle Database to be managed as a native Kubernetes object as shown below.
 
 ### List Databases
 To list databases, use the following command as an example, where the database names are `sidb-sample` and `sidb-sample-clone`, which are the names we will use as database names in command examples:
@@ -113,6 +102,20 @@ $ kubectl describe singleinstancedatabase sidb-sample-clone
       Normal   Datapatch Done         8s                     SingleInstanceDatabase  datafiles patched from 19.3.0.0.0 to 19.11.0.0.0 : SUCCESS
 
 ```
+
+### SingleInstanceDatabase Template YAML
+  
+The template `.yaml` file for Single Instance Database (Enterprise and Standard Editions), including all the configurable options, is available at:
+**[config/samples/sidb/singleinstancedatabase.yaml](./../../config/samples/sidb/singleinstancedatabase.yaml)**
+
+**Note:** 
+The `adminPassword` field in the above `singleinstancedatabase.yaml` file refers to a secret for the SYS, SYSTEM and PDBADMIN users of the Single Instance Database. This secret is required when you provision a new database, or when you clone an existing database.
+
+Create this secret using the following command as an example:
+
+    kubectl create secret generic admin-secret --from-literal=oracle_pwd=<specify password here>
+
+This command creates a secret named `admin-secret`, with the key `oracle_pwd` mapped to the actual password specified in the command.
 
 ## Provision New Database
 
@@ -207,7 +210,7 @@ spec:
 
 **Note:** Whenever a mount target is provisioned in OCI, its `Reported Size (GiB)` values are very large. This is visible on the mount target page when logged in to the OCI console. Some applications will fail to install if the results of a space requirements check show too much available disk space. So please specify, in gibibytes (GiB), the maximum capacity reported by file systems exported through this mount target. This setting does not limit the actual amount of data you can store.
 
-### Provision a Pre-built Database
+## Provision Pre-built Database
 
 To provision a new pre-built database instance, use the sample **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
 ```sh
@@ -220,7 +223,7 @@ This pre-built image includes the data files of the database inside the image it
 
 To build the pre-built database image for the Enterprise/Standard edition, please follow these instructions: [Pre-built Database (prebuiltdb) Extension](https://github.com/oracle/docker-images/blob/main/OracleDatabase/SingleInstance/extensions/prebuiltdb/README.md).
 
-### Provisioning a new XE Database
+## Provision XE Database
 To provision new Oracle Database Express Edition (XE) database, use the sample **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)** file. For example:
 
       kubectl apply -f singleinstancedatabase_express.yaml
@@ -429,25 +432,10 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.releaseUp
   
 ## Kind OracleRestDataService
 
-The Oracle Database Operator creates the `OracleRestDataService` (ORDS) kind as a custom resource. Creating ORDS as a custom resource enables the RESTful API access to the Oracle Database in K8s.
-
-### OracleRestDataService Template YAML
-  
-The template `.yaml` file for Oracle Rest Data Services (`OracleRestDataService` kind) is available at **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)**.
-
-For **quick provisioning** of ORDS, apply the sample **[config/samples/sidb/oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file, using the following command:
-
-      kubectl apply -f oraclerestdataservice_create.yaml
-
-
-Note the following: 
-- The `adminPassword` and `ordsPassword` fields in the `oraclerestdataservice.yaml` file contains secrets for authenticating the Single Instance Database and the ORDS user with the following roles: `SQL Administrator, System Administrator, SQL Developer, oracle.dbtools.autorest.any.schema`.  
-- To build the ORDS image, use the following instructions: [Building Oracle REST Data Services Install Images](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices#building-oracle-rest-data-services-install-images).
-- By default, ORDS uses self-signed certificates. To use certificates from the Certificate Authority, the ORDS image needs to be rebuilt after specifying the values of `ssl.cert` and `ssl.cert.key` in the [standalone.properties](https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/standalone.properties.tmpl) file. After you rebuild the ORDS image, use the rebuilt image in the **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)** file.
-- If you want to install ORDS in a [prebuilt database](#provision-a-pre-built-database), make sure to attach the **database persistence** by uncommenting the `persistence` section in the **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file, while provisioning the prebuilt database.
+The Oracle Database Operator creates the `OracleRestDataService` (ORDS) kind as a custom resource. Creating ORDS as a custom resource enables the RESTful API access to the Oracle Database in K8s and enables it to be managed as a native Kubernetes object as shown below.
 
 ### List OracleRestDataServices
-To list the ORDS service, use the following command: 
+To list ORDS services, use the following command: 
 
 ```sh
 $ kubectl get oraclerestdataservice -o name
@@ -501,16 +489,19 @@ $ kubectl describe oraclerestdataservice ords-sample
 
 ```
 
-### Delete ORDS
-- To delete ORDS run the following command:
-      
-      kubectl delete oraclerestdataservice ords-samples
+### OracleRestDataService Template YAML
+  
+The template `.yaml` file for Oracle Rest Data Services (`OracleRestDataService` kind), including all the configurable options, is available at **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)**.
 
-- You cannot delete referred Single Instance Database (SIDB) before deleting its ORDS resource.
+**Note:**  
+- The `adminPassword` and `ordsPassword` fields in the `oraclerestdataservice.yaml` file contains secrets for authenticating the Single Instance Database and the ORDS user with the following roles: `SQL Administrator, System Administrator, SQL Developer, oracle.dbtools.autorest.any.schema`.  
+- To build the ORDS image, use the following instructions: [Building Oracle REST Data Services Install Images](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices#building-oracle-rest-data-services-install-images).
+- By default, ORDS uses self-signed certificates. To use certificates from the Certificate Authority, the ORDS image needs to be rebuilt after specifying the values of `ssl.cert` and `ssl.cert.key` in the [standalone.properties](https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/standalone.properties.tmpl) file. After you rebuild the ORDS image, use the rebuilt image in the **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)** file.
+- If you want to install ORDS in a [prebuilt database](#provision-a-pre-built-database), make sure to attach the **database persistence** by uncommenting the `persistence` section in the **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file, while provisioning the prebuilt database.
 
-## REST Enable Database
+## REST Enabled Database
 
-To provision a new ORDS instance, use the sample **[config/samples/sidb/oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file. For example: 
+To quickly provision a new ORDS instance, use the sample **[config/samples/sidb/oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file. For example: 
 
 ```sh
 $ kubectl apply -f oraclerestdataservice_create.yaml
@@ -664,15 +655,22 @@ Password: `.spec.ordsPassword`
 
 For more information about Database Actions, see: [Oracle Database Actions](https://docs.oracle.com/en/database/oracle/sql-developer-web/21.2/index.html).
 
-### Application Express
+### Delete ORDS
+- To delete ORDS run the following command:
+      
+      kubectl delete oraclerestdataservice ords-sample
 
-Oracle APEX (previously known as Oracle Application Express) is a low-code development platform that enables developers to build scalable, secure enterprise apps, with world-class features that can be deployed anywhere.
+- You cannot delete referred Single Instance Database (SIDB) before deleting its ORDS resource.
+
+## APEX Enabled Database
+
+Oracle APEX is a low-code development platform that enables developers to build scalable, secure enterprise apps, with world-class features that can be deployed anywhere.
 
 Using APEX, developers can quickly develop and deploy compelling apps that solve real problems and provide immediate value. Developers won't need to be an expert in a vast array of technologies to deliver sophisticated solutions. Focus on solving the problem and let APEX take care of the rest.
 
 To access APEX, You need to configure APEX with the ORDS. The following section will explain configuring APEX with ORDS in details:
 
-#### Configure APEX with ORDS
+#### Provision APEX with ORDS
 
 * For quick provisioning, use the sample **[config/samples/sidb/oraclerestdataservice_apex.yaml](../../confi/samples/sidb/oraclerestdataservice_apex.yaml)** file. For example:
 
