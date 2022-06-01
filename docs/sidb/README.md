@@ -147,16 +147,16 @@ To provision a new database instance on the Kubernetes cluster, use the sample *
 - For ease of use, the storage class **oci-bv** is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**. This storage class facilitates dynamic provisioning of the OCI block volumes on the Oracle OKE for persistent storage of the database. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.
 - It is beneficial to have the database replica pods more than or equal to the number of available nodes if `ReadWriteMany` access mode is used with the OCI NFS volume. By doing so, the pods get distributed on different nodes and the database image is downloaded on all those nodes. This helps in reducing time for the database fail-over if the active database pod dies.
 - Supports Oracle Database Enterprise Edition (19.3.0), and later releases.
-- To pull the database image faster from the container registry in order to bring up the SIDB instance quickly, you can use container-registry mirror of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, you can use `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, please follow the link [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
-- To update the init parameters like `sgaTarget` and `pgaAggregateTarget`, please refer the `initParams` section of the [singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file.
+- To pull the database image faster from the container registry in order to bring up the SIDB instance quickly, you can use container-registry mirror of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, you can use `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, follow the link [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
+- To update the init parameters like `sgaTarget` and `pgaAggregateTarget`, refer the `initParams` section of the [singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
 ### Database Persistence
-The database persistence can be achieved in the following two ways:
+Database persistence can be achieved in the following two ways:
 - Dynamic Persistence Provisioning
 - Static Persistence Provisioning
 
 In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by mentioning a storage class. For example, **oci-bv** storage class is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)** file. This storage class facilitates dynamic provisioning of the OCI block volumes. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.                     
-**Note:** Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`, hence, these volumes get deleted when their corresponding database deployment is deleted. To retain volumes, please use static provisioning as explained in the section below.
+**Note:** Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`, hence, these volumes get deleted when their corresponding database deployment is deleted. To retain volumes, use static provisioning as explained in the section below.
 
 In **Static Persistence Provisioning**, you have to create a volume manually (either using Block Volume or NFS), and then use the name of this volume with the `<.spec.persistence.volumeName>` field (corresponds to the `volumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**). The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment. The access modes supported with block volume and NFS are `ReadWriteOnce` and `ReadWriteMany` respectively. 
 
@@ -180,8 +180,8 @@ spec:
     volumeHandle: <OCID of the block volume>
 ```
 
-**Note:** OCI block volumes are AD (Availability Domain) specific. Please make sure that the database is deployed in the same AD as that of its statically provisioned block volume. This is handled automatically in dynamic provisioning.
-To provision the database in a specific AD, please uncomment the following line from the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file:
+**Note:** OCI block volumes are AD (Availability Domain) specific. Make sure that the database is deployed in the same AD as that of its statically provisioned block volume. This is handled automatically in dynamic provisioning.
+To provision the database in a specific AD, uncomment the following line from the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file:
 
 ```yaml
 nodeSelector:
@@ -208,7 +208,7 @@ spec:
     volumeHandle: "<OCID of the file system>:<Mount Target>/<Export Path>"
 ```
 
-**Note:** Whenever a mount target is provisioned in OCI, its `Reported Size (GiB)` values are very large. This is visible on the mount target page when logged in to the OCI console. Some applications will fail to install if the results of a space requirements check show too much available disk space. So please specify, in gibibytes (GiB), the maximum capacity reported by file systems exported through this mount target. This setting does not limit the actual amount of data you can store.
+**Note:** Whenever a mount target is provisioned in OCI, its `Reported Size (GiB)` values are very large. This is visible on the mount target page when logged in to the OCI console. Some applications will fail to install if the results of a space requirements check show too much available disk space. So specify, in gibibytes (GiB), the maximum capacity reported by file systems exported through this mount target. This setting does not limit the actual amount of data you can store.
 
 ## Provision Pre-built Database
 
@@ -221,7 +221,7 @@ $ kubectl apply -f singleinstancedatabase_prebuiltdb.yaml
 
 This pre-built image includes the data files of the database inside the image itself. As a result, the database startup time of the container is reduced, down to a couple of seconds. The pre-built database image can be very useful in contiguous integration/continuous delivery (CI/CD) scenarios, in which databases are used for conducting tests or experiments, and the workflow is simple. 
 
-To build the pre-built database image for the Enterprise/Standard edition, please follow these instructions: [Pre-built Database (prebuiltdb) Extension](https://github.com/oracle/docker-images/blob/main/OracleDatabase/SingleInstance/extensions/prebuiltdb/README.md).
+To build the pre-built database image for the Enterprise/Standard edition, follow these instructions: [Pre-built Database (prebuiltdb) Extension](https://github.com/oracle/docker-images/blob/main/OracleDatabase/SingleInstance/extensions/prebuiltdb/README.md).
 
 ## Provision XE Database
 To provision new Oracle Database Express Edition (XE) database, use the sample **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)** file. For example:
@@ -276,7 +276,7 @@ Version 21.3.0.0.0
 
 SQL>
 ```
-**Note:** The `<.spec.adminPassword>` above refers to the database password for SYS, SYSTEM and PDBADMIN users, which in turn represented by  `spec` section's `adminPassword` field of the **[/config/samples/sidb/singleinstancedatabase.yaml](../config/samples/sidb/../../../../config/samples/sidb/singleinstancedatabase.yaml)** file.
+**Note:** The `<.spec.adminPassword>` above refers to the database password for SYS, SYSTEM and PDBADMIN users, which in turn represented by  `spec` section's `adminPassword` field of the **[config/samples/sidb/singleinstancedatabase.yaml](../config/samples/sidb/../../../../config/samples/sidb/singleinstancedatabase.yaml)** file.
 
 The Oracle Database inside the container also has Oracle Enterprise Manager Express (OEM Express) configured. To access OEM Express, start the browser, and paste in a URL similar to the following example:
 
@@ -333,7 +333,7 @@ The value for the initialization parameter `sgaTarget` that you provide should b
 
 ### Multiple Replicas
     
-In multiple replicas mode, more than one pod is created for the database. The database is open and mounted by one of the replica pods. Other replica pods have instances started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down. Multiple replicas are also helpful in [patching](#patch-existing-database) operation. Please ensure that you have multiple replicas of the database pods running before you start the patching operation for minimum downtime.
+In multiple replicas mode, more than one pod is created for the database. The database is open and mounted by one of the replica pods. Other replica pods have instances started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down. Multiple replicas are also helpful in [patching](#patch-existing-database) operation. Ensure that you have multiple replicas of the database pods running before you start the patching operation for minimum downtime.
 
 To enable multiple replicas, update the replica attribute in the `.yaml`, and apply by using the `kubectl apply` or `kubectl scale` commands.
 
