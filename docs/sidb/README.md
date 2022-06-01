@@ -105,18 +105,18 @@ $ kubectl describe singleinstancedatabase sidb-sample-clone
   Events:
       Type     Reason                 Age                    From                    Message
       ----     ------                 ----                   ----                    -------
-      Normal   Database Pending       35m (x2 over 35m)      SingleInstanceDatabase  Waiting for database pod to be ready
-      Normal   Database Creating      27m (x24 over 34m)     SingleInstanceDatabase  Waiting for database to be ready
+      Normal   Database Pending       35m (x2 over 35m)      SingleInstanceDatabase  waiting for database pod to be ready
+      Normal   Database Creating      27m (x24 over 34m)     SingleInstanceDatabase  waiting for database to be ready
       Normal   Database Ready         22m                    SingleInstanceDatabase  database open on pod sidb-sample-clone-133ol scheduled on node 10.0.10.6
       Normal   Datapatch Pending      21m                    SingleInstanceDatabase  datapatch execution pending
       Normal   Datapatch Executing    20m                    SingleInstanceDatabase  datapatch begin execution
-      Normal   Datapatch Done         8s                     SingleInstanceDatabase  Datapatch from 19.3.0.0.0 to 19.11.0.0.0 : SUCCESS
+      Normal   Datapatch Done         8s                     SingleInstanceDatabase  datafiles patched from 19.3.0.0.0 to 19.11.0.0.0 : SUCCESS
 
 ```
 
 ## Provision New Database
 
-You can easily provision a new database instance on the Kubernetes cluster by using **[config/samples/sidb/singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**.
+To provision a new database instance on the Kubernetes cluster, use the sample **[config/samples/sidb/singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**.
 
 1. Log into [Oracle Container Registry](https://container-registry.oracle.com/) and accept the license agreement for the Database image, ignore if you have accepted already.
 
@@ -152,7 +152,7 @@ The database persistence can be achieved in the following two ways:
 - Dynamic Persistence Provisioning
 - Static Persistence Provisioning
 
-In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by mentioning a storage class. For example, **oci-bv** storage class is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)** file. This storage class facilitates dynamic provisioning of the OCI block volumes. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes. 
+In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by mentioning a storage class. For example, **oci-bv** storage class is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)** file. This storage class facilitates dynamic provisioning of the OCI block volumes. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.                     
 **Note:** Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`, hence, these volumes get deleted when their corresponding database deployment is deleted. To retain volumes, please use static provisioning as explained in the section below.
 
 In **Static Persistence Provisioning**, you have to create a volume manually (either using Block Volume or NFS), and then use the name of this volume with the `<.spec.persistence.volumeName>` field (corresponds to the `volumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**). The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment. The access modes supported with block volume and NFS are `ReadWriteOnce` and `ReadWriteMany` respectively. 
@@ -176,6 +176,15 @@ spec:
     driver: blockvolume.csi.oraclecloud.com
     volumeHandle: <OCID of the block volume>
 ```
+
+**Note:** OCI block volumes are AD (Availability Domain) specific. Please make sure that the database is deployed in the same AD as that of its statically provisioned block volume. This is handled automatically in dynamic provisioning.
+To provision the database in a specific AD, please uncomment the following line from the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file:
+
+```yaml
+nodeSelector:
+   topology.kubernetes.io/zone: PHX-AD-1
+```
+
 #### NFS Volume Static Provisioning
 Similar to the block volume static provisioning, you have to manually create a file system resource from the OCI console, and fetch its `OCID, Mount Target and Export Path`. Mention these values in the following YAML file to create the persistent volume:
 
@@ -195,6 +204,9 @@ spec:
     driver: fss.csi.oraclecloud.com
     volumeHandle: "<OCID of the file system>:<Mount Target>/<Export Path>"
 ```
+
+**Note:** Whenever a mount target is provisioned in OCI, its `Reported Size (GiB)` values are very large. This is visible on the mount target page when logged in to the OCI console. Some applications will fail to install if the results of a space requirements check show too much available disk space. So please specify, in gibibytes (GiB), the maximum capacity reported by file systems exported through this mount target. This setting does not limit the actual amount of data you can store.
+
 ### Provision a Pre-built Database
 
 To provision a new pre-built database instance, use the sample **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
@@ -280,7 +292,7 @@ The following database parameters can be updated after the database is created:
 - `forceLog`
 
 To change these parameters, change their attribute values, and apply the change by using the 
-`kubectl` `apply` or `edit`/`patch` commands. 
+`kubectl apply` or `kubectl edit/patch` commands. 
 
 **Caution**: Enable `archiveLog` mode before setting `flashback` to `ON`, and set `flashback` to `OFF` before disabling `archiveLog` mode.
 
@@ -311,14 +323,16 @@ The following database initialization parameters can be updated after the databa
 - cpuCount
 - processes. 
 
-Change their attribute values and apply using kubectl **apply** or **edit/patch** commands.
+Change their attribute values and apply using `kubectl apply` or `kubectl edit/patch` commands.
 
 **NOTE:**
 The value for the initialization parameter `sgaTarget` that you provide should be within the range set by [sga_min_size, sga_max_size]. If the value you provide is not in that range, then `sga_target` is not updated to the value you specify for `sgaTarget`.
 
 ### Multiple Replicas
     
-In multiple replicas mode, more than one pod is created for the database. The database is open and mounted by one of the replica pods. Other replica pods have instances started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down. To enable multiple replicas, Update the replica attribute in the `.yaml`, and apply by using the `kubectl apply` or `edit/patch` commands.
+In multiple replicas mode, more than one pod is created for the database. The database is open and mounted by one of the replica pods. Other replica pods have instances started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down. Multiple replicas are also helpful in [patching](#patch-existing-database) operation. Please ensure that you have multiple replicas of the database pods running before you start the patching operation for minimum downtime.
+
+To enable multiple replicas, update the replica attribute in the `.yaml`, and apply by using the `kubectl apply` or `kubectl scale` commands.
 
 **Note:** 
 - This functionality requires the [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s) extended images. The database image from the container registry `container-registry.oracle.com` includes the K8s extension.
