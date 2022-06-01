@@ -26,7 +26,7 @@ Upcoming releases will support new configurations, operations and capabilities.
 
 ## Release Status
 
-**CAUTION:** The current release of `OraOperator` (v0.1.0) is for development and test only. DO NOT USE IN PRODUCTION.
+**CAUTION:** The current release of `OraOperator` (v0.2.0) is for development and test only. DO NOT USE IN PRODUCTION.
 
 This release can be deployed on the following platforms:
 
@@ -82,9 +82,11 @@ For more details, see [Oracle Database Operator Installation Instrunctions](./do
 
 The quickstarts are designed for specific database configurations, including:
 
+* [Oracle Autonomous Container Database](./docs/acd/README.md)
 * [Oracle Autonomous Database](./docs/adb/README.md)
 * [Oracle Database Single Instance configuration](./docs/sidb/README.md)
 * [Oracle Database configured with Oracle Sharding](./docs/sharding/README.md)
+* [Oracle On-Premises Database](./docs/onpremdb/README.md)
 * [Oracle Database Cloud Services](./docs/dbcs/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases. 
@@ -101,6 +103,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete singleinstancedatabase.database.oracle.com --all -n <namespace>
   kubectl delete shardingdatabase.database.oracle.com --all -n <namespace>
   kubectl delete autonomousdatabase.database.oracle.com --all -n <namespace>
+
   ```
 
   After all CRD instances are deleted, it is safe to remove the CRDs, APISerivces and operator deployment.
@@ -119,7 +122,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete deployment.apps/oracle-database-operator-controller-manager -n oracle-database-operator-system
   ```
 
-## Documentation
+## Docs of the supported Oracle Database configurations
 
 * [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
 * [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
