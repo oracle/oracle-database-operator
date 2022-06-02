@@ -2,13 +2,14 @@
 
 ## Prerequisites for Using Oracle Database Operator for Kubernetes
 
-Oracle Database operator for Kubernetes (OraOperator) manages all Cloud deployments of Oracle Database, including:
+Oracle Database Operator for Kubernetes (OraOperator) manages all Cloud deployments of Oracle Database, including:
 
 * Oracle Autonomous Database (ADB)
 * Containerized Oracle Database Single Instance (SIDB)
 * Containerized Sharded Oracle Database (SHARDING)
 
 ### Setting Up a Kubernetes Cluster and Volumes
+Review and complete each step as needed.
 
 #### Setting Up an OKE Cluster on Oracle Cloud Infrastructure (OCI)
 
