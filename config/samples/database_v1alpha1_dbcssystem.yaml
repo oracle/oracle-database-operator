@@ -1,7 +1,0 @@
-apiVersion: database.oracle.com/v1alpha1
-kind: DbcsSystem
-metadata:
-  name: dbcssystem-sample
-spec:
-  # Add fields here
-  foo: bar
