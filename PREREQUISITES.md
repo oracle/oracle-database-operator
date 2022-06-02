@@ -27,7 +27,7 @@ If you intent to use `OraOperator` to handle Oracle Autonomous Database lifecycl
 
 ### Prerequites for Single Instance Databases (SIDB)
 
-If you intent to use `OraOperator` to handle Oracle Database Single Instance lifecycles, then read [Single Instance Database Prerequisites](./docs/sidb/SIDB_PREREQUISITES.md)
+If you intent to use `OraOperator` to handle Oracle Database Single Instance lifecycles, then read [Single Instance Database Prerequisites](./docs/sidb/PREREQUISITES.md)
 
 ### Prerequites for Sharded Databases (SHARDING)  
 
