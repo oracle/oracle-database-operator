@@ -117,13 +117,6 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 
   Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods,services,PVCs, and so on) are deleted. However, the CRD deletion stops responding, because the CRD instances have finalizers that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
 
-* ### Retaining the CRDs and APIservices
-
-  To delete the operator deployment and retain the CRDs, run the following commands:
-
-  ```sh
-  kubectl delete deployment.apps/oracle-database-operator-controller-manager -n oracle-database-operator-system
-  ```
 
 ## Docs of the supported Oracle Database configurations
 
