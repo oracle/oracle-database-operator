@@ -82,7 +82,6 @@ For more details, see [Oracle Database Operator Installation Instrunctions](./do
 
 The quickstarts are designed for specific database configurations, including:
 
-* [Oracle Autonomous Container Database](./docs/acd/README.md)
 * [Oracle Autonomous Database](./docs/adb/README.md)
 * [Oracle Autonomous Container Database](./docs/acd/README.md)
 * [Oracle Database Single Instance configuration](./docs/sidb/README.md)
@@ -129,6 +128,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 ## Docs of the supported Oracle Database configurations
 
 * [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
+* [Components of Dedicated Autonomous Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/components.html)
 * [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
 * [Oracle Database Sharding](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
 
