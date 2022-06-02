@@ -119,9 +119,9 @@ This command creates a secret named `admin-secret`, with the key `oracle_pwd` ma
 
 ## Provision New Database
 
-To provision a new database instance on the Kubernetes cluster, use the sample **[config/samples/sidb/singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**.
+To provision a new database instance on the Kubernetes cluster, use the example **[config/samples/sidb/singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**.
 
-1. Log into [Oracle Container Registry](https://container-registry.oracle.com/) and accept the license agreement for the Database image, ignore if you have accepted already.
+1. Log into [Oracle Container Registry](https://container-registry.oracle.com/) and accept the license agreement for the Database image; ignore if you have accepted the license agreement already.
 
 2. If you have not already done so, create an image pull secret for the Oracle Container Registry:
 
@@ -147,7 +147,7 @@ To provision a new database instance on the Kubernetes cluster, use the sample *
 - For ease of use, the storage class **oci-bv** is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**. This storage class facilitates dynamic provisioning of the OCI block volumes on the Oracle OKE for persistent storage of the database. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.
 - It is beneficial to have the database replica pods more than or equal to the number of available nodes if `ReadWriteMany` access mode is used with the OCI NFS volume. By doing so, the pods get distributed on different nodes and the database image is downloaded on all those nodes. This helps in reducing time for the database fail-over if the active database pod dies.
 - Supports Oracle Database Enterprise Edition (19.3.0), and later releases.
-- To pull the database image faster from the container registry in order to bring up the SIDB instance quickly, you can use container-registry mirror of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, you can use `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, follow the link [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
+- To pull the database image faster from the container registry, so that you can bring up the SIDB instance quickly, you can use the container-registry mirror of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, then you can use the `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, follow the link [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
 - To update the init parameters like `sgaTarget` and `pgaAggregateTarget`, refer the `initParams` section of the [singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
 ### Database Persistence
@@ -156,14 +156,14 @@ Database persistence can be achieved in the following two ways:
 - Static Persistence Provisioning
 
 In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by mentioning a storage class. For example, **oci-bv** storage class is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)** file. This storage class facilitates dynamic provisioning of the OCI block volumes. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.                     
-**Note:** Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`, hence, these volumes get deleted when their corresponding database deployment is deleted. To retain volumes, use static provisioning as explained in the section below.
+**Note:** Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`. These volumes are deleted when their corresponding database deployment is deleted. To retain volumes, use static provisioning, as explained in the Block Volume Static Provisioning section.
 
 In **Static Persistence Provisioning**, you have to create a volume manually (either using Block Volume or NFS), and then use the name of this volume with the `<.spec.persistence.volumeName>` field (corresponds to the `volumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**). The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment. The access modes supported with block volume and NFS are `ReadWriteOnce` and `ReadWriteMany` respectively. 
 
 Static Persistence Provisioning in OCI explained in the following subsections:
 
 #### Block Volume Static Provisioning
-You have to manually create a block volume resource from the OCI console, and fetch its `OCID`. Further, you can use the following YAML file to create the persistent volume:
+With block volume static provisioning, you must manually create a block volume resource from the OCI console, and fetch its `OCID`. To create the persistent volume, you can use the following YAML file:
 ```yaml
 apiVersion: v1
 kind: PersistentVolume
@@ -180,7 +180,7 @@ spec:
     volumeHandle: <OCID of the block volume>
 ```
 
-**Note:** OCI block volumes are AD (Availability Domain) specific. Make sure that the database is deployed in the same AD as that of its statically provisioned block volume. This is handled automatically in dynamic provisioning.
+**Note:** OCI block volumes are AD (Availability Domain) specific. Ensure that the database is deployed in the same AD as that of its statically provisioned block volume. In dynamic provisioning, this is done automatically.
 To provision the database in a specific AD, uncomment the following line from the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file:
 
 ```yaml
