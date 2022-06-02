@@ -84,6 +84,7 @@ The quickstarts are designed for specific database configurations, including:
 
 * [Oracle Autonomous Container Database](./docs/acd/README.md)
 * [Oracle Autonomous Database](./docs/adb/README.md)
+* [Oracle Autonomous Container Database](./docs/acd/README.md)
 * [Oracle Database Single Instance configuration](./docs/sidb/README.md)
 * [Oracle Database configured with Oracle Sharding](./docs/sharding/README.md)
 * [Oracle On-Premises Database](./docs/onpremdb/README.md)
@@ -104,7 +105,9 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete oraclerestdataservices.database.oracle.com --all -n <namespace>
   kubectl delete shardingdatabase.database.oracle.com --all -n <namespace>
   kubectl delete autonomousdatabase.database.oracle.com --all -n <namespace>
-
+  kubectl delete autonomousdatabasebackup.database.oracle.com --all -n <namespace>
+  kubectl delete autonomousdatabaserestore.database.oracle.com --all -n <namespace>
+  kubectl delete autonomouscontainerdatabase.database.oracle.com --all -n <namespace>
   ```
 
   After all CRD instances are deleted, it is safe to remove the CRDs, APISerivces and operator deployment.
