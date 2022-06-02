@@ -34,7 +34,7 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
 
 1. Get the `Compartment OCID`.
 
-    Login cloud console and click `Compartment`.
+    Login Cloud Console and click `Compartment`.
 
     ![compartment-1](/images/adb/compartment-1.png)
 
@@ -42,7 +42,23 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
 
     ![compartment-2](/images/adb/compartment-2.png)
 
-2. Create a Kubernetes Secret to hold the password of the ADMIN user.
+2. To create an Autonomous Database on Dedicated Exadata Infrastructure (ADB-D), the OCID of Oracle Autonomous Container Database is required.
+
+    You can skip this step if you want to create a Autonomous Database on Shared Exadata Infrastructure (ADB-S).
+
+    Go to the Cloud Console and click `Autonomous Database`.
+
+    ![acd-id-1](/images/adb/adb-id-1.png)
+
+    Under `Dedicated Infrastructure`, click `Autonomous Container Database`.
+
+    ![acd-id-2](/images/adb/acd-id-1.png)
+
+    Click on the name of Autonomous Container Database and copy the `Autonomous Container Database OCID` from Cloud Console.
+
+    ![acd-id-3](/images/adb/acd-id-2.png)
+
+3. Create a Kubernetes Secret to hold the password of the ADMIN user.
 
     You can create this secret with the following command (as an example):
 
@@ -50,7 +66,7 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
     kubectl create secret generic admin-password --from-literal=admin-password='password_here'
     ```
 
-3. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
+4. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
     | `spec.details.compartmentOCID` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the compartment of the Autonomous Database. | Yes |
@@ -62,7 +78,9 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
     |`spec.details.adminPassword.ociSecret.ocid` | string | The **[OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm)** of the [OCI Secret](https://docs.oracle.com/en-us/iaas/Content/KeyManagement/Tasks/managingsecrets.htm) where you want to hold the password for the ADMIN user. | Conditional |
     | `spec.details.dataStorageSizeInTBs`  | int | The size, in terabytes, of the data volume that will be created and attached to the database. This storage can later be scaled up if needed. | Yes |
     | `spec.details.isAutoScalingEnabled`  | boolean | Indicates if auto scaling is enabled for the Autonomous Database OCPU core count. The default value is `FALSE` | No |
-    | `spec.details.isDedicated` | boolean | True if the database is on dedicated [Exadata infrastructure](https://docs.cloud.oracle.com/Content/Database/Concepts/adbddoverview.htm) | No |
+    | `spec.details.isDedicated` | boolean | True if the database is on dedicated [Exadata infrastructure](https://docs.cloud.oracle.com/Content/Database/Concepts/adbddoverview.htm). `spec.details.autonomousContainerDatabase.k8sACD.name` or `spec.details.autonomousContainerDatabase.ociACD.ocid` has to be provided if the value is true. | No |
+    | `spec.details.autonomousContainerDatabase.k8sACD.name` | string | The **name** of the K8s Autonomous Container Database resource | No |
+    | `spec.details.autonomousContainerDatabase.ociACD.ocid` | string | The Autonomous Container Database [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm). | No |
     | `spec.details.freeformTags` | dictionary | Free-form tags for this resource. Each tag is a simple key-value pair with no predefined name, type, or namespace. For more information, see [Resource Tag](https://docs.cloud.oracle.com/Content/General/Concepts/resourcetags.htm).<br><br> Example:<br> `freeformTags:`<br> &nbsp;&nbsp;&nbsp;&nbsp;`key1: value1`<br> &nbsp;&nbsp;&nbsp;&nbsp;`key2: value2`| No |
     | `spec.details.dbWorkload` | string | The Oracle Autonomous Database workload type. The following values are valid:<br> - OLTP - indicates an Autonomous Transaction Processing database<br> - DW - indicates an Autonomous Data Warehouse database<br> - AJD - indicates an Autonomous JSON Database<br> - APEX - indicates an Autonomous Database with the Oracle APEX Application Development workload type. | No |
     | `spec.details.dbVersion` | string | A valid Oracle Database release for Oracle Autonomous Database. | No |
@@ -91,11 +109,11 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
         secretName: oci-privatekey
     ```
 
-4. Choose the type of network access (optional):
+5. Choose the type of network access (optional):
 
    By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the netowrk acess. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
 
-5. Apply the yaml:
+6. Apply the yaml:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_create.yaml
