@@ -1,8 +1,10 @@
 # Using the DB Operator DBCS Controller 
 
-The Oracle Cloud Infrastructure's Database Service furnishes [co-managed Oracle Database cloud solutions](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/overview.htm). A single-node DB systems on either bare metal or virtual machines, and 2-node RAC DB systems on virtual machines. To manage the life cycle of an OCI DBCS system, we can use the OCI Console, the REST API or the Oracle Cloud Infrastructure CLI and at the granular level, the Database CLI (DBCLI), Enterprise Manager, or SQL Developer.
+Oracle Cloud Infastructure (OCI) Database Cloud Service (DBCS) provides single-node Database (DB) systems, deployed either bare metal or virtual machines, and provides two-node Oracle Real Appliation Clusters (Oracle RAC) database systems on virtual machines.
 
-The Oracle DB Operator DBCS Controller is a feature of the Oracle DB Operator for Kubernetes (a.k.a. OraOperator) which supports the life cycle management of the Database Systems deployed using OCI's DBCS Service.
+The single-node DB systems and Oracle RAC systems on virtual machines are [co-managed Oracle Database cloud solutions](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/overview.htm). To manage the lifecycle of an OCI DBCS system, you can use the OCI Console, the REST API, or the Oracle Cloud Infrastructure command-line interface (CLI). At the granular level, you can use the Oracle Database CLI (DBCLI), Oracle Enterprise Manager, or Oracle SQL Developer.
+
+The Oracle DB Operator DBCS Controller is a feature of the Oracle DB Operator for Kubernetes (OraOperator) which uses OCI's DBCS service to support lifecycle management of the database systems.
 
 # Supported Database Editions and Versions
 
@@ -16,7 +18,7 @@ All single-node OCI Oracle RAC DB systems support the following Oracle Database 
 
 Two-node Oracle RAC DB systems require Oracle Enterprise Edition - Extreme Performance.
 
-For standard provisioning of DB systems (using Oracle Automatic Storage Management (ASM) as your storage management software), the supported database versions are:
+For standard provisioning of DB systems (using Oracle Automatic Storage Management (ASM) as your storage management software), the following database releases are supported:
 
 -   Oracle Database 21c
 -   Oracle Database 19c
@@ -26,7 +28,7 @@ For standard provisioning of DB systems (using Oracle Automatic Storage Manageme
 -   Oracle Database 11g Release 2 (11.2)
 
 
-For fast provisioning of single-node virtual machine database systems (using Logical Volume Manager as your storage management software), the supported database versions are:
+For fast provisioning of single-node virtual machine database systems (using Logical Volume Manager as your storage management software), the following database releases are supported:
 
 - Oracle Database 21c
 - Oracle Database 19c
@@ -36,9 +38,9 @@ For fast provisioning of single-node virtual machine database systems (using Log
 
 # Oracle DB Operator DBCS Controller Deployment
 
-The step by step procedure to deploy the OraOperator is documented [here](https://github.com/oracle/oracle-database-operator/blob/main/README.md).
+To deploy OraOperator, use this [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
 
-Once the Oracle DB Operator has been deployed, we can see the DB operator pods running in the Kubernetes Cluster. The DBCS Controller will deployed as part of the Oracle DB Operator Deployment as a CRD (Custom Resource Definition). Below is an example of such a deployment:
+After the Oracle Database Operator is deployed, you can see the DB operator pods running in the Kubernetes Cluster. As part of the OraOperator deployment, the DBCS Controller is deployed as a CRD (Custom Resource Definition). The following screen output is an example of such a deployment:
 ```
 [root@test-server oracle-database-operator]# kubectl get ns
 NAME                              STATUS   AGE
@@ -87,11 +89,11 @@ singleinstancedatabases.database.oracle.com      2022-02-22T23:23:25Z
 
 # Prerequsites to deploy a DBCS system using Oracle DB Operator DBCS Controller
 
-Complete the following steps before deploying a DBCS system in OCI using the Oracle DB Operator DBCS Controller:
+Before you deploy a DBCS system in OCI using the Oracle DB Operator DBCS Controller, complete the following procedure.
 
-**IMPORTANT :** You must make the changes specified in this section before you proceed to the next section.
+**CAUTION :** You must make the changes specified in this section before you proceed to the next section.
 
-## 1. Create a Kubernetes Configmap. For example: We are creating a Kubernetes Configmap named "oci-cred" using the OCI account we are using as below: 
+## 1. Create a Kubernetes Configmap. For example: We are creating a Kubernetes Configmap named `oci-cred` using the OCI account we are using as below: 
 
 ```
 kubectl create configmap oci-cred \
@@ -102,7 +104,7 @@ kubectl create configmap oci-cred \
 ```
 
 
-## 2. Create a Kubernetes secret "oci-privatekey" using the OCI Pem key taken from OCI console for the account you are using:
+## 2. Create a Kubernetes secret `oci-privatekey` using the OCI Pem key taken from OCI console for the account you are using:
 
 ```
 -- assuming the OCI Pem key to be "/root/.oci/oci_api_key.pem"
@@ -111,7 +113,8 @@ kubectl create secret generic oci-privatekey --from-file=privatekey=/root/.oci/o
 ```
 
 
-## 3. Create a Kubernetes secret named "admin-password". This passward needs to satisfy the minimum passward requirements for the OCI DBCS Service. For example:
+## 3. Create a Kubernetes secret named `admin-password`; This passward must meet the minimum passward requirements for the OCI DBCS Service.
+For example:
 
 ```
 -- assuming the passward has been added to a text file named "admin-password":
@@ -120,7 +123,8 @@ kubectl create secret generic admin-password --from-file=./admin-password -n def
 ```
 
 
-## 4. Create a Kubernetes secret named "tde-password". This passward needs to satisfy the minimum passward requirements for the OCI DBCS Service. For example:
+## 4. Create a Kubernetes secret named `tde-password`; this passward must meet the minimum passward requirements for the OCI DBCS Service.
+For example:
 
 ```
 -- assuming the passward has been added to a text file named "tde-password":
@@ -129,7 +133,7 @@ kubectl create secret generic tde-password --from-file=./tde-password -n default
 ```
 
 
-## 5. Create an ssh key pair and use its public key to create a Kubernetes secret named "oci-publickey". The private key for this public key can be used later to access the DBCS system's host machine using ssh:
+## 5. Create an ssh key pair, and use its public key to create a Kubernetes secret named `oci-publickey`; the private key for this public key can be used later to access the DBCS system's host machine using ssh:
 
 ```
 [root@test-server DBCS]# ssh-keygen -N "" -C "DBCS_System"-`date +%Y%m` -P ""
@@ -159,9 +163,9 @@ The key's randomart image is:
 
 
 
-# Use Cases to manage life cycle of a OCI DBCS System using Oracle DB Operator DBCS Controller
+# Use Cases to manage the lifecycle of an OCI DBCS System with Oracle DB Operator DBCS Controller
 
-There are multiple use cases to deploy and manage the OCI DBCS Service based database using the Oracle DB Operator DBCS Controller.
+For more informatoin about the multiple use cases available to you to deploy and manage the OCI DBCS Service-based database using the Oracle DB Operator DBCS Controller, review this list:
 
 [1. Deploy a DB System using OCI DBCS Service with minimal parameters](./provisioning/dbcs_service_with_minimal_parameters.md)  
 [2. Binding to an existing DBCS System already deployed in OCI DBCS Service](./provisioning/bind_to_existing_dbcs_system.md)  
@@ -176,8 +180,8 @@ There are multiple use cases to deploy and manage the OCI DBCS Service based dat
 
 ## Connecting to OCI DBCS database deployed using Oracle DB Operator DBCS Controller
 
-After the OCI DBCS database has been deployed using Oracle DB Operator DBCS Controller, you can follow the steps in this document to connect to this Database: [Database Connectivity](./provisioning/database_connection.md)
+After you have deployed the OCI DBCS database with the Oracle DB Operator DBCS Controller, you can connect to the database. To see how to connect and use the database, refer to the steps in [Database Connectivity](./provisioning/database_connection.md).
 
 ## Known Issues
 
-Please refer to the list of [Known Issues](./provisioning/known_issues.md) for an OCI DBCS System deployed using Oracle DB Operator DBCS Controller.
+If you encounter any issues with deployment, refer to the list of [Known Issues](./provisioning/known_issues.md) for an OCI DBCS System deployed using Oracle DB Operator DBCS Controller.
