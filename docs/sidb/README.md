@@ -4,49 +4,33 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
 
   * [Prerequisites](#prerequisites)
   * [SingleInstanceDatabase Resource](#singleinstancedatabase-resource)
-    * [Resource Details](#resource-details)
-      * [Database List](#database-list)
-      * [Quick Status](#quick-status)
-      * [Detailed Status](#detailed-status)
-    * [Template YAML](#template-yaml)
-    * [New Database Provisioning](#new-database-provisioning)
-    * [Pre-built Database Provisioning](#pre-built-database-provisioning)
-    * [XE Database Provisioning](#xe-database-provisioning)
-    * [Database Connection](#database-connection)
-    * [Database Configuration](#database-configuration)
-      * [Database Persistence](#database-persistence)
-        * [Dynamic Persistence Provisioning](#dynamic-persistence-provisioning)
-        * [Static Persistence Provisioning](#static-persistence-provisioning)
-          * [Block Volume Static Provisioning](#block-volume-static-provisioning)
-          * [NFS Volume Static Provisioning](#nfs-volume-static-provisioning)
-      * [Database Modes: Flashback, Archivelog and Forcelog](#database-modes-flashback-archivelog-and-forcelog)
-      * [Initialization Parameters](#initialization-parameters)
-      * [Multiple Replicas](#multiple-replicas)
-      * [Load Balancer Service](#load-balancer-service)
-      * [Immutable YAML Attributes](#immutable-yaml-attributes)
-    * [Clone Existing Database](#clone-existing-database)
-    * [Patch/Rollback Database](#patchrollback-database)
-      * [Patch](#patch)
-      * [Patch after Cloning](#patch-after-cloning)
-      * [Datapatch Status](#datapatch-status)
-      * [Rollback](#rollback)
-    * [Deleting Database](#deleting-database)
+    * [Create a Database](#create-a-database)
+      * [New Database](#new-database)
+      * [Pre-built Database](#pre-built-database)
+      * [XE Database](#xe-database)
+    * [Connecting to Database](#connecting-to-database)
+    * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
+      * [Dynamic Persistence](#dynamic-persistence)
+      * [Static Persistence](#static-persistence)
+    * [Configuring a Database](#configuring-a-database)
+      * [Configure ArchiveLog, Flashback and ForceLog](#configure-archivelog-flashback-and-forcelog)
+      * [Change Init Parameters](#change-init-parameters)
+    * [Clone a Database](#clone-a-database)
+    * [Patch a Database](#patch-a-database)
+    * [Delete a Database](#delete-a-database)
+    * [Advanced Database Configurations](#advanced-database-configurations)
+      * [Run Database with Multiple Replicas](#run-database-with-multiple-replicas)
+      * [Setup Database with LoadBalancer](#setup-database-with-loadbalancer)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
-    * [Resource details](#resource-details)
-      * [ORDS List](#ords-list)
-      * [Quick Status](#quick-status)
-      * [Detailed Status](#detailed-status)
-    * [Template YAML](#template-yaml)
-    * [REST Enable Database](#rest-enable-database)
-      * [ORDS Provisioning](#ords-provisioning) 
-      * [Creation Status](#creation-status)
+    * [REST Enable a Database](#rest-enable-a-database)
+      * [Provision ORDS](#provision-ords)
       * [Database API](#database-api)
-        * [Examples](#examples)
-      * [REST Enabled SQL](#rest-enabled-sql)
-      * [Oracle Data Pump](#oracle-data-pump)
-      * [Database Actions](#database-actions)
+      * [Advanced Usages](#advanced-usages)
+        * [Oracle Data Pump](#oracle-data-pump)
+        * [REST Enabled SQL](#rest-enabled-sql)
+        * [Database Actions](#database-actions)
     * [APEX Installation](#apex-installation)
-    * [Deleting ORDS](#deleting-ords)
+    * [Delete ORDS](#delete-ords)
   * [Maintenance Operations](#maintenance-operations)
 
 ## Prerequisites
@@ -154,7 +138,9 @@ Create this secret using the following command as an example:
 
 This command creates a secret named `admin-secret`, with the key `oracle_pwd` mapped to the actual password specified in the command.
 
-### New Database Provisioning
+### Create a Database
+
+#### New Database
 
 To provision a new database instance on the Kubernetes cluster, use the example **[config/samples/sidb/singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**.
 
@@ -187,7 +173,7 @@ To provision a new database instance on the Kubernetes cluster, use the example 
 - To pull the database image faster from the container registry, so that you can bring up the SIDB instance quickly, you can use the container-registry mirror of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, then you can use the `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, follow the link [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
 - To update the init parameters like `sgaTarget` and `pgaAggregateTarget`, refer the `initParams` section of the [singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
-### Pre-built Database Provisioning
+#### Pre-built Database
 
 To provision a new pre-built database instance, use the sample **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
 ```sh
@@ -196,11 +182,11 @@ $ kubectl apply -f singleinstancedatabase_prebuiltdb.yaml
   singleinstancedatabase.database.oracle.com/prebuiltdb-sample created
 ```
 
-This pre-built image includes the data files of the database inside the image itself. As a result, the database startup time of the container is reduced, down to a couple of seconds. The pre-built database image can be very useful in contiguous integration/continuous delivery (CI/CD) scenarios, in which databases are used for conducting tests or experiments, and the workflow is simple. 
+This pre-built image includes the data files of the database inside the image itself. As a result, the database startup time of the container is reduced, down to a couple of seconds. The pre-built database image can be very useful in continuous integration/continuous delivery (CI/CD) scenarios, in which databases are used for conducting tests or experiments, and the workflow is simple. 
 
 To build the pre-built database image for the Enterprise/Standard edition, follow these instructions: [Pre-built Database (prebuiltdb) Extension](https://github.com/oracle/docker-images/blob/main/OracleDatabase/SingleInstance/extensions/prebuiltdb/README.md).
 
-### XE Database Provisioning
+#### XE Database
 To provision new Oracle Database Express Edition (XE) database, use the sample **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)** file. For example:
 
       kubectl apply -f singleinstancedatabase_express.yaml
@@ -212,7 +198,7 @@ This command pulls the XE image uploaded on the [Oracle Container Registry](http
 - For XE database, only single replica mode (i.e. `replicas: 1`) is supported.
 - For XE database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
 
-### Database Connection
+### Connecting to Database
 
 Creating a new database instance takes a while. When the `status` column returns the response `Healthy`, the Database is open for connections.
 
@@ -261,25 +247,22 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.oemExpres
   https://10.0.25.54:5500/em
 ```
 
-### Database Configuration
-The `OraOperator` facilitates you to configure the database. Various database configuration options are explained in the following subsections:
-
-#### Database Persistence
+### Database Persistence (Storage) Configuration Options
 The database persistence can be achieved in the following two ways:
 - Dynamic Persistence Provisioning
 - Static Persistence Provisioning
 
-##### Dynamic Persistence Provisioning
+#### Dynamic Persistence
 In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by mentioning a storage class. For example, **oci-bv** storage class is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)** file. This storage class facilitates dynamic provisioning of the OCI block volumes. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.
                      
 **Note:** Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`. These volumes are deleted when their corresponding database deployment is deleted. To retain volumes, use static provisioning, as explained in the Block Volume Static Provisioning section.
 
-##### Static Persistence Provisioning
+#### Static Persistence
 In **Static Persistence Provisioning**, you have to create a volume manually (either using Block Volume or NFS), and then use the name of this volume with the `<.spec.persistence.volumeName>` field (corresponds to the `volumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**). The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment. The access modes supported with block volume and NFS are `ReadWriteOnce` and `ReadWriteMany` respectively. 
 
 Static Persistence Provisioning in OCI is explained in the following subsections:
 
-###### Block Volume Static Provisioning
+##### Block Volume Static Provisioning
 With block volume static provisioning, you must manually create a block volume resource from the OCI console, and fetch its `OCID`. To create the persistent volume, you can use the following YAML file:
 ```yaml
 apiVersion: v1
@@ -305,7 +288,7 @@ nodeSelector:
    topology.kubernetes.io/zone: PHX-AD-1
 ```
 
-###### NFS Volume Static Provisioning
+##### NFS Volume Static Provisioning
 Similar to the block volume static provisioning, you have to manually create a file system resource from the OCI console, and fetch its `OCID, Mount Target and Export Path`. Mention these values in the following YAML file to create the persistent volume:
 
 ```yaml
@@ -327,7 +310,10 @@ spec:
 
 **Note:** Whenever a mount target is provisioned in OCI, its `Reported Size (GiB)` values are very large. This is visible on the mount target page when logged in to the OCI console. Some applications will fail to install if the results of a space requirements check show too much available disk space. So specify, in gibibytes (GiB), the maximum capacity reported by file systems exported through this mount target. This setting does not limit the actual amount of data you can store.
 
-#### Database Modes: Flashback, Archivelog and Forcelog
+### Configuring a Database
+The `OraOperator` facilitates you to configure the database. Various database configuration options are explained in the following subsections:
+
+#### Configure ArchiveLog, Flashback, and ForceLog
 The following database parameters can be updated after the database is created: 
 
 - `flashBack`
@@ -354,7 +340,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath=[{.status.archiveL
   [true, true, true]
 ```
 
-#### Initialization Parameters
+#### Change Init Parameters
 
 The following database initialization parameters can be updated after the database is created:
 
@@ -368,31 +354,6 @@ Change their attribute values and apply using `kubectl apply` or `kubectl edit/p
 **NOTE:**
 The value for the initialization parameter `sgaTarget` that you provide should be within the range set by [sga_min_size, sga_max_size]. If the value you provide is not in that range, then `sga_target` is not updated to the value you specify for `sgaTarget`.
 
-#### Multiple Replicas
-
-In multiple replicas mode, more than one pod is created for the database. The database is open and mounted by one of the replica pods. Other replica pods have instances started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down. Multiple replicas are also helpful in [patching](#patch-existing-database) operation. Ensure that you have multiple replicas of the database pods running before you start the patching operation for minimum downtime.
-
-To enable multiple replicas, update the replica attribute in the `.yaml`, and apply by using the `kubectl apply` or `kubectl scale` commands.
-
-**Note:** 
-- This functionality requires the [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s) extended images. The database image from the container registry `container-registry.oracle.com` includes the K8s extension.
-- Because Oracle Database Express Edition (XE) does not support [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s), it does not support multiple replicas.
-- If the `ReadWriteOnce` access mode is used, all the replicas will be scheduled on the same node where the persistent volume would be mounted.
-- If the `ReadWriteMany` access mode is used, all the replicas will be distributed on different nodes. So, it is recommended to have replicas more than or equal to the number of the nodes as the database image is downloaded on all those nodes. This is beneficial in quick cold fail-over scenario (when the active pod dies) as the image would already be available on that node.
-
-
-#### Load Balancer Service
-
-For the Single Instance Database, the default service is the `NodePort` service. You can enable the `LoadBalancer` service by using `kubectl patch` command.
-
-For example:
-
-```sh
-$ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstancedatabase sidb-sample 
-
-  singleinstancedatabase.database.oracle.com/sidb-sample patched
-```
-    
 #### Immutable YAML Attributes
 
 The following attributes cannot be modified after creating the Single Instance Database instance: 
@@ -411,8 +372,7 @@ $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabas
   The SingleInstanceDatabase "sidb-sample" is invalid: spec.sid: Forbidden: cannot be changed
 ```
 
-
-### Clone Existing Database
+### Clone a Database
 
 To create copies of your existing database quickly, you can use the cloning functionality. A cloned database is an exact, block-for-block copy of the source database. Cloning is much faster than creating a fresh database and copying over the data.
 
@@ -431,7 +391,7 @@ $ kubectl apply -f singleinstancedatabase_clone.yaml
 
 **Note:** The clone database can specify a database image that is different from the source database. In such cases, cloning is supported only between databases of the same major release.
   
-### Patch/Rollback Database
+### Patch a Database
 
 Databases running in your cluster and managed by the Oracle Database operator can be patched or rolled back between release updates of the same major release. To patch databases, specify an image of the higher release update. To roll back databases, specify an image of the lower release update.
 
@@ -485,13 +445,38 @@ singleinstancedatabase.database.oracle.com/sidb-sample patched
 
 ```
 
-### Deleting Database
+### Delete a Database
 Please run the following command to delete the database:
 
 ```bash
 kubectl delete singleinstancedatabase.database.oracle.com sidb-sample
 ```
 The command above will delete the database pods and associated service.
+
+### Advanced Database Configurations
+Some advanced database configuration scenarios are as follows:
+
+#### Run Database with Multiple Replicas
+In multiple replicas mode, more than one pod is created for the database. The database is open and mounted by one of the replica pods. Other replica pods have instances started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down. Multiple replicas are also helpful in [patching](#patch-existing-database) operation. Ensure that you have multiple replicas of the database pods running before you start the patching operation for minimum downtime.
+
+To enable multiple replicas, update the replica attribute in the `.yaml`, and apply by using the `kubectl apply` or `kubectl scale` commands.
+
+**Note:** 
+- This functionality requires the [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s) extended images. The database image from the container registry `container-registry.oracle.com` includes the K8s extension.
+- Because Oracle Database Express Edition (XE) does not support [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s), it does not support multiple replicas.
+- If the `ReadWriteOnce` access mode is used, all the replicas will be scheduled on the same node where the persistent volume would be mounted.
+- If the `ReadWriteMany` access mode is used, all the replicas will be distributed on different nodes. So, it is recommended to have replicas more than or equal to the number of the nodes as the database image is downloaded on all those nodes. This is beneficial in quick cold fail-over scenario (when the active pod dies) as the image would already be available on that node.
+
+#### Setup Database with LoadBalancer
+For the Single Instance Database, the default service is the `NodePort` service. You can enable the `LoadBalancer` service by using `kubectl patch` command.
+
+For example:
+
+```sh
+$ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstancedatabase sidb-sample 
+
+  singleinstancedatabase.database.oracle.com/sidb-sample patched
+```
 
 ## OracleRestDataService Resource
 
@@ -564,9 +549,9 @@ The template `.yaml` file for Oracle Rest Data Services (`OracleRestDataService`
 - By default, ORDS uses self-signed certificates. To use certificates from the Certificate Authority, the ORDS image needs to be rebuilt after specifying the values of `ssl.cert` and `ssl.cert.key` in the [standalone.properties](https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/standalone.properties.tmpl) file. After you rebuild the ORDS image, use the rebuilt image in the **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)** file.
 - If you want to install ORDS in a [prebuilt database](#provision-a-pre-built-database), make sure to attach the **database persistence** by uncommenting the `persistence` section in the **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file, while provisioning the prebuilt database.
 
-### REST Enable Database
+### REST Enable a Database
 
-#### ORDS Provisioning
+#### Provision ORDS
 
 To quickly provision a new ORDS instance, use the sample **[config/samples/sidb/oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file. For example: 
 
@@ -635,8 +620,13 @@ Some examples for the Database API usage are as follows:
     ```sh
     curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/feature_usage/ | python -m json.tool
     ```
+#### Advanced Usages
 
-#### REST Enabled SQL
+##### Oracle Data Pump
+The Oracle REST Data Services (ORDS) database API enables you to create Oracle Data Pump export and import jobs by using REST web service calls.
+
+REST APIs for Oracle Data Pump Jobs can be found at [https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/op-database-datapump-jobs-post.html](https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/op-database-datapump-jobs-post.html).
+##### REST Enabled SQL
 
 The REST Enable SQL functionality is available to all the schemas specified in the `.spec.restEnableSchemas` attribute of the sample yaml.
 Only these schemas will have access SQL Developer Web Console specified by the Database Actions URL. 
@@ -685,13 +675,7 @@ Fetch all entries from 'DEPT' table by calling the following API
 
 **NOTE:** `.spec.restEnableSchema[].urlMapping` is optional and is defaulted to `.spec.restEnableSchemas[].schemaName`
 
-#### Oracle Data Pump
-
-The Oracle REST Data Services (ORDS) database API enables you to create Oracle Data Pump export and import jobs by using REST web service calls.
-
-REST APIs for Oracle Data Pump Jobs can be found at [https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/op-database-datapump-jobs-post.html](https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/op-database-datapump-jobs-post.html).
-
-#### Database Actions
+##### Database Actions
 
 Database Actions is a web-based interface that uses Oracle REST Data Services to provide development, data tools, administration and monitoring features for Oracle Database.
 
@@ -764,7 +748,7 @@ password: `.spec.apexPassword`
 **NOTE:**
 - By default, the full development environment is initialized in APEX. After deployment, you can change it manually to the runtime environment. To change environments, run the script `apxdevrm.sql` after connecting to the primary database from the ORDS pod as the `SYS` user with `SYSDBA` privilege. For detailed instructions, see: [Converting a Full Development Environment to a Runtime Environment](https://docs.oracle.com/en/database/oracle/application-express/21.2/htmig/converting-between-runtime-and-full-development-environments.html#GUID-B0621B40-3441-44ED-9D86-29B058E26BE9).
 
-### Deleting ORDS
+### Delete ORDS
 - To delete ORDS run the following command:
       
       kubectl delete oraclerestdataservice ords-sample
