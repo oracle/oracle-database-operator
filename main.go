@@ -155,7 +155,7 @@ func main() {
 	}
         if err = (&databasecontroller.DbcsSystemReconciler{
                 KubeClient:   mgr.GetClient(),
-                Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("DbcsSystem"),
+                Logger:      ctrl.Log.WithName("controllers").WithName("database").WithName("DbcsSystem"),
                 Scheme:   mgr.GetScheme(),
                 Recorder: mgr.GetEventRecorderFor("DbcsSystem"),
         }).SetupWithManager(mgr); err != nil {
