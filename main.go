@@ -153,6 +153,15 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ShardingDatabase")
 		os.Exit(1)
 	}
+        if err = (&databasecontroller.DbcsSystemReconciler{
+                Client:   mgr.GetClient(),
+                Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("DbcsSystem"),
+                Scheme:   mgr.GetScheme(),
+                Recorder: mgr.GetEventRecorderFor("DbcsSystem"),
+        }).SetupWithManager(mgr); err != nil {
+                setupLog.Error(err, "unable to create controller", "controller", "DbcsSystem")
+                os.Exit(1)
+        }
 	if err = (&databasecontroller.OracleRestDataServiceReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("OracleRestDataService"),
