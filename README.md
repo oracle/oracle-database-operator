@@ -1,6 +1,6 @@
 # Oracle Database Operator for Kubernetes
 
-## Make Oracle Database Kubernetes-Native
+## Make Oracle Database Kubernetes Native - An Overview
 
 As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle is announcing _Oracle Database Operator for Kubernetes_ (`OraOperator`). 
 
@@ -52,7 +52,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
 ## Quick Install of the Operator
 
-  To install the operator in the cluster quickly, you can use a single [oracle-database-operator.yaml](https://github.com/oracle/oracle-database-operator/blob/main/oracle-database-operator.yaml) file. Operator pod replicas are set to a default of 3 for High Availability, which can be scaled up and down.
+  To install the operator in the cluster quickly, you can use a single [oracle-database-operator.yaml](https://github.com/oracle/oracle-database-operator/blob/main/oracle-database-operator.yaml) file. 
 
   Run the following command
 
@@ -60,7 +60,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   kubectl apply -f oracle-database-operator.yaml
   ```
 
-  Ensure that operator pods are up and running
+  Ensure that operator pods are up and running. Operator pod replicas are set to a default of 3 for High Availability, which can be scaled up and down.
 
   ```sh
   $ kubectl get pods -n oracle-database-operator-system
@@ -80,14 +80,14 @@ For more details, see [Oracle Database Operator Installation Instrunctions](./do
 
 ## Getting Started with the Operator (Quickstart)
 
-The quickstarts are designed for specific database configurations, including:
+The quickstarts are designed for specific database configurations:
 
 * [Oracle Autonomous Database](./docs/adb/README.md)
 * [Oracle Autonomous Container Database](./docs/acd/README.md)
-* [Oracle Database Single Instance configuration](./docs/sidb/README.md)
-* [Oracle Database configured with Oracle Sharding](./docs/sharding/README.md)
+* [Containerized Oracle Single Instance Database](./docs/sidb/README.md)
+* [Containerized Oracle Shared Database](./docs/sharding/README.md)
 * [Oracle On-Premises Database](./docs/onpremdb/README.md)
-* [Oracle Database Cloud Services](./docs/dbcs/README.md)
+* [Oracle Cloud Co-managed Database](./docs/dbcs/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases. 
 
@@ -100,8 +100,8 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   To delete all the CRD instances deployed to cluster by the operator, run the following commands, where <namespace> is the namespace of the cluster object:
 
   ```sh
-  kubectl delete singleinstancedatabase.database.oracle.com --all -n <namespace>
   kubectl delete oraclerestdataservices.database.oracle.com --all -n <namespace>
+  kubectl delete singleinstancedatabase.database.oracle.com --all -n <namespace>
   kubectl delete shardingdatabase.database.oracle.com --all -n <namespace>
   kubectl delete autonomousdatabase.database.oracle.com --all -n <namespace>
   kubectl delete autonomousdatabasebackup.database.oracle.com --all -n <namespace>
@@ -115,7 +115,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete -f oracle-database-operator.yaml --ignore-not-found=true
   ```
 
-  Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods,services,PVCs, and so on) are deleted. However, the CRD deletion stops responding, because the CRD instances have finalizers that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
+  Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods,services, PVCs, and so on) are deleted. However, the CRD deletion stops responding, because the CRD instances have properties that prevent its deletion and that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
 
 
 ## Docs of the supported Oracle Database configurations
