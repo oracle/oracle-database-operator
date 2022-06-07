@@ -188,9 +188,10 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, nil
 		}
 
-		dbcsInst.Spec.Id = &dbcsID
+		assignDBCSID(dbcsInst, dbcsID)
 		if err := dbcsv1.UpdateDbcsSystemId(r.KubeClient, dbcsInst); err != nil {
 			// Change the status to Failed
+			assignDBCSID(dbcsInst, dbcsID)
 			if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev1alpha1.Failed, r.nwClient, r.wrClient); statusErr != nil {
 				return ctrl.Result{}, statusErr
 			}
@@ -198,10 +199,11 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 
 		r.Logger.Info("DbcsSystem system provisioned succesfully")
-
+		assignDBCSID(dbcsInst, dbcsID)
 		if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
 			return ctrl.Result{}, err
 		}
+		assignDBCSID(dbcsInst, dbcsID)
 	} else {
 		if lastSucSpec == nil {
 			if err := dbcsv1.GetDbSystemId(r.Logger, r.dbClient, dbcsInst); err != nil {
@@ -216,8 +218,10 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{}, err
 			}
 
+			dbcsInstId := *dbcsInst.Spec.Id
 			if err := dbcsv1.UpdateDbcsSystemId(r.KubeClient, dbcsInst); err != nil {
 				// Change the status to Failed
+				assignDBCSID(dbcsInst, dbcsInstId)
 				if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev1alpha1.Failed, r.nwClient, r.wrClient); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
@@ -226,9 +230,11 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 			r.Logger.Info("Sync information from remote DbcsSystem System successfully")
 
+			dbcsInstId = *dbcsInst.Spec.Id
 			if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
 				return ctrl.Result{}, err
 			}
+			assignDBCSID(dbcsInst, dbcsInstId)
 		} else {
 			if dbcsInst.Spec.Id == nil {
 				dbcsInst.Spec.Id = lastSucSpec.Id
@@ -255,16 +261,22 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	//r.updateWalletSecret(dbcs)
 
 	// Update the last succesful spec
+	dbcsInstId := *dbcsInst.Spec.Id
 	if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
 		return ctrl.Result{}, err
 	}
-
+	//assignDBCSID(dbcsInst,dbcsI)
 	// Change the phase to "Available"
+	assignDBCSID(dbcsInst, dbcsInstId)
 	if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev1alpha1.Available, r.nwClient, r.wrClient); statusErr != nil {
 		return ctrl.Result{}, statusErr
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func assignDBCSID(dbcsInst *databasev1alpha1.DbcsSystem, dbcsID string) {
+	dbcsInst.Spec.Id = &dbcsID
 }
 
 func (r *DbcsSystemReconciler) eventFilterPredicate() predicate.Predicate {

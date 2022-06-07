@@ -2768,7 +2768,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: container-registry.oracle.com/database/operator:0.1.0
+        image: phx.ocir.io/intsanjaysingh/db-operator/sharding/dbcs-operator:0.2.0
         imagePullPolicy: Always
         name: manager
         ports:
