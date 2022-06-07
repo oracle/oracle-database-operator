@@ -476,7 +476,7 @@ func UpdateDbcsSystemId(kubeClient client.Client, dbcs *databasev1alpha1.DbcsSys
 	payload := []annotations.PatchValue{{
 		Op:    "replace",
 		Path:  "/spec/details",
-		Value: dbcs.Spec.DbSystem,
+		Value: dbcs.Spec,
 	}}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -741,9 +741,10 @@ func ValidateSpex(logger logr.Logger, kubeClient client.Client, dbClient databas
 		}
 
 		if dbcs.Spec.DbSystem.NodeCount != nil {
-			if *dbcs.Spec.DbSystem.NodeCount == 1 {
-			} else if *dbcs.Spec.DbSystem.NodeCount == 2 {
-			} else {
+			switch *dbcs.Spec.DbSystem.NodeCount {
+			case 1:
+			case 2:
+			default:
 				eventMsg = "DBCS CRD resource  " + "NodeCount  " + GetFmtStr(dbcs.Name) + GetFmtStr("dbcs.Spec.DbSystem.NodeCount") + " can be either 1 or 2."
 				eRecord.Eventf(dbcs, corev1.EventTypeWarning, eventErr, eventMsg)
 				return err

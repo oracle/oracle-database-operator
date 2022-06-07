@@ -255,17 +255,18 @@ func getRecoveryWindowsInDays(dbcs *databasev1alpha1.DbcsSystem) (int, error) {
 
 	var days int
 
-	if *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays == 7 {
+	switch *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays {
+	case 7:
 		return *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays, nil
-	} else if *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays == 15 {
+	case 15:
 		return *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays, nil
-	} else if *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays == 30 {
+	case 30:
 		return *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays, nil
-	} else if *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays == 45 {
+	case 45:
 		return *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays, nil
-	} else if *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays == 60 {
+	case 60:
 		return *dbcs.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays, nil
-	} else {
+	default:
 		days = 30
 		return days, nil
 	}
@@ -278,11 +279,12 @@ func GetDBSystemopts(
 	dbSystemOpt := database.DbSystemOptions{}
 
 	if dbcs.Spec.DbSystem.StorageManagement != "" {
-		if dbcs.Spec.DbSystem.StorageManagement == "LVM" {
+		switch dbcs.Spec.DbSystem.StorageManagement {
+		case "LVM":
 			dbSystemOpt.StorageManagement = database.DbSystemOptionsStorageManagementLvm
-		} else if dbcs.Spec.DbSystem.StorageManagement == "ASM" {
+		case "ASM":
 			dbSystemOpt.StorageManagement = database.DbSystemOptionsStorageManagementAsm
-		} else {
+		default:
 			dbSystemOpt.StorageManagement = database.DbSystemOptionsStorageManagementAsm
 		}
 	} else {
@@ -340,15 +342,16 @@ func GetDBEdition(dbcs *databasev1alpha1.DbcsSystem) database.LaunchDbSystemDeta
 	}
 
 	if dbcs.Spec.DbSystem.DbEdition != "" {
-		if dbcs.Spec.DbSystem.DbEdition == "STANDARD_EDITION" {
+		switch dbcs.Spec.DbSystem.DbEdition {
+		case "STANDARD_EDITION":
 			return database.LaunchDbSystemDetailsDatabaseEditionStandardEdition
-		} else if dbcs.Spec.DbSystem.DbEdition == "ENTERPRISE_EDITION" {
+		case "ENTERPRISE_EDITION":
 			return database.LaunchDbSystemDetailsDatabaseEditionEnterpriseEdition
-		} else if dbcs.Spec.DbSystem.DbEdition == "ENTERPRISE_EDITION_HIGH_PERFORMANCE" {
+		case "ENTERPRISE_EDITION_HIGH_PERFORMANCE":
 			return database.LaunchDbSystemDetailsDatabaseEditionEnterpriseEditionHighPerformance
-		} else if dbcs.Spec.DbSystem.DbEdition == "ENTERPRISE_EDITION_EXTREME_PERFORMANCE" {
+		case "ENTERPRISE_EDITION_EXTREME_PERFORMANCE":
 			return database.LaunchDbSystemDetailsDatabaseEditionEnterpriseEditionExtremePerformance
-		} else {
+		default:
 			return database.LaunchDbSystemDetailsDatabaseEditionEnterpriseEdition
 		}
 	}
@@ -363,9 +366,10 @@ func GetDBbDiskRedundancy(
 		return database.LaunchDbSystemDetailsDiskRedundancyHigh
 	}
 
-	if dbcs.Spec.DbSystem.DiskRedundancy == "HIGH" {
+	switch dbcs.Spec.DbSystem.DiskRedundancy {
+	case "HIGH":
 		return database.LaunchDbSystemDetailsDiskRedundancyHigh
-	} else if dbcs.Spec.DbSystem.DiskRedundancy == "NORMAL" {
+	case "NORMAL":
 		return database.LaunchDbSystemDetailsDiskRedundancyNormal
 	}
 
