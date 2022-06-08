@@ -14,7 +14,7 @@ spec:
       autoBackupEnabled: True
       autoBackupWindow: "SLOT_FOUR"
       recoveryWindowsInDays: 15
-    dbEdition: "STANDARD_EDITION"
+    dbEdition: "ENTERPRISE_EDITION_EXTREME_PERFORMANCE"
     dbName: "db0130"
     dbVersion: "21c"
     dbWorkload: "OLTP"
