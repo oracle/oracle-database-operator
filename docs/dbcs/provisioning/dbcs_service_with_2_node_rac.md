@@ -15,7 +15,7 @@ This example uses `dbcs_service_with_2_node_rac.yaml` to deploy a 2 Node RAC VMD
 - Enable flag for Automatic Backup for DBCS Database as `True`
 - Auto Backup Window for DBCS Database as `SLOT_FOUR`
 - Recovery Windows for Backup retention in days as `15`
-- Oracle Database Edition as `STANDARD_EDITION`
+- Oracle Database Edition as `ENTERPRISE_EDITION_EXTREME_PERFORMANCE`
 - Database Name as `db0130`  
 - Oracle Database Software Image Version as `21c`  
 - Database Workload Type as Transaction Processing i.e. `OLTP`  
