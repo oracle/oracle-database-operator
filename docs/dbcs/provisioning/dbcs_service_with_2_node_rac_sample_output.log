@@ -1,4 +1,4 @@
-[root@docker-test-server test]# cat dbcs_service_with_2_node_rac.yaml
+NTERPRISE_EDITION_EXTREME_PERFORMANCE[root@docker-test-server test]# cat dbcs_service_with_2_node_rac.yaml
 apiVersion: database.oracle.com/v1alpha1
 kind: DbcsSystem
 metadata:
@@ -15,7 +15,7 @@ spec:
       autoBackupEnabled: True
       autoBackupWindow: "SLOT_FOUR"
       recoveryWindowsInDays: 15
-    dbEdition: "STANDARD_EDITION"
+    dbEdition: "ENTERPRISE_EDITION_EXTREME_PERFORMANCE"
     dbName: "db0130"
     dbVersion: "21c"
     dbWorkload: "OLTP"
@@ -271,7 +271,7 @@ Spec:
       Auto Backup Enabled:            true
       Auto Backup Window:             SLOT_FOUR
       Recovery Windows In Days:       15
-    Db Edition:                       STANDARD_EDITION
+    Db Edition:                       ENTERPRISE_EDITION_EXTREME_PERFORMANCE
     Db Name:                          db0130
     Db Version:                       21c
     Db Workload:                      OLTP
