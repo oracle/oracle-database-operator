@@ -1,6 +1,6 @@
 # Using the DB Operator DBCS Controller 
 
-Oracle Cloud Infastructure (OCI) Database Cloud Service (DBCS) provides single-node Database (DB) systems, deployed either bare metal or virtual machines, and provides two-node Oracle Real Appliation Clusters (Oracle RAC) database systems on virtual machines.
+Oracle Cloud Infastructure (OCI) Database Cloud Service (DBCS) provides single-node Database (DB) systems, deployed on virtual machines, and provides two-node Oracle Real Appliation Clusters (Oracle RAC) database systems on virtual machines.
 
 The single-node DB systems and Oracle RAC systems on virtual machines are [co-managed Oracle Database cloud solutions](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/overview.htm). To manage the lifecycle of an OCI DBCS system, you can use the OCI Console, the REST API, or the Oracle Cloud Infrastructure command-line interface (CLI). At the granular level, you can use the Oracle Database CLI (DBCLI), Oracle Enterprise Manager, or Oracle SQL Developer.
 
