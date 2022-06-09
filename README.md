@@ -132,6 +132,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 * [Components of Dedicated Autonomous Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/components.html)
 * [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
 * [Oracle Database Sharding](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
+* [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
 
 ## Contributing
 
