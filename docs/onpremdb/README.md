@@ -3,8 +3,8 @@
 The On-Premise Database Controller enables provisioning of Oracle Databases (PDBs) both on a Kubernetes cluster or outside of a Kubernetes cluster. The following sections explain the setup and functionality of this controller:
 
 * [Prerequisites for On-Premise Database Controller](ORACLE_ONPREMDB_CONTROLLER_README.md#prerequisites-and-setup)
-* [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets) 
-* [Kubernetes CRD for CDB](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-crd-for-cdb) 
+* [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets)
+* [Kubernetes CRD for CDB](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-crd-for-cdb)
 * [Kubernetes CRD for PDB](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-crd-for-pdb)
 * [PDB Lifecycle Management Operations](ORACLE_ONPREMDB_CONTROLLER_README.md#pdb-lifecycl-management-operations)
 * [Validation and Errors](ORACLE_ONPREMDB_CONTROLLER_README.md#validation-and-errors)
@@ -14,7 +14,7 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
 + ### Prepare CDB for PDB Lifecycme Management (PDB-LM)
 
   Pluggable Database management is performed in the Container Database (CDB) and includes create, clone, plug, unplug, delete, modify and map operations.
-  You cannot have an ORDS enabled schema in the container database. To perform the PDB lifecycle management operations, the default CDB administrator credentials must be defined. 
+  You cannot have an ORDS enabled schema in the container database. To perform the PDB lifecycle management operations, the default CDB administrator credentials must be defined.
 
   To define the default CDB administrator credentials, perform the following steps on the target CDB(s) where PDB-LM operations are to be performed:
 
@@ -26,26 +26,40 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
   ```
 + ### Building the Oracle REST Data Service (ORDS) Image
 
-  Oracle On-Premise Database controller enhances the Oracle REST Data Services (ORDS) image to enable it for PDB Lifecycle Management. You can build this image by following the instructions below: 
-    * After cloning the repository, go to the "ords" folder, and run: 
+  Oracle On-Premise Database controller enhances the Oracle REST Data Services (ORDS) image to enable it for PDB Lifecycle Management. You can build this image by following the instructions below:
+    * After cloning the repository, go to the "ords" folder, and run:
         ```sh
         docker build -t oracle/ords-dboper:latest .
         ```
-    * Once the image is ready, you need to push it to your Docker Images Repository to pull it during CDB Resource creation.
+
+  > **_NOTE1:_** Required file to build this image is Oracle Rest Data Services 'ords-< version >.zip',
+  you can download such file from http://www.oracle.com/technetwork/developer-tools/rest-data-services/downloads/index.html
+
+  > **_NOTE2:_** to build the ords image you need to Accept the Oracle Standard Terms and Restrictions for Java/jdk repository on Oracle Container Registry at https://container-registry.oracle.com
+
+  > **_NOTE3:_** docker needs access to container-registry.oracle.com for which following command may be required:
+    ```sh
+    docker login container-registry.oracle.com
+    ```
+  > **_NOTE4:_** if you are going to deploy inside minikube, you need to switch the env to it, issuing:
+    ```sh
+    eval $(minikube docker-env)
+    ```
+    * Once the image is ready, you may need to push it to your Docker Images Repository to pull it during CDB controller resource creation.
 
 + ### Install cert-manager
 
   Validating webhook is an endpoint Kubernetes can invoke prior to persisting resources in ETCD. This endpoint returns a structured response indicating whether the resource should be rejected or accepted and persisted to the datastore.
 
   Webhook requires a TLS certificate that the apiserver is configured to trust . Install the cert-manager with the following command:
-  
+
   ```sh
   kubectl apply -f https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml
   ```
 
 ## Kubernetes Secrets
 
-  Both CDBs and PDBs make use of Kubernetes Secrets to store usernames and passwords. 
+  Both CDBs and PDBs make use of Kubernetes Secrets to store usernames and passwords.
 
   For CDB, create a secret file as shown here: [config/samples/onpremdb/cdb_secret.yaml](../../config/samples/onpremdb/cdb_secret.yaml)
 
@@ -53,7 +67,15 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
   $ kubectl apply -f cdb_secret.yaml
   secret/cdb1-secret created
   ```
-  On successful creation of the CDB Resource, the CDB secrets would be deleted from the Kubernetes system. 
+  > **_NOTE:_** the entries such user and password must be 'base64 encoded', example:
+  "cdbadmin_user=C##DBAPI_CDB_ADMIN" become cdbadmin_user: "QyMjREJBUElfQ0RCX0FETUlOCg==" using command:
+
+  ```sh
+   echo C##DBAPI_CDB_ADMIN | base64
+   QyMjREJBUElfQ0RCX0FETUlOCg==
+  ```
+
+  On successful creation of the CDB Resource, the CDB secrets would be deleted from the Kubernetes system.
 
   For PDB, create a secret file as shown here: [config/samples/onpremdb/pdb_secret.yaml](../../config/samples/onpremdb/pdb_secret.yaml)
 
@@ -68,7 +90,7 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
   $ kubectl create secret generic pdb1-secret --from-literal sysadmin_user=pdbadmin --from-literal sysdamin_pwd=WE2112#232#
   secret/pdb1-secret created
   ```
-  
+
 ## Kubernetes CRD for CDB
 
   The Oracle Database Operator creates the CDB kind as a custom resource that models a target CDB as a native Kubernetes object. This is only used to create Pods to connect to the target CDB to perform PDB-LM operations. These CDB resources can be scaled up and down based on the expected load using replicas. Each CDB resource follows the CDB CRD as defined here: [config/crd/bases/database.oracle.com_cdbs.yaml](../../config/crd/bases/database.oracle.com_cdbs.yaml)
@@ -77,7 +99,7 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
 
   A sample .yaml file is available here: [config/samples/onpremdb/cdb.yaml](../../config/samples/onpremdb/cdb.yaml)
 
-  **Note:** The password and username fields in the above `cdb.yaml` yaml are Kubernetes Secrets. Please see the section [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets) for more information. 
+  **Note:** The password and username fields in the above `cdb.yaml` yaml are Kubernetes Secrets. Please see the section [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets) for more information.
 
  + ### Check the status of the all CDBs
   ```sh
@@ -153,7 +175,7 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
 + ### Map PDB
 
   This is used to map an existing PDB in the CDB as a Kubernetes Custom Resource.
-  A sample .yaml file is available here: [config/samples/onpremdb/pdb_map.yaml](../../config/samples/onpremdb/pdb_map.yaml) 
+  A sample .yaml file is available here: [config/samples/onpremdb/pdb_map.yaml](../../config/samples/onpremdb/pdb_map.yaml)
 
 ## Validation and Errors
 
