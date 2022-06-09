@@ -2,17 +2,21 @@
 
 ## Make Oracle Database Kubernetes Native - An Overview
 
-As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle is announcing _Oracle Database Operator for Kubernetes_ (`OraOperator`). 
+Starting with release 19c, Oracle Database images have been supported in containers (Docker, Podman) for production use and Kubernetes deployment with Helm Charts.
+As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator`). 
+OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
-Since Oracle Database 19c, Oracle Database images have been supported in containers (Docker, Podman) for production use and Kubernetes deployment with Helm Charts. This release includes Oracle Database Operator, which is a new open source product that extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
-
-In this release, `OraOperator` supports the following Oracle Database configurations:
+In this release, `OraOperator` supports the following Oracle Database configurations and infrastructure:
 
 * Oracle Autonomous Database on shared Oracle Cloud Infrastructure (OCI), also known as ADB-S
+* Oracle Autonomous Database on dedicated Cloud infrastructure, also known as ADB-D
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE)
 * Containerized Sharded databases (SHARDED) deployed in OKE
+* Oracle On-Premises Databases
+* Oracle Database Cloud Service
+* Oracle Autonomous Container Database (infrastructure)
 
-Oracle will continue to expand Oracle Database Operator support for additional Oracle Database configurations.
+Oracle will continue to expand OraOperator support for additional Oracle Database configurations.
 
 ## Features Summary
 
@@ -87,7 +91,7 @@ The quickstarts are designed for specific database configurations:
 * [Containerized Oracle Single Instance Database](./docs/sidb/README.md)
 * [Containerized Oracle Shared Database](./docs/sharding/README.md)
 * [Oracle On-Premises Database](./docs/onpremdb/README.md)
-* [Oracle Cloud Co-managed Database](./docs/dbcs/README.md)
+* [Oracle Database Cloud Service](./docs/dbcs/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases. 
 
