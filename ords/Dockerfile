@@ -20,7 +20,7 @@
 #
 # Pull base image
 # ---------------
-FROM container-registry.oracle.com/java/serverjre:8
+FROM container-registry.oracle.com/java/jdk:latest
 
 # Environment variables required for this build (do NOT change)
 # -------------------------------------------------------------
