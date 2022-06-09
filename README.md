@@ -113,6 +113,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete singleinstancedatabase.database.oracle.com --all -n <namespace>
   kubectl delete shardingdatabase.database.oracle.com --all -n <namespace>
   kubectl delete autonomousdatabase.database.oracle.com --all -n <namespace>
+  kubectl delete dbcssystem.database.oracle.com --all -n <namespace>
   kubectl delete acd <your-acd> -n <namespace>
   ```
 
