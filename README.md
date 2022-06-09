@@ -35,11 +35,13 @@ The upcoming releases will support new configurations, operations and capabiliti
 
 **CAUTION:** The current release of `OraOperator` (v0.2.0) is for development and test only. DO NOT USE IN PRODUCTION.
 
-This release can be deployed on the following platforms:
+This release has been installed and tested on the following platforms:
 
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.17 or later
-* In an on-premises [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.3 or later
+* [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.3 or later
 * [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.21.0 or later
+* [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/) 
+* [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
 
 In upcoming releases, the operator will be certified against third-party Kubernetes clusters.
 
