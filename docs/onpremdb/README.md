@@ -41,11 +41,38 @@ The On-Premise Database Controller enables provisioning of Oracle Databases (PDB
     ```sh
     docker login container-registry.oracle.com
     ```
-  > **_NOTE4:_** if you are going to deploy inside minikube, you need to switch the env to it, issuing:
-    ```sh
-    eval $(minikube docker-env)
-    ```
+
     * Once the image is ready, you may need to push it to your Docker Images Repository to pull it during CDB controller resource creation.
+
+    The steps
+    1. check the ords docker image creation issuing:
+    ```sh
+    docker images
+    ```
+  example:
+  ```
+  $ docker images
+  REPOSITORY                                              TAG                 IMAGE ID            CREATED             SIZE
+  oracle/ords-dboper                                      latest              887652b3e87f        17 hours ago        777MB
+  ```
+
+  2. make the required docker tag issuing:
+  ```
+  docker tag oracle/ords-dboper <Docker Container repository>
+  ```
+  example:
+  ```
+  docker tag oracle/ords-dboper lin.ocir.io/mytenancy/mycontainer/myrepo/ords-dboper
+  ```
+
+  3. Push the image over the repository
+  ```
+  docker push <tag name created above>
+  ```
+  example:
+  ```
+  docker push lin.ocir.io/mytenancy/mycontainer/myrepo/ords-dboper:latest
+  ```  
 
 + ### Install cert-manager
 
