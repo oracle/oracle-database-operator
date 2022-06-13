@@ -255,12 +255,31 @@ The database persistence can be achieved in the following two ways:
 #### Dynamic Persistence
 In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by mentioning a storage class. For example, **oci-bv** storage class is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)** file. This storage class facilitates dynamic provisioning of the OCI block volumes. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.
                      
-**Note:** Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`. These volumes are deleted when their corresponding database deployment is deleted. To retain volumes, use static provisioning, as explained in the Block Volume Static Provisioning section.
+**Note:** 
+- Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`. These volumes are deleted when their corresponding database deployment is deleted. To retain volumes, use static provisioning, as explained in the Block Volume Static Provisioning section.
+- In **Minikube**, the dynamic persistence provisioning class is **standard**.
 
 #### Static Persistence
 In **Static Persistence Provisioning**, you have to create a volume manually (either using Block Volume or NFS), and then use the name of this volume with the `<.spec.persistence.volumeName>` field (corresponds to the `volumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**). The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment. The access modes supported with block volume and NFS are `ReadWriteOnce` and `ReadWriteMany` respectively. 
+**Note:**
+In **Minikube**, a persistent volume can be provisioned using the sample yaml file below:
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: db-vol
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: <host-path-for-pv>
+```
+Further, the volume name (i.e. db-vol) can be mentioned in the `volumeName` field of the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. `storageClass` field is not required in this case, and can be left empty.
 
-Static Persistence Provisioning in OCI is explained in the following subsections:
+Static Persistence Provisioning in Oracle Cloud Infrastructure (OCI) is explained in the following subsections:
 
 ##### Block Volume Static Provisioning
 With block volume static provisioning, you must manually create a block volume resource from the OCI console, and fetch its `OCID`. To create the persistent volume, you can use the following YAML file:

@@ -54,7 +54,7 @@ spec:
   ## volumeName is optional. Specify for binding to a specific PV and set storageClass to an empty string to disable automatic volume provisioning
   # persistence:
   #  size: 50Gi
-  ## oci-bv applies to OCI block volumes. Update as appropriate for other cloud service providers
+  ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
   #  storageClass: "oci-bv"
   #  accessMode: "ReadWriteOnce"
   #  volumeName: ""

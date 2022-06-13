@@ -17,3 +17,11 @@ To deploy Oracle Database Operator for Kubernetes on Oracle Docker images, compl
 
   More info on creating persistent volumes available at [https://kubernetes.io/docs/concepts/storage/persistent-volumes/](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)
 
+* ### Minikube Cluster Environment
+  
+  By default, Minikube creates a node with 2GB RAM, 2 CPUs, and 20GB disk space when a cluster is created using `minikube start` command. However, these resources (particularly disk space and RAM) may not be sufficient for running and managing Oracle Database using the OraOperator. It is recommended to have larger RAM and disk space for better performance. For example, the following command creates a Minikube cluster with 6GB RAM and 50GB disk space for the Minikube VM:
+  
+  ```
+  minikube start --memory=6g --disk-size=50g
+  ```
+
