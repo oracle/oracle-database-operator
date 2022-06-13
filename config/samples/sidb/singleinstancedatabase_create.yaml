@@ -53,7 +53,7 @@ spec:
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
     size: 100Gi
-    ## oci-bv applies to OCI block volumes. Update as appropriate for other cloud service providers
+    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
 
