@@ -23,6 +23,8 @@ IMG ?= controller:latest
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.21
+# Operator YAML file
+OPERATOR_YAML=$$(basename $$(pwd)).yaml
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -90,9 +92,14 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
+# Bug:34265574
+# Used sed to reposition the controller-manager Deployment after the certificate creation in the OPERATOR_YAML  
 operator-yaml: manifests kustomize
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > $$(basename $$(pwd)).yaml
+	$(KUSTOMIZE) build config/default > "${OPERATOR_YAML}"
+	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "${OPERATOR_YAML}"
+	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "${OPERATOR_YAML}.bak")  >>  "${OPERATOR_YAML}"
+	rm "${OPERATOR_YAML}.bak"
 
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/default | kubectl delete -f -
