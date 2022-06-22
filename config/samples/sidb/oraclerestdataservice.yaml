@@ -62,6 +62,10 @@ spec:
   ## Type of service  Applicable on cloud enviroments only.
   ## if loadBalService: false, service type = "NodePort" else "LoadBalancer"
   loadBalancer: false
+  ## Service Annotations (Cloud provider specific), for configuring the service (e.g. private LoadBalancer service)
+  #serviceAnnotations:
+  #  service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+
 
   ## Deploy only on nodes having required labels. Format label_name: label_value
   ## The same lables are applied to the created PVC
