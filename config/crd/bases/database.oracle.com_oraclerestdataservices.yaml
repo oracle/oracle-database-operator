@@ -159,6 +159,10 @@ spec:
                 type: array
               serviceAccountName:
                 type: string
+              serviceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
             required:
             - adminPassword
             - databaseRef

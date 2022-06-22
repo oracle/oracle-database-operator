@@ -52,6 +52,7 @@ type OracleRestDataServiceSpec struct {
 
 	DatabaseRef        string                                   `json:"databaseRef"`
 	LoadBalancer       bool                                     `json:"loadBalancer,omitempty"`
+	ServiceAnnotations map[string]string                        `json:"serviceAnnotations,omitempty"`
 	NodeSelector       map[string]string                        `json:"nodeSelector,omitempty"`
 	Image              OracleRestDataServiceImage               `json:"image,omitempty"`
 	OrdsPassword       OracleRestDataServicePassword            `json:"ordsPassword"`
@@ -74,8 +75,8 @@ type OracleRestDataServicePersistence struct {
 	StorageClass string `json:"storageClass,omitempty"`
 
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
-	AccessMode   string `json:"accessMode,omitempty"`
-	VolumeName   string `json:"volumeName,omitempty"`
+	AccessMode string `json:"accessMode,omitempty"`
+	VolumeName string `json:"volumeName,omitempty"`
 }
 
 // OracleRestDataServiceImage defines the Image source and pullSecrets for POD
@@ -90,15 +91,15 @@ type OracleRestDataServicePassword struct {
 	SecretName string `json:"secretName"`
 	// +kubebuilder:default:="oracle_pwd"
 	SecretKey  string `json:"secretKey,omitempty"`
-	KeepSecret *bool   `json:"keepSecret,omitempty"`
+	KeepSecret *bool  `json:"keepSecret,omitempty"`
 }
 
 // OracleRestDataServicePDBSchemas defines the PDB Schemas to be ORDS Enabled
 type OracleRestDataServiceRestEnableSchemas struct {
-	PdbName        string `json:"pdbName,omitempty"`
-	SchemaName     string `json:"schemaName"`
-	UrlMapping     string `json:"urlMapping,omitempty"`
-	Enable         bool   `json:"enable"`
+	PdbName    string `json:"pdbName,omitempty"`
+	SchemaName string `json:"schemaName"`
+	UrlMapping string `json:"urlMapping,omitempty"`
+	Enable     bool   `json:"enable"`
 }
 
 // OracleRestDataServiceStatus defines the observed state of OracleRestDataService
