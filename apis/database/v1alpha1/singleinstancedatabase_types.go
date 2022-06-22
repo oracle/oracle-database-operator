@@ -57,13 +57,14 @@ type SingleInstanceDatabaseSpec struct {
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]+$`
 	// +kubebuilder:validation:MaxLength:=12
-	Sid          string `json:"sid,omitempty"`
-	Charset      string `json:"charset,omitempty"`
-	Pdbname      string `json:"pdbName,omitempty"`
-	LoadBalancer bool   `json:"loadBalancer,omitempty"`
-	FlashBack    bool   `json:"flashBack,omitempty"`
-	ArchiveLog   bool   `json:"archiveLog,omitempty"`
-	ForceLogging bool   `json:"forceLog,omitempty"`
+	Sid                string            `json:"sid,omitempty"`
+	Charset            string            `json:"charset,omitempty"`
+	Pdbname            string            `json:"pdbName,omitempty"`
+	LoadBalancer       bool              `json:"loadBalancer,omitempty"`
+	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
+	FlashBack          bool              `json:"flashBack,omitempty"`
+	ArchiveLog         bool              `json:"archiveLog,omitempty"`
+	ForceLogging       bool              `json:"forceLog,omitempty"`
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
@@ -81,10 +82,10 @@ type SingleInstanceDatabaseSpec struct {
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
 type SingleInstanceDatabasePersistence struct {
-	Size               string `json:"size,omitempty"`
-	StorageClass       string `json:"storageClass,omitempty"`
+	Size         string `json:"size,omitempty"`
+	StorageClass string `json:"storageClass,omitempty"`
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
-	AccessMode         string `json:"accessMode,omitempty"`
+	AccessMode            string `json:"accessMode,omitempty"`
 	VolumeName            string `json:"volumeName,omitempty"`
 	VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
 }
