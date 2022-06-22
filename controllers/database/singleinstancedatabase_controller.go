@@ -865,6 +865,15 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 			Labels: map[string]string{
 				"app": m.Name,
 			},
+			Annotations: func() map[string]string {
+				annotations := make(map[string]string)
+				if len(m.Spec.ServiceAnnotations) != 0 {
+					for key, value := range m.Spec.ServiceAnnotations {
+						annotations[key] = value
+					}
+				}
+				return annotations
+			}(),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -933,7 +942,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
-			VolumeName: m.Spec.Persistence.VolumeName,
+			VolumeName:       m.Spec.Persistence.VolumeName,
 			Selector: func() *metav1.LabelSelector {
 				if m.Spec.Persistence.StorageClass != "oci" {
 					return nil
@@ -1712,7 +1721,7 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 	m.Status.DatafilesPatched = "true"
 	status, versionFrom, versionTo, _ := dbcommons.GetSqlpatchStatus(r, r.Config, readyPod, ctx, req)
 	if versionTo != "" {
-		eventMsg = "data files patched from release update " + versionFrom + " to " + versionTo + ", "+ status + ": " +releaseUpdate
+		eventMsg = "data files patched from release update " + versionFrom + " to " + versionTo + ", " + status + ": " + releaseUpdate
 	} else {
 		eventMsg = "datapatch execution completed"
 	}
