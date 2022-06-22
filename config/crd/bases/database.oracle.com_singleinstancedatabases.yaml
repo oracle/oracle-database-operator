@@ -150,6 +150,10 @@ spec:
                 type: integer
               serviceAccountName:
                 type: string
+              serviceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
               sid:
                 description: SID must be alphanumeric (no special characters, only
                   a-z, A-Z, 0-9), and no longer than 12 characters.
