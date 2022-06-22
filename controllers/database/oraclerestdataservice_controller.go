@@ -251,7 +251,7 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 		eventMsgs = append(eventMsgs, "cannot configure ORDS for database "+m.Spec.DatabaseRef+" that has no attached persistent volume")
 	}
 	if !m.Status.OrdsInstalled && n.Status.OrdsReference != "" {
-		eventMsgs = append(eventMsgs, "database "+m.Spec.DatabaseRef+ " is already configured with ORDS "+n.Status.OrdsReference)
+		eventMsgs = append(eventMsgs, "database "+m.Spec.DatabaseRef+" is already configured with ORDS "+n.Status.OrdsReference)
 	}
 	if m.Status.DatabaseRef != "" && m.Status.DatabaseRef != m.Spec.DatabaseRef {
 		eventMsgs = append(eventMsgs, "databaseRef cannot be updated")
@@ -458,6 +458,15 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 			Labels: map[string]string{
 				"app": m.Name,
 			},
+			Annotations: func() map[string]string {
+				annotations := make(map[string]string)
+				if len(m.Spec.ServiceAnnotations) != 0 {
+					for key, value := range m.Spec.ServiceAnnotations {
+						annotations[key] = value
+					}
+				}
+				return annotations
+			}(),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -768,7 +777,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
-			VolumeName: m.Spec.Persistence.VolumeName,
+			VolumeName:       m.Spec.Persistence.VolumeName,
 			Selector: func() *metav1.LabelSelector {
 				if m.Spec.Persistence.StorageClass != "oci" {
 					return nil
@@ -1237,8 +1246,8 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 		// Alter Apex Users
 		log.Info("Alter APEX Users")
 		_, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
-						ctx, req, true, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s",
-						fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, n.Spec.Pdbname), dbcommons.SQLPlusCLI))
+			ctx, req, true, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s",
+				fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, n.Spec.Pdbname), dbcommons.SQLPlusCLI))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -1339,7 +1348,7 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	m.Status.Status = dbcommons.StatusReady
 	eventReason = "Apex Installation"
 	outArr := strings.Split(out, apexInstalled)
-	eventMsg = "installation of Apex "+ strings.TrimSpace(outArr[len(outArr)-1]) +" completed"
+	eventMsg = "installation of Apex " + strings.TrimSpace(outArr[len(outArr)-1]) + " completed"
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 	n.Status.ApexInstalled = true
 	r.Status().Update(ctx, n)
@@ -1432,7 +1441,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 		//  If the PDB mentioned in yaml doesnt contain in the database , continue
 		if !strings.Contains(strings.ToUpper(availablePDBS), strings.ToUpper(pdbName)) {
 			eventReason := "PDB Check"
-			eventMsg := "PDB "+ pdbName +" not found for specified schema " + m.Spec.RestEnableSchemas[i].SchemaName
+			eventMsg := "PDB " + pdbName + " not found for specified schema " + m.Spec.RestEnableSchemas[i].SchemaName
 			log.Info(eventMsg)
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 			continue
@@ -1450,10 +1459,10 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 
 		// if ORDS already enabled for given PDB
 		if strings.Contains(out, "STATUS:ENABLED") {
-			 if m.Spec.RestEnableSchemas[i].Enable {
+			if m.Spec.RestEnableSchemas[i].Enable {
 				log.Info("Schema already enabled", "schema", m.Spec.RestEnableSchemas[i].SchemaName)
 				continue
-			 }
+			}
 		} else if strings.Contains(out, "STATUS:DISABLED") {
 			if !m.Spec.RestEnableSchemas[i].Enable {
 				log.Info("Schema already disabled", "schema", m.Spec.RestEnableSchemas[i].SchemaName)
@@ -1479,7 +1488,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 			createSchemaSQL := fmt.Sprintf(dbcommons.CreateORDSSchemaSQL, m.Spec.RestEnableSchemas[i].SchemaName, password, pdbName)
 			log.Info("Creating schema", "schema", m.Spec.RestEnableSchemas[i].SchemaName)
 			_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", createSchemaSQL, dbcommons.SQLPlusCLI))
+				fmt.Sprintf("echo -e  \"%s\"  | %s", createSchemaSQL, dbcommons.SQLPlusCLI))
 			if err != nil {
 				log.Error(err, err.Error())
 				return requeueY
@@ -1514,7 +1523,7 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 	}
 
 	if restartORDS {
-		r.Log.Info("Restarting ORDS Pod "+ordsReadyPod.Name+" to clear disabled schemas cache")
+		r.Log.Info("Restarting ORDS Pod " + ordsReadyPod.Name + " to clear disabled schemas cache")
 		var gracePeriodSeconds int64 = 0
 		policy := metav1.DeletePropagationForeground
 		err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{
