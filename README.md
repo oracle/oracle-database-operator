@@ -2,21 +2,19 @@
 
 ## Make Oracle Database Kubernetes Native - An Overview
 
-Starting with release 19c, Oracle Database images have been supported in containers (Docker, Podman) for production use and Kubernetes deployment with Helm Charts.
-As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator`). 
-OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
+As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator`). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
-In this release, `OraOperator` supports the following Oracle Database configurations and infrastructure:
+In this v0.2.0 release, `OraOperator` supports the following database configurations and infrastructure:
 
-* Oracle Autonomous Database on shared Oracle Cloud Infrastructure (OCI), also known as ADB-S
-* Oracle Autonomous Database on dedicated Cloud infrastructure, also known as ADB-D
-* Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE)
-* Containerized Sharded databases (SHARDED) deployed in OKE
-* Oracle On-Premises Databases
-* Oracle Database Cloud Service
-* Oracle Autonomous Container Database (infrastructure)
+* Oracle Autonomous Database on shared Oracle Cloud Infrastructure (OCI) (a.k.a. ADB-S)
+* Oracle Autonomous Database on dedicated Cloud infrastructure (a.k.a. ADB-D)
+* Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
+* Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
+* Oracle On-Premises Databases (CDB/PDBs, Exadata)
+* Oracle Database Cloud Service (DBCS) (a.k.a. VMDB)
+* Oracle Autonomous Container Database (infrastructure) the infrastructure for provisionning Autonomous Databases.
 
-Oracle will continue to expand OraOperator support for additional Oracle Database configurations.
+Oracle will continue to extent OraOperator  to support additional Oracle Database configurations.
 
 ## Features Summary
 
@@ -35,15 +33,14 @@ The upcoming releases will support new configurations, operations and capabiliti
 
 **CAUTION:** The current release of `OraOperator` (v0.2.0) is for development and test only. DO NOT USE IN PRODUCTION.
 
-This release has been installed and tested on the following platforms:
+This release has been installed and tested (not certified) on the following Kubernetes platforms:
 
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.17 or later
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.3 or later
 * [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.21.0 or later
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/) 
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
-
-In upcoming releases, the operator will be certified against third-party Kubernetes clusters.
+* [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift/)
 
 ## Prerequisites
 
