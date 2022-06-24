@@ -12,7 +12,7 @@ In this v0.2.0 release, `OraOperator` supports the following database configurat
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle On-Premises Databases (CDB/PDBs, Exadata)
 * Oracle Database Cloud Service (DBCS) (VMDB)
-* Oracle Autonomous Container Database (infrastructure) the infrastructure for provisionning Autonomous Databases.
+* Oracle Autonomous Container Database (ACD) (infrastructure) the infrastructure for provisionning Autonomous Databases.
 
 Oracle will continue to extent OraOperator  to support additional Oracle Database configurations.
 
@@ -20,12 +20,13 @@ Oracle will continue to extent OraOperator  to support additional Oracle Databas
 
 This release of Oracle Database Operator for Kubernetes (the operator) supports the following lifecycle operations:
 
-* ADB-S: provision, bind, start, stop, terminate (soft/hard), scale (down/up)
-* ADB-D: provision, bind, start, stop, terminate (soft/hard), scale (down/up)
-* SIDB: provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, and Application Express (Apex)
-* SHARDED: provision/deploy sharded databases and the shard topology, add a new shard, delete an existing shard
+* ADB-S: Provision, Bind, Start, Stop, terminate (soft/hard), scale (up/down), Manual Backup, Manual Restore
+* ADB-D: provision, bind, start, stop, terminate (soft/hard), scale (up/down), Manual Backup, Manual Restore
+* ACD: provision, bind, restart, terminate (soft/hard)
+* SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, and Application Express (Apex)
+* SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
 * On-Premises Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
-* Database Cloud Service: Provision, Bind, Scale shapeUp/Down, Liveness Probe, On Demand backup
+* Database Cloud Service: Provision, Bind, Scale Up/Down, Liveness Probe, Manual Backup
 
 The upcoming releases will support new configurations, operations and capabilities.
 
@@ -33,7 +34,7 @@ The upcoming releases will support new configurations, operations and capabiliti
 
 **CAUTION:** The current release of `OraOperator` (v0.2.0) is for development and test only. DO NOT USE IN PRODUCTION.
 
-This release has been installed and tested (not certified) on the following Kubernetes platforms:
+This release has been installed and tested on the following Kubernetes platforms:
 
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.17 or later
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.3 or later
@@ -91,7 +92,7 @@ The quickstarts are designed for specific database configurations:
 * [Oracle Autonomous Database](./docs/adb/README.md)
 * [Oracle Autonomous Container Database](./docs/acd/README.md)
 * [Containerized Oracle Single Instance Database](./docs/sidb/README.md)
-* [Containerized Oracle Shared Database](./docs/sharding/README.md)
+* [Containerized Oracle Sharded Database](./docs/sharding/README.md)
 * [Oracle On-Premises Database](./docs/onpremdb/README.md)
 * [Oracle Database Cloud Service](./docs/dbcs/README.md)
 
