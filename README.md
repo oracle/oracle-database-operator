@@ -111,8 +111,10 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete singleinstancedatabase.database.oracle.com --all -n <namespace>
   kubectl delete shardingdatabase.database.oracle.com --all -n <namespace>
   kubectl delete autonomousdatabase.database.oracle.com --all -n <namespace>
+  kubectl delete autonomousdatabasebackup.database.oracle.com --all -n <namespace>
+  kubectl delete autonomousdatabaserestore.database.oracle.com --all -n <namespace>
+  kubectl delete autonomouscontainerdatabase.database.oracle.com --all -n <namespace>
   kubectl delete dbcssystem.database.oracle.com --all -n <namespace>
-  kubectl delete acd <your-acd> -n <namespace>
   ```
 
   After all CRD instances are deleted, it is safe to remove the CRDs, APISerivces and operator deployment.
