@@ -6,12 +6,12 @@ As part of Oracle's resolution to make Oracle Database Kubernetes-native (that i
 
 In this v0.2.0 release, `OraOperator` supports the following database configurations and infrastructure:
 
-* Oracle Autonomous Database on shared Oracle Cloud Infrastructure (OCI) (a.k.a. ADB-S)
-* Oracle Autonomous Database on dedicated Cloud infrastructure (a.k.a. ADB-D)
+* Oracle Autonomous Database on shared Oracle Cloud Infrastructure (OCI) (ADB-S)
+* Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle On-Premises Databases (CDB/PDBs, Exadata)
-* Oracle Database Cloud Service (DBCS) (a.k.a. VMDB)
+* Oracle Database Cloud Service (DBCS) (VMDB)
 * Oracle Autonomous Container Database (infrastructure) the infrastructure for provisionning Autonomous Databases.
 
 Oracle will continue to extent OraOperator  to support additional Oracle Database configurations.
