@@ -1,6 +1,6 @@
 # Oracle Database Operator for Kubernetes
 
-## Make Oracle Database Kubernetes Native - An Overview
+## Make Oracle Database Kubernetes Native - Take 2 
 
 As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator`). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
