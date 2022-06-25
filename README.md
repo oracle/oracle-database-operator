@@ -41,6 +41,7 @@ This release has been installed and tested on the following Kubernetes platforms
 * [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.21.0 or later
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/) 
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
+* [Red Hat OKD](https://www.okd.io/)
 * [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift/)
 
 ## Prerequisites
