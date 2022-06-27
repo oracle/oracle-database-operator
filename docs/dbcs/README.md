@@ -87,7 +87,7 @@ singleinstancedatabases.database.oracle.com      2022-02-22T23:23:25Z
 ```
 
 
-# Prerequsites to deploy a DBCS system using Oracle DB Operator DBCS Controller
+# Prerequisites to deploy a DBCS system using Oracle DB Operator DBCS Controller
 
 Before you deploy a DBCS system in OCI using the Oracle DB Operator DBCS Controller, complete the following procedure.
 
