@@ -4,7 +4,7 @@
 
 As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle is announcing _Oracle Database Operator for Kubernetes_ (`OraOperator`). 
 
-Since Oracle Database 19c, Oracle Database images have been supported in containers (Docker, Podman) for production use and Kubernetes deployment with Helm Charts. This release includes Oracle Database Operator, which is a new open source product that extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
+Since Oracle Database 19c, the Oracle Database images have been supported in containers (Docker, Podman) for production use and Kubernetes deployment with Helm Charts. This release includes Oracle Database Operator, which is a new open source product that extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
 In this release, `OraOperator` supports the following Oracle Database configurations:
 
