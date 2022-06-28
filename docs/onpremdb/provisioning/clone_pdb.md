@@ -2,6 +2,8 @@
 
 In this use case, a PDB is cloned using Oracle DB Operator On-Prem controller.
 
+To clone a PDB CRD Resource, a sample .yaml file is available here: [config/samples/onpremdb/pdb_clone.yaml](../../../config/samples/onpremdb/pdb_clone.yaml)
+
 **NOTE:** It is assumed that before this step, you have followed the [prerequisite](./../README.md#prerequsites-to-manage-pdb-life-cycle-using-oracle-db-operator-on-prem-database-controller) steps.
 
 This example uses `clone_pdb.yaml` to clone a PDB using Oracle DB Operator On-Prem Controller with:

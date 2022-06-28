@@ -42,7 +42,7 @@ data:
 
 -- This is the .yaml file used to create a PDB CRD resource in this use case:
 
-% cat pdb.yaml
+% cat pdb_create.yaml
 #
 # Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
@@ -79,7 +79,7 @@ spec:
 % kubectl apply -f pdb_secret.yaml
 secret/pdb1-secret created
 
-% kubectl apply -f pdb.yaml
+% kubectl apply -f pdb_create.yaml
 pdb.database.oracle.com/pdb1 created
 
 
