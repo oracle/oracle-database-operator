@@ -3,14 +3,6 @@
 In this example, the target CDB (for which the PDB life cycle management is needed) is running in a Cloud environment (OCI's [Oracle Exadata Database Service](https://docs.oracle.com/en-us/iaas/exadatacloud/index.html)) and to manage its PDBs, the Oracle DB Operator is running on a Kubernetes Cluster running in cloud (OCI's [Container Engine for Kubernetes or OKE](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengoverview.htm#Overview_of_Container_Engine_for_Kubernetes)).
 
 
-## Environment details
-
-| Component     | Region Name   |VCN (Virtual Cloud Network) Name|
-| ------------- | ------------- |--------------------------------|
-| OKE Cluster   | Phoenix Region|exaphxvcn|
-| ExaCS Cluster | Phoenix Region|exaphxvcn|
-
-
 ## High Level plans for this setup
 
 Below are the main steps that will be involved in this setup:
@@ -20,16 +12,6 @@ Below are the main steps that will be involved in this setup:
 - Install Oracle Database Operator on OKE Cluster
 - Install ords controller definition
 - Manager pdb life cycle management.
-
-
-## Reference security lists for Ingress/Egress rules for VPN "exaphxvcn"
-
-Refer to the below screen shots to create security lists for Ingress/Egress rules as follows for client & backup network in VPN exaphxvcn to allow k8s Worker node to talk to ExaCS db hosts.
-
-|Network Type|Reference Screenshots|
-|------------|---------------------|
-|client network| ![](../images/K8S_SECURE1.png),![](../images/K8S_SECURE2.png)|
-|backup network| ![](../images/K8S_SECURE3.png),![](../images/K8S_SECURE4.png)|
 
 
 ## OKE Cluster
