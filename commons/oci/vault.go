@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -42,16 +42,41 @@ import (
 	"context"
 	"encoding/base64"
 
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/secrets"
+	"github.com/go-logr/logr"
+	"github.com/oracle/oci-go-sdk/v64/common"
+	"github.com/oracle/oci-go-sdk/v64/secrets"
 )
 
-func getValueFromVaultSecret(secretClient secrets.SecretsClient, vaultSecretOCID string) (string, error) {
+type VaultService interface {
+	GetSecretValue(vaultSecretOCID string) (string, error)
+}
+
+type vaultService struct {
+	logger       logr.Logger
+	secretClient secrets.SecretsClient
+}
+
+func NewVaultService(
+	logger logr.Logger,
+	provider common.ConfigurationProvider) (VaultService, error) {
+
+	secretClient, err := secrets.NewSecretsClientWithConfigurationProvider(provider)
+	if err != nil {
+		return nil, err
+	}
+
+	return &vaultService{
+		logger:       logger.WithName("vaultService"),
+		secretClient: secretClient,
+	}, nil
+}
+
+func (v *vaultService) GetSecretValue(vaultSecretOCID string) (string, error) {
 	request := secrets.GetSecretBundleRequest{
 		SecretId: common.String(vaultSecretOCID),
 	}
 
-	response, err := secretClient.GetSecretBundle(context.TODO(), request)
+	response, err := v.secretClient.GetSecretBundle(context.TODO(), request)
 	if err != nil {
 		return "", err
 	}

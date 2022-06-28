@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -266,7 +266,7 @@ const (
 // var
 var KubeConfigOnce sync.Once
 
-const lastSuccessfulSpec = "lastSuccessfulSpec"
+// #const lastSuccessfulSpec = "lastSuccessfulSpec"
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.
 // Returns nil, nil if there is no lastSuccessfulSpec.
@@ -298,7 +298,7 @@ func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpec(kubeClient client.C
 		lastSuccessfulSpec: string(specBytes),
 	}
 
-	return annsv1.SetAnnotations(kubeClient, shardingv1, anns)
+	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)
 }
 
 func init() {

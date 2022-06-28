@@ -1,11 +1,19 @@
 #
-# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Copyright (c) 2022, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 
 ## Append samples you want in your CSV to this file as resources ##
 resources:
-  - adb/autonomousdatabase.yaml
+  - onpremdb/pdb.yaml
+  - onpremdb/cdb.yaml
+  - adb/autonomousdatabase_create.yaml
+  - adb/autonomousdatabase_bind.yaml
+  - adb/autonomousdatabase_backup.yaml
+  - adb/autonomousdatabase_restore.yaml
+  - acd/autonomouscontainerdatabase_create.yaml
   - sidb/singleinstancedatabase.yaml
   - sharding/shardingdatabase.yaml
+  - sharding/sharding_v1alpha1_provshard.yaml
+  - dbcs/database_v1alpha1_dbcssystem.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples

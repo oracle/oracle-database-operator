@@ -20,22 +20,25 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.displayName
+    - jsonPath: .spec.details.displayName
       name: Display Name
+      type: string
+    - jsonPath: .spec.details.dbName
+      name: Db Name
       type: string
     - jsonPath: .status.lifecycleState
       name: State
       type: string
-    - jsonPath: .status.isDedicated
+    - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .status.cpuCoreCount
+    - jsonPath: .spec.details.cpuCoreCount
       name: OCPUs
       type: integer
-    - jsonPath: .status.dataStorageSizeInTBs
+    - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
-    - jsonPath: .status.dbWorkload
+    - jsonPath: .spec.details.dbWorkload
       name: Workload Type
       type: string
     - jsonPath: .status.timeCreated
@@ -69,10 +72,34 @@ spec:
                 properties:
                   adminPassword:
                     properties:
-                      k8sSecretName:
-                        type: string
-                      ociSecretOCID:
-                        type: string
+                      k8sSecret:
+                        description: "*********************** *\tSecret specs ***********************"
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociSecret:
+                        properties:
+                          ocid:
+                            type: string
+                        type: object
+                    type: object
+                  autonomousContainerDatabase:
+                    description: ACDSpec defines the spec of the target for backup/restore
+                      runs. The name could be the name of an AutonomousDatabase or
+                      an AutonomousDatabaseBackup
+                    properties:
+                      k8sACD:
+                        description: "*********************** *\tACD specs ***********************"
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociACD:
+                        properties:
+                          ocid:
+                            type: string
+                        type: object
                     type: object
                   autonomousDatabaseOCID:
                     type: string
@@ -105,32 +132,64 @@ spec:
                     type: boolean
                   isDedicated:
                     type: boolean
+                  licenseModel:
+                    description: 'AutonomousDatabaseLicenseModelEnum Enum with underlying
+                      type: string'
+                    enum:
+                    - LICENSE_INCLUDED
+                    - BRING_YOUR_OWN_LICENSE
+                    type: string
                   lifecycleState:
                     description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying
                       type: string'
                     type: string
-                  nsgOCIDs:
-                    items:
-                      type: string
-                    type: array
-                  privateEndpoint:
-                    type: string
-                  privateEndpointIP:
-                    type: string
-                  privateEndpointLabel:
-                    type: string
-                  subnetOCID:
-                    type: string
+                  networkAccess:
+                    properties:
+                      accessControlList:
+                        items:
+                          type: string
+                        type: array
+                      accessType:
+                        enum:
+                        - ""
+                        - PUBLIC
+                        - RESTRICTED
+                        - PRIVATE
+                        type: string
+                      isAccessControlEnabled:
+                        type: boolean
+                      isMTLSConnectionRequired:
+                        type: boolean
+                      privateEndpoint:
+                        properties:
+                          hostnamePrefix:
+                            type: string
+                          nsgOCIDs:
+                            items:
+                              type: string
+                            type: array
+                          subnetOCID:
+                            type: string
+                        type: object
+                    type: object
                   wallet:
                     properties:
                       name:
                         type: string
                       password:
                         properties:
-                          k8sSecretName:
-                            type: string
-                          ociSecretOCID:
-                            type: string
+                          k8sSecret:
+                            description: "*********************** *\tSecret specs
+                              ***********************"
+                            properties:
+                              name:
+                                type: string
+                            type: object
+                          ociSecret:
+                            properties:
+                              ocid:
+                                type: string
+                            type: object
                         type: object
                     type: object
                 type: object
@@ -138,6 +197,7 @@ spec:
                 default: false
                 type: boolean
               ociConfig:
+                description: "*********************** *\tOCI config ***********************"
                 properties:
                   configMapName:
                     type: string
@@ -150,24 +210,28 @@ spec:
           status:
             description: AutonomousDatabaseStatus defines the observed state of AutonomousDatabase
             properties:
-              cpuCoreCount:
-                type: integer
-              dataStorageSizeInTBs:
-                type: integer
-              dbWorkload:
-                description: 'AutonomousDatabaseDbWorkloadEnum Enum with underlying
-                  type: string'
-                type: string
-              displayName:
+              allConnectionStrings:
+                items:
+                  properties:
+                    connectionStrings:
+                      items:
+                        properties:
+                          connectionString:
+                            type: string
+                          tnsName:
+                            type: string
+                        type: object
+                      type: array
+                    tlsAuthentication:
+                      type: string
+                  required:
+                  - connectionStrings
+                  type: object
+                type: array
+              lifecycleState:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
                   of cluster Important: Run "make" to regenerate code after modifying
                   this file'
-                type: string
-              isDedicated:
-                type: string
-              lifecycleState:
-                description: 'AutonomousDatabaseLifecycleStateEnum Enum with underlying
-                  type: string'
                 type: string
               timeCreated:
                 type: string

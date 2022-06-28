@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -47,8 +47,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/ons"
+	"github.com/oracle/oci-go-sdk/v64/common"
+	"github.com/oracle/oci-go-sdk/v64/ons"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -122,6 +122,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	var isShardTopologyDeleteTrue bool = false
 	//var msg string
 	var err error
+	var idx int
 	var stateType string
 	resultNq := ctrl.Result{Requeue: false}
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}
@@ -152,7 +153,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	idx, instFlag := r.checkProvInstance(instance)
+	_, instFlag := r.checkProvInstance(instance)
 	// assinging osh instance
 	if !instFlag {
 		// Sharding Topolgy Struct Assignment
@@ -564,7 +565,7 @@ func (r *ShardingDatabaseReconciler) finalizerShardingDatabaseInstance(instance 
 		}
 		// Send true because delete is in progress and it is a custom delete message
 		// We don't need to print custom err stack as we are deleting the topology
-		return fmt.Errorf("Delete of the sharding topology is in progress"), true
+		return fmt.Errorf("delete of the sharding topology is in progress"), true
 	}
 
 	// Add finalizer for this CR
@@ -874,15 +875,15 @@ func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev1alpha1.Sha
 
 		// Compare Env variables for shard begins here
 		if !r.comapreShardEnvVariables(instance, lastSuccSpec) {
-			return fmt.Errorf("Change of Shard env variables are not")
+			return fmt.Errorf("change of Shard env variables are not")
 		}
 		// Compare Env variables for catalog begins here
 		if !r.comapreCatalogEnvVariables(instance, lastSuccSpec) {
-			return fmt.Errorf("Change of Catalog env variables are not")
+			return fmt.Errorf("change of Catalog env variables are not")
 		}
 		// Compare env variable for Catalog ends here
 		if !r.comapreGsmEnvVariables(instance, lastSuccSpec) {
-			return fmt.Errorf("Change of GSM env variables are not")
+			return fmt.Errorf("change of GSM env variables are not")
 		}
 
 	}
@@ -1072,7 +1073,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev1alp
 		msg = "Unable to validate GSM " + shardingv1.GetFmtStr(gsmPod.Name) + " pod. GSM pod doesn't seems to be ready to accept the commands."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
 		r.updateGsmStatus(instance, int(i), string(databasev1alpha1.PodNotReadyState))
-		return gsmSfSet, gsmPod, fmt.Errorf("Pod doesn't exist")
+		return gsmSfSet, gsmPod, fmt.Errorf("pod doesn't exist")
 	}
 	err = shardingv1.CheckGsmStatus(gsmPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
 	if err != nil {
@@ -1672,7 +1673,7 @@ func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev1alpha1
 			count = count + 1
 			continue
 		}
-		err, _, _ = shardingv1.ExecCommand(gsmPodName.Name, shardingv1.GetShardInviteNodeCmd(objName), r.kubeClient, r.kubeConfig, instance, r.Log)
+		_, _, err = shardingv1.ExecCommand(gsmPodName.Name, shardingv1.GetShardInviteNodeCmd(objName), r.kubeClient, r.kubeConfig, instance, r.Log)
 		if err != nil {
 			msg = "Invite delete and add node failed " + shardingv1.GetFmtStr(objName) + " details in GSM."
 			shardingv1.LogMessages("DEBUG", msg, err, instance, r.Log)

@@ -1,0 +1,27 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: PDB 
+metadata: 
+  name: pdb1-clone
+  namespace: oracle-database-operator-system
+  labels:
+    cdb: cdb-dev
+spec:
+  cdbResName: "cdb-dev"
+  cdbName: "devcdb"
+  pdbName: "pdbdevclone"
+  adminName: 
+    secret: 
+      secretName: "pdb1-secret"
+      key: "sysadmin_user"  
+  adminPwd: 
+    secret: 
+      secretName: "pdb1-secret"
+      key: "sysadmin_pwd"
+  fileNameConversions: "NONE"
+  totalSize: "1G"
+  tempSize: "100M"
+  action: "Clone"

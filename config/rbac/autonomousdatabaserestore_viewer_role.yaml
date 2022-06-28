@@ -1,0 +1,20 @@
+# permissions for end users to view autonomousdatabaserestores.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: autonomousdatabaserestore-viewer-role
+rules:
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabaserestores
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabaserestores/status
+  verbs:
+  - get

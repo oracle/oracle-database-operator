@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -47,6 +47,7 @@ import (
 	"math/rand"
 	"strings"
 	"time"
+	"unicode"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -98,6 +99,7 @@ func ResourceEventHandler() predicate.Predicate {
 				if oldStatus != newStatus {
 					return true
 				}
+
 			}
 			// Ignore updates to CR status in which case metadata.Generation does not change
 			// Reconcile if object Deletion Timestamp Set
@@ -244,9 +246,7 @@ func ExecCommand(r client.Reader, config *rest.Config, podName string, namespace
 	pod := &corev1.Pod{}
 	err := r.Get(ctx, types.NamespacedName{Name: podName, Namespace: namespace}, pod)
 	if err != nil {
-		return "", fmt.Errorf("could not get pod info: %v", err)
-	} else {
-		log.Info("Pod Found", "Name : ", podName)
+		return "", fmt.Errorf("could not find pod to execute command: %v", err)
 	}
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -273,7 +273,7 @@ func ExecCommand(r client.Reader, config *rest.Config, podName string, namespace
 		Tty:    false,
 	})
 	if err != nil {
-		return "", fmt.Errorf("could not execute: %v", err)
+		return "", err
 	}
 	if execErr.Len() > 0 {
 		return "", fmt.Errorf("stderr: %v", execErr.String())
@@ -294,13 +294,14 @@ func GenerateRandomString(n int) string {
 
 // retuns Ready Pod,No of replicas ( Only running and Pending Pods) ,available pods , Total No of Pods of a particular CRD
 func FindPods(r client.Reader, version string, image string, name string, namespace string, ctx context.Context,
-	req ctrl.Request) (corev1.Pod, int, []corev1.Pod, int, error) {
+	req ctrl.Request) (corev1.Pod, int, []corev1.Pod, []corev1.Pod, error) {
 
 	log := ctrllog.FromContext(ctx).WithValues("FindPods", req.NamespacedName)
 
 	// "available" stores list of pods which can be deleted while scaling down i.e the pods other than one of Ready Pods
 	// There are multiple ready pods possible in OracleRestDataService , while others have atmost one readyPod
 	var available []corev1.Pod
+	var podsMarkedToBeDeleted []corev1.Pod
 	var readyPod corev1.Pod // To Store the Ready Pod ( Pod that Passed Readiness Probe . Will be shown as 1/1 Running )
 
 	podList := &corev1.PodList{}
@@ -309,18 +310,17 @@ func FindPods(r client.Reader, version string, image string, name string, namesp
 	// List retrieves list of objects for a given namespace and list options.
 	if err := r.List(ctx, podList, listOpts...); err != nil {
 		log.Error(err, "Failed to list pods of "+name, "Namespace", namespace, "Name", name)
-		return readyPod, 0, available, 0, err
+		return readyPod, 0, available, podsMarkedToBeDeleted, err
 	}
 
 	// r.List() lists all the pods in running, pending,terminating stage matching listOpts . so filter them
 	// Fetch the Running and Pending Pods
 
-	podsMarkedToBeDeleted := 0
 	for _, pod := range podList.Items {
 		// Return pods having Image = image (or) if image = ""(Needed in case when called findpods with "" image)
 		if pod.Spec.Containers[0].Image == image || image == "" {
 			if pod.ObjectMeta.DeletionTimestamp != nil {
-				podsMarkedToBeDeleted += 1
+				podsMarkedToBeDeleted = append(podsMarkedToBeDeleted, pod)
 				continue
 			}
 			if pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodPending {
@@ -364,7 +364,7 @@ func CheckDBConfig(readyPod corev1.Pod, r client.Reader, config *rest.Config,
 
 	} else {
 		out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | %s", CheckModesSQL, GetSqlClient(edition)))
+			fmt.Sprintf("echo -e  \"%s\"  | %s", CheckModesSQL, SQLPlusCLI))
 		if err != nil {
 			log.Error(err, "Error in ExecCommand()")
 			return false, false, false, requeueY
@@ -462,7 +462,7 @@ func GetDatabaseVersion(readyPod corev1.Pod, r client.Reader,
 
 	// ## FIND DATABASES PRESENT IN DG CONFIGURATION
 	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", GetVersionSQL, GetSqlClient(edition)))
+		fmt.Sprintf("echo -e  \"%s\"  | %s", GetVersionSQL, SQLPlusCLI))
 	if err != nil {
 		return "", "", err
 	}
@@ -488,7 +488,7 @@ func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
 	log := ctrllog.FromContext(ctx).WithValues("GetDatabaseRole", req.NamespacedName)
 
 	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | %s", GetDatabaseRoleCMD, GetSqlClient(edition)))
+		fmt.Sprintf("echo -e  \"%s\"  | %s", GetDatabaseRoleCMD, SQLPlusCLI))
 	if err != nil {
 		return "", err
 	}
@@ -571,6 +571,32 @@ func GetNodeIp(r client.Reader, ctx context.Context, req ctrl.Request) string {
 	return nodeip
 }
 
+// GetSidPdbEdition to display sid, pdbname, edition in ConnectionString
+func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context, req ctrl.Request) (string, string, string) {
+
+	log := ctrllog.FromContext(ctx).WithValues("GetNodeIp", req.NamespacedName)
+
+	readyPod, _, _, _, err := FindPods(r, "", "", req.Name, req.Namespace, ctx, req)
+	if err != nil {
+		log.Error(err, err.Error())
+		return "", "", ""
+	}
+	if readyPod.Name != "" {
+		out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "",
+			ctx, req, false, "bash", "-c", GetSidPdbEditionCMD)
+		if err != nil {
+			log.Error(err, err.Error())
+			return "", "", ""
+		}
+		splitstr := strings.Split(out, ",")
+		if len(splitstr) == 4 {
+			return splitstr[0], splitstr[1], splitstr[2]
+		}
+	}
+
+	return "", "", ""
+}
+
 // Get Datapatch Status
 func GetSqlpatchStatus(r client.Reader, config *rest.Config, readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (string, string, string, error) {
 	log := ctrllog.FromContext(ctx).WithValues("getSqlpatchStatus", req.NamespacedName)
@@ -611,9 +637,39 @@ func GetSqlpatchStatus(r client.Reader, config *rest.Config, readyPod corev1.Pod
 	return sqlpatchStatuses[0], splitstr[0], splitstr[1], nil
 }
 
-func GetSqlClient(edition string) string {
-	if edition == "express" {
-		return "su -p oracle -c \"sqlplus -s / as sysdba\""
+// Is Source Database On same Cluster
+func IsSourceDatabaseOnCluster(cloneFrom string) bool {
+	if strings.Contains(cloneFrom, ":") && strings.Contains(cloneFrom, "/") {
+		return false
 	}
-	return "sqlplus -s / as sysdba"
+	return true
+}
+
+// Apex password validation function
+func ApexPasswordValidator(pwd string) bool {
+	var (
+		hasMinLen  = false
+		hasUpper   = false
+		hasLower   = false
+		hasNumber  = false
+		hasSpecial = false
+	)
+	if len(pwd) > 7 {
+		hasMinLen = true
+	}
+
+	for _, c := range pwd {
+		switch {
+		case unicode.IsUpper(c):
+			hasUpper = true
+		case unicode.IsLower(c):
+			hasLower = true
+		case unicode.IsNumber(c):
+			hasNumber = true
+		case unicode.IsPunct(c):
+			hasSpecial = true
+		}
+	}
+
+	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
 }

@@ -1,0 +1,45 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prebuiltdb-admin-secret
+  namespace: default
+type: Opaque
+stringData:
+  ## Specify your DB password here
+  oracle_pwd: 
+
+---
+
+apiVersion: database.oracle.com/v1alpha1
+kind: SingleInstanceDatabase
+metadata:
+  name: prebuiltdb-sample
+  namespace: default
+spec:
+
+  ## DB edition
+  edition: express
+
+  ## Secret containing SIDB password mapped to secretKey
+  adminPassword:
+    secretName: prebuiltdb-admin-secret
+
+  ## Database Image
+  image:
+    pullFrom: container-registry.oracle.com/database/express:latest
+    prebuiltDB: true
+
+  ## Persistence is optional for prebuilt DB image
+  ## if specified, the prebuilt DB datafiles are copied over to the persistant volume before DB startup
+  #persistence:
+  #  size: 50Gi
+  #  storageClass: "oci-bv"
+  #  accessMode: "ReadWriteOnce"
+
+  ## Count of Database Pods.
+  replicas: 1

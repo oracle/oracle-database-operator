@@ -1,0 +1,20 @@
+# permissions for end users to view dbcssystems.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dbcssystem-viewer-role
+rules:
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dbcssystems
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dbcssystems/status
+  verbs:
+  - get
