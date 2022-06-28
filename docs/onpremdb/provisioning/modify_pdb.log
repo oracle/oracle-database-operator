@@ -1,0 +1,181 @@
+----- Closing a PDB ------
+
+-- Check the existing PDB CRD resources
+
+jyotiprakashverma@jyotiprakashverma-mac onprem_test % kubectl get pdbs -A
+NAMESPACE                         NAME          CONNECT STRING                                                            CDB NAME   PDB NAME       PDB STATE    PDB SIZE   STATUS   MESSAGE
+oracle-database-operator-system   pdb1          goldhost-scan.lbsub52b3b1cae.okecluster.oraclevcn.com:1521/pdbnew         goldcdb    pdbnew         READ WRITE   1G         Ready    Success
+oracle-database-operator-system   pdb1-clone    goldhost-scan.lbsub52b3b1cae.okecluster.oraclevcn.com:1521/pdbnewclone    goldcdb    pdbnewclone    READ WRITE              Ready    Success
+
+
+
+
+-- Check the status of the PDBs in the CDB:
+
+SQL> show pdbs
+
+    CON_ID CON_NAME       OPEN MODE  RESTRICTED
+---------- ------------------------------ ---------- ----------
+   2 PDB$SEED       READ WRITE NO
+   3 PDBNEW       READ WRITE NO
+   5 PDBNEWCLONE        READ WRITE NO
+
+
+
+-- Check the file to modify the PDB state to CLOSE:
+
+% cat modify_pdb_close.yaml
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: PDB
+metadata:
+  name: pdb1
+  namespace: oracle-database-operator-system
+  labels:
+    cdb: cdb-dev
+spec:
+  cdbResName: "cdb-dev"
+  cdbName: "goldcdb"
+  pdbName: "pdbnew"
+  pdbState: "CLOSE"
+  modifyOption: "IMMEDIATE"
+  action: "Modify"
+
+
+-- Apply the file:
+
+% kubectl apply -f modify_pdb_close.yaml
+pdb.database.oracle.com/pdb1 configured
+
+
+-- Monitor the logs from the Oracle DB Operator Pod:
+
+% kubectl logs -f pod/oracle-database-operator-controller-manager-76cb674c5c-f9wsd -n oracle-database-operator-system
+.
+.
+2022-06-27T03:44:36Z	DEBUG	controller-runtime.webhook.webhooks	received request	{"webhook": "/mutate-database-oracle-com-v1alpha1-pdb", "UID": "08f95926-6bf1-4c70-b319-1b17015ce22a", "kind": "database.oracle.com/v1alpha1, Kind=PDB", "resource": {"group":"database.oracle.com","version":"v1alpha1","resource":"pdbs"}}
+2022-06-27T03:44:36Z	INFO	pdb-webhook	Setting default values in PDB spec for : pdb1
+2022-06-27T03:44:36Z	DEBUG	controller-runtime.webhook.webhooks	wrote response	{"webhook": "/mutate-database-oracle-com-v1alpha1-pdb", "code": 200, "reason": "", "UID": "08f95926-6bf1-4c70-b319-1b17015ce22a", "allowed": true}
+2022-06-27T03:44:36Z	DEBUG	controller-runtime.webhook.webhooks	received request	{"webhook": "/validate-database-oracle-com-v1alpha1-pdb", "UID": "64ebebe2-87f2-4237-8928-532365f3cca9", "kind": "database.oracle.com/v1alpha1, Kind=PDB", "resource": {"group":"database.oracle.com","version":"v1alpha1","resource":"pdbs"}}
+2022-06-27T03:44:36Z	INFO	pdb-webhook	ValidateUpdate-Validating PDB spec for : pdb1
+2022-06-27T03:44:36Z	INFO	pdb-webhook	validateCommon	{"name": "pdb1"}
+2022-06-27T03:44:36Z	INFO	pdb-webhook	Valdiating PDB Resource Action : MODIFY
+2022-06-27T03:44:36Z	DEBUG	controller-runtime.webhook.webhooks	wrote response	{"webhook": "/validate-database-oracle-com-v1alpha1-pdb", "code": 200, "reason": "", "UID": "64ebebe2-87f2-4237-8928-532365f3cca9", "allowed": true}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/pdb1"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Validating PDB phase for: pdb1	{"validatePhase": "oracle-database-operator-system/pdb1", "Action": "MODIFY"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Validation complete	{"validatePhase": "oracle-database-operator-system/pdb1"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	PDB:	{"onpremdboperator": "oracle-database-operator-system/pdb1", "Name": "pdb1", "Phase": "Modifying", "Status": "false"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Issuing REST call	{"callAPI": "oracle-database-operator-system/pdb1", "URL": "http://cdb-dev-ords:8888/ords/_/db-api/latest/database/pdbs/pdbnew/status", "Action": "GET"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Successfully obtained PDB state	{"getPDBState": "oracle-database-operator-system/pdb1", "PDB Name": "pdbnew", "State": "READ WRITE"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Issuing REST call	{"callAPI": "oracle-database-operator-system/pdb1", "URL": "http://cdb-dev-ords:8888/ords/_/db-api/latest/database/pdbs/pdbnew/status", "Action": "POST"}
+2022-06-27T03:44:36Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:44:38Z	INFO	controllers.PDB	Successfully modified PDB state	{"modifyPDB": "oracle-database-operator-system/pdb1", "PDB Name": "pdbnew"}
+2022-06-27T03:44:38Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:44:38Z	DEBUG	events	Normal	{"object": {"kind":"PDB","namespace":"oracle-database-operator-system","name":"pdb1","uid":"81f2e686-6e1b-4e2c-8a2f-e20c2f99d6b9","apiVersion":"database.oracle.com/v1alpha1","resourceVersion":"101451707"}, "reason": "Modified", "message": "PDB 'pdbnew' modified successfully"}
+2022-06-27T03:44:38Z	INFO	controllers.PDB	Issuing REST call	{"callAPI": "oracle-database-operator-system/pdb1", "URL": "http://cdb-dev-ords:8888/ords/_/db-api/latest/database/pdbs/pdbnew/status", "Action": "GET"}
+2022-06-27T03:44:38Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:44:38Z	INFO	controllers.PDB	Successfully obtained PDB state	{"getPDBState": "oracle-database-operator-system/pdb1", "PDB Name": "pdbnew", "State": "MOUNTED"}
+2022-06-27T03:44:38Z	INFO	controllers.PDB	Reconcile completed	{"onpremdboperator": "oracle-database-operator-system/pdb1"}
+
+
+
+
+-- Check the status of PDB CRD resources
+
+jyotiprakashverma@jyotiprakashverma-mac onprem_test % kubectl get pdbs -A
+NAMESPACE                         NAME          CONNECT STRING                                                            CDB NAME   PDB NAME       PDB STATE    PDB SIZE   STATUS   MESSAGE
+oracle-database-operator-system   pdb1          goldhost-scan.lbsub52b3b1cae.okecluster.oraclevcn.com:1521/pdbnew         goldcdb    pdbnew         MOUNTED      1G         Ready    Success
+oracle-database-operator-system   pdb1-clone    goldhost-scan.lbsub52b3b1cae.okecluster.oraclevcn.com:1521/pdbnewclone    goldcdb    pdbnewclone    READ WRITE              Ready    Success
+
+
+
+-- Confirm the status of the PDB in the CDB:
+
+SQL> show pdbs
+
+    CON_ID CON_NAME			  OPEN MODE  RESTRICTED
+---------- ------------------------------ ---------- ----------
+	 2 PDB$SEED			  READ WRITE NO
+	 3 PDBNEW			  MOUNTED
+	 4 PDBNEWCLONE			  READ WRITE NO
+
+
+
+
+
+
+
+
+----- Opening a PDB ------
+
+-- Check the .yaml file to open the PDB:
+
+% cat modify_pdb_open.yaml
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: PDB
+metadata:
+  name: pdb1
+  namespace: oracle-database-operator-system
+  labels:
+    cdb: cdb-dev
+spec:
+  cdbResName: "cdb-dev"
+  cdbName: "goldcdb"
+  pdbName: "pdbnew"
+  pdbState: "OPEN"
+  modifyOption: "READ WRITE"
+  action: "Modify"
+
+
+
+-- Apply the file:
+
+% kubectl apply -f modify_pdb_open.yaml
+pdb.database.oracle.com/pdb1 configured
+
+
+-- Monitor the logs from the Oracle DB Operator Pod:
+
+% kubectl logs -f pod/oracle-database-operator-controller-manager-76cb674c5c-f9wsd -n oracle-database-operator-system
+.
+.
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/pdb1"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Validating PDB phase for: pdb1	{"validatePhase": "oracle-database-operator-system/pdb1", "Action": "MODIFY"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Validation complete	{"validatePhase": "oracle-database-operator-system/pdb1"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	PDB:	{"onpremdboperator": "oracle-database-operator-system/pdb1", "Name": "pdb1", "Phase": "Modifying", "Status": "false"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Issuing REST call	{"callAPI": "oracle-database-operator-system/pdb1", "URL": "http://cdb-dev-ords:8888/ords/_/db-api/latest/database/pdbs/pdbnew/status", "Action": "GET"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Successfully obtained PDB state	{"getPDBState": "oracle-database-operator-system/pdb1", "PDB Name": "pdbnew", "State": "MOUNTED"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Issuing REST call	{"callAPI": "oracle-database-operator-system/pdb1", "URL": "http://cdb-dev-ords:8888/ords/_/db-api/latest/database/pdbs/pdbnew/status", "Action": "POST"}
+2022-06-27T03:48:38Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:48:41Z	INFO	controllers.PDB	Successfully modified PDB state	{"modifyPDB": "oracle-database-operator-system/pdb1", "PDB Name": "pdbnew"}
+2022-06-27T03:48:41Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:48:41Z	DEBUG	events	Normal	{"object": {"kind":"PDB","namespace":"oracle-database-operator-system","name":"pdb1","uid":"81f2e686-6e1b-4e2c-8a2f-e20c2f99d6b9","apiVersion":"database.oracle.com/v1alpha1","resourceVersion":"101452939"}, "reason": "Modified", "message": "PDB 'pdbnew' modified successfully"}
+2022-06-27T03:48:41Z	INFO	controllers.PDB	Issuing REST call	{"callAPI": "oracle-database-operator-system/pdb1", "URL": "http://cdb-dev-ords:8888/ords/_/db-api/latest/database/pdbs/pdbnew/status", "Action": "GET"}
+2022-06-27T03:48:41Z	INFO	controllers.PDB	Found CR for CDB	{"getCDBResource": "oracle-database-operator-system/pdb1", "Name": "cdb-dev", "CR Name": "cdb-dev"}
+2022-06-27T03:48:41Z	INFO	controllers.PDB	Successfully obtained PDB state	{"getPDBState": "oracle-database-operator-system/pdb1", "PDB Name": "pdbnew", "State": "READ WRITE"}
+2022-06-27T03:48:41Z	INFO	controllers.PDB	Reconcile completed	{"onpremdboperator": "oracle-database-operator-system/pdb1"}
+
+
+
+-- Verify the status of the PDB:
+
+SQL> show pdbs
+
+    CON_ID CON_NAME       OPEN MODE  RESTRICTED
+---------- ------------------------------ ---------- ----------
+   2 PDB$SEED       READ WRITE NO
+   3 PDBNEW       READ WRITE NO
+   4 PDBNEWCLONE        READ WRITE NO

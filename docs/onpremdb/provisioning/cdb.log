@@ -1,0 +1,279 @@
+-- Check the status of the Oracle DB Operator Pods:
+
+% kubectl get all -n oracle-database-operator-system
+NAME                                                               READY   STATUS    RESTARTS   AGE
+pod/oracle-database-operator-controller-manager-76cb674c5c-4nrh8   1/1     Running   0          29h
+pod/oracle-database-operator-controller-manager-76cb674c5c-f9wsd   1/1     Running   1          29h
+pod/oracle-database-operator-controller-manager-76cb674c5c-xsv9g   1/1     Running   2          29h
+
+NAME                                                                  TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/oracle-database-operator-controller-manager-metrics-service   ClusterIP   10.96.98.47     <none>        8443/TCP   45h
+service/oracle-database-operator-webhook-service                      ClusterIP   10.96.166.163   <none>        443/TCP    45h
+
+NAME                                                          READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/oracle-database-operator-controller-manager   3/3     3            3           45h
+
+NAME                                                                     DESIRED   CURRENT   READY   AGE
+replicaset.apps/oracle-database-operator-controller-manager-76cb674c5c   3         3         3       45h
+
+
+
+-- Get the base64 values for the required passwords as below:
+
+% echo -n "WElcome_21##" | base64
+V0VsY29tZV8yMSMj
+
+% echo -n "C##DBAPI_CDB_ADMIN" | base64
+QyMjREJBUElfQ0RCX0FETUlO
+
+% echo -n "sql_admin" | base64
+c3FsX2FkbWlu
+
+% echo -n "welcome1" | base64
+d2VsY29tZTE=
+
+
+-- Add the base64 encoded values against the required variables in cdb_secret.yaml file for this use case:
+
+% cat cdb_secret.yaml
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cdb1-secret
+  namespace: oracle-database-operator-system
+type: Opaque
+data:
+  ords_pwd: "V0VsY29tZV8yMSMj"
+  sysadmin_pwd: "V0VsY29tZV8yMSMj"
+  cdbadmin_user: "QyMjREJBUElfQ0RCX0FETUlO"
+  cdbadmin_pwd: "V0VsY29tZV8yMSMj"
+  webserver_user: "c3FsX2FkbWlu"
+  webserver_pwd: "d2VsY29tZTE="
+
+
+-- Check the contents of the cdb.yaml file:
+% cat cdb.yaml
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: CDB
+metadata:
+  name: cdb-dev
+  namespace: oracle-database-operator-system
+spec:
+  cdbName: "goldcdb"
+  scanName: "goldhost-scan.lbsub52b3b1cae.okecluster.oraclevcn.com"
+  dbServer: "goldhost1.lbsub52b3b1cae.okecluster.oraclevcn.com"
+  ordsImage: phx.ocir.io/<repo_name>/oracle/ords:21.4.3
+  ordsImagePullSecret: "container-registry-secret"
+  dbPort: 1521
+  replicas: 1
+  serviceName: "goldcdb_phx1pw.lbsub52b3b1cae.okecluster.oraclevcn.com"
+  sysAdminPwd:
+    secret:
+      secretName: "cdb1-secret"
+      key: "sysadmin_pwd"
+  ordsPwd:
+    secret:
+      secretName: "cdb1-secret"
+      key: "ords_pwd"
+  cdbAdminUser:
+    secret:
+      secretName: "cdb1-secret"
+      key: "cdbadmin_user"
+  cdbAdminPwd:
+    secret:
+      secretName: "cdb1-secret"
+      key: "cdbadmin_pwd"
+  webServerUser:
+    secret:
+      secretName: "cdb1-secret"
+      key: "webserver_user"
+  webServerPwd:
+    secret:
+      secretName: "cdb1-secret"
+      key: "webserver_pwd"
+
+
+
+-- Apply the .yaml files:
+
+% kubectl apply -f cdb_secret.yaml
+secret/cdb1-secret created
+
+% kubectl apply -f cdb.yaml
+cdb.database.oracle.com/cdb-dev created
+
+
+
+-- Monitor the Oracle DB Operator Pod during the period when the CDB CRD is getting deployed:
+
+% kubectl logs -f pod/oracle-database-operator-controller-manager-76cb674c5c-f9wsd -n oracle-database-operator-system
+.
+.
+2022-06-27T03:16:44Z	INFO	controllers.CDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:16:44Z	INFO	controllers.CDB	Res Status:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "", "Status": "false"}
+2022-06-27T03:16:44Z	INFO	controllers.CDB	Adding finalizer	{"manageCDBDeletion": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:16:44Z	INFO	controllers.CDB	Current Phase:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev"}
+2022-06-27T03:16:44Z	INFO	controllers.CDB	DEFAULT:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "", "Status": "false"}
+2022-06-27T03:16:44Z	INFO	controllers.CDB	DEFER	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "Initializing", "Status": "false"}
+2022-06-27T03:17:00Z	INFO	controllers.CDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:00Z	INFO	controllers.CDB	Res Status:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "Initializing", "Status": "false"}
+2022-06-27T03:17:00Z	INFO	controllers.CDB	Current Phase:Initializing	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev"}
+2022-06-27T03:17:00Z	INFO	controllers.CDB	Verified secrets successfully	{"verifySecrets": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:00Z	INFO	controllers.CDB	DEFER	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "CreatingPod", "Status": "false"}
+2022-06-27T03:17:15Z	INFO	controllers.CDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:15Z	INFO	controllers.CDB	Res Status:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "CreatingPod", "Status": "false"}
+2022-06-27T03:17:15Z	INFO	controllers.CDB	Current Phase:CreatingPod	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev"}
+2022-06-27T03:17:15Z	INFO	controllers.CDB	Creating ORDS Replicaset: cdb-dev-ords-rs	{"createORDSInstances": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:15Z	INFO	controllers.CDB	Created ORDS ReplicaSet successfully	{"createORDSInstances": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:15Z	DEBUG	events	Normal	{"object": {"kind":"CDB","namespace":"oracle-database-operator-system","name":"cdb-dev","uid":"c36e8d5f-6103-4a70-a840-16c6683755ec","apiVersion":"database.oracle.com/v1alpha1","resourceVersion":"101443216"}, "reason": "CreatedORDSReplicaSet", "message": "Created ORDS Replicaset (Replicas - 1) for cdb-dev"}
+2022-06-27T03:17:15Z	INFO	controllers.CDB	DEFER	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "ValidatingPods", "Status": "false"}
+2022-06-27T03:17:30Z	INFO	controllers.CDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:30Z	INFO	controllers.CDB	Res Status:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "ValidatingPods", "Status": "false"}
+2022-06-27T03:17:30Z	INFO	controllers.CDB	Current Phase:ValidatingPods	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev"}
+2022-06-27T03:17:30Z	INFO	controllers.CDB	Validating Pod creation for :cdb-dev	{"validateORDSPod": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:30Z	INFO	controller.cdb	Executing Command :	{"reconciler group": "database.oracle.com", "reconciler kind": "CDB", "name": "cdb-dev", "namespace": "oracle-database-operator-system", "ExecCommand": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:30Z	INFO	controller.cdb	bash -c  curl -sSkv -k -X GET https://localhost:8888/ords/_/db-api/stable/metadata-catalog/ || curl  -sSkv -X GET http://localhost:8888/ords/_/db-api/stable/metadata-catalog/ 	{"reconciler group": "database.oracle.com", "reconciler kind": "CDB", "name": "cdb-dev", "namespace": "oracle-database-operator-system", "ExecCommand": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:30Z	INFO	controllers.CDB	Replicas: 1	{"validateORDSPod": "oracle-database-operator-system/cdb-dev", "Ready Pods: ": 0}
+2022-06-27T03:17:30Z	INFO	controllers.CDB	Reconcile queued	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:30Z	INFO	controllers.CDB	DEFER	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "ValidatingPods", "Status": "false"}
+2022-06-27T03:17:45Z	INFO	controllers.CDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:45Z	INFO	controllers.CDB	Res Status:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "ValidatingPods", "Status": "false"}
+2022-06-27T03:17:45Z	INFO	controllers.CDB	Current Phase:ValidatingPods	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev"}
+2022-06-27T03:17:45Z	INFO	controllers.CDB	Validating Pod creation for :cdb-dev	{"validateORDSPod": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:45Z	INFO	controller.cdb	Executing Command :	{"reconciler group": "database.oracle.com", "reconciler kind": "CDB", "name": "cdb-dev", "namespace": "oracle-database-operator-system", "ExecCommand": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:45Z	INFO	controller.cdb	bash -c  curl -sSkv -k -X GET https://localhost:8888/ords/_/db-api/stable/metadata-catalog/ || curl  -sSkv -X GET http://localhost:8888/ords/_/db-api/stable/metadata-catalog/ 	{"reconciler group": "database.oracle.com", "reconciler kind": "CDB", "name": "cdb-dev", "namespace": "oracle-database-operator-system", "ExecCommand": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:45Z	INFO	controllers.CDB	Replicas: 1	{"validateORDSPod": "oracle-database-operator-system/cdb-dev", "Ready Pods: ": 0}
+2022-06-27T03:17:45Z	INFO	controllers.CDB	Reconcile queued	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:17:45Z	INFO	controllers.CDB	DEFER	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "ValidatingPods", "Status": "false"}
+2022-06-27T03:18:00Z	INFO	controllers.CDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:00Z	INFO	controllers.CDB	Res Status:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "ValidatingPods", "Status": "false"}
+2022-06-27T03:18:00Z	INFO	controllers.CDB	Current Phase:ValidatingPods	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev"}
+2022-06-27T03:18:00Z	INFO	controllers.CDB	Validating Pod creation for :cdb-dev	{"validateORDSPod": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:00Z	INFO	controller.cdb	Executing Command :	{"reconciler group": "database.oracle.com", "reconciler kind": "CDB", "name": "cdb-dev", "namespace": "oracle-database-operator-system", "ExecCommand": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:00Z	INFO	controller.cdb	bash -c  curl -sSkv -k -X GET https://localhost:8888/ords/_/db-api/stable/metadata-catalog/ || curl  -sSkv -X GET http://localhost:8888/ords/_/db-api/stable/metadata-catalog/ 	{"reconciler group": "database.oracle.com", "reconciler kind": "CDB", "name": "cdb-dev", "namespace": "oracle-database-operator-system", "ExecCommand": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:01Z	INFO	controllers.CDB	Replicas: 1	{"validateORDSPod": "oracle-database-operator-system/cdb-dev", "Ready Pods: ": 0}
+2022-06-27T03:18:01Z	INFO	controllers.CDB	Reconcile queued	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:01Z	INFO	controllers.CDB	DEFER	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "ValidatingPods", "Status": "false"}
+2022-06-27T03:18:16Z	INFO	controllers.CDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:16Z	INFO	controllers.CDB	Res Status:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "ValidatingPods", "Status": "false"}
+2022-06-27T03:18:16Z	INFO	controllers.CDB	Current Phase:ValidatingPods	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev"}
+2022-06-27T03:18:16Z	INFO	controllers.CDB	Validating Pod creation for :cdb-dev	{"validateORDSPod": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:16Z	INFO	controller.cdb	Executing Command :	{"reconciler group": "database.oracle.com", "reconciler kind": "CDB", "name": "cdb-dev", "namespace": "oracle-database-operator-system", "ExecCommand": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:16Z	INFO	controller.cdb	bash -c  curl -sSkv -k -X GET https://localhost:8888/ords/_/db-api/stable/metadata-catalog/ || curl  -sSkv -X GET http://localhost:8888/ords/_/db-api/stable/metadata-catalog/ 	{"reconciler group": "database.oracle.com", "reconciler kind": "CDB", "name": "cdb-dev", "namespace": "oracle-database-operator-system", "ExecCommand": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:16Z	INFO	controllers.CDB	DEFER	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "CreatingService", "Status": "false"}
+2022-06-27T03:18:31Z	INFO	controllers.CDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:31Z	INFO	controllers.CDB	Res Status:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "CreatingService", "Status": "false"}
+2022-06-27T03:18:31Z	INFO	controllers.CDB	Current Phase:CreatingService	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev"}
+2022-06-27T03:18:31Z	INFO	controllers.CDB	Creating a new Cluster Service for: cdb-dev	{"createORDSSVC": "oracle-database-operator-system/cdb-dev", "Svc.Namespace": "oracle-database-operator-system", "Service.Name": "cdb-dev-ords"}
+2022-06-27T03:18:31Z	INFO	controllers.CDB	Created ORDS Cluster Service successfully	{"createORDSSVC": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:31Z	DEBUG	events	Normal	{"object": {"kind":"CDB","namespace":"oracle-database-operator-system","name":"cdb-dev","uid":"c36e8d5f-6103-4a70-a840-16c6683755ec","apiVersion":"database.oracle.com/v1alpha1","resourceVersion":"101443627"}, "reason": "CreatedORDSService", "message": "Created ORDS Service for cdb-dev"}
+2022-06-27T03:18:31Z	INFO	controllers.CDB	DEFER	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "Ready", "Status": "false"}
+2022-06-27T03:18:46Z	INFO	controllers.CDB	Reconcile requested	{"onpremdboperator": "oracle-database-operator-system/cdb-dev"}
+2022-06-27T03:18:46Z	INFO	controllers.CDB	Res Status:	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "Ready", "Status": "false"}
+2022-06-27T03:18:46Z	INFO	controllers.CDB	Current Phase:Ready	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev"}
+2022-06-27T03:18:46Z	INFO	controllers.CDB	DEFER	{"onpremdboperator": "oracle-database-operator-system/cdb-dev", "Name": "cdb-dev", "Phase": "Ready", "Status": "true"}
+
+
+
+
+-- Check the status of the CDB CRD Pod after few minutes of running above commands:
+
+% kubectl get all -n oracle-database-operator-system
+NAME                                                               READY   STATUS    RESTARTS   AGE
+pod/cdb-dev-ords-rs-q2b68                                          1/1     Running   0          29s    <<< CDB CRD Resource Pod
+pod/oracle-database-operator-controller-manager-76cb674c5c-4nrh8   1/1     Running   0          4d10h
+pod/oracle-database-operator-controller-manager-76cb674c5c-f9wsd   1/1     Running   1          4d10h
+pod/oracle-database-operator-controller-manager-76cb674c5c-xsv9g   1/1     Running   2          4d10h
+
+NAME                                                                  TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/oracle-database-operator-controller-manager-metrics-service   ClusterIP   10.96.98.47     <none>        8443/TCP   5d1h
+service/oracle-database-operator-webhook-service                      ClusterIP   10.96.166.163   <none>        443/TCP    5d1h
+
+NAME                                                          READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/oracle-database-operator-controller-manager   3/3     3            3           5d1h
+
+NAME                                                                     DESIRED   CURRENT   READY   AGE
+replicaset.apps/cdb-dev-ords-rs                                          1         1         1       31s
+replicaset.apps/oracle-database-operator-controller-manager-76cb674c5c   3         3         3       5d1h
+
+
+
+
+-- Check the logs of the CDB CRD Pod created above:
+
+% kubectl logs -f pod/cdb-dev-ords-rs-q2b68 -n oracle-database-operator-system
+Requires to login with administrator privileges to verify Oracle REST Data Services schema.
+
+Connecting to database user: SYS AS SYSDBA url: jdbc:oracle:thin:@//goldhost1.lbsub52b3b1cae.okecluster.oraclevcn.com:1521/goldcdb_phx1pw.lbsub52b3b1cae.okecluster.oraclevcn.com
+
+Retrieving information..
+Your database connection is to a CDB.  ORDS common user ORDS_PUBLIC_USER will be created in the CDB.  ORDS schema will be installed in the PDBs.
+Root CDB$ROOT - create ORDS common user
+PDB PDB$SEED - install ORDS 21.4.3.r1170405
+
+2022-06-27T03:17:22.015Z INFO        reloaded pools: []
+2022-06-27T03:17:22.024Z INFO
+
+2022-06-27T03:17:23.200Z INFO        Installing Oracle REST Data Services version 21.4.3.r1170405 in CDB$ROOT
+2022-06-27T03:17:23.234Z INFO        ... Log file written to /home/oracle/ords_cdb_install_core_CDB_ROOT_2022-06-27_031723_00234.log
+2022-06-27T03:17:24.352Z INFO        ... Verified database prerequisites
+2022-06-27T03:17:24.662Z INFO        ... Created Oracle REST Data Services proxy user
+2022-06-27T03:17:24.708Z INFO        Completed installation for Oracle REST Data Services version 21.4.3.r1170405. Elapsed time: 00:00:01.504
+
+2022-06-27T03:17:24.722Z INFO        Installing Oracle REST Data Services version 21.4.3.r1170405 in PDB$SEED
+2022-06-27T03:17:24.731Z INFO        ... Log file written to /home/oracle/ords_cdb_install_core_PDB_SEED_2022-06-27_031724_00731.log
+2022-06-27T03:17:24.863Z INFO        ... Verified database prerequisites
+2022-06-27T03:17:25.123Z INFO        ... Created Oracle REST Data Services proxy user
+2022-06-27T03:17:25.568Z INFO        ... Created Oracle REST Data Services schema
+2022-06-27T03:17:26.252Z INFO        ... Granted privileges to Oracle REST Data Services
+2022-06-27T03:17:34.493Z INFO        ... Created Oracle REST Data Services database objects
+2022-06-27T03:17:43.730Z INFO        ... Log file written to /home/oracle/ords_cdb_install_datamodel_PDB_SEED_2022-06-27_031743_00730.log
+2022-06-27T03:17:45.883Z INFO        ... Log file written to /home/oracle/ords_cdb_install_scheduler_PDB_SEED_2022-06-27_031745_00883.log
+2022-06-27T03:17:49.296Z INFO        ... Log file written to /home/oracle/ords_cdb_install_apex_PDB_SEED_2022-06-27_031749_00296.log
+2022-06-27T03:17:51.492Z INFO        Completed installation for Oracle REST Data Services version 21.4.3.r1170405. Elapsed time: 00:00:26.768
+
+2022-06-27T03:17:51.492Z INFO        Completed CDB installation for Oracle REST Data Services version 21.4.3.r1170405. Total elapsed time: 00:00:28.297
+
+spawn java -jar /opt/oracle/ords/ords.war user sql_admin SQL Administrator
+Enter a password for user sql_admin:
+Confirm password for user sql_admin:
+2022-06-27T03:17:53.192Z INFO        Created user: sql_admin in file: /opt/oracle/ords/config/ords/credentials
+2022-06-27T03:17:54.816Z INFO        Modified: /opt/oracle/ords/config/ords/conf/apex_pu.xml, updated properties: database.api.admin.enabled, db.cdb.adminUser, db.cdb.adminUser.password
+2022-06-27T03:17:56.583Z INFO        HTTP and HTTP/2 cleartext listening on host: localhost port: 8888
+2022-06-27T03:17:56.647Z INFO        The document root is serving static resources located in: /opt/oracle/ords/doc_root
+2022-06-27T03:17:58.593Z INFO        Configuration properties for: |apex|pu|
+db.servicename=goldcdb_phx1pw.lbsub52b3b1cae.okecluster.oraclevcn.com
+db.hostname=goldhost1.lbsub52b3b1cae.okecluster.oraclevcn.com
+database.api.admin.enabled=true
+db.password=******
+db.cdb.adminUser.password=******
+database.api.enabled=true
+db.cdb.adminUser=C##DBAPI_CDB_ADMIN as SYSDBA
+db.username=ORDS_PUBLIC_USER
+restEnabledSql.active=true
+resource.templates.enabled=true
+db.port=1521
+feature.sdw=true
+db.connectionType=basic
+
+2022-06-27T03:17:58.595Z WARNING     *** jdbc.MaxLimit in configuration |apex|pu| is using a value of 10, this setting may not be sized adequately for a production environment ***
+2022-06-27T03:17:58.595Z WARNING     *** jdbc.InitialLimit in configuration |apex|pu| is using a value of 3, this setting may not be sized adequately for a production environment ***
+2022-06-27T03:18:02.803Z INFO        Oracle REST Data Services initialized
+Oracle REST Data Services version : 21.4.3.r1170405
+Oracle REST Data Services server info: jetty/9.4.44.v20210927
+
+
+
+-- Check the CDB CRD Resource and it should be in "Ready" status for a successful deployment:
+
+% kubectl get cdbs -A
+NAMESPACE                         NAME      CDB NAME   DB SERVER                                           DB PORT   SCAN NAME                                               REPLICAS   STATUS   MESSAGE
+oracle-database-operator-system   cdb-dev   goldcdb    goldhost1.lbsub52b3b1cae.okecluster.oraclevcn.com   1521      goldhost-scan.lbsub52b3b1cae.okecluster.oraclevcn.com   1          Ready
