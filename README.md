@@ -108,14 +108,16 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   To delete all the CRD instances deployed to cluster by the operator, run the following commands, where <namespace> is the namespace of the cluster object:
 
   ```sh
-  kubectl delete oraclerestdataservices.database.oracle.com --all -n <namespace>
+  kubectl delete oraclerestdataservice.database.oracle.com --all -n <namespace>
   kubectl delete singleinstancedatabase.database.oracle.com --all -n <namespace>
   kubectl delete shardingdatabase.database.oracle.com --all -n <namespace>
+  kubectl delete dbcssystem.database.oracle.com --all -n <namespace>
   kubectl delete autonomousdatabase.database.oracle.com --all -n <namespace>
   kubectl delete autonomousdatabasebackup.database.oracle.com --all -n <namespace>
   kubectl delete autonomousdatabaserestore.database.oracle.com --all -n <namespace>
   kubectl delete autonomouscontainerdatabase.database.oracle.com --all -n <namespace>
-  kubectl delete dbcssystem.database.oracle.com --all -n <namespace>
+  kubectl delete cdb.database.oracle.com --all -n <namespace>
+  kubectl delete pdb.database.oracle.com --all -n <namespace>
   ```
 
   After all CRD instances are deleted, it is safe to remove the CRDs, APISerivces and operator deployment.
