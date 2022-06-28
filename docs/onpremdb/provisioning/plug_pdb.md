@@ -2,6 +2,8 @@
 
 In this use case, a PDB is plugged in using Oracle DB Operator On-Prem controller using an existing .xml file which was generated when the PDB was unplugged from this target CDB or another CDB.
 
+To plug in a PDB CRD Resource, a sample .yaml file is available here: [config/samples/onpremdb/pdb_plug.yaml](../../../config/samples/onpremdb/pdb_plug.yaml)
+
 **NOTE:** It is assumed that before this step, you have followed the [prerequisite](./../README.md#prerequsites-to-manage-pdb-life-cycle-using-oracle-db-operator-on-prem-database-controller) steps.
 
 This example uses `plug_pdb.yaml` to plug in a PDB to a target CDB using Oracle DB Operator On-Prem Controller with:

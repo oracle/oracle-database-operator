@@ -2,7 +2,7 @@
 
 The Oracle Database Operator On-Prem Controller creates the PDB kind as a custom resource that models a PDB as a native Kubernetes object. There is a one-to-one mapping between the actual PDB and the Kubernetes PDB Custom Resource. Each PDB resource follows the PDB CRD as defined here: [config/crd/bases/database.oracle.com_pdbs.yaml](../../../config/crd/bases/database.oracle.com_pdbs.yaml)
 
-To create a PDB CRD Resource, a sample .yaml file is available here: [config/samples/onpremdb/pdb.yaml](../../../config/samples/onpremdb/pdb.yaml)
+To create a PDB CRD Resource, a sample .yaml file is available here: [config/samples/onpremdb/pdb_create.yaml](../../../config/samples/onpremdb/pdb_create.yaml)
 
 **NOTE:** It is assumed that before this step, you have followed the [prerequisite](./../README.md#prerequsites-to-manage-pdb-life-cycle-using-oracle-db-operator-on-prem-database-controller) steps.
 
