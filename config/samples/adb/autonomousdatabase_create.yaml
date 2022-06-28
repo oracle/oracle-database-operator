@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Copyright (c) 2022, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 apiVersion: database.oracle.com/v1alpha1
@@ -9,17 +9,55 @@ metadata:
 spec:
   details:
     # Update compartmentOCID with your compartment OCID.
-    compartmentOCID: ocid1.compartment...
+    compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
     # The dbName must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy.
     dbName: NewADB
     displayName: NewADB
     cpuCoreCount: 1
     adminPassword:
-      # The Name of the K8s secret where you want to hold the password of the ADMIN account. Comment out k8sSecretName and uncomment ociSecretOCID if you pass the admin password using OCI Secret.
-      k8sSecretName: admin-password
-      # The OCID of the OCI Secret that holds the password of the ADMIN account. It should start with ocid1.vaultsecret... .
-      # ociSecretOCID: ocid1.vaultsecret...
+      # Comment out k8sSecret and uncomment ociSecret if you pass the admin password using OCI Secret.
+      k8sSecret:
+        # The Name of the K8s secret where you want to hold the password of the ADMIN account.
+        name: admin-password
+      # ociSecret:
+      #   # The OCID of the OCI Secret that holds the password of the ADMIN account. It should start with ocid1.vaultsecret... .
+      #   ocid: ocid1.vaultsecret...
     dataStorageSizeInTBs: 1
+
+    # networkAccess:
+    #   # Uncomment this block to configure the network access type with the PUBLIC option, which allows secure access from everywhere.
+    #   accessType: PUBLIC
+
+    #   # Uncomment this block to configure the network access type with the RESTRICTED option.
+    #   # This option lets you restrict access by defining access control rules in an Access Control List (ACL).
+    #   # By specifying an ACL, the database will be accessible from a whitelisted set of IP addresses, CIDR (Classless Inter-Domain Routing) blocks, or VCNs. 
+    #   # Use a semicolon (;) as a deliminator between the VCN-specific subnets or IPs.
+    #   accessType: RESTRICTED
+    #   accessControlList:
+    #   - 1.1.1.1
+    #   - 1.1.0.0/16
+    #   - ocid1.vcn...
+    #   - ocid1.vcn...;1.1.1.1
+    #   - ocid1.vcn...;1.1.0.0/16
+    #   isMTLSConnectionRequired: true
+
+    #   # Uncomment this block to configure the network access type with the PRIVATE option.
+    #   # This option assigns a private endpoint, private IP, and hostname to your database. 
+    #   # Specifying this option allows traffic only from the VCN you specify.
+    #   # This allows you to define security rules, ingress/egress, at the Network Security Group (NSG) level and to control traffic to your Autonomous Database.
+    #   accessType: PRIVATE
+    #   privateEndpoint:
+    #     subnetOCID: ocid1.subnet...
+    #     nsgOCIDs:
+    #     - ocid1.networksecuritygroup...
+    #   isMTLSConnectionRequired: true
+
+    #   # Uncomment this block to configure the network access of an dedicated Autonomous Database (ADB-D) with an access control list.
+    #   isAccessControlEnabled: true
+    #   accessControlList:
+    #   - 1.1.1.1
+    #   - 1.1.0.0/16
+
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:
     configMapName: oci-cred

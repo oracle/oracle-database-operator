@@ -1,0 +1,8 @@
+operator.tgz
+cover.out
+bin
+testbin/*
+onpremtest/*
+ords/*zip
+.gitattributes
+.vscode

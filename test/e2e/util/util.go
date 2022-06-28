@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -56,12 +56,20 @@ import (
 // GenerateDBName returns a string DB concatenate 14 digits of the date time
 // E.g., DB060102150405 if the curret date-time is 2006.01.02 15:04:05
 func GenerateDBName() string {
+	return "DB" + getDateTimeString()
+}
+
+func GenerateACDName() string {
+	return "ACD" + getDateTimeString()
+}
+
+func getDateTimeString() string {
 	timeString := time.Now().Format("2006.01.02 15:04:05")
 	trimmed := strings.ReplaceAll(timeString, ":", "") // remove colons
 	trimmed = strings.ReplaceAll(trimmed, ".", "")     // remove dots
 	trimmed = strings.ReplaceAll(trimmed, " ", "")     // remove spaces
 	trimmed = trimmed[2:]                              // remove the first two digits of year (2006 -> 06)
-	return "DB" + trimmed
+	return trimmed
 }
 
 func unmarshalFromYamlBytes(bytes []byte, obj interface{}) error {
@@ -73,7 +81,7 @@ func unmarshalFromYamlBytes(bytes []byte, obj interface{}) error {
 	return json.Unmarshal(jsonBytes, obj)
 }
 
-// LoadTestFixture create an AutonomousDatabase resoursce from a test fixture
+// LoadTestFixture create an AutonomousDatabase resource from a test fixture
 func LoadTestFixture(adb *dbv1alpha1.AutonomousDatabase, filename string) (*dbv1alpha1.AutonomousDatabase, error) {
 	filePath := "./resource/" + filename
 	yamlBytes, err := ioutil.ReadFile(filePath)
@@ -119,6 +127,12 @@ type testConfiguration struct {
 	CompartmentOCID            string `yaml:"compartmentOCID"`
 	AdminPasswordOCID          string `yaml:"adminPasswordOCID"`
 	InstanceWalletPasswordOCID string `yaml:"instanceWalletPasswordOCID"`
+	SubnetOCID                 string `yaml:"subnetOCID"`
+	NsgOCID                    string `yaml:"nsgOCID"`
+	BucketURL                  string `yaml:"bucketURL"`
+	AuthToken                  string `yaml:"authToken"`
+	OciUser                    string `yaml:"ociUser"`
+	ExadataVMClusterOCID       string `yaml:"exadataVMClusterOCID"`
 }
 
 func GetTestConfig(filename string) (*testConfiguration, error) {

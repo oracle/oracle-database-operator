@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Copyright (c) 2022, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 
@@ -23,6 +23,8 @@ IMG ?= controller:latest
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.21
+# Operator YAML file
+OPERATOR_YAML=$$(basename $$(pwd)).yaml
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -53,13 +55,13 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
-TEST ?= ./apis/... ./commons/... ./controllers/...
+TEST ?= ./apis/database/v1alpha1 ./commons/... ./controllers/...
 test: manifests generate fmt vet envtest ## Run unit tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test $(TEST) -coverprofile cover.out
 
 E2ETEST ?= ./test/e2e/
 e2e: manifests generate fmt vet envtest ## Run e2e tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" go test $(E2ETEST) -v -timeout 40m -ginkgo.v -ginkgo.failFast
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path)" ginkgo -v --timeout=2h30m --fail-fast $(E2ETEST)
 
 ##@ Build
 
@@ -69,7 +71,7 @@ build: generate fmt vet ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
-docker-build: test ## Build docker image with the manager.
+docker-build: manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
 	docker build --no-cache=true --build-arg http_proxy=${HTTP_PROXY} --build-arg https_proxy=${HTTPS_PROXY} . -t ${IMG}
 
 #docker-build-proxy: test
@@ -90,9 +92,14 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
+# Bug:34265574
+# Used sed to reposition the controller-manager Deployment after the certificate creation in the OPERATOR_YAML  
 operator-yaml: manifests kustomize
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > $$(basename $$(pwd)).yaml
+	$(KUSTOMIZE) build config/default > "${OPERATOR_YAML}"
+	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "${OPERATOR_YAML}"
+	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "${OPERATOR_YAML}.bak")  >>  "${OPERATOR_YAML}"
+	rm "${OPERATOR_YAML}.bak"
 
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/default | kubectl delete -f -

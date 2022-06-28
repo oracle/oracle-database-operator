@@ -1,37 +1,51 @@
 #
-# Copyright (c) 2021, Oracle and/or its affiliates. 
+# Copyright (c) 2022, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
+
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
-  name: sidb-sample-patch
+  # sidb-sample should have already been created using singleinstancedatabase_create.yaml
+  name: sidb-sample
   namespace: default
 spec:
   
   ## Use only alphanumeric characters for sid
   sid: ORCL1
-  
-  ## Secret containing SIDB password mapped to secretKey 
-  ## This secret will be deleted after creation of the database unless keepSecret is set to true
-  adminPassword:
-    secretName: 
-    secretKey:
-    keepSecret: true
 
-  ## Patch the database by updating the RU version/image
-  ## Major version changes are not supported
+  ## DB edition.
+  edition: enterprise
+
+  ## Secret containing SIDB password mapped to secretKey 
+  adminPassword:
+    secretName: db-admin-secret
+
+  ## DB character set
+  charset: AL32UTF8
+
+  ## PDB name
+  pdbName: orclpdb1
+
+  ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
+  archiveLog: true
+
+  ## Patched Database image
+  ## Using the source base image container-registry.oracle.com/database/enterprise:latest
+  ## build patched DB images following instructions at
+  ## https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/patching
   image:
     pullFrom:
     pullSecrets:
 
-  ## size : Minimum size of pvc | class : PVC storage Class
-  ## AccessMode can only accept one of ReadWriteOnce, ReadWriteMany
-  ## Below mentioned storageClass/accessMode applies to OCI block volumes. Update appropriately for other types of persistent volumes.
+  ## size is the required minimum size of the persistent volume
+  ## storageClass is specified for automatic volume provisioning
+  ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   persistence:
     size: 100Gi
-    storageClass: "oci"
+    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
+    storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
 
-  ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
+  ## Count of Database Pods.
   replicas: 1

@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -50,42 +50,44 @@ type SingleInstanceDatabaseSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// +kubebuilder:validation:Enum=standard;enterprise
+	// +kubebuilder:validation:Enum=standard;enterprise;express
 	Edition string `json:"edition,omitempty"`
 
-	// SID can only have a-z , A-Z, 0-9 . It cant have any special characters
+	// SID must be alphanumeric (no special characters, only a-z, A-Z, 0-9), and no longer than 12 characters.
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]+$`
-	Sid          string `json:"sid,omitempty"`
-	InstallApex  bool   `json:"installApex,omitempty"`
-	Charset      string `json:"charset,omitempty"`
-	Pdbname      string `json:"pdbName,omitempty"`
-	LoadBalancer bool   `json:"loadBalancer,omitempty"`
-	FlashBack    bool   `json:"flashBack,omitempty"`
-	ArchiveLog   bool   `json:"archiveLog,omitempty"`
-	ForceLogging bool   `json:"forceLog,omitempty"`
+	// +kubebuilder:validation:MaxLength:=12
+	Sid                string            `json:"sid,omitempty"`
+	Charset            string            `json:"charset,omitempty"`
+	Pdbname            string            `json:"pdbName,omitempty"`
+	LoadBalancer       bool              `json:"loadBalancer,omitempty"`
+	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
+	FlashBack          bool              `json:"flashBack,omitempty"`
+	ArchiveLog         bool              `json:"archiveLog,omitempty"`
+	ForceLogging       bool              `json:"forceLog,omitempty"`
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
+	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
 
 	// +k8s:openapi-gen=true
-	// +kubebuilder:validation:Minimum=1
-	Replicas int `json:"replicas"`
+	Replicas int `json:"replicas,omitempty"`
 
 	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`
-	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword"`
+	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
 	Image         SingleInstanceDatabaseImage         `json:"image"`
-	Persistence   SingleInstanceDatabasePersistence   `json:"persistence"`
+	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
 	InitParams    SingleInstanceDatabaseInitParams    `json:"initParams,omitempty"`
 }
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
 type SingleInstanceDatabasePersistence struct {
-	Size         string `json:"size"`
-	StorageClass string `json:"storageClass"`
-
+	Size         string `json:"size,omitempty"`
+	StorageClass string `json:"storageClass,omitempty"`
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
-	AccessMode string `json:"accessMode"`
+	AccessMode            string `json:"accessMode,omitempty"`
+	VolumeName            string `json:"volumeName,omitempty"`
+	VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters
@@ -101,13 +103,15 @@ type SingleInstanceDatabaseImage struct {
 	Version     string `json:"version,omitempty"`
 	PullFrom    string `json:"pullFrom"`
 	PullSecrets string `json:"pullSecrets,omitempty"`
+	PrebuiltDB  bool   `json:"prebuiltDB,omitempty"`
 }
 
 // SingleInsatnceAdminPassword defines the secret containing Admin Password mapped to secretKey for Database
 type SingleInstanceDatabaseAdminPassword struct {
 	SecretName string `json:"secretName"`
-	SecretKey  string `json:"secretKey"`
-	KeepSecret bool   `json:"keepSecret,omitempty"`
+	// +kubebuilder:default:="oracle_pwd"
+	SecretKey  string `json:"secretKey,omitempty"`
+	KeepSecret *bool  `json:"keepSecret,omitempty"`
 }
 
 // SingleInstanceDatabaseStatus defines the observed state of SingleInstanceDatabase
@@ -115,30 +119,33 @@ type SingleInstanceDatabaseStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Nodes                []string          `json:"nodes,omitempty"`
-	Role                 string            `json:"role,omitempty"`
-	Status               string            `json:"status,omitempty"`
-	Replicas             int               `json:"replicas"`
-	ReleaseUpdate        string            `json:"releaseUpdate,omitempty"`
+	Nodes         []string `json:"nodes,omitempty"`
+	Role          string   `json:"role,omitempty"`
+	Status        string   `json:"status,omitempty"`
+	Replicas      int      `json:"replicas,omitempty"`
+	ReleaseUpdate string   `json:"releaseUpdate,omitempty"`
+	// +kubebuilder:default:="false"
 	DatafilesPatched     string            `json:"datafilesPatched,omitempty"`
 	ConnectString        string            `json:"connectString,omitempty"`
 	ClusterConnectString string            `json:"clusterConnectString,omitempty"`
 	StandbyDatabases     map[string]string `json:"standbyDatabases,omitempty"`
-	DatafilesCreated     string            `json:"datafilesCreated,omitempty"`
-	Sid                  string            `json:"sid,omitempty"`
-	Edition              string            `json:"edition,omitempty"`
-	Charset              string            `json:"charset,omitempty"`
-	Pdbname              string            `json:"pdbName,omitempty"`
-	InitSgaSize          int               `json:"initSgaSize,omitempty"`
-	InitPgaSize          int               `json:"initPgaSize,omitempty"`
-	CloneFrom            string            `json:"cloneFrom,omitempty"`
-	FlashBack            string            `json:"flashBack,omitempty"`
-	ArchiveLog           string            `json:"archiveLog,omitempty"`
-	ForceLogging         string            `json:"forceLog,omitempty"`
-	OemExpressUrl        string            `json:"oemExpressUrl,omitempty"`
-	OrdsReference        string            `json:"ordsReference,omitempty"`
-	PdbConnectString     string            `json:"pdbConnectString,omitempty"`
-	ApexInstalled        bool              `json:"apexInstalled,omitempty"`
+	// +kubebuilder:default:="false"
+	DatafilesCreated string `json:"datafilesCreated,omitempty"`
+	Sid              string `json:"sid,omitempty"`
+	Edition          string `json:"edition,omitempty"`
+	Charset          string `json:"charset,omitempty"`
+	Pdbname          string `json:"pdbName,omitempty"`
+	InitSgaSize      int    `json:"initSgaSize,omitempty"`
+	InitPgaSize      int    `json:"initPgaSize,omitempty"`
+	CloneFrom        string `json:"cloneFrom,omitempty"`
+	FlashBack        string `json:"flashBack,omitempty"`
+	ArchiveLog       string `json:"archiveLog,omitempty"`
+	ForceLogging     string `json:"forceLog,omitempty"`
+	OemExpressUrl    string `json:"oemExpressUrl,omitempty"`
+	OrdsReference    string `json:"ordsReference,omitempty"`
+	PdbConnectString string `json:"pdbConnectString,omitempty"`
+	ApexInstalled    bool   `json:"apexInstalled,omitempty"`
+	PrebuiltDB       bool   `json:"prebuiltDB,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge

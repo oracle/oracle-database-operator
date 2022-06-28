@@ -68,11 +68,11 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
                 required:
-                - secretKey
                 - secretName
                 type: object
               archiveLog:
@@ -85,6 +85,7 @@ spec:
                 enum:
                 - standard
                 - enterprise
+                - express
                 type: string
               flashBack:
                 type: boolean
@@ -94,6 +95,8 @@ spec:
                 description: SingleInstanceDatabaseImage defines the Image source
                   and pullSecrets for POD
                 properties:
+                  prebuiltDB:
+                    type: boolean
                   pullFrom:
                     type: string
                   pullSecrets:
@@ -115,8 +118,6 @@ spec:
                   sgaTarget:
                     type: integer
                 type: object
-              installApex:
-                type: boolean
               loadBalancer:
                 type: boolean
               nodeSelector:
@@ -138,26 +139,29 @@ spec:
                     type: string
                   storageClass:
                     type: string
-                required:
-                - accessMode
-                - size
-                - storageClass
+                  volumeClaimAnnotation:
+                    type: string
+                  volumeName:
+                    type: string
                 type: object
               readinessCheckPeriod:
                 type: integer
               replicas:
-                minimum: 1
                 type: integer
+              serviceAccountName:
+                type: string
+              serviceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
               sid:
-                description: SID can only have a-z , A-Z, 0-9 . It cant have any special
-                  characters
+                description: SID must be alphanumeric (no special characters, only
+                  a-z, A-Z, 0-9), and no longer than 12 characters.
+                maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
             required:
-            - adminPassword
             - image
-            - persistence
-            - replicas
             type: object
           status:
             description: SingleInstanceDatabaseStatus defines the observed state of
@@ -248,8 +252,10 @@ spec:
               connectString:
                 type: string
               datafilesCreated:
+                default: "false"
                 type: string
               datafilesPatched:
+                default: "false"
                 type: string
               edition:
                 type: string
@@ -298,11 +304,13 @@ spec:
                     type: string
                   storageClass:
                     type: string
-                required:
-                - accessMode
-                - size
-                - storageClass
+                  volumeClaimAnnotation:
+                    type: string
+                  volumeName:
+                    type: string
                 type: object
+              prebuiltDB:
+                type: boolean
               releaseUpdate:
                 type: string
               replicas:
@@ -319,7 +327,6 @@ spec:
                 type: string
             required:
             - persistence
-            - replicas
             type: object
         type: object
     served: true

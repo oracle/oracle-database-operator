@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -40,8 +40,9 @@ package commons
 
 import (
 	"bytes"
-	databasealphav1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"net/http"
+
+	databasealphav1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -52,7 +53,7 @@ import (
 )
 
 // ExecCMDInContainer execute command in first container of a pod
-func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasealphav1.ShardingDatabase, logger logr.Logger) (error, string, string) {
+func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasealphav1.ShardingDatabase, logger logr.Logger) (string, string, error) {
 
 	var msg string
 	var (
@@ -75,7 +76,7 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 
 	config, err := kubeConfig.ClientConfig()
 	if err != nil {
-		return err, "Error Occurred", "Error Occurred"
+		return "Error Occurred", "Error Occurred", err
 	}
 
 	// Connect to url (constructed from req) using SPDY (HTTP/2) protocol which allows bidirectional streams.
@@ -83,7 +84,7 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 	if err != nil {
 		msg = "Error after executing remotecommand.NewSPDYExecutor"
 		LogMessages("Error", msg, err, instance, logger)
-		return err, "Error Occurred", "Error Occurred"
+		return "Error Occurred", "Error Occurred", err
 	}
 
 	err = exec.Stream(remotecommand.StreamOptions{
@@ -100,8 +101,8 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 		if len(execErr.String()) > 0 {
 			LogMessages("INFO", execErr.String(), nil, instance, logger)
 		}
-		return err, execOut.String(), execErr.String()
+		return execOut.String(), execErr.String(), err
 	}
 
-	return nil, execOut.String(), execErr.String()
+	return execOut.String(), execErr.String(), nil
 }

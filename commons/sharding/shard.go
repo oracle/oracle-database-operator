@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -40,9 +40,10 @@ package commons
 
 import (
 	"context"
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"reflect"
 	"strconv"
+
+	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -105,8 +106,7 @@ func builObjectMetaForShard(instance *databasev1alpha1.ShardingDatabase, OraShar
 // Function to build Stateful Specs
 func buildStatefulSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) *appsv1.StatefulSetSpec {
 	// building Stateful set Specs
-	var size int32
-	size = 1
+	var size int32 = 1
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraShardSpex.Name,
 		Selector: &metav1.LabelSelector{
@@ -222,7 +222,7 @@ func buildContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase, Ora
 			PeriodSeconds:       int32(240),
 			InitialDelaySeconds: int32(300),
 			TimeoutSeconds:      int32(120),
-			Handler: corev1.Handler{
+			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
 					Command: getLivenessCmd("SHARD"),
 				},
@@ -355,8 +355,8 @@ func volumeClaimTemplatesForShard(instance *databasev1alpha1.ShardingDatabase, O
 }
 
 func BuildServiceDefForShard(instance *databasev1alpha1.ShardingDatabase, replicaCount int32, OraShardSpex databasev1alpha1.ShardSpec, svctype string) *corev1.Service {
-	service := &corev1.Service{}
-	service = &corev1.Service{
+	//service := &corev1.Service{}
+	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForShard(instance, replicaCount, OraShardSpex, svctype),
 		Spec:       corev1.ServiceSpec{},
 	}
@@ -402,8 +402,7 @@ func buildSvcObjectMetaForShard(instance *databasev1alpha1.ShardingDatabase, rep
 
 func getSvcLabelsForShard(replicaCount int32, OraShardSpex databasev1alpha1.ShardSpec) map[string]string {
 
-	var labelStr map[string]string
-	labelStr = make(map[string]string)
+	var labelStr map[string]string = make(map[string]string)
 	if replicaCount == -1 {
 		labelStr["statefulset.kubernetes.io/pod-name"] = OraShardSpex.Name + "-0"
 	} else {
@@ -418,8 +417,8 @@ func getSvcLabelsForShard(replicaCount int32, OraShardSpex databasev1alpha1.Shar
 func UpdateProvForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec, kClient client.Client, sfSet *appsv1.StatefulSet, shardPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
 	var msg string
-	var size int32
-	size = 1
+	var size int32 = 1
+	//size = 1
 	var isUpdate bool = false
 	var err error
 	var i int

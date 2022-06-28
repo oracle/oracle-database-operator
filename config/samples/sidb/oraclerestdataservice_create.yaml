@@ -1,0 +1,49 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ords-secret
+  namespace: default
+type: Opaque
+stringData:
+  ## Specify your ORDS password here
+  oracle_pwd: 
+
+---
+
+apiVersion: database.oracle.com/v1alpha1
+kind: OracleRestDataService
+metadata:
+  name: ords-sample
+  namespace: default
+spec:
+  
+  ## Database ref. This can be of kind SingleInstanceDatabase.
+  ## Make sure the source database has been created by applying singeinstancedatabase_express.yaml
+  databaseRef: "xedb-sample"
+  
+  ## Secret containing databaseRef password mapped to secretKey. 
+  adminPassword:
+    secretName: xedb-admin-secret
+
+  ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey.
+  ordsPassword:
+    secretName: ords-secret
+
+  ## ORDS image details
+  image:
+    pullFrom: container-registry.oracle.com/database/ords:21.4.2-gh
+
+  ## PDB Schemas to be ORDS Enabled.
+  ## Schema will be created (if not exists) with password as .spec.ordsPassword.
+  restEnableSchemas:
+  - schemaName: schema1
+    enable: true
+    urlMapping: 
+  - schemaName: schema2
+    enable: true
+    urlMapping: myschema

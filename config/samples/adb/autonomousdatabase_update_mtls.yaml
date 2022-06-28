@@ -1,0 +1,20 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. 
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabase
+metadata:
+  name: autonomousdatabase-sample
+spec:
+  details:
+    autonomousDatabaseOCID: ocid1.autonomousdatabase...
+    networkAccess:
+      # Set the patameter to false to allow both TLS and mutual TLS (mTLS) authentication.
+      # Avaiable when the networkAccessType is RESTRICTED or PRIVATE on shared Autnomous Database.
+      isMTLSConnectionRequired: false
+
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey

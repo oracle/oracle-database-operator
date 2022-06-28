@@ -1,0 +1,61 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-admin-secret
+  namespace: default
+type: Opaque
+stringData:
+  # Specify your DB password here
+  oracle_pwd: 
+
+---
+
+apiVersion: database.oracle.com/v1alpha1
+kind: SingleInstanceDatabase
+metadata:
+  # Creates base sidb-sample. Use singleinstancedatabase_clone.yaml for cloning
+  #                           and singleinstancedatabase_patch.yaml for patching
+  name: sidb-sample
+  namespace: default
+spec:
+  
+  ## Use only alphanumeric characters for sid
+  sid: ORCL1
+
+  ## DB edition.
+  edition: enterprise
+
+  ## Secret containing SIDB password mapped to secretKey 
+  adminPassword:
+    secretName: db-admin-secret
+
+  ## DB character set
+  charset: AL32UTF8
+
+  ## PDB name
+  pdbName: orclpdb1
+
+  ## Enable/Disable ArchiveLog. Should be true to allow DB cloning
+  archiveLog: true
+
+  ## Database image details
+  image:
+    pullFrom: container-registry.oracle.com/database/enterprise:latest
+    pullSecrets: oracle-container-registry-secret
+
+  ## size is the required minimum size of the persistent volume
+  ## storageClass is specified for automatic volume provisioning
+  ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  persistence:
+    size: 100Gi
+    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
+    storageClass: "oci-bv"
+    accessMode: "ReadWriteOnce"
+
+  ## Count of Database Pods.
+  replicas: 1
