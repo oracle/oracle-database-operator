@@ -12,7 +12,11 @@ spec:
   scanName: "devdb"
   dbServer: "172.17.0.4"
   dbPort: 1521
-  replicas: 2
+  replicas: 1
+  ordsImage: ""
+  ordsImagePullPolicy: "Always"
+  # Uncomment Below Secret Format for accessing ords image from private docker registry
+  # ordsImagePullSecret: ""
   serviceName: "devdb.example.com"
   sysAdminPwd: 
     secret: 
