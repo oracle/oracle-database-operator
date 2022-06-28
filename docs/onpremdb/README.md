@@ -12,7 +12,7 @@ NOTE: The target CDB (for which the PDB life cycle management is needed) **can a
 
 To deploy OraOperator, use this [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
 
-After the Oracle Database Operator is deployed, you can see the DB Operator Pods running in the Kubernetes Cluster. As part of the OraOperator deployment, the On-Prem Database Controller is deployed as a CRD (Custom Resource Definition). The following output is an example of such a deployment:
+After the Oracle Database Operator is deployed, you can see the DB Operator Pods running in the Kubernetes Cluster. As part of the OraOperator deployment, the On-Prem Database Controller is deployed and we can see the CRDs (Custom Resource Definition) for CDB and PDB in the list of CRDs. The following output is an example of such a deployment:
 ```
 [root@test-server oracle-database-operator]# kubectl get ns
 NAME                              STATUS   AGE
@@ -48,7 +48,7 @@ autonomouscontainerdatabases.database.oracle.com   2022-06-22T01:21:36Z
 autonomousdatabasebackups.database.oracle.com      2022-06-22T01:21:36Z
 autonomousdatabaserestores.database.oracle.com     2022-06-22T01:21:37Z
 autonomousdatabases.database.oracle.com            2022-06-22T01:21:37Z
-cdbs.database.oracle.com                           2022-06-22T01:21:37Z <<<< CRD for CDB
+cdbs.database.oracle.com                           2022-06-22T01:21:37Z <<<<
 certificaterequests.cert-manager.io                2022-06-21T17:03:46Z
 certificates.cert-manager.io                       2022-06-21T17:03:47Z
 challenges.acme.cert-manager.io                    2022-06-21T17:03:47Z
@@ -57,7 +57,7 @@ dbcssystems.database.oracle.com                    2022-06-22T01:21:38Z
 issuers.cert-manager.io                            2022-06-21T17:03:49Z
 oraclerestdataservices.database.oracle.com         2022-06-22T01:21:38Z
 orders.acme.cert-manager.io                        2022-06-21T17:03:49Z 
-pdbs.database.oracle.com                           2022-06-22T01:21:39Z <<<< CRD for PDB
+pdbs.database.oracle.com                           2022-06-22T01:21:39Z <<<<
 shardingdatabases.database.oracle.com              2022-06-22T01:21:39Z
 singleinstancedatabases.database.oracle.com        2022-06-22T01:21:40Z
 ```
@@ -179,11 +179,11 @@ To create a CDB CRD, a sample .yaml file is available here: [config/samples/onpr
 
 The Oracle Database Operator On-Prem Controller creates the PDB kind as a custom resource that models a PDB as a native Kubernetes object. There is a one-to-one mapping between the actual PDB and the Kubernetes PDB Custom Resource. You cannot have more than one Kubernetes resource for a target PDB. This PDB resource can be used to perform PDB-LM operations by specifying the action attribute in the PDB Specs. Each PDB resource follows the PDB CRD as defined here: [config/crd/bases/database.oracle.com_pdbs.yaml](../../../config/crd/bases/database.oracle.com_pdbs.yaml)
 
-To create a PDB CRD Resource, a sample .yaml file is available here: [config/samples/onpremdb/pdb.yaml](../../../config/samples/onpremdb/pdb.yaml)
+To create a PDB CRD Resource, a sample .yaml file is available here: [config/samples/onpremdb/pdb_create.yaml](../../config/samples/onpremdb/pdb_create.yaml)
 
 # Use Cases for PDB Lifecycle Management Operations using Oracle DB Operator On-Prem Controller
 
-Using Oracle DB Operator On-Prem Controller, you can perform the following PDB-LM operations: CREATE, CLONE, MODIFY, DELETE, STATUS, PLUG, UNPLUG
+Using Oracle DB Operator On-Prem Controller, you can perform the following PDB-LM operations: CREATE, CLONE, MODIFY, DELETE, UNPLUG, PLUG.
 
 1. [Create PDB](./provisioning/create_pdb.md)
 2. [Clone PDB](./provisioning/clone_pdb.md)
