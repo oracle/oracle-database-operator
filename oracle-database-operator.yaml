@@ -192,9 +192,6 @@ spec:
           status:
             description: AutonomousDatabaseBackupStatus defines the observed state of AutonomousDatabaseBackup
             properties:
-              autonomousDatabaseBackupOCID:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
-                type: string
               autonomousDatabaseOCID:
                 type: string
               compartmentOCID:
@@ -203,11 +200,10 @@ spec:
                 type: string
               dbName:
                 type: string
-              displayName:
-                type: string
               isAutomatic:
                 type: boolean
               lifecycleState:
+                description: 'AutonomousDatabaseBackupLifecycleStateEnum Enum with underlying type: string'
                 type: string
               timeEnded:
                 type: string
@@ -221,7 +217,6 @@ spec:
             - compartmentOCID
             - dbDisplayName
             - dbName
-            - displayName
             - isAutomatic
             - lifecycleState
             - type
@@ -328,14 +323,13 @@ spec:
           status:
             description: AutonomousDatabaseRestoreStatus defines the observed state of AutonomousDatabaseRestore
             properties:
-              autonomousDatabaseOCID:
-                type: string
               dbName:
                 type: string
               displayName:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
                 type: string
               status:
+                description: 'WorkRequestStatusEnum Enum with underlying type: string'
                 type: string
               timeAccepted:
                 type: string
@@ -343,11 +337,13 @@ spec:
                 type: string
               timeStarted:
                 type: string
+              workRequestOCID:
+                type: string
             required:
-            - autonomousDatabaseOCID
             - dbName
             - displayName
             - status
+            - workRequestOCID
             type: object
         type: object
     served: true
@@ -383,6 +379,9 @@ spec:
   - additionalPrinterColumns:
     - jsonPath: .spec.details.displayName
       name: Display Name
+      type: string
+    - jsonPath: .spec.details.dbName
+      name: Db Name
       type: string
     - jsonPath: .status.lifecycleState
       name: State
@@ -1080,10 +1079,13 @@ spec:
       name: Database
       type: string
     - jsonPath: .status.databaseApiUrl
-      name: 'Database Api & Apex Url '
+      name: Database API URL
       type: string
     - jsonPath: .status.databaseActionsUrl
-      name: Database Actions Url
+      name: Database Actions URL
+      type: string
+    - jsonPath: .status.apexUrl
+      name: Apex URL
       type: string
     name: v1alpha1
     schema:
@@ -1107,12 +1109,12 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
                 required:
-                - keepSecret
-                - secretKey
+                - secretName
                 type: object
               apexPassword:
                 description: OracleRestDataServicePassword defines the secret containing Password mapped to secretKey
@@ -1120,12 +1122,12 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
                 required:
-                - keepSecret
-                - secretKey
+                - secretName
                 type: object
               databaseRef:
                 type: string
@@ -1155,12 +1157,12 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
                 required:
-                - keepSecret
-                - secretKey
+                - secretName
                 type: object
               ordsUser:
                 type: string
@@ -1176,6 +1178,8 @@ spec:
                     type: string
                   storageClass:
                     type: string
+                  volumeName:
+                    type: string
                 type: object
               replicas:
                 minimum: 1
@@ -1186,20 +1190,23 @@ spec:
                   properties:
                     enable:
                       type: boolean
-                    pdb:
+                    pdbName:
                       type: string
-                    schema:
+                    schemaName:
                       type: string
                     urlMapping:
                       type: string
                   required:
                   - enable
-                  - pdb
-                  - schema
+                  - schemaName
                   type: object
                 type: array
               serviceAccountName:
                 type: string
+              serviceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
             required:
             - adminPassword
             - databaseRef
@@ -1210,7 +1217,7 @@ spec:
             properties:
               apexConfigured:
                 type: boolean
-              clusterDbApiUrl:
+              apexUrl:
                 type: string
               commonUsersCreated:
                 type: boolean
@@ -1235,8 +1242,6 @@ spec:
               loadBalancer:
                 type: string
               ordsInstalled:
-                type: boolean
-              ordsSetupCompleted:
                 type: boolean
               replicas:
                 type: integer
@@ -1973,11 +1978,11 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
                 required:
-                - secretKey
                 - secretName
                 type: object
               archiveLog:
@@ -1999,6 +2004,8 @@ spec:
               image:
                 description: SingleInstanceDatabaseImage defines the Image source and pullSecrets for POD
                 properties:
+                  prebuiltDB:
+                    type: boolean
                   pullFrom:
                     type: string
                   pullSecrets:
@@ -2020,8 +2027,6 @@ spec:
                   sgaTarget:
                     type: integer
                 type: object
-              installApex:
-                type: boolean
               loadBalancer:
                 type: boolean
               nodeSelector:
@@ -2034,14 +2039,18 @@ spec:
                 description: SingleInstanceDatabasePersistence defines the storage size and class for PVC
                 properties:
                   accessMode:
+                    enum:
+                    - ReadWriteOnce
+                    - ReadWriteMany
                     type: string
                   size:
                     type: string
                   storageClass:
                     type: string
-                required:
-                - size
-                - storageClass
+                  volumeClaimAnnotation:
+                    type: string
+                  volumeName:
+                    type: string
                 type: object
               readinessCheckPeriod:
                 type: integer
@@ -2049,8 +2058,13 @@ spec:
                 type: integer
               serviceAccountName:
                 type: string
+              serviceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
               sid:
-                description: SID can only have a-z , A-Z, 0-9 . It cant have any special characters
+                description: SID must be alphanumeric (no special characters, only a-z, A-Z, 0-9), and no longer than 12 characters.
+                maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
             required:
@@ -2118,8 +2132,10 @@ spec:
               connectString:
                 type: string
               datafilesCreated:
+                default: "false"
                 type: string
               datafilesPatched:
+                default: "false"
                 type: string
               edition:
                 type: string
@@ -2159,15 +2175,21 @@ spec:
                 description: SingleInstanceDatabasePersistence defines the storage size and class for PVC
                 properties:
                   accessMode:
+                    enum:
+                    - ReadWriteOnce
+                    - ReadWriteMany
                     type: string
                   size:
                     type: string
                   storageClass:
                     type: string
-                required:
-                - size
-                - storageClass
+                  volumeClaimAnnotation:
+                    type: string
+                  volumeName:
+                    type: string
                 type: object
+              prebuiltDB:
+                type: boolean
               releaseUpdate:
                 type: string
               replicas:
@@ -2184,7 +2206,6 @@ spec:
                 type: string
             required:
             - persistence
-            - replicas
             type: object
         type: object
     served: true
@@ -2746,53 +2767,6 @@ spec:
   selector:
     control-plane: controller-manager
 ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  labels:
-    control-plane: controller-manager
-  name: oracle-database-operator-controller-manager
-  namespace: oracle-database-operator-system
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      control-plane: controller-manager
-  template:
-    metadata:
-      labels:
-        control-plane: controller-manager
-    spec:
-      containers:
-      - args:
-        - --enable-leader-election
-        command:
-        - /manager
-        image: phx.ocir.io/intsanjaysingh/db-operator/sharding/dbcs-operator:0.2.0
-        imagePullPolicy: Always
-        name: manager
-        ports:
-        - containerPort: 9443
-          name: webhook-server
-          protocol: TCP
-        resources:
-          limits:
-            cpu: 400m
-            memory: 400Mi
-          requests:
-            cpu: 400m
-            memory: 400Mi
-        volumeMounts:
-        - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: cert
-          readOnly: true
-      terminationGracePeriodSeconds: 10
-      volumes:
-      - name: cert
-        secret:
-          defaultMode: 420
-          secretName: webhook-server-cert
----
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -2960,6 +2934,26 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase
+  failurePolicy: Fail
+  name: vautonomouscontainerdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomouscontainerdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v1alpha1-autonomousdatabase
   failurePolicy: Fail
   name: vautonomousdatabase.kb.io
@@ -2971,7 +2965,6 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
-    - DELETE
     resources:
     - autonomousdatabases
   sideEffects: None
@@ -3100,3 +3093,51 @@ webhooks:
     resources:
     - singleinstancedatabases
   sideEffects: None
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: oracle-database-operator-controller-manager
+  namespace: oracle-database-operator-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: controller-manager
+    spec:
+      containers:
+      - args:
+        - --enable-leader-election
+        command:
+        - /manager
+        image: container-registry.oracle.com/database/operator:0.2.0
+        imagePullPolicy: Always
+        name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 400m
+            memory: 400Mi
+          requests:
+            cpu: 400m
+            memory: 400Mi
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: webhook-server-cert
+---
