@@ -1,0 +1,8 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: DbcsSystem
+metadata:
+  name: dbcssystem-existing
+spec:
+  id: "ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa"
+  ociConfigMap: "oci-cred"
+  ociSecret: "oci-privatekey"

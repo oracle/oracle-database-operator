@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -221,7 +221,7 @@ func buildContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, O
 			PeriodSeconds:       int32(240),
 			InitialDelaySeconds: int32(300),
 			TimeoutSeconds:      int32(60),
-			Handler: corev1.Handler{
+			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
 					Command: getLivenessCmd("CATALOG"),
 				},

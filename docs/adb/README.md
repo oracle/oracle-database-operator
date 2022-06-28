@@ -2,9 +2,17 @@
 
 Before you use the Oracle Database Operator for Kubernetes (the operator), ensure your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
 
+As indicated in the prerequisites (see above), to interact with OCI services, either the cluster has to be authorized using Principal Instance, or using the API Key Authentication by specifying the configMap and the secret under the `ociConfig` field.
+
+## Required Permissions
+
+The opeartor must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. See [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb) for sample Autonomous Database policies.
+
+The permission to view the workrequests is also required, so that the operator will update the resources when the work is done. See [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) for sample work request policies.
+
 ## Supported Features
 
-After the operator is deployed, choose either one of the following operations to create an `AutonomousDatabase` custom resource for Oracle Autonomous Database in your cluster.
+After the operator is deployed, choose one of the following operations to create an `AutonomousDatabase` custom resource for Oracle Autonomous Database in your cluster.
 
 * [Provision](#provision-an-autonomous-database) an Autonomous Database
 * [Bind](#bind-to-an-existing-autonomous-database) to an existing Autonomous Database
@@ -18,13 +26,15 @@ After you create the resource, you can use the operator to perform the following
 * [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
 * [Delete the resource](#delete-the-resource) from the cluster
 
+To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
+
 ## Provision an Autonomous Database
 
-Follow the steps to provision an Autonomous Database that will bind objects in your cluster.
+Follow the steps to provision an Autonomous Database that will map objects in your cluster.
 
 1. Get the `Compartment OCID`.
 
-    Login cloud console and click `Compartment`.
+    Login Cloud Console and click `Compartment`.
 
     ![compartment-1](/images/adb/compartment-1.png)
 
@@ -32,7 +42,23 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
 
     ![compartment-2](/images/adb/compartment-2.png)
 
-2. Create a Kubernetes Secret to hold the password of the ADMIN user.
+2. To create an Autonomous Database on Dedicated Exadata Infrastructure (ADB-D), the OCID of Oracle Autonomous Container Database is required.
+
+    You can skip this step if you want to create a Autonomous Database on Shared Exadata Infrastructure (ADB-S).
+
+    Go to the Cloud Console and click `Autonomous Database`.
+
+    ![acd-id-1](/images/adb/adb-id-1.png)
+
+    Under `Dedicated Infrastructure`, click `Autonomous Container Database`.
+
+    ![acd-id-2](/images/adb/acd-id-1.png)
+
+    Click on the name of Autonomous Container Database and copy the `Autonomous Container Database OCID` from Cloud Console.
+
+    ![acd-id-3](/images/adb/acd-id-2.png)
+
+3. Create a Kubernetes Secret to hold the password of the ADMIN user.
 
     You can create this secret with the following command (as an example):
 
@@ -40,19 +66,21 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
     kubectl create secret generic admin-password --from-literal=admin-password='password_here'
     ```
 
-3. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
+4. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
     | `spec.details.compartmentOCID` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the compartment of the Autonomous Database. | Yes |
     | `spec.details.dbName` | string | The database name. The name must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy. | Yes |
     | `spec.details.displayName` | string | The user-friendly name for the Autonomous Database. The name does not have to be unique. | Yes |
     | `spec.details.cpuCoreCount` | int | The number of OCPU cores to be made available to the database. | Yes |
-    | `spec.details.adminPassword` | dictionary | The password for the ADMIN user. The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.<br><br> Either `k8sSecretName` or `ociSecretOCID` must be provided. If both `k8sSecretName` and `ociSecretOCID` appear, the Operator reads the password from the K8s secret that `k8sSecretName` refers to. | Yes |
-    | `spec.details.adminPassword.k8sSecretName` | string | The **name** of the K8s Secret where you want to hold the password for the ADMIN user. | Conditional |
-    |`spec.details.adminPassword.ociSecretOCID` | string | The **[OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm)** of the [OCI Secret](https://docs.oracle.com/en-us/iaas/Content/KeyManagement/Tasks/managingsecrets.htm) where you want to hold the password for the ADMIN user. | Conditional |
+    | `spec.details.adminPassword` | dictionary | The password for the ADMIN user. The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.<br><br> Either `k8sSecret.name` or `ociSecret.ocid` must be provided. If both `k8sSecret.name` and `ociSecret.ocid` appear, the Operator reads the password from the K8s secret that `k8sSecret.name` refers to. | Yes |
+    | `spec.details.adminPassword.k8sSecret.name` | string | The **name** of the K8s Secret where you want to hold the password for the ADMIN user. | Conditional |
+    |`spec.details.adminPassword.ociSecret.ocid` | string | The **[OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm)** of the [OCI Secret](https://docs.oracle.com/en-us/iaas/Content/KeyManagement/Tasks/managingsecrets.htm) where you want to hold the password for the ADMIN user. | Conditional |
     | `spec.details.dataStorageSizeInTBs`  | int | The size, in terabytes, of the data volume that will be created and attached to the database. This storage can later be scaled up if needed. | Yes |
     | `spec.details.isAutoScalingEnabled`  | boolean | Indicates if auto scaling is enabled for the Autonomous Database OCPU core count. The default value is `FALSE` | No |
-    | `spec.details.isDedicated` | boolean | True if the database is on dedicated [Exadata infrastructure](https://docs.cloud.oracle.com/Content/Database/Concepts/adbddoverview.htm) | No |
+    | `spec.details.isDedicated` | boolean | True if the database is on dedicated [Exadata infrastructure](https://docs.cloud.oracle.com/Content/Database/Concepts/adbddoverview.htm). `spec.details.autonomousContainerDatabase.k8sACD.name` or `spec.details.autonomousContainerDatabase.ociACD.ocid` has to be provided if the value is true. | No |
+    | `spec.details.autonomousContainerDatabase.k8sACD.name` | string | The **name** of the K8s Autonomous Container Database resource | No |
+    | `spec.details.autonomousContainerDatabase.ociACD.ocid` | string | The Autonomous Container Database [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm). | No |
     | `spec.details.freeformTags` | dictionary | Free-form tags for this resource. Each tag is a simple key-value pair with no predefined name, type, or namespace. For more information, see [Resource Tag](https://docs.cloud.oracle.com/Content/General/Concepts/resourcetags.htm).<br><br> Example:<br> `freeformTags:`<br> &nbsp;&nbsp;&nbsp;&nbsp;`key1: value1`<br> &nbsp;&nbsp;&nbsp;&nbsp;`key2: value2`| No |
     | `spec.details.dbWorkload` | string | The Oracle Autonomous Database workload type. The following values are valid:<br> - OLTP - indicates an Autonomous Transaction Processing database<br> - DW - indicates an Autonomous Data Warehouse database<br> - AJD - indicates an Autonomous JSON Database<br> - APEX - indicates an Autonomous Database with the Oracle APEX Application Development workload type. | No |
     | `spec.details.dbVersion` | string | A valid Oracle Database release for Oracle Autonomous Database. | No |
@@ -73,14 +101,19 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
         displayName: NewADB
         cpuCoreCount: 1
         adminPassword:
-          k8sSecretName: admin-password # use the name of the secret from step 2
+          k8sSecret:
+            name: admin-password # use the name of the secret from step 2
         dataStorageSizeInTBs: 1
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
     ```
 
-4. Apply the yaml:
+5. Choose the type of network access (optional):
+
+   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the netowrk acess. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
+
+6. Apply the yaml:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_create.yaml
@@ -89,7 +122,9 @@ Follow the steps to provision an Autonomous Database that will bind objects in y
 
 ## Bind to an existing Autonomous Database
 
-Other than provisioning a database, you can bind to an existing database in your cluster.
+Other than provisioning a database, you can create the custom resource using an existing Autonomous Database.
+
+The operator also generates the `AutonomousBackup` custom resources if a database already has backups. The operator syncs the `AutonomousBackups` in every reconciliation loop by getting the list of OCIDs of the AutonomousBackups from OCI, and then creates the `AutonomousDatabaseBackup` object automatically if it cannot find a resource that has the same `AutonomousBackupOCID` in the cluster.
 
 1. Clean up the resource you created in the earlier provision operation:
 
@@ -213,7 +248,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     \* The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.
 
-2. Update the example [config/samples/adb/autonomousdatabase_change_admin_password.yaml](./../../config/samples/adb/autonomousdatabase_change_admin_password.yaml)
+2. Update the example [config/samples/adb/autonomousdatabase_update_admin_password.yaml](./../../config/samples/adb/autonomousdatabase_update_admin_password.yaml)
 
     ```yaml
     ---
@@ -225,18 +260,19 @@ You can rename the database by changing the values of the `dbName` and `displayN
       details:
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
         adminPassword:
-          k8sSecretName: new-admin-password
+          k8sSecret:
+            name: new-admin-password
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
     ```
 
-    * `adminPassword.k8sSecretName`: the **name** of the secret that you created in **step1**.
+    * `adminPassword.k8sSecret.name`: the **name** of the secret that you created in **step1**.
 
 3. Apply the YAML.
 
     ```sh
-    kubectl apply -f config/samples/adb/autonomousdatabase_change_admin_password.yaml
+    kubectl apply -f config/samples/adb/autonomousdatabase_update_admin_password.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
@@ -270,14 +306,15 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
         wallet:
           name: instance-wallet
           password:
-            k8sSecretName: instance-wallet-password
+            k8sSecret:
+              name: instance-wallet-password
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
     ```
 
     * `wallet.name`: the name of the new Secret where you want the downloaded Wallet to be stored.
-    * `wallet.password.k8sSecretName`: the **name** of the secret you created in **step1**.
+    * `wallet.password.k8sSecret.name`: the **name** of the secret you created in **step1**.
 
 3. Apply the YAML
 
@@ -373,3 +410,31 @@ Follow the steps to delete the resource and terminate the Autonomous Database.
     ```
 
 Now, you can verify that the database is in TERMINATING state on the Cloud Console.
+
+## Debugging and troubleshooting
+
+### Show the details of the resource
+
+If you edit and re-apply the `.yaml` file, the Autonomous Database controller will only update the parameters that the file contains. The parameters which are not in the file will not be impacted. To get the verbose output of the current spec, use below command:
+
+```sh
+kubectl describe adb/autonomousdatabase-sample
+```
+
+If any error occurs during the reconciliation loop, the Operator reports the error using the resource's event stream, which shows up in kubectl describe output.
+
+### Check the logs of the pod where the operator deploys
+
+Follow the steps to check the logs.
+
+1. List the pod replicas
+
+    ```sh
+    kubectl get pods -n oracle-database-operator-system
+    ```
+
+2. Use the below command to check the logs of the Pod which has a failure
+
+    ```sh
+    kubectl logs -f pod/oracle-database-operator-controller-manager-78666fdddb-s4xcm -n oracle-database-operator-system
+    ```

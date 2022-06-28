@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -41,9 +41,10 @@ package e2eutil
 import (
 	"context"
 
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
-
+	"github.com/oracle/oci-go-sdk/v64/common"
+	"github.com/oracle/oci-go-sdk/v64/database"
+	"io"
+	"io/ioutil"
 	"time"
 )
 
@@ -130,7 +131,7 @@ func generateRetryPolicy(retryFunc func(r common.OCIOperationResponse) bool) com
 	return common.NewRetryPolicy(attempts, retryFunc, nextDuration)
 }
 
-func NewLifecycleStateRetryPolicy(lifecycleState database.AutonomousDatabaseLifecycleStateEnum) common.RetryPolicy {
+func NewLifecycleStateRetryPolicyADB(lifecycleState database.AutonomousDatabaseLifecycleStateEnum) common.RetryPolicy {
 	shouldRetry := func(r common.OCIOperationResponse) bool {
 		if databaseResponse, ok := r.Response.(database.GetAutonomousDatabaseResponse); ok {
 			// do the retry until lifecycle state reaches the passed terminal state
@@ -139,4 +140,45 @@ func NewLifecycleStateRetryPolicy(lifecycleState database.AutonomousDatabaseLife
 		return true
 	}
 	return generateRetryPolicy(shouldRetry)
+}
+
+func NewLifecycleStateRetryPolicyACD(lifecycleState database.AutonomousContainerDatabaseLifecycleStateEnum) common.RetryPolicy {
+	shouldRetry := func(r common.OCIOperationResponse) bool {
+		if databaseResponse, ok := r.Response.(database.GetAutonomousContainerDatabaseResponse); ok {
+			// do the retry until lifecycle state reaches the passed terminal state
+			return databaseResponse.LifecycleState != lifecycleState
+		}
+		return true
+	}
+	return generateRetryPolicy(shouldRetry)
+}
+
+func DownloadWalletZip(dbClient database.DatabaseClient, databaseOCID *string, walletPassword *string) (string, error) {
+
+	req := database.GenerateAutonomousDatabaseWalletRequest{
+		AutonomousDatabaseId: common.String(*databaseOCID),
+		GenerateAutonomousDatabaseWalletDetails: database.GenerateAutonomousDatabaseWalletDetails{
+			Password: common.String(*walletPassword),
+		},
+	}
+
+	resp, err := dbClient.GenerateAutonomousDatabaseWallet(context.TODO(), req)
+	if err != nil {
+		return "", err
+	}
+
+	// Create a temp file wallet*.zip
+	const walletFileName = "wallet*.zip"
+	outZip, err := ioutil.TempFile("", walletFileName)
+	if err != nil {
+		return "", err
+	}
+	defer outZip.Close()
+
+	// Save the wallet in wallet*.zip
+	if _, err := io.Copy(outZip, resp.Content); err != nil {
+		return "", err
+	}
+
+	return outZip.Name(), nil
 }

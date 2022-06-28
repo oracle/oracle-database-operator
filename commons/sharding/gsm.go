@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -41,9 +41,10 @@ package commons
 import (
 	"context"
 	"fmt"
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"reflect"
 	"strconv"
+
+	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -233,7 +234,7 @@ func buildContainerSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGs
 			PeriodSeconds:       int32(240),
 			InitialDelaySeconds: int32(300),
 			TimeoutSeconds:      int32(60),
-			Handler: corev1.Handler{
+			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
 					Command: getLivenessCmd("GSM"),
 				},
@@ -429,8 +430,7 @@ func UpdateProvForGsm(instance *databasev1alpha1.ShardingDatabase,
 ) (ctrl.Result, error) {
 
 	var msg string
-	var size int32
-	size = 1
+	var size int32 = 1
 	var isUpdate bool = false
 	var err error
 	var i int

@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -42,8 +42,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
+	"github.com/oracle/oci-go-sdk/v64/common"
+	"github.com/oracle/oci-go-sdk/v64/database"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -69,6 +69,8 @@ var _ = Describe("test ADB provisioning", func() {
 		const downloadedWallet = "instance-wallet-secret-1"
 
 		const resourceName = "createadb1"
+		const backupName = "adb-backup"
+		const restoreName = "adb-restore"
 		duplicateAdbResourceName := "duplicateadb"
 
 		var adbLookupKey = types.NamespacedName{Name: resourceName, Namespace: ADBNamespace}
@@ -92,14 +94,18 @@ var _ = Describe("test ADB provisioning", func() {
 						DisplayName:     common.String(dbName),
 						CPUCoreCount:    common.Int(1),
 						AdminPassword: dbv1alpha1.PasswordSpec{
-							K8sSecretName: common.String(SharedAdminPassSecretName),
+							K8sSecret: dbv1alpha1.K8sSecretSpec{
+								Name: common.String(SharedAdminPassSecretName),
+							},
 						},
 						DataStorageSizeInTBs: common.Int(1),
 						IsAutoScalingEnabled: common.Bool(true),
 						Wallet: dbv1alpha1.WalletSpec{
 							Name: common.String(downloadedWallet),
 							Password: dbv1alpha1.PasswordSpec{
-								K8sSecretName: common.String(SharedWalletPassSecretName),
+								K8sSecret: dbv1alpha1.K8sSecretSpec{
+									Name: common.String(SharedWalletPassSecretName),
+								},
 							},
 						},
 					},
@@ -133,7 +139,9 @@ var _ = Describe("test ADB provisioning", func() {
 						DisplayName:     common.String(dbName),
 						CPUCoreCount:    common.Int(1),
 						AdminPassword: dbv1alpha1.PasswordSpec{
-							K8sSecretName: common.String(SharedAdminPassSecretName),
+							K8sSecret: dbv1alpha1.K8sSecretSpec{
+								Name: common.String(SharedAdminPassSecretName),
+							},
 						},
 						DataStorageSizeInTBs: common.Int(1),
 						IsAutoScalingEnabled: common.Bool(true),
@@ -149,15 +157,98 @@ var _ = Describe("test ADB provisioning", func() {
 			Expect(k8sClient.Create(context.TODO(), duplicateAdb)).To(Succeed())
 		})
 
-		It("Should check for local resource state UNAVAILABLE", e2ebehavior.AssertLocalState(&k8sClient, &dupAdbLookupKey, database.AutonomousDatabaseLifecycleStateUnavailable))
+		It("Should check for local resource state \"\"", e2ebehavior.AssertADBLocalState(&k8sClient, &dupAdbLookupKey, ""))
+
+		It("Should cleanup the resource with duplicated db name", func() {
+			duplicateAdb := &dbv1alpha1.AutonomousDatabase{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "database.oracle.com/v1alpha1",
+					Kind:       "AutonomousDatabase",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      duplicateAdbResourceName,
+					Namespace: ADBNamespace,
+				},
+			}
+			Expect(k8sClient.Delete(context.TODO(), duplicateAdb)).To(Succeed())
+		})
+
+		It("Should create an Autonomous Database Backup", func() {
+			e2ebehavior.AssertADBState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+
+			// Get adb ocid
+			adb := &dbv1alpha1.AutonomousDatabase{}
+			Expect(k8sClient.Get(context.TODO(), adbLookupKey, adb)).To(Succeed())
+			databaseOCID := adb.Spec.Details.AutonomousDatabaseOCID
+			tnsEntry := dbName + "_high"
+			err := e2ebehavior.ConfigureADBBackup(&dbClient, databaseOCID, &tnsEntry, &SharedPlainTextAdminPassword, &SharedPlainTextWalletPassword, &SharedBucketUrl, &SharedAuthToken, &SharedOciUser)
+			Expect(err).ShouldNot(HaveOccurred())
+
+			adbBackup := &dbv1alpha1.AutonomousDatabaseBackup{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "database.oracle.com/v1alpha1",
+					Kind:       "AutonomousDatabaseBackup",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      backupName,
+					Namespace: ADBNamespace,
+				},
+				Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
+					Target: dbv1alpha1.TargetSpec{
+						OCIADB: dbv1alpha1.OCIADBSpec{
+							OCID: common.String(*databaseOCID),
+						},
+					},
+					DisplayName: common.String(backupName),
+					OCIConfig: dbv1alpha1.OCIConfigSpec{
+						ConfigMapName: common.String(SharedOCIConfigMapName),
+						SecretName:    common.String(SharedOCISecretName),
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(context.TODO(), adbBackup)).To(Succeed())
+
+			backupLookupKey := types.NamespacedName{Name: backupName, Namespace: ADBNamespace}
+			e2ebehavior.AssertBackupRestore(&k8sClient, &dbClient, &backupLookupKey, &adbLookupKey, database.AutonomousDatabaseLifecycleStateBackupInProgress)()
+		})
+
+		It("Should restore a database", func() {
+			e2ebehavior.AssertADBState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
+
+			adbRestore := &dbv1alpha1.AutonomousDatabaseRestore{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "database.oracle.com/v1alpha1",
+					Kind:       "AutonomousDatabaseRestore",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      restoreName,
+					Namespace: ADBNamespace,
+				},
+				Spec: dbv1alpha1.AutonomousDatabaseRestoreSpec{
+					Target: dbv1alpha1.TargetSpec{
+						K8sADB: dbv1alpha1.K8sADBSpec{
+							Name: common.String(resourceName),
+						},
+					},
+					Source: dbv1alpha1.SourceSpec{
+						K8sADBBackup: dbv1alpha1.K8sADBBackupSpec{
+							Name: common.String(backupName),
+						},
+					},
+					OCIConfig: dbv1alpha1.OCIConfigSpec{
+						ConfigMapName: common.String(SharedOCIConfigMapName),
+						SecretName:    common.String(SharedOCISecretName),
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(context.TODO(), adbRestore)).To(Succeed())
+			restoreLookupKey := types.NamespacedName{Name: restoreName, Namespace: ADBNamespace}
+			e2ebehavior.AssertBackupRestore(&k8sClient, &dbClient, &restoreLookupKey, &adbLookupKey, database.AutonomousDatabaseLifecycleStateRestoreInProgress)()
+		})
 
 		It("Should download an instance wallet using the password from K8s Secret "+SharedWalletPassSecretName, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
-
-		It("should update ADB", e2ebehavior.AssertUpdate(&k8sClient, &dbClient, &adbLookupKey))
-
-		It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
-
-		It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
 
 		It("Should delete the resource in cluster and terminate the database in OCI", e2ebehavior.AssertHardLinkDelete(&k8sClient, &dbClient, &adbLookupKey))
 	})
@@ -187,7 +278,9 @@ var _ = Describe("test ADB provisioning", func() {
 						DisplayName:     common.String(dbName),
 						CPUCoreCount:    common.Int(1),
 						AdminPassword: dbv1alpha1.PasswordSpec{
-							OCISecretOCID: common.String(SharedAdminPasswordOCID),
+							OCISecret: dbv1alpha1.OCISecretSpec{
+								OCID: common.String(SharedAdminPasswordOCID),
+							},
 						},
 						DataStorageSizeInTBs: common.Int(1),
 						IsAutoScalingEnabled: common.Bool(true),
@@ -195,7 +288,9 @@ var _ = Describe("test ADB provisioning", func() {
 						Wallet: dbv1alpha1.WalletSpec{
 							Name: common.String(downloadedWallet),
 							Password: dbv1alpha1.PasswordSpec{
-								OCISecretOCID: common.String(SharedInstanceWalletPasswordOCID),
+								OCISecret: dbv1alpha1.OCISecretSpec{
+									OCID: common.String(SharedInstanceWalletPasswordOCID),
+								},
 							},
 						},
 					},
@@ -213,12 +308,6 @@ var _ = Describe("test ADB provisioning", func() {
 		It("Should provision ADB using the password from OCI Secret OCID "+SharedAdminPasswordOCID, e2ebehavior.AssertProvision(&k8sClient, &adbLookupKey))
 
 		It("Should download an instance wallet using the password from OCI Secret OCID "+SharedInstanceWalletPasswordOCID, e2ebehavior.AssertWallet(&k8sClient, &adbLookupKey))
-
-		It("should update ADB", e2ebehavior.AssertUpdate(&k8sClient, &dbClient, &adbLookupKey))
-
-		It("Should stop ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateStopped))
-
-		It("Should restart ADB", e2ebehavior.UpdateAndAssertState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
 
 		It("Should delete the resource in cluster and terminate the database in OCI", e2ebehavior.AssertHardLinkDelete(&k8sClient, &dbClient, &adbLookupKey))
 	})

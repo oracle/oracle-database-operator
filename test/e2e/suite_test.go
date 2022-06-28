@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -40,28 +40,28 @@ package e2etest
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/database"
+	"github.com/oracle/oci-go-sdk/v64/common"
+	"github.com/oracle/oci-go-sdk/v64/database"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
-	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	controllers "github.com/oracle/oracle-database-operator/controllers/database"
-	"github.com/oracle/oracle-database-operator/test/e2e/behavior"
 	"github.com/oracle/oracle-database-operator/test/e2e/util"
 	// +kubebuilder:scaffold:imports
 )
@@ -82,9 +82,13 @@ var (
 	BeforeSuite  = ginkgo.BeforeSuite
 	AfterSuite   = ginkgo.AfterSuite
 	Describe     = ginkgo.Describe
+	PDescribe    = ginkgo.PDescribe
+	FDescribe    = ginkgo.FDescribe
 	AfterEach    = ginkgo.AfterEach
 	By           = ginkgo.By
 	It           = ginkgo.It
+	FIt          = ginkgo.FIt
+	PIt          = ginkgo.PIt
 	Expect       = gomega.Expect
 	Succeed      = gomega.Succeed
 	HaveOccurred = gomega.HaveOccurred
@@ -104,25 +108,31 @@ const ADBNamespace string = "default"
 var SharedOCIConfigMapName = "oci-cred"
 var SharedOCISecretName = "oci-privatekey"
 var SharedPlainTextAdminPassword = "Welcome_1234"
+var SharedPlainTextNewAdminPassword = "Welcome_1234_new"
 var SharedPlainTextWalletPassword = "Welcome_1234"
 var SharedCompartmentOCID string
 
 var SharedKeyOCID string
 var SharedAdminPasswordOCID string
 var SharedInstanceWalletPasswordOCID string
+var SharedSubnetOCID string
+var SharedNsgOCID string
+
+var SharedBucketUrl string
+var SharedAuthToken string
+var SharedOciUser string
+var SharedExadataVMClusterOCID string
 
 const SharedAdminPassSecretName string = "adb-admin-password"
-const SharedWalletPassSecretName = "adb-wallet-password"
+const SharedNewAdminPassSecretName string = "new-adb-admin-password"
+const SharedWalletPassSecretName string = "adb-wallet-password"
 
 func TestAPIs(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
-
-	ginkgo.RunSpecsWithDefaultAndCustomReporters(t,
-		"Controller Suite",
-		[]ginkgo.Reporter{printer.NewlineReporter{}})
+	ginkgo.RunSpecs(t, "Controller Suite")
 }
 
-var _ = BeforeSuite(func(done ginkgo.Done) {
+var _ = BeforeSuite(func() {
 	logf.SetLogger(zap.New(zap.WriteTo(ginkgo.GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
@@ -156,6 +166,31 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 		KubeClient: k8sManager.GetClient(),
 		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabase_test"),
 		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabase_test"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&controllers.AutonomousDatabaseBackupReconciler{
+		KubeClient: k8sManager.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseBakcup_test"),
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabaseBakcup_test"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&controllers.AutonomousDatabaseRestoreReconciler{
+		KubeClient: k8sManager.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseRestore_test"),
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousDatabaseRestore_test"),
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = (&controllers.AutonomousContainerDatabaseReconciler{
+		KubeClient: k8sManager.GetClient(),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousContainerDatabase_test"),
+		Scheme:     k8sManager.GetScheme(),
+		Recorder:   k8sManager.GetEventRecorderFor("AutonomousContainerDatabase_test"),
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
@@ -183,12 +218,24 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 	SharedCompartmentOCID = testConfig.CompartmentOCID
 	SharedAdminPasswordOCID = testConfig.AdminPasswordOCID
 	SharedInstanceWalletPasswordOCID = testConfig.InstanceWalletPasswordOCID
+	SharedSubnetOCID = testConfig.SubnetOCID
+	SharedNsgOCID = testConfig.NsgOCID
+	SharedBucketUrl = testConfig.BucketURL
+	SharedAuthToken = testConfig.AuthToken
+	SharedOciUser = testConfig.OciUser
+	SharedExadataVMClusterOCID = testConfig.ExadataVMClusterOCID
 
 	By("checking if the required parameters exist")
 	Expect(testConfig.OCIConfigFile).ToNot(Equal(""))
 	Expect(testConfig.CompartmentOCID).ToNot(Equal(""))
 	Expect(testConfig.AdminPasswordOCID).ToNot(Equal(""))
 	Expect(testConfig.InstanceWalletPasswordOCID).ToNot(Equal(""))
+	Expect(testConfig.SubnetOCID).ToNot(Equal(""))
+	Expect(testConfig.NsgOCID).ToNot(Equal(""))
+	Expect(testConfig.BucketURL).ToNot(Equal(""))
+	Expect(testConfig.AuthToken).ToNot(Equal(""))
+	Expect(testConfig.OciUser).ToNot(Equal(""))
+	Expect(testConfig.ExadataVMClusterOCID).ToNot(Equal(""))
 
 	By("getting OCI provider")
 	ociConfigUtil, err := e2eutil.GetOCIConfigUtil(testConfig.OCIConfigFile, testConfig.Profile)
@@ -219,6 +266,15 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 		Expect(k8sClient.Create(context.TODO(), adminSecret)).To(Succeed())
 	})
 
+	By("Creating a k8s secret to hold new admin password", func() {
+		data := map[string]string{
+			SharedNewAdminPassSecretName: SharedPlainTextNewAdminPassword,
+		}
+		newAdminSecret, err := e2eutil.CreateKubeSecret(ADBNamespace, SharedNewAdminPassSecretName, data)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(k8sClient.Create(context.TODO(), newAdminSecret)).To(Succeed())
+	})
+
 	By("Creating a k8s secret to hold wallet password", func() {
 		data := map[string]string{
 			SharedWalletPassSecretName: SharedPlainTextWalletPassword,
@@ -227,9 +283,7 @@ var _ = BeforeSuite(func(done ginkgo.Done) {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(k8sClient.Create(context.TODO(), walletSecret)).To(Succeed())
 	})
-
-	close(done)
-}, 60)
+})
 
 var _ = AfterSuite(func() {
 	/*
@@ -246,6 +300,22 @@ var _ = AfterSuite(func() {
 		Expect(err).ToNot(HaveOccurred())
 	*/
 
-	By("Deleting the resources that are created during the tests")
-	e2ebehavior.CleanupDB(&k8sClient, &dbClient, ADBNamespace)
+	By("Delete the resources that are created during the tests")
+	adbList := &databasev1alpha1.AutonomousDatabaseList{}
+	options := &client.ListOptions{
+		Namespace: ADBNamespace,
+	}
+	k8sClient.List(context.TODO(), adbList, options)
+	By(fmt.Sprintf("Found %d AutonomousDatabase(s)", len(adbList.Items)))
+
+	for _, adb := range adbList.Items {
+		if adb.Spec.Details.AutonomousDatabaseOCID != nil {
+			By("Terminating database " + *adb.Spec.Details.DbName)
+			Expect(e2eutil.DeleteAutonomousDatabase(dbClient, adb.Spec.Details.AutonomousDatabaseOCID)).Should(Succeed())
+		}
+	}
+
+	// Delete sqlcl-latest.zip and sqlcl folder if exists
+	os.Remove("sqlcl-latest.zip")
+	os.RemoveAll("sqlcl")
 })

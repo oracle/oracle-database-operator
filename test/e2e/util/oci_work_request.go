@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2021 Oracle and/or its affiliates.
+** Copyright (c) 2022 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -41,8 +41,8 @@ package e2eutil
 import (
 	"context"
 
-	"github.com/oracle/oci-go-sdk/v45/common"
-	"github.com/oracle/oci-go-sdk/v45/workrequests"
+	"github.com/oracle/oci-go-sdk/v64/common"
+	"github.com/oracle/oci-go-sdk/v64/workrequests"
 
 	"time"
 )

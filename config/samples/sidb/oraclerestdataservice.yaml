@@ -1,0 +1,85 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: OracleRestDataService
+metadata:
+  name: ords-sample
+  namespace: default
+spec:
+  
+  ## Database ref. This can be of kind SingleInstanceDatabase.
+  databaseRef: "singleinstancedatabase-sample"
+  
+  ## Secret containing databaseRef password mapped to secretKey. 
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true
+  adminPassword:
+    secretName: 
+    secretKey:
+    keepSecret: true
+
+  ## Secret containing ORDS_PUBLIC_USER password mapped to secretKey. secretKey defaults to oracle_pwd
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true
+  ordsPassword:
+    secretName: 
+    secretKey:
+    keepSecret: true
+
+  ## To configure APEX with ORDS, specfiy the apexPassword secret details. Leave empty if Apex is not needed
+  ## This is a secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
+  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
+  ## This password should complete the following requirements:
+  ## 1. Contain at least 6 characters.
+  ## 2. Contain at least one numeric character (0123456789).
+  ## 3. Contain at least one punctuation character (!"#$%&()``*+,-/:;?_).
+  ## 4. Contain at least one uppercase alphabetic character.
+  
+  apexPassword:
+    secretName: 
+    secretKey:
+    keepSecret: true
+
+  ## ORDS image details
+  ## Build the ORDS image following instructions at
+  ## https://github.com/oracle/docker-images/tree/main/OracleRestDataServices
+  image:
+    pullFrom:
+    pullSecrets:
+
+  ## Dedicated persistent storage is optional. If not specified, ORDS will use persistent storage from .spec.databaseRef
+  ## size is the required minimum size of the persistent volume
+  ## storageClass is used for automatic volume provisioning
+  ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  ## volumeName is optional. Specify for binding to a specific PV and set storageClass to an empty string to disable automatic volume provisioning
+  # persistence:
+  #  size: 50Gi
+  ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
+  #  storageClass: "oci-bv"
+  #  accessMode: "ReadWriteOnce"
+  #  volumeName: ""
+
+  ## Type of service  Applicable on cloud enviroments only.
+  ## if loadBalService: false, service type = "NodePort" else "LoadBalancer"
+  loadBalancer: false
+  ## Service Annotations (Cloud provider specific), for configuring the service (e.g. private LoadBalancer service)
+  #serviceAnnotations:
+  #  service.beta.kubernetes.io/oci-load-balancer-internal: "true"
+
+
+  ## Deploy only on nodes having required labels. Format label_name: label_value
+  ## The same lables are applied to the created PVC
+  ## For instance if the pods need to be restricted to a particular AD
+  ## Leave commented if there is no such requirement
+  # nodeSelector:
+  #   topology.kubernetes.io/zone: PHX-AD-1
+
+  ## Schemas to be ORDS Enabled in PDB of .spec.databaseRef (.spec.pdbName)
+  ## Schema will be created (if not exists) with password as .spec.ordsPassword
+  restEnableSchemas:
+  - schemaName:
+    enable: true
+    urlMapping:
+
+  ## If deploying on OpenShift, change service account name to 'sidb-sa' after you run `$ oc apply -f openshift_rbac.yaml`
+  serviceAccountName: default
