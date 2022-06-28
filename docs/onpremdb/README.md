@@ -169,7 +169,7 @@ The Oracle Database Operator On-Prem Controller creates the CDB kind as a custom
 
 To create a CDB CRD, a sample .yaml file is available here: [config/samples/onpremdb/cdb.yaml](../../config/samples/onpremdb/cdb.yaml)
 
-**Note:** The password and username fields in this `cdb.yaml` yaml are Kubernetes Secrets created earlier. Please see the section [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets) for more information.
+**Note:** The password and username fields in this `cdb.yaml` yaml are Kubernetes Secrets created earlier. Please see the section [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets) for more information. Please see [Kubernetes Private Registry Documenation]( https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/) for creating secrets for pulling images from docker private registry.
 
 1. [Use Case: Create a CDB CRD Resource](./provisioning/cdb_crd_resource.md)
 2. [Use Case: Add another replica to an existing CDB CRD Resource](./provisioning/add_replica.md)
