@@ -2,6 +2,8 @@
 
 In this use case, the state of an existing PDB is modified using Oracle DB Operator On-Prem controller.
 
+To modify a PDB CRD Resource, a sample .yaml file is available here: [config/samples/onpremdb/pdb_modify.yaml](../../../config/samples/onpremdb/pdb_modify.yaml)
+
 **NOTE:** It is assumed that before this step, you have followed the [prerequisite](./../README.md#prerequsites-to-manage-pdb-life-cycle-using-oracle-db-operator-on-prem-database-controller) steps.
 
 Subcase 1: This example uses `modify_pdb_close.yaml` to close a PDB using Oracle DB Operator On-Prem Controller with:
@@ -44,7 +46,7 @@ Subcase 2: This example uses `modify_pdb_open.yaml` to open a PDB using Oracle D
 - Option to close the state (i.e. modify) as `READ WRITE`
 
 
-**NOTE:** For the details of the parameters to be used in the .yaml file, please refer [config/crd/bases/database.oracle.com_pdbs.yaml](../../config/crd/bases/database.oracle.com_pdbs.yaml)
+**NOTE:** For the details of the parameters to be used in the .yaml file, please refer [config/crd/bases/database.oracle.com_pdbs.yaml](../../../config/crd/bases/database.oracle.com_pdbs.yaml)
 
 Use the file: [modify_pdb_open.yaml](./modify_pdb_open.yaml) for this use case as below:
 
