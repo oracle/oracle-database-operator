@@ -1,262 +1,203 @@
-# Oracle On-Premise Database Controller
+# Oracle On-Prem Database Controller
 
-The On-Premise Database Controller enables provisioning of Oracle Databases (PDBs) both on a Kubernetes cluster or outside of a Kubernetes cluster. The following sections explain the setup and functionality of this controller:
+CDBs and PDBs are the part of the Oracle Database's [Multitenant Architecture](https://docs.oracle.com/en/database/oracle/oracle-database/21/multi/introduction-to-the-multitenant-architecture.html#GUID-AB84D6C9-4BBE-4D36-992F-2BB85739329F). The On-Prem Database Controller is a feature of Oracle DB Operator for Kubernetes (OraOperator) which helps to manage the life cycle of Pluggable Databases (PDBs) in an Oracle Container Database(CDB).
 
-* [Prerequisites for On-Premise Database Controller](ORACLE_ONPREMDB_CONTROLLER_README.md#prerequisites-and-setup)
-* [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets)
-* [Kubernetes CRD for CDB](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-crd-for-cdb)
-* [Kubernetes CRD for PDB](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-crd-for-pdb)
-* [PDB Lifecycle Management Operations](ORACLE_ONPREMDB_CONTROLLER_README.md#pdb-lifecycl-management-operations)
-* [Validation and Errors](ORACLE_ONPREMDB_CONTROLLER_README.md#validation-and-errors)
+The target CDB (for which the PDB life cycle management is needed) can be running on an on-prem machine and to manage its PDBs, the Oracle DB Operator can run on an on-prem Kubernetes system (For Example: [Oracle Linux Cloud Native Environment or OLCNE](https://docs.oracle.com/en/operating-systems/olcne/)).
 
-## Prerequisites for On-Premise Database Controller
+NOTE: The target CDB (for which the PDB life cycle management is needed) **can also** run in a Cloud environment as well (For Example: OCI's [Oracle Base Database Service](https://docs.oracle.com/en-us/iaas/dbcs/doc/bare-metal-and-virtual-machine-db-systems.html)) and to manage its PDBs, the Oracle DB Operator can run on a Kubernetes Cluster running in cloud (For Example: OCI's [Container Engine for Kubernetes or OKE](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengoverview.htm#Overview_of_Container_Engine_for_Kubernetes))
 
-+ ### Prepare CDB for PDB Lifecycme Management (PDB-LM)
 
-  Pluggable Database management is performed in the Container Database (CDB) and includes create, clone, plug, unplug, delete, modify and map operations.
-  You cannot have an ORDS enabled schema in the container database. To perform the PDB lifecycle management operations, the default CDB administrator credentials must be defined.
 
-  To define the default CDB administrator credentials, perform the following steps on the target CDB(s) where PDB-LM operations are to be performed:
+# Oracle DB Operator On-Prem Database Controller Deployment
 
-  Create the CDB administrator user and grant the SYSDBA privilege. In this example, the user is called C##DBAPI_CDB_ADMIN. However, any suitable common user name can be used.
+To deploy OraOperator, use this [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
 
-  ```sh
-  CREATE USER C##DBAPI_CDB_ADMIN IDENTIFIED BY <PASSWORD>;
-  GRANT SYSOPER TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;
-  ```
-+ ### Building the Oracle REST Data Service (ORDS) Image
+After the Oracle Database Operator is deployed, you can see the DB Operator Pods running in the Kubernetes Cluster. As part of the OraOperator deployment, the On-Prem Database Controller is deployed as a CRD (Custom Resource Definition). The following output is an example of such a deployment:
+```
+[root@test-server oracle-database-operator]# kubectl get ns
+NAME                              STATUS   AGE
+cert-manager                      Active   32h
+default                           Active   245d
+kube-node-lease                   Active   245d
+kube-public                       Active   245d
+kube-system                       Active   245d
+oracle-database-operator-system   Active   24h    <<<< namespace to deploy the Oracle Database Operator
 
-  Oracle On-Premise Database controller enhances the Oracle REST Data Services (ORDS) image to enable it for PDB Lifecycle Management. You can build this image by following the instructions below:
-    * After cloning the repository, go to the "ords" folder, and run:
-        ```sh
-        docker build -t oracle/ords-dboper:latest .
-        ```
 
-  > **_NOTE1:_** Required file to build this image is Oracle Rest Data Services 'ords-< version >.zip',
-  you can download such file from http://www.oracle.com/technetwork/developer-tools/rest-data-services/downloads/index.html
+[root@test-server oracle-database-operator]# kubectl get all -n  oracle-database-operator-system
+NAME                                                               READY   STATUS    RESTARTS   AGE
+pod/oracle-database-operator-controller-manager-665874bd57-dlhls   1/1     Running   0          28s
+pod/oracle-database-operator-controller-manager-665874bd57-g2cgw   1/1     Running   0          28s
+pod/oracle-database-operator-controller-manager-665874bd57-q42f8   1/1     Running   0          28s
 
-  > **_NOTE2:_** to build the ords image you need to Accept the Oracle Standard Terms and Restrictions for Java/jdk repository on Oracle Container Registry at https://container-registry.oracle.com
+NAME                                                                  TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/oracle-database-operator-controller-manager-metrics-service   ClusterIP   10.96.130.124   <none>        8443/TCP   29s
+service/oracle-database-operator-webhook-service                      ClusterIP   10.96.4.104     <none>        443/TCP    29s
 
-  > **_NOTE3:_** docker needs access to container-registry.oracle.com for which following command may be required:
-    ```sh
-    docker login container-registry.oracle.com
-    ```
+NAME                                                          READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/oracle-database-operator-controller-manager   3/3     3            3           29s
 
-    * Once the image is ready, you may need to push it to your Docker Images Repository to pull it during CDB controller resource creation.
+NAME                                                                     DESIRED   CURRENT   READY   AGE
+replicaset.apps/oracle-database-operator-controller-manager-665874bd57   3         3         3       29s
+[root@docker-test-server oracle-database-operator]# 
 
-    The steps
-    1. check the ords docker image creation issuing:
-    ```sh
-    docker images
-    ```
-  example:
-  ```
-  $ docker images
-  REPOSITORY                                              TAG                 IMAGE ID            CREATED             SIZE
-  oracle/ords-dboper                                      latest              887652b3e87f        17 hours ago        777MB
-  ```
 
-  2. make the required docker tag issuing:
-  ```
-  docker tag oracle/ords-dboper <Docker Container repository>
-  ```
-  example:
-  ```
-  docker tag oracle/ords-dboper lin.ocir.io/mytenancy/mycontainer/myrepo/ords-dboper
-  ```
+[root@test-server oracle-database-operator]# kubectl get crd
+NAME                                               CREATED AT
+autonomouscontainerdatabases.database.oracle.com   2022-06-22T01:21:36Z
+autonomousdatabasebackups.database.oracle.com      2022-06-22T01:21:36Z
+autonomousdatabaserestores.database.oracle.com     2022-06-22T01:21:37Z
+autonomousdatabases.database.oracle.com            2022-06-22T01:21:37Z
+cdbs.database.oracle.com                           2022-06-22T01:21:37Z <<<< CRD for CDB
+certificaterequests.cert-manager.io                2022-06-21T17:03:46Z
+certificates.cert-manager.io                       2022-06-21T17:03:47Z
+challenges.acme.cert-manager.io                    2022-06-21T17:03:47Z
+clusterissuers.cert-manager.io                     2022-06-21T17:03:48Z
+dbcssystems.database.oracle.com                    2022-06-22T01:21:38Z
+issuers.cert-manager.io                            2022-06-21T17:03:49Z
+oraclerestdataservices.database.oracle.com         2022-06-22T01:21:38Z
+orders.acme.cert-manager.io                        2022-06-21T17:03:49Z 
+pdbs.database.oracle.com                           2022-06-22T01:21:39Z <<<< CRD for PDB
+shardingdatabases.database.oracle.com              2022-06-22T01:21:39Z
+singleinstancedatabases.database.oracle.com        2022-06-22T01:21:40Z
+```
 
-  3. Push the image over the repository
-  ```
-  docker push <tag name created above>
-  ```
-  example:
-  ```
-  docker push lin.ocir.io/mytenancy/mycontainer/myrepo/ords-dboper:latest
-  ```  
+The following sections explain the setup and functionality of this controller.
 
-+ ### Install cert-manager
 
-  Validating webhook is an endpoint Kubernetes can invoke prior to persisting resources in ETCD. This endpoint returns a structured response indicating whether the resource should be rejected or accepted and persisted to the datastore.
+# Prerequsites to manage PDB Life Cycle using Oracle DB Operator On-Prem Database Controller
 
-  Webhook requires a TLS certificate that the apiserver is configured to trust . Install the cert-manager with the following command:
+Before you want to manage the life cycle of a PDB in a CDB using the Oracle DB Operator On-Prem Database Controller, complete the following steps.
 
-  ```sh
-  kubectl apply -f https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml
-  ```
+**CAUTION :** You must make the changes specified in this section before you proceed to the next section.
 
-## Kubernetes Secrets
+* [Prepare CDB for PDB Lifecycle Management or PDB-LM](#prepare-cdb-for-pdb-lifecycle-management-pdb-lm)
+* [Oracle REST Data Service or ORDS Image](#oracle-rest-data-service-ords-image)
+* [Kubernetes Secrets](#kubernetes-secrets)
+* [Kubernetes CRD for CDB](#kubernetes-crd-for-cdb)
+* [Kubernetes CRD for PDB](#kubernetes-crd-for-pdb)
 
-  Both CDBs and PDBs make use of Kubernetes Secrets to store usernames and passwords.
 
-  For CDB, create a secret file as shown here: [config/samples/onpremdb/cdb_secret.yaml](../../config/samples/onpremdb/cdb_secret.yaml)
++ ## Prepare CDB for PDB Lifecycle Management (PDB-LM)
+
+Pluggable Database management operation is performed in the Container Database (CDB) and it includes create, clone, plug, unplug, delete, modify and map operations.
+
+You cannot have an ORDS enabled schema in the container database. To perform the PDB lifecycle management operations, the default CDB administrator credentials must be defined by performing the below steps on the target CDB(s):
+
+Create the CDB administrator user and grant the required privileges. In this example, the user is `C##DBAPI_CDB_ADMIN`. However, any suitable common user name can be used.
+
+Also, create a user named SQL_ADMIN. You can use the below set of SQL commands for this purpose:
+
+```
+SQL> conn /as sysdba
+ 
+-- Create the below users at the database level:
+
+DROP USER SQL_ADMIN CASCADE;
+CREATE USER SQL_ADMIN IDENTIFIED BY welcome1;
+ALTER SESSION SET "_oracle_script"=true;
+DROP USER  C##DBAPI_CDB_ADMIN cascade;
+CREATE USER C##DBAPI_CDB_ADMIN IDENTIFIED BY <Password> CONTAINER=ALL ACCOUNT UNLOCK;
+GRANT SYSOPER TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;
+GRANT SYSDBA TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;
+GRANT CREATE SESSION TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;
+GRANT CREATE SESSION TO SQL_ADMIN;
+GRANT SYSDBA TO SQL_ADMIN;
+ 
+
+-- Verify the account status of the below usernames. They should not be in locked status:
+
+col username        for a30
+col account_status  for a30
+select username, account_status from dba_users where username in ('ORDS_PUBLIC_USER','SQL_ADMIN','C##DBAPI_CDB_ADMIN','APEX_PUBLIC_USER','APEX_REST_PUBLIC_USER');
+```
+
+
+
+### Reference Setup: Example of a setup using OCI OKE(Kubernetes Cluster) and a CDB in Cloud (OCI Exadata Database Cluster)
+
+Please refer [here](./provisioning/example_setup_using_oci_oke_cluster.md) for steps to configure a Kubernetes Cluster and a CDB. This example uses an OCI OKE Cluster as the Kubernetes Cluster and a CDB in OCI Exadata Database service. 
+
+
++ ## Oracle REST Data Service (ORDS) Image
+
+  Oracle DB Operator On-Prem Database controller requires the Oracle REST Data Services (ORDS) image for PDB Lifecycle Management in the target CDB. 
+  
+  You can build this image by using the ORDS [Dockerfile](../../../ords/Dockerfile)
+    
+  > **_NOTE:_** Download the required binaries to build this image i.e. Oracle Rest Data Services 'ords-< version >.zip', from http://www.oracle.com/technetwork/developer-tools/rest-data-services/downloads/index.html
+
+  > **_NOTE:_** The current version of Oracle DB Operator On-Prem Controller has been tested with `ORDS 21.4.3` version.
+
+Please refer [here](./provisioning/ords_image.md) for the steps to build ORDS Docker Image with `ORDS 21.4.3` version.
+
+
++ ## Kubernetes Secrets
+
+  Oracle DB Operator On-Prem Database Controller uses Kubernetes Secrets to store usernames and passwords to manage the life cycle operations of a PDB in the target CDB.
+
+### Secrets for CDB CRD
+
+  Create a secret file as shown here: [config/samples/onpremdb/cdb_secret.yaml](../../config/samples/onpremdb/cdb_secret.yaml). Modify this file with the `base64` encoded values of the required passwords for CDB and use it to create the required secrets.
 
   ```sh
   $ kubectl apply -f cdb_secret.yaml
-  secret/cdb1-secret created
   ```
-  > **_NOTE:_** the entries such user and password must be 'base64 encoded', example:
-  "cdbadmin_user=C##DBAPI_CDB_ADMIN" become cdbadmin_user: "QyMjREJBUElfQ0RCX0FETUlOCg==" using command:
+  
+  **Note:** In order to get the base64 encoded value for a password, please use the below command like below at the command prompt. The value you get is the base64 encoded value for that password string.
 
   ```sh
-   echo C##DBAPI_CDB_ADMIN | base64
-   QyMjREJBUElfQ0RCX0FETUlOCg==
+  echo -n "<password to be encoded using base64>" | base64
   ```
 
-  On successful creation of the CDB Resource, the CDB secrets would be deleted from the Kubernetes system.
+  **Note:** On successful creation of the CDB Resource, the CDB secrets would be deleted from the Kubernetes system.
 
-  For PDB, create a secret file as shown here: [config/samples/onpremdb/pdb_secret.yaml](../../config/samples/onpremdb/pdb_secret.yaml)
+### Secrets for PDB CRD
+  Create a secret file as shown here: [config/samples/onpremdb/pdb_secret.yaml](../../config/samples/onpremdb/pdb_secret.yaml). Modify this file with the `base64` encoded values of the required passwords for PDB and use it to create the required secrets. 
 
   ```sh
   $ kubectl apply -f pdb_secret.yaml
-  secret/pdb1-secret created
   ```
-  **Note:** Don't leave plaintext files containing sensitive data on disk. After loading the Secret, remove the plaintext file or move it to secure storage.
+  **NOTE:** Refer to command provided above to encode the password using base64.
+  
+  **NOTE:** Don't leave plaintext files containing sensitive data on disk. After loading the Secret, remove the plaintext file or move it to secure storage.
+  
 
-  Another option is to use "kubectl create secret" command as shown below for the PDB:
-  ```sh
-  $ kubectl create secret generic pdb1-secret --from-literal sysadmin_user=pdbadmin --from-literal sysdamin_pwd=WE2112#232#
-  secret/pdb1-secret created
-  ```
++ ## Kubernetes CRD for CDB
 
-## Kubernetes CRD for CDB
+The Oracle Database Operator On-Prem Controller creates the CDB kind as a custom resource that models a target CDB as a native Kubernetes object. This is  used only to create Pods to connect to the target CDB to perform PDB-LM operations. These CDB resources can be scaled up and down based on the expected load using replicas. Each CDB resource follows the CDB CRD as defined here: [config/crd/bases/database.oracle.com_cdbs.yaml](../../config/crd/bases/database.oracle.com_cdbs.yaml)
 
-  The Oracle Database Operator creates the CDB kind as a custom resource that models a target CDB as a native Kubernetes object. This is only used to create Pods to connect to the target CDB to perform PDB-LM operations. These CDB resources can be scaled up and down based on the expected load using replicas. Each CDB resource follows the CDB CRD as defined here: [config/crd/bases/database.oracle.com_cdbs.yaml](../../config/crd/bases/database.oracle.com_cdbs.yaml)
+To create a CDB CRD, a sample .yaml file is available here: [config/samples/onpremdb/cdb.yaml](../../config/samples/onpremdb/cdb.yaml)
 
- + ### CDB Sample YAML   
+**Note:** The password and username fields in this `cdb.yaml` yaml are Kubernetes Secrets created earlier. Please see the section [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets) for more information.
 
-  A sample .yaml file is available here: [config/samples/onpremdb/cdb.yaml](../../config/samples/onpremdb/cdb.yaml)
-
-  **Note:** The password and username fields in the above `cdb.yaml` yaml are Kubernetes Secrets. Please see the section [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets) for more information.
-
- + ### Check the status of the all CDBs
-  ```sh
-  $ kubectl get cdbs -A
-
-  NAMESPACE                         NAME      CDB NAME   DB SERVER    DB PORT   SCAN NAME  REPLICAS    STATUS   MESSAGE
-  oracle-database-operator-system   cdb-dev   devdb      172.17.0.4   1521      devdb      1           Ready    Success
-  ```
- + ### Scale the CDB resource
-  ```sh
-  $ kubectl patch --type=merge cdb cdb-dev -p '{"spec":{"replicas":3}}' -n oracle-database-operator-system
-  ```
-
-## Kubernetes CRD for PDB  
-
-  The Oracle Database Operator creates the PDB kind as a custom resource that models a PDB as a native Kubernetes object. There is a one-to-one mapping between the actual PDB and the Kubernetes PDB Custom Resource. You cannot have more than one Kubernetes resource for a target PDB. This PDB resource can be used to perform PDB-LM operations by specifying the action attribute in the PDB specs. Each PDB resource follows the PDB CRD as defined here: [config/crd/bases/database.oracle.com_pdbs.yaml](../../config/crd/bases/database.oracle.com_pdbs.yaml)
+1. [Use Case: Create a CDB CRD Resource](./provisioning/cdb_crd_resource.md)
+2. [Use Case: Add another replica to an existing CDB CRD Resource](./provisioning/add_replica.md)
 
 
- + ### PDB Sample YAML   
++ ## Kubernetes CRD for PDB
 
-  A sample .yaml file is available here: [config/samples/onpremdb/pdb.yaml](../../config/samples/onpremdb/pdb.yaml)
+The Oracle Database Operator On-Prem Controller creates the PDB kind as a custom resource that models a PDB as a native Kubernetes object. There is a one-to-one mapping between the actual PDB and the Kubernetes PDB Custom Resource. You cannot have more than one Kubernetes resource for a target PDB. This PDB resource can be used to perform PDB-LM operations by specifying the action attribute in the PDB Specs. Each PDB resource follows the PDB CRD as defined here: [config/crd/bases/database.oracle.com_pdbs.yaml](../../../config/crd/bases/database.oracle.com_pdbs.yaml)
 
-  **Note:** The password and username fields in the above `pdb.yaml` yaml are Kubernetes Secrets. Please see the section [Kubernetes Secrets](ORACLE_ONPREMDB_CONTROLLER_README.md#kubernetes-secrets) for more information.
+To create a PDB CRD Resource, a sample .yaml file is available here: [config/samples/onpremdb/pdb.yaml](../../../config/samples/onpremdb/pdb.yaml)
 
- + ### Check the status of the all PDBs
-  ```sh
-  $ kubectl get pdbs -A
+# Use Cases for PDB Lifecycle Management Operations using Oracle DB Operator On-Prem Controller
 
-  NAMESPACE                         NAME   CONNECT STRING       CDB NAME   PDB NAME   PDB SIZE   STATUS   MESSAGE
-  oracle-database-operator-system   pdb1   devdb:1521/pdbdev    cdb-dev     pdbdev      2G       Ready    Success
-  oracle-database-operator-system   pdb2   testdb:1521/pdbtets  cdb-test    pdbtes      1G       Ready    Success
-  ```
+Using Oracle DB Operator On-Prem Controller, you can perform the following PDB-LM operations: CREATE, CLONE, MODIFY, DELETE, STATUS, PLUG, UNPLUG
 
-## PDB Lifecycle Management Operations
+1. [Create PDB](./provisioning/create_pdb.md)
+2. [Clone PDB](./provisioning/clone_pdb.md)
+3. [Modify PDB](./provisioning/modify_pdb.md)
+4. [Delete PDB](./provisioning/delete_pdb.md)
+5. [Unplug PDB](./provisioning/unplug_pdb.md)
+6. [Plug PDB](./provisioning/plug_pdb.md)
 
-  Using ORDS, you can perform the following PDB-LM operations: CREATE, CLONE, PLUG, UNPLUG and DELETE
-
-+ ### Create PDB
-
-  A sample .yaml file is available here: [config/samples/onpremdb/pdb.yaml](../../config/samples/onpremdb/pdb.yaml)
-
-+ ### Clone PDB
-
-  A sample .yaml file is available here: [config/samples/onpremdb/pdb_clone.yaml](../../config/samples/onpremdb/pdb_clone.yaml)
-
-+ ### Plug PDB
-
-  A sample .yaml file is available here: [config/samples/onpremdb/pdb_plug.yaml](../../config/samples/onpremdb/pdb_plug.yaml)
-
-+ ### Unplug PDB
-
-  A sample .yaml file is available here: [config/samples/onpremdb/pdb_unplug.yaml](../../config/samples/onpremdb/pdb_unplug.yaml)
-
-+ ### Delete PDB
-
-  A sample .yaml file is available here: [config/samples/onpremdb/pdb_delete.yaml](../../config/samples/onpremdb/pdb_delete.yaml)
-
-  You can also use the following cmd to delete an existing PDB:
-  ```sh
-  $ kubectl patch --type=merge pdb pdb1 -p '{"spec":{"action":"Delete","dropAction":"INCLUDING"}}' -n oracle-database-operator-system
-  ```
-
-+ ### Modify PDB
-
-  This is used to open/close a target PDB.
-  A sample .yaml file is available here: [config/samples/onpremdb/pdb_modify.yaml](../../config/samples/onpremdb/pdb_modify.yaml)
-
-  You can also use the following cmd to modify an existing PDB:
-  ```sh
-  $ kubectl patch --type=merge pdb pdb1 -p '{"spec":{"action":"Modify","modifyOption":"IMMEDIATE","pdbState":"CLOSE"}}' -n oracle-database-operator-system
-  ```
-
-+ ### Map PDB
-
-  This is used to map an existing PDB in the CDB as a Kubernetes Custom Resource.
-  A sample .yaml file is available here: [config/samples/onpremdb/pdb_map.yaml](../../config/samples/onpremdb/pdb_map.yaml)
 
 ## Validation and Errors
 
-You can check Kubernetes events for any errors or status updates as shown below:
-```sh
-$ kubectl get events -A
-NAMESPACE                         LAST SEEN   TYPE      REASON               OBJECT                                                             MESSAGE
-oracle-database-operator-system   58m         Warning   Failed               pod/cdb-dev-ords-qiigr                                             Error: secret "cdb1-secret" not found
-oracle-database-operator-system   56m         Normal    DeletedORDSPod       cdb/cdb-dev                                                        Deleted ORDS Pod(s) for cdb-dev
-oracle-database-operator-system   56m         Normal    DeletedORDSService   cdb/cdb-dev                                                        Deleted ORDS Service for cdb-dev
-...
-oracle-database-operator-system   26m         Warning   OraError             pdb/pdb1                                                            ORA-65016: FILE_NAME_CONVERT must be specified...
-oracle-database-operator-system   24m         Warning   OraError             pdb/pdb2                                                            ORA-65011: Pluggable database DEMOTEST does not exist.
-...
-oracle-database-operator-system   20m         Normal    Created              pdb/pdb1                                                            PDB 'demotest' created successfully
-...
-oracle-database-operator-system   17m         Warning   OraError             pdb/pdb3                                                            ORA-65012: Pluggable database DEMOTEST already exists...
-```
+Please check [here](./provisioning/validation_error.md) for the details to look for any validation error.
 
-+ ### CDB Validation and Errors
 
-Validation is done at the time of CDB resource creation as shown below:
-```sh
-$ kubectl apply -f cdb1.yaml
-The PDB "cdb-dev" is invalid:
-* spec.dbServer: Required value: Please specify Database Server Name or IP Address
-* spec.dbPort: Required value: Please specify DB Server Port
-* spec.ordsImage: Required value: Please specify name of ORDS Image to be used
-```
+## Known issues
 
-Apart from events, listing of CDBs will also show the possible reasons why a particular CDB CR could not be created as shown below:
-```sh
-  $ kubectl get cdbs -A
-
-  NAMESPACE                         NAME      CDB NAME   DB SERVER    DB PORT   SCAN NAME   STATUS   MESSAGE
-  oracle-database-operator-system   cdb-dev   devdb      172.17.0.4   1521      devdb       Failed   Secret not found:cdb1-secret
-```
-
-+ ### PDB Validation and Errors
-
-Validation is done at the time of PDB resource creation as shown below:
-```sh
-$ kubectl apply -f pdb1.yaml
-The PDB "pdb1" is invalid:
-* spec.cdbResName: Required value: Please specify the name of the CDB Kubernetes resource to use for PDB operations
-* spec.pdbName: Required value: Please specify name of the PDB to be created
-* spec.adminPwd: Required value: Please specify PDB System Administrator Password
-* spec.fileNameConversions: Required value: Please specify a value for fileNameConversions. Values can be a filename convert pattern or NONE
-```
-
-Similarly, for PDBs, listing of PDBs will also show the possible reasons why a particular PDB CR could not be created as shown below:
-```sh
-$ kubectl get pdbs -A
-NAMESPACE                         NAME   CONNECT STRING   CDB NAME   PDB NAME   PDB SIZE   STATUS   MESSAGE
-oracle-database-operator-system   pdb1                    democdb    demotest1             Failed   Secret not found:pdb12-secret
-oracle-database-operator-system   pdb2                    democdb    demotest2             Failed   ORA-65016: FILE_NAME_CONVERT must be specified...
-```
+Please refer [here](./provisioning/known_issues.md) for the known issues related to Oracle DB Operator On-Prem Controller.
