@@ -61,7 +61,7 @@ To set up the instance princials, you will have to:
 
 2. In the **Matching Rules** section, write rules the to include the OKE nodes in the dynamic group.
 
-    Example 1 : enables **all** the resources, including OKE nodes in the compartment, to be members of the dynamic group.
+    Example 1 : enables **all** the instances, including OKE nodes in the compartment, to be members of the dynamic group.
 
     ```sh
     All {instance.compartment.id = '<compartment-OCID>'}
@@ -69,10 +69,10 @@ To set up the instance princials, you will have to:
 
     ![instance-principal-2](/images/adb/instance-principal-2.png)
 
-    Example 2 : enables the OKE nodes in the compartment, to be members of the dynamic group.
+    Example 2 : enables the specific OKE nodes in the compartment, to be members of the dynamic group.
 
     ```sh
-    Any {instance.compartment.id = '<oke-node1-instance-OCID>', instance.compartment.id = '<oke-node2-instance-OCID>', instance.compartment.id = '<oke-node3-instance-OCID>'}
+    Any {instance.id = '<oke-node1-instance-OCID>', instance.id = '<oke-node2-instance-OCID>', instance.id = '<oke-node3-instance-OCID>'}
     ```
 
     ![instance-principal-3](/images/adb/instance-principal-3.png)
