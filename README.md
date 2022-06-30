@@ -84,7 +84,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
 You should see that the operator is up and running, along with the shipped controllers.
 
-For more details, see [Oracle Database Operator Installation Instrunctions](./docs/installation/OPERATOR_INSTALLATION_README.md).
+For more details, see [Oracle Database Operator Installation Instructions](./docs/installation/OPERATOR_INSTALLATION_README.md).
 
 ## Getting Started with the Operator (Quickstart)
 
