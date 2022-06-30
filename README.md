@@ -65,7 +65,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   Run the following command
 
   ```sh
-  kubectl apply -f oracle-database-operator.yaml
+  kubectl apply -f https://raw.githubusercontent.com/oracle/oracle-database-operator/main/oracle-database-operator.yaml
   ```
 
   Ensure that operator pods are up and running. Operator pod replicas are set to a default of 3 for High Availability, which can be scaled up and down.
