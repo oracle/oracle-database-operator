@@ -20,7 +20,6 @@ build-operator:
   except:
     variables:
       - $CI_COMMIT_MESSAGE =~ /\#skip-pipeline/
-      - $CI_COMMIT_TAG != ""
 
 cleanup:
   stage: .post
