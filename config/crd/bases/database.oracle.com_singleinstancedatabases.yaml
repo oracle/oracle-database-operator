@@ -87,6 +87,8 @@ spec:
                 - enterprise
                 - express
                 type: string
+              enableTCPS:
+                type: boolean
               flashBack:
                 type: boolean
               forceLog:
@@ -160,6 +162,8 @@ spec:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
+              tcpsPort:
+                type: integer
             required:
             - image
             type: object

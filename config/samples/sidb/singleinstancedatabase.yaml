@@ -44,6 +44,12 @@ spec:
   ## Enable/Disable ForceLogging
   forceLog: false
 
+  ## Enable TCPS
+  enableTCPS: false
+
+  ## TCPS custom port
+  tcpsPort: 1522
+
   ## NA if cloning from a SourceDB (cloneFrom is set)
   ## Specify both sgaSize and pgaSize (in MB) or dont specify both
   ## Specify Non-Zero value to use
