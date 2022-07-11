@@ -914,8 +914,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
 				{
-					Name:     "listener",
-					Port:     1521,
+					Name: "listener",
+					Port: func() int32 {
+						if m.Spec.EnableTCPS {
+							return int32(m.Spec.TcpsPort)
+						}
+						return int32(1521)
+					}(),
 					Protocol: corev1.ProtocolTCP,
 				},
 				{
