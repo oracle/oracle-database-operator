@@ -78,6 +78,9 @@ type SingleInstanceDatabaseReconciler struct {
 var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
 
+// Service Port Declaration
+var svc_port string
+
 const singleInstanceDatabaseFinalizer = "database.oracle.com/singleinstancedatabasefinalizer"
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases,verbs=get;list;watch;create;update;patch;delete
@@ -133,6 +136,14 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		singleInstanceDatabase.Status.ReleaseUpdate = dbcommons.ValueUnavailable
 		r.Status().Update(ctx, singleInstanceDatabase)
 	}
+
+	// Service Port Initialization
+	svc_port = func() string {
+		if singleInstanceDatabase.Spec.EnableTCPS {
+			return strconv.Itoa(singleInstanceDatabase.Spec.TcpsPort)
+		}
+		return "1521"
+	}()
 
 	// Manage SingleInstanceDatabase Deletion
 	result, err = r.manageSingleInstanceDatabaseDeletion(req, ctx, singleInstanceDatabase)
@@ -639,7 +650,16 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					},
 				},
-				Ports: []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
+				Ports: []corev1.ContainerPort{
+					{ContainerPort: func() int32 {
+						if m.Spec.EnableTCPS {
+							return int32(m.Spec.TcpsPort)
+						}
+						return int32(1521)
+					}(),
+					},
+					{ContainerPort: 5500},
+				},
 
 				ReadinessProbe: &corev1.Probe{
 					ProbeHandler: corev1.ProbeHandler{
@@ -687,7 +707,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "SVC_PORT",
-								Value: "1521",
+								Value: svc_port,
 							},
 							{
 								Name:  "ORACLE_CHARACTERSET",
@@ -696,6 +716,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							{
 								Name:  "ORACLE_EDITION",
 								Value: m.Spec.Edition,
+							},
+							{
+								Name:  "ENABLE_TCPS",
+								Value: strconv.FormatBool(m.Spec.EnableTCPS),
+							},
+							{
+								Name:  "TCPS_PORT",
+								Value: strconv.Itoa(m.Spec.TcpsPort),
 							},
 						}
 					}
@@ -708,7 +736,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "SVC_PORT",
-								Value: "1521",
+								Value: svc_port,
 							},
 							{
 								Name: "CREATE_PDB",
@@ -766,6 +794,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Name:  "SKIP_DATAPATCH",
 								Value: "true",
 							},
+							{
+								Name:  "ENABLE_TCPS",
+								Value: strconv.FormatBool(m.Spec.EnableTCPS),
+							},
+							{
+								Name:  "TCPS_PORT",
+								Value: strconv.Itoa(m.Spec.TcpsPort),
+							},
 						}
 					}
 					// For clone DB use case
@@ -776,7 +812,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 						{
 							Name:  "SVC_PORT",
-							Value: "1521",
+							Value: svc_port,
 						},
 						{
 							Name:  "ORACLE_SID",
@@ -790,7 +826,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name: "PRIMARY_DB_CONN_STR",
 							Value: func() string {
 								if dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
-									return n.Name + ":1521/" + n.Spec.Sid
+									return n.Name + ":" + svc_port + "/" + n.Spec.Sid
 								}
 								return m.Spec.CloneFrom
 							}(),
