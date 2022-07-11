@@ -65,6 +65,8 @@ type SingleInstanceDatabaseSpec struct {
 	FlashBack          bool              `json:"flashBack,omitempty"`
 	ArchiveLog         bool              `json:"archiveLog,omitempty"`
 	ForceLogging       bool              `json:"forceLog,omitempty"`
+	EnableTCPS         bool              `json:"enableTCPS,omitempty"`
+	TcpsPort           int               `json:"tcpsPort,omitempty"`
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
