@@ -327,7 +327,7 @@ spec:
 ```
 
 **Note:** 
-- Example volumeHandler in the above config file : 
+- Example volumeHandle in the above config file : 
 
   `volumeHandle: "ocid1.filesystem.oc1.eu_frankfurt_1.aaaaaqe3bj...eaaa:10.0.10.156:/FileSystem-20220713-1036-02"`
 
