@@ -307,7 +307,7 @@ nodeSelector:
 ```
 
 ##### OCI NFS Volume Static Provisioning
-Similar to the block volume static provisioning, you have to manually create a file system resource from the OCI console, and fetch its `OCID, Mount Target and Export Path`. Mention these values in the following YAML file to create the persistent volume:
+Similar to the block volume static provisioning, you have to manually create a file system resource from the OCI console, and fetch its `OCID, Mount Target IP Address and Export Path`. Mention these values in the following YAML file to create the persistent volume:
 
 ```yaml
 apiVersion: v1
@@ -323,10 +323,17 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   csi:
     driver: fss.csi.oraclecloud.com
-    volumeHandle: "<OCID of the file system>:<Mount Target>/<Export Path>"
+    volumeHandle: "<OCID of the file system>:<Mount Target IP Address>:/<Export Path>"
 ```
 
-**Note:** Whenever a mount target is provisioned in OCI, its `Reported Size (GiB)` values are very large. This is visible on the mount target page when logged in to the OCI console. Some applications will fail to install if the results of a space requirements check show too much available disk space. So specify, in gibibytes (GiB), the maximum capacity reported by file systems exported through this mount target. This setting does not limit the actual amount of data you can store.
+**Note:** 
+- Example volumeHandle in the above config file : 
+
+  `volumeHandle: "ocid1.filesystem.oc1.eu_frankfurt_1.aaaaaqe3bj...eaaa:10.0.10.156:/FileSystem-20220713-1036-02"`
+
+- Whenever a mount target is provisioned in OCI, its `Reported Size (GiB)` values are very large. This is visible on the mount target page when logged in to the OCI console. Some applications will fail to install if the results of a space requirements check show too much available disk space. So in the OCI Console, click the little "Pencil" icon besides the **Reported Size** parameter of the Mount Target to specify, in gigabytes (GiB), the maximum capacity reported by file systems exported through this mount target. This setting does not limit the actual amount of data you can store.
+
+- Make sure to open the required ports to access the NFS volume from the K8S cluster: add the required ports to the security list of the subnet where your K8S nodes are connected to; see **[here](https://docs.oracle.com/en-us/iaas/Content/File/Tasks/securitylistsfilestorage.htm)** for the details.
 
 ### Configuring a Database
 The `OraOperator` facilitates you to configure the database. Various database configuration options are explained in the following subsections:
