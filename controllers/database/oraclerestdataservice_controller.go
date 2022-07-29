@@ -855,13 +855,18 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	m.Status.ServiceIP = ""
 	if m.Spec.LoadBalancer {
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
-			m.Status.DatabaseApiUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
+			// 'lbAddress' will contain the Fully Qualified Hostname of the LB. If the hostname is not available it will contain the IP address of the LB
+			lbAddress := svc.Status.LoadBalancer.Ingress[0].Hostname
+			if lbAddress == "" {
+				lbAddress = svc.Status.LoadBalancer.Ingress[0].IP
+			}
+			m.Status.DatabaseApiUrl = "https://" + lbAddress + ":" +
 				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + n.Status.Pdbname + "/_/db-api/stable/"
-			m.Status.ServiceIP = svc.Status.LoadBalancer.Ingress[0].IP
-			m.Status.DatabaseActionsUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
+			m.Status.ServiceIP = lbAddress
+			m.Status.DatabaseActionsUrl = "https://" + lbAddress + ":" +
 				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/sql-developer"
 			if m.Status.ApexConfigured {
-				m.Status.ApxeUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" +
+				m.Status.ApxeUrl = "https://" + lbAddress + ":" +
 					fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + n.Status.Pdbname + "/apex"
 			}
 		}
