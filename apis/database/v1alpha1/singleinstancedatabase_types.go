@@ -148,6 +148,8 @@ type SingleInstanceDatabaseStatus struct {
 	PdbConnectString string `json:"pdbConnectString,omitempty"`
 	ApexInstalled    bool   `json:"apexInstalled,omitempty"`
 	PrebuiltDB       bool   `json:"prebuiltDB,omitempty"`
+	// +kubebuilder:default:=false
+	IsTcpsEnabled bool `json:"isTcpsEnabled"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
