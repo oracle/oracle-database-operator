@@ -1090,9 +1090,14 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	if m.Spec.LoadBalancer {
 		m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
-			m.Status.ConnectString = svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
-			m.Status.PdbConnectString = svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(pdbName)
-			m.Status.OemExpressUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[1].Port) + "/em"
+			// 'lbAddress' will contain the Fully Qualified Hostname of the LB. If the hostname is not available it will contain the IP address of the LB
+			lbAddress := svc.Status.LoadBalancer.Ingress[0].Hostname
+			if lbAddress == "" {
+				lbAddress = svc.Status.LoadBalancer.Ingress[0].IP
+			}
+			m.Status.ConnectString = lbAddress + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
+			m.Status.PdbConnectString = lbAddress + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(pdbName)
+			m.Status.OemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(svc.Spec.Ports[1].Port) + "/em"
 		}
 		return requeueN, nil
 	}
