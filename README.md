@@ -2,7 +2,7 @@
 
 ## Make Oracle Database Kubernetes Native - Take 2 
 
-As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator`). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
+As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
 In this v0.2.0 release, `OraOperator` supports the following database configurations and infrastructure:
 
@@ -32,7 +32,7 @@ The upcoming releases will support new configurations, operations and capabiliti
 
 ## Release Status
 
-**CAUTION:** The current release of `OraOperator` (v0.2.0) is for development and test only. DO NOT USE IN PRODUCTION.
+**CAUTION:** The current release of `OraOperator` (v0.2.0) is for development and testing only. DO NOT USE IN PRODUCTION.
 
 This release has been installed and tested on the following Kubernetes platforms:
 
@@ -73,7 +73,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
   ---
 
-  Ensure that operator pods are up and running. Operator pod replicas are set to a default of 3 for High Availability, which can be scaled up and down.
+  Ensure that the operator pods are up and running. For high availability, Operator pod replicas are set to a default of 3. You can scale this setting up or down.
 
   ```sh
   $ kubectl get pods -n oracle-database-operator-system
@@ -106,7 +106,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 
 ## Uninstall the Operator
 
-  To uninstall the operator, the final step consists of deciding whether or not you want to delete the CRDs and APIServices that were introduced to the cluster by the operator. Choose one of the following options:
+  To uninstall the operator, the final step consists of deciding whether you want to delete the custom resource definitions (CRDs) and Kubernetes APIServices introduced into the cluster by the operator. Choose one of the following options:
 
 * ### Deleting the CRDs and APIServices
 
@@ -125,13 +125,13 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete pdb.database.oracle.com --all -n <namespace>
   ```
 
-  After all CRD instances are deleted, it is safe to remove the CRDs, APISerivces and operator deployment.
+  After all CRD instances are deleted, it is safe to remove the CRDs, APISerivces and operator deployment. Use the following command:
 
   ```sh
   kubectl delete -f oracle-database-operator.yaml --ignore-not-found=true
   ```
 
-  Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods,services, PVCs, and so on) are deleted. However, the CRD deletion stops responding, because the CRD instances have properties that prevent its deletion and that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
+  Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods, services, PVCs, and so on) are deleted. However, if that happens, then the CRD deletion stops responding. This is because the CRD instances have properties that prevent their deletion, and that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
 
 
 ## Docs of the supported Oracle Database configurations
