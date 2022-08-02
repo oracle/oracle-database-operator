@@ -32,6 +32,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
     * [APEX Installation](#apex-installation)
     * [Delete ORDS](#delete-ords)
   * [Maintenance Operations](#maintenance-operations)
+  * [Additional Information](#additional-information)
 
 ## Prerequisites
 
@@ -793,3 +794,9 @@ If you need to perform some maintenance operations (Database/ORDS) manually, the
 3. Log In to `sqlplus` to perform manual operations by using the following command:       
       
         sqlplus / as sysdba
+
+## Additional information
+Detailed instructions for setting up Single Instance Database by OraOperator using OCI free trial account is available now in the LiveLab format. Please use the following link:
+  [https://oracle.github.io/cloudtestdrive/AppDev/database-operator/workshops/freetier/?lab=introduction](https://oracle.github.io/cloudtestdrive/AppDev/database-operator/workshops/freetier/?lab=introduction)
+
+Thanks, [Jan Leemans](https://github.com/janleemans), for this effort!!
