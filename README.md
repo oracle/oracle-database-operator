@@ -67,6 +67,11 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   ```sh
   kubectl apply -f https://raw.githubusercontent.com/oracle/oracle-database-operator/main/oracle-database-operator.yaml
   ```
+  ---
+  **NOTE:**
+  The above command will also upgrade the existing v0.1.0 `OraOperator` installation to the latest version i.e. v0.2.0.
+
+  ---
 
   Ensure that operator pods are up and running. Operator pod replicas are set to a default of 3 for High Availability, which can be scaled up and down.
 
