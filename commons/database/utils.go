@@ -50,6 +50,7 @@ import (
 	"unicode"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -672,4 +673,19 @@ func ApexPasswordValidator(pwd string) bool {
 	}
 
 	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
+}
+
+// Function for patching the K8s service with the payload.
+// Patch strategy used: Strategic Merge Patch
+func PatchService(config *rest.Config, namespace string, ctx context.Context, req ctrl.Request, svcName string, payload string) error {
+	log := ctrllog.FromContext(ctx).WithValues("patchService", req.NamespacedName)
+	client, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Error(err, "config error")
+	}
+
+	// Trying to patch the service resource using Strategic Merge strategy
+	log.Info("Patching the service", "Service", svcName)
+	_, err = client.CoreV1().Services(namespace).Patch(ctx, svcName, types.StrategicMergePatchType, []byte(payload), metav1.PatchOptions{})
+	return err
 }

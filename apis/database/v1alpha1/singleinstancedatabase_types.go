@@ -149,7 +149,9 @@ type SingleInstanceDatabaseStatus struct {
 	ApexInstalled    bool   `json:"apexInstalled,omitempty"`
 	PrebuiltDB       bool   `json:"prebuiltDB,omitempty"`
 	// +kubebuilder:default:=false
-	IsTcpsEnabled bool `json:"isTcpsEnabled"`
+	IsTcpsEnabled         bool   `json:"isTcpsEnabled"`
+	TcpsPort              int    `json:"tcpsPort,omitempty"`
+	CertCreationTimestamp string `json:"certCreationTimestamp,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
