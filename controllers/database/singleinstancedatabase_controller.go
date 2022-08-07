@@ -78,8 +78,9 @@ type SingleInstanceDatabaseReconciler struct {
 var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
 
-// Service Port Declaration
-var svc_port string
+// For scheduling reconcile to renew certs if TCPS is enabled
+// Default value is requeueN (No reconcile)
+var futureRequeue ctrl.Result = requeueN
 
 const singleInstanceDatabaseFinalizer = "database.oracle.com/singleinstancedatabasefinalizer"
 
@@ -136,14 +137,6 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		singleInstanceDatabase.Status.ReleaseUpdate = dbcommons.ValueUnavailable
 		r.Status().Update(ctx, singleInstanceDatabase)
 	}
-
-	// Service Port Initialization
-	svc_port = func() string {
-		if singleInstanceDatabase.Spec.EnableTCPS {
-			return strconv.Itoa(singleInstanceDatabase.Spec.TcpsPort)
-		}
-		return "1521"
-	}()
 
 	// Manage SingleInstanceDatabase Deletion
 	result, err = r.manageSingleInstanceDatabaseDeletion(req, ctx, singleInstanceDatabase)
@@ -203,6 +196,13 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
+	// Configure TCPS
+	result, err = r.configTcps(singleInstanceDatabase, readyPod, ctx, req)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+
 	// Update DB config
 	result, err = r.updateDBConfig(singleInstanceDatabase, readyPod, ctx, req)
 	if result.Requeue {
@@ -241,6 +241,15 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	completed = true
 	r.Log.Info("Reconcile completed")
+
+	// Scheduling a reconcile for certificate renewal, if TCPS is enabled
+	if futureRequeue != requeueN {
+		r.Log.Info("Scheduling Reconcile for cert renewal", "Duration(Hours)", futureRequeue.RequeueAfter.Hours())
+		copyFutureRequeue := futureRequeue
+		futureRequeue = requeueN
+		return copyFutureRequeue, nil
+	}
+
 	return requeueN, nil
 }
 
@@ -650,16 +659,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					},
 				},
-				Ports: []corev1.ContainerPort{
-					{ContainerPort: func() int32 {
-						if m.Spec.EnableTCPS {
-							return int32(m.Spec.TcpsPort)
-						}
-						return int32(1521)
-					}(),
-					},
-					{ContainerPort: 5500},
-				},
+				Ports: []corev1.ContainerPort{{ContainerPort: dbcommons.DEFAULT_LISTENER_PORT}, {ContainerPort: 5500}},
 
 				ReadinessProbe: &corev1.Probe{
 					ProbeHandler: corev1.ProbeHandler{
@@ -707,7 +707,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "SVC_PORT",
-								Value: svc_port,
+								Value: strconv.Itoa(int(dbcommons.DEFAULT_LISTENER_PORT)),
 							},
 							{
 								Name:  "ORACLE_CHARACTERSET",
@@ -716,14 +716,6 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							{
 								Name:  "ORACLE_EDITION",
 								Value: m.Spec.Edition,
-							},
-							{
-								Name:  "ENABLE_TCPS",
-								Value: strconv.FormatBool(m.Spec.EnableTCPS),
-							},
-							{
-								Name:  "TCPS_PORT",
-								Value: strconv.Itoa(m.Spec.TcpsPort),
 							},
 						}
 					}
@@ -736,7 +728,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "SVC_PORT",
-								Value: svc_port,
+								Value: strconv.Itoa(int(dbcommons.DEFAULT_LISTENER_PORT)),
 							},
 							{
 								Name: "CREATE_PDB",
@@ -794,14 +786,6 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Name:  "SKIP_DATAPATCH",
 								Value: "true",
 							},
-							{
-								Name:  "ENABLE_TCPS",
-								Value: strconv.FormatBool(m.Spec.EnableTCPS),
-							},
-							{
-								Name:  "TCPS_PORT",
-								Value: strconv.Itoa(m.Spec.TcpsPort),
-							},
 						}
 					}
 					// For clone DB use case
@@ -812,7 +796,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 						{
 							Name:  "SVC_PORT",
-							Value: svc_port,
+							Value: strconv.Itoa(int(dbcommons.DEFAULT_LISTENER_PORT)),
 						},
 						{
 							Name:  "ORACLE_SID",
@@ -826,7 +810,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name: "PRIMARY_DB_CONN_STR",
 							Value: func() string {
 								if dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
-									return n.Name + ":" + svc_port + "/" + n.Spec.Sid
+									return n.Name + ":" + strconv.Itoa(int(dbcommons.DEFAULT_LISTENER_PORT)) + "/" + n.Spec.Sid
 								}
 								return m.Spec.CloneFrom
 							}(),
@@ -890,13 +874,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 //#############################################################################
 //    Instantiate Service spec from SingleInstanceDatabase spec
 //#############################################################################
-func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleInstanceDatabase) *corev1.Service {
+func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleInstanceDatabase,
+	svcName string, listenerPort int32, svcType corev1.ServiceType) *corev1.Service {
 	svc := &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "Service",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.Name,
+			Name:      svcName,
 			Namespace: m.Namespace,
 			Labels: map[string]string{
 				"app": m.Name,
@@ -914,13 +899,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
 				{
-					Name: "listener",
-					Port: func() int32 {
-						if m.Spec.EnableTCPS {
-							return int32(m.Spec.TcpsPort)
-						}
-						return int32(1521)
-					}(),
+					Name:     "listener",
+					Port:     listenerPort,
 					Protocol: corev1.ProtocolTCP,
 				},
 				{
@@ -932,12 +912,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 			Selector: map[string]string{
 				"app": m.Name,
 			},
-			Type: corev1.ServiceType(func() string {
-				if m.Spec.LoadBalancer {
-					return "LoadBalancer"
-				}
-				return "NodePort"
-			}()),
+			Type: svcType,
 		},
 	}
 	// Set SingleInstanceDatabase instance as the owner and controller
@@ -1073,49 +1048,121 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 
 	log := r.Log.WithValues("createOrReplaceSVC", req.NamespacedName)
 
-	svcDeleted := false
-	// Check if the Service already exists, if not create a new one
-	svc := &corev1.Service{}
-	// Get retrieves an obj ( a struct pointer ) for the given object key from the Kubernetes Cluster.
-	err := r.Get(ctx, types.NamespacedName{Name: m.Name, Namespace: m.Namespace}, svc)
-	if err == nil {
-		svcType := corev1.ServiceType("NodePort")
-		if m.Spec.LoadBalancer {
-			svcType = corev1.ServiceType("LoadBalancer")
+	/** If TCPS is enabled, there will be two k8s services:
+	     1. One service exposing the TCPS port for the user to connect,
+	     2. One service exposing default listerner port inside the cluster only (for ORDS, APEX installation etc)
+	**/
+
+	defaultSvc := &corev1.Service{}
+	tcpsSvc := &corev1.Service{}
+	// userSvc would indicate the service which is used to connect to the Database by the database user
+	var userSvc *corev1.Service
+
+	defaultSvcName := m.Name
+	tcpsSvcName := m.Name + "-tcps"
+
+	// Querying for the K8s service resources
+	getDefaultSvcErr := r.Get(ctx, types.NamespacedName{Name: defaultSvcName, Namespace: m.Namespace}, defaultSvc)
+	getTcpsSvcErr := r.Get(ctx, types.NamespacedName{Name: tcpsSvcName, Namespace: m.Namespace}, tcpsSvc)
+
+	// svcType defines the type of the service as specified in the singleinstancedatabase.yaml file
+	svcType := corev1.ServiceType("NodePort")
+	if m.Spec.LoadBalancer {
+		svcType = corev1.ServiceType("LoadBalancer")
+	}
+
+	if m.Spec.EnableTCPS {
+		if getDefaultSvcErr != nil && apierrors.IsNotFound(getDefaultSvcErr) {
+			// Create a new cluster service
+			svc := r.instantiateSVCSpec(m, defaultSvcName, dbcommons.DEFAULT_LISTENER_PORT, corev1.ServiceType("ClusterIP"))
+			log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+			err := r.Create(ctx, svc)
+			if err != nil {
+				log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+				return requeueY, err
+			}
+		} else if defaultSvc.Spec.Type != corev1.ServiceType("ClusterIP") {
+			// Patch the service type
+			payload := "{\"spec\": {\"type\": \"ClusterIP\"}}"
+			//Attempt Service patching
+			log.Info("Patching the service", "Service.Name", defaultSvc.Name, "Target Type", "ClusterIP")
+			err := dbcommons.PatchService(r.Config, m.Namespace, ctx, req, defaultSvcName, payload)
+			if err != nil {
+				log.Error(err, "Failed to patch Service")
+				return requeueY, err
+			}
+
 		}
 
-		if svc.Spec.Type != svcType {
-			log.Info("Deleting service", "name", svc.Name)
-			err = r.Delete(ctx, svc)
+		// When TCPS is enabled userSvc would point to tcpsSvc
+		userSvc = tcpsSvc
+		if getTcpsSvcErr != nil && apierrors.IsNotFound(getTcpsSvcErr) {
+			// Reset connect strings whenever service is recreated /*
+			m.Status.ConnectString = dbcommons.ValueUnavailable
+			m.Status.PdbConnectString = dbcommons.ValueUnavailable
+			m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+			// Create a new service
+			svc := r.instantiateSVCSpec(m, tcpsSvcName, int32(m.Spec.TcpsPort), svcType)
+			log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+			err := r.Create(ctx, svc)
 			if err != nil {
-				r.Log.Error(err, "Failed to delete service", "name", svc.Name)
+				log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+				return requeueY, err
+			}
+			userSvc = svc
+		} else if tcpsSvc.Spec.Type != svcType {
+			// Patch the service type
+			payload := fmt.Sprintf("{\"spec\": {\"type\": \"%s\"}}", svcType)
+			//Attempt Service patching
+			log.Info("Patching the service", "Service.Name", defaultSvc.Name, "Target Type", svcType)
+			err := dbcommons.PatchService(r.Config, m.Namespace, ctx, req, tcpsSvcName, payload)
+			if err != nil {
+				log.Error(err, "Failed to patch Service")
+				return requeueY, err
+			}
+		}
+
+	} else {
+		// Only one service is required if TCPS is not enabled
+		// userSvc would point to the defaultSvc
+		userSvc = defaultSvc
+		if getDefaultSvcErr != nil && apierrors.IsNotFound(getDefaultSvcErr) {
+			// Reset connect strings whenever service is recreated /*
+			m.Status.ConnectString = dbcommons.ValueUnavailable
+			m.Status.PdbConnectString = dbcommons.ValueUnavailable
+			m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+			// Create a new service with
+			svc := r.instantiateSVCSpec(m, defaultSvcName, dbcommons.DEFAULT_LISTENER_PORT, svcType)
+			log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+			err := r.Create(ctx, svc)
+			if err != nil {
+				log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
+				return requeueY, err
+			}
+			userSvc = svc
+		} else if defaultSvc.Spec.Type != svcType {
+			// Patch the service type
+			payload := fmt.Sprintf("{\"spec\": {\"type\": \"%s\"}}", svcType)
+			//Attempt Service patching
+			log.Info("Patching the service", "Service.Name", defaultSvc.Name, "Target Type", svcType)
+			err := dbcommons.PatchService(r.Config, m.Namespace, ctx, req, defaultSvcName, payload)
+			if err != nil {
+				log.Error(err, "Failed to patch Service")
+				return requeueY, err
+			}
+		}
+
+		if getTcpsSvcErr == nil {
+			// Delete this tcps service
+			log.Info("Deleting service", "name", tcpsSvcName)
+			err := r.Delete(ctx, tcpsSvc)
+			if err != nil {
+				r.Log.Error(err, "Failed to delete service", "name", tcpsSvc.Name)
 				return requeueN, err
 			}
-			svcDeleted = true
 		}
+
 	}
-	if svcDeleted || err != nil && apierrors.IsNotFound(err) {
-		// Define a new Service
-		svc = r.instantiateSVCSpec(m)
-		log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
-		err = r.Create(ctx, svc)
-		if err != nil {
-			log.Error(err, "Failed to create new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
-			return requeueY, err
-		}
-		eventReason := "Service creation"
-		eventMsg := "successfully created service type " + string(svc.Spec.Type)
-		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-		log.Info(eventMsg)
-		// Reset connect strings whenever service is recreated /*
-		m.Status.ConnectString = dbcommons.ValueUnavailable
-		m.Status.PdbConnectString = dbcommons.ValueUnavailable
-		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
-	} else if err != nil {
-		log.Error(err, "Failed to get Service")
-		return requeueY, err
-	}
-	log.Info("Found Existing Service ", "Service Name ", svc.Name)
 
 	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
@@ -1129,21 +1176,21 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	}
 
 	if m.Spec.LoadBalancer {
-		m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
-		if len(svc.Status.LoadBalancer.Ingress) > 0 {
-			m.Status.ConnectString = svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
-			m.Status.PdbConnectString = svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(pdbName)
-			m.Status.OemExpressUrl = "https://" + svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[1].Port) + "/em"
+		m.Status.ClusterConnectString = userSvc.Name + "." + userSvc.Namespace + ":" + fmt.Sprint(userSvc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
+		if len(userSvc.Status.LoadBalancer.Ingress) > 0 {
+			m.Status.ConnectString = userSvc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(userSvc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
+			m.Status.PdbConnectString = userSvc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(userSvc.Spec.Ports[0].Port) + "/" + strings.ToUpper(pdbName)
+			m.Status.OemExpressUrl = "https://" + userSvc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(userSvc.Spec.Ports[1].Port) + "/em"
 		}
 		return requeueN, nil
 	}
 
-	m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
+	m.Status.ClusterConnectString = userSvc.Name + "." + userSvc.Namespace + ":" + fmt.Sprint(userSvc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
 	nodeip := dbcommons.GetNodeIp(r, ctx, req)
 	if nodeip != "" {
-		m.Status.ConnectString = nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(sid)
-		m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(pdbName)
-		m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[1].NodePort) + "/em"
+		m.Status.ConnectString = nodeip + ":" + fmt.Sprint(userSvc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(sid)
+		m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(userSvc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(pdbName)
+		m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(userSvc.Spec.Ports[1].NodePort) + "/em"
 	}
 
 	return requeueN, nil
@@ -1705,6 +1752,83 @@ func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceD
 		return requeueY, nil
 	}
 	r.Log.Info("Wallet Deleted !!")
+	return requeueN, nil
+}
+
+//#############################################################################
+//   Configuring TCPS
+//#############################################################################
+func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDatabase,
+	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	eventReason := "Configuring TCPS"
+	if m.Spec.EnableTCPS && !m.Status.IsTcpsEnabled {
+		// Enable TCPS
+		eventMsg := "Enabling TCPS in the database..."
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+
+		_, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
+			ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.EnableTcpsCMD, m.Spec.TcpsPort))
+		if err != nil {
+			r.Log.Error(err, err.Error())
+			eventMsg = "Error encountered in enabling TCPS!"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			return requeueY, nil
+		}
+		// Updating the Status and publishing the event
+		m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
+		m.Status.IsTcpsEnabled = true
+		r.Status().Update(ctx, m)
+
+		eventMsg = "TCPS Enabled."
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+
+		// 26040h = 1085 days
+		futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: func() time.Duration { requeueDuration, _ := time.ParseDuration("26040h"); return requeueDuration }()}
+
+	} else if !m.Spec.EnableTCPS && m.Status.IsTcpsEnabled {
+		// Disable TCPS
+		eventMsg := "Disabling TCPS in the database..."
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+
+		_, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
+			ctx, req, false, "bash", "-c", dbcommons.DisableTcpsCMD)
+		if err != nil {
+			r.Log.Error(err, err.Error())
+			return requeueY, nil
+		}
+
+		// Updating the Status and publishing the event
+		m.Status.CertCreationTimestamp = ""
+		m.Status.IsTcpsEnabled = false
+		r.Status().Update(ctx, m)
+
+		eventMsg = "TCPS Disabled."
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+
+	} else if m.Spec.EnableTCPS && m.Status.IsTcpsEnabled {
+		// Cert Renewal Logic
+		// Certificates are renewed when 10 days remain for certs expiry
+		certCreationTimestamp, _ := time.Parse(time.RFC3339, m.Status.CertCreationTimestamp)
+		duration := time.Since(certCreationTimestamp)
+		allowdDuration, _ := time.ParseDuration("26000h")
+		if duration > allowdDuration {
+			_, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
+				ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.EnableTcpsCMD, m.Spec.TcpsPort))
+			if err != nil {
+				r.Log.Error(err, err.Error())
+				return requeueY, nil
+			}
+			// Updating the Status and publishing the event
+			m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
+			r.Status().Update(ctx, m)
+
+			eventMsg := "TCPS Certificates Renewed at time %s,"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg, time.Now().Format(time.RFC3339))
+
+			// 26040h = 1085 days
+			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: func() time.Duration { requeueDuration, _ := time.ParseDuration("26040h"); return requeueDuration }()}
+		}
+	}
 	return requeueN, nil
 }
 

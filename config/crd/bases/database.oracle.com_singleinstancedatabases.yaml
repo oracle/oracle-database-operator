@@ -175,6 +175,8 @@ spec:
                 type: boolean
               archiveLog:
                 type: string
+              certCreationTimestamp:
+                type: string
               charset:
                 type: string
               cloneFrom:
@@ -283,6 +285,9 @@ spec:
                 type: integer
               initSgaSize:
                 type: integer
+              isTcpsEnabled:
+                default: false
+                type: boolean
               nodes:
                 items:
                   type: string
@@ -329,7 +334,10 @@ spec:
                 type: object
               status:
                 type: string
+              tcpsPort:
+                type: integer
             required:
+            - isTcpsEnabled
             - persistence
             type: object
         type: object
