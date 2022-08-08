@@ -1124,13 +1124,15 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 
 	} else {
 		// Only one service is required if TCPS is not enabled
+
+		// Reset connect strings whenever service is recreated /*
+		m.Status.ConnectString = dbcommons.ValueUnavailable
+		m.Status.PdbConnectString = dbcommons.ValueUnavailable
+		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+
 		// userSvc would point to the defaultSvc
 		userSvc = defaultSvc
 		if getDefaultSvcErr != nil && apierrors.IsNotFound(getDefaultSvcErr) {
-			// Reset connect strings whenever service is recreated /*
-			m.Status.ConnectString = dbcommons.ValueUnavailable
-			m.Status.PdbConnectString = dbcommons.ValueUnavailable
-			m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 			// Create a new service with
 			svc := r.instantiateSVCSpec(m, defaultSvcName, dbcommons.DEFAULT_LISTENER_PORT, svcType)
 			log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
@@ -1187,15 +1189,14 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			m.Status.PdbConnectString = lbAddress + ":" + fmt.Sprint(userSvc.Spec.Ports[0].Port) + "/" + strings.ToUpper(pdbName)
 			m.Status.OemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(userSvc.Spec.Ports[1].Port) + "/em"
 		}
-		return requeueN, nil
-	}
-
-	m.Status.ClusterConnectString = userSvc.Name + "." + userSvc.Namespace + ":" + fmt.Sprint(userSvc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
-	nodeip := dbcommons.GetNodeIp(r, ctx, req)
-	if nodeip != "" {
-		m.Status.ConnectString = nodeip + ":" + fmt.Sprint(userSvc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(sid)
-		m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(userSvc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(pdbName)
-		m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(userSvc.Spec.Ports[1].NodePort) + "/em"
+	} else {
+		m.Status.ClusterConnectString = userSvc.Name + "." + userSvc.Namespace + ":" + fmt.Sprint(userSvc.Spec.Ports[0].Port) + "/" + strings.ToUpper(sid)
+		nodeip := dbcommons.GetNodeIp(r, ctx, req)
+		if nodeip != "" {
+			m.Status.ConnectString = nodeip + ":" + fmt.Sprint(userSvc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(sid)
+			m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(userSvc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(pdbName)
+			m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(userSvc.Spec.Ports[1].NodePort) + "/em"
+		}
 	}
 
 	return requeueN, nil
