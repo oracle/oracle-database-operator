@@ -1763,6 +1763,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 	eventReason := "Configuring TCPS"
 	if m.Spec.EnableTCPS && !m.Status.IsTcpsEnabled {
 		// Enable TCPS
+		m.Status.Status = dbcommons.StatusUpdating
+		r.Status().Update(ctx, m)
+
 		eventMsg := "Enabling TCPS in the database..."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
@@ -1777,6 +1780,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		// Updating the Status and publishing the event
 		m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
 		m.Status.IsTcpsEnabled = true
+		m.Status.TcpsPort = m.Spec.TcpsPort
 		r.Status().Update(ctx, m)
 
 		eventMsg = "TCPS Enabled."
@@ -1787,6 +1791,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 
 	} else if !m.Spec.EnableTCPS && m.Status.IsTcpsEnabled {
 		// Disable TCPS
+		m.Status.Status = dbcommons.StatusUpdating
+		r.Status().Update(ctx, m)
+
 		eventMsg := "Disabling TCPS in the database..."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
@@ -1799,6 +1806,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 
 		// Updating the Status and publishing the event
 		m.Status.CertCreationTimestamp = ""
+		m.Status.TcpsPort = 0
 		m.Status.IsTcpsEnabled = false
 		r.Status().Update(ctx, m)
 
@@ -1812,6 +1820,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		duration := time.Since(certCreationTimestamp)
 		allowdDuration, _ := time.ParseDuration("26000h")
 		if duration > allowdDuration {
+			m.Status.Status = dbcommons.StatusUpdating
+			r.Status().Update(ctx, m)
+
 			_, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 				ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.EnableTcpsCMD, m.Spec.TcpsPort))
 			if err != nil {
