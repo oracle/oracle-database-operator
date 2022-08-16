@@ -36,6 +36,11 @@
 ** SOFTWARE.
  */
 
+/*    MODIFIED   (MM/DD/YY)
+**    rcitton     07/14/22 - 33822886
+*/
+ 
+ 
 package v1alpha1
 
 import (
@@ -157,6 +162,14 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("fileNameConversions"), "Please specify a value for fileNameConversions. Values can be a filename convert pattern or NONE"))
 		}
+		if r.Spec.TotalSize == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("totalSize"), "When the storage is not UNLIMITED the Total Size must be specified"))
+		}
+		if r.Spec.TempSize == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
+		}
 		if *(r.Spec.TDEImport) {
 			r.validateTDEInfo(allErrs)
 		}
@@ -168,11 +181,11 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 		}
 		if r.Spec.TotalSize == "" {
 			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("totalSize"), "Please specify size of the tablespace"))
+				field.Required(field.NewPath("spec").Child("totalSize"), "When the storage is not UNLIMITED the Total Size must be specified"))
 		}
 		if r.Spec.TempSize == "" {
 			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("tempSize"), "Please specify size of the temporary tablespace"))
+				field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
 		}
 	case "PLUG":
 		if r.Spec.XMLFileName == "" {
