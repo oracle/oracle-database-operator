@@ -234,6 +234,16 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
+	// servicePort validation
+	if !r.Spec.LoadBalancer {
+		// NodePort service is expected. In this case servicePort should be in range 30000-32767
+		if r.Spec.ServicePort != 0 && (r.Spec.ServicePort < 30000 || r.Spec.ServicePort > 32767) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("servicePort"), r.Spec.ServicePort,
+					"servicePort should be in 30000-32767 range."))
+		}
+	}
+
 	if len(allErrs) == 0 {
 		return nil
 	}
@@ -296,10 +306,6 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 	if old.Status.OrdsReference != "" && r.Status.Persistence != r.Spec.Persistence {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("persistence"), "uninstall ORDS to change Persistence"))
-	}
-	if old.Status.IsTcpsEnabled && old.Status.TcpsPort != r.Spec.TcpsPort {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("tcpsPort"), "cannot change TCPS port, please disable TCPS first then enable it with newly desired port"))
 	}
 	if len(allErrs) == 0 {
 		return nil

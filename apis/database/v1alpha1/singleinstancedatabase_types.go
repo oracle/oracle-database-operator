@@ -61,12 +61,12 @@ type SingleInstanceDatabaseSpec struct {
 	Charset            string            `json:"charset,omitempty"`
 	Pdbname            string            `json:"pdbName,omitempty"`
 	LoadBalancer       bool              `json:"loadBalancer,omitempty"`
+	ServicePort        int               `json:"servicePort,omitempty"`
 	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
 	FlashBack          bool              `json:"flashBack,omitempty"`
 	ArchiveLog         bool              `json:"archiveLog,omitempty"`
 	ForceLogging       bool              `json:"forceLog,omitempty"`
 	EnableTCPS         bool              `json:"enableTCPS,omitempty"`
-	TcpsPort           int               `json:"tcpsPort,omitempty"`
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
@@ -150,8 +150,9 @@ type SingleInstanceDatabaseStatus struct {
 	PrebuiltDB       bool   `json:"prebuiltDB,omitempty"`
 	// +kubebuilder:default:=false
 	IsTcpsEnabled         bool   `json:"isTcpsEnabled"`
-	TcpsPort              int    `json:"tcpsPort,omitempty"`
 	CertCreationTimestamp string `json:"certCreationTimestamp,omitempty"`
+	DbHostname            string `json:"dbHostname,omitempty"`
+	DbPort                int    `json:"dbPort,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
