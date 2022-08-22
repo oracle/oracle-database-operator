@@ -156,14 +156,14 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              servicePort:
+                type: integer
               sid:
                 description: SID must be alphanumeric (no special characters, only
                   a-z, A-Z, 0-9), and no longer than 12 characters.
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
-              tcpsPort:
-                type: integer
             required:
             - image
             type: object
@@ -263,6 +263,10 @@ spec:
               datafilesPatched:
                 default: "false"
                 type: string
+              dbHostname:
+                type: string
+              dbPort:
+                type: integer
               edition:
                 type: string
               flashBack:
@@ -334,8 +338,6 @@ spec:
                 type: object
               status:
                 type: string
-              tcpsPort:
-                type: integer
             required:
             - isTcpsEnabled
             - persistence

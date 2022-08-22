@@ -38,7 +38,9 @@
 
 package commons
 
-const DEFAULT_LISTENER_PORT int32 = 1521
+const CONTAINER_LISTENER_PORT int32 = 1521
+
+const CONTAINER_TCPS_PORT int32 = 1522
 
 const ORACLE_UID int64 = 54321
 
@@ -483,10 +485,13 @@ const SetApexUsers string = "\numask 177" +
 const GetSidPdbEditionCMD string = "echo $ORACLE_SID,$ORACLE_PDB,$ORACLE_EDITION,Edition;"
 
 // Command to enable TCPS as a formatted string. The parameter would be the port at which TCPS is enabled.
-const EnableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE %d"
+const EnableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE"
 
 // Command for TCPS certs renewal to prevent their expiry. It is same as the EnableTcpsCMD
 const RenewCertsCMD string = EnableTcpsCMD
 
 // Command to disable TCPS
 const DisableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE disable"
+
+// TCPS clientWallet update command
+const ClientWalletUpdate string = "sed -i -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*$/PORT=%d)/g' ${ORACLE_BASE}/oradata/clientWallet/${ORACLE_SID}/tnsnames.ora"

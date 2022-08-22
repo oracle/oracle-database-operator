@@ -47,9 +47,6 @@ spec:
   ## Enable TCPS
   enableTCPS: false
 
-  ## TCPS custom port
-  tcpsPort: 1522
-
   ## NA if cloning from a SourceDB (cloneFrom is set)
   ## Specify both sgaSize and pgaSize (in MB) or dont specify both
   ## Specify Non-Zero value to use
@@ -85,6 +82,11 @@ spec:
   ## Type of service . Applicable on cloud enviroments only
   ## if loadBalService : false, service type = "NodePort" else "LoadBalancer"
   loadBalancer: false
+  
+  ## If loadBalancer is enabled, the servicePort is the load balancer port number
+  ## If loadBalancer is disabled, the servicePort is the NodePort(should be in range 30000-32767)
+  #servicePort: 30001
+
   ## Service Annotations (Cloud provider specific), for configuring the service (e.g. private LoadBalancer service)
   #serviceAnnotations:
   #  service.beta.kubernetes.io/oci-load-balancer-internal: "true"
