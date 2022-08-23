@@ -21,6 +21,8 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
     * [Advanced Database Configurations](#advanced-database-configurations)
       * [Run Database with Multiple Replicas](#run-database-with-multiple-replicas)
       * [Setup Database with LoadBalancer](#setup-database-with-loadbalancer)
+      * [Enabling TCPS Connections](#enabling-tcps-connections)
+      * [Specifying Custom Ports](#specifying-custom-ports)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
     * [REST Enable a Database](#rest-enable-a-database)
       * [Provision ORDS](#provision-ords)
@@ -503,6 +505,62 @@ $ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstance
 
   singleinstancedatabase.database.oracle.com/sidb-sample patched
 ```
+
+### Enabling TCPS Connections
+You can enable TCPS connections in the database by setting the `enableTCPS` field to `true` in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it using `kubectl apply` command.
+
+Alternatively, you can use the following command:
+```bash
+kubectl patch --type=merge singleinstancedatabases.database.oracle.com sidb-sample -p '{"spec": {"enableTCPS": true}}'
+```
+
+When TCPS connections are enabled, a Kubernetes event is published notifying the same. This event can be seen by any one of the following commands:
+```bash
+kubectl describe singleinstancedatabases.database.oracle.com sidb-sample
+
+kubectl get events
+```
+
+Once TCPS connections are enabled, the database connect string will change accordingly. The TCPS connections status can also be queried by the following command:
+```bash
+kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.isTcpsEnabled}"
+true
+```
+
+The following steps are required to connect the Database using TCPS:
+- You need to download the wallet from the Persistent Volume(PV) attached with the database pod. You can use the following command to get the list of pod:
+  ```bash
+  kubectl get po
+  NAME                READY   STATUS    RESTARTS   AGE
+  sidb-sample-gaqoe   1/1     Running   0          3d14h
+  ```
+- The location of the wallet inside the pod is as `/opt/oracle/oradata/clientWallet/$ORACLE_SID`. **Let us assume the `ORACLE_SID` is `ORCL1` for the upcoming example commands**. The sample command to download the wallet is as follows:
+  ```bash
+  kubectl cp sidb-sample-gaqoe:/opt/oracle/oradata/clientWallet/ORCL1  <Destination directory>
+  ```
+- This wallet includes the sample `tnsnames.ora` and `sqlnet.ora` files. All the TNS entries for the database (corresponding to the CDB and PDB) resides in `tnsnames.ora` file. You need to go inside the downloaded wallet directory and set the `TNS_ADMIN` environment variable to point to the current directory as follows:
+  ```bash
+  # After going inside the downloaded wallet directory
+  export TNS_ADMIN=$(pwd)
+  ```
+  After this, you can connect using SQL\*Plus using the following sample commands:
+  ```bash
+  sqlplus sys@ORCL1 as sysdba
+
+  sqlplus system@ORCL1
+  ```
+**NOTE:**
+- Only database server authentication is supported (no mTLS).
+- When TCPS is enabled, a self-signed certificate is generated and stored inside the wallets. For users' convenience, a client-side wallet is generated and stored at `/opt/oracle/oradata/clientWallet/$ORACLE_SID` location.
+- The self-signed certificate used with TCPS has validity for 3 years. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
+
+### Specifying Custom Ports
+As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two kubernetes services possible for the database: NodePort and LoadBalancer. You can specify which port to use with these services by editing the `servicePort` field of the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file. 
+
+If the `LoadBalancer` is enabled, the `servicePort` will be the opened load balancer port for database connections.
+
+In case of `NodePort` service, the `servicePort` will be the opened port on the Kubernetes nodes for database connections. In this case, the allowed range for the `servicePort` is 30000-32767.
+
 
 ## OracleRestDataService Resource
 
