@@ -40,6 +40,7 @@ package v1alpha1
 
 import (
 	"strings"
+	"time"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
@@ -242,6 +243,26 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 				field.Invalid(field.NewPath("spec").Child("servicePort"), r.Spec.ServicePort,
 					"servicePort should be in 30000-32767 range."))
 		}
+	}
+
+	// Certificate Renew Duration Validation
+	if r.Spec.CertRenewDuration != "" {
+		duration, err := time.ParseDuration(r.Spec.CertRenewDuration)
+		if err != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("certRenewDuration"), r.Spec.CertRenewDuration,
+					"Please provide valid string to parse the certRenewDuration."))
+		}
+		maxLimit, _ := time.ParseDuration("26000h")
+		minLimit, _ := time.ParseDuration("1m")
+		if duration > maxLimit || duration < minLimit {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("certRenewDuration"), r.Spec.CertRenewDuration,
+					"Please specify certRenewDuration in the range: 1m to 26000h"))
+		}
+	} else {
+		// Setting the default value
+		r.Spec.CertRenewDuration = "26000h"
 	}
 
 	if len(allErrs) == 0 {

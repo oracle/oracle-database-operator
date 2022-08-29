@@ -47,6 +47,10 @@ spec:
   ## Enable TCPS
   enableTCPS: false
 
+  ## Certificate Renewal Duration: The time after which certificates will be renewed if TCPS connections are enabled; can be in hours(h), minutes(m) and seconds(s)
+  ## Maximum value is 26000h
+  #certRenewDuration: 26000h
+
   ## NA if cloning from a SourceDB (cloneFrom is set)
   ## Specify both sgaSize and pgaSize (in MB) or dont specify both
   ## Specify Non-Zero value to use
