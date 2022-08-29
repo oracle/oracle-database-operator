@@ -67,6 +67,7 @@ type SingleInstanceDatabaseSpec struct {
 	ArchiveLog         bool              `json:"archiveLog,omitempty"`
 	ForceLogging       bool              `json:"forceLog,omitempty"`
 	EnableTCPS         bool              `json:"enableTCPS,omitempty"`
+	CertRenewDuration  string            `json:"certRenewDuration,omitempty"`
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
@@ -151,8 +152,7 @@ type SingleInstanceDatabaseStatus struct {
 	// +kubebuilder:default:=false
 	IsTcpsEnabled         bool   `json:"isTcpsEnabled"`
 	CertCreationTimestamp string `json:"certCreationTimestamp,omitempty"`
-	DbHostname            string `json:"dbHostname,omitempty"`
-	DbPort                int    `json:"dbPort,omitempty"`
+	CertRenewDuration     string `json:"certRenewDuration,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
