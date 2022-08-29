@@ -1841,7 +1841,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		eventMsg = "TCPS Enabled."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
-		requeueDuration, _ := time.ParseDuration(m.Spec.CertRenewDuration)
+		requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
 		requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
 		futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 
@@ -1874,12 +1874,11 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		eventMsg = "TCPS Disabled."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
-	} else if m.Spec.EnableTCPS && m.Status.IsTcpsEnabled {
+	} else if m.Spec.EnableTCPS && m.Status.IsTcpsEnabled && m.Spec.TcpsCertRenewInterval != "" {
 		// Cert Renewal Logic
-		// Certificates are renewed when 10 days remain for certs expiry
 		certCreationTimestamp, _ := time.Parse(time.RFC3339, m.Status.CertCreationTimestamp)
 		duration := time.Since(certCreationTimestamp)
-		allowdDuration, _ := time.ParseDuration(m.Spec.CertRenewDuration)
+		allowdDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
 		if duration > allowdDuration {
 			m.Status.Status = dbcommons.StatusUpdating
 			r.Status().Update(ctx, m)
@@ -1898,16 +1897,16 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			eventMsg := "TCPS Certificates Renewed at time %s,"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg, time.Now().Format(time.RFC3339))
 
-			requeueDuration, _ := time.ParseDuration(m.Spec.CertRenewDuration)
+			requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
 			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
 			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 		}
-		if m.Status.CertRenewDuration != m.Spec.CertRenewDuration {
-			requeueDuration, _ := time.ParseDuration(m.Spec.CertRenewDuration)
+		if m.Status.CertRenewDuration != m.Spec.TcpsCertRenewInterval {
+			requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
 			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
 			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 
-			m.Status.CertRenewDuration = m.Spec.CertRenewDuration
+			m.Status.CertRenewDuration = m.Spec.TcpsCertRenewInterval
 		}
 		// update clientWallet
 		err := r.updateClientWallet(m, readyPod, ctx, req)

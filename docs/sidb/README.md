@@ -551,8 +551,8 @@ The following steps are required to connect the Database using TCPS:
   ```
 **NOTE:**
 - Only database server authentication is supported (no mTLS).
-- When TCPS is enabled, a self-signed certificate is generated and stored inside the wallets. For users' convenience, a client-side wallet is generated and stored at `/opt/oracle/oradata/clientWallet/$ORACLE_SID` location.
-- The self-signed certificate used with TCPS has validity for 3 years. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
+- When TCPS is enabled, a self-signed certificate is generated and stored inside the wallets. For users' convenience, a client-side wallet is generated and stored at `/opt/oracle/oradata/clientWallet/$ORACLE_SID` location in the pod.
+- The self-signed certificate used with TCPS has validity for 2 years. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
 
 ### Specifying Custom Ports
 As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two kubernetes services possible for the database: NodePort and LoadBalancer. You can specify which port to use with these services by editing the `servicePort` field of the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file. 
