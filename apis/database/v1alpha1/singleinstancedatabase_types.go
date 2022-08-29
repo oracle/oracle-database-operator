@@ -57,17 +57,17 @@ type SingleInstanceDatabaseSpec struct {
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]+$`
 	// +kubebuilder:validation:MaxLength:=12
-	Sid                string            `json:"sid,omitempty"`
-	Charset            string            `json:"charset,omitempty"`
-	Pdbname            string            `json:"pdbName,omitempty"`
-	LoadBalancer       bool              `json:"loadBalancer,omitempty"`
-	ServicePort        int               `json:"servicePort,omitempty"`
-	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
-	FlashBack          bool              `json:"flashBack,omitempty"`
-	ArchiveLog         bool              `json:"archiveLog,omitempty"`
-	ForceLogging       bool              `json:"forceLog,omitempty"`
-	EnableTCPS         bool              `json:"enableTCPS,omitempty"`
-	CertRenewDuration  string            `json:"certRenewDuration,omitempty"`
+	Sid                   string            `json:"sid,omitempty"`
+	Charset               string            `json:"charset,omitempty"`
+	Pdbname               string            `json:"pdbName,omitempty"`
+	LoadBalancer          bool              `json:"loadBalancer,omitempty"`
+	ServicePort           int               `json:"servicePort,omitempty"`
+	ServiceAnnotations    map[string]string `json:"serviceAnnotations,omitempty"`
+	FlashBack             bool              `json:"flashBack,omitempty"`
+	ArchiveLog            bool              `json:"archiveLog,omitempty"`
+	ForceLogging          bool              `json:"forceLog,omitempty"`
+	EnableTCPS            bool              `json:"enableTCPS,omitempty"`
+	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
