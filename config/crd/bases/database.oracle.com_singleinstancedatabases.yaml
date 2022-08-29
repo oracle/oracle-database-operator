@@ -77,6 +77,8 @@ spec:
                 type: object
               archiveLog:
                 type: boolean
+              certRenewDuration:
+                type: string
               charset:
                 type: string
               cloneFrom:
@@ -177,6 +179,8 @@ spec:
                 type: string
               certCreationTimestamp:
                 type: string
+              certRenewDuration:
+                type: string
               charset:
                 type: string
               cloneFrom:
@@ -263,10 +267,6 @@ spec:
               datafilesPatched:
                 default: "false"
                 type: string
-              dbHostname:
-                type: string
-              dbPort:
-                type: integer
               edition:
                 type: string
               flashBack:

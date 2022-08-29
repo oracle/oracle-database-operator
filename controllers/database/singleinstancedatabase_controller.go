@@ -197,13 +197,6 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
-	// Configure TCPS
-	result, err = r.configTcps(singleInstanceDatabase, readyPod, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
-
 	// Update DB config
 	result, err = r.updateDBConfig(singleInstanceDatabase, readyPod, ctx, req)
 	if result.Requeue {
@@ -213,6 +206,13 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	// Update Init Parameters
 	result, err = r.updateInitParameters(singleInstanceDatabase, readyPod, ctx, req)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+
+	// Configure TCPS
+	result, err = r.configTcps(singleInstanceDatabase, readyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -1114,7 +1114,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			extSvcPort = extSvc.Spec.Ports[1].NodePort
 		}
 
-		if extSvc.Spec.Type != extSvcType || extSvcPort != svcPort || extSvc.Spec.Ports[1].TargetPort.IntVal != extSvcTargetPort {
+		if extSvc.Spec.Type != extSvcType || (m.Spec.ServicePort != 0 && extSvcPort != svcPort) || extSvc.Spec.Ports[1].TargetPort.IntVal != extSvcTargetPort {
 			// Deleting th service
 			log.Info("Deleting service", "name", extSvcName)
 			err := r.Delete(ctx, extSvc)
@@ -1794,16 +1794,15 @@ func (r *SingleInstanceDatabaseReconciler) updateClientWallet(m *dbapi.SingleIns
 				port = extSvc.Spec.Ports[1].NodePort
 			}
 		}
-		if host != "" && host != m.Status.DbHostname && port != int32(m.Status.DbPort) {
-			_, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
-				ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.ClientWalletUpdate, host, port))
-			if err != nil {
-				r.Log.Error(err, err.Error())
-				return err
-			}
-			m.Status.DbHostname = host
-			m.Status.DbPort = int(port)
+
+		r.Log.Info("Updating the client wallet...")
+		_, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
+			ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.ClientWalletUpdate, host, port))
+		if err != nil {
+			r.Log.Error(err, err.Error())
+			return err
 		}
+
 	} else {
 		r.Log.Info("Unable to get the service while updating the clientWallet", "Service.Namespace", extSvc.Namespace, "Service.Name", extSvcName)
 		return getExtSvcErr
@@ -1842,8 +1841,9 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		eventMsg = "TCPS Enabled."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 
-		// 26040h = 1085 days
-		futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: func() time.Duration { requeueDuration, _ := time.ParseDuration("26040h"); return requeueDuration }()}
+		requeueDuration, _ := time.ParseDuration(m.Spec.CertRenewDuration)
+		requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
+		futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 
 		// update clientWallet
 		err = r.updateClientWallet(m, readyPod, ctx, req)
@@ -1879,7 +1879,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		// Certificates are renewed when 10 days remain for certs expiry
 		certCreationTimestamp, _ := time.Parse(time.RFC3339, m.Status.CertCreationTimestamp)
 		duration := time.Since(certCreationTimestamp)
-		allowdDuration, _ := time.ParseDuration("26000h")
+		allowdDuration, _ := time.ParseDuration(m.Spec.CertRenewDuration)
 		if duration > allowdDuration {
 			m.Status.Status = dbcommons.StatusUpdating
 			r.Status().Update(ctx, m)
@@ -1898,8 +1898,16 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			eventMsg := "TCPS Certificates Renewed at time %s,"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg, time.Now().Format(time.RFC3339))
 
-			// 26040h = 1085 days
-			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: func() time.Duration { requeueDuration, _ := time.ParseDuration("26040h"); return requeueDuration }()}
+			requeueDuration, _ := time.ParseDuration(m.Spec.CertRenewDuration)
+			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
+			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
+		}
+		if m.Status.CertRenewDuration != m.Spec.CertRenewDuration {
+			requeueDuration, _ := time.ParseDuration(m.Spec.CertRenewDuration)
+			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
+			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
+
+			m.Status.CertRenewDuration = m.Spec.CertRenewDuration
 		}
 		// update clientWallet
 		err := r.updateClientWallet(m, readyPod, ctx, req)
