@@ -246,25 +246,21 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	}
 
 	// Certificate Renew Duration Validation
-	if r.Spec.CertRenewDuration != "" {
-		duration, err := time.ParseDuration(r.Spec.CertRenewDuration)
+	if r.Spec.TcpsCertRenewInterval != "" {
+		duration, err := time.ParseDuration(r.Spec.TcpsCertRenewInterval)
 		if err != nil {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("certRenewDuration"), r.Spec.CertRenewDuration,
-					"Please provide valid string to parse the certRenewDuration."))
+				field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), r.Spec.TcpsCertRenewInterval,
+					"Please provide valid string to parse the tcpsCertRenewInterval."))
 		}
 		maxLimit, _ := time.ParseDuration("26280h")
 		minLimit, _ := time.ParseDuration("1m")
 		if duration > maxLimit || duration < minLimit {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("certRenewDuration"), r.Spec.CertRenewDuration,
-					"Please specify certRenewDuration in the range: 1m to 26280h"))
+				field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), r.Spec.TcpsCertRenewInterval,
+					"Please specify tcpsCertRenewInterval in the range: 1m to 26280h"))
 		}
-	} else {
-		// Setting the default value
-		r.Spec.CertRenewDuration = "26280h"
 	}
-
 	if len(allErrs) == 0 {
 		return nil
 	}
