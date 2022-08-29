@@ -40,6 +40,7 @@ package v1alpha1
 
 import (
 	"strings"
+	"time"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
@@ -234,6 +235,32 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
+	// servicePort validation
+	if !r.Spec.LoadBalancer {
+		// NodePort service is expected. In this case servicePort should be in range 30000-32767
+		if r.Spec.ServicePort != 0 && (r.Spec.ServicePort < 30000 || r.Spec.ServicePort > 32767) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("servicePort"), r.Spec.ServicePort,
+					"servicePort should be in 30000-32767 range."))
+		}
+	}
+
+	// Certificate Renew Duration Validation
+	if r.Spec.TcpsCertRenewInterval != "" {
+		duration, err := time.ParseDuration(r.Spec.TcpsCertRenewInterval)
+		if err != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), r.Spec.TcpsCertRenewInterval,
+					"Please provide valid string to parse the tcpsCertRenewInterval."))
+		}
+		maxLimit, _ := time.ParseDuration("26280h")
+		minLimit, _ := time.ParseDuration("1m")
+		if duration > maxLimit || duration < minLimit {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), r.Spec.TcpsCertRenewInterval,
+					"Please specify tcpsCertRenewInterval in the range: 1m to 26280h"))
+		}
+	}
 	if len(allErrs) == 0 {
 		return nil
 	}
