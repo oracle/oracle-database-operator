@@ -57,14 +57,17 @@ type SingleInstanceDatabaseSpec struct {
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]+$`
 	// +kubebuilder:validation:MaxLength:=12
-	Sid                string            `json:"sid,omitempty"`
-	Charset            string            `json:"charset,omitempty"`
-	Pdbname            string            `json:"pdbName,omitempty"`
-	LoadBalancer       bool              `json:"loadBalancer,omitempty"`
-	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
-	FlashBack          bool              `json:"flashBack,omitempty"`
-	ArchiveLog         bool              `json:"archiveLog,omitempty"`
-	ForceLogging       bool              `json:"forceLog,omitempty"`
+	Sid                   string            `json:"sid,omitempty"`
+	Charset               string            `json:"charset,omitempty"`
+	Pdbname               string            `json:"pdbName,omitempty"`
+	LoadBalancer          bool              `json:"loadBalancer,omitempty"`
+	ServicePort           int               `json:"servicePort,omitempty"`
+	ServiceAnnotations    map[string]string `json:"serviceAnnotations,omitempty"`
+	FlashBack             bool              `json:"flashBack,omitempty"`
+	ArchiveLog            bool              `json:"archiveLog,omitempty"`
+	ForceLogging          bool              `json:"forceLog,omitempty"`
+	EnableTCPS            bool              `json:"enableTCPS,omitempty"`
+	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
@@ -146,6 +149,10 @@ type SingleInstanceDatabaseStatus struct {
 	PdbConnectString string `json:"pdbConnectString,omitempty"`
 	ApexInstalled    bool   `json:"apexInstalled,omitempty"`
 	PrebuiltDB       bool   `json:"prebuiltDB,omitempty"`
+	// +kubebuilder:default:=false
+	IsTcpsEnabled         bool   `json:"isTcpsEnabled"`
+	CertCreationTimestamp string `json:"certCreationTimestamp,omitempty"`
+	CertRenewDuration     string `json:"certRenewDuration,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge

@@ -44,6 +44,15 @@ spec:
   ## Enable/Disable ForceLogging
   forceLog: false
 
+  ## Enable TCPS
+  enableTCPS: false
+
+  ## TCPS Certificate Renewal Interval: The time after which TCPS certificate will be renewed if TCPS connections are enabled.
+  ## tcpsCertRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 17520h, 8760h etc.
+  ## Maximum value is 26280h (3 years), Minimum value is 1m; Default value is 17520h (2 years)
+  ## If this field is commented out/removed from the yaml, it will disable the auto-renewal feature for TCPS certificate
+  tcpsCertRenewInterval: 17520h
+
   ## NA if cloning from a SourceDB (cloneFrom is set)
   ## Specify both sgaSize and pgaSize (in MB) or dont specify both
   ## Specify Non-Zero value to use
@@ -79,6 +88,11 @@ spec:
   ## Type of service . Applicable on cloud enviroments only
   ## if loadBalService : false, service type = "NodePort" else "LoadBalancer"
   loadBalancer: false
+  
+  ## If loadBalancer is enabled, the servicePort is the load balancer port number
+  ## If loadBalancer is disabled, the servicePort is the NodePort(should be in range 30000-32767)
+  #servicePort: 30001
+
   ## Service Annotations (Cloud provider specific), for configuring the service (e.g. private LoadBalancer service)
   #serviceAnnotations:
   #  service.beta.kubernetes.io/oci-load-balancer-internal: "true"

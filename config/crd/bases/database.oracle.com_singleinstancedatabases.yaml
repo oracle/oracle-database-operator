@@ -77,6 +77,8 @@ spec:
                 type: object
               archiveLog:
                 type: boolean
+              certRenewDuration:
+                type: string
               charset:
                 type: string
               cloneFrom:
@@ -87,6 +89,8 @@ spec:
                 - enterprise
                 - express
                 type: string
+              enableTCPS:
+                type: boolean
               flashBack:
                 type: boolean
               forceLog:
@@ -154,6 +158,8 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              servicePort:
+                type: integer
               sid:
                 description: SID must be alphanumeric (no special characters, only
                   a-z, A-Z, 0-9), and no longer than 12 characters.
@@ -170,6 +176,10 @@ spec:
               apexInstalled:
                 type: boolean
               archiveLog:
+                type: string
+              certCreationTimestamp:
+                type: string
+              certRenewDuration:
                 type: string
               charset:
                 type: string
@@ -279,6 +289,9 @@ spec:
                 type: integer
               initSgaSize:
                 type: integer
+              isTcpsEnabled:
+                default: false
+                type: boolean
               nodes:
                 items:
                   type: string
@@ -326,6 +339,7 @@ spec:
               status:
                 type: string
             required:
+            - isTcpsEnabled
             - persistence
             type: object
         type: object

@@ -38,6 +38,10 @@
 
 package commons
 
+const CONTAINER_LISTENER_PORT int32 = 1521
+
+const CONTAINER_TCPS_PORT int32 = 1522
+
 const ORACLE_UID int64 = 54321
 
 const ORACLE_GUID int64 = 54321
@@ -318,12 +322,12 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\numask 022"
 
 const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p " +
-	"WHERE (s.username = 'ORDS_PUBLIC_USER' or "+
-	       "s.username = 'APEX_PUBLIC_USER' or "+
-		   "s.username = 'APEX_REST_PUBLIC_USER' or "+
-		   "s.username = 'APEX_LISTENER' or "+
-	       "s.username = 'C##_DBAPI_CDB_ADMIN' or "+
-		   "s.username = 'C##_DBAPI_PDB_ADMIN' ) AND p.addr(+) = s.paddr;"
+	"WHERE (s.username = 'ORDS_PUBLIC_USER' or " +
+	"s.username = 'APEX_PUBLIC_USER' or " +
+	"s.username = 'APEX_REST_PUBLIC_USER' or " +
+	"s.username = 'APEX_LISTENER' or " +
+	"s.username = 'C##_DBAPI_CDB_ADMIN' or " +
+	"s.username = 'C##_DBAPI_PDB_ADMIN' ) AND p.addr(+) = s.paddr;"
 
 const KillSessionSQL string = "alter system kill session '%[1]s';"
 
@@ -426,12 +430,11 @@ const ConfigureApexRest string = "if [ -f ${ORDS_HOME}/config/apex/apex_rest_con
 	"echo -e \"%[1]s\n%[1]s\" | %[2]s ; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
 const AlterApexUsers string = "\nALTER SESSION SET CONTAINER=%[2]s;" +
-	"\n ALTER USER APEX_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK; "+
+	"\n ALTER USER APEX_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK; " +
 	"\n ALTER USER APEX_REST_PUBLIC_USER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;" +
 	"\n ALTER USER APEX_LISTENER IDENTIFIED BY \\\"%[1]s\\\" ACCOUNT UNLOCK;" +
 	"\nexec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');" +
 	"\nexec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_web_password => '%[1]s', p_new_password => '%[1]s');\n"
-
 
 const CopyApexImages string = " ( while true; do  sleep 60; echo \"Copying Apex Images...\" ; done ) & mkdir -p /opt/oracle/oradata/${ORACLE_SID^^}_ORDS/apex/images && " +
 	" cp -R /opt/oracle/oradata/${ORACLE_SID^^}/apex/images/* /opt/oracle/oradata/${ORACLE_SID^^}_ORDS/apex/images; chown -R oracle:oinstall /opt/oracle/oradata/${ORACLE_SID^^}_ORDS/apex; kill -9 $!;"
@@ -480,3 +483,15 @@ const SetApexUsers string = "\numask 177" +
 
 // Get Sid, Pdbname, Edition for prebuilt db
 const GetSidPdbEditionCMD string = "echo $ORACLE_SID,$ORACLE_PDB,$ORACLE_EDITION,Edition;"
+
+// Command to enable TCPS as a formatted string. The parameter would be the port at which TCPS is enabled.
+const EnableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE"
+
+// Command for TCPS certs renewal to prevent their expiry. It is same as the EnableTcpsCMD
+const RenewCertsCMD string = EnableTcpsCMD
+
+// Command to disable TCPS
+const DisableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE disable"
+
+// TCPS clientWallet update command
+const ClientWalletUpdate string = "sed -i -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*$/PORT=%d)/g' ${ORACLE_BASE}/oradata/clientWallet/${ORACLE_SID}/tnsnames.ora"
