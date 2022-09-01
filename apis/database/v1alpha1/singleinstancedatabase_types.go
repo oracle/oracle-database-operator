@@ -61,7 +61,8 @@ type SingleInstanceDatabaseSpec struct {
 	Charset               string            `json:"charset,omitempty"`
 	Pdbname               string            `json:"pdbName,omitempty"`
 	LoadBalancer          bool              `json:"loadBalancer,omitempty"`
-	ServicePort           int               `json:"servicePort,omitempty"`
+	ListenerPort          int               `json:"listenerPort,omitempty"`
+	TcpsListenerPort      int               `json:"tcpsListenerPort,omitempty"`
 	ServiceAnnotations    map[string]string `json:"serviceAnnotations,omitempty"`
 	FlashBack             bool              `json:"flashBack,omitempty"`
 	ArchiveLog            bool              `json:"archiveLog,omitempty"`
@@ -131,28 +132,31 @@ type SingleInstanceDatabaseStatus struct {
 	DatafilesPatched     string            `json:"datafilesPatched,omitempty"`
 	ConnectString        string            `json:"connectString,omitempty"`
 	ClusterConnectString string            `json:"clusterConnectString,omitempty"`
+	TcpsConnectString    string            `json:"tcpsConnectString,omitempty"`
 	StandbyDatabases     map[string]string `json:"standbyDatabases,omitempty"`
 	// +kubebuilder:default:="false"
-	DatafilesCreated string `json:"datafilesCreated,omitempty"`
-	Sid              string `json:"sid,omitempty"`
-	Edition          string `json:"edition,omitempty"`
-	Charset          string `json:"charset,omitempty"`
-	Pdbname          string `json:"pdbName,omitempty"`
-	InitSgaSize      int    `json:"initSgaSize,omitempty"`
-	InitPgaSize      int    `json:"initPgaSize,omitempty"`
-	CloneFrom        string `json:"cloneFrom,omitempty"`
-	FlashBack        string `json:"flashBack,omitempty"`
-	ArchiveLog       string `json:"archiveLog,omitempty"`
-	ForceLogging     string `json:"forceLog,omitempty"`
-	OemExpressUrl    string `json:"oemExpressUrl,omitempty"`
-	OrdsReference    string `json:"ordsReference,omitempty"`
-	PdbConnectString string `json:"pdbConnectString,omitempty"`
-	ApexInstalled    bool   `json:"apexInstalled,omitempty"`
-	PrebuiltDB       bool   `json:"prebuiltDB,omitempty"`
+	DatafilesCreated     string `json:"datafilesCreated,omitempty"`
+	Sid                  string `json:"sid,omitempty"`
+	Edition              string `json:"edition,omitempty"`
+	Charset              string `json:"charset,omitempty"`
+	Pdbname              string `json:"pdbName,omitempty"`
+	InitSgaSize          int    `json:"initSgaSize,omitempty"`
+	InitPgaSize          int    `json:"initPgaSize,omitempty"`
+	CloneFrom            string `json:"cloneFrom,omitempty"`
+	FlashBack            string `json:"flashBack,omitempty"`
+	ArchiveLog           string `json:"archiveLog,omitempty"`
+	ForceLogging         string `json:"forceLog,omitempty"`
+	OemExpressUrl        string `json:"oemExpressUrl,omitempty"`
+	OrdsReference        string `json:"ordsReference,omitempty"`
+	PdbConnectString     string `json:"pdbConnectString,omitempty"`
+	TcpsPdbConnectString string `json:"tcpsPdbConnectString,omitempty"`
+	ApexInstalled        bool   `json:"apexInstalled,omitempty"`
+	PrebuiltDB           bool   `json:"prebuiltDB,omitempty"`
 	// +kubebuilder:default:=false
 	IsTcpsEnabled         bool   `json:"isTcpsEnabled"`
 	CertCreationTimestamp string `json:"certCreationTimestamp,omitempty"`
-	CertRenewDuration     string `json:"certRenewDuration,omitempty"`
+	CertRenewInterval     string `json:"certRenewInterval,omitempty"`
+	ClientWalletLoc       string `json:"clientWalletLoc,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
@@ -172,6 +176,8 @@ type SingleInstanceDatabaseStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.role",name="Role",type="string",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.releaseUpdate",name="Version",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.connectString",name="Connect Str",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.tcpsConnectString",name="TCPS Connect Str",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.tcpsPdbConnectString",name="TCPS Pdb Connect Str",type="string", priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.pdbConnectString",name="Pdb Connect Str",type="string",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.oemExpressUrl",name="Oem Express Url",type="string"
 
