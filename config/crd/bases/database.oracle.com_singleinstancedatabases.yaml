@@ -33,6 +33,13 @@ spec:
     - jsonPath: .status.connectString
       name: Connect Str
       type: string
+    - jsonPath: .status.tcpsConnectString
+      name: TCPS Connect Str
+      type: string
+    - jsonPath: .status.tcpsPdbConnectString
+      name: TCPS Pdb Connect Str
+      priority: 1
+      type: string
     - jsonPath: .status.pdbConnectString
       name: Pdb Connect Str
       priority: 1
@@ -77,8 +84,6 @@ spec:
                 type: object
               archiveLog:
                 type: boolean
-              certRenewDuration:
-                type: string
               charset:
                 type: string
               cloneFrom:
@@ -122,6 +127,8 @@ spec:
                   sgaTarget:
                     type: integer
                 type: object
+              listenerPort:
+                type: integer
               loadBalancer:
                 type: boolean
               nodeSelector:
@@ -158,14 +165,16 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
-              servicePort:
-                type: integer
               sid:
                 description: SID must be alphanumeric (no special characters, only
                   a-z, A-Z, 0-9), and no longer than 12 characters.
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
+              tcpsCertRenewInterval:
+                type: string
+              tcpsListenerPort:
+                type: integer
             required:
             - image
             type: object
@@ -179,9 +188,11 @@ spec:
                 type: string
               certCreationTimestamp:
                 type: string
-              certRenewDuration:
+              certRenewInterval:
                 type: string
               charset:
+                type: string
+              clientWalletLoc:
                 type: string
               cloneFrom:
                 type: string
@@ -337,6 +348,10 @@ spec:
                   type: string
                 type: object
               status:
+                type: string
+              tcpsConnectString:
+                type: string
+              tcpsPdbConnectString:
                 type: string
             required:
             - isTcpsEnabled

@@ -567,7 +567,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					initContainers = append(initContainers, corev1.Container{
 						Name:    "init-permissions",
 						Image:   m.Spec.Image.PullFrom,
-						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
+						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata || true", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
 						SecurityContext: &corev1.SecurityContext{
 							// User ID 0 means, root user
 							RunAsUser: func() *int64 { i := int64(0); return &i }(),
@@ -857,6 +857,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					i := int64(dbcommons.ORACLE_GUID)
 					return &i
 				}(),
+				FSGroup: func() *int64 {
+					i := int64(dbcommons.ORACLE_GUID)
+					return &i
+				}(),
 			},
 			ImagePullSecrets: []corev1.LocalObjectReference{
 				{
@@ -1040,7 +1044,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	log := r.Log.WithValues("createOrReplaceSVC", req.NamespacedName)
 
 	/** Two k8s services gets created:
-	     1. One service is ClusterIP service for cluster only communications on the listener port,
+	     1. One service is ClusterIP service for cluster only communications on the listener port 1521,
 	     2. One service is NodePort/LoadBalancer (according to the YAML specs) for users to connect
 	**/
 
@@ -1051,25 +1055,25 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	clusterSvcName := m.Name
 	extSvcName := m.Name + "-ext"
 
-	// svcPort is the intended port for extSvc taken from singleinstancedatabase YAML file
+	// svcPort is the intended port for extSvc taken from singleinstancedatabase YAML file for normal database connection
 	// If loadBalancer is true, it would be the listener port otherwise it would be node port
 	svcPort := func() int32 {
-		if m.Spec.ServicePort != 0 {
-			return int32(m.Spec.ServicePort)
+		if m.Spec.ListenerPort != 0 {
+			return int32(m.Spec.ListenerPort)
 		} else {
-			if m.Spec.EnableTCPS {
-				return dbcommons.CONTAINER_TCPS_PORT
-			} else {
-				return dbcommons.CONTAINER_LISTENER_PORT
-			}
+			return dbcommons.CONTAINER_LISTENER_PORT
 		}
 	}()
 
-	// extSvcTargetPort is used to check the target port of the extSvc when TCPS is enabled/disabled
-	extSvcTargetPort := dbcommons.CONTAINER_LISTENER_PORT
-	if m.Spec.EnableTCPS {
-		extSvcTargetPort = dbcommons.CONTAINER_TCPS_PORT
-	}
+	// tcpsSvcPort is the intended port for extSvc taken from singleinstancedatabase YAML file for TCPS connection
+	// If loadBalancer is true, it would be the listener port otherwise it would be node port
+	tcpsSvcPort := func() int32 {
+		if m.Spec.TcpsListenerPort != 0 {
+			return int32(m.Spec.TcpsListenerPort)
+		} else {
+			return dbcommons.CONTAINER_TCPS_PORT
+		}
+	}()
 
 	// Querying for the K8s service resources
 	getClusterSvcErr := r.Get(ctx, types.NamespacedName{Name: clusterSvcName, Namespace: m.Namespace}, clusterSvc)
@@ -1106,15 +1110,39 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		log.Error(getExtSvcErr, "Error encountered in obtaining the service", extSvcName)
 		return requeueY, getExtSvcErr
 	} else {
-		// extSvc service found
-		var extSvcPort int32
-		if extSvc.Spec.Type == corev1.ServiceType("LoadBalancer") {
-			extSvcPort = extSvc.Spec.Ports[1].Port
-		} else if extSvc.Spec.Type == corev1.ServiceType("NodePort") {
-			extSvcPort = extSvc.Spec.Ports[1].NodePort
+		// Counting required number of ports in extSvc
+		requiredPorts := 2
+		if m.Spec.EnableTCPS && m.Spec.ListenerPort != 0 {
+			requiredPorts = 3
 		}
 
-		if extSvc.Spec.Type != extSvcType || (m.Spec.ServicePort != 0 && extSvcPort != svcPort) || extSvc.Spec.Ports[1].TargetPort.IntVal != extSvcTargetPort {
+		// Obtaining all ports of the extSvc k8s service
+		var targetPorts []int32
+		for _, port := range extSvc.Spec.Ports {
+			if extSvc.Spec.Type == corev1.ServiceType("LoadBalancer") {
+				targetPorts = append(targetPorts, port.Port)
+			} else if extSvc.Spec.Type == corev1.ServiceType("NodePort") {
+				targetPorts = append(targetPorts, port.NodePort)
+			}
+		}
+
+		deleteSvc := false
+		if extSvc.Spec.Type != extSvcType || len(extSvc.Spec.Ports) != requiredPorts {
+			deleteSvc = true
+		} else {
+			// Match for the ports
+			if (m.Spec.ListenerPort != 0 && svcPort != targetPorts[1]) || (m.Spec.TcpsListenerPort != 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1]) {
+				deleteSvc = true
+			}
+			if m.Spec.ListenerPort == 0 && m.Spec.TcpsListenerPort == 0 {
+				if (m.Spec.EnableTCPS && extSvc.Spec.Ports[1].TargetPort.IntVal != dbcommons.CONTAINER_TCPS_PORT) ||
+					(!m.Spec.EnableTCPS && extSvc.Spec.Ports[1].TargetPort.IntVal != dbcommons.CONTAINER_LISTENER_PORT) {
+					deleteSvc = true
+				}
+			}
+		}
+
+		if deleteSvc {
 			// Deleting th service
 			log.Info("Deleting service", "name", extSvcName)
 			err := r.Delete(ctx, extSvc)
@@ -1132,6 +1160,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		m.Status.ConnectString = dbcommons.ValueUnavailable
 		m.Status.PdbConnectString = dbcommons.ValueUnavailable
 		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+		m.Status.TcpsConnectString = dbcommons.ValueUnavailable
+		m.Status.TcpsPdbConnectString = dbcommons.ValueUnavailable
 
 		// New service has to be created
 		ports := []corev1.ServicePort{
@@ -1143,21 +1173,56 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		}
 
 		if m.Spec.LoadBalancer {
-			ports = append(ports, corev1.ServicePort{
-				Name:       "listener",
-				Protocol:   corev1.ProtocolTCP,
-				Port:       svcPort,
-				TargetPort: intstr.FromInt(int(extSvcTargetPort)),
-			})
+			if m.Spec.EnableTCPS {
+				if m.Spec.ListenerPort != 0 {
+					ports = append(ports, corev1.ServicePort{
+						Name:       "listener",
+						Protocol:   corev1.ProtocolTCP,
+						Port:       svcPort,
+						TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_LISTENER_PORT)),
+					})
+				}
+				ports = append(ports, corev1.ServicePort{
+					Name:       "listener-tcps",
+					Protocol:   corev1.ProtocolTCP,
+					Port:       tcpsSvcPort,
+					TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_TCPS_PORT)),
+				})
+			} else {
+				ports = append(ports, corev1.ServicePort{
+					Name:       "listener",
+					Protocol:   corev1.ProtocolTCP,
+					Port:       svcPort,
+					TargetPort: intstr.FromInt(int(dbcommons.CONTAINER_LISTENER_PORT)),
+				})
+			}
 		} else {
-			ports = append(ports, corev1.ServicePort{
-				Name:       "listener",
-				Protocol:   corev1.ProtocolTCP,
-				Port:       extSvcTargetPort,
-				TargetPort: intstr.FromInt(int(extSvcTargetPort)),
-			})
-			if m.Spec.ServicePort != 0 {
-				ports[1].NodePort = svcPort
+			if m.Spec.EnableTCPS {
+				if m.Spec.ListenerPort != 0 {
+					ports = append(ports, corev1.ServicePort{
+						Name:     "listener",
+						Protocol: corev1.ProtocolTCP,
+						Port:     dbcommons.CONTAINER_LISTENER_PORT,
+						NodePort: svcPort,
+					})
+				}
+				ports = append(ports, corev1.ServicePort{
+					Name:     "listener-tcps",
+					Protocol: corev1.ProtocolTCP,
+					Port:     dbcommons.CONTAINER_TCPS_PORT,
+				})
+				if m.Spec.TcpsListenerPort != 0 {
+					ports[len(ports)-1].NodePort = tcpsSvcPort
+				}
+			} else {
+				ports = append(ports, corev1.ServicePort{
+					Name:     "listener",
+					Protocol: corev1.ProtocolTCP,
+					Port:     dbcommons.CONTAINER_LISTENER_PORT,
+				})
+				if m.Spec.ListenerPort != 0 {
+					ports[len(ports)-1].NodePort = svcPort
+				}
 			}
 		}
 
@@ -1194,6 +1259,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			m.Status.ConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
 			m.Status.PdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(pdbName)
 			m.Status.OemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[0].Port) + "/em"
+			if m.Spec.EnableTCPS {
+				m.Status.TcpsConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(sid)
+				m.Status.TcpsPdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(pdbName)
+			}
 		}
 	} else {
 		m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
@@ -1202,6 +1271,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			m.Status.ConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(sid)
 			m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(pdbName)
 			m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[0].NodePort) + "/em"
+			if m.Spec.EnableTCPS {
+				m.Status.TcpsConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(sid)
+				m.Status.TcpsPdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(pdbName)
+			}
 		}
 	}
 
@@ -1786,12 +1859,12 @@ func (r *SingleInstanceDatabaseReconciler) updateClientWallet(m *dbapi.SingleIns
 				if host == "" {
 					host = extSvc.Status.LoadBalancer.Ingress[0].IP
 				}
-				port = extSvc.Spec.Ports[1].Port
+				port = extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port
 			}
 		} else {
 			host = dbcommons.GetNodeIp(r, ctx, req)
 			if host != "" {
-				port = extSvc.Spec.Ports[1].NodePort
+				port = extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort
 			}
 		}
 
@@ -1836,6 +1909,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		// Updating the Status and publishing the event
 		m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
 		m.Status.IsTcpsEnabled = true
+		m.Status.ClientWalletLoc = fmt.Sprintf(dbcommons.ClientWalletLocation, m.Spec.Sid)
 		r.Status().Update(ctx, m)
 
 		eventMsg = "TCPS Enabled."
@@ -1869,6 +1943,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		// Updating the Status and publishing the event
 		m.Status.CertCreationTimestamp = ""
 		m.Status.IsTcpsEnabled = false
+		m.Status.ClientWalletLoc = ""
 		r.Status().Update(ctx, m)
 
 		eventMsg = "TCPS Disabled."
@@ -1901,13 +1976,20 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
 			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 		}
-		if m.Status.CertRenewDuration != m.Spec.TcpsCertRenewInterval {
+		if m.Status.CertRenewInterval != m.Spec.TcpsCertRenewInterval {
 			requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
 			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
 			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 
-			m.Status.CertRenewDuration = m.Spec.TcpsCertRenewInterval
+			m.Status.CertRenewInterval = m.Spec.TcpsCertRenewInterval
 		}
+		// update clientWallet
+		err := r.updateClientWallet(m, readyPod, ctx, req)
+		if err != nil {
+			r.Log.Error(err, "Error in updating tnsnames.ora clientWallet...")
+			return requeueY, nil
+		}
+	} else if m.Spec.EnableTCPS && m.Status.IsTcpsEnabled && m.Spec.TcpsCertRenewInterval == "" {
 		// update clientWallet
 		err := r.updateClientWallet(m, readyPod, ctx, req)
 		if err != nil {
