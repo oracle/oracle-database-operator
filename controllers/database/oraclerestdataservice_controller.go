@@ -582,7 +582,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 				{
 					Name:    "init-permissions",
 					Image:   m.Spec.Image.PullFrom,
-					Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/ords/config/ords", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
+					Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/ords/config/ords || true", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
 					SecurityContext: &corev1.SecurityContext{
 						// User ID 0 means, root user
 						RunAsUser: func() *int64 { i := int64(0); return &i }(),
@@ -728,6 +728,7 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 			SecurityContext: &corev1.PodSecurityContext{
 				RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
 				RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
+				FSGroup:    func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
 			},
 
 			ImagePullSecrets: []corev1.LocalObjectReference{

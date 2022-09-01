@@ -555,11 +555,18 @@ The following steps are required to connect the Database using TCPS:
 - The self-signed certificate used with TCPS has validity for 2 years. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
 
 ### Specifying Custom Ports
-As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two kubernetes services possible for the database: NodePort and LoadBalancer. You can specify which port to use with these services by editing the `servicePort` field of the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file. 
+As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two kubernetes services possible for the database: NodePort and LoadBalancer. You can specify which port to use with these services by editing the `listenerPort` and `tcpsListenerPort` fields of the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
-If the `LoadBalancer` is enabled, the `servicePort` will be the opened load balancer port for database connections.
+`listenerPort` is intended for normal database connections. Similarly, `tcpsListenerPort` is intended for TCPS database connections.
 
-In case of `NodePort` service, the `servicePort` will be the opened port on the Kubernetes nodes for database connections. In this case, the allowed range for the `servicePort` is 30000-32767.
+If the `LoadBalancer` is enabled, the `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Load Balancer for normal and TCPS database connections respectively.
+
+In case of `NodePort` service, `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Kubernetes nodes for for normal and TCPS database connections respectively. In this case, the allowed range for the `listenerPort`, and `tcpsListenerPort` is 30000-32767.
+
+**NOTE:**
+- `listenerPort` and `tcpsListenerPort` can not have same values.
+- `tcpsListenerPort` will come into effect only when TCPS connections are enabled (i.e. `enableTCPS` field is set in [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file).
+- If TCPS connections are enabled, and `listenerPort` is commented/removed in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, only TCPS endpoint will be exposed.
 
 
 ## OracleRestDataService Resource
