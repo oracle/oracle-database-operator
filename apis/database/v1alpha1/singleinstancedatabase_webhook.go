@@ -235,14 +235,24 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	// servicePort validation
+	// servicePort and tcpServicePort validation
 	if !r.Spec.LoadBalancer {
 		// NodePort service is expected. In this case servicePort should be in range 30000-32767
-		if r.Spec.ServicePort != 0 && (r.Spec.ServicePort < 30000 || r.Spec.ServicePort > 32767) {
+		if r.Spec.ListenerPort != 0 && (r.Spec.ListenerPort < 30000 || r.Spec.ListenerPort > 32767) {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("servicePort"), r.Spec.ServicePort,
-					"servicePort should be in 30000-32767 range."))
+				field.Invalid(field.NewPath("spec").Child("listenerPort"), r.Spec.ListenerPort,
+					"listenerPort should be in 30000-32767 range."))
 		}
+		if r.Spec.TcpsListenerPort != 0 && (r.Spec.TcpsListenerPort < 30000 || r.Spec.TcpsListenerPort > 32767) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), r.Spec.TcpsListenerPort,
+					"tcpsListenerPort should be in 30000-32767 range."))
+		}
+	}
+	if r.Spec.ListenerPort != 0 && r.Spec.TcpsListenerPort != 0 && r.Spec.ListenerPort == r.Spec.TcpsListenerPort {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), r.Spec.TcpsListenerPort,
+				"listenerPort and tcpsListenerPort can not be equal."))
 	}
 
 	// Certificate Renew Duration Validation

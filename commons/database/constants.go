@@ -495,3 +495,6 @@ const DisableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE disable"
 
 // TCPS clientWallet update command
 const ClientWalletUpdate string = "sed -i -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*$/PORT=%d)/g' ${ORACLE_BASE}/oradata/clientWallet/${ORACLE_SID}/tnsnames.ora"
+
+// TCPS clientWallet location
+const ClientWalletLocation string = "/opt/oracle/oradata/clientWallet/%s"
