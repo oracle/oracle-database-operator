@@ -89,9 +89,13 @@ spec:
   ## if loadBalService : false, service type = "NodePort" else "LoadBalancer"
   loadBalancer: false
   
-  ## If loadBalancer is enabled, the servicePort is the load balancer port number
-  ## If loadBalancer is disabled, the servicePort is the NodePort(should be in range 30000-32767)
-  #servicePort: 30001
+  ## 'listenerPort' and 'tcpsListenerPort' fields customizes port cofigurations for normal and tcps database listeners
+  ## 'tcpsListenerPort' will come in effect only when 'enableTCPS' field is set
+  ## If loadBalancer is enabled, the listenerPort, tcpsListenerPort will be the load balancer ports
+  ## If loadBalancer is disabled, the listenerPort, tcpsListenerPort will be the node ports(should be in range 30000-32767)
+  ## If enableTCPS is set, and listenerPort is commented/not mentioned in the YAML file, only TCPS endpoint will be exposed
+  #listenerPort: 30001
+  #tcpsListenerPort: 30002
 
   ## Service Annotations (Cloud provider specific), for configuring the service (e.g. private LoadBalancer service)
   #serviceAnnotations:
