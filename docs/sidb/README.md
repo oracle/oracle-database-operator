@@ -63,8 +63,8 @@ To obtain a quick database status, use the following command as an example:
 ```sh
 $ kubectl get singleinstancedatabase sidb-sample
 
-NAME           EDITION      STATUS    VERSION      CONNECT STR                  OEM EXPRESS URL
-sidb-sample    Enterprise   Healthy   19.3.0.0.0   10.0.25.54:1521/ORCLCDB      https://10.0.25.54:5500/em
+NAME          EDITION      STATUS    VERSION      CONNECT STR                 TCPS CONNECT STR       OEM EXPRESS URL
+sidb-sample   Enterprise   Healthy   19.3.0.0.0   10.0.25.54:1521/ORCL1       Unavailable            https://10.0.25.54:5500/em
 ```
 
 #### Detailed Status

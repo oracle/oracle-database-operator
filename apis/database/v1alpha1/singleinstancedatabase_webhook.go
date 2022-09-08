@@ -254,6 +254,11 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 			field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), r.Spec.TcpsListenerPort,
 				"listenerPort and tcpsListenerPort can not be equal."))
 	}
+	if r.Spec.EnableTCPS && r.Spec.TcpsListenerPort == 0 && r.Spec.ListenerPort == 1522 {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("listenerPort"), r.Spec.ListenerPort,
+				"listenerPort can not be 1522 as the default port for tcpsListenerPort is 1522."))
+	}
 
 	// Certificate Renew Duration Validation
 	if r.Spec.TcpsCertRenewInterval != "" {
