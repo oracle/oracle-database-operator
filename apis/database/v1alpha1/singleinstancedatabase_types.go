@@ -177,8 +177,8 @@ type SingleInstanceDatabaseStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.releaseUpdate",name="Version",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.connectString",name="Connect Str",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.tcpsConnectString",name="TCPS Connect Str",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.tcpsPdbConnectString",name="TCPS Pdb Connect Str",type="string", priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.pdbConnectString",name="Pdb Connect Str",type="string",priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.tcpsPdbConnectString",name="TCPS Pdb Connect Str",type="string", priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.oemExpressUrl",name="Oem Express Url",type="string"
 
 // SingleInstanceDatabase is the Schema for the singleinstancedatabases API
