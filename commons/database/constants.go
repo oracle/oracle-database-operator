@@ -498,3 +498,22 @@ const ClientWalletUpdate string = "sed -i -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*
 
 // TCPS clientWallet location
 const ClientWalletLocation string = "/opt/oracle/oradata/clientWallet/%s"
+
+// Service Patch Payloads
+// Three port payload: one OEM express, one TCP and one TCPS port
+const ThreePortPayload string = "{\"spec\": { \"ports\": [{\"name\": \"xmldb\", \"port\": 5500, \"protocol\": \"TCP\"},{%s},{%s}]}}"
+
+// Two port payload: one OEM express, one TCP/TCPS port
+const TwoPortPayload string = "{\"spec\": { \"ports\": [{\"name\": \"xmldb\", \"port\": 5500, \"protocol\": \"TCP\"},{%s}]}}"
+
+// Payload section for listener port
+const LsnrPort string = "\"name\": \"listener\", \"protocol\": \"TCP\", \"port\": %d"
+
+// Payload section for listener node port
+const LsnrNodePort string = "\"name\": \"listener\", \"protocol\": \"TCP\", \"port\": 1521, \"nodePort\": %d"
+
+// Payload section for TCPS port
+const TcpsPort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": %d"
+
+// Payload section for TCPS node port
+const TcpsNodePort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": 1522, \"nodePort\": %d"

@@ -686,6 +686,6 @@ func PatchService(config *rest.Config, namespace string, ctx context.Context, re
 
 	// Trying to patch the service resource using Strategic Merge strategy
 	log.Info("Patching the service", "Service", svcName)
-	_, err = client.CoreV1().Services(namespace).Patch(ctx, svcName, types.StrategicMergePatchType, []byte(payload), metav1.PatchOptions{})
+	_, err = client.CoreV1().Services(namespace).Patch(ctx, svcName, types.MergePatchType, []byte(payload), metav1.PatchOptions{})
 	return err
 }
