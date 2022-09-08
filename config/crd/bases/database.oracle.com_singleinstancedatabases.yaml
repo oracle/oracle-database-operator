@@ -36,12 +36,12 @@ spec:
     - jsonPath: .status.tcpsConnectString
       name: TCPS Connect Str
       type: string
-    - jsonPath: .status.tcpsPdbConnectString
-      name: TCPS Pdb Connect Str
-      priority: 1
-      type: string
     - jsonPath: .status.pdbConnectString
       name: Pdb Connect Str
+      priority: 1
+      type: string
+    - jsonPath: .status.tcpsPdbConnectString
+      name: TCPS Pdb Connect Str
       priority: 1
       type: string
     - jsonPath: .status.oemExpressUrl
