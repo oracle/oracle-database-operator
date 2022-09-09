@@ -507,13 +507,13 @@ const ThreePortPayload string = "{\"spec\": { \"ports\": [{\"name\": \"xmldb\", 
 const TwoPortPayload string = "{\"spec\": { \"ports\": [{\"name\": \"xmldb\", \"port\": 5500, \"protocol\": \"TCP\"},{%s}]}}"
 
 // Payload section for listener port
-const LsnrPort string = "\"name\": \"listener\", \"protocol\": \"TCP\", \"port\": %d"
+const LsnrPort string = "\"name\": \"listener\", \"protocol\": \"TCP\", \"port\": %d, \"targetPort\": 1521"
 
 // Payload section for listener node port
 const LsnrNodePort string = "\"name\": \"listener\", \"protocol\": \"TCP\", \"port\": 1521, \"nodePort\": %d"
 
 // Payload section for TCPS port
-const TcpsPort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": %d"
+const TcpsPort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": %d, \"targetPort\": 1522"
 
 // Payload section for TCPS node port
 const TcpsNodePort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": 1522, \"nodePort\": %d"

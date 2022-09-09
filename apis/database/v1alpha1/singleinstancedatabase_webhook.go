@@ -243,25 +243,27 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 				field.Invalid(field.NewPath("spec").Child("listenerPort"), r.Spec.ListenerPort,
 					"listenerPort should be in 30000-32767 range."))
 		}
-		if r.Spec.TcpsListenerPort != 0 && (r.Spec.TcpsListenerPort < 30000 || r.Spec.TcpsListenerPort > 32767) {
+		if r.Spec.EnableTCPS && r.Spec.TcpsListenerPort != 0 && (r.Spec.TcpsListenerPort < 30000 || r.Spec.TcpsListenerPort > 32767) {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), r.Spec.TcpsListenerPort,
 					"tcpsListenerPort should be in 30000-32767 range."))
 		}
+	} else {
+		// LoadBalancer Service is expected.
+		if r.Spec.EnableTCPS && r.Spec.TcpsListenerPort == 0 && r.Spec.ListenerPort == 1522 {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("listenerPort"), r.Spec.ListenerPort,
+					"listenerPort can not be 1522 as the default port for tcpsListenerPort is 1522."))
+		}
 	}
-	if r.Spec.ListenerPort != 0 && r.Spec.TcpsListenerPort != 0 && r.Spec.ListenerPort == r.Spec.TcpsListenerPort {
+	if r.Spec.EnableTCPS && r.Spec.ListenerPort != 0 && r.Spec.TcpsListenerPort != 0 && r.Spec.ListenerPort == r.Spec.TcpsListenerPort {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), r.Spec.TcpsListenerPort,
 				"listenerPort and tcpsListenerPort can not be equal."))
 	}
-	if r.Spec.EnableTCPS && r.Spec.TcpsListenerPort == 0 && r.Spec.ListenerPort == 1522 {
-		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("listenerPort"), r.Spec.ListenerPort,
-				"listenerPort can not be 1522 as the default port for tcpsListenerPort is 1522."))
-	}
 
 	// Certificate Renew Duration Validation
-	if r.Spec.TcpsCertRenewInterval != "" {
+	if r.Spec.EnableTCPS && r.Spec.TcpsCertRenewInterval != "" {
 		duration, err := time.ParseDuration(r.Spec.TcpsCertRenewInterval)
 		if err != nil {
 			allErrs = append(allErrs,
