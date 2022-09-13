@@ -3,18 +3,6 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 
-apiVersion: v1
-kind: Secret
-metadata:
-  name: db-admin-secret
-  namespace: default
-type: Opaque
-stringData:
-  # Specify your DB password here
-  oracle_pwd: 
-
----
-
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
