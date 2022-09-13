@@ -199,7 +199,7 @@ This command pulls the XE image uploaded on the [Oracle Container Registry](http
 - For XE database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
 
 #### Additional Information
-You are required to specify the database admin password secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml), [singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml) and [singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, and `xedb-admin-secret` respectively. You can create these secrets manually by using the sample command mentioned in the [Template YAML](#template-yaml) section. Otherwise, you can create these secrets at once by filling the passwords in the **[singleinstancedatabase_secrets.yaml](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying it using the command below:
+You are required to specify the database admin password secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml), [singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml) and [singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, and `xedb-admin-secret` respectively. You can create these secrets manually by using the sample command mentioned in the [Template YAML](#template-yaml) section. Alternatively, you can create these secrets by filling the passwords in the **[singleinstancedatabase_secrets.yaml](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying it using the command below:
 
 ```bash
 kubectl apply -f singleinstancedatabase_secrets.yaml
@@ -601,7 +601,7 @@ You are required to specify the ORDS secret in the [oraclerestdataservice_create
 kubectl create secret generic ords-secret --from-literal=oracle_pwd=<specify password here>
 ```
 
-Otherwise, you can create this secret together with the APEX secret by filling the passwords in the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file and applying it using the command below:
+Alternatively, you can create this secret together with the APEX secret by filling the passwords in the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file and applying it using the command below:
 
 ```bash
 kubectl apply -f singleinstancedatabase_secrets.yaml
