@@ -601,7 +601,7 @@ You are required to specify the ORDS secret in the [oraclerestdataservice_create
 kubectl create secret generic ords-secret --from-literal=oracle_pwd=<specify password here>
 ```
 
-Alternatively, you can create this secret together with the APEX secret by filling the passwords in the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file and applying it using the command below:
+Alternatively, you can create this secret and the APEX secret by filling the passwords in the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file and applying it using the command below:
 
 ```bash
 kubectl apply -f singleinstancedatabase_secrets.yaml
