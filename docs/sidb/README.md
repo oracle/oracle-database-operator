@@ -134,9 +134,9 @@ The `adminPassword` field in the above `singleinstancedatabase.yaml` file refers
 
 Create this secret using the following command as an example:
 
-    kubectl create secret generic admin-secret --from-literal=oracle_pwd=<specify password here>
+    kubectl create secret generic db-admin-secret --from-literal=oracle_pwd=<specify password here>
 
-This command creates a secret named `admin-secret`, with the key `oracle_pwd` mapped to the actual password specified in the command.
+This command creates a secret named `db-admin-secret`, with the key `oracle_pwd` mapped to the actual password specified in the command.
 
 ### Create a Database
 
@@ -197,6 +197,13 @@ This command pulls the XE image uploaded on the [Oracle Container Registry](http
 - Provisioning Oracle Database express edition is supported for release 21c (21.3.0) and later releases.
 - For XE database, only single replica mode (i.e. `replicas: 1`) is supported.
 - For XE database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
+
+#### Additional Information
+You are required to specify the database admin password secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml), [singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml) and [singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, and `xedb-admin-secret` respectively. You can create these secrets manually by using the sample command mentioned in the [Template YAML](#template-yaml) section. Otherwise, you can create these secrets at once by filling the passwords in the **[singleinstancedatabase_secrets.yaml](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying it using the command below:
+
+```bash
+kubectl apply -f singleinstancedatabase_secrets.yaml
+```
 
 ### Connecting to Database
 
@@ -587,6 +594,20 @@ $ kubectl apply -f oraclerestdataservice_create.yaml
 ```
 After this command completes, ORDS is installed in the container database (CDB) of the Single Instance Database.
 
+##### NOTE:
+You are required to specify the ORDS secret in the [oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml) file. The default value mentioned in the `adminPassword.secretName` field is `ords-secret`. You can create this secret manually by using the following command:
+
+```bash
+kubectl create secret generic ords-secret --from-literal=oracle_pwd=<specify password here>
+```
+
+Otherwise, you can create this secret together with the APEX secret by filling the passwords in the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file and applying it using the command below:
+
+```bash
+kubectl apply -f singleinstancedatabase_secrets.yaml
+```
+The APEX secret created above, will be used while [installing APEX](#apex-installation).
+
 #### Creation Status
   
 Creating a new ORDS instance takes a while. To check the status of the ORDS instance, use the following command:
@@ -743,7 +764,13 @@ The `OraOperator` facilitates installation of APEX in the database and also conf
 
       kubectl apply -f oraclerestdataservice_apex.yaml
 
-* The APEX Password is used as a common password for `APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER` and Apex administrator (username: `ADMIN`) mapped to secretKey.
+* The APEX Password is used as a common password for `APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER` and Apex administrator (username: `ADMIN`) mapped to secretKey. You can create APEX secret using the following command:
+
+  ```bash
+  kubectl create secret generic apex-secret --from-literal=oracle_pwd=<specify password here>
+  ``` 
+  Please refer [this](#note) section for APEX secret creation using the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file.
+
 * The status of ORDS turns to `Updating` during APEX configuration, and changes to `Healthy` after successful configuration. You can also check status by using the following command:
 
 
