@@ -651,6 +651,8 @@ spec:
           spec:
             description: CDBSpec defines the desired state of CDB
             properties:
+              TestVariable:
+                type: string
               cdbAdminPwd:
                 description: Password for the CDB Administrator to manage PDB lifecycle
                 properties:
@@ -688,6 +690,38 @@ spec:
               cdbName:
                 description: Name of the CDB
                 type: string
+              cdbTlsCrt:
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbTlsKey:
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
               dbPort:
                 description: DB server port
                 type: integer
@@ -1282,7 +1316,7 @@ spec:
   - additionalPrinterColumns:
     - description: The connect string to be used
       jsonPath: .status.connString
-      name: Connect String
+      name: Connect_String
       type: string
     - description: Name of the CDB
       jsonPath: .spec.cdbName
@@ -1416,6 +1450,54 @@ spec:
                 - OPEN
                 - CLOSE
                 type: string
+              pdbTlsCat:
+                properties:
+                  secret:
+                    description: PDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              pdbTlsCrt:
+                properties:
+                  secret:
+                    description: PDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              pdbTlsKey:
+                properties:
+                  secret:
+                    description: PDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
               reuseTempFile:
                 description: Whether to reuse temp file
                 type: boolean
