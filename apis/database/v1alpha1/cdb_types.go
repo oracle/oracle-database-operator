@@ -51,12 +51,19 @@ type CDBSpec struct {
 	CDBName string `json:"cdbName,omitempty"`
 	// Name of the CDB Service
 	ServiceName string `json:"serviceName,omitempty"`
+
+	TestVariable string `json:"TestVariable,omitempty"`
+
 	// Password for the CDB System Administrator
 	SysAdminPwd CDBSysAdminPassword `json:"sysAdminPwd,omitempty"`
 	// User in the root container with sysdba priviledges to manage PDB lifecycle
 	CDBAdminUser CDBAdminUser `json:"cdbAdminUser,omitempty"`
 	// Password for the CDB Administrator to manage PDB lifecycle
 	CDBAdminPwd CDBAdminPassword `json:"cdbAdminPwd,omitempty"`
+
+	CDBTlsKey CDBTLSKEY `json:"cdbTlsKey,omitempty"`
+	CDBTlsCrt CDBTLSCRT `json:"cdbTlsCrt,omitempty"`
+
 	// Password for user ORDS_PUBLIC_USER
 	ORDSPwd ORDSPassword `json:"ordsPwd,omitempty"`
 	// ORDS server port. For now, keep it as 8888. TO BE USED IN FUTURE RELEASE.
@@ -117,6 +124,14 @@ type WebServerUser struct {
 
 // WebServerPassword defines the secret containing password for Web Server User mapped to key 'webServerPwd' to manage PDB lifecycle
 type WebServerPassword struct {
+	Secret CDBSecret `json:"secret"`
+}
+
+type CDBTLSKEY struct {
+	Secret CDBSecret `json:"secret"`
+}
+
+type CDBTLSCRT struct {
 	Secret CDBSecret `json:"secret"`
 }
 
