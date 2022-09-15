@@ -92,6 +92,12 @@ func (r *CDB) ValidateCreate() error {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("serviceName"), "Please specify CDB Service name"))
 	}
+
+	if r.Spec.TestVariable == "" {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("TestVariable"), "Please specify CDB testvarable"))
+	}
+
 	if r.Spec.SCANName == "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("scanName"), "Please specify SCAN Name for CDB"))

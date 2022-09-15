@@ -10,7 +10,7 @@ In this v0.2.0 release, `OraOperator` supports the following database configurat
 * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
-* Oracle On-Premises Databases (CDB/PDBs, Exadata)
+* Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Database Cloud Service (DBCS) (VMDB)
 * Oracle Autonomous Container Database (ACD) (infrastructure) the infrastructure for provisionning Autonomous Databases.
 
@@ -25,7 +25,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * ACD: provision, bind, restart, terminate (soft/hard)
 * SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, and Application Express (Apex)
 * SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
-* On-Premises Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
+* Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Database Cloud Service: Provision, Bind, Scale Up/Down, Liveness Probe, Manual Backup
 
 The upcoming releases will support new configurations, operations and capabilities.
@@ -99,7 +99,7 @@ The quickstarts are designed for specific database configurations:
 * [Oracle Autonomous Container Database](./docs/acd/README.md)
 * [Containerized Oracle Single Instance Database](./docs/sidb/README.md)
 * [Containerized Oracle Sharded Database](./docs/sharding/README.md)
-* [Oracle On-Premises Database](./docs/onpremdb/README.md)
+* [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Database Cloud Service](./docs/dbcs/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases. 

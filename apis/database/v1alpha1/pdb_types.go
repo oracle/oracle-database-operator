@@ -47,6 +47,10 @@ type PDBSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
+	PDBTlsKey PDBTLSKEY `json:"pdbTlsKey,omitempty"`
+	PDBTlsCrt PDBTLSCRT `json:"pdbTlsCrt,omitempty"`
+	PDBTlsCat PDBTLSCAT `json:"pdbTlsCat,omitempty"`
+
 	// Name of the CDB Custom Resource that runs the ORDS container
 	CDBResName string `json:"cdbResName,omitempty"`
 	// Name of the CDB
@@ -132,6 +136,18 @@ type PDBSecret struct {
 	Key        string `json:"key"`
 }
 
+type PDBTLSKEY struct {
+	Secret PDBSecret `json:"secret"`
+}
+
+type PDBTLSCRT struct {
+	Secret PDBSecret `json:"secret"`
+}
+
+type PDBTLSCAT struct {
+	Secret PDBSecret `json:"secret"`
+}
+
 // PDBStatus defines the observed state of PDB
 type PDBStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -157,7 +173,7 @@ type PDBStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".status.connString",name="Connect String",type="string",description="The connect string to be used"
+// +kubebuilder:printcolumn:JSONPath=".status.connString",name="Connect_String",type="string",description="The connect string to be used"
 // +kubebuilder:printcolumn:JSONPath=".spec.cdbName",name="CDB Name",type="string",description="Name of the CDB"
 // +kubebuilder:printcolumn:JSONPath=".spec.pdbName",name="PDB Name",type="string",description="Name of the PDB"
 // +kubebuilder:printcolumn:JSONPath=".status.openMode",name="PDB State",type="string",description="PDB Open Mode"
