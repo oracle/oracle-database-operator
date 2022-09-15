@@ -283,7 +283,8 @@ func (r *CDBReconciler) validateORDSPods(ctx context.Context, req ctrl.Request, 
 		if pod.Status.Phase == corev1.PodRunning {
 			// Get ORDS Status
 			out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", getORDSStatus)
-			if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
+			if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") ||
+				strings.Contains(out, "HTTP/2") || strings.Contains(strings.ToUpper(err.Error()), " HTTP/2") {
 				readyPods++
 			} else if strings.Contains(out, "HTTP/1.1 404 Not Found") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 404 NOT FOUND") {
 				// Check if DB connection parameters are correct
@@ -348,6 +349,36 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 								},
 							},
 						},
+						/***/
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.CDBTlsKey.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  cdb.Spec.CDBTlsKey.Secret.Key,
+										Path: cdb.Spec.CDBTlsKey.Secret.Key,
+									},
+								},
+							},
+						},
+
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.CDBTlsCrt.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  cdb.Spec.CDBTlsCrt.Secret.Key,
+										Path: cdb.Spec.CDBTlsCrt.Secret.Key,
+									},
+								},
+							},
+						},
+
+						/***/
 						{
 							Secret: &corev1.SecretProjection{
 								LocalObjectReference: corev1.LocalObjectReference{
@@ -417,6 +448,18 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 					{
 						Name:  "ORACLE_HOST",
 						Value: cdb.Spec.DBServer,
+					},
+					{
+						Name:  "TESTVAR",
+						Value: cdb.Spec.TestVariable,
+					},
+					{
+						Name:  "TLSCRT",
+						Value: cdb.Spec.CDBTlsCrt.Secret.Key,
+					},
+					{
+						Name:  "TLSKEY",
+						Value: cdb.Spec.CDBTlsKey.Secret.Key,
 					},
 					{
 						Name:  "ORACLE_PORT",
