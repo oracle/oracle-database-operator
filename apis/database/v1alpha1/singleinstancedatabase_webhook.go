@@ -271,11 +271,11 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 					"Please provide valid string to parse the tcpsCertRenewInterval."))
 		}
 		maxLimit, _ := time.ParseDuration("26280h")
-		minLimit, _ := time.ParseDuration("1m")
+		minLimit, _ := time.ParseDuration("5m")
 		if duration > maxLimit || duration < minLimit {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), r.Spec.TcpsCertRenewInterval,
-					"Please specify tcpsCertRenewInterval in the range: 1m to 26280h"))
+					"Please specify tcpsCertRenewInterval in the range: 5m to 26280h"))
 		}
 	}
 	if len(allErrs) == 0 {
