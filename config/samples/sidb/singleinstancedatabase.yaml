@@ -49,7 +49,7 @@ spec:
 
   ## TCPS Certificate Renewal Interval: The time after which TCPS certificate will be renewed if TCPS connections are enabled.
   ## tcpsCertRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 17520h, 8760h etc.
-  ## Maximum value is 26280h (3 years), Minimum value is 1m; Default value is 17520h (2 years)
+  ## Maximum value is 26280h (3 years), Minimum value is 5m; Default value is 17520h (2 years)
   ## If this field is commented out/removed from the yaml, it will disable the auto-renewal feature for TCPS certificate
   tcpsCertRenewInterval: 17520h
 

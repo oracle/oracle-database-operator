@@ -65,6 +65,8 @@ spec:
           spec:
             description: CDBSpec defines the desired state of CDB
             properties:
+              TestVariable:
+                type: string
               cdbAdminPwd:
                 description: Password for the CDB Administrator to manage PDB lifecycle
                 properties:
@@ -103,6 +105,38 @@ spec:
               cdbName:
                 description: Name of the CDB
                 type: string
+              cdbTlsCrt:
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbTlsKey:
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
               dbPort:
                 description: DB server port
                 type: integer
