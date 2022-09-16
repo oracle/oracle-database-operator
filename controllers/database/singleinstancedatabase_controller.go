@@ -674,7 +674,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						if m.Spec.ReadinessCheckPeriod > 0 {
 							return int32(m.Spec.ReadinessCheckPeriod)
 						}
-						return 30
+						return 60
 					}(),
 				},
 
@@ -1796,15 +1796,13 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 		return requeueY, readyPod, err
 	}
 	if readyPod.Name == "" {
-		eventReason := "Database Pending"
-		eventMsg := "status of database is not ready, retrying..."
 		m.Status.Status = dbcommons.StatusPending
 		if ok, _ := dbcommons.IsAnyPodWithStatus(available, corev1.PodFailed); ok {
-			eventReason = "Database Failed"
-			eventMsg = "pod creation failed"
+			eventReason := "Database Failed"
+			eventMsg := "pod creation failed"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 		} else if ok, runningPod := dbcommons.IsAnyPodWithStatus(available, corev1.PodRunning); ok {
-			eventReason = "Database Creating"
-			eventMsg = "database creation in progress..."
+			r.Log.Info("Database Creating...", "Name", m.Name)
 			m.Status.Status = dbcommons.StatusCreating
 			if m.Spec.CloneFrom != "" {
 				// Required since clone creates the datafiles under primary database SID folder
@@ -1823,18 +1821,20 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			r.Log.Info("GetCheckpointFileCMD Output : \n" + out)
 
 			if out != "" {
-				eventReason = "Database Unhealthy"
-				eventMsg = "datafiles exists"
+				eventReason := "Database Unhealthy"
+				eventMsg := "datafiles exists"
+				r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 				m.Status.DatafilesCreated = "true"
 				m.Status.Status = dbcommons.StatusNotReady
 				r.updateORDSStatus(m, ctx, req)
 			}
 
+		} else {
+			r.Log.Info("Database Pending...", "Name", m.Name)
 		}
-		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-		r.Log.Info(eventMsg)
+
 		// As No pod is ready now , turn on mode when pod is ready . so requeue the request
-		return requeueY, readyPod, errors.New(eventMsg)
+		return requeueY, readyPod, errors.New("no pod is ready currently")
 	}
 	if m.Status.DatafilesPatched != "true" {
 		eventReason := "Datapatch Pending"
