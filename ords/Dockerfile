@@ -10,7 +10,7 @@ FROM  container-registry.oracle.com/java/jdk:latest
 
 # Environment variables required for this build (do NOT change)
 # -------------------------------------------------------------
-ENV ORDS_HOME=/opt/oracle/ords \
+ENV ORDS_HOME=/opt/oracle/ords/ \
     RUN_FILE="runOrdsSSL.sh" 
 
 #RUN_FILE_NOSSL="runOrdsNOSSL.sh"
@@ -18,7 +18,7 @@ ENV ORDS_HOME=/opt/oracle/ords \
 # Copy binaries
 # -------------
 COPY   $RUN_FILE $ORDS_HOME 
-#COPY   $RUN_FILE_NOSSL $ORDS_HOME/
+#COPY   $RUN_FILE_NOSSL $ORDS_HOME
 
 RUN yum -y install yum-utils bind-utils tree hostname openssl net-tools zip unzip tar wget vim-minimal which sudo expect procps && \
     yum-config-manager --add-repo=http://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/x86_64 && \
