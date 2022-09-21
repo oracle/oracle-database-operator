@@ -520,14 +520,6 @@ Alternatively, you can use the following command:
 ```bash
 kubectl patch --type=merge singleinstancedatabases.database.oracle.com sidb-sample -p '{"spec": {"enableTCPS": true}}'
 ```
-
-When TCPS connections are enabled, a Kubernetes event is published notifying the same. This event can be seen by any one of the following commands:
-```bash
-kubectl describe singleinstancedatabases.database.oracle.com sidb-sample
-
-kubectl get events
-```
-
 Once TCPS connections are enabled, the database connect string will change accordingly. The TCPS connections status can also be queried by the following command:
 ```bash
 kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.isTcpsEnabled}"
@@ -548,26 +540,22 @@ The following steps are required to connect the Database using TCPS:
   ```bash
   sqlplus sys@ORCL1 as sysdba
   ```
-- Alternatively, you can use the following SQL\*Plus command to connect using TCPS without setting TNS_ADMIN environment variable:
-  ```bash
-  sqlplus sys@tcps://<TCPS Connect String>?wallet_location=<Downloaded Wallet Directory>
-  ```
-  Here, TCPS connect string can be found by using the following command:
-  ```bash
-  kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.TcpsConnectString}"
-  ```
 **NOTE:**
 - Only database server authentication is supported (no mTLS).
 - When TCPS is enabled, a self-signed certificate is generated and stored inside the wallets. For users' convenience, a client-side wallet is generated and stored at `/opt/oracle/oradata/clientWallet/$ORACLE_SID` location in the pod.
 - The self-signed certificate used with TCPS has validity for 2 years. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
-- You can set the certificate renew interval with the help of `tcpsCertRenewInterval` field in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 5m, and the maximum value is 26280h (3 years). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
+- You can set the certificate renew interval with the help of `tcpsCertRenewInterval` field in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 24h, and the maximum value is 26280h (3 years). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
+- When the certificate gets created/renewed, the `.status.certCreationTimestamp` status variable gets updated accordingly. You can see this timestamp by using the following command:
+  ```bash
+  kubectl get singleinstancedatabase sidb-sample  -o "jsonpath={.status.certCreationTimestamp}"
+  ```
 
 ### Specifying Custom Ports
 As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two kubernetes services possible for the database: NodePort and LoadBalancer. You can specify which port to use with these services by editing the `listenerPort` and `tcpsListenerPort` fields of the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
 `listenerPort` is intended for normal database connections. Similarly, `tcpsListenerPort` is intended for TCPS database connections.
 
-If the `LoadBalancer` is enabled, the `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Load Balancer for normal and TCPS database connections respectively.
+If the `LoadBalancer` is enabled, the `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Load Balancer for normal and TCPS database connections respectively. The default values of `listenerPort` and `tcpsListenerPort` are 1521 and 2484 respectively when the `LoadBalancer` is enabled. 
 
 In case of `NodePort` service, `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Kubernetes nodes for for normal and TCPS database connections respectively. In this case, the allowed range for the `listenerPort`, and `tcpsListenerPort` is 30000-32767.
 

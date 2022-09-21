@@ -250,10 +250,10 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	} else {
 		// LoadBalancer Service is expected.
-		if r.Spec.EnableTCPS && r.Spec.TcpsListenerPort == 0 && r.Spec.ListenerPort == 1522 {
+		if r.Spec.EnableTCPS && r.Spec.TcpsListenerPort == 0 && r.Spec.ListenerPort == int(dbcommons.CONTAINER_TCPS_PORT) {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("listenerPort"), r.Spec.ListenerPort,
-					"listenerPort can not be 1522 as the default port for tcpsListenerPort is 1522."))
+					"listenerPort can not be 2484 as the default port for tcpsListenerPort is 2484."))
 		}
 	}
 	if r.Spec.EnableTCPS && r.Spec.ListenerPort != 0 && r.Spec.TcpsListenerPort != 0 && r.Spec.ListenerPort == r.Spec.TcpsListenerPort {
@@ -271,11 +271,11 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 					"Please provide valid string to parse the tcpsCertRenewInterval."))
 		}
 		maxLimit, _ := time.ParseDuration("26280h")
-		minLimit, _ := time.ParseDuration("5m")
+		minLimit, _ := time.ParseDuration("24h")
 		if duration > maxLimit || duration < minLimit {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), r.Spec.TcpsCertRenewInterval,
-					"Please specify tcpsCertRenewInterval in the range: 5m to 26280h"))
+					"Please specify tcpsCertRenewInterval in the range: 24h to 26280h"))
 		}
 	}
 	if len(allErrs) == 0 {
