@@ -40,7 +40,7 @@ package commons
 
 const CONTAINER_LISTENER_PORT int32 = 1521
 
-const CONTAINER_TCPS_PORT int32 = 1522
+const CONTAINER_TCPS_PORT int32 = 2484
 
 const ORACLE_UID int64 = 54321
 
@@ -513,7 +513,7 @@ const LsnrPort string = "\"name\": \"listener\", \"protocol\": \"TCP\", \"port\"
 const LsnrNodePort string = "\"name\": \"listener\", \"protocol\": \"TCP\", \"port\": 1521, \"nodePort\": %d"
 
 // Payload section for TCPS port
-const TcpsPort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": %d, \"targetPort\": 1522"
+const TcpsPort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": %d, \"targetPort\": 2484"
 
 // Payload section for TCPS node port
-const TcpsNodePort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": 1522, \"nodePort\": %d"
+const TcpsNodePort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": 2484, \"nodePort\": %d"
