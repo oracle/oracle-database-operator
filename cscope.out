@@ -1,0 +1,2060 @@
+cscope 15 $HOME/WORKDIR/Ords22_operator/oracle-database-operator               0000008991
+	@Makefile
+
+1 #
+#C›yrighà(
+c
+Ë2022, 
+Oø˛e
+ 
+™d
+/
+‹
+ 
+ôs
+ 
+affûüãs
+.
+
+2 #Li˚n£d 
+undî
+ 
+the
+ 
+Univîßl
+ 
+Pîmissive
+ 
+Li˚n£
+ 
+v
+ 1.0 
+as
+ 
+shown
+ 
+©
+ 
+hâp
+:
+
+4 #Cuºíà
+O≥øt‹
+ 
+vîsi⁄
+
+
+5 
+	gVERSION
+ ?= 0.0.1
+
+6 #DeÁu… 
+bundÀ
+ 
+image
+ 
+èg
+
+
+7 
+BUNDLE_IMG
+ ?
+c⁄åﬁÀr
+-
+bundÀ
+:
+	$$
+(
+VERSION
+)
+
+9 
+	`i‚eq
+ (
+	`$
+(
+‹igö
+ 
+CHANNELS
+), 
+undeföed
+)
+
+10 
+BUNDLE_CHANNELS
+ :--
+ch™√ls
+=
+	$$
+(
+CHANNELS
+)
+
+11 
+ídif
+
+
+12 
+	`i‚eq
+ (
+	`$
+(
+‹igö
+ 
+DEFAULT_CHANNEL
+), 
+undeföed
+)
+
+13 
+BUNDLE_DEFAULT_CHANNEL
+ :---
+ch™√l
+=
+	$$
+(
+DEFAULT_CHANNEL
+)
+
+14 
+ídif
+
+
+15 
+BUNDLE_METADATA_OPTS
+ ?
+	`$
+(
+BUNDLE_CHANNELS
+Ë
+	$$
+(
+BUNDLE_DEFAULT_CHANNEL
+)
+
+17 #Imagê
+URL
+ 
+to
+ 
+u£
+ 
+Æl
+ 
+buûdög
+/
+pushög
+ 
+image
+ 
+èrgës
+
+
+18 
+IMG
+ ?
+c⁄åﬁÀr
+:
+œã°
+
+
+19 #Produ˚ 
+CRDs
+ 
+th©
+ 
+w‹k
+ 
+back
+ 
+to
+ 
+Kubî√ãs
+ 1.11 (
+no
+ 
+vîsi⁄
+ 
+c⁄vîsi⁄
+)
+
+20 #API 
+vîsi⁄
+ 
+has
+ 
+to
+ 
+be
+ 
+v1
+Åÿ
+u£
+ 
+	`deÁu…ög
+ (
+hâps
+:
+
+21 
+CRD_OPTIONS
+ ?= "crd:trivialVersions=true,preserveUnknownFields=false"
+
+22 #ENVTEST_K8S_VERSION 
+ª„rs
+ 
+to
+ 
+the
+ 
+vîsi⁄
+ 
+of
+ 
+kubebuûdî
+ 
+as£ts
+Åÿ
+be
+ 
+dow∆ﬂded
+ 
+by
+ 
+ívã°
+ 
+bö¨y
+.
+
+23 
+ENVTEST_K8S_VERSION
+ = 1.21
+
+24 #O≥øt‹ 
+YAML
+ 
+fûe
+
+
+25 
+OPERATOR_YAML
+=
+	`$$
+(
+ba£«me
+ $$(
+pwd
+)).
+yaml
+
+
+27 #Gë 
+the
+ 
+cuºíéy
+ 
+u£d
+ 
+gﬁ™g
+ 
+ö°Æl
+ 
+	`∑th
+ (
+ö
+ 
+GOPATH
+/
+bö
+, 
+u∆ess
+ 
+GOBIN
+ 
+is
+ 
+£t
+)
+
+28 
+	`i„q
+ (,
+	$$
+(
+shñl
+ 
+go
+ 
+ív
+ 
+GOBIN
+))
+
+29 
+GOBIN
+=
+	`$
+(
+shñl
+ 
+go
+ 
+ív
+ 
+GOPATH
+)/
+bö
+
+
+31 
+GOBIN
+=
+	$$
+(
+shñl
+ 
+go
+ 
+ív
+ 
+GOBIN
+)
+
+32 
+ídif
+
+
+34 #Sëtög 
+SHELL
+ 
+to
+ 
+bash
+ 
+Ælows
+ bash 
+comm™ds
+Åÿ
+be
+ 
+execuãd
+ 
+by
+ 
+ªcùes
+.
+
+35 #Thi†
+is
+ 
+a
+ 
+ªquúemít
+ '£tup-ívã°.sh' 
+ö
+ 
+the
+ 
+ã°
+ 
+èrgë
+.
+
+36 #O±i⁄†
+¨e
+ 
+£t
+ 
+to
+ 
+exô
+ 
+whí
+ 
+a
+ 
+ªcùe
+ 
+löe
+ 
+exôs
+ 
+n⁄
+-
+zîo
+ 
+‹
+á 
+pùed
+ 
+comm™d
+ 
+Áûs
+.
+
+37 
+SHELL
+ = /
+u§
+/
+bö
+/
+ív
+ 
+bash
+ -
+o
+ 
+pùeÁû
+
+
+38 .
+SHELLFLAGS
+ = -
+ec
+
+
+40 
+Æl
+: 
+buûd
+
+
+42 ##@ 
+Devñ›mít
+
+
+44 
+m™i„°s
+: 
+c⁄åﬁÀr
+-
+gí
+ ## 
+Gíî©e
+ 
+WebhookC⁄figuøti⁄
+, 
+Clu°îRﬁe
+ 
+™d
+ 
+Cu°omResour˚Deföôi⁄
+ 
+obje˘s
+.
+
+45 
+	`$
+(
+CONTROLLER_GEN
+Ë
+	$$
+(
+CRD_OPTIONS
+Ë
+rbac
+:
+rﬁeName
+=
+m™agî
+-
+rﬁe
+ 
+webhook
+ 
+∑ths
+="./..." 
+ouçut
+:
+¸d
+:
+¨tiÁ˘s
+:
+c⁄fig
+=c⁄fig/¸d/
+ba£s
+
+
+47 
+gíî©e
+: 
+c⁄åﬁÀr
+-
+gí
+ ## 
+Gíî©e
+ 
+code
+ 
+c⁄èöög
+ 
+DìpC›y
+, 
+DìpC›yI¡o
+, 
+™d
+ 
+DìpC›yObje˘
+ 
+mëhod
+ 
+im∂emíèti⁄s
+.
+
+48 
+	$$
+(
+CONTROLLER_GEN
+Ë
+obje˘
+:
+hódîFûe
+="hack/boûî∂©e.go.txt" 
+∑ths
+="./..."
+
+50 
+fmt
+: ## 
+Run
+ 
+go
+ fmà
+agaö°
+ 
+code
+.
+
+51 
+go
+ 
+fmt
+ ./...
+
+53 
+vë
+: ## 
+Run
+ 
+go
+ vë 
+agaö°
+ 
+code
+.
+
+54 
+go
+ 
+vë
+ ./...
+
+56 
+TEST
+ ?./
+≠is
+/
+d©aba£
+/
+v1Æpha1
+ ./
+comm⁄s
+/... ./
+c⁄åﬁÀrs
+/...
+
+57 
+ã°
+: 
+m™i„°s
+ 
+gíî©e
+ 
+fmt
+ 
+vë
+ 
+ívã°
+ ## 
+Run
+ 
+unô
+ 
+ã°s
+.
+
+58 
+KUBEBUILDER_ASSETS
+="$(shñ»$(ENVTESTËu£ $(ENVTEST_K8S_VERSIONË-∞∑th)" 
+go
+ 
+ã°
+ 
+	`$
+(
+TEST
+Ë-
+covî¥ofûe
+ 
+covî
+.
+out
+
+
+60 
+E2ETEST
+ ?./
+ã°
+/
+e2e
+/
+
+61 
+e2e
+: 
+m™i„°s
+ 
+gíî©e
+ 
+fmt
+ 
+vë
+ 
+ívã°
+ ## 
+Run
+É2ê
+ã°s
+.
+
+62 
+KUBEBUILDER_ASSETS
+="$(shñ»$(ENVTESTËu£ $(ENVTEST_K8S_VERSIONË-∞∑th)" 
+gökgo
+ -
+v
+ --
+timeout
+=2
+h30m
+ --
+Áû
+-
+Á°
+ 
+	$$
+(
+E2ETEST
+)
+
+64 ##@ 
+Buûd
+
+
+66 
+buûd
+: 
+gíî©e
+ 
+fmt
+ 
+vë
+ ## 
+Buûd
+ 
+m™agî
+ 
+bö¨y
+.
+
+67 
+go
+ 
+buûd
+ -
+o
+ 
+bö
+/
+m™agî
+ 
+maö
+.go
+
+69 
+run
+: 
+m™i„°s
+ 
+gíî©e
+ 
+fmt
+ 
+vë
+ ## 
+Run
+ 
+a
+ 
+c⁄åﬁÀr
+ 
+‰om
+ 
+your
+ 
+ho°
+.
+
+70 
+go
+ 
+run
+ ./
+maö
+.go
+
+72 
+dockî
+-
+buûd
+: 
+m™i„°s
+ 
+gíî©e
+ 
+fmt
+ 
+vë
+ #ã° ## 
+Buûd
+ dockî 
+image
+ 
+wôh
+ 
+the
+ 
+m™agî
+. 
+DißbÀ
+Åhê
+ã°
+ 
+but
+ 
+kìp
+Åhê
+vÆid©i⁄s
+ 
+to
+ 
+Áû
+ 
+Á°
+
+
+73 
+dockî
+ 
+buûd
+ --
+no
+-
+ˇche
+=
+åue
+ --buûd-
+¨g
+ 
+hâp_¥oxy
+=
+$
+{
+HTTP_PROXY
+} --buûd-¨g hâps_¥oxy=${HTTPS_PROXY} . -à${IMG}
+
+75 #dockî-
+buûd
+-
+¥oxy
+: 
+ã°
+
+
+76 #dockî 
+buûd
+ --buûd-
+¨g
+ 
+hâp_¥oxy
+=
+$
+{hâp_¥oxy} --buûd-¨g 
+hâps_¥oxy
+=${hâps_¥oxy} buûd . -
+t
+ ${
+IMG
+}
+
+78 
+dockî
+-
+push
+: ## 
+Push
+ dockî 
+image
+ 
+wôh
+ 
+the
+ 
+m™agî
+.
+
+79 
+dockî
+ 
+push
+ 
+$
+{
+IMG
+}
+
+81 ##@ 
+Dïloymít
+
+
+83 
+ö°Æl
+: 
+m™i„°s
+ 
+ku°omize
+ ## 
+In°Æl
+ 
+CRDs
+ 
+öto
+ 
+the
+ 
+K8s
+ 
+˛u°î
+ 
+•ecifõd
+ 
+ö
+ ~/.
+kube
+/
+c⁄fig
+.
+
+84 
+	$$
+(
+KUSTOMIZE
+Ë
+buûd
+ 
+c⁄fig
+/
+¸d
+ | 
+kube˘l
+ 
+≠∂y
+ -
+f
+ -
+
+86 
+unö°Æl
+: 
+m™i„°s
+ 
+ku°omize
+ ## 
+Unö°Æl
+ 
+CRDs
+ 
+‰om
+ 
+the
+ 
+K8s
+ 
+˛u°î
+ 
+•ecifõd
+ 
+ö
+ ~/.
+kube
+/
+c⁄fig
+.
+
+87 
+	$$
+(
+KUSTOMIZE
+Ë
+buûd
+ 
+c⁄fig
+/
+¸d
+ | 
+kube˘l
+ 
+dñëe
+ -
+f
+ -
+
+89 
+dïloy
+: 
+m™i„°s
+ 
+ku°omize
+ ## 
+Dïloy
+ 
+c⁄åﬁÀr
+ 
+to
+ 
+the
+ 
+K8s
+ 
+˛u°î
+ 
+•ecifõd
+ 
+ö
+ ~/.
+kube
+/
+c⁄fig
+.
+
+90 
+cd
+ 
+c⁄fig
+/
+m™agî
+ && 
+	$$
+(
+KUSTOMIZE
+Ë
+edô
+ 
+£t
+ 
+image
+ 
+c⁄åﬁÀr
+=
+$
+{
+IMG
+}
+
+91 
+	$$
+(
+KUSTOMIZE
+Ë
+buûd
+ 
+c⁄fig
+/ | 
+kube˘l
+ 
+≠∂y
+ -
+f
+ -
+
+94 #U£d 
+£d
+ 
+to
+ 
+ªposôi⁄
+ 
+the
+ 
+c⁄åﬁÀr
+-
+m™agî
+ 
+Dïloymít
+ 
+a·î
+Åhê
+˚πifiˇã
+ 
+¸óti⁄
+ 
+ö
+Åhê
+OPERATOR_YAML
+
+
+95 
+›î©‹
+-
+yaml
+: 
+m™i„°s
+ 
+ku°omize
+
+
+96 
+cd
+ 
+c⁄fig
+/
+m™agî
+ && 
+	$$
+(
+KUSTOMIZE
+Ë
+edô
+ 
+£t
+ 
+image
+ 
+c⁄åﬁÀr
+=
+$
+{
+IMG
+}
+
+97 
+	$$
+(
+KUSTOMIZE
+Ë
+buûd
+ 
+c⁄fig
+/ > "${OPERATOR_YAML}"
+
+98 
+£d
+ -
+i
+.
+bak
+ -
+e
+ '/^apiVersion:ápps\/v1/,/---/d' "${OPERATOR_YAML}"
+
+99 (
+echo
+ --- && 
+£d
+ '/^apiVersion:ápps\/v1/,/---/!d' "${OPERATOR_YAML}.bak") >> "${OPERATOR_YAML}"
+
+100 
+rm
+ "${OPERATOR_YAML}.bak"
+
+102 
+undïloy
+: ## 
+Undïloy
+ 
+c⁄åﬁÀr
+ 
+‰om
+ 
+the
+ 
+K8s
+ 
+˛u°î
+ 
+•ecifõd
+ 
+ö
+ ~/.
+kube
+/
+c⁄fig
+.
+
+103 
+	$$
+(
+KUSTOMIZE
+Ë
+buûd
+ 
+c⁄fig
+/ | 
+kube˘l
+ 
+dñëe
+ -
+f
+ -
+
+105 ##@ 
+Buûd
+ 
+Dïídícõs
+
+
+107 ## 
+Loˇti⁄
+ 
+to
+ 
+ö°Æl
+ 
+dïídícõs
+Åo
+
+108 
+LOCALBIN
+ ?
+	`$
+(
+shñl
+ 
+pwd
+)/
+bö
+
+
+109 
+	$$
+(
+LOCALBIN
+):
+
+110 
+mkdú
+ -
+p
+ 
+	$$
+(
+LOCALBIN
+)
+
+112 ## 
+Toﬁ
+ 
+Bö¨õs
+
+
+113 
+KUSTOMIZE
+ ?
+	`$
+(
+LOCALBIN
+)/
+ku°omize
+
+
+114 
+CONTROLLER_GEN
+ ?
+	`$
+(
+LOCALBIN
+)/
+c⁄åﬁÀr
+-
+gí
+
+
+115 
+ENVTEST
+ ?
+	`$
+(
+LOCALBIN
+)/
+£tup
+-
+ívã°
+
+
+117 ## 
+Toﬁ
+ 
+Vîsi⁄s
+
+
+118 
+KUSTOMIZE_VERSION
+ ?
+v3
+.8.7
+
+119 
+CONTROLLER_TOOLS_VERSION
+ ?
+v0
+.6.1
+
+121 
+KUSTOMIZE_INSTALL_SCRIPT
+ ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
+
+122 .
+PHONY
+: 
+ku°omize
+
+
+123 
+ku°omize
+: 
+	$$
+(
+KUSTOMIZE
+Ë## 
+Dow∆ﬂd
+ 
+ku°omize
+ 
+loˇŒy
+ 
+√˚sßry
+.
+
+124 
+	$$
+(
+KUSTOMIZE
+): 
+	$$
+(
+LOCALBIN
+)
+
+125 
+cuæ
+ -
+s
+ 
+	`$
+(
+KUSTOMIZE_INSTALL_SCRIPT
+Ë| 
+bash
+ -†-- $(
+sub°
+ 
+v
+,,$(
+KUSTOMIZE_VERSION
+)Ë$(
+LOCALBIN
+)
+
+127 .
+PHONY
+: 
+c⁄åﬁÀr
+-
+gí
+
+
+128 
+c⁄åﬁÀr
+-
+gí
+: 
+	$$
+(
+CONTROLLER_GEN
+Ë## 
+Dow∆ﬂd
+ 
+c⁄åﬁÀr
+-
+gí
+ 
+loˇŒy
+ 
+√˚sßry
+.
+
+129 
+	$$
+(
+CONTROLLER_GEN
+): 
+	$$
+(
+LOCALBIN
+)
+
+130 
+GOBIN
+=
+	$$
+(
+LOCALBIN
+Ë
+go
+ 
+ö°Æl
+ 
+sigs
+.
+k8s
+.
+io
+/
+c⁄åﬁÀr
+-
+toﬁs
+/
+cmd
+/c⁄åﬁÀr-
+gí
+@
+	`$
+(
+CONTROLLER_TOOLS_VERSION
+)
+
+132 .
+PHONY
+: 
+ívã°
+
+
+133 
+ívã°
+: 
+	$$
+(
+ENVTEST
+Ë## 
+Dow∆ﬂd
+ 
+ívã°
+-
+£tup
+ 
+loˇŒy
+ 
+√˚sßry
+.
+
+134 
+	$$
+(
+ENVTEST
+): 
+	$$
+(
+LOCALBIN
+)
+
+135 
+GOBIN
+=
+	$$
+(
+LOCALBIN
+Ë
+go
+ 
+ö°Æl
+ 
+sigs
+.
+k8s
+.
+io
+/
+c⁄åﬁÀr
+-
+ru¡ime
+/
+toﬁs
+/
+£tup
+-
+ívã°
+@
+œã°
+
+
+138 .
+PHONY
+: 
+bundÀ
+
+
+139 
+bundÀ
+: 
+m™i„°s
+ 
+ku°omize
+ ## 
+Gíî©e
+ bundÀ m™i„°†
+™d
+ 
+mëad©a
+, 
+thí
+ 
+vÆid©e
+ 
+gíî©ed
+ 
+fûes
+.
+
+140 
+›î©‹
+-
+sdk
+ 
+gíî©e
+ 
+ku°omize
+ 
+m™i„°s
+ -
+q
+
+
+141 
+cd
+ 
+c⁄fig
+/
+m™agî
+ && 
+	$$
+(
+KUSTOMIZE
+Ë
+edô
+ 
+£t
+ 
+image
+ 
+c⁄åﬁÀr
+=
+	`$
+(
+IMG
+)
+
+142 
+	$$
+(
+KUSTOMIZE
+Ë
+buûd
+ 
+c⁄fig
+/
+m™i„°s
+ | 
+›î©‹
+-
+sdk
+ 
+gíî©e
+ 
+bundÀ
+ -
+q
+ --
+ovîwrôe
+ --
+vîsi⁄
+ 
+	`$
+(
+VERSION
+Ë
+	$$
+(
+BUNDLE_METADATA_OPTS
+)
+
+143 
+›î©‹
+-
+sdk
+ 
+bundÀ
+ 
+vÆid©e
+ ./bundle
+
+145 .
+PHONY
+: 
+bundÀ
+-
+buûd
+
+
+146 
+bundÀ
+-
+buûd
+: ## 
+Buûd
+ 
+the
+ bundÀ 
+image
+.
+
+147 
+dockî
+ 
+buûd
+ -
+f
+ 
+bundÀ
+.
+Dockîfûe
+ -
+t
+ 
+	`$
+(
+BUNDLE_IMG
+) .
+
+149 .
+PHONY
+: 
+bundÀ
+-
+push
+
+
+150 
+bundÀ
+-
+push
+: ## 
+Push
+ 
+the
+ bundÀ 
+image
+.
+
+151 
+	$$
+(
+MAKE
+Ë
+dockî
+-
+push
+ 
+IMG
+=
+	`$
+(
+BUNDLE_IMG
+)
+
+153 .
+PHONY
+: 
+›m
+
+
+154 
+OPM
+ = ./
+bö
+/
+›m
+
+
+155 
+›m
+: ## 
+Dow∆ﬂd
+ opm 
+loˇŒy
+ 
+√˚sßry
+.
+
+156 
+	`i„q
+ (,
+	`$
+(
+wûdˇrd
+ 
+	$$
+(
+OPM
+)))
+
+157 
+	`i„q
+ (,
+	`$
+(
+shñl
+ 
+which
+ 
+›m
+ 2>/
+dev
+/
+nuŒ
+))
+
+159 
+£t
+ -
+e
+ ;\
+
+160 
+mkdú
+ -
+p
+ 
+	`$
+(
+dú
+ $(
+OPM
+)) ;\
+
+161 
+OS
+=
+	`$
+(
+shñl
+ 
+go
+ 
+ív
+ 
+GOOS
+Ë&& 
+ARCH
+=$(shñ»gÿív 
+GOARCH
+) && \
+
+162 
+cuæ
+ -
+sSLo
+ 
+	`$
+(
+OPM
+Ë
+hâps
+:
+
+163 
+chmod
+ +
+x
+ 
+	`$
+(
+OPM
+) ;\
+
+164 
+	}
+}
+
+166 
+	gOPM
+ = 
+	$$
+(
+shñl
+ 
+which
+ 
+›m
+)
+
+167 
+ídif
+
+
+168 
+ídif
+
+
+170 #A 
+comma
+-
+£∑øãd
+ 
+li°
+ 
+of
+ 
+bundÀ
+ 
+	`images
+ (
+e
+.
+g
+. 
+make
+ 
+ˇèlog
+-
+buûd
+ 
+BUNDLE_IMGS
+=
+exam∂e
+.
+com
+/
+›î©‹
+-bundÀ:
+v0
+.1.0,example.com/operator-bundle:v0.2.0).
+
+171 #The£ 
+images
+ 
+MUST
+ 
+exi°
+ 
+ö
+ 
+a
+ 
+ªgi°ry
+ 
+™d
+ 
+be
+ 
+puŒ
+-
+abÀ
+.
+
+172 
+BUNDLE_IMGS
+ ?
+	$$
+(
+BUNDLE_IMG
+)
+
+174 #Thê
+image
+ 
+èg
+ 
+giví
+ 
+to
+ 
+the
+ 
+ªsu…ög
+ 
+ˇèlog
+ 
+	`image
+ (
+e
+.
+g
+. 
+make
+ c©Æog-
+buûd
+ 
+CATALOG_IMG
+=
+exam∂e
+.
+com
+/
+›î©‹
+-ˇèlog:
+v0
+.2.0).
+
+175 
+CATALOG_IMG
+ ?
+	`$
+(
+IMAGE_TAG_BASE
+)-
+ˇèlog
+:
+	$v$
+(
+VERSION
+)
+
+177 #Së 
+CATALOG_BASE_IMG
+ 
+to
+ 
+™
+ 
+exi°ög
+ 
+ˇèlog
+ 
+image
+ 
+èg
+Åÿ
+add
+ 
+$BUNDLE_IMGS
+Åÿ
+th©
+ image.
+
+178 
+	`i‚eq
+ (
+	`$
+(
+‹igö
+ 
+CATALOG_BASE_IMG
+), 
+undeföed
+)
+
+179 
+FROM_INDEX_OPT
+ :--
+‰om
+-
+ödex
+ 
+	$$
+(
+CATALOG_BASE_IMG
+)
+
+180 
+ídif
+
+
+182 #Buûd 
+a
+ 
+ˇèlog
+ 
+image
+ 
+by
+ 
+addög
+ 
+bundÀ
+ 
+images
+ 
+to
+ 
+™
+ 
+em±y
+ c©Æog 
+usög
+ 
+the
+ 
+›î©‹
+ 
+∑ckage
+ 
+m™agî
+ 
+toﬁ
+, 'opm'.
+
+183 #Thi†
+ªcùe
+ 
+övokes
+ '›m' 
+ö
+ '£mvî' 
+bundÀ
+ 
+add
+ 
+mode
+. 
+F‹
+ 
+m‹e
+ 
+öf‹m©i⁄
+ 
+⁄
+ádd 
+modes
+, 
+£e
+:
+
+185 .
+PHONY
+: 
+ˇèlog
+-
+buûd
+
+
+186 
+ˇèlog
+-
+buûd
+: 
+›m
+ ## 
+Buûd
+ 
+a
+ c©Æog 
+image
+.
+
+187 
+	$$
+(
+OPM
+Ë
+ödex
+ 
+add
+ --
+c⁄èöî
+-
+toﬁ
+ 
+dockî
+ --
+mode
+ 
+£mvî
+ --
+èg
+ 
+	`$
+(
+CATALOG_IMG
+Ë--
+bundÀs
+ $(
+BUNDLE_IMGS
+Ë
+	$$
+(
+FROM_INDEX_OPT
+)
+
+189 #Push 
+the
+ 
+ˇèlog
+ 
+image
+.
+
+190 .
+PHONY
+: 
+ˇèlog
+-
+push
+
+
+191 
+ˇèlog
+-
+push
+: ## 
+Push
+ 
+a
+ c©Æog 
+image
+.
+
+192 
+	$$
+(
+MAKE
+Ë
+dockî
+-
+push
+ 
+IMG
+=
+	`$
+(
+CATALOG_IMG
+)
+
+	@
+1
+.
+1
+/usr/include
+1
+9
+Makefile
