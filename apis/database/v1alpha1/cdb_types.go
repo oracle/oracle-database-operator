@@ -52,7 +52,6 @@ type CDBSpec struct {
 	// Name of the CDB Service
 	ServiceName string `json:"serviceName,omitempty"`
 
-	TestVariable string `json:"TestVariable,omitempty"`
 
 	// Password for the CDB System Administrator
 	SysAdminPwd CDBSysAdminPassword `json:"sysAdminPwd,omitempty"`

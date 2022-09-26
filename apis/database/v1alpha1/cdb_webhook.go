@@ -92,11 +92,16 @@ func (r *CDB) ValidateCreate() error {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("serviceName"), "Please specify CDB Service name"))
 	}
+        
+        if reflect.ValueOf(r.Spec.CDBTlsKey).IsZero()  {
+                allErrs = append(allErrs,
+                        field.Required(field.NewPath("spec").Child("cdbTlsKey"), "Please specify CDB Tls key(secret)"))
+        }
 
-	if r.Spec.TestVariable == "" {
-		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("TestVariable"), "Please specify CDB testvarable"))
-	}
+        if reflect.ValueOf(r.Spec.CDBTlsCrt).IsZero()  {
+                allErrs = append(allErrs,
+                        field.Required(field.NewPath("spec").Child("cdbTlsCrt"), "Please specify CDB Tls Certificate(secret)"))
+        }
 
 	if r.Spec.SCANName == "" {
 		allErrs = append(allErrs,
