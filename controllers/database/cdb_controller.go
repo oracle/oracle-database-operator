@@ -286,7 +286,7 @@ func (r *CDBReconciler) validateORDSPods(ctx context.Context, req ctrl.Request, 
 			if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") ||
 				strings.Contains(out, "HTTP/2") || strings.Contains(strings.ToUpper(err.Error()), " HTTP/2") {
 				readyPods++
-			} else if strings.Contains(out, "HTTP/1.1 404 Not Found") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 404 NOT FOUND") {
+			} else if strings.Contains(out, "HTTP/1.1 404 Not Found") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 404 NOT FOUND") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/2 404") || strings.Contains(strings.ToUpper(err.Error()), "Failed to connect to localhost") {
 				// Check if DB connection parameters are correct
 				getORDSInstallStatus := " grep -q 'Failed to' /tmp/ords_install.log; echo $?;"
 				out, _ := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, false, "bash", "-c", getORDSInstallStatus)
@@ -448,10 +448,6 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 					{
 						Name:  "ORACLE_HOST",
 						Value: cdb.Spec.DBServer,
-					},
-					{
-						Name:  "TESTVAR",
-						Value: cdb.Spec.TestVariable,
 					},
 					{
 						Name:  "TLSCRT",

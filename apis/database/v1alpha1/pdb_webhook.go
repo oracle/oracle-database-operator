@@ -147,6 +147,21 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 
 	pdblog.Info("Valdiating PDB Resource Action : " + action)
 
+        if reflect.ValueOf(r.Spec.PDBTlsKey).IsZero() {
+                        *allErrs = append(*allErrs,
+                        field.Required(field.NewPath("spec").Child("pdbTlsKey"), "Please specify PDB Tls Key(secret)"))
+                }
+
+        if reflect.ValueOf(r.Spec.PDBTlsCrt).IsZero() {
+                        *allErrs = append(*allErrs,
+                        field.Required(field.NewPath("spec").Child("pdbTlsCrt"), "Please specify PDB Tls Certificate(secret)"))
+                }
+
+        if reflect.ValueOf(r.Spec.PDBTlsCat).IsZero() {
+                        *allErrs = append(*allErrs,
+                        field.Required(field.NewPath("spec").Child("pdbTlsCat"), "Please specify PDB Tls Certificate Authority(secret)"))
+                }
+     
 	switch action {
 	case "CREATE":
 		if reflect.ValueOf(r.Spec.AdminName).IsZero() {
