@@ -543,8 +543,8 @@ The following steps are required to connect the Database using TCPS:
 **NOTE:**
 - Only database server authentication is supported (no mTLS).
 - When TCPS is enabled, a self-signed certificate is generated and stored inside the wallets. For users' convenience, a client-side wallet is generated and stored at `/opt/oracle/oradata/clientWallet/$ORACLE_SID` location in the pod.
-- The self-signed certificate used with TCPS has validity for 2 years. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
-- You can set the certificate renew interval with the help of `tcpsCertRenewInterval` field in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 24h, and the maximum value is 26280h (3 years). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
+- The self-signed certificate used with TCPS has validity for 1 year. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
+- You can set the certificate renew interval with the help of `tcpsCertRenewInterval` field in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 24h, and the maximum value is 8760h (1 year). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
 - When the certificate gets created/renewed, the `.status.certCreationTimestamp` status variable gets updated accordingly. You can see this timestamp by using the following command:
   ```bash
   kubectl get singleinstancedatabase sidb-sample  -o "jsonpath={.status.certCreationTimestamp}"

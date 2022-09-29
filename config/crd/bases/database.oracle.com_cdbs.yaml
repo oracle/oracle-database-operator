@@ -65,8 +65,6 @@ spec:
           spec:
             description: CDBSpec defines the desired state of CDB
             properties:
-              TestVariable:
-                type: string
               cdbAdminPwd:
                 description: Password for the CDB Administrator to manage PDB lifecycle
                 properties:
