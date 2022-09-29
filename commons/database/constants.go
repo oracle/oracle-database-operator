@@ -501,10 +501,10 @@ const ClientWalletLocation string = "/opt/oracle/oradata/clientWallet/%s"
 
 // Service Patch Payloads
 // Three port payload: one OEM express, one TCP and one TCPS port
-const ThreePortPayload string = "{\"spec\": { \"ports\": [{\"name\": \"xmldb\", \"port\": 5500, \"protocol\": \"TCP\"},{%s},{%s}]}}"
+const ThreePortPayload string = "{\"spec\": { \"type\": \"%s\", \"ports\": [{\"name\": \"xmldb\", \"port\": 5500, \"protocol\": \"TCP\"},{%s},{%s}]}}"
 
 // Two port payload: one OEM express, one TCP/TCPS port
-const TwoPortPayload string = "{\"spec\": { \"ports\": [{\"name\": \"xmldb\", \"port\": 5500, \"protocol\": \"TCP\"},{%s}]}}"
+const TwoPortPayload string = "{\"spec\": { \"type\": \"%s\", \"ports\": [{\"name\": \"xmldb\", \"port\": 5500, \"protocol\": \"TCP\"},{%s}]}}"
 
 // Payload section for listener port
 const LsnrPort string = "\"name\": \"listener\", \"protocol\": \"TCP\", \"port\": %d, \"targetPort\": 1521"
