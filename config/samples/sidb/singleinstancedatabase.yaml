@@ -48,10 +48,10 @@ spec:
   enableTCPS: false
 
   ## TCPS Certificate Renewal Interval: The time after which TCPS certificate will be renewed if TCPS connections are enabled.
-  ## tcpsCertRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 17520h, 8760h etc.
-  ## Maximum value is 26280h (3 years), Minimum value is 24h; Default value is 17520h (2 years)
+  ## tcpsCertRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 4380h, 8760h etc.
+  ## Maximum value is 8760h (1 year), Minimum value is 24h; Default value is 8760h (1 year)
   ## If this field is commented out/removed from the yaml, it will disable the auto-renewal feature for TCPS certificate
-  tcpsCertRenewInterval: 17520h
+  tcpsCertRenewInterval: 8760h
 
   ## NA if cloning from a SourceDB (cloneFrom is set)
   ## Specify both sgaSize and pgaSize (in MB) or dont specify both

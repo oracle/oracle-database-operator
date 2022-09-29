@@ -1126,57 +1126,37 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			}
 		}
 
-		deleteSvc := false
 		patchSvc := false
-		if extSvc.Spec.Type != extSvcType {
-			deleteSvc = true
-		} else {
-			// Conditions to determine whether to patch or not
-			if len(extSvc.Spec.Ports) != requiredPorts {
-				patchSvc = true
-			}
 
-			if (m.Spec.ListenerPort != 0 && svcPort != targetPorts[1]) || (m.Spec.EnableTCPS && m.Spec.TcpsListenerPort != 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1]) {
-				patchSvc = true
-			}
-
-			if m.Spec.LoadBalancer {
-				if m.Spec.EnableTCPS {
-					if m.Spec.TcpsListenerPort == 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1] {
-						patchSvc = true
-					}
-				} else {
-					if m.Spec.ListenerPort == 0 && svcPort != targetPorts[1] {
-						patchSvc = true
-					}
-				}
-			} else {
-				if m.Spec.EnableTCPS {
-					if m.Spec.TcpsListenerPort == 0 && tcpsSvcPort != extSvc.Spec.Ports[len(targetPorts)-1].TargetPort.IntVal {
-						patchSvc = true
-					}
-				} else {
-					if m.Spec.ListenerPort == 0 && svcPort != extSvc.Spec.Ports[1].TargetPort.IntVal {
-						patchSvc = true
-					}
-				}
-			}
+		// Conditions to determine whether to patch or not
+		if extSvc.Spec.Type != extSvcType || len(extSvc.Spec.Ports) != requiredPorts {
+			patchSvc = true
 		}
 
-		if deleteSvc {
-			// Deleting th service
-			log.Info("Deleting service", "name", extSvcName)
-			// Setting GracePeriodSeconds to 0 for instant deletion
-			delOpts := &client.DeleteOptions{}
-			var gracePeriod client.GracePeriodSeconds = 0
-			gracePeriod.ApplyToDelete(delOpts)
+		if (m.Spec.ListenerPort != 0 && svcPort != targetPorts[1]) || (m.Spec.EnableTCPS && m.Spec.TcpsListenerPort != 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1]) {
+			patchSvc = true
+		}
 
-			err := r.Delete(ctx, extSvc, delOpts)
-			if err != nil {
-				r.Log.Error(err, "Failed to delete service", "name", extSvcName)
-				return requeueN, err
+		if m.Spec.LoadBalancer {
+			if m.Spec.EnableTCPS {
+				if m.Spec.TcpsListenerPort == 0 && tcpsSvcPort != targetPorts[len(targetPorts)-1] {
+					patchSvc = true
+				}
+			} else {
+				if m.Spec.ListenerPort == 0 && svcPort != targetPorts[1] {
+					patchSvc = true
+				}
 			}
-			isExtSvcFound = false
+		} else {
+			if m.Spec.EnableTCPS {
+				if m.Spec.TcpsListenerPort == 0 && tcpsSvcPort != extSvc.Spec.Ports[len(targetPorts)-1].TargetPort.IntVal {
+					patchSvc = true
+				}
+			} else {
+				if m.Spec.ListenerPort == 0 && svcPort != extSvc.Spec.Ports[1].TargetPort.IntVal {
+					patchSvc = true
+				}
+			}
 		}
 
 		if patchSvc {
@@ -1193,29 +1173,29 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			if m.Spec.LoadBalancer {
 				if m.Spec.EnableTCPS {
 					if m.Spec.ListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.ThreePortPayload, fmt.Sprintf(dbcommons.LsnrPort, svcPort), fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
+						payload = fmt.Sprintf(dbcommons.ThreePortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrPort, svcPort), fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
 					} else {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
+						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
 					}
 				} else {
-					payload = fmt.Sprintf(dbcommons.TwoPortPayload, fmt.Sprintf(dbcommons.LsnrPort, svcPort))
+					payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrPort, svcPort))
 				}
 			} else {
 				if m.Spec.EnableTCPS {
 					if m.Spec.ListenerPort != 0 && m.Spec.TcpsListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.ThreePortPayload, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort), fmt.Sprintf(dbcommons.TcpsNodePort, tcpsSvcPort))
+						payload = fmt.Sprintf(dbcommons.ThreePortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort), fmt.Sprintf(dbcommons.TcpsNodePort, tcpsSvcPort))
 					} else if m.Spec.ListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.ThreePortPayload, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort), fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
+						payload = fmt.Sprintf(dbcommons.ThreePortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort), fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
 					} else if m.Spec.TcpsListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, fmt.Sprintf(dbcommons.TcpsNodePort, tcpsSvcPort))
+						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.TcpsNodePort, tcpsSvcPort))
 					} else {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
+						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.TcpsPort, tcpsSvcPort))
 					}
 				} else {
 					if m.Spec.ListenerPort != 0 {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort))
+						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrNodePort, svcPort))
 					} else {
-						payload = fmt.Sprintf(dbcommons.TwoPortPayload, fmt.Sprintf(dbcommons.LsnrPort, svcPort))
+						payload = fmt.Sprintf(dbcommons.TwoPortPayload, extSvcType, fmt.Sprintf(dbcommons.LsnrPort, svcPort))
 					}
 				}
 			}
