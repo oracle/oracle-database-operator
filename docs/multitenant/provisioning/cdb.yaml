@@ -9,7 +9,6 @@ metadata:
   namespace: oracle-database-operator-system
 spec:
   cdbName: "goldcdb"
-  scanName: "goldhost-scan.lbsub52b3b1cae.okecluster.oraclevcn.com"
   dbServer: "goldhost1.lbsub52b3b1cae.okecluster.oraclevcn.com"
   ordsImage: phx.ocir.io/<repo_name>/oracle/ords:21.4.3
   ordsImagePullSecret: "container-registry-secret"
