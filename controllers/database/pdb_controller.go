@@ -444,10 +444,11 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	}
 
 	caCert := secret.Data[pdb.Spec.PDBTlsCat.Secret.Key]
-
+        /*
 	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaKeyPEM))
 	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaCertPEM))
 	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(caCert))
+        */
 
 	certificate, err := tls.X509KeyPair([]byte(rsaCertPEM), []byte(rsaKeyPEM))
 	if err != nil {
@@ -501,7 +502,6 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	if action == "GET" {
 		httpreq, err = http.NewRequest(action, url, nil)
 	} else {
-		fmt.Println("payload:", payload)
 		jsonValue, _ := json.Marshal(payload)
 		httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
 	}
@@ -641,7 +641,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' created successfully", pdb.Spec.PDBName)
 
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	log.Info("Created PDB Resource", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
 	return nil
@@ -695,7 +695,7 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' cloned successfully", pdb.Spec.PDBName)
 
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	log.Info("Cloned PDB successfully", "Source PDB Name", pdb.Spec.SrcPDBName, "Clone PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
 	return nil
@@ -763,7 +763,7 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' plugged successfully", pdb.Spec.PDBName)
 
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	log.Info("Successfully plugged PDB", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
 	return nil
@@ -883,7 +883,7 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 	}
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Modified", "PDB '%s' modified successfully", pdb.Spec.PDBName)
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 
 	log.Info("Successfully modified PDB state", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
@@ -970,7 +970,7 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 
 	pdb.Status.OpenMode = objmap["open_mode"].(string)
 	pdb.Status.TotalSize = fmt.Sprintf("%.2f", totSizeInGB) + "G"
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 
 	log.Info("Successfully mapped PDB to Kubernetes resource", "PDB Name", pdb.Spec.PDBName)
 	return nil

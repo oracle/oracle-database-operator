@@ -619,10 +619,6 @@ spec:
       jsonPath: .spec.dbPort
       name: DB Port
       type: integer
-    - description: SCAN Name
-      jsonPath: .spec.scanName
-      name: SCAN Name
-      type: string
     - description: Replicas
       jsonPath: .spec.replicas
       name: Replicas
@@ -651,8 +647,6 @@ spec:
           spec:
             description: CDBSpec defines the desired state of CDB
             properties:
-              TestVariable:
-                type: string
               cdbAdminPwd:
                 description: Password for the CDB Administrator to manage PDB lifecycle
                 properties:
@@ -768,9 +762,6 @@ spec:
               replicas:
                 description: Number of ORDS Containers to create
                 type: integer
-              scanName:
-                description: SCAN Name
-                type: string
               serviceName:
                 description: Name of the CDB Service
                 type: string
@@ -2031,8 +2022,15 @@ spec:
     - jsonPath: .status.connectString
       name: Connect Str
       type: string
+    - jsonPath: .status.tcpsConnectString
+      name: TCPS Connect Str
+      type: string
     - jsonPath: .status.pdbConnectString
       name: Pdb Connect Str
+      priority: 1
+      type: string
+    - jsonPath: .status.tcpsPdbConnectString
+      name: TCPS Pdb Connect Str
       priority: 1
       type: string
     - jsonPath: .status.oemExpressUrl
@@ -2079,6 +2077,8 @@ spec:
                 - enterprise
                 - express
                 type: string
+              enableTCPS:
+                type: boolean
               flashBack:
                 type: boolean
               forceLog:
@@ -2109,6 +2109,8 @@ spec:
                   sgaTarget:
                     type: integer
                 type: object
+              listenerPort:
+                type: integer
               loadBalancer:
                 type: boolean
               nodeSelector:
@@ -2149,6 +2151,10 @@ spec:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
+              tcpsCertRenewInterval:
+                type: string
+              tcpsListenerPort:
+                type: integer
             required:
             - image
             type: object
@@ -2159,7 +2165,13 @@ spec:
                 type: boolean
               archiveLog:
                 type: string
+              certCreationTimestamp:
+                type: string
+              certRenewInterval:
+                type: string
               charset:
+                type: string
+              clientWalletLoc:
                 type: string
               cloneFrom:
                 type: string
@@ -2241,6 +2253,9 @@ spec:
                 type: integer
               initSgaSize:
                 type: integer
+              isTcpsEnabled:
+                default: false
+                type: boolean
               nodes:
                 items:
                   type: string
@@ -2286,7 +2301,12 @@ spec:
                 type: object
               status:
                 type: string
+              tcpsConnectString:
+                type: string
+              tcpsPdbConnectString:
+                type: string
             required:
+            - isTcpsEnabled
             - persistence
             type: object
         type: object
@@ -3198,7 +3218,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: container-registry.oracle.com/database/operator:0.2.0
+        image: lin.ocir.io/intsanjaysingh/mmalvezz/testppr/myoperator:latest
         imagePullPolicy: Always
         name: manager
         ports:
