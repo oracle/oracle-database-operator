@@ -103,10 +103,11 @@ func (r *CDB) ValidateCreate() error {
                         field.Required(field.NewPath("spec").Child("cdbTlsCrt"), "Please specify CDB Tls Certificate(secret)"))
         }
 
-	if r.Spec.SCANName == "" {
+	/*if r.Spec.SCANName == "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("scanName"), "Please specify SCAN Name for CDB"))
-	}
+	}*/
+
 	if r.Spec.DBServer == "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbServer"), "Please specify Database Server Name or IP Address"))
