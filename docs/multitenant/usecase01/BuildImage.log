@@ -1,0 +1,487 @@
+/usr/bin/docker build -t oracle/ords-dboper:latest .
+Sending build context to Docker daemon  92.38MB
+Step 1/10 : FROM  container-registry.oracle.com/java/jdk:latest
+Trying to pull repository container-registry.oracle.com/java/jdk ...
+latest: Pulling from container-registry.oracle.com/java/jdk
+7cb069903b8a: Pull complete
+a98ca67f4239: Pull complete
+1b4060d1d804: Pull complete
+Digest: sha256:8e7161bbd6a3a3beb77ee6f2d80c17ae4c80d88e0f5af667a19a0271c33f1b5e
+Status: Downloaded newer image for container-registry.oracle.com/java/jdk:latest
+ ---> ad9ff1bbe92a
+Step 2/10 : ENV ORDS_HOME=/opt/oracle/ords/     RUN_FILE="runOrdsSSL.sh"
+ ---> Running in e6f76deab66e
+Removing intermediate container e6f76deab66e
+ ---> 0b26c489e4fd
+Step 3/10 : COPY   $RUN_FILE $ORDS_HOME
+ ---> ee472155adab
+Step 4/10 : RUN yum -y install yum-utils bind-utils tree hostname openssl net-tools zip unzip tar wget vim-minimal which sudo expect procps &&     yum-config-manager --add-repo=http://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/x86_64 &&     yum -y install java-11-openjdk-devel &&     yum -y install ords &&     yum -y install iproute &&     yum clean all
+ ---> Running in d38a69d2cc70
+Oracle Linux 8 BaseOS Latest (x86_64)           105 MB/s |  50 MB     00:00
+Oracle Linux 8 Application Stream (x86_64)       90 MB/s |  38 MB     00:00
+Last metadata expiration check: 0:00:07 ago on Mon 10 Oct 2022 04:06:15 PM UTC.
+Package yum-utils-4.0.21-11.0.1.el8.noarch is already installed.
+Package tar-2:1.30-5.el8.x86_64 is already installed.
+Package vim-minimal-2:8.0.1763-19.0.1.el8_6.4.x86_64 is already installed.
+Package procps-ng-3.3.15-6.0.1.el8.x86_64 is already installed.
+Dependencies resolved.
+================================================================================
+ Package          Arch     Version                    Repository           Size
+================================================================================
+Installing:
+ bind-utils       x86_64   32:9.11.36-3.el8_6.1       ol8_appstream       452 k
+ expect           x86_64   5.45.4-5.el8               ol8_baseos_latest   266 k
+ hostname         x86_64   3.20-6.el8                 ol8_baseos_latest    32 k
+ net-tools        x86_64   2.0-0.52.20160912git.el8   ol8_baseos_latest   322 k
+ openssl          x86_64   1:1.1.1k-7.el8_6           ol8_baseos_latest   709 k
+ sudo             x86_64   1.8.29-8.el8               ol8_baseos_latest   925 k
+ tree             x86_64   1.7.0-15.el8               ol8_baseos_latest    59 k
+ unzip            x86_64   6.0-46.0.1.el8             ol8_baseos_latest   196 k
+ wget             x86_64   1.19.5-10.0.1.el8          ol8_appstream       734 k
+ which            x86_64   2.21-17.el8                ol8_baseos_latest    49 k
+ zip              x86_64   3.0-23.el8                 ol8_baseos_latest   270 k
+Installing dependencies:
+ bind-libs        x86_64   32:9.11.36-3.el8_6.1       ol8_appstream       175 k
+ bind-libs-lite   x86_64   32:9.11.36-3.el8_6.1       ol8_appstream       1.2 M
+ bind-license     noarch   32:9.11.36-3.el8_6.1       ol8_appstream       103 k
+ fstrm            x86_64   0.6.1-2.el8                ol8_appstream        29 k
+ libmaxminddb     x86_64   1.2.0-10.el8               ol8_appstream        33 k
+ libmetalink      x86_64   0.1.3-7.el8                ol8_baseos_latest    32 k
+ protobuf-c       x86_64   1.3.0-6.el8                ol8_appstream        37 k
+ python3-bind     noarch   32:9.11.36-3.el8_6.1       ol8_appstream       150 k
+ python3-ply      noarch   3.9-9.el8                  ol8_baseos_latest   111 k
+ tcl              x86_64   1:8.6.8-2.el8              ol8_baseos_latest   1.1 M
+
+Transaction Summary
+================================================================================
+Install  21 Packages
+
+Total download size: 6.9 M
+Installed size: 20 M
+Downloading Packages:
+(1/21): hostname-3.20-6.el8.x86_64.rpm          555 kB/s |  32 kB     00:00
+(2/21): libmetalink-0.1.3-7.el8.x86_64.rpm      492 kB/s |  32 kB     00:00
+(3/21): expect-5.45.4-5.el8.x86_64.rpm          3.2 MB/s | 266 kB     00:00
+(4/21): python3-ply-3.9-9.el8.noarch.rpm        5.5 MB/s | 111 kB     00:00
+(5/21): net-tools-2.0-0.52.20160912git.el8.x86_ 6.7 MB/s | 322 kB     00:00
+(6/21): openssl-1.1.1k-7.el8_6.x86_64.rpm        12 MB/s | 709 kB     00:00
+(7/21): tree-1.7.0-15.el8.x86_64.rpm            4.1 MB/s |  59 kB     00:00
+(8/21): sudo-1.8.29-8.el8.x86_64.rpm             19 MB/s | 925 kB     00:00
+(9/21): which-2.21-17.el8.x86_64.rpm            2.5 MB/s |  49 kB     00:00
+(10/21): unzip-6.0-46.0.1.el8.x86_64.rpm        5.9 MB/s | 196 kB     00:00
+(11/21): tcl-8.6.8-2.el8.x86_64.rpm              15 MB/s | 1.1 MB     00:00
+(12/21): zip-3.0-23.el8.x86_64.rpm               15 MB/s | 270 kB     00:00
+(13/21): bind-libs-9.11.36-3.el8_6.1.x86_64.rpm 7.9 MB/s | 175 kB     00:00
+(14/21): bind-license-9.11.36-3.el8_6.1.noarch. 4.9 MB/s | 103 kB     00:00
+(15/21): bind-utils-9.11.36-3.el8_6.1.x86_64.rp  21 MB/s | 452 kB     00:00
+(16/21): bind-libs-lite-9.11.36-3.el8_6.1.x86_6  28 MB/s | 1.2 MB     00:00
+(17/21): libmaxminddb-1.2.0-10.el8.x86_64.rpm   1.8 MB/s |  33 kB     00:00
+(18/21): fstrm-0.6.1-2.el8.x86_64.rpm           1.0 MB/s |  29 kB     00:00
+(19/21): protobuf-c-1.3.0-6.el8.x86_64.rpm      1.4 MB/s |  37 kB     00:00
+(20/21): python3-bind-9.11.36-3.el8_6.1.noarch. 9.2 MB/s | 150 kB     00:00
+(21/21): wget-1.19.5-10.0.1.el8.x86_64.rpm      7.5 MB/s | 734 kB     00:00
+--------------------------------------------------------------------------------
+Total                                            20 MB/s | 6.9 MB     00:00
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+Transaction test succeeded.
+Running transaction
+  Preparing        :                                                        1/1
+  Installing       : protobuf-c-1.3.0-6.el8.x86_64                         1/21
+  Installing       : libmaxminddb-1.2.0-10.el8.x86_64                      2/21
+  Running scriptlet: libmaxminddb-1.2.0-10.el8.x86_64                      2/21
+  Installing       : fstrm-0.6.1-2.el8.x86_64                              3/21
+  Installing       : bind-license-32:9.11.36-3.el8_6.1.noarch              4/21
+  Installing       : bind-libs-lite-32:9.11.36-3.el8_6.1.x86_64            5/21
+  Installing       : bind-libs-32:9.11.36-3.el8_6.1.x86_64                 6/21
+  Installing       : unzip-6.0-46.0.1.el8.x86_64                           7/21
+  Installing       : tcl-1:8.6.8-2.el8.x86_64                              8/21
+  Running scriptlet: tcl-1:8.6.8-2.el8.x86_64                              8/21
+  Installing       : python3-ply-3.9-9.el8.noarch                          9/21
+  Installing       : python3-bind-32:9.11.36-3.el8_6.1.noarch             10/21
+  Installing       : libmetalink-0.1.3-7.el8.x86_64                       11/21
+  Installing       : wget-1.19.5-10.0.1.el8.x86_64                        12/21
+  Running scriptlet: wget-1.19.5-10.0.1.el8.x86_64                        12/21
+  Installing       : bind-utils-32:9.11.36-3.el8_6.1.x86_64               13/21
+  Installing       : expect-5.45.4-5.el8.x86_64                           14/21
+  Installing       : zip-3.0-23.el8.x86_64                                15/21
+  Installing       : which-2.21-17.el8.x86_64                             16/21
+  Installing       : tree-1.7.0-15.el8.x86_64                             17/21
+  Installing       : sudo-1.8.29-8.el8.x86_64                             18/21
+  Running scriptlet: sudo-1.8.29-8.el8.x86_64                             18/21
+  Installing       : openssl-1:1.1.1k-7.el8_6.x86_64                      19/21
+  Installing       : net-tools-2.0-0.52.20160912git.el8.x86_64            20/21
+  Running scriptlet: net-tools-2.0-0.52.20160912git.el8.x86_64            20/21
+  Installing       : hostname-3.20-6.el8.x86_64                           21/21
+  Running scriptlet: hostname-3.20-6.el8.x86_64                           21/21
+  Verifying        : expect-5.45.4-5.el8.x86_64                            1/21
+  Verifying        : hostname-3.20-6.el8.x86_64                            2/21
+  Verifying        : libmetalink-0.1.3-7.el8.x86_64                        3/21
+  Verifying        : net-tools-2.0-0.52.20160912git.el8.x86_64             4/21
+  Verifying        : openssl-1:1.1.1k-7.el8_6.x86_64                       5/21
+  Verifying        : python3-ply-3.9-9.el8.noarch                          6/21
+  Verifying        : sudo-1.8.29-8.el8.x86_64                              7/21
+  Verifying        : tcl-1:8.6.8-2.el8.x86_64                              8/21
+  Verifying        : tree-1.7.0-15.el8.x86_64                              9/21
+  Verifying        : unzip-6.0-46.0.1.el8.x86_64                          10/21
+  Verifying        : which-2.21-17.el8.x86_64                             11/21
+  Verifying        : zip-3.0-23.el8.x86_64                                12/21
+  Verifying        : bind-libs-32:9.11.36-3.el8_6.1.x86_64                13/21
+  Verifying        : bind-libs-lite-32:9.11.36-3.el8_6.1.x86_64           14/21
+  Verifying        : bind-license-32:9.11.36-3.el8_6.1.noarch             15/21
+  Verifying        : bind-utils-32:9.11.36-3.el8_6.1.x86_64               16/21
+  Verifying        : fstrm-0.6.1-2.el8.x86_64                             17/21
+  Verifying        : libmaxminddb-1.2.0-10.el8.x86_64                     18/21
+  Verifying        : protobuf-c-1.3.0-6.el8.x86_64                        19/21
+  Verifying        : python3-bind-32:9.11.36-3.el8_6.1.noarch             20/21
+  Verifying        : wget-1.19.5-10.0.1.el8.x86_64                        21/21
+
+Installed:
+  bind-libs-32:9.11.36-3.el8_6.1.x86_64
+  bind-libs-lite-32:9.11.36-3.el8_6.1.x86_64
+  bind-license-32:9.11.36-3.el8_6.1.noarch
+  bind-utils-32:9.11.36-3.el8_6.1.x86_64
+  expect-5.45.4-5.el8.x86_64
+  fstrm-0.6.1-2.el8.x86_64
+  hostname-3.20-6.el8.x86_64
+  libmaxminddb-1.2.0-10.el8.x86_64
+  libmetalink-0.1.3-7.el8.x86_64
+  net-tools-2.0-0.52.20160912git.el8.x86_64
+  openssl-1:1.1.1k-7.el8_6.x86_64
+  protobuf-c-1.3.0-6.el8.x86_64
+  python3-bind-32:9.11.36-3.el8_6.1.noarch
+  python3-ply-3.9-9.el8.noarch
+  sudo-1.8.29-8.el8.x86_64
+  tcl-1:8.6.8-2.el8.x86_64
+  tree-1.7.0-15.el8.x86_64
+  unzip-6.0-46.0.1.el8.x86_64
+  wget-1.19.5-10.0.1.el8.x86_64
+  which-2.21-17.el8.x86_64
+  zip-3.0-23.el8.x86_64
+
+Complete!
+Adding repo from: http://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/x86_64
+created by dnf config-manager from http://yum.o 194 kB/s |  49 kB     00:00
+Dependencies resolved.
+=============================================================================================
+ Package                    Arch    Version                          Repository          Size
+=============================================================================================
+Installing:
+ java-11-openjdk-devel      x86_64  1:11.0.16.1.1-1.el8_6            ol8_appstream      3.4 M
+Installing dependencies:
+ alsa-lib                   x86_64  1.2.6.1-3.el8                    ol8_appstream      491 k
+ avahi-libs                 x86_64  0.7-20.el8                       ol8_baseos_latest   62 k
+ copy-jdk-configs           noarch  4.0-2.el8                        ol8_appstream       30 k
+ crypto-policies-scripts    noarch  20211116-1.gitae470d6.el8        ol8_baseos_latest   83 k
+ cups-libs                  x86_64  1:2.2.6-45.el8_6.2               ol8_baseos_latest  434 k
+ giflib                     x86_64  5.1.4-3.el8                      ol8_appstream       51 k
+ graphite2                  x86_64  1.3.10-10.el8                    ol8_appstream      122 k
+ harfbuzz                   x86_64  1.7.5-3.el8                      ol8_appstream      295 k
+ java-11-openjdk            x86_64  1:11.0.16.1.1-1.el8_6            ol8_appstream      272 k
+ java-11-openjdk-headless   x86_64  1:11.0.16.1.1-1.el8_6            ol8_appstream       40 M
+ javapackages-filesystem    noarch  5.3.0-1.module+el8+5136+7ff78f74 ol8_appstream       30 k
+ lcms2                      x86_64  2.9-2.el8                        ol8_appstream      164 k
+ libX11                     x86_64  1.6.8-5.el8                      ol8_appstream      611 k
+ libX11-common              noarch  1.6.8-5.el8                      ol8_appstream      158 k
+ libXau                     x86_64  1.0.9-3.el8                      ol8_appstream       37 k
+ libXcomposite              x86_64  0.4.4-14.el8                     ol8_appstream       28 k
+ libXext                    x86_64  1.3.4-1.el8                      ol8_appstream       45 k
+ libXi                      x86_64  1.7.10-1.el8                     ol8_appstream       49 k
+ libXrender                 x86_64  0.9.10-7.el8                     ol8_appstream       33 k
+ libXtst                    x86_64  1.2.3-7.el8                      ol8_appstream       22 k
+ libfontenc                 x86_64  1.1.3-8.el8                      ol8_appstream       37 k
+ libjpeg-turbo              x86_64  1.5.3-12.el8                     ol8_appstream      157 k
+ libpkgconf                 x86_64  1.4.2-1.el8                      ol8_baseos_latest   35 k
+ libxcb                     x86_64  1.13.1-1.el8                     ol8_appstream      231 k
+ lksctp-tools               x86_64  1.0.18-3.el8                     ol8_baseos_latest  100 k
+ lua                        x86_64  5.3.4-12.el8                     ol8_appstream      192 k
+ nspr                       x86_64  4.34.0-3.el8_6                   ol8_appstream      143 k
+ nss                        x86_64  3.79.0-10.el8_6                  ol8_appstream      747 k
+ nss-softokn                x86_64  3.79.0-10.el8_6                  ol8_appstream      1.2 M
+ nss-softokn-freebl         x86_64  3.79.0-10.el8_6                  ol8_appstream      398 k
+ nss-sysinit                x86_64  3.79.0-10.el8_6                  ol8_appstream       74 k
+ nss-util                   x86_64  3.79.0-10.el8_6                  ol8_appstream      138 k
+ pkgconf                    x86_64  1.4.2-1.el8                      ol8_baseos_latest   38 k
+ pkgconf-m4                 noarch  1.4.2-1.el8                      ol8_baseos_latest   17 k
+ pkgconf-pkg-config         x86_64  1.4.2-1.el8                      ol8_baseos_latest   15 k
+ ttmkfdir                   x86_64  3.0.9-54.el8                     ol8_appstream       62 k
+ tzdata-java                noarch  2022d-1.el8                      ol8_appstream      186 k
+ xorg-x11-font-utils        x86_64  1:7.5-41.el8                     ol8_appstream      104 k
+ xorg-x11-fonts-Type1       noarch  7.5-19.el8                       ol8_appstream      522 k
+Enabling module streams:
+ javapackages-runtime               201801
+
+Transaction Summary
+=============================================================================================
+Install  40 Packages
+
+Total download size: 50 M
+Installed size: 196 M
+Downloading Packages:
+(1/40): crypto-policies-scripts-20211116-1.gita 1.3 MB/s |  83 kB     00:00
+(2/40): avahi-libs-0.7-20.el8.x86_64.rpm        879 kB/s |  62 kB     00:00
+(3/40): libpkgconf-1.4.2-1.el8.x86_64.rpm       2.0 MB/s |  35 kB     00:00
+(4/40): cups-libs-2.2.6-45.el8_6.2.x86_64.rpm   4.5 MB/s | 434 kB     00:00
+(5/40): lksctp-tools-1.0.18-3.el8.x86_64.rpm    3.7 MB/s | 100 kB     00:00
+(6/40): pkgconf-1.4.2-1.el8.x86_64.rpm          2.2 MB/s |  38 kB     00:00
+(7/40): pkgconf-m4-1.4.2-1.el8.noarch.rpm       1.2 MB/s |  17 kB     00:00
+(8/40): pkgconf-pkg-config-1.4.2-1.el8.x86_64.r 929 kB/s |  15 kB     00:00
+(9/40): copy-jdk-configs-4.0-2.el8.noarch.rpm   2.2 MB/s |  30 kB     00:00
+(10/40): giflib-5.1.4-3.el8.x86_64.rpm          3.3 MB/s |  51 kB     00:00
+(11/40): graphite2-1.3.10-10.el8.x86_64.rpm     7.7 MB/s | 122 kB     00:00
+(12/40): alsa-lib-1.2.6.1-3.el8.x86_64.rpm       12 MB/s | 491 kB     00:00
+(13/40): java-11-openjdk-11.0.16.1.1-1.el8_6.x8  14 MB/s | 272 kB     00:00
+(14/40): harfbuzz-1.7.5-3.el8.x86_64.rpm        8.7 MB/s | 295 kB     00:00
+(15/40): javapackages-filesystem-5.3.0-1.module 2.0 MB/s |  30 kB     00:00
+(16/40): lcms2-2.9-2.el8.x86_64.rpm             6.7 MB/s | 164 kB     00:00
+(17/40): java-11-openjdk-devel-11.0.16.1.1-1.el  46 MB/s | 3.4 MB     00:00
+(18/40): libX11-common-1.6.8-5.el8.noarch.rpm   8.4 MB/s | 158 kB     00:00
+(19/40): libX11-1.6.8-5.el8.x86_64.rpm           17 MB/s | 611 kB     00:00
+(20/40): libXau-1.0.9-3.el8.x86_64.rpm          2.6 MB/s |  37 kB     00:00
+(21/40): libXcomposite-0.4.4-14.el8.x86_64.rpm  2.0 MB/s |  28 kB     00:00
+(22/40): libXi-1.7.10-1.el8.x86_64.rpm          2.2 MB/s |  49 kB     00:00
+(23/40): libXext-1.3.4-1.el8.x86_64.rpm         1.6 MB/s |  45 kB     00:00
+(24/40): libXtst-1.2.3-7.el8.x86_64.rpm         1.1 MB/s |  22 kB     00:00
+(25/40): libXrender-0.9.10-7.el8.x86_64.rpm     1.3 MB/s |  33 kB     00:00
+(26/40): libfontenc-1.1.3-8.el8.x86_64.rpm      2.2 MB/s |  37 kB     00:00
+(27/40): libjpeg-turbo-1.5.3-12.el8.x86_64.rpm  8.6 MB/s | 157 kB     00:00
+(28/40): libxcb-1.13.1-1.el8.x86_64.rpm          13 MB/s | 231 kB     00:00
+(29/40): lua-5.3.4-12.el8.x86_64.rpm             11 MB/s | 192 kB     00:00
+(30/40): nspr-4.34.0-3.el8_6.x86_64.rpm         7.8 MB/s | 143 kB     00:00
+(31/40): nss-3.79.0-10.el8_6.x86_64.rpm          23 MB/s | 747 kB     00:00
+(32/40): nss-softokn-3.79.0-10.el8_6.x86_64.rpm  42 MB/s | 1.2 MB     00:00
+(33/40): nss-softokn-freebl-3.79.0-10.el8_6.x86  19 MB/s | 398 kB     00:00
+(34/40): nss-sysinit-3.79.0-10.el8_6.x86_64.rpm 5.3 MB/s |  74 kB     00:00
+(35/40): nss-util-3.79.0-10.el8_6.x86_64.rpm    8.7 MB/s | 138 kB     00:00
+(36/40): ttmkfdir-3.0.9-54.el8.x86_64.rpm       4.2 MB/s |  62 kB     00:00
+(37/40): tzdata-java-2022d-1.el8.noarch.rpm      11 MB/s | 186 kB     00:00
+(38/40): xorg-x11-font-utils-7.5-41.el8.x86_64. 6.7 MB/s | 104 kB     00:00
+(39/40): xorg-x11-fonts-Type1-7.5-19.el8.noarch  24 MB/s | 522 kB     00:00
+(40/40): java-11-openjdk-headless-11.0.16.1.1-1  77 MB/s |  40 MB     00:00
+--------------------------------------------------------------------------------
+Total                                            74 MB/s |  50 MB     00:00
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+Transaction test succeeded.
+Running transaction
+  Running scriptlet: copy-jdk-configs-4.0-2.el8.noarch                      1/1
+  Running scriptlet: java-11-openjdk-headless-1:11.0.16.1.1-1.el8_6.x86_6   1/1
+  Preparing        :                                                        1/1
+  Installing       : nspr-4.34.0-3.el8_6.x86_64                            1/40
+  Running scriptlet: nspr-4.34.0-3.el8_6.x86_64                            1/40
+  Installing       : nss-util-3.79.0-10.el8_6.x86_64                       2/40
+  Installing       : libjpeg-turbo-1.5.3-12.el8.x86_64                     3/40
+  Installing       : nss-softokn-freebl-3.79.0-10.el8_6.x86_64             4/40
+  Installing       : nss-softokn-3.79.0-10.el8_6.x86_64                    5/40
+  Installing       : tzdata-java-2022d-1.el8.noarch                        6/40
+  Installing       : ttmkfdir-3.0.9-54.el8.x86_64                          7/40
+  Installing       : lua-5.3.4-12.el8.x86_64                               8/40
+  Installing       : copy-jdk-configs-4.0-2.el8.noarch                     9/40
+  Installing       : libfontenc-1.1.3-8.el8.x86_64                        10/40
+  Installing       : libXau-1.0.9-3.el8.x86_64                            11/40
+  Installing       : libxcb-1.13.1-1.el8.x86_64                           12/40
+  Installing       : libX11-common-1.6.8-5.el8.noarch                     13/40
+  Installing       : libX11-1.6.8-5.el8.x86_64                            14/40
+  Installing       : libXext-1.3.4-1.el8.x86_64                           15/40
+  Installing       : libXi-1.7.10-1.el8.x86_64                            16/40
+  Installing       : libXtst-1.2.3-7.el8.x86_64                           17/40
+  Installing       : libXcomposite-0.4.4-14.el8.x86_64                    18/40
+  Installing       : libXrender-0.9.10-7.el8.x86_64                       19/40
+  Installing       : lcms2-2.9-2.el8.x86_64                               20/40
+  Running scriptlet: lcms2-2.9-2.el8.x86_64                               20/40
+  Installing       : javapackages-filesystem-5.3.0-1.module+el8+5136+7f   21/40
+  Installing       : graphite2-1.3.10-10.el8.x86_64                       22/40
+  Installing       : harfbuzz-1.7.5-3.el8.x86_64                          23/40
+  Running scriptlet: harfbuzz-1.7.5-3.el8.x86_64                          23/40
+  Installing       : giflib-5.1.4-3.el8.x86_64                            24/40
+  Installing       : alsa-lib-1.2.6.1-3.el8.x86_64                        25/40
+  Running scriptlet: alsa-lib-1.2.6.1-3.el8.x86_64                        25/40
+  Installing       : pkgconf-m4-1.4.2-1.el8.noarch                        26/40
+  Installing       : lksctp-tools-1.0.18-3.el8.x86_64                     27/40
+  Running scriptlet: lksctp-tools-1.0.18-3.el8.x86_64                     27/40
+  Installing       : libpkgconf-1.4.2-1.el8.x86_64                        28/40
+  Installing       : pkgconf-1.4.2-1.el8.x86_64                           29/40
+  Installing       : pkgconf-pkg-config-1.4.2-1.el8.x86_64                30/40
+  Installing       : xorg-x11-font-utils-1:7.5-41.el8.x86_64              31/40
+  Installing       : xorg-x11-fonts-Type1-7.5-19.el8.noarch               32/40
+  Running scriptlet: xorg-x11-fonts-Type1-7.5-19.el8.noarch               32/40
+  Installing       : crypto-policies-scripts-20211116-1.gitae470d6.el8.   33/40
+  Installing       : nss-sysinit-3.79.0-10.el8_6.x86_64                   34/40
+  Installing       : nss-3.79.0-10.el8_6.x86_64                           35/40
+  Installing       : avahi-libs-0.7-20.el8.x86_64                         36/40
+  Installing       : cups-libs-1:2.2.6-45.el8_6.2.x86_64                  37/40
+  Installing       : java-11-openjdk-headless-1:11.0.16.1.1-1.el8_6.x86   38/40
+  Running scriptlet: java-11-openjdk-headless-1:11.0.16.1.1-1.el8_6.x86   38/40
+  Installing       : java-11-openjdk-1:11.0.16.1.1-1.el8_6.x86_64         39/40
+  Running scriptlet: java-11-openjdk-1:11.0.16.1.1-1.el8_6.x86_64         39/40
+  Installing       : java-11-openjdk-devel-1:11.0.16.1.1-1.el8_6.x86_64   40/40
+  Running scriptlet: java-11-openjdk-devel-1:11.0.16.1.1-1.el8_6.x86_64   40/40
+  Running scriptlet: copy-jdk-configs-4.0-2.el8.noarch                    40/40
+  Running scriptlet: crypto-policies-scripts-20211116-1.gitae470d6.el8.   40/40
+  Running scriptlet: nss-3.79.0-10.el8_6.x86_64                           40/40
+  Running scriptlet: java-11-openjdk-headless-1:11.0.16.1.1-1.el8_6.x86   40/40
+  Running scriptlet: java-11-openjdk-1:11.0.16.1.1-1.el8_6.x86_64         40/40
+  Running scriptlet: java-11-openjdk-devel-1:11.0.16.1.1-1.el8_6.x86_64   40/40
+  Verifying        : avahi-libs-0.7-20.el8.x86_64                          1/40
+  Verifying        : crypto-policies-scripts-20211116-1.gitae470d6.el8.    2/40
+  Verifying        : cups-libs-1:2.2.6-45.el8_6.2.x86_64                   3/40
+  Verifying        : libpkgconf-1.4.2-1.el8.x86_64                         4/40
+  Verifying        : lksctp-tools-1.0.18-3.el8.x86_64                      5/40
+  Verifying        : pkgconf-1.4.2-1.el8.x86_64                            6/40
+  Verifying        : pkgconf-m4-1.4.2-1.el8.noarch                         7/40
+  Verifying        : pkgconf-pkg-config-1.4.2-1.el8.x86_64                 8/40
+  Verifying        : alsa-lib-1.2.6.1-3.el8.x86_64                         9/40
+  Verifying        : copy-jdk-configs-4.0-2.el8.noarch                    10/40
+  Verifying        : giflib-5.1.4-3.el8.x86_64                            11/40
+  Verifying        : graphite2-1.3.10-10.el8.x86_64                       12/40
+  Verifying        : harfbuzz-1.7.5-3.el8.x86_64                          13/40
+  Verifying        : java-11-openjdk-1:11.0.16.1.1-1.el8_6.x86_64         14/40
+  Verifying        : java-11-openjdk-devel-1:11.0.16.1.1-1.el8_6.x86_64   15/40
+  Verifying        : java-11-openjdk-headless-1:11.0.16.1.1-1.el8_6.x86   16/40
+  Verifying        : javapackages-filesystem-5.3.0-1.module+el8+5136+7f   17/40
+  Verifying        : lcms2-2.9-2.el8.x86_64                               18/40
+  Verifying        : libX11-1.6.8-5.el8.x86_64                            19/40
+  Verifying        : libX11-common-1.6.8-5.el8.noarch                     20/40
+  Verifying        : libXau-1.0.9-3.el8.x86_64                            21/40
+  Verifying        : libXcomposite-0.4.4-14.el8.x86_64                    22/40
+  Verifying        : libXext-1.3.4-1.el8.x86_64                           23/40
+  Verifying        : libXi-1.7.10-1.el8.x86_64                            24/40
+  Verifying        : libXrender-0.9.10-7.el8.x86_64                       25/40
+  Verifying        : libXtst-1.2.3-7.el8.x86_64                           26/40
+  Verifying        : libfontenc-1.1.3-8.el8.x86_64                        27/40
+  Verifying        : libjpeg-turbo-1.5.3-12.el8.x86_64                    28/40
+  Verifying        : libxcb-1.13.1-1.el8.x86_64                           29/40
+  Verifying        : lua-5.3.4-12.el8.x86_64                              30/40
+  Verifying        : nspr-4.34.0-3.el8_6.x86_64                           31/40
+  Verifying        : nss-3.79.0-10.el8_6.x86_64                           32/40
+  Verifying        : nss-softokn-3.79.0-10.el8_6.x86_64                   33/40
+  Verifying        : nss-softokn-freebl-3.79.0-10.el8_6.x86_64            34/40
+  Verifying        : nss-sysinit-3.79.0-10.el8_6.x86_64                   35/40
+  Verifying        : nss-util-3.79.0-10.el8_6.x86_64                      36/40
+  Verifying        : ttmkfdir-3.0.9-54.el8.x86_64                         37/40
+  Verifying        : tzdata-java-2022d-1.el8.noarch                       38/40
+  Verifying        : xorg-x11-font-utils-1:7.5-41.el8.x86_64              39/40
+  Verifying        : xorg-x11-fonts-Type1-7.5-19.el8.noarch               40/40
+
+Installed:
+  alsa-lib-1.2.6.1-3.el8.x86_64
+  avahi-libs-0.7-20.el8.x86_64
+  copy-jdk-configs-4.0-2.el8.noarch
+  crypto-policies-scripts-20211116-1.gitae470d6.el8.noarch
+  cups-libs-1:2.2.6-45.el8_6.2.x86_64
+  giflib-5.1.4-3.el8.x86_64
+  graphite2-1.3.10-10.el8.x86_64
+  harfbuzz-1.7.5-3.el8.x86_64
+  java-11-openjdk-1:11.0.16.1.1-1.el8_6.x86_64
+  java-11-openjdk-devel-1:11.0.16.1.1-1.el8_6.x86_64
+  java-11-openjdk-headless-1:11.0.16.1.1-1.el8_6.x86_64
+  javapackages-filesystem-5.3.0-1.module+el8+5136+7ff78f74.noarch
+  lcms2-2.9-2.el8.x86_64
+  libX11-1.6.8-5.el8.x86_64
+  libX11-common-1.6.8-5.el8.noarch
+  libXau-1.0.9-3.el8.x86_64
+  libXcomposite-0.4.4-14.el8.x86_64
+  libXext-1.3.4-1.el8.x86_64
+  libXi-1.7.10-1.el8.x86_64
+  libXrender-0.9.10-7.el8.x86_64
+  libXtst-1.2.3-7.el8.x86_64
+  libfontenc-1.1.3-8.el8.x86_64
+  libjpeg-turbo-1.5.3-12.el8.x86_64
+  libpkgconf-1.4.2-1.el8.x86_64
+  libxcb-1.13.1-1.el8.x86_64
+  lksctp-tools-1.0.18-3.el8.x86_64
+  lua-5.3.4-12.el8.x86_64
+  nspr-4.34.0-3.el8_6.x86_64
+  nss-3.79.0-10.el8_6.x86_64
+  nss-softokn-3.79.0-10.el8_6.x86_64
+  nss-softokn-freebl-3.79.0-10.el8_6.x86_64
+  nss-sysinit-3.79.0-10.el8_6.x86_64
+  nss-util-3.79.0-10.el8_6.x86_64
+  pkgconf-1.4.2-1.el8.x86_64
+  pkgconf-m4-1.4.2-1.el8.noarch
+  pkgconf-pkg-config-1.4.2-1.el8.x86_64
+  ttmkfdir-3.0.9-54.el8.x86_64
+  tzdata-java-2022d-1.el8.noarch
+  xorg-x11-font-utils-1:7.5-41.el8.x86_64
+  xorg-x11-fonts-Type1-7.5-19.el8.noarch
+
+Complete!
+Last metadata expiration check: 0:00:10 ago on Mon 10 Oct 2022 04:06:28 PM UTC.
+Dependencies resolved.
+==============================================================================================
+ Package
+        Arch    Version      Repository                                                   Size
+==============================================================================================
+Installing:
+ ords   noarch  22.3.0-7.el8 yum.oracle.com_repo_OracleLinux_OL8_oracle_software_x86_64   87 M
+Installing dependencies:
+ lsof   x86_64  4.93.2-1.el8 ol8_baseos_latest                                           253 k
+
+Transaction Summary
+==============================================================================================
+Install  2 Packages
+
+Total download size: 87 M
+Installed size: 92 M
+Downloading Packages:
+(1/2): lsof-4.93.2-1.el8.x86_64.rpm             3.0 MB/s | 253 kB     00:00
+(2/2): ords-22.3.0-7.el8.noarch.rpm              66 MB/s |  87 MB     00:01
+--------------------------------------------------------------------------------
+Total                                            66 MB/s |  87 MB     00:01
+Running transaction check
+Transaction check succeeded.
+Running transaction test
+Transaction test succeeded.
+Running transaction
+  Preparing        :                                                        1/1
+  Installing       : lsof-4.93.2-1.el8.x86_64                               1/2
+  Running scriptlet: ords-22.3.0-7.el8.noarch                               2/2
+  Installing       : ords-22.3.0-7.el8.noarch                               2/2
+  Running scriptlet: ords-22.3.0-7.el8.noarch                               2/2
+INFO: Before starting ORDS service, run the below command as user oracle:
+         ords --config /etc/ords/config install
+
+  Verifying        : lsof-4.93.2-1.el8.x86_64                               1/2
+  Verifying        : ords-22.3.0-7.el8.noarch                               2/2
+
+Installed:
+  lsof-4.93.2-1.el8.x86_64               ords-22.3.0-7.el8.noarch
+
+Complete!
+Last metadata expiration check: 0:00:15 ago on Mon 10 Oct 2022 04:06:28 PM UTC.
+Package iproute-5.15.0-4.el8_6.1.x86_64 is already installed.
+Dependencies resolved.
+Nothing to do.
+Complete!
+24 files removed
+Removing intermediate container d38a69d2cc70
+ ---> 3a7b8edb327e
+Step 5/10 : RUN mkdir -p  $ORDS_HOME/doc_root                                  &&     mkdir -p  $ORDS_HOME/error                                     &&     mkdir -p  $ORDS_HOME/secrets                                   &&     chmod ug+x $ORDS_HOME/*.sh                                     &&     groupadd -g 54322 dba                                          &&     usermod -u 54321 -d /home/oracle -g dba -m -s /bin/bash oracle &&     chown -R oracle:dba $ORDS_HOME                                 &&     echo "oracle  ALL=(ALL)       NOPASSWD: ALL" >> /etc/sudoers
+ ---> Running in 1d05951f8252
+Removing intermediate container 1d05951f8252
+ ---> 265cb7ab4f2c
+Step 6/10 : USER oracle
+ ---> Running in 180d432ae42d
+Removing intermediate container 180d432ae42d
+ ---> a9caee3d9426
+Step 7/10 : WORKDIR /home/oracle
+ ---> Running in bf8ac95c724a
+Removing intermediate container bf8ac95c724a
+ ---> 4623d696e603
+Step 8/10 : VOLUME ["$ORDS_HOME/config/ords"]
+ ---> Running in 3afce627e4c0
+Removing intermediate container 3afce627e4c0
+ ---> 914d4ee42ede
+Step 9/10 : EXPOSE 8888
+ ---> Running in 13460b132c52
+Removing intermediate container 13460b132c52
+ ---> 4c9edba5aade
+Step 10/10 : CMD $ORDS_HOME/$RUN_FILE
+ ---> Running in f97b17d8cea4
+Removing intermediate container f97b17d8cea4
+ ---> c8e95aadf5e3
+Successfully built c8e95aadf5e3
+Successfully tagged oracle/ords-dboper:latest
+

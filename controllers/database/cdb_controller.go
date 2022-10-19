@@ -449,6 +449,10 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 						Name:  "ORACLE_HOST",
 						Value: cdb.Spec.DBServer,
 					},
+                                        {
+                                                Name:  "DBTNSURL",
+                                                Value: cdb.Spec.DBTnsurl,
+                                        },
 					{
 						Name:  "TLSCRT",
 						Value: cdb.Spec.CDBTlsCrt.Secret.Key,
