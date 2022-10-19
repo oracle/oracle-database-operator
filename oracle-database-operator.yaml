@@ -619,6 +619,10 @@ spec:
       jsonPath: .spec.dbPort
       name: DB Port
       type: integer
+    - description: ' string of the tnsalias'
+      jsonPath: .spec.dbTnsurl
+      name: TNS STRING
+      type: string
     - description: Replicas
       jsonPath: .spec.replicas
       name: Replicas
@@ -721,6 +725,8 @@ spec:
                 type: integer
               dbServer:
                 description: Name of the DB server
+                type: string
+              dbTnsurl:
                 type: string
               nodeSelector:
                 additionalProperties:
