@@ -10,6 +10,7 @@
 #
 #    MODIFIED    (DD-Mon-YY)
 #    mmalvezz    25-Jun-22   - Initial version
+#    mmalvezz    17-Oct-22   - db.customURL utilization  
 
 export ORDS=/usr/local/bin/ords
 export ETCFILE=/etc/ords.conf
@@ -24,12 +25,31 @@ export HN=`hostname`
 #export CERTIFICATE=${KEYSTORE}/${HN}.der
 export KEY=$ORDS_HOME/secrets/$TLSKEY
 export CERTIFICATE=$ORDS_HOME/secrets/$TLSCRT
+export TNS_ADMIN=/opt/oracle/ords/
+export TNSNAME=${TNS_ADMIN}/tnsnames.ora 
+export TNSALIAS=ordstns
+echo "${TNSALIAS}=${DBTNSURL}" >$TNSNAME
 
-export CUSTOMURL="jdbc:oracle:thin:@(DESCRIPTION = (ADDRESS = (PROTOCOL = TCP)(HOST = racnode1)(PORT = 1521)) (CONNECT_DATA = (SERVER = DEDICATED) (SERVICE_NAME = TESTORDS)))"
-echo $CUSTOMURL
+
+
 
 function SetParameter() {
   ##ords config info <--- Use this command to get the list
+
+[[ ! -z "${ORACLE_HOST}" && -z "${DBTNSURL}" ]] && {
+  $ORDS --config ${CONFIG} config    set   db.hostname                                 ${ORACLE_HOST:-racnode1} 
+  $ORDS --config ${CONFIG} config    set   db.port                                     ${ORACLE_PORT:-1521} 
+  $ORDS --config ${CONFIG} config    set   db.servicename                              ${ORACLE_SERVICE:-TESTORDS}
+}
+
+[[  -z "${ORACLE_HOST}" && ! -z "${DBTNSURL}" ]] && {
+  #$ORDS --config ${CONFIG}  config    set   db.tnsAliasName                           ${TNSALIAS}
+  #$ORDS --config ${CONFIG}  config    set   db.tnsDirectory                           ${TNS_ADMIN}
+  #$ORDS --config ${CONFIG}  config    set   db.connectionType                         tns
+ 
+   $ORDS --config ${CONFIG}  config    set   db.connectionType                         customurl
+   $ORDS --config ${CONFIG}  config    set   db.customURL                              jdbc:oracle:thin:@${DBTNSURL}
+}
 
   $ORDS --config ${CONFIG} config    set   security.requestValidationFunction          false   
   $ORDS --config ${CONFIG} config    set   jdbc.MaxLimit                               100
@@ -42,7 +62,7 @@ function SetParameter() {
   $ORDS --config ${CONFIG} config    set   restEnabledSql.active                       true
   $ORDS --config ${CONFIG} config    set   security.verifySSL                          true
   $ORDS --config ${CONFIG} config    set   database.api.enabled                        true
-  $ORDS --config ${CONFIG} config    set   plsql.gateway.mode                          false
+  $ORDS --config ${CONFIG} config    set   plsql.gateway.mode                          disabled
   $ORDS --config ${CONFIG} config    set   database.api.management.services.disabled   false
   $ORDS --config ${CONFIG} config    set   misc.pagination.maxRows                     1000
   $ORDS --config ${CONFIG} config    set   db.cdb.adminUser                            "${CDBADMIN_USER:-C##DBAPI_CDB_ADMIN} AS SYSDBA"
@@ -146,12 +166,8 @@ export ORDS_LOGS=/tmp
 setupHTTPS;
 
 SetParameter;
-
 $ORDS --config                           ${CONFIG} install                 \
       --admin-user                       ${SYSDBA_USER:-"SYS AS SYSDBA"}   \
-      --db-hostname                      ${ORACLE_HOST:-racnode1}          \
-      --db-port                          ${ORACLE_PORT:-1521}              \
-      --db-servicename                   ${ORACLE_SERVICE:-TESTORDS}       \
       --feature-db-api                   true                              \
       --feature-rest-enabled-sql         true                              \
       --log-folder                       ${ORDS_LOGS}                      \
@@ -160,6 +176,8 @@ $ORDS --config                           ${CONFIG} install                 \
 ${SYSDBA_PASSWORD:-WElcome_12##}
 ${ORDS_PASSWORD:-WElcome_12##}
 EOF
+
+
 
 if [ $? -ne 0 ]
 then

@@ -88,7 +88,7 @@ func (r *CDB) ValidateCreate() error {
 
 	var allErrs field.ErrorList
 
-	if r.Spec.ServiceName == "" {
+	if r.Spec.ServiceName == "" && r.Spec.DBServer != "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("serviceName"), "Please specify CDB Service name"))
 	}
@@ -108,15 +108,21 @@ func (r *CDB) ValidateCreate() error {
 			field.Required(field.NewPath("spec").Child("scanName"), "Please specify SCAN Name for CDB"))
 	}*/
 
-	if r.Spec.DBServer == "" {
+	if ((r.Spec.DBServer == "" && r.Spec.DBTnsurl == "") || (r.Spec.DBServer != "" && r.Spec.DBTnsurl != ""))  {
 		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("dbServer"), "Please specify Database Server Name or IP Address"))
+			field.Required(field.NewPath("spec").Child("dbServer"), "Please specify Database Server Name/IP Address or tnsalias string"))
 	}
-	if r.Spec.DBPort == 0 {
+
+        if r.Spec.DBTnsurl != "" && ( r.Spec.DBServer != "" || r.Spec.DBPort != 0 || r.Spec.ServiceName != "" ) { 
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("dbServer"), "DBtnsurl is orthogonal to (DBServer,DBport,Services)"))
+        }
+ 
+	if r.Spec.DBPort == 0 && r.Spec.DBServer != "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify DB Server Port"))
 	}
-	if r.Spec.DBPort < 0 {
+	if r.Spec.DBPort < 0 && r.Spec.DBServer != "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify a valid DB Server Port"))
 	}
