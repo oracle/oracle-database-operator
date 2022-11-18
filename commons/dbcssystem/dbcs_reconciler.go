@@ -46,10 +46,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v64/common"
-	"github.com/oracle/oci-go-sdk/v64/core"
-	"github.com/oracle/oci-go-sdk/v64/database"
-	"github.com/oracle/oci-go-sdk/v64/workrequests"
+	"github.com/oracle/oci-go-sdk/v65/common"
+	"github.com/oracle/oci-go-sdk/v65/core"
+	"github.com/oracle/oci-go-sdk/v65/database"
+	"github.com/oracle/oci-go-sdk/v65/workrequests"
 
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
