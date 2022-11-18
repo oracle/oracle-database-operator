@@ -420,8 +420,8 @@ github.com/onsi/gomega v1.24.0/go.mod h1:Z/NWtiqwBrwUt4/2loMmHL63EDLnYHmVbuBpDr2
 github.com/onsi/gomega v1.24.1 h1:KORJXNNTzJXzu4ScJWssJfJMnJ+2QJqhoQSRwNlze9E=
 github.com/onsi/gomega v1.24.1/go.mod h1:3AOiACssS3/MajrniINInwbfOOtfZvplPzuRSmvt1jM=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
-github.com/oracle/oci-go-sdk/v64 v64.0.0 h1:ALQDxoKLeNfxLbbOkjnNxMf3/AyWhnHhMJxc8tZXRgI=
-github.com/oracle/oci-go-sdk/v64 v64.0.0/go.mod h1:eLqTg9MSXE/9naair0yFKqiP1RlYghuzBDvEgZvwjYs=
+github.com/oracle/oci-go-sdk/v65 v65.26.1 h1:Ms20RSRj+CuvQmw5ET1TkmzxLBI+bmLjZ6NYANA3gkk=
+github.com/oracle/oci-go-sdk/v65 v65.26.1/go.mod h1:oyMrMa1vOzzKTmPN+kqrTR9y9kPA2tU1igN3NUSNTIE=
 github.com/pascaldekloe/goe v0.0.0-20180627143212-57f6aae5913c/go.mod h1:lzWF7FIEvWOWxwDKqyGYQf6ZUaNfKdP144TG7ZOy1lc=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
 github.com/peterbourgon/diskv v2.0.1+incompatible/go.mod h1:uqqh8zWWbv1HBMNONnaR/tNboyR3/BZd58JJSHlUSCU=
