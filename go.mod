@@ -1,6 +1,6 @@
 module github.com/oracle/oracle-database-operator
 
-go 1.17
+go 1.19
 
 require (
 	github.com/go-logr/logr v1.2.3
@@ -13,6 +13,7 @@ require (
 	k8s.io/client-go v0.25.4
 	sigs.k8s.io/controller-runtime v0.13.1
 	sigs.k8s.io/yaml v1.3.0
+	github.com/oracle/oci-go-sdk/v65 v65.26.1
 )
 
 require (
@@ -76,7 +77,6 @@ require (
 	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/uuid v1.3.0 // indirect
-	github.com/oracle/oci-go-sdk/v64 v64.0.0
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
 )
