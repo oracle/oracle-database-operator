@@ -119,6 +119,10 @@ var (
 
 const PDBFinalizer = "database.oracle.com/PDBfinalizer"
 
+var tdePassword string
+var tdeSecret string
+
+
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs/finalizers,verbs=get;create;update;patch;delete
@@ -585,6 +589,9 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	log := r.Log.WithValues("createPDB", req.NamespacedName)
 
 	var err error
+        var tdePassword string
+        var tdeSecret   string
+
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -613,14 +620,17 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		"getScript":           strconv.FormatBool(*(pdb.Spec.GetScript))}
 
 	if *(pdb.Spec.TDEImport) {
-		tdePassword, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
+		tdePassword, err  = r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
 		if err != nil {
 			return err
 		}
-		tdeSecret, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
+		tdeSecret, err  = r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
 		if err != nil {
 			return err
 		}
+
+                tdeSecret = tdeSecret[:len(tdeSecret)-1]
+                tdePassword = tdeSecret[:len(tdePassword)-1]
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
@@ -636,6 +646,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	}
 	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
 	if err != nil {
+		log.Error(err, "callAPI error", err.Error())
 		return err
 	}
 
@@ -720,6 +731,8 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 	log := r.Log.WithValues("plugPDB", req.NamespacedName)
 
 	var err error
+        var tdePassword string
+        var tdeSecret   string
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -742,14 +755,17 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 		"getScript":                 strconv.FormatBool(*(pdb.Spec.GetScript))}
 
 	if *(pdb.Spec.TDEImport) {
-		tdePassword, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
+		tdePassword, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
 		if err != nil {
 			return err
 		}
-		tdeSecret, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
+		tdeSecret, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
 		if err != nil {
 			return err
 		}
+  
+                tdeSecret   = tdeSecret[:len(tdeSecret)-1]
+                tdePassword = tdeSecret[:len(tdePassword)-1]
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
@@ -793,6 +809,9 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	log := r.Log.WithValues("unplugPDB", req.NamespacedName)
 
 	var err error
+        var tdePassword string
+        var tdeSecret   string
+
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -806,14 +825,17 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	if *(pdb.Spec.TDEExport) {
 		// Get the TDE Password
-		tdePassword, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
+		tdePassword, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
 		if err != nil {
 			return err
 		}
-		tdeSecret, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
+		tdeSecret, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
 		if err != nil {
 			return err
 		}
+
+                tdeSecret   = tdeSecret[:len(tdeSecret)-1]
+                tdePassword = tdeSecret[:len(tdePassword)-1]
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
@@ -821,6 +843,7 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	}
 
 	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
+        log.Info("CallAPI(url)", "url", url)
 
 	pdb.Status.Phase = pdbPhaseUnplug
 	pdb.Status.Msg = "Waiting for PDB to be unplugged"
