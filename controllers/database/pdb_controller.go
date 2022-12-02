@@ -1121,7 +1121,7 @@ func (r *PDBReconciler) deletePDBInstance(req ctrl.Request, ctx context.Context,
 	}
 
 	values := map[string]string{
-		"method":    "DELETE",
+		"action":    "KEEP",
 		"getScript": strconv.FormatBool(*(pdb.Spec.GetScript))}
 
 	if pdb.Spec.DropAction != "" {
