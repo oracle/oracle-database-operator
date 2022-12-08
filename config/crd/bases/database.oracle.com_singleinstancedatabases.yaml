@@ -33,8 +33,15 @@ spec:
     - jsonPath: .status.connectString
       name: Connect Str
       type: string
+    - jsonPath: .status.tcpsConnectString
+      name: TCPS Connect Str
+      type: string
     - jsonPath: .status.pdbConnectString
       name: Pdb Connect Str
+      priority: 1
+      type: string
+    - jsonPath: .status.tcpsPdbConnectString
+      name: TCPS Pdb Connect Str
       priority: 1
       type: string
     - jsonPath: .status.oemExpressUrl
@@ -87,6 +94,8 @@ spec:
                 - enterprise
                 - express
                 type: string
+              enableTCPS:
+                type: boolean
               flashBack:
                 type: boolean
               forceLog:
@@ -118,6 +127,8 @@ spec:
                   sgaTarget:
                     type: integer
                 type: object
+              listenerPort:
+                type: integer
               loadBalancer:
                 type: boolean
               nodeSelector:
@@ -160,6 +171,10 @@ spec:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
+              tcpsCertRenewInterval:
+                type: string
+              tcpsListenerPort:
+                type: integer
             required:
             - image
             type: object
@@ -171,7 +186,13 @@ spec:
                 type: boolean
               archiveLog:
                 type: string
+              certCreationTimestamp:
+                type: string
+              certRenewInterval:
+                type: string
               charset:
+                type: string
+              clientWalletLoc:
                 type: string
               cloneFrom:
                 type: string
@@ -279,6 +300,9 @@ spec:
                 type: integer
               initSgaSize:
                 type: integer
+              isTcpsEnabled:
+                default: false
+                type: boolean
               nodes:
                 items:
                   type: string
@@ -325,7 +349,12 @@ spec:
                 type: object
               status:
                 type: string
+              tcpsConnectString:
+                type: string
+              tcpsPdbConnectString:
+                type: string
             required:
+            - isTcpsEnabled
             - persistence
             type: object
         type: object

@@ -36,6 +36,10 @@
 ** SOFTWARE.
  */
 
+/*    MODIFIED   (MM/DD/YY)
+**    rcitton     07/14/22 - 33822886
+ */
+
 package v1alpha1
 
 import (
@@ -143,6 +147,21 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 
 	pdblog.Info("Valdiating PDB Resource Action : " + action)
 
+        if reflect.ValueOf(r.Spec.PDBTlsKey).IsZero() {
+                        *allErrs = append(*allErrs,
+                        field.Required(field.NewPath("spec").Child("pdbTlsKey"), "Please specify PDB Tls Key(secret)"))
+                }
+
+        if reflect.ValueOf(r.Spec.PDBTlsCrt).IsZero() {
+                        *allErrs = append(*allErrs,
+                        field.Required(field.NewPath("spec").Child("pdbTlsCrt"), "Please specify PDB Tls Certificate(secret)"))
+                }
+
+        if reflect.ValueOf(r.Spec.PDBTlsCat).IsZero() {
+                        *allErrs = append(*allErrs,
+                        field.Required(field.NewPath("spec").Child("pdbTlsCat"), "Please specify PDB Tls Certificate Authority(secret)"))
+                }
+     
 	switch action {
 	case "CREATE":
 		if reflect.ValueOf(r.Spec.AdminName).IsZero() {
@@ -157,6 +176,14 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("fileNameConversions"), "Please specify a value for fileNameConversions. Values can be a filename convert pattern or NONE"))
 		}
+		if r.Spec.TotalSize == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("totalSize"), "When the storage is not UNLIMITED the Total Size must be specified"))
+		}
+		if r.Spec.TempSize == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
+		}
 		if *(r.Spec.TDEImport) {
 			r.validateTDEInfo(allErrs)
 		}
@@ -168,11 +195,11 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 		}
 		if r.Spec.TotalSize == "" {
 			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("totalSize"), "Please specify size of the tablespace"))
+				field.Required(field.NewPath("spec").Child("totalSize"), "When the storage is not UNLIMITED the Total Size must be specified"))
 		}
 		if r.Spec.TempSize == "" {
 			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("tempSize"), "Please specify size of the temporary tablespace"))
+				field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
 		}
 	case "PLUG":
 		if r.Spec.XMLFileName == "" {

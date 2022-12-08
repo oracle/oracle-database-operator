@@ -29,10 +29,6 @@ spec:
       jsonPath: .spec.dbPort
       name: DB Port
       type: integer
-    - description: SCAN Name
-      jsonPath: .spec.scanName
-      name: SCAN Name
-      type: string
     - description: Replicas
       jsonPath: .spec.replicas
       name: Replicas
@@ -103,6 +99,38 @@ spec:
               cdbName:
                 description: Name of the CDB
                 type: string
+              cdbTlsCrt:
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbTlsKey:
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
               dbPort:
                 description: DB server port
                 type: integer
@@ -151,9 +179,6 @@ spec:
               replicas:
                 description: Number of ORDS Containers to create
                 type: integer
-              scanName:
-                description: SCAN Name
-                type: string
               serviceName:
                 description: Name of the CDB Service
                 type: string

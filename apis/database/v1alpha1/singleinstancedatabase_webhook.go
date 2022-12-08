@@ -40,6 +40,7 @@ package v1alpha1
 
 import (
 	"strings"
+	"time"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
@@ -234,6 +235,49 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
+	// servicePort and tcpServicePort validation
+	if !r.Spec.LoadBalancer {
+		// NodePort service is expected. In this case servicePort should be in range 30000-32767
+		if r.Spec.ListenerPort != 0 && (r.Spec.ListenerPort < 30000 || r.Spec.ListenerPort > 32767) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("listenerPort"), r.Spec.ListenerPort,
+					"listenerPort should be in 30000-32767 range."))
+		}
+		if r.Spec.EnableTCPS && r.Spec.TcpsListenerPort != 0 && (r.Spec.TcpsListenerPort < 30000 || r.Spec.TcpsListenerPort > 32767) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), r.Spec.TcpsListenerPort,
+					"tcpsListenerPort should be in 30000-32767 range."))
+		}
+	} else {
+		// LoadBalancer Service is expected.
+		if r.Spec.EnableTCPS && r.Spec.TcpsListenerPort == 0 && r.Spec.ListenerPort == int(dbcommons.CONTAINER_TCPS_PORT) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("listenerPort"), r.Spec.ListenerPort,
+					"listenerPort can not be 2484 as the default port for tcpsListenerPort is 2484."))
+		}
+	}
+	if r.Spec.EnableTCPS && r.Spec.ListenerPort != 0 && r.Spec.TcpsListenerPort != 0 && r.Spec.ListenerPort == r.Spec.TcpsListenerPort {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), r.Spec.TcpsListenerPort,
+				"listenerPort and tcpsListenerPort can not be equal."))
+	}
+
+	// Certificate Renew Duration Validation
+	if r.Spec.EnableTCPS && r.Spec.TcpsCertRenewInterval != "" {
+		duration, err := time.ParseDuration(r.Spec.TcpsCertRenewInterval)
+		if err != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), r.Spec.TcpsCertRenewInterval,
+					"Please provide valid string to parse the tcpsCertRenewInterval."))
+		}
+		maxLimit, _ := time.ParseDuration("8760h")
+		minLimit, _ := time.ParseDuration("24h")
+		if duration > maxLimit || duration < minLimit {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("tcpsCertRenewInterval"), r.Spec.TcpsCertRenewInterval,
+					"Please specify tcpsCertRenewInterval in the range: 24h to 8760h"))
+		}
+	}
 	if len(allErrs) == 0 {
 		return nil
 	}
