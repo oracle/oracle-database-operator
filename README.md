@@ -4,13 +4,13 @@
 
 As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
-In this v0.2.0 release, `OraOperator` supports the following database configurations and infrastructure:
+In this v0.2.1 release, `OraOperator` supports the following database configurations and infrastructure:
 
 * Oracle Autonomous Database on shared Oracle Cloud Infrastructure (OCI) (ADB-S)
 * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
-* Oracle On-Premises Databases (CDB/PDBs, Exadata)
+* Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Database Cloud Service (DBCS) (VMDB)
 * Oracle Autonomous Container Database (ACD) (infrastructure) the infrastructure for provisionning Autonomous Databases.
 
@@ -25,14 +25,14 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * ACD: provision, bind, restart, terminate (soft/hard)
 * SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, and Application Express (Apex)
 * SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
-* On-Premises Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
+* Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Database Cloud Service: Provision, Bind, Scale Up/Down, Liveness Probe, Manual Backup
 
 The upcoming releases will support new configurations, operations and capabilities.
 
 ## Release Status
 
-**CAUTION:** The current release of `OraOperator` (v0.2.0) is for development and testing only. DO NOT USE IN PRODUCTION.
+**CAUTION:** The current release of `OraOperator` (v0.2.1) is for development and testing only. DO NOT USE IN PRODUCTION.
 
 This release has been installed and tested on the following Kubernetes platforms:
 
@@ -69,7 +69,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   ```
   ---
   **NOTE:**
-  The above command will also upgrade the existing v0.1.0 `OraOperator` installation to the latest version i.e. v0.2.0.
+  The above command will also upgrade the existing v0.2.0 `OraOperator` installation to the latest version i.e. v0.2.1.
 
   ---
 
@@ -99,7 +99,7 @@ The quickstarts are designed for specific database configurations:
 * [Oracle Autonomous Container Database](./docs/acd/README.md)
 * [Containerized Oracle Single Instance Database](./docs/sidb/README.md)
 * [Containerized Oracle Sharded Database](./docs/sharding/README.md)
-* [Oracle On-Premises Database](./docs/onpremdb/README.md)
+* [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Database Cloud Service](./docs/dbcs/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases. 

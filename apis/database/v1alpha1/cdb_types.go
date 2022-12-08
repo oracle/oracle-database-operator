@@ -51,12 +51,18 @@ type CDBSpec struct {
 	CDBName string `json:"cdbName,omitempty"`
 	// Name of the CDB Service
 	ServiceName string `json:"serviceName,omitempty"`
+
+
 	// Password for the CDB System Administrator
 	SysAdminPwd CDBSysAdminPassword `json:"sysAdminPwd,omitempty"`
 	// User in the root container with sysdba priviledges to manage PDB lifecycle
 	CDBAdminUser CDBAdminUser `json:"cdbAdminUser,omitempty"`
 	// Password for the CDB Administrator to manage PDB lifecycle
 	CDBAdminPwd CDBAdminPassword `json:"cdbAdminPwd,omitempty"`
+
+	CDBTlsKey CDBTLSKEY `json:"cdbTlsKey,omitempty"`
+	CDBTlsCrt CDBTLSCRT `json:"cdbTlsCrt,omitempty"`
+
 	// Password for user ORDS_PUBLIC_USER
 	ORDSPwd ORDSPassword `json:"ordsPwd,omitempty"`
 	// ORDS server port. For now, keep it as 8888. TO BE USED IN FUTURE RELEASE.
@@ -74,14 +80,13 @@ type CDBSpec struct {
 	WebServerUser WebServerUser `json:"webServerUser,omitempty"`
 	// Password for the Web Server User
 	WebServerPwd WebServerPassword `json:"webServerPwd,omitempty"`
-	// SCAN Name
-	SCANName string `json:"scanName,omitempty"`
 	// Name of the DB server
 	DBServer string `json:"dbServer,omitempty"`
 	// DB server port
 	DBPort int `json:"dbPort,omitempty"`
 	// Node Selector for running the Pod
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+        DBTnsurl string `json:"dbTnsurl,omitempty"`  
 }
 
 // CDBSecret defines the secretName
@@ -120,6 +125,14 @@ type WebServerPassword struct {
 	Secret CDBSecret `json:"secret"`
 }
 
+type CDBTLSKEY struct {
+	Secret CDBSecret `json:"secret"`
+}
+
+type CDBTLSCRT struct {
+	Secret CDBSecret `json:"secret"`
+}
+
 // CDBStatus defines the observed state of CDB
 type CDBStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
@@ -138,7 +151,7 @@ type CDBStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.cdbName",name="CDB Name",type="string",description="Name of the CDB"
 // +kubebuilder:printcolumn:JSONPath=".spec.dbServer",name="DB Server",type="string",description=" Name of the DB Server"
 // +kubebuilder:printcolumn:JSONPath=".spec.dbPort",name="DB Port",type="integer",description="DB server port"
-// +kubebuilder:printcolumn:JSONPath=".spec.scanName",name="SCAN Name",type="string",description="SCAN Name"
+// +kubebuilder:printcolumn:JSONPath=".spec.dbTnsurl",name="TNS STRING",type="string",description=" string of the tnsalias"
 // +kubebuilder:printcolumn:JSONPath=".spec.replicas",name="Replicas",type="integer",description="Replicas"
 // +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the CDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
