@@ -41,7 +41,10 @@ package controllers
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	//"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -115,6 +118,10 @@ var (
 )
 
 const PDBFinalizer = "database.oracle.com/PDBfinalizer"
+
+var tdePassword string
+var tdeSecret string
+
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs/status,verbs=get;update;patch
@@ -401,7 +408,66 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	log := r.Log.WithValues("callAPI", req.NamespacedName)
 
 	var err error
-	httpclient := &http.Client{}
+
+	secret := &corev1.Secret{}
+
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBTlsKey.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBTlsKey.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+	rsaKeyPEM := secret.Data[pdb.Spec.PDBTlsKey.Secret.Key]
+
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBTlsCrt.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBTlsCrt.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+
+	rsaCertPEM := secret.Data[pdb.Spec.PDBTlsCrt.Secret.Key]
+
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBTlsCat.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBTlsCat.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+
+	caCert := secret.Data[pdb.Spec.PDBTlsCat.Secret.Key]
+        /*
+	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaKeyPEM))
+	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaCertPEM))
+	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(caCert))
+        */
+
+	certificate, err := tls.X509KeyPair([]byte(rsaCertPEM), []byte(rsaKeyPEM))
+	if err != nil {
+		pdb.Status.Msg = "Error tls.X509KeyPair"
+		return "", err
+	}
+
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConf := &tls.Config{Certificates: []tls.Certificate{certificate}, RootCAs: caCertPool}
+
+	tr := &http.Transport{TLSClientConfig: tlsConf}
+
+	httpclient := &http.Client{Transport: tr}
 
 	log.Info("Issuing REST call", "URL", url, "Action", action)
 
@@ -411,7 +477,7 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	}
 
 	// Get Web Server User
-	secret := &corev1.Secret{}
+	//secret := &corev1.Secret{}
 	err = r.Get(ctx, types.NamespacedName{Name: cdb.Spec.WebServerUser.Secret.SecretName, Namespace: cdb.Namespace}, secret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -440,7 +506,6 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	if action == "GET" {
 		httpreq, err = http.NewRequest(action, url, nil)
 	} else {
-		//fmt.Println("payload:", payload)
 		jsonValue, _ := json.Marshal(payload)
 		httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
 	}
@@ -456,12 +521,14 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 
 	resp, err := httpclient.Do(httpreq)
 	if err != nil {
+		errmsg := err.Error()
 		log.Error(err, "Failed - Could not connect to ORDS Pod", "err", err.Error())
-		pdb.Status.Msg = "Could not connect to ORDS Pod"
-		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSError", "Failed: Could not connect to ORDS Pod")
+		pdb.Status.Msg = "Error: Could not connect to ORDS Pod"
+		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSError", errmsg)
 		return "", err
 	}
 
+	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "Done", pdb.Spec.CDBResName)
 	if resp.StatusCode != http.StatusOK {
 		bb, _ := ioutil.ReadAll(resp.Body)
 
@@ -522,6 +589,9 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	log := r.Log.WithValues("createPDB", req.NamespacedName)
 
 	var err error
+        var tdePassword string
+        var tdeSecret   string
+
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -550,20 +620,23 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		"getScript":           strconv.FormatBool(*(pdb.Spec.GetScript))}
 
 	if *(pdb.Spec.TDEImport) {
-		tdePassword, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
+		tdePassword, err  = r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
 		if err != nil {
 			return err
 		}
-		tdeSecret, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
+		tdeSecret, err  = r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
 		if err != nil {
 			return err
 		}
+
+                tdeSecret = tdeSecret[:len(tdeSecret)-1]
+                tdePassword = tdeSecret[:len(tdePassword)-1]
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
 	}
 
-	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 
 	pdb.Status.TotalSize = pdb.Spec.TotalSize
 	pdb.Status.Phase = pdbPhaseCreate
@@ -573,12 +646,18 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	}
 	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
 	if err != nil {
+		log.Error(err, "callAPI error", err.Error())
 		return err
 	}
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' created successfully", pdb.Spec.PDBName)
 
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+        if cdb.Spec.DBServer != "" {
+	pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+        } else { 
+         pdb.Status.ConnString = cdb.Spec.DBTnsurl
+        }
+        
 	log.Info("Created PDB Resource", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
 	return nil
@@ -618,7 +697,7 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 		values["tempSize"] = pdb.Spec.TempSize
 	}
 
-	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.SrcPDBName + "/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.SrcPDBName + "/"
 
 	pdb.Status.Phase = pdbPhaseClone
 	pdb.Status.Msg = "Waiting for PDB to be cloned"
@@ -632,7 +711,13 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' cloned successfully", pdb.Spec.PDBName)
 
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+        if cdb.Spec.DBServer != "" {
+        pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+        } else {
+         pdb.Status.ConnString = cdb.Spec.DBTnsurl
+        }
+  
+
 	log.Info("Cloned PDB successfully", "Source PDB Name", pdb.Spec.SrcPDBName, "Clone PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
 	return nil
@@ -646,6 +731,8 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 	log := r.Log.WithValues("plugPDB", req.NamespacedName)
 
 	var err error
+        var tdePassword string
+        var tdeSecret   string
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -668,14 +755,17 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 		"getScript":                 strconv.FormatBool(*(pdb.Spec.GetScript))}
 
 	if *(pdb.Spec.TDEImport) {
-		tdePassword, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
+		tdePassword, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
 		if err != nil {
 			return err
 		}
-		tdeSecret, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
+		tdeSecret, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
 		if err != nil {
 			return err
 		}
+  
+                tdeSecret   = tdeSecret[:len(tdeSecret)-1]
+                tdePassword = tdeSecret[:len(tdePassword)-1]
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
@@ -685,7 +775,7 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 		values["asClone"] = strconv.FormatBool(*(pdb.Spec.AsClone))
 	}
 
-	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 
 	pdb.Status.TotalSize = pdb.Spec.TotalSize
 	pdb.Status.Phase = pdbPhasePlug
@@ -700,7 +790,12 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' plugged successfully", pdb.Spec.PDBName)
 
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+        if cdb.Spec.DBServer != "" {
+        pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+        } else {
+         pdb.Status.ConnString = cdb.Spec.DBTnsurl
+        }
+
 	log.Info("Successfully plugged PDB", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
 	return nil
@@ -714,6 +809,9 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	log := r.Log.WithValues("unplugPDB", req.NamespacedName)
 
 	var err error
+        var tdePassword string
+        var tdeSecret   string
+
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -727,21 +825,25 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	if *(pdb.Spec.TDEExport) {
 		// Get the TDE Password
-		tdePassword, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
+		tdePassword, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
 		if err != nil {
 			return err
 		}
-		tdeSecret, err := r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
+		tdeSecret, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
 		if err != nil {
 			return err
 		}
+
+                tdeSecret   = tdeSecret[:len(tdeSecret)-1]
+                tdePassword = tdeSecret[:len(tdePassword)-1]
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
 		values["tdeExport"] = strconv.FormatBool(*(pdb.Spec.TDEExport))
 	}
 
-	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
+        log.Info("CallAPI(url)", "url", url)
 
 	pdb.Status.Phase = pdbPhaseUnplug
 	pdb.Status.Msg = "Waiting for PDB to be unplugged"
@@ -806,7 +908,7 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 		"getScript":    strconv.FormatBool(*(pdb.Spec.GetScript))}
 
 	pdbName := pdb.Spec.PDBName
-	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
 
 	pdb.Status.Phase = pdbPhaseModify
 	pdb.Status.ModifyOption = pdb.Spec.PDBState + "-" + pdb.Spec.ModifyOption
@@ -820,7 +922,13 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 	}
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Modified", "PDB '%s' modified successfully", pdb.Spec.PDBName)
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+
+        if cdb.Spec.DBServer != "" {
+        pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+        } else {
+         pdb.Status.ConnString = cdb.Spec.DBTnsurl
+        }
+
 
 	log.Info("Successfully modified PDB state", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
@@ -842,7 +950,7 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 	}
 
 	pdbName := pdb.Spec.PDBName
-	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
 
 	pdb.Status.Msg = "Getting PDB state"
 	if err := r.Status().Update(ctx, pdb); err != nil {
@@ -882,7 +990,7 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 	}
 
 	pdbName := pdb.Spec.PDBName
-	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
 
 	pdb.Status.Msg = "Mapping PDB"
 	if err := r.Status().Update(ctx, pdb); err != nil {
@@ -907,7 +1015,13 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 
 	pdb.Status.OpenMode = objmap["open_mode"].(string)
 	pdb.Status.TotalSize = fmt.Sprintf("%.2f", totSizeInGB) + "G"
-	pdb.Status.ConnString = cdb.Spec.SCANName + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+
+        if cdb.Spec.DBServer != "" {
+        pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+        } else {
+         pdb.Status.ConnString = cdb.Spec.DBTnsurl
+        }
+
 
 	log.Info("Successfully mapped PDB to Kubernetes resource", "PDB Name", pdb.Spec.PDBName)
 	return nil
@@ -1007,7 +1121,7 @@ func (r *PDBReconciler) deletePDBInstance(req ctrl.Request, ctx context.Context,
 	}
 
 	values := map[string]string{
-		"method":    "DELETE",
+		"action":    "KEEP",
 		"getScript": strconv.FormatBool(*(pdb.Spec.GetScript))}
 
 	if pdb.Spec.DropAction != "" {
@@ -1015,7 +1129,7 @@ func (r *PDBReconciler) deletePDBInstance(req ctrl.Request, ctx context.Context,
 	}
 
 	pdbName := pdb.Spec.PDBName
-	url := "http://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
 
 	pdb.Status.Phase = pdbPhaseDelete
 	pdb.Status.Msg = "Waiting for PDB to be deleted"

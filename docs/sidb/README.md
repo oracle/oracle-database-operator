@@ -21,6 +21,8 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
     * [Advanced Database Configurations](#advanced-database-configurations)
       * [Run Database with Multiple Replicas](#run-database-with-multiple-replicas)
       * [Setup Database with LoadBalancer](#setup-database-with-loadbalancer)
+      * [Enabling TCPS Connections](#enabling-tcps-connections)
+      * [Specifying Custom Ports](#specifying-custom-ports)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
     * [REST Enable a Database](#rest-enable-a-database)
       * [Provision ORDS](#provision-ords)
@@ -61,8 +63,8 @@ To obtain a quick database status, use the following command as an example:
 ```sh
 $ kubectl get singleinstancedatabase sidb-sample
 
-NAME           EDITION      STATUS    VERSION      CONNECT STR                  OEM EXPRESS URL
-sidb-sample    Enterprise   Healthy   19.3.0.0.0   10.0.25.54:1521/ORCLCDB      https://10.0.25.54:5500/em
+NAME          EDITION      STATUS    VERSION      CONNECT STR                 TCPS CONNECT STR       OEM EXPRESS URL
+sidb-sample   Enterprise   Healthy   19.3.0.0.0   10.0.25.54:1521/ORCL1       Unavailable            https://10.0.25.54:5500/em
 ```
 
 #### Detailed Status
@@ -510,6 +512,59 @@ $ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstance
 
   singleinstancedatabase.database.oracle.com/sidb-sample patched
 ```
+
+### Enabling TCPS Connections
+You can enable TCPS connections in the database by setting the `enableTCPS` field to `true` in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it using `kubectl apply` command.
+
+Alternatively, you can use the following command:
+```bash
+kubectl patch --type=merge singleinstancedatabases.database.oracle.com sidb-sample -p '{"spec": {"enableTCPS": true}}'
+```
+Once TCPS connections are enabled, the database connect string will change accordingly. The TCPS connections status can also be queried by the following command:
+```bash
+kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.isTcpsEnabled}"
+true
+```
+
+The following steps are required to connect the Database using TCPS:
+- You need to download the wallet from the Persistent Volume (PV) attached with the database pod. The location of the wallet inside the pod is as `/opt/oracle/oradata/clientWallet/$ORACLE_SID`. **Let us assume the `ORACLE_SID` is `ORCL1`, and singleinstance database resource name is `sidb-sample` for the upcoming example command**. You can copy the wallet to the destination directory by the following command:
+  ```bash
+  kubectl cp $(kubectl get pods -l app=sidb-sample -o=jsonpath='{.items[0].metadata.name}'):/opt/oracle/oradata/clientWallet/ORCL1 <Destination directory>
+  ```
+- This wallet includes the sample `tnsnames.ora` and `sqlnet.ora` files. All the TNS entries for the database (corresponding to the CDB and PDB) resides in `tnsnames.ora` file. You need to go inside the downloaded wallet directory and set the `TNS_ADMIN` environment variable to point to the current directory as follows:
+  ```bash
+  # After going inside the downloaded wallet directory
+  export TNS_ADMIN=$(pwd)
+  ```
+  After this, you can connect using SQL\*Plus using the following sample commands:
+  ```bash
+  sqlplus sys@ORCL1 as sysdba
+  ```
+**NOTE:**
+- Only database server authentication is supported (no mTLS).
+- When TCPS is enabled, a self-signed certificate is generated and stored inside the wallets. For users' convenience, a client-side wallet is generated and stored at `/opt/oracle/oradata/clientWallet/$ORACLE_SID` location in the pod.
+- The self-signed certificate used with TCPS has validity for 1 year. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
+- You can set the certificate renew interval with the help of `tcpsCertRenewInterval` field in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 24h, and the maximum value is 8760h (1 year). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
+- When the certificate gets created/renewed, the `.status.certCreationTimestamp` status variable gets updated accordingly. You can see this timestamp by using the following command:
+  ```bash
+  kubectl get singleinstancedatabase sidb-sample  -o "jsonpath={.status.certCreationTimestamp}"
+  ```
+
+### Specifying Custom Ports
+As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two kubernetes services possible for the database: NodePort and LoadBalancer. You can specify which port to use with these services by editing the `listenerPort` and `tcpsListenerPort` fields of the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file.
+
+`listenerPort` is intended for normal database connections. Similarly, `tcpsListenerPort` is intended for TCPS database connections.
+
+If the `LoadBalancer` is enabled, the `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Load Balancer for normal and TCPS database connections respectively. The default values of `listenerPort` and `tcpsListenerPort` are 1521 and 2484 respectively when the `LoadBalancer` is enabled. 
+
+In case of `NodePort` service, `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Kubernetes nodes for for normal and TCPS database connections respectively. In this case, the allowed range for the `listenerPort`, and `tcpsListenerPort` is 30000-32767.
+
+**NOTE:**
+- `listenerPort` and `tcpsListenerPort` can not have same values.
+- `tcpsListenerPort` will come into effect only when TCPS connections are enabled (i.e. `enableTCPS` field is set in [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file).
+- If TCPS connections are enabled, and `listenerPort` is commented/removed in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, only TCPS endpoint will be exposed.
+- If LoadBalancer is enabled, and either `listenerPort` or `tcpsListenerPort` is changed, then it takes some time to complete the work requests (drain existing backend sets and create new ones). In this time, the database connectivity is broken. Although, SingleInstanceDatabase and LoadBalancer remain in the healthy state, you can check the progress of the work requests by logging into the cloud provider's console and checking the corresponding LoadBalancer.
+
 
 ## OracleRestDataService Resource
 

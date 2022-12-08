@@ -9,7 +9,6 @@ metadata:
   namespace: oracle-database-operator-system
 spec:
   cdbName: "devcdb"
-  scanName: "devdb"
   dbServer: "172.17.0.4"
   dbPort: 1521
   replicas: 1

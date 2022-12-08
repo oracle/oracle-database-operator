@@ -1,20 +1,16 @@
-#
-# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
-# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
-#
 apiVersion: database.oracle.com/v1alpha1
 kind: CDB
 metadata:
   name: cdb-dev
   namespace: oracle-database-operator-system
 spec:
-  cdbName: "goldcdb"
-  scanName: "goldhost-scan.lbsub52b3b1cae.okecluster.oraclevcn.com"
-  dbServer: "goldhost1.lbsub52b3b1cae.okecluster.oraclevcn.com"
-  ordsImage: phx.ocir.io/<repo_name>/oracle/ords:21.4.3
+  cdbName: "DB12"
+  dbServer: "racnode1.testrac.com"
   dbPort: 1521
-  replicas: 2
-  serviceName: "goldcdb_phx1pw.lbsub52b3b1cae.okecluster.oraclevcn.com"
+  ordsImage: "<public-container-registry>/ords-dboper:latest"
+  ordsImagePullPolicy: "Always"
+  serviceName: "TESTORDS"
+  replicas: 1
   sysAdminPwd:
     secret:
       secretName: "cdb1-secret"
@@ -39,3 +35,12 @@ spec:
     secret:
       secretName: "cdb1-secret"
       key: "webserver_pwd"
+  cdbTlsKey:
+    secret:
+      secretName: "db-tls"
+      key: "tls.key"
+  cdbTlsCrt:
+    secret:
+      secretName: "db-tls"
+      key: "tls.crt"
+
