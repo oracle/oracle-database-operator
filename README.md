@@ -4,7 +4,7 @@
 
 As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
-In this v0.2.0 release, `OraOperator` supports the following database configurations and infrastructure:
+In this v0.2.1 release, `OraOperator` supports the following database configurations and infrastructure:
 
 * Oracle Autonomous Database on shared Oracle Cloud Infrastructure (OCI) (ADB-S)
 * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
@@ -32,7 +32,7 @@ The upcoming releases will support new configurations, operations and capabiliti
 
 ## Release Status
 
-**CAUTION:** The current release of `OraOperator` (v0.2.0) is for development and testing only. DO NOT USE IN PRODUCTION.
+**CAUTION:** The current release of `OraOperator` (v0.2.1) is for development and testing only. DO NOT USE IN PRODUCTION.
 
 This release has been installed and tested on the following Kubernetes platforms:
 
@@ -69,7 +69,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   ```
   ---
   **NOTE:**
-  The above command will also upgrade the existing v0.1.0 `OraOperator` installation to the latest version i.e. v0.2.0.
+  The above command will also upgrade the existing v0.2.0 `OraOperator` installation to the latest version i.e. v0.2.1.
 
   ---
 
