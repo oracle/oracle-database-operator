@@ -121,7 +121,7 @@ const PDBFinalizer = "database.oracle.com/PDBfinalizer"
 
 var tdePassword string
 var tdeSecret string
-
+var floodcontrol bool = false
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs/status,verbs=get;update;patch
@@ -137,7 +137,7 @@ var tdeSecret string
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.9.2/pkg/reconcile
 func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := r.Log.WithValues("onpremdboperator", req.NamespacedName)
+	log := r.Log.WithValues("multitenantoperator", req.NamespacedName)
 	log.Info("Reconcile requested")
 
 	reconcilePeriod := r.Interval * time.Second
@@ -229,6 +229,8 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			err = r.getPDBState(ctx, req, pdb)
 		case pdbPhaseMap:
 			err = r.mapPDB(ctx, req, pdb)
+                case pdbPhaseFail:
+                        err = r.mapPDB(ctx, req, pdb)
 		default:
 			log.Info("DEFAULT:", "Name", pdb.Name, "Phase", phase, "Status", strconv.FormatBool(pdb.Status.Status))
 			return requeueN, nil
@@ -243,7 +245,7 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	log.Info("Reconcile completed")
-	return requeueN, nil
+	return requeueY, nil
 }
 
 /*************************************************
@@ -448,11 +450,11 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	}
 
 	caCert := secret.Data[pdb.Spec.PDBTlsCat.Secret.Key]
-        /*
-	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaKeyPEM))
-	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaCertPEM))
-	r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(caCert))
-        */
+	/*
+		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaKeyPEM))
+		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaCertPEM))
+		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(caCert))
+	*/
 
 	certificate, err := tls.X509KeyPair([]byte(rsaCertPEM), []byte(rsaKeyPEM))
 	if err != nil {
@@ -535,18 +537,28 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 		if resp.StatusCode == 404 {
 			pdb.Status.ConnString = ""
 			pdb.Status.Msg = pdb.Spec.PDBName + " not found"
+
 		} else {
-			pdb.Status.Msg = "ORDS Error - HTTP Status Code:" + strconv.Itoa(resp.StatusCode)
+			if floodcontrol == false {
+				pdb.Status.Msg = "ORDS Error - HTTP Status Code:" + strconv.Itoa(resp.StatusCode)
+			}
 		}
-		log.Info("ORDS Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
+
+		if floodcontrol == false {
+			log.Info("ORDS Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
+		}
 
 		var apiErr ORDSError
 		json.Unmarshal([]byte(bb), &apiErr)
-		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSError", "Failed: %s", apiErr.Message)
+		if floodcontrol == false {
+			r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSError", "Failed: %s", apiErr.Message)
+		}
 		//fmt.Printf("%+v", apiErr)
 		//fmt.Println(string(bb))
+		floodcontrol = true
 		return "", errors.New("ORDS Error")
 	}
+	floodcontrol = false
 
 	defer resp.Body.Close()
 
@@ -589,9 +601,8 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	log := r.Log.WithValues("createPDB", req.NamespacedName)
 
 	var err error
-        var tdePassword string
-        var tdeSecret   string
-
+	var tdePassword string
+	var tdeSecret string
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -620,17 +631,17 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		"getScript":           strconv.FormatBool(*(pdb.Spec.GetScript))}
 
 	if *(pdb.Spec.TDEImport) {
-		tdePassword, err  = r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
+		tdePassword, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDEPassword.Secret.SecretName, pdb.Spec.TDEPassword.Secret.Key)
 		if err != nil {
 			return err
 		}
-		tdeSecret, err  = r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
+		tdeSecret, err = r.getSecret(ctx, req, pdb, pdb.Spec.TDESecret.Secret.SecretName, pdb.Spec.TDESecret.Secret.Key)
 		if err != nil {
 			return err
 		}
 
-                tdeSecret = tdeSecret[:len(tdeSecret)-1]
-                tdePassword = tdeSecret[:len(tdePassword)-1]
+		tdeSecret = tdeSecret[:len(tdeSecret)-1]
+		tdePassword = tdeSecret[:len(tdePassword)-1]
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
@@ -652,12 +663,12 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' created successfully", pdb.Spec.PDBName)
 
-        if cdb.Spec.DBServer != "" {
-	pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
-        } else { 
-         pdb.Status.ConnString = cdb.Spec.DBTnsurl
-        }
-        
+	if cdb.Spec.DBServer != "" {
+		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	} else {
+		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+	}
+
 	log.Info("Created PDB Resource", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
 	return nil
@@ -711,12 +722,11 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' cloned successfully", pdb.Spec.PDBName)
 
-        if cdb.Spec.DBServer != "" {
-        pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
-        } else {
-         pdb.Status.ConnString = cdb.Spec.DBTnsurl
-        }
-  
+	if cdb.Spec.DBServer != "" {
+		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	} else {
+		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+	}
 
 	log.Info("Cloned PDB successfully", "Source PDB Name", pdb.Spec.SrcPDBName, "Clone PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
@@ -731,8 +741,8 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 	log := r.Log.WithValues("plugPDB", req.NamespacedName)
 
 	var err error
-        var tdePassword string
-        var tdeSecret   string
+	var tdePassword string
+	var tdeSecret string
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -763,9 +773,9 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 		if err != nil {
 			return err
 		}
-  
-                tdeSecret   = tdeSecret[:len(tdeSecret)-1]
-                tdePassword = tdeSecret[:len(tdePassword)-1]
+
+		tdeSecret = tdeSecret[:len(tdeSecret)-1]
+		tdePassword = tdeSecret[:len(tdePassword)-1]
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
@@ -790,11 +800,11 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' plugged successfully", pdb.Spec.PDBName)
 
-        if cdb.Spec.DBServer != "" {
-        pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
-        } else {
-         pdb.Status.ConnString = cdb.Spec.DBTnsurl
-        }
+	if cdb.Spec.DBServer != "" {
+		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	} else {
+		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+	}
 
 	log.Info("Successfully plugged PDB", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
@@ -809,9 +819,8 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	log := r.Log.WithValues("unplugPDB", req.NamespacedName)
 
 	var err error
-        var tdePassword string
-        var tdeSecret   string
-
+	var tdePassword string
+	var tdeSecret string
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -834,8 +843,8 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 			return err
 		}
 
-                tdeSecret   = tdeSecret[:len(tdeSecret)-1]
-                tdePassword = tdeSecret[:len(tdePassword)-1]
+		tdeSecret = tdeSecret[:len(tdeSecret)-1]
+		tdePassword = tdeSecret[:len(tdePassword)-1]
 		values["tdePassword"] = tdePassword
 		values["tdeKeystorePath"] = pdb.Spec.TDEKeystorePath
 		values["tdeSecret"] = tdeSecret
@@ -843,7 +852,7 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	}
 
 	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
-        log.Info("CallAPI(url)", "url", url)
+	log.Info("CallAPI(url)", "url", url)
 
 	pdb.Status.Phase = pdbPhaseUnplug
 	pdb.Status.Msg = "Waiting for PDB to be unplugged"
@@ -888,6 +897,10 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	err = r.getPDBState(ctx, req, pdb)
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Warning PDB does not exist", "PDB Name", pdb.Spec.PDBName)
+			return nil
+		}
 		return err
 	}
 
@@ -923,12 +936,11 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Modified", "PDB '%s' modified successfully", pdb.Spec.PDBName)
 
-        if cdb.Spec.DBServer != "" {
-        pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
-        } else {
-         pdb.Status.ConnString = cdb.Spec.DBTnsurl
-        }
-
+	if cdb.Spec.DBServer != "" {
+		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	} else {
+		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+	}
 
 	log.Info("Successfully modified PDB state", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
@@ -961,6 +973,8 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 
 	if err != nil {
 		pdb.Status.OpenMode = "UNKNOWN"
+                pdb.Status.Msg      = "CHECK PDB STATUS"
+                pdb.Status.Status   = false
 		return err
 	}
 
@@ -1016,12 +1030,11 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 	pdb.Status.OpenMode = objmap["open_mode"].(string)
 	pdb.Status.TotalSize = fmt.Sprintf("%.2f", totSizeInGB) + "G"
 
-        if cdb.Spec.DBServer != "" {
-        pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
-        } else {
-         pdb.Status.ConnString = cdb.Spec.DBTnsurl
-        }
-
+	if cdb.Spec.DBServer != "" {
+		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	} else {
+		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+	}
 
 	log.Info("Successfully mapped PDB to Kubernetes resource", "PDB Name", pdb.Spec.PDBName)
 	return nil
