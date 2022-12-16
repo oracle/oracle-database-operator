@@ -108,7 +108,7 @@ const CDBFinalizer = "database.oracle.com/CDBfinalizer"
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.9.2/pkg/reconcile
 func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
-	log := r.Log.WithValues("onpremdboperator", req.NamespacedName)
+	log := r.Log.WithValues("multitenantoperator", req.NamespacedName)
 	log.Info("Reconcile requested")
 
 	reconcilePeriod := r.Interval * time.Second
@@ -449,10 +449,10 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 						Name:  "ORACLE_HOST",
 						Value: cdb.Spec.DBServer,
 					},
-                                        {
-                                                Name:  "DBTNSURL",
-                                                Value: cdb.Spec.DBTnsurl,
-                                        },
+					{
+						Name:  "DBTNSURL",
+						Value: cdb.Spec.DBTnsurl,
+					},
 					{
 						Name:  "TLSCRT",
 						Value: cdb.Spec.CDBTlsCrt.Secret.Key,
