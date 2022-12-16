@@ -4,6 +4,7 @@ build-operator:
     IMAGE: "$DOCKER_REPO:$CI_COMMIT_BRANCH"
     OP_YAML: oracle-database-operator.yaml
   script:
+    - echo go version
     - echo $CI_COMMIT_TAG
     - make docker-build IMG="$IMAGE"
     - docker push "$IMAGE"
