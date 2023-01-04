@@ -4,6 +4,8 @@
 
 # Oracle Multitenant Database Controller
 
+> <span style="color:red"> WARNING: Examples with https are located in the usecases directories </span>
+
 CDBs and PDBs are the part of the Oracle Database's [Multitenant Architecture](https://docs.oracle.com/en/database/oracle/oracle-database/21/multi/introduction-to-the-multitenant-architecture.html#GUID-AB84D6C9-4BBE-4D36-992F-2BB85739329F). The Multitenant Database Controller is a feature of Oracle DB Operator for Kubernetes (OraOperator) which helps to manage the life cycle of Pluggable Databases (PDBs) in an Oracle Container Database(CDB).
 
 The target CDB (for which the PDB life cycle management is needed) can be running on an multitenant machine and to manage its PDBs, the Oracle DB Operator can run on an multitenant Kubernetes system (For Example: [Oracle Linux Cloud Native Environment or OLCNE](https://docs.oracle.com/en/operating-systems/olcne/)).
