@@ -229,8 +229,8 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 			err = r.getPDBState(ctx, req, pdb)
 		case pdbPhaseMap:
 			err = r.mapPDB(ctx, req, pdb)
-                case pdbPhaseFail:
-                        err = r.mapPDB(ctx, req, pdb)
+		case pdbPhaseFail:
+			err = r.mapPDB(ctx, req, pdb)
 		default:
 			log.Info("DEFAULT:", "Name", pdb.Name, "Phase", phase, "Status", strconv.FormatBool(pdb.Status.Status))
 			return requeueN, nil
@@ -904,11 +904,23 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 		return err
 	}
 
-	// To prevent Reconcile from Modifying again whenever the Operator gets re-started
-	modOption := pdb.Spec.PDBState + "-" + pdb.Spec.ModifyOption
-	if pdb.Status.ModifyOption == modOption {
+	if pdb.Status.OpenMode == "READ WRITE" && pdb.Spec.PDBState == "OPEN" && pdb.Spec.ModifyOption == "READ WRITE" {
+		/* Database is already open no action required */
 		return nil
 	}
+
+	if pdb.Status.OpenMode == "MOUNTED" && pdb.Spec.PDBState == "CLOSE" && pdb.Spec.ModifyOption == "IMMEDIATE" {
+		/* Database is already close no action required */
+		return nil
+	}
+
+	// To prevent Reconcile from Modifying again whenever the Operator gets re-started
+	/*
+		modOption := pdb.Spec.PDBState + "-" + pdb.Spec.ModifyOption
+		if pdb.Status.ModifyOption == modOption {
+			return nil
+		}
+	*/
 
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
@@ -919,6 +931,8 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 		"state":        pdb.Spec.PDBState,
 		"modifyOption": pdb.Spec.ModifyOption,
 		"getScript":    strconv.FormatBool(*(pdb.Spec.GetScript))}
+	log.Info("MODIFY PDB", "pdb.Spec.PDBState=", pdb.Spec.PDBState, "pdb.Spec.ModifyOption=", pdb.Spec.ModifyOption)
+	log.Info("PDB STATUS OPENMODE", "pdb.Status.OpenMode=", pdb.Status.OpenMode)
 
 	pdbName := pdb.Spec.PDBName
 	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
@@ -973,8 +987,8 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 
 	if err != nil {
 		pdb.Status.OpenMode = "UNKNOWN"
-                pdb.Status.Msg      = "CHECK PDB STATUS"
-                pdb.Status.Status   = false
+		pdb.Status.Msg = "CHECK PDB STATUS"
+		pdb.Status.Status = false
 		return err
 	}
 
@@ -984,6 +998,13 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 	}
 
 	pdb.Status.OpenMode = objmap["open_mode"].(string)
+
+	if pdb.Status.OpenMode == "READ WRITE" {
+		err := r.mapPDB(ctx, req, pdb)
+		if err != nil {
+			log.Info("Fail to Map resource getting PDB state")
+		}
+	}
 
 	log.Info("Successfully obtained PDB state", "PDB Name", pdb.Spec.PDBName, "State", objmap["open_mode"].(string))
 	return nil
@@ -1034,6 +1055,10 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+	}
+
+	if err := r.Status().Update(ctx, pdb); err != nil {
+		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
 
 	log.Info("Successfully mapped PDB to Kubernetes resource", "PDB Name", pdb.Spec.PDBName)
