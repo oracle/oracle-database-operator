@@ -1,4 +1,4 @@
-build-operator:
+build-operator: 
   stage: build
   variables:
     IMAGE: "$DOCKER_REPO:$CI_COMMIT_BRANCH"
