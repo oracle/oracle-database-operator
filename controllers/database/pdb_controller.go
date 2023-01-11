@@ -618,6 +618,18 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		return err
 	}
 
+	/* Prevent creating an existing pdb */
+	err = r.getPDBState(ctx, req, pdb)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Check PDB not existence completed", "PDB Name", pdb.Spec.PDBName)
+		}
+
+	} else {
+		log.Info("Database already exists ", "PDB Name", pdb.Spec.PDBName)
+		return nil
+	}
+
 	values := map[string]string{
 		"method":              "CREATE",
 		"pdb_name":            pdb.Spec.PDBName,
@@ -679,6 +691,10 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
  /************************************************/
 func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
+	if pdb.Spec.PDBName == pdb.Spec.SrcPDBName {
+		return nil
+	}
+
 	log := r.Log.WithValues("clonePDB", req.NamespacedName)
 
 	var err error
@@ -686,6 +702,18 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 	cdb, err := r.getCDBResource(ctx, req, pdb)
 	if err != nil {
 		return err
+	}
+
+	/* Prevent cloning an existing pdb */
+	err = r.getPDBState(ctx, req, pdb)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Check PDB not existence completed", "PDB Name", pdb.Spec.PDBName)
+		}
+
+	} else {
+		log.Info("Database already exists ", "PDB Name", pdb.Spec.PDBName)
+		return nil
 	}
 
 	values := map[string]string{
