@@ -41,8 +41,8 @@ package oci
 import (
 	"errors"
 
-	"github.com/oracle/oci-go-sdk/v64/common"
-	"github.com/oracle/oci-go-sdk/v64/common/auth"
+	"github.com/oracle/oci-go-sdk/v65/common"
+	"github.com/oracle/oci-go-sdk/v65/common/auth"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
