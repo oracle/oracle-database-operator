@@ -42,7 +42,7 @@ import (
 	"encoding/json"
 	"reflect"
 
-	"github.com/oracle/oci-go-sdk/v64/database"
+	"github.com/oracle/oci-go-sdk/v65/database"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

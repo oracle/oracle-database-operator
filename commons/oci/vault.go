@@ -43,8 +43,8 @@ import (
 	"encoding/base64"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v64/common"
-	"github.com/oracle/oci-go-sdk/v64/secrets"
+	"github.com/oracle/oci-go-sdk/v65/common"
+	"github.com/oracle/oci-go-sdk/v65/secrets"
 )
 
 type VaultService interface {
