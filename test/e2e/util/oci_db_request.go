@@ -41,8 +41,8 @@ package e2eutil
 import (
 	"context"
 
-	"github.com/oracle/oci-go-sdk/v64/common"
-	"github.com/oracle/oci-go-sdk/v64/database"
+	"github.com/oracle/oci-go-sdk/v65/common"
+	"github.com/oracle/oci-go-sdk/v65/database"
 	"io"
 	"io/ioutil"
 	"time"
