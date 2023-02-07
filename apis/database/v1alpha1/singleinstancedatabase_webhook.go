@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2023 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -158,6 +158,11 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
 					"Cloning not supported for Express edition"))
+		}
+		if r.Spec.CreateAsStandby {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("createAsStandby"), r.Spec.CreateAsStandby,
+					"Physical Standby Database creation is not supported for Express edition"))
 		}
 		if strings.ToUpper(r.Spec.Sid) != "XE" {
 			allErrs = append(allErrs,

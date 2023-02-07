@@ -675,6 +675,13 @@ func ApexPasswordValidator(pwd string) bool {
 	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
 }
 
+func GetSqlClient(edition string) string {
+	if edition == "express" {
+		return "su -p oracle -c \"sqlplus -s / as sysdba\""
+	}
+	return "sqlplus -s / as sysdba"
+}
+
 // Function for patching the K8s service with the payload.
 // Patch strategy used: Strategic Merge Patch
 func PatchService(config *rest.Config, namespace string, ctx context.Context, req ctrl.Request, svcName string, payload string) error {

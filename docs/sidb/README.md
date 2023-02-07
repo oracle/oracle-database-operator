@@ -16,6 +16,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [Configure ArchiveLog, Flashback and ForceLog](#configure-archivelog-flashback-and-forcelog)
       * [Change Init Parameters](#change-init-parameters)
     * [Clone a Database](#clone-a-database)
+    * [Create a Standby Database](#create-a-standby-database)
     * [Patch a Database](#patch-a-database)
     * [Delete a Database](#delete-a-database)
     * [Advanced Database Configurations](#advanced-database-configurations)
@@ -33,6 +34,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
         * [Database Actions](#database-actions)
     * [APEX Installation](#apex-installation)
     * [Delete ORDS](#delete-ords)
+  * [DataguardBroker Resource](#dataguardbroker-resource)
   * [Maintenance Operations](#maintenance-operations)
   * [Additional Information](#additional-information)
 
@@ -426,6 +428,39 @@ $ kubectl apply -f singleinstancedatabase_clone.yaml
 
 **Note:** The clone database can specify a database image that is different from the source database. In such cases, cloning is supported only between databases of the same major release.
   
+### Create a Standby Database
+
+#### Prerequisites
+Before creating a standby, ArchiveLog, FlashBack, and ForceLog on primary Single Instance Database(`.spec.primaryDatabaseRef`) should be turned on.
+
+#### Template YAML
+To create a standby database, edit and apply the sample yaml file [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml).
+
+**NOTE:**
+- The `adminPassword` field of the above [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml) contains an admin password secret of the primary database ref for Standby Database creation. This secret gets deleted after the database pod becomes ready for security reasons.
+- Mention referred primary database in `.spec.primaryDatabaseRef` in the yaml file.
+- `.spec.createAsStandby` field of the yaml file should be true.
+- Database configuration like `Archivelog`, `FlashBack`, `ForceLog`, `TCPS connections` are not supported for standby database.
+
+#### List Standby Databases
+
+```sh
+NAME      EDITION      STATUS    ROLE               VERSION      CONNECT STR                  TCPS CONNECT STR           OEM EXPRESS URL
+sidb-19   Enterprise   Healthy   PRIMARY            19.3.0.0.0   10.25.0.26:1521/ORCL1     Unavailable                https://10.25.0.26:5500/em
+stdby-1   Enterprise   Healthy   PHYSICAL_STANDBY   19.3.0.0.0   10.25.0.27:32392/ORCLS1   Unavailable                https://10.25.0.27:30329/em
+
+```
+
+#### Creation Status
+  
+ Creating a new standby database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections.
+
+  ```sh
+$ kubectl get singleinstancedatabase stdby-1 -o "jsonpath={.status.status}"
+   
+  Healthy
+```
+
 ### Patch a Database
 
 Databases running in your cluster and managed by the Oracle Database operator can be patched or rolled back between release updates of the same major release. To patch databases, specify an image of the higher release update. To roll back databases, specify an image of the lower release update.
@@ -864,6 +899,165 @@ password: `.spec.apexPassword`
 - You cannot delete the referred Database before deleting its ORDS resource.
 - APEX, if installed, also gets uninstalled from the database when ORDS gets deleted.
 
+## DataguardBroker Resource
+
+The Oracle Database Operator creates the DataguardBroker kind as a custom resource that enables Oracle Database to be managed as a native Kubernetes object
+
+### Resource Details
+
+#### DataguardBroker List
+
+To list the DataguardBroker resources, use the following command:
+
+```sh
+  $ kubectl get dataguardbroker -o name
+
+    dataguardbroker.database.oracle.com/dataguardbroker-sample
+
+```
+
+#### Quick Status
+
+```sh
+  $ kubectl get dataguardbroker dataguardbroker-sample
+
+    NAME                      PRIMARY   STANDBYS               PROTECTION MODE      CONNECT STR                       PRIMARY DATABASE
+    dataguardbroker-sample    ORCL      ORCLS1,ORCLS2          MaxAvailability      10.0.25.85:31555/DATAGUARD     sidb-19c-1
+
+```
+
+
+#### Detailed Status
+
+```sh
+  $ kubectl describe dataguardbroker dataguardbroker-sample
+
+    Name:         dataguardbroker-sample
+    Namespace:    default
+    Labels:       <none>
+    Annotations:  <none>
+    API Version:  database.oracle.com/v1alpha1
+    Kind:         DataguardBroker
+    Metadata:
+      Creation Timestamp:  2023-01-23T04:29:04Z
+      Finalizers:
+        database.oracle.com/dataguardbrokerfinalizer
+      Generation:  3
+      Managed Fields:
+        API Version:  database.oracle.com/v1alpha1
+        Fields Type:  FieldsV1
+        fieldsV1:
+          ...
+        Manager:      manager
+        Operation:    Update
+        Time:         2023-01-23T04:30:20Z
+        API Version:  database.oracle.com/v1alpha1
+        Fields Type:  FieldsV1
+        fieldsV1:
+          ...
+        Manager:         kubectl-client-side-apply
+        Operation:       Update
+        Time:            2023-01-23T04:44:40Z
+      Resource Version:  75178376
+      UID:               c04a3d88-2018-4f7f-b232-b74d6c3d9479
+    Spec:
+      Admin Password:
+        Keep Secret:  true
+        Secret Key:   oracle_pwd
+        Secret Name:  db-secret
+      Fast Start Fail Over:
+        Enable:                 true
+      Primary Database Ref:     sidb-sample
+      Protection Mode:          MaxAvailability
+      Set As Primary Database:  
+      Standby Database Refs:
+        standby-sample-1
+        standby-sample-2
+    Status:
+      Cluster Connect String:   dataguardbroker-sample.default:1521/DATAGUARD
+      External Connect String:  10.0.25.85:31167/DATAGUARD
+      Primary Database:         OR19E3
+      Standby Databases:        OR19E3S1,OR19E3S2
+    Events:
+      Type    Reason                       Age                 From             Message
+      ----    ------                       ----                ----             -------
+      Normal  SUCCESS                      42m                 DataguardBroker  
+      Normal  DG Configuration up to date  24m (x13 over 56m)  DataguardBroker  
+```
+
+### Template YAML
+
+After you have created standbys, now configure dataguard broker for standbys and primary databases by mentioning the dataguard sample yaml.
+
+For the use cases detailed below a sample .yaml file is available at
+[config/samples/sidb/dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml)
+
+**Note:** The `adminPassword` field of the above `dataguardbroker.yaml` yaml contains a Admin Password secret of primary database ref for Dataguard configuration and observer creation. This secret gets deleted after the database pod becomes ready for security reasons.  
+
+
+### Setup DataguardBroker Configuration for a Single Instance Database
+
+Provision a new DataguardBroker custom resource for a single instance database(`.spec.primaryDatabaseRef`) by specifying appropriate values for the attributes in the example `.yaml` file, and running the following command:
+
+```sh
+$ kubectl create -f dataguardbroker.yaml
+
+  dataguardbroker.database.oracle.com/dataguardbroker-sample created
+```
+
+### DataguardBroker Status
+  
+Configuring DataguardBroker takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections.
+
+```sh
+$ kubectl get dataguardbroker dataguardbroker-sample -o "jsonpath={.status.status}"
+  
+Healthy
+```
+  
+### Connection Information for Primary Database
+
+  External and internal (running in Kubernetes pods) clients can connect to the primary database using `.status.connectString` and `.status.clusterConnectString`
+  respectively in the following command
+
+  ```sh
+  $ kubectl get dataguardbroker dataguardbroker-sample -o "jsonpath={.status.externalConnectString}"
+
+    144.25.10.119:1521/DATAGUARD
+  ```
+
+### Set any database as Primary Database (Switchover)
+
+Mention SID of the any databases (SID of one of `.spec.primaryDatabaseRef` , `.spec.standbyDatabaseRefs[]`) to be set primary in the `.spec.setAsPrimaryDatabase` of [dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml) and apply the yaml file.
+
+The database will be set to primary. Ignored if the database is already primary.
+
+```sh
+$ kubectl apply -f dataguardbroker.yaml
+
+  dataguardbroker.database.oracle.com/dataguardbroker-sample apply
+
+```
+
+### Patch Attributes
+
+The following attributes cannot be patched post DataguardBroker resource Creation : `primaryDatabaseRef, standbyDatabaseRefs, loadBalancer`.
+
+```sh
+$ kubectl --type=merge -p '{"spec":{"primaryDatabaseRef":"ORCL"}}' patch dataguardbroker dataguardbroker-sample 
+
+  The DataguardBroker "dataguardbroker-sample" is invalid: spec.sid: Forbidden: cannot be changed
+  ```
+
+### Delete DataguardBroker Resource
+
+```sh
+$ kubectl delete dataguardbroker dgbroker-sample 
+
+  dataguardbroker.database.oracle.com/dgbroker-sample deleted
+```
+
+**NOTE :** You can only delete DataGuard broker when role of `.spec.primaryDatabaseRef` is PRIMARY
 
 ## Maintenance Operations
 If you need to perform some maintenance operations (Database/ORDS) manually, then the procedure is as follows:
