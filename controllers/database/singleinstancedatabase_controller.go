@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2023 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -109,6 +109,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	singleInstanceDatabase := &dbapi.SingleInstanceDatabase{}
 	cloneFromDatabase := &dbapi.SingleInstanceDatabase{}
+	referredPrimaryDatabase := &dbapi.SingleInstanceDatabase{}
 
 	// Execute for every reconcile
 	defer r.updateReconcileStatus(singleInstanceDatabase, ctx, &result, &err, &blocked, &completed)
@@ -134,6 +135,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		singleInstanceDatabase.Status.Role = dbcommons.ValueUnavailable
 		singleInstanceDatabase.Status.ConnectString = dbcommons.ValueUnavailable
 		singleInstanceDatabase.Status.PdbConnectString = dbcommons.ValueUnavailable
+		singleInstanceDatabase.Status.TcpsConnectString = dbcommons.ValueUnavailable
 		singleInstanceDatabase.Status.OemExpressUrl = dbcommons.ValueUnavailable
 		singleInstanceDatabase.Status.ReleaseUpdate = dbcommons.ValueUnavailable
 		r.Status().Update(ctx, singleInstanceDatabase)
@@ -147,7 +149,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// First validate
-	result, err = r.validate(singleInstanceDatabase, cloneFromDatabase, ctx, req)
+	result, err = r.validate(singleInstanceDatabase, cloneFromDatabase, referredPrimaryDatabase, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Spec validation failed, Reconcile queued")
 		return result, nil
@@ -172,7 +174,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// POD creation
-	result, err = r.createOrReplacePods(singleInstanceDatabase, cloneFromDatabase, ctx, req)
+	result, err = r.createOrReplacePods(singleInstanceDatabase, cloneFromDatabase, referredPrimaryDatabase, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -197,29 +199,47 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
-	// Update DB config
-	result, err = r.updateDBConfig(singleInstanceDatabase, readyPod, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
+	if strings.ToUpper(singleInstanceDatabase.Status.Role) == "PRIMARY" {
+		// Update DB config
+		result, err = r.updateDBConfig(singleInstanceDatabase, readyPod, ctx, req)
+		if result.Requeue {
+			r.Log.Info("Reconcile queued")
+			return result, nil
+		}
 
-	// Update Init Parameters
-	result, err = r.updateInitParameters(singleInstanceDatabase, readyPod, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
+		// Update Init Parameters
+		result, err = r.updateInitParameters(singleInstanceDatabase, readyPod, ctx, req)
+		if result.Requeue {
+			r.Log.Info("Reconcile queued")
+			return result, nil
+		}
 
-	// Configure TCPS
-	result, err = r.configTcps(singleInstanceDatabase, readyPod, ctx, req)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
+		// Configure TCPS
+		result, err = r.configTcps(singleInstanceDatabase, readyPod, ctx, req)
+		if result.Requeue {
+			r.Log.Info("Reconcile queued")
+			return result, nil
+		}
+
+	} else {
+		// Database is in role of standby
+		err = SetupStandbyDatabase(r, singleInstanceDatabase, referredPrimaryDatabase, ctx, req)
+		if err != nil {
+			return requeueY, err
+		}
+
+		singleInstanceDatabase.Status.PrimaryDatabase = referredPrimaryDatabase.Name
+		// Store all standbyDatabase sid:name in a map to use it during manual switchover.
+		if len(referredPrimaryDatabase.Status.StandbyDatabases) == 0 {
+			referredPrimaryDatabase.Status.StandbyDatabases = make(map[string]string)
+		}
+		referredPrimaryDatabase.Status.StandbyDatabases[strings.ToUpper(singleInstanceDatabase.Spec.Sid)] = singleInstanceDatabase.Name
+		r.Status().Update(ctx, referredPrimaryDatabase)
+
 	}
 
 	// Run Datapatch
-	if singleInstanceDatabase.Status.DatafilesPatched != "true" {
+	if strings.ToUpper(singleInstanceDatabase.Status.Role) == "PRIMARY" && singleInstanceDatabase.Status.DatafilesPatched != "true" {
 		// add a blocking reconcile condition
 		err = errors.New("processing datapatch execution")
 		blocked = true
@@ -254,9 +274,11 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	return requeueN, nil
 }
 
-//#############################################################################
-//    Update each reconcile condtion/status
-//#############################################################################
+// #############################################################################
+//
+//	Update each reconcile condtion/status
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) updateReconcileStatus(m *dbapi.SingleInstanceDatabase, ctx context.Context,
 	result *ctrl.Result, err *error, blocked *bool, completed *bool) {
 
@@ -315,13 +337,15 @@ func (r *SingleInstanceDatabaseReconciler) updateReconcileStatus(m *dbapi.Single
 	meta.SetStatusCondition(&m.Status.Conditions, condition)
 }
 
-//#############################################################################
-//    Validate the CRD specs
-//    m = SingleInstanceDatabase
-//    n = CloneFromDatabase
-//#############################################################################
+// #############################################################################
+//
+//	Validate the CRD specs
+//	m = SingleInstanceDatabase
+//	n = CloneFromDatabase
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatabase,
-	n *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var err error
 	eventReason := "Spec Error"
 	var eventMsgs []string
@@ -372,6 +396,9 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	}
 	if m.Spec.Edition == "express" && m.Spec.CloneFrom != "" {
 		eventMsgs = append(eventMsgs, "cloning not supported for express edition")
+	}
+	if m.Spec.Edition == "express" && m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
+		eventMsgs = append(eventMsgs, "Standby database creation is not supported for express edition")
 	}
 	if m.Status.OrdsReference != "" && m.Status.Persistence.Size != "" && m.Status.Persistence != m.Spec.Persistence {
 		eventMsgs = append(eventMsgs, "uninstall ORDS to change Peristence")
@@ -453,15 +480,48 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 
 	}
 
+	if m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
+
+		// Fetch the Primary database reference, required for all iterations
+		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
+				r.Log.Info(err.Error())
+				return requeueN, err
+			}
+			return requeueY, err
+		}
+
+		if m.Status.DatafilesCreated == "true" ||
+			!dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+			return requeueN, nil
+		}
+		m.Status.Edition = rp.Status.Edition
+
+		err = ValidatePrimaryDatabaseForStandbyCreation(r, m, rp, ctx, req)
+		if err != nil {
+			return requeueY, err
+		}
+
+		r.Log.Info("Settingup Primary Database for standby creation...")
+		err = SetupPrimaryDatabase(r, m, rp, ctx, req)
+		if err != nil {
+			return requeueY, err
+		}
+
+	}
 	r.Log.Info("Completed reconcile validation")
 
 	return requeueN, nil
 }
 
-//#############################################################################
-//    Instantiate POD spec from SingleInstanceDatabase spec
-//#############################################################################
-func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase,
+// #############################################################################
+//
+//	Instantiate POD spec from SingleInstanceDatabase spec
+//
+// #############################################################################
+func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase,
 	requiredAffinity bool) *corev1.Pod {
 
 	// POD spec
@@ -720,8 +780,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 						}
 					}
-					if m.Spec.CloneFrom == "" {
-						// For new DB use case
+					if m.Spec.CloneFrom != "" {
+						// Clone DB use-case
 						return []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
@@ -732,56 +792,96 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
 							},
 							{
-								Name: "CREATE_PDB",
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
+							},
+							{
+								Name:  "WALLET_DIR",
+								Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
+							},
+							{
+								Name: "PRIMARY_DB_CONN_STR",
 								Value: func() string {
-									if m.Spec.Pdbname != "" {
-										return "true"
+									if dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
+										return n.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + n.Spec.Sid
 									}
-									return "false"
+									return m.Spec.CloneFrom
 								}(),
+							},
+							{
+								Name: "ORACLE_HOSTNAME",
+								ValueFrom: &corev1.EnvVarSource{
+									FieldRef: &corev1.ObjectFieldSelector{
+										FieldPath: "status.podIP",
+									},
+								},
+							},
+							{
+								Name:  "CLONE_DB",
+								Value: "true",
+							},
+							{
+								Name:  "SKIP_DATAPATCH",
+								Value: "true",
+							},
+						}
+
+					} else if m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
+						//Standby DB Usecase
+						return []corev1.EnvVar{
+							{
+								Name:  "SVC_HOST",
+								Value: m.Name,
+							},
+							{
+								Name:  "SVC_PORT",
+								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
 							},
 							{
 								Name:  "ORACLE_SID",
 								Value: strings.ToUpper(m.Spec.Sid),
 							},
 							{
-								Name: "WALLET_DIR",
+								Name:  "WALLET_DIR",
+								Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
+							},
+							{
+								Name: "PRIMARY_DB_CONN_STR",
 								Value: func() string {
-									if m.Spec.Image.PrebuiltDB {
-										return "" // No wallets for prebuilt DB
+									if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+										return rp.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + rp.Spec.Sid
 									}
-									return "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet"
+									return m.Spec.PrimaryDatabaseRef
 								}(),
 							},
 							{
-								Name:  "ORACLE_PDB",
-								Value: m.Spec.Pdbname,
+								Name:  "PRIMARY_SID",
+								Value: strings.ToUpper(rp.Spec.Sid),
 							},
 							{
-								Name:  "ORACLE_CHARACTERSET",
-								Value: m.Spec.Charset,
+								Name:  "PRIMARY_IP",
+								Value: rp.Name,
 							},
 							{
-								Name:  "ORACLE_EDITION",
-								Value: m.Spec.Edition,
-							},
-							{
-								Name: "INIT_SGA_SIZE",
+								Name: "CREATE_PDB",
 								Value: func() string {
-									if m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
-										return strconv.Itoa(m.Spec.InitParams.SgaTarget)
+									if rp.Spec.Pdbname != "" {
+										return "true"
 									}
-									return ""
+									return "false"
 								}(),
 							},
 							{
-								Name: "INIT_PGA_SIZE",
-								Value: func() string {
-									if m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
-										return strconv.Itoa(m.Spec.InitParams.SgaTarget)
-									}
-									return ""
-								}(),
+								Name: "ORACLE_HOSTNAME",
+								ValueFrom: &corev1.EnvVarSource{
+									FieldRef: &corev1.ObjectFieldSelector{
+										FieldPath: "status.podIP",
+									},
+								},
+							},
+							{
+								Name:  "STANDBY_DB",
+								Value: "true",
 							},
 							{
 								Name:  "SKIP_DATAPATCH",
@@ -789,7 +889,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 						}
 					}
-					// For clone DB use case
+
 					return []corev1.EnvVar{
 						{
 							Name:  "SVC_HOST",
@@ -800,39 +900,63 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
 						},
 						{
+							Name: "CREATE_PDB",
+							Value: func() string {
+								if m.Spec.Pdbname != "" {
+									return "true"
+								}
+								return "false"
+							}(),
+						},
+						{
 							Name:  "ORACLE_SID",
 							Value: strings.ToUpper(m.Spec.Sid),
 						},
 						{
-							Name:  "WALLET_DIR",
-							Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
-						},
-						{
-							Name: "PRIMARY_DB_CONN_STR",
+							Name: "WALLET_DIR",
 							Value: func() string {
-								if dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
-									return n.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + n.Spec.Sid
+								if m.Spec.Image.PrebuiltDB {
+									return "" // No wallets for prebuilt DB
 								}
-								return m.Spec.CloneFrom
+								return "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet"
 							}(),
 						},
 						{
-							Name: "ORACLE_HOSTNAME",
-							ValueFrom: &corev1.EnvVarSource{
-								FieldRef: &corev1.ObjectFieldSelector{
-									FieldPath: "status.podIP",
-								},
-							},
+							Name:  "ORACLE_PDB",
+							Value: m.Spec.Pdbname,
 						},
 						{
-							Name:  "CLONE_DB",
-							Value: "true",
+							Name:  "ORACLE_CHARACTERSET",
+							Value: m.Spec.Charset,
+						},
+						{
+							Name:  "ORACLE_EDITION",
+							Value: m.Spec.Edition,
+						},
+						{
+							Name: "INIT_SGA_SIZE",
+							Value: func() string {
+								if m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
+									return strconv.Itoa(m.Spec.InitParams.SgaTarget)
+								}
+								return ""
+							}(),
+						},
+						{
+							Name: "INIT_PGA_SIZE",
+							Value: func() string {
+								if m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
+									return strconv.Itoa(m.Spec.InitParams.SgaTarget)
+								}
+								return ""
+							}(),
 						},
 						{
 							Name:  "SKIP_DATAPATCH",
 							Value: "true",
 						},
 					}
+
 				}(),
 			}},
 
@@ -876,9 +1000,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 
 }
 
-//#############################################################################
-//    Instantiate Service spec from SingleInstanceDatabase spec
-//#############################################################################
+// #############################################################################
+//
+//	Instantiate Service spec from SingleInstanceDatabase spec
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleInstanceDatabase,
 	svcName string, ports []corev1.ServicePort, svcType corev1.ServiceType) *corev1.Service {
 	svc := &corev1.Service{
@@ -915,9 +1041,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleIns
 	return svc
 }
 
-//#############################################################################
-//    Instantiate Persistent Volume Claim spec from SingleInstanceDatabase spec
-//#############################################################################
+// #############################################################################
+//
+//	Instantiate Persistent Volume Claim spec from SingleInstanceDatabase spec
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleInstanceDatabase) *corev1.PersistentVolumeClaim {
 
 	pvc := &corev1.PersistentVolumeClaim{
@@ -977,9 +1105,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 	return pvc
 }
 
-//#############################################################################
-//    Stake a claim for Persistent Volume
-//#############################################################################
+// #############################################################################
+//
+//	Stake a claim for Persistent Volume
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Context, req ctrl.Request,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 
@@ -1035,18 +1165,20 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Contex
 	return requeueN, nil
 }
 
-//#############################################################################
-//    Create Services for SingleInstanceDatabase
-//#############################################################################
+// #############################################################################
+//
+//	Create Services for SingleInstanceDatabase
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Context, req ctrl.Request,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 
 	log := r.Log.WithValues("createOrReplaceSVC", req.NamespacedName)
 
 	/** Two k8s services gets created:
-	     1. One service is ClusterIP service for cluster only communications on the listener port 1521,
-	     2. One service is NodePort/LoadBalancer (according to the YAML specs) for users to connect
-	**/
+		  1. One service is ClusterIP service for cluster only communications on the listener port 1521,
+		  2. One service is NodePort/LoadBalancer (according to the YAML specs) for users to connect
+	 **/
 
 	// clusterSvc is the cluster-wide service and extSvc is the external service for the users to connect
 	clusterSvc := &corev1.Service{}
@@ -1338,12 +1470,14 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	return requeueN, nil
 }
 
-//#############################################################################
-//    Create new Pods or delete old/extra pods
-//    m = SingleInstanceDatabase
-//    n = CloneFromDatabase
-//#############################################################################
-func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase,
+// #############################################################################
+//
+//	Create new Pods or delete old/extra pods
+//	m = SingleInstanceDatabase
+//	n = CloneFromDatabase
+//
+// #############################################################################
+func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase,
 	ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("createOrReplacePods", req.NamespacedName)
 
@@ -1442,7 +1576,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 		}
 		// If version is same , call createPods() with the same version ,  and no of Replicas required
-		return r.createPods(m, n, ctx, req, replicasFound, false)
+		return r.createPods(m, n, rp, ctx, req, replicasFound, false)
 	}
 
 	// Version/Image changed
@@ -1515,7 +1649,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 
 	// create new Pods with the new Version and no.of Replicas required
 	// if m.Status.Replicas > 1, then it is replica based patching
-	result, err := r.createPods(m, n, ctx, req, newReplicasFound, m.Status.Replicas > 1)
+	result, err := r.createPods(m, n, rp, ctx, req, newReplicasFound, m.Status.Replicas > 1)
 	if result.Requeue {
 		return result, err
 	}
@@ -1526,9 +1660,11 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 	// PATCHING END
 }
 
-//#############################################################################
-//    Function for creating Oracle Wallet
-//#############################################################################
+// #############################################################################
+//
+//	Function for creating Oracle Wallet
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	// Wallet not supported for XE Database
@@ -1642,13 +1778,15 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	return requeueN, nil
 }
 
-//##############################################################################
-//    Create the requested POD replicas
-//    m = SingleInstanceDatabase
-//    n = CloneFromDatabase
-//    patching =  Boolean variable to differentiate normal usecase with patching
-//##############################################################################
-func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase,
+// ##############################################################################
+//
+//	Create the requested POD replicas
+//	m = SingleInstanceDatabase
+//	n = CloneFromDatabase
+//	patching =  Boolean variable to differentiate normal usecase with patching
+//
+// ##############################################################################
+func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase,
 	ctx context.Context, req ctrl.Request, replicasFound int, replicaPatching bool) (ctrl.Result, error) {
 
 	log := r.Log.WithValues("createPods", req.NamespacedName)
@@ -1670,7 +1808,7 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 	//  if Found < Required, create new pods, name of pods are generated randomly
 	for i := replicasFound; i < replicasReq; i++ {
 		// mandatory pod affinity if it is replica based patching or not the first pod
-		pod := r.instantiatePodSpec(m, n, replicaPatching || !firstPod)
+		pod := r.instantiatePodSpec(m, n, rp, replicaPatching || !firstPod)
 		log.Info("Creating a new "+m.Name+" POD", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 		err := r.Create(ctx, pod)
 		if err != nil {
@@ -1702,11 +1840,13 @@ func (r *SingleInstanceDatabaseReconciler) createPods(m *dbapi.SingleInstanceDat
 	return requeueN, nil
 }
 
-//#############################################################################
-//    Create the requested POD replicas
-//    m = SingleInstanceDatabase
-//    n = CloneFromDatabase
-//#############################################################################
+// #############################################################################
+//
+//	Create the requested POD replicas
+//	m = SingleInstanceDatabase
+//	n = CloneFromDatabase
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req ctrl.Request, m *dbapi.SingleInstanceDatabase, available []corev1.Pod,
 	readyPod corev1.Pod, replicasFound int, replicasRequired int) (ctrl.Result, error) {
 	log := r.Log.WithValues("deletePods", req.NamespacedName)
@@ -1763,9 +1903,11 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 	return requeueN, nil
 }
 
-//#############################################################################
-//    ValidateDBReadiness and return the ready POD
-//#############################################################################
+// #############################################################################
+//
+//	ValidateDBReadiness and return the ready POD
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleInstanceDatabase,
 	ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod, error) {
 
@@ -1816,11 +1958,7 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 		// As No pod is ready now , turn on mode when pod is ready . so requeue the request
 		return requeueY, readyPod, errors.New("no pod is ready currently")
 	}
-	if m.Status.DatafilesPatched != "true" {
-		eventReason := "Datapatch Pending"
-		eventMsg := "datapatch execution pending"
-		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-	}
+
 	available = append(available, readyPod)
 	podNamesFinal := dbcommons.GetPodNames(available)
 	r.Log.Info("Final "+m.Name+" Pods After Deleting (or) Adding Extra Pods ( Including The Ready Pod ) ", "Pod Names", podNamesFinal)
@@ -1845,13 +1983,21 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 		}
 	}
 
+	if strings.ToUpper(m.Status.Role) == "PRIMARY" && m.Status.DatafilesPatched != "true" {
+		eventReason := "Datapatch Pending"
+		eventMsg := "datapatch execution pending"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+	}
+
 	return requeueN, readyPod, nil
 
 }
 
-//#############################################################################
-//    Function for deleting the Oracle Wallet
-//#############################################################################
+// #############################################################################
+//
+//	Function for deleting the Oracle Wallet
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	// Wallet not supported for XE Database
@@ -1897,9 +2043,11 @@ func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceD
 	return requeueN, nil
 }
 
-//#############################################################################
-//   Updating clientWallet when TCPS is enabled
-//#############################################################################
+// #############################################################################
+//
+//	Updating clientWallet when TCPS is enabled
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) updateClientWallet(m *dbapi.SingleInstanceDatabase,
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	// Updation of tnsnames.ora in clientWallet for HOST and PORT fields
@@ -1940,9 +2088,11 @@ func (r *SingleInstanceDatabaseReconciler) updateClientWallet(m *dbapi.SingleIns
 	return nil
 }
 
-//#############################################################################
-//   Configuring TCPS
-//#############################################################################
+// #############################################################################
+//
+//	Configuring TCPS
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDatabase,
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	eventReason := "Configuring TCPS"
@@ -2057,9 +2207,11 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 	return requeueN, nil
 }
 
-//#############################################################################
-//   Execute Datapatch
-//#############################################################################
+// #############################################################################
+//
+//	Execute Datapatch
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceDatabase,
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
@@ -2120,9 +2272,11 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 	return requeueN, nil
 }
 
-//#############################################################################
-//    Update Init Parameters
-//#############################################################################
+// #############################################################################
+//
+//	Update Init Parameters
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleInstanceDatabase,
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("updateInitParameters", req.NamespacedName)
@@ -2170,9 +2324,11 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 	return requeueN, nil
 }
 
-//#############################################################################
-//    Update DB config params like FLASHBACK , FORCELOGGING , ARCHIVELOG
-//#############################################################################
+// #############################################################################
+//
+//	Update DB config params like FLASHBACK , FORCELOGGING , ARCHIVELOG
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanceDatabase,
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
@@ -2370,9 +2526,11 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	return requeueN, nil
 }
 
-//#############################################################################
-//             Update ORDS Status
-//#############################################################################
+// #############################################################################
+//
+//	Update ORDS Status
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) updateORDSStatus(m *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) {
 
 	if m.Status.OrdsReference == "" {
@@ -2392,9 +2550,11 @@ func (r *SingleInstanceDatabaseReconciler) updateORDSStatus(m *dbapi.SingleInsta
 	}
 }
 
-//#############################################################################
-//   Manage Finalizer to cleanup before deletion of SingleInstanceDatabase
-//#############################################################################
+// #############################################################################
+//
+//	Manage Finalizer to cleanup before deletion of SingleInstanceDatabase
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) manageSingleInstanceDatabaseDeletion(req ctrl.Request, ctx context.Context,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 	log := r.Log.WithValues("manageSingleInstanceDatabaseDeletion", req.NamespacedName)
@@ -2437,9 +2597,11 @@ func (r *SingleInstanceDatabaseReconciler) manageSingleInstanceDatabaseDeletion(
 	return requeueN, nil
 }
 
-//#############################################################################
-//   Finalization logic for singleInstanceDatabaseFinalizer
-//#############################################################################
+// #############################################################################
+//
+//	Finalization logic for singleInstanceDatabaseFinalizer
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) cleanupSingleInstanceDatabase(req ctrl.Request, ctx context.Context,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 	log := r.Log.WithValues("cleanupSingleInstanceDatabase", req.NamespacedName)
@@ -2480,9 +2642,11 @@ func (r *SingleInstanceDatabaseReconciler) cleanupSingleInstanceDatabase(req ctr
 	return requeueN, nil
 }
 
-//#############################################################################
-//    SetupWithManager sets up the controller with the Manager
-//#############################################################################
+// #############################################################################
+//
+//	SetupWithManager sets up the controller with the Manager
+//
+// #############################################################################
 func (r *SingleInstanceDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.SingleInstanceDatabase{}).
@@ -2490,4 +2654,389 @@ func (r *SingleInstanceDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) er
 		WithEventFilter(dbcommons.ResourceEventHandler()).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 100}). //ReconcileHandler is never invoked concurrently with the same object.
 		Complete(r)
+}
+
+// StandbyDatabase functions
+// Primary DB Validation
+func CheckPrimaryDatabaseStatus(p *dbapi.SingleInstanceDatabase) error {
+
+	if p.Status.Status != dbcommons.StatusReady {
+		return fmt.Errorf("referred primary database %v is NOT READY", p.Name)
+	}
+	return nil
+}
+
+func CheckDatabaseRoleAsPrimary(p *dbapi.SingleInstanceDatabase) error {
+
+	if strings.ToUpper(p.Status.Role) != "PRIMARY" {
+		return fmt.Errorf("referred database %v is not in PRIMARY role", p.Name)
+	}
+	return nil
+}
+
+func GetDatabaseReadyPod(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (corev1.Pod, error) {
+
+	dbReadyPod, _, _, _, err := dbcommons.FindPods(r, d.Spec.Image.Version,
+		d.Spec.Image.PullFrom, d.Name, d.Namespace, ctx, req)
+
+	return dbReadyPod, err
+}
+
+func GetDatabaseAdminPassword(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx context.Context) (string, error) {
+
+	adminPasswordSecret := &corev1.Secret{}
+	adminPassword := ""
+	err := r.Get(ctx, types.NamespacedName{Name: d.Spec.AdminPassword.SecretName, Namespace: d.Namespace}, adminPasswordSecret)
+	if err != nil {
+		return adminPassword, err
+	}
+	adminPassword = string(adminPasswordSecret.Data[d.Spec.AdminPassword.SecretKey])
+	return adminPassword, nil
+}
+
+func ValidatePrimaryDatabaseAdminPassword(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase,
+	adminPassword string, ctx context.Context, req ctrl.Request) error {
+
+	dbReadyPod, err := GetDatabaseReadyPod(r, p, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword), dbcommons.GetSqlClient(p.Spec.Edition)))
+	if err != nil {
+		return err
+	}
+
+	if strings.Contains(out, "USER is \"SYS\"") {
+		r.Log.Info("validated Admin password successfully")
+	} else {
+		if strings.Contains(out, "ORA-01017") {
+			r.Log.Info("Invalid primary database password, Logon denied")
+		}
+		return fmt.Errorf("primary database admin password validation failed")
+	}
+
+	return nil
+}
+
+func ValidateDatabaseConfiguration(p *dbapi.SingleInstanceDatabase) error {
+	if p.Status.ArchiveLog == "false" || p.Status.FlashBack == "false" || p.Status.ForceLogging == "false" {
+		return fmt.Errorf("all of Archivelog, Flashback and ForceLogging modes are not enabled in the primary database %v", p.Name)
+	}
+	return nil
+}
+
+func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
+	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
+
+	log := r.Log.WithValues("ValidatePrimaryDatabase", req.NamespacedName)
+
+	if stdby.Status.DatafilesCreated == "true" {
+		return nil
+	}
+
+	log.Info(fmt.Sprintf("Checking primary database %s status...", primary.Name))
+	err := CheckPrimaryDatabaseStatus(primary)
+	if err != nil {
+		stdby.Status.Status = dbcommons.StatusPending
+		return err
+	}
+
+	log.Info("Checking for referred database role...")
+	err = CheckDatabaseRoleAsPrimary(primary)
+	if err != nil {
+		stdby.Status.Status = dbcommons.StatusError
+		return err
+	}
+
+	r.Recorder.Eventf(stdby, corev1.EventTypeNormal, "Validation", "Primary database is ready")
+
+	adminPassword, err := GetDatabaseAdminPassword(r, stdby, ctx)
+	if err != nil {
+		stdby.Status.Status = dbcommons.StatusError
+		return err
+	}
+
+	log.Info(fmt.Sprintf("Validating admin password for the primary Database %s...", primary.Name))
+	err = ValidatePrimaryDatabaseAdminPassword(r, primary, adminPassword, ctx, req)
+	if err != nil {
+		stdby.Status.Status = dbcommons.StatusError
+		return err
+	}
+
+	log.Info(fmt.Sprintf("Validating primary database %s configuration...", primary.Name))
+	err = ValidateDatabaseConfiguration(primary)
+	if err != nil {
+		stdby.Status.Status = dbcommons.StatusError
+		return err
+	}
+
+	r.Recorder.Eventf(stdby, corev1.EventTypeNormal, "Validation", "Successfully validated the primary database admin password and configuration")
+
+	return nil
+}
+
+// Primary DB Setup
+func GetTotalDatabasePods(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (int, error) {
+	_, totalPods, _, _, err := dbcommons.FindPods(r, d.Spec.Image.Version,
+		d.Spec.Image.PullFrom, d.Name, d.Namespace, ctx, req)
+
+	return totalPods, err
+}
+
+func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
+	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+
+	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", fmt.Sprintf("cat /opt/oracle/oradata/dbconfig/%s/tnsnames.ora", strings.ToUpper(p.Spec.Sid)))
+	if err != nil {
+		return fmt.Errorf("error obtaining the contents of tnsnames.ora in the primary database %v", p.Name)
+	}
+	r.Log.Info("tnsnames.ora content is as follows:")
+	r.Log.Info(out)
+
+	if strings.Contains(out, "(SERVICE_NAME = "+strings.ToUpper(s.Spec.Sid)+")") {
+		r.Log.Info("TNS ENTRY OF " + s.Spec.Sid + " ALREADY EXISTS ON PRIMARY Database ")
+	} else {
+		tnsnamesEntry := dbcommons.StandbyTnsnamesEntry
+		tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "##STANDBYDATABASE_SID##", s.Spec.Sid)
+		tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "##STANDBYDATABASE_SERVICE_EXPOSED##", s.Name)
+
+		out, err = dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			fmt.Sprintf("echo -e  \"%s\"  | cat >> /opt/oracle/oradata/dbconfig/%s/tnsnames.ora ", tnsnamesEntry, strings.ToUpper(p.Spec.Sid)))
+		if err != nil {
+			return fmt.Errorf("unable to set tnsnames.ora in the primary database %v", p.Name)
+		}
+		r.Log.Info("Modifying tnsnames.ora Output")
+		r.Log.Info(out)
+
+	}
+	return nil
+}
+
+func RestartListenerInDatabase(r *SingleInstanceDatabaseReconciler, primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+	r.Log.Info("Restarting listener in the database through pod", "primary database pod name", primaryReadyPod.Name)
+	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", "lsnrctl stop && lsnrctl start")
+	if err != nil {
+		return fmt.Errorf("unable to restart listener in the database through pod %v", primaryReadyPod.Name)
+	}
+	r.Log.Info("Listener restart output")
+	r.Log.Info(out)
+	return nil
+}
+
+func SetupListenerPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
+	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+
+	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", fmt.Sprintf("cat /opt/oracle/oradata/dbconfig/%s/listener.ora ", strings.ToUpper(p.Spec.Sid)))
+	if err != nil {
+		return fmt.Errorf("unable to obtain contents of listener.ora in primary database %v", p.Name)
+	}
+	r.Log.Info("listener.ora Output")
+	r.Log.Info(out)
+
+	if strings.Contains(out, strings.ToUpper(p.Spec.Sid)+"_DGMGRL") {
+		r.Log.Info("LISTENER.ORA ALREADY HAS " + p.Spec.Sid + "_DGMGRL ENTRY IN SID_LIST_LISTENER ")
+	} else {
+		out, err = dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			fmt.Sprintf("echo -e  \"%s\"  | cat > /opt/oracle/oradata/dbconfig/%s/listener.ora ", dbcommons.ListenerEntry, strings.ToUpper(p.Spec.Sid)))
+		if err != nil {
+			return fmt.Errorf("unable to modify listener.ora in the primary database %v", p.Name)
+		}
+		r.Log.Info("Modifying listener.ora Output")
+		r.Log.Info(out)
+
+		err = RestartListenerInDatabase(r, primaryReadyPod, ctx, req)
+		if err != nil {
+			return err
+		}
+
+	}
+	return nil
+}
+
+func SetupInitParamsPrimaryForDG(r *SingleInstanceDatabaseReconciler, primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+	r.Log.Info("Running StandbyDatabasePrerequisitesSQL in the primary database")
+	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba", dbcommons.StandbyDatabasePrerequisitesSQL))
+	if err != nil {
+		return fmt.Errorf("unable to run StandbyDatabasePrerequisitesSQL in primary database")
+	}
+	r.Log.Info("StandbyDatabasePrerequisites Output")
+	r.Log.Info(out)
+	return nil
+}
+
+func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
+	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
+
+	log := r.Log.WithValues("SetupPrimaryDatabase", req.NamespacedName)
+
+	totalStandbyPods, err := GetTotalDatabasePods(r, stdby, ctx, req)
+	if err != nil {
+		return err
+	}
+	// NO need to setup primary database if standby database pods are initialized
+	if totalStandbyPods > 0 {
+		return nil
+	}
+
+	primaryDbReadyPod, err := GetDatabaseReadyPod(r, primary, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	log.Info("Setting up tnsnames.ora in primary database", "primaryDatabase", primary.Name)
+	err = SetupTnsNamesPrimaryForDG(r, primary, stdby, primaryDbReadyPod, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	log.Info("Setting up listener.ora in primary database", "primaryDatabase", primary.Name)
+	err = SetupListenerPrimaryForDG(r, primary, stdby, primaryDbReadyPod, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	log.Info("Setting up some InitParams for DG in primary database", "primaryDatabase", primary.Name)
+	err = SetupInitParamsPrimaryForDG(r, primaryDbReadyPod, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+// Standby DB Setup
+func GetAllPdbInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ([]string, error) {
+	var pdbs []string
+	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba", dbcommons.GetPdbsSQL))
+	if err != nil {
+		return pdbs, err
+	}
+	r.Log.Info("GetPdbsSQL Output")
+	r.Log.Info(out)
+
+	pdbs, _ = dbcommons.StringToLines(out)
+	return pdbs, nil
+}
+
+func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.SingleInstanceDatabase,
+	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request, pdbList []string) error {
+	for _, pdb := range pdbList {
+		if pdb == "" {
+			continue
+		}
+
+		// Get the Tnsnames.ora entries
+		out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "",
+			ctx, req, false, "bash", "-c", fmt.Sprintf("cat /opt/oracle/oradata/dbconfig/%s/tnsnames.ora", strings.ToUpper(d.Spec.Sid)))
+		if err != nil {
+			return err
+		}
+		r.Log.Info("tnsnames.ora Output")
+		r.Log.Info(out)
+
+		if strings.Contains(out, "(SERVICE_NAME = "+strings.ToUpper(pdb)+")") {
+			r.Log.Info("TNS ENTRY OF " + strings.ToUpper(pdb) + " ALREADY EXISTS ON SIDB ")
+		} else {
+			tnsnamesEntry := dbcommons.PDBTnsnamesEntry
+			tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "##PDB_NAME##", strings.ToUpper(pdb))
+
+			// Add Tnsnames.ora For pdb on Standby Database
+			out, err = dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+				fmt.Sprintf("echo -e  \"%s\"  | cat >> /opt/oracle/oradata/dbconfig/%s/tnsnames.ora ", tnsnamesEntry, strings.ToUpper(d.Spec.Sid)))
+			if err != nil {
+				return err
+			}
+			r.Log.Info("Modifying tnsnames.ora for Pdb Output")
+			r.Log.Info(out)
+
+		}
+	}
+
+	return nil
+}
+
+func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
+	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+
+	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | cat >> /opt/oracle/oradata/dbconfig/%s/tnsnames.ora ", dbcommons.PrimaryTnsnamesEntry, strings.ToUpper(s.Spec.Sid)))
+	if err != nil {
+		return err
+	}
+	r.Log.Info("Modifying tnsnames.ora Output")
+	r.Log.Info(out)
+
+	return nil
+}
+
+func EnableFlashbackInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.GetSqlClient("enterprise")))
+	if err != nil {
+		return err
+	}
+	r.Log.Info("FlashBackTrue Output")
+	r.Log.Info(out)
+	return nil
+}
+
+func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
+	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
+
+	primaryReadyPod, err := GetDatabaseReadyPod(r, primary, ctx, req)
+	if err != nil {
+		return err
+	}
+	r.Log.Info("Primary DB Name: " + primaryReadyPod.Name)
+
+	stdbyReadyPod, err := GetDatabaseReadyPod(r, stdby, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	r.Log.Info("Getting the list of all pdbs in primary database")
+	pdbListPrimary, err := GetAllPdbInDatabase(r, primaryReadyPod, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	r.Log.Info("Setting up tnsnames in standby database for the pdbs of primary database")
+	err = SetupTnsNamesForPDBListInDatabase(r, stdby, stdbyReadyPod, ctx, req, pdbListPrimary)
+	if err != nil {
+		return err
+	}
+
+	r.Log.Info("Setting up tnsnames entry for primary database in standby database")
+	err = SetupPrimaryDBTnsNamesInStandby(r, stdby, stdbyReadyPod, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	r.Log.Info("Setting up listener in the standby database")
+	err = SetupListenerPrimaryForDG(r, stdby, primary, stdbyReadyPod, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	flashBackStatus, _, _, result := dbcommons.CheckDBConfig(stdbyReadyPod, r, r.Config, ctx, req, stdby.Spec.Edition)
+	if result.Requeue {
+		return fmt.Errorf("error in obtaining the Database Config status")
+	}
+	if !flashBackStatus {
+		r.Log.Info("Setting up flashback mode in the standby database")
+		err = EnableFlashbackInDatabase(r, stdbyReadyPod, ctx, req)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
