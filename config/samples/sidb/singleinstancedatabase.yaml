@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2022, Oracle and/or its affiliates. 
+# Copyright (c) 2023, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 apiVersion: database.oracle.com/v1alpha1
@@ -16,6 +16,14 @@ spec:
   ## If cloning from an external containerized DB which could be either standalone or in any K8s cluster,
   ## specify connect string as `<host>:<port>/<service_name>` instead of source database ref
   cloneFrom: ""
+
+  ## Reference to a source primary database from which
+  ## Format: 1. Intra-cluster: you can give name of the primary database or the database connect string in `<host>:<port>/<service_name>` format
+  ##         2. Inter-cluster: Database connect string in `<host>:<port>/<service_name>` format
+  primaryDatabaseRef: ""
+
+  ## Enable this flag for creating Physical Standby Database
+  createAsStandby: false
 
   ## DB edition. N/A if cloning from a Source DB in current K8s cluster (if cloneFrom is set to a database ref)
   ## Valid values for edition are enterprise, standard or express
