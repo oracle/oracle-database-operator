@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2023 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -219,9 +219,11 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	return ctrl.Result{}, nil
 }
 
-//#############################################################################
-//    Validate the CRD specs
-//#############################################################################
+// #############################################################################
+//
+//	Validate the CRD specs
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataService,
 	n *dbapi.SingleInstanceDatabase, ctx context.Context) (ctrl.Result, error) {
 
@@ -302,9 +304,11 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	return requeueN, err
 }
 
-//#####################################################################################################
-//    Validate Readiness of the primary DB specified
-//#####################################################################################################
+// #####################################################################################################
+//
+//	Validate Readiness of the primary DB specified
+//
+// #####################################################################################################
 func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleRestDataService,
 	n *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
 
@@ -383,9 +387,11 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 	return requeueN, sidbReadyPod
 }
 
-//#####################################################################################################
-//    Check ORDS Health Status
-//#####################################################################################################
+// #####################################################################################################
+//
+//	Check ORDS Health Status
+//
+// #####################################################################################################
 func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
 	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
 	log := r.Log.WithValues("checkHealthStatus", req.NamespacedName)
@@ -444,9 +450,11 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 	return requeueN, readyPod
 }
 
-//#############################################################################
-//    Instantiate Service spec from OracleRestDataService spec
-//#############################################################################
+// #############################################################################
+//
+//	Instantiate Service spec from OracleRestDataService spec
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRestDataService) *corev1.Service {
 	svc := &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -492,9 +500,11 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 	return svc
 }
 
-//#############################################################################
-//    Instantiate POD spec from OracleRestDataService spec
-//#############################################################################
+// #############################################################################
+//
+//	Instantiate POD spec from OracleRestDataService spec
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRestDataService,
 	n *dbapi.SingleInstanceDatabase) (*corev1.Pod, *corev1.Secret) {
 
@@ -749,9 +759,11 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 //    Instantiate POD spec from OracleRestDataService spec
 //#############################################################################
 
-//#############################################################################
-//    Instantiate Persistent Volume Claim spec from SingleInstanceDatabase spec
-//#############################################################################
+// #############################################################################
+//
+//	Instantiate Persistent Volume Claim spec from SingleInstanceDatabase spec
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRestDataService) *corev1.PersistentVolumeClaim {
 
 	pvc := &corev1.PersistentVolumeClaim{
@@ -802,9 +814,11 @@ func (r *OracleRestDataServiceReconciler) instantiatePVCSpec(m *dbapi.OracleRest
 	return pvc
 }
 
-//#############################################################################
-//    Create a Service for OracleRestDataService
-//#############################################################################
+// #############################################################################
+//
+//	Create a Service for OracleRestDataService
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctrl.Request,
 	m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase) ctrl.Result {
 
@@ -888,9 +902,11 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	return requeueN
 }
 
-//#############################################################################
-//    Stake a claim for Persistent Volume
-//#############################################################################
+// #############################################################################
+//
+//	Stake a claim for Persistent Volume
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) createPVC(ctx context.Context, req ctrl.Request,
 	m *dbapi.OracleRestDataService) (ctrl.Result, error) {
 
@@ -922,9 +938,11 @@ func (r *OracleRestDataServiceReconciler) createPVC(ctx context.Context, req ctr
 	return requeueN, nil
 }
 
-//#############################################################################
-//    Create the requested POD replicas
-//#############################################################################
+// #############################################################################
+//
+//	Create the requested POD replicas
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataService,
 	n *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) ctrl.Result {
 
@@ -1008,9 +1026,11 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 	return requeueN
 }
 
-//#############################################################################
-//   Manage Finalizer to cleanup before deletion of OracleRestDataService
-//#############################################################################
+// #############################################################################
+//
+//	Manage Finalizer to cleanup before deletion of OracleRestDataService
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) manageOracleRestDataServiceDeletion(req ctrl.Request, ctx context.Context,
 	m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase) ctrl.Result {
 	log := r.Log.WithValues("manageOracleRestDataServiceDeletion", req.NamespacedName)
@@ -1065,9 +1085,11 @@ func (r *OracleRestDataServiceReconciler) manageOracleRestDataServiceDeletion(re
 	return requeueN
 }
 
-//#############################################################################
-//   Finalization logic for OracleRestDataServiceFinalizer
-//#############################################################################
+// #############################################################################
+//
+//	Finalization logic for OracleRestDataServiceFinalizer
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.Request, ctx context.Context,
 	m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase) error {
 	log := r.Log.WithValues("cleanupOracleRestDataService", req.NamespacedName)
@@ -1209,9 +1231,11 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 	return nil
 }
 
-//#############################################################################
-//             Configure APEX
-//#############################################################################
+// #############################################################################
+//
+//	Configure APEX
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
 	sidbReadyPod corev1.Pod, ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("configureApex", req.NamespacedName)
@@ -1295,9 +1319,11 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	return requeueY
 }
 
-//#############################################################################
-//                 Install APEX in SIDB
-//#############################################################################
+// #############################################################################
+//
+//	Install APEX in SIDB
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
 	ordsReadyPod corev1.Pod, apexPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("installApex", req.NamespacedName)
@@ -1361,9 +1387,11 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	return requeueN
 }
 
-//#############################################################################
-//             Delete Secrets
-//#############################################################################
+// #############################################################################
+//
+//	Delete Secrets
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataService, ctx context.Context, req ctrl.Request) {
 	log := r.Log.WithValues("deleteSecrets", req.NamespacedName)
 
@@ -1408,9 +1436,11 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 
 }
 
-//#############################################################################
-//             Rest Enable/Disable Schemas
-//#############################################################################
+// #############################################################################
+//
+//	Rest Enable/Disable Schemas
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
 	sidbReadyPod corev1.Pod, ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 
@@ -1542,9 +1572,11 @@ func (r *OracleRestDataServiceReconciler) restEnableSchemas(m *dbapi.OracleRestD
 	return requeueN
 }
 
-//#############################################################################
-//        SetupWithManager sets up the controller with the Manager.
-//#############################################################################
+// #############################################################################
+//
+//	SetupWithManager sets up the controller with the Manager.
+//
+// #############################################################################
 func (r *OracleRestDataServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.OracleRestDataService{}).

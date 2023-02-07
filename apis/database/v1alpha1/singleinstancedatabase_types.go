@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2023 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -69,8 +69,11 @@ type SingleInstanceDatabaseSpec struct {
 	ForceLogging          bool              `json:"forceLog,omitempty"`
 	EnableTCPS            bool              `json:"enableTCPS,omitempty"`
 	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
+	DgBrokerConfigured    bool              `json:"dgBrokerConfigured,omitempty"`
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
+	PrimaryDatabaseRef   string `json:"primaryDatabaseRef,omitempty"`
+	CreateAsStandby      bool   `json:"createAsStandby,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
 	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
 
@@ -157,6 +160,8 @@ type SingleInstanceDatabaseStatus struct {
 	CertCreationTimestamp string `json:"certCreationTimestamp,omitempty"`
 	CertRenewInterval     string `json:"certRenewInterval,omitempty"`
 	ClientWalletLoc       string `json:"clientWalletLoc,omitempty"`
+	PrimaryDatabase       string `json:"primaryDatabase,omitempty"`
+	DgBrokerConfigured    bool   `json:"dgBrokerConfigured,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
@@ -172,12 +177,13 @@ type SingleInstanceDatabaseStatus struct {
 //+kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas
 // +kubebuilder:printcolumn:JSONPath=".status.edition",name="Edition",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.sid",name="Sid",type="string,priority=1"
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.role",name="Role",type="string",priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.role",name="Role",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.releaseUpdate",name="Version",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.connectString",name="Connect Str",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.tcpsConnectString",name="TCPS Connect Str",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.pdbConnectString",name="Pdb Connect Str",type="string",priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.tcpsConnectString",name="TCPS Connect Str",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.tcpsPdbConnectString",name="TCPS Pdb Connect Str",type="string", priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.oemExpressUrl",name="Oem Express Url",type="string"
 
