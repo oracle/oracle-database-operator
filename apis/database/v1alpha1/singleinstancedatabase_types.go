@@ -177,7 +177,7 @@ type SingleInstanceDatabaseStatus struct {
 //+kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas
 // +kubebuilder:printcolumn:JSONPath=".status.edition",name="Edition",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.sid",name="Sid",type="string,priority=1"
+// +kubebuilder:printcolumn:JSONPath=".status.sid",name="Sid",type="string",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.role",name="Role",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.releaseUpdate",name="Version",type="string"
