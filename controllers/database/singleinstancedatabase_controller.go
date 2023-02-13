@@ -380,7 +380,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	if m.Status.Sid != "" && !strings.EqualFold(m.Spec.Sid, m.Status.Sid) {
 		eventMsgs = append(eventMsgs, "sid cannot be updated")
 	}
-	if m.Spec.CloneFrom == "" && m.Status.Edition != "" && !strings.EqualFold(m.Status.Edition, m.Spec.Edition) {
+	if m.Spec.CloneFrom == "" && m.Spec.Edition != "" && m.Status.Edition != "" && !strings.EqualFold(m.Status.Edition, m.Spec.Edition) {
 		eventMsgs = append(eventMsgs, "edition cannot be updated")
 	}
 	if m.Status.Charset != "" && !strings.EqualFold(m.Status.Charset, m.Spec.Charset) {
@@ -2012,7 +2012,7 @@ func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceD
 
 	// Deleting the secret and then deleting the wallet
 	// If the secret is not found it means that the secret and wallet both are deleted, hence no need to requeue
-	if !*m.Spec.AdminPassword.KeepSecret {
+	if m.Spec.AdminPassword.KeepSecret != nil && !*m.Spec.AdminPassword.KeepSecret {
 		r.Log.Info("Querying the database secret ...")
 		secret := &corev1.Secret{}
 		err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
