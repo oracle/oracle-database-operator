@@ -540,34 +540,31 @@ func GetNodeIp(r client.Reader, ctx context.Context, req ctrl.Request) string {
 
 	log := ctrllog.FromContext(ctx).WithValues("GetNodeIp", req.NamespacedName)
 
-	readyPod, _, available, _, err := FindPods(r, "", "", req.Name, req.Namespace, ctx, req)
+	//new workflow
+	nl := &corev1.NodeList{}
+	err := r.List(ctx, nl)
+	nodeip := ""
 	if err != nil {
 		log.Error(err, err.Error())
-		return ""
-	}
-	if readyPod.Name != "" {
-		available = append(available, readyPod)
-	}
-	nodeip := ""
-	for _, pod := range available {
-		if nodeip == "" {
-			nodeip = pod.Status.HostIP
-		}
-		if pod.Status.HostIP < nodeip {
-			nodeip = pod.Status.HostIP
-		}
+		return nodeip
 	}
 
-	node := &corev1.Node{}
-	err = r.Get(ctx, types.NamespacedName{Name: nodeip, Namespace: req.Namespace}, node)
-
-	if err == nil {
-		for _, address := range node.Status.Addresses {
-			if address.Type == "ExternalIP" {
+	for _, address := range nl.Items[0].Status.Addresses {
+		if address.Type == "ExternalIP" {
+			nodeip = address.Address
+			break
+		}
+	}
+	if nodeip == "" {
+		for _, address := range nl.Items[0].Status.Addresses {
+			if address.Type == "InternalIP" {
 				nodeip = address.Address
+				break
 			}
 		}
 	}
+
+	log.Info("Node IP obtained ! ", "nodeip: ", nodeip)
 
 	return nodeip
 }

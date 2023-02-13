@@ -69,7 +69,10 @@ var _ webhook.Defaulter = &DataguardBroker{}
 func (r *DataguardBroker) Default() {
 	dataguardbrokerlog.Info("default", "name", r.Name)
 
-	// TODO(user): fill in your defaulting logic.
+	if r.Spec.AdminPassword.KeepSecret == nil {
+		keepSecret := true
+		r.Spec.AdminPassword.KeepSecret = &keepSecret
+	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
