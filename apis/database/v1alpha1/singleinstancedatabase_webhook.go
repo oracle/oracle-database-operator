@@ -105,6 +105,12 @@ func (r *SingleInstanceDatabase) Default() {
 			r.Spec.Replicas = 1
 		}
 	}
+
+	if r.Spec.PrimaryDatabaseRef != "" && r.Spec.CreateAsStandby {
+		if r.Spec.Replicas == 0 {
+			r.Spec.Replicas = 1
+		}
+	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.

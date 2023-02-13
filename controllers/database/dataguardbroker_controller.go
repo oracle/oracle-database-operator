@@ -103,9 +103,9 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Manage SingleInstanceDatabase Deletion
 	result, err := r.manageDataguardBrokerDeletion(req, ctx, dataguardBroker)
-	if result.Requeue {
+	if result.Requeue || err != nil {
 		r.Log.Info("Reconcile queued")
-		return result, nil
+		return result, err
 	}
 
 	// Fetch Primary Database Reference
@@ -151,17 +151,17 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return result, nil
 	}
 
-	// If LoadBalancer = true , ensure Connect String is updated
-	if dataguardBroker.Status.ExternalConnectString == dbcommons.ValueUnavailable {
-		return requeueY, nil
-	}
-
 	// Set a particular database as primary
 	result = r.SetAsPrimaryDatabase(singleInstanceDatabase.Spec.Sid, dataguardBroker.Spec.SetAsPrimaryDatabase, dataguardBroker,
 		singleInstanceDatabase, adminPassword, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
+	}
+
+	// If LoadBalancer = true , ensure Connect String is updated
+	if dataguardBroker.Status.ExternalConnectString == dbcommons.ValueUnavailable {
+		return requeueY, nil
 	}
 
 	dataguardBroker.Status.Status = dbcommons.StatusReady
@@ -325,7 +325,7 @@ func (r *DataguardBrokerReconciler) createSVC(ctx context.Context, req ctrl.Requ
 	}
 
 	// update service status
-
+	log.Info("Updating the service status...")
 	m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/DATAGUARD"
 	if m.Spec.LoadBalancer {
 		if len(svc.Status.LoadBalancer.Ingress) > 0 {
@@ -341,6 +341,7 @@ func (r *DataguardBrokerReconciler) createSVC(ctx context.Context, req ctrl.Requ
 			m.Status.ExternalConnectString = nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/DATAGUARD"
 		}
 	}
+	r.Status().Update(ctx, m)
 
 	return requeueN
 }
