@@ -66,12 +66,10 @@ spec:
                   keepSecret:
                     type: boolean
                   secretKey:
+                    default: oracle_pwd
                     type: string
                   secretName:
                     type: string
-                required:
-                - keepSecret
-                - secretKey
                 type: object
               fastStartFailOver:
                 properties:

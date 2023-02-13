@@ -65,8 +65,9 @@ type DataguardBrokerSpec struct {
 // DataguardBrokerPassword defines the secret containing Password mapped to secretKey
 type DataguardBrokerPassword struct {
 	SecretName string `json:"secretName,omitempty"`
-	SecretKey  string `json:"secretKey"`
-	KeepSecret bool   `json:"keepSecret"`
+	// +kubebuilder:default:="oracle_pwd"
+	SecretKey  string `json:"secretKey,omitempty"`
+	KeepSecret *bool  `json:"keepSecret,omitempty"`
 }
 
 type DataguardBrokerFastStartFailOver struct {
