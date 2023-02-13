@@ -20,6 +20,10 @@ spec:
     - jsonPath: .status.edition
       name: Edition
       type: string
+    - jsonPath: .status.sid
+      name: Sid
+      priority: 1
+      type: string
     - jsonPath: .status.status
       name: Status
       type: string
@@ -32,12 +36,12 @@ spec:
     - jsonPath: .status.connectString
       name: Connect Str
       type: string
-    - jsonPath: .status.tcpsConnectString
-      name: TCPS Connect Str
-      type: string
     - jsonPath: .status.pdbConnectString
       name: Pdb Connect Str
       priority: 1
+      type: string
+    - jsonPath: .status.tcpsConnectString
+      name: TCPS Connect Str
       type: string
     - jsonPath: .status.tcpsPdbConnectString
       name: TCPS Pdb Connect Str

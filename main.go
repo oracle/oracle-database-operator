@@ -222,6 +222,10 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
 			os.Exit(1)
 		}
+		if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
+			os.Exit(1)
+		}
 	}
 
 	// PDB Reconciler
@@ -258,10 +262,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "DataguardBroker")
 		os.Exit(1)
 	}
-	if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
-		os.Exit(1)
-	}
+
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs
