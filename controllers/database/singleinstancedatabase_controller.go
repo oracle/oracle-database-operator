@@ -994,6 +994,34 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 		},
 	}
 
+	// Adding pod anti-affinity for standby cases
+	if m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
+		weightedPodAffinityTerm := corev1.WeightedPodAffinityTerm{
+			Weight: 100,
+			PodAffinityTerm: corev1.PodAffinityTerm{
+				LabelSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{{
+						Key:      "app",
+						Operator: metav1.LabelSelectorOpIn,
+						Values:   []string{rp.Name},
+					}},
+				},
+				TopologyKey: "kubernetes.io/hostname",
+			},
+		}
+		if m.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+			pod.Spec.Affinity.PodAntiAffinity = &corev1.PodAntiAffinity{
+				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
+					weightedPodAffinityTerm,
+				},
+			}
+		} else {
+			pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution =
+				append(pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, weightedPodAffinityTerm)
+		}
+
+	}
+
 	// Set SingleInstanceDatabase instance as the owner and controller
 	ctrl.SetControllerReference(m, pod, r.Scheme)
 	return pod
