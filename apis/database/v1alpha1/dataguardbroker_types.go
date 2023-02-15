@@ -59,15 +59,6 @@ type DataguardBrokerSpec struct {
 	ProtectionMode    string                           `json:"protectionMode"`
 	NodeSelector      map[string]string                `json:"nodeSelector,omitempty"`
 	FastStartFailOver DataguardBrokerFastStartFailOver `json:"fastStartFailOver,omitempty"`
-	AdminPassword     DataguardBrokerPassword          `json:"adminPassword"`
-}
-
-// DataguardBrokerPassword defines the secret containing Password mapped to secretKey
-type DataguardBrokerPassword struct {
-	SecretName string `json:"secretName,omitempty"`
-	// +kubebuilder:default:="oracle_pwd"
-	SecretKey  string `json:"secretKey,omitempty"`
-	KeepSecret *bool  `json:"keepSecret,omitempty"`
 }
 
 type DataguardBrokerFastStartFailOver struct {
@@ -102,7 +93,7 @@ type DataguardBrokerStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.protectionMode",name="Protection Mode",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.clusterConnectString",name="Cluster Connect Str",type="string",priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.externalConnectString",name="Connect Str",type="string"
-// +kubebuilder:printcolumn:JSONPath=".spec.primaryDatabaseRef",name="Primary Database",type="string"
+// +kubebuilder:printcolumn:JSONPath=".spec.primaryDatabaseRef",name="Primary Database",type="string", priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type="string"
 
 // DataguardBroker is the Schema for the dataguardbrokers API

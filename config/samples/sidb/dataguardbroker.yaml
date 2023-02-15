@@ -18,20 +18,6 @@ spec:
   #  - standbyDatabase-sample1
   #  - standbyDatabase-sample2
 
-  ## Secret containing databaseRef password mapped to secretKey. 
-  ## This secret will be deleted after Dataguard setup unless keepSecret set to true.
-  adminPassword:
-    secretName: 
-    secretKey:
-    keepSecret: false
-
-  ## Deploy only on nodes having required labels . Format label_name : label_value .
-  ## Leave empty if there is no such requirement .
-  ## Uncomment to use
-  # nodeSelector: 
-  #   failure-domain.beta.kubernetes.io/zone: bVCG:PHX-AD-1
-  #   pool: sidb
-
   ## Type of service . Applicable on cloud enviroments only
   ## if loadBalService : false , service type = "NodePort" . else "LoadBalancer"
   loadBalancer: false
