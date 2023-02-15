@@ -35,6 +35,7 @@ spec:
       type: string
     - jsonPath: .spec.primaryDatabaseRef
       name: Primary Database
+      priority: 1
       type: string
     - jsonPath: .status.status
       name: Status
@@ -59,18 +60,6 @@ spec:
           spec:
             description: DataguardBrokerSpec defines the desired state of DataguardBroker
             properties:
-              adminPassword:
-                description: DataguardBrokerPassword defines the secret containing
-                  Password mapped to secretKey
-                properties:
-                  keepSecret:
-                    type: boolean
-                  secretKey:
-                    default: oracle_pwd
-                    type: string
-                  secretName:
-                    type: string
-                type: object
               fastStartFailOver:
                 properties:
                   enable:
@@ -106,7 +95,6 @@ spec:
                   type: string
                 type: array
             required:
-            - adminPassword
             - primaryDatabaseRef
             - protectionMode
             - standbyDatabaseRefs
