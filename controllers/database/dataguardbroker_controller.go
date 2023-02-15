@@ -199,20 +199,20 @@ func (r *DataguardBrokerReconciler) validateSidbReadiness(m *dbapi.DataguardBrok
 
 	// Validate databaseRef Admin Password
 	adminPasswordSecret := &corev1.Secret{}
-	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
+	err = r.Get(ctx, types.NamespacedName{Name: n.Spec.AdminPassword.SecretName, Namespace: n.Namespace}, adminPasswordSecret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			//m.Status.Status = dbcommons.StatusError
 			eventReason := "Waiting"
-			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
+			eventMsg := "waiting for secret : " + n.Spec.AdminPassword.SecretName + " to get created"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-			r.Log.Info("Secret " + m.Spec.AdminPassword.SecretName + " Not Found")
+			r.Log.Info("Secret " + n.Spec.AdminPassword.SecretName + " Not Found")
 			return requeueY, sidbReadyPod, adminPassword
 		}
 		log.Error(err, err.Error())
 		return requeueY, sidbReadyPod, adminPassword
 	}
-	adminPassword = string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
+	adminPassword = string(adminPasswordSecret.Data[n.Spec.AdminPassword.SecretKey])
 
 	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword), dbcommons.GetSqlClient(n.Spec.Edition)))
@@ -225,7 +225,7 @@ func (r *DataguardBrokerReconciler) validateSidbReadiness(m *dbapi.DataguardBrok
 	} else if strings.Contains(out, "ORA-01017") {
 		//m.Status.Status = dbcommons.StatusError
 		eventReason := "Logon denied"
-		eventMsg := "invalid databaseRef admin password. secret: " + m.Spec.AdminPassword.SecretName
+		eventMsg := "invalid databaseRef admin password. secret: " + n.Spec.AdminPassword.SecretName
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		return requeueY, sidbReadyPod, adminPassword
 	} else {
