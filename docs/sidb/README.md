@@ -587,10 +587,20 @@ To create a standby database, edit and apply the sample yaml file [config/sample
 #### List Standby Databases
 
 ```sh
-NAME      EDITION      STATUS    ROLE               VERSION      CONNECT STR                  TCPS CONNECT STR           OEM EXPRESS URL
-sidb-19   Enterprise   Healthy   PRIMARY            19.3.0.0.0   10.25.0.26:1521/ORCL1     Unavailable                https://10.25.0.26:5500/em
-stdby-1   Enterprise   Healthy   PHYSICAL_STANDBY   19.3.0.0.0   10.25.0.27:32392/ORCLS1   Unavailable                https://10.25.0.27:30329/em
+kubectl get singleinstancedatabase
 
+NAME      EDITION      STATUS    ROLE               VERSION      CONNECT STR                  TCPS CONNECT STR           OEM EXPRESS URL
+sidb-19   Enterprise   Healthy   PRIMARY            19.3.0.0.0   10.25.0.26:1521/ORCL1        Unavailable                https://10.25.0.26:5500/em
+stdby-1   Enterprise   Healthy   PHYSICAL_STANDBY   19.3.0.0.0   10.25.0.27:32392/ORCLS1      Unavailable                https://10.25.0.27:30329/em
+
+```
+
+### Query Primary Database Reference
+You can query the corresponding primary database for every standby database.
+
+```sh
+kubectl get singleinstancedatabase stdby-1 -o "jsonpath={.status.primaryDatabase}"
+sidb-19
 ```
 
 #### Creation Status
@@ -610,8 +620,6 @@ After you have created standbys, now configure dataguard broker for standbys and
 
 For the use cases detailed below a sample .yaml file is available at
 [config/samples/sidb/dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml)
-
-**Note:** The `adminPassword` field of the above `dataguardbroker.yaml` yaml contains a Admin Password secret of primary database ref for Dataguard configuration and observer creation. This secret gets deleted after the database pod becomes ready for security reasons.
 
 #### Setup DataGuardBroker Resource
 
