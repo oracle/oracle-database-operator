@@ -493,6 +493,12 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 			return requeueY, err
 		}
 
+		if m.Spec.Sid == rp.Spec.Sid {
+			r.Log.Info("Standby database SID can not be same as the Primary database SID")
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "Standby and Primary database SID can not be same")
+			return requeueY, err
+		}
+
 		if m.Status.DatafilesCreated == "true" ||
 			!dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
 			return requeueN, nil
