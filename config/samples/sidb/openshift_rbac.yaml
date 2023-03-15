@@ -12,6 +12,9 @@
    name: sidb-scc
    namespace: default
  allowPrivilegedContainer: false
+ users:
+  - system:serviceaccount:default:sidb-sa
+  - system:serviceaccount:default:oracle-database-operator
  runAsUser:
    type: MustRunAsRange
    uidRangeMin: 0
