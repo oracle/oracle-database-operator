@@ -21,7 +21,7 @@ After you create the resource, you can use the operator to perform the following
 
 * [Scale the OCPU core count or storage](#scale-the-ocpu-core-count-or-storage) an Autonomous Database
 * [Rename](#rename) an Autonomous Database
-* [Manage ADMIN database user password](#manage-admin-passsword) of an Autonomous Database
+* [Manage ADMIN database user password](#manage-admin-password) of an Autonomous Database
 * [Download instance credentials (wallets)](#download-wallets) of an Autonomous Database
 * [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
 * [Delete the resource](#delete-the-resource) from the cluster
@@ -234,7 +234,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
     ```
 
-## Manage Admin Passsword
+## Manage Admin Password
 
 > Note: this operation requires an `AutonomousDatabase` object to be in your cluster. This example assumes the provision operation or the bind operation has been completed, and the operator is authorized with API Key Authentication.
 
