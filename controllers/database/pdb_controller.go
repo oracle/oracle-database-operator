@@ -490,6 +490,7 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 		return "", err
 	}
 	webUser := string(secret.Data[cdb.Spec.WebServerUser.Secret.Key])
+        webUser = strings.TrimSpace(webUser)
 
 	// Get Web Server User Password
 	secret = &corev1.Secret{}
@@ -503,6 +504,8 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 		return "", err
 	}
 	webUserPwd := string(secret.Data[cdb.Spec.WebServerPwd.Secret.Key])
+        webUserPwd = strings.TrimSpace(webUserPwd)
+
 
 	var httpreq *http.Request
 	if action == "GET" {
