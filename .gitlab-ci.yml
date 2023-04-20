@@ -13,7 +13,7 @@ build-operator:
     - docker rmi "$IMAGE" && docker system prune -f
     - make operator-yaml IMG=$newimage
     - if [ "$CI_COMMIT_BRANCH" != "master" ]; then sed -i "s/\(replicas.\) 3/\1 1/g" ./$OP_YAML; fi
-    - curl -s -n $ARTIFACTORY_REPO/$CI_COMMIT_BRANCH/$OP_YAML -T ./$OP_YAML
+    - curl -s --netrc-file $HOME/.netrc_gitlab $ARTIFACTORY_REPO/$CI_COMMIT_BRANCH/$OP_YAML -T ./$OP_YAML
   only:
     variables:
       - $CI_COMMIT_MESSAGE =~ /\#run-pipeline/
