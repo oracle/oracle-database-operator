@@ -6,13 +6,14 @@ As part of Oracle's resolution to make Oracle Database Kubernetes-native (that i
 
 In this v0.2.0 release, `OraOperator` supports the following database configurations and infrastructure:
 
-* Oracle Autonomous Database on shared Oracle Cloud Infrastructure (OCI) (ADB-S)
-* Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
+* Oracle Autonomous Database:
+  * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
+  * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
+  * Oracle Autonomous Container Database (ACD) (infrastructure) the infrastructure for provisionning Autonomous Databases.
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Database Cloud Service (DBCS) (VMDB)
-* Oracle Autonomous Container Database (ACD) (infrastructure) the infrastructure for provisionning Autonomous Databases.
 
 Oracle will continue to extent OraOperator  to support additional Oracle Database configurations.
 
@@ -20,8 +21,7 @@ Oracle will continue to extent OraOperator  to support additional Oracle Databas
 
 This release of Oracle Database Operator for Kubernetes (the operator) supports the following lifecycle operations:
 
-* ADB-S: Provision, Bind, Start, Stop, terminate (soft/hard), scale (up/down), Manual Backup, Manual Restore
-* ADB-D: provision, bind, start, stop, terminate (soft/hard), scale (up/down), Manual Backup, Manual Restore
+* ADB-S/ADB-D: Provision, Bind, Start, Stop, terminate (soft/hard), scale (up/down), Manual Backup, Manual Restore
 * ACD: provision, bind, restart, terminate (soft/hard)
 * SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, and Application Express (Apex)
 * SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
@@ -67,6 +67,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   ```sh
   kubectl apply -f https://raw.githubusercontent.com/oracle/oracle-database-operator/main/oracle-database-operator.yaml
   ```
+
   ---
   **NOTE:**
   The above command will also upgrade the existing v0.1.0 `OraOperator` installation to the latest version i.e. v0.2.0.
@@ -96,13 +97,13 @@ For more details, see [Oracle Database Operator Installation Instructions](./doc
 The quickstarts are designed for specific database configurations:
 
 * [Oracle Autonomous Database](./docs/adb/README.md)
-* [Oracle Autonomous Container Database](./docs/acd/README.md)
+* [Oracle Autonomous Container Database](./docs/adb/ACD.md)
 * [Containerized Oracle Single Instance Database](./docs/sidb/README.md)
 * [Containerized Oracle Sharded Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Database Cloud Service](./docs/dbcs/README.md)
 
-YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases. 
+YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases.
 
 ## Uninstall the Operator
 
@@ -133,7 +134,6 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 
   Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods, services, PVCs, and so on) are deleted. However, if that happens, then the CRD deletion stops responding. This is because the CRD instances have properties that prevent their deletion, and that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
 
-
 ## Docs of the supported Oracle Database configurations
 
 * [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
@@ -155,20 +155,21 @@ You can submit a GitHub issue, or you can also file an [Oracle Support service](
 Secure platforms are an important basis for general system security. Ensure that your deployment is in compliance with common security practices.
 
 ### Managing Sensitive Data
+
 Kubernetes secrets are the usual means for storing credentials or passwords input for access. The operator reads the Secrets programmatically, which limits exposure of sensitive data. However, to protect your sensitive data, Oracle strongly recommends that you set and get sensitive data from Oracle Cloud Infrastructure Vault, or from third-party Vaults.
 
 The following is an example of a YAML file fragment for specifying Oracle Cloud Infrastructure Vault as the repository for the admin password.
- ```
+
+```yaml
  adminPassword:
       ociSecretOCID: ocid1.vaultsecret.oc1...
 ```
+
 Examples in this repository where passwords are entered on the command line are for demonstration purposes only. 
 
 ### Reporting a Security Issue
 
 See [Reporting security vulnerabilities](./SECURITY.md)
-
-
 
 ## License
 
