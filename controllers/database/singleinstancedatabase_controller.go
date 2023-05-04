@@ -85,6 +85,8 @@ var futureRequeue ctrl.Result = requeueN
 
 const singleInstanceDatabaseFinalizer = "database.oracle.com/singleinstancedatabasefinalizer"
 
+var oemExpressUrl string
+
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/finalizers,verbs=update
@@ -369,9 +371,9 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		}
 	}
 
-	//  If Express Edition, ensure Replicas=1
-	if m.Spec.Edition == "express" && m.Spec.Replicas > 1 {
-		eventMsgs = append(eventMsgs, "express edition supports only one replica")
+	//  If Express/Free Edition, ensure Replicas=1
+	if (m.Spec.Edition == "express" || m.Spec.Edition == "free") && m.Spec.Replicas > 1 {
+		eventMsgs = append(eventMsgs, m.Spec.Edition + " edition supports only one replica")
 	}
 	//  If no persistence, ensure Replicas=1
 	if m.Spec.Persistence.Size == "" && m.Spec.Replicas > 1 {
@@ -394,11 +396,11 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 			m.Status.CloneFrom != dbcommons.NoCloneRef && m.Status.CloneFrom != m.Spec.CloneFrom) {
 		eventMsgs = append(eventMsgs, "cloneFrom cannot be updated")
 	}
-	if m.Spec.Edition == "express" && m.Spec.CloneFrom != "" {
-		eventMsgs = append(eventMsgs, "cloning not supported for express edition")
+	if (m.Spec.Edition == "express" || m.Spec.Edition == "free") && m.Spec.CloneFrom != "" {
+		eventMsgs = append(eventMsgs, "cloning not supported for " + m.Spec.Edition + " edition")
 	}
-	if m.Spec.Edition == "express" && m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
-		eventMsgs = append(eventMsgs, "Standby database creation is not supported for express edition")
+	if (m.Spec.Edition == "express" || m.Spec.Edition == "free") && m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
+		eventMsgs = append(eventMsgs, "Standby database creation is not supported for " + m.Spec.Edition + " edition")
 	}
 	if m.Status.OrdsReference != "" && m.Status.Persistence.Size != "" && m.Status.Persistence != m.Spec.Persistence {
 		eventMsgs = append(eventMsgs, "uninstall ORDS to change Peristence")
@@ -665,8 +667,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						})
 					}
 				}
-				/* Wallet only for non-express edition, non-prebuiltDB */
-				if m.Spec.Edition != "express" && !m.Spec.Image.PrebuiltDB {
+				/* Wallet only for edition barring express and free editions, non-prebuiltDB */
+				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB {
 					initContainers = append(initContainers, corev1.Container{
 						Name:  "init-wallet",
 						Image: m.Spec.Image.PullFrom,
@@ -766,7 +768,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}(),
 				Env: func() []corev1.EnvVar {
 					// adding XE support, useful for dev/test/CI-CD
-					if m.Spec.Edition == "express" {
+					if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
 						return []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
@@ -1481,7 +1483,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			}
 			m.Status.ConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
 			m.Status.PdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(pdbName)
-			m.Status.OemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[0].Port) + "/em"
+			oemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[0].Port) + "/em"
 			if m.Spec.EnableTCPS {
 				m.Status.TcpsConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(sid)
 				m.Status.TcpsPdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(pdbName)
@@ -1493,7 +1495,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		if nodeip != "" {
 			m.Status.ConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(sid)
 			m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(pdbName)
-			m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[0].NodePort) + "/em"
+			oemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[0].NodePort) + "/em"
 			if m.Spec.EnableTCPS {
 				m.Status.TcpsConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(sid)
 				m.Status.TcpsPdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(pdbName)
@@ -1701,8 +1703,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
-	// Wallet not supported for XE Database
-	if m.Spec.Edition == "express" {
+	// Wallet not supported for Express/Free Database
+	if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
 		return requeueN, nil
 	}
 
@@ -2016,6 +2018,16 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			m.Status.ReleaseUpdate = version
 		}
 	}
+	oemSupport, err := isOEMSupported(r,m.Status.ReleaseUpdate)
+	if err != nil {
+		r.Log.Error(err, err.Error())
+		return requeueY, readyPod, err
+	}
+	if oemSupport {
+		m.Status.OemExpressUrl = oemExpressUrl
+	} else {
+		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	}
 
 	if strings.ToUpper(m.Status.Role) == "PRIMARY" && m.Status.DatafilesPatched != "true" {
 		eventReason := "Datapatch Pending"
@@ -2034,8 +2046,8 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) deleteWallet(m *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
-	// Wallet not supported for XE Database
-	if m.Spec.Edition == "express" {
+	// Wallet not supported for Express/Free Database
+	if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
 		return requeueN, nil
 	}
 
@@ -2250,9 +2262,9 @@ func (r *SingleInstanceDatabaseReconciler) runDatapatch(m *dbapi.SingleInstanceD
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	// Datapatch not supported for XE Database
-	if m.Spec.Edition == "express" {
+	if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
 		eventReason := "Datapatch Check"
-		eventMsg := "datapatch not supported for express edition"
+		eventMsg := "datapatch not supported for " + m.Spec.Edition + " edition"
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 		r.Log.Info(eventMsg)
 		return requeueN, nil
@@ -3073,4 +3085,20 @@ func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 	}
 
 	return nil
+}
+
+
+func isOEMSupported (r *SingleInstanceDatabaseReconciler,version string) (bool,error) {
+	majorVersion, err := strconv.Atoi(strings.Split(version,".")[0])
+	r.Log.Info("majorVersion of database is " + strconv.Itoa(majorVersion))
+	if err != nil {
+		return false,err
+	}
+	if majorVersion > 21{
+		r.Log.Info("major Version " + strconv.Itoa(majorVersion) +  " is greater that 21 so OEM Express is not supported")
+		return false,nil
+	} else {
+		r.Log.Info("major Version " + strconv.Itoa(majorVersion) + " is lesser than equal to 21 so OEM Express is supported")
+		return true,nil
+	}
 }
