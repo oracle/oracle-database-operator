@@ -11,7 +11,7 @@ metadata:
 spec:
 
   ## DB edition
-  edition: express
+  edition: free
 
   ## Secret containing SIDB password mapped to secretKey
   adminPassword:
@@ -19,7 +19,7 @@ spec:
 
   ## Database Image
   image:
-    pullFrom: container-registry.oracle.com/database/express:latest
+    pullFrom: container-registry.oracle.com/database/free:latest
     prebuiltDB: true
 
   ## Persistence is optional for prebuilt DB image
