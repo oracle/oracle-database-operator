@@ -50,7 +50,7 @@ type SingleInstanceDatabaseSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// +kubebuilder:validation:Enum=standard;enterprise;express
+	// +kubebuilder:validation:Enum=standard;enterprise;express;free
 	Edition string `json:"edition,omitempty"`
 
 	// SID must be alphanumeric (no special characters, only a-z, A-Z, 0-9), and no longer than 12 characters.
