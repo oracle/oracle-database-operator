@@ -3430,7 +3430,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: lin.ocir.io/intsanjaysingh/mmalvezz/testppr/myoperator:latest
+        image: container-registry.oracle.com/database/operator:0.2.1
         imagePullPolicy: Always
         name: manager
         ports:
