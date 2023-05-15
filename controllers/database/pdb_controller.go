@@ -49,6 +49,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -490,7 +491,7 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 		return "", err
 	}
 	webUser := string(secret.Data[cdb.Spec.WebServerUser.Secret.Key])
-        webUser = strings.TrimSpace(webUser)
+	webUser = strings.TrimSpace(webUser)
 
 	// Get Web Server User Password
 	secret = &corev1.Secret{}
@@ -504,8 +505,7 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 		return "", err
 	}
 	webUserPwd := string(secret.Data[cdb.Spec.WebServerPwd.Secret.Key])
-        webUserPwd = strings.TrimSpace(webUserPwd)
-
+	webUserPwd = strings.TrimSpace(webUserPwd)
 
 	var httpreq *http.Request
 	if action == "GET" {
@@ -681,9 +681,11 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	if cdb.Spec.DBServer != "" {
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
+		ParseTnsAlias(&(cdb.Spec.DBTnsurl), &(pdb.Spec.PDBName))
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
 	}
 
+	log.Info("New connect strinng", "tnsurl", cdb.Spec.DBTnsurl)
 	log.Info("Created PDB Resource", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
 	return nil
@@ -756,6 +758,7 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 	if cdb.Spec.DBServer != "" {
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
+		ParseTnsAlias(&(cdb.Spec.DBTnsurl), &(pdb.Spec.PDBName))
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
 	}
 
@@ -887,6 +890,14 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 
 	pdb.Status.Phase = pdbPhaseUnplug
 	pdb.Status.Msg = "Waiting for PDB to be unplugged"
+
+	if cdb.Spec.DBServer != "" {
+		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
+	} else {
+		ParseTnsAlias(&(cdb.Spec.DBTnsurl), &(pdb.Spec.PDBName))
+		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+	}
+
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
@@ -1085,6 +1096,7 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 	if cdb.Spec.DBServer != "" {
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
+		ParseTnsAlias(&(cdb.Spec.DBTnsurl), &(pdb.Spec.PDBName))
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
 	}
 
@@ -1234,4 +1246,30 @@ func (r *PDBReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 100}).
 		Complete(r)
+}
+
+/*************************************************************
+Enh 35357707 - PROVIDE THE PDB TNSALIAS INFORMATION
+**************************************************************/
+
+func ParseTnsAlias(tns *string, pdbsrv *string) {
+	fmt.Printf("Analyzing string [%s]\n", *tns)
+	fmt.Printf("Relacing  srv [%s]\n", *pdbsrv)
+
+	if strings.Contains(strings.ToUpper(*tns), "SERVICE_NAME") == false {
+		fmt.Print("Cannot generate tns alias for pdb")
+		return
+	}
+
+	if strings.Contains(strings.ToUpper(*tns), "ORACLE_SID") == true {
+		fmt.Print("Cannot generate tns alias for pdb")
+		return
+	}
+
+	*pdbsrv = fmt.Sprintf("SERVICE_NAME=%s", *pdbsrv)
+	tnsreg := regexp.MustCompile(`SERVICE_NAME=\w+`)
+	*tns = tnsreg.ReplaceAllString(*tns, *pdbsrv)
+
+	fmt.Printf("Newstring [%s]\n", *tns)
+
 }
