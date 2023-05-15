@@ -5,7 +5,7 @@
 
 - [INTRODUCTION](#introduction)
 - [OPERATION STEPS ](#operation-steps)
-- [Download latest version from orahub ](#download-latest-version-from-orahub-a-namedownloada)
+- [Download latest version from github ](#download-latest-version-from-orahub-a-namedownloada)
 - [Upload webhook certificates](#upload-webhook-certificates-a-namewebhooka)
 - [Create the dboperator](#create-the-dboperator-a-namedboperatora)
 - [Create Secret for container registry](#create-secret-for-container-registry)
@@ -20,7 +20,7 @@
 
 
 
-###### INTRODUCTION
+##### INTRODUCTION
 
 This readme is a step by step guide used to implement database multi tenant operator. It assumes that a kubernets cluster and a database server are already available (no matter if single instance or RAC). kubectl must be configured in order to reach k8s cluster.
 
@@ -48,12 +48,13 @@ The following table reports the parameters required to configure and use oracle 
 | pdbTlsCrt     | <certfile\>                 | [standalone.https.cert][cr]                     |
 | pdbTlsCat     | <certauth\>                 | certificate authority                           |
 
-
+> A [makfile](./makefile) is available to sped up the command execution for the multitenant setup and test. See the comments in the header of file  
 
 ### OPERATIONAL STEPS 
 ----
 
-##### Download latest version from github <a name="Download"></a>
+
+#### Download latest version from github <a name="Download"></a>
 
 
 ```bash
@@ -77,13 +78,13 @@ make operator-yaml IMG=<public_container_registry>operator:latest
 
 > <span style="color:red"> **NOTE:** If you are using oracle-container-registry make sure to accept the license agreement otherwise the operator image pull fails. </span>
 ----
-##### Upload webhook certificates <a name="webhook"></a>
+#### Upload webhook certificates <a name="webhook"></a>
 
 ```bash
 kubectl apply -f https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml
 ```
 
-##### Create the dboperator <a name="dboperator"></a>
+#### Create the dboperator <a name="dboperator"></a>
 
 ```bash
 cd oracle-database-operator
@@ -100,7 +101,7 @@ oracle-database-operator-controller-manager-557ff6c659-xpswv   1/1     Running  
 
 ```
 ----
-##### Create secret for container registry
+#### Create secret for container registry
 
 + Make sure to login to your container registry and then create the secret for you container registry.  
 
@@ -118,7 +119,7 @@ container-registry-secret   kubernetes.io/dockerconfigjson   1      19s
 webhook-server-cert         kubernetes.io/tls 
 ```
 ----
-##### Build ords immage <a name="ordsimage"></a>
+#### Build ords immage <a name="ordsimage"></a>
 
 + Build the ords image, downloading ords software is no longer needed; just build the image and push it to your repository
 
@@ -137,7 +138,7 @@ docker push <public-container-registry>/ords-dboper:latest
 [example of execution](./ImagePush.log)
 
 ----
-##### Database Configuration
+#### Database Configuration
 
 + Configure Database
 
@@ -152,7 +153,7 @@ GRANT SYSDBA TO <CDB_ADMIN_USER> CONTAINER = ALL;
 GRANT CREATE SESSION TO <CDB_ADMIN_USER> CONTAINER = ALL;
 ```
 ----
-##### Create CDB secret 
+#### Create CDB secret 
 
 + Create secret for CDB connection 
 
@@ -207,7 +208,7 @@ webhook-server-cert         kubernetes.io/tls                3      4m55s
 
 >**TIPS:** Use the following commands to analyze contents of an existing secret  ```bash kubectl   get secret <secret name> -o yaml -n <namespace_name>```
 ----
-##### Create Certificates
+#### Create Certificates
 
 + Create certificates: At this stage we need to create certificates on our local machine and upload into kubernetes cluster by creating new secrets.
 
@@ -261,7 +262,7 @@ kubectl create secret generic db-ca --from-file=<certfile> -n oracle-database-op
 
 
 ----
-###### Apply cdb.yaml
+#### Apply cdb.yaml
 
 + Create ords container 
 
@@ -339,7 +340,7 @@ spec:
 [example of cdb.yaml](./cdb.yaml)
 
 ----
-###### CDB - Logs and throuble shutting 
+#### CDB - Logs and throuble shutting 
 
 + Check the status of ords container 
 
@@ -400,7 +401,7 @@ NAME      CDB NAME   DB SERVER              DB PORT   REPLICAS   STATUS   MESSAG
 [Example of executions](./ordsconfig.log)
 
 -----
-###### Create PDB secret
+#### Create PDB secret
 
 
 ```bash
@@ -433,7 +434,7 @@ pdb1-secret                 Opaque                           2      79m <---
 webhook-server-cert         kubernetes.io/tls                3      79m
 ```
 ---
-###### Apply pdb yaml file to create pdb 
+#### Apply pdb yaml file to create pdb 
 
 ```bash
 /usr/bin/kubectl apply -f pdb.yaml  -n oracle-database-operator-system
@@ -523,7 +524,7 @@ kubectl logs -f $(kubectl get pods -n oracle-database-operator-system|grep oracl
 ```
 
 ---
-###### Other actions
+#### Other actions
 
 Configure and use other yaml files to perform pluggable database life cycle managment action **modify_pdb_open.yaml**  **modify_pdb_close.yaml**
 
