@@ -122,9 +122,8 @@ Please refer [here](./provisioning/example_setup_using_oci_oke_cluster.md) for s
   
   You can build this image by using the ORDS [Dockerfile](../../../ords/Dockerfile)
   
-  > **_NOTE:_** The current version of Oracle DB Operator Multitenant Controller has been tested with **ords 22.2.1.202.1302** version.
 
-Please refer [here](./provisioning/ords_image.md) for the steps to build ORDS Docker Image with  **ords 22.2.1.202.1302** version.
+Please refer [here](./provisioning/ords_image.md) for the steps to build ORDS Docker Image 
 
 
 + ## Kubernetes Secrets
