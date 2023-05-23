@@ -229,6 +229,24 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		if err != nil {
 			return requeueY, err
 		}
+		
+		databaseOpenMode,err := dbcommons.GetDatabaseOpenMode(readyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
+	
+		if err != nil {
+			r.Log.Error(err, err.Error())
+			return requeueY, err
+		}
+		r.Log.Info("DB openMode Output")
+		r.Log.Info(databaseOpenMode)
+		if databaseOpenMode == "READ_ONLY" {
+			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",fmt.Sprintf("echo -e  \"%s\"  | %s",dbcommons.ModifyStdbyDBOpenMode,dbcommons.SQLPlusCLI))
+			if err != nil {
+				r.Log.Error(err, err.Error())
+				return requeueY, err
+			}
+			r.Log.Info("Standby DB open mode modified")
+			r.Log.Info(out)
+		}
 
 		singleInstanceDatabase.Status.PrimaryDatabase = referredPrimaryDatabase.Name
 		// Store all standbyDatabase sid:name in a map to use it during manual switchover.
@@ -498,6 +516,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		if m.Spec.Sid == rp.Spec.Sid {
 			r.Log.Info("Standby database SID can not be same as the Primary database SID")
 			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "Standby and Primary database SID can not be same")
+			m.Status.Status = dbcommons.StatusError
 			return requeueY, err
 		}
 
