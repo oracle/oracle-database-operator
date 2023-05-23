@@ -104,6 +104,10 @@ const StandbyDatabasePrerequisitesSQL string = "ALTER SYSTEM SET db_create_file_
 	"\nALTER SYSTEM SET STANDBY_FILE_MANAGEMENT=AUTO;" +
 	"\nALTER SYSTEM SET dg_broker_start=TRUE;"
 
+const GetDBOpenMode string = "select open_mode from v\\$database;"
+
+const ModifyStdbyDBOpenMode string = "alter database recover managed standby database disconnect;"
+
 const StandbyTnsnamesEntry string = `
 ##STANDBYDATABASE_SID## =
 (DESCRIPTION =
@@ -207,6 +211,9 @@ const DataguardBrokerAddDBMaxAvailabilityCMD string = "ADD DATABASE ${ORACLE_SID
 	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${SVC_HOST})(PORT=1521))" +
 	"(CONNECT_DATA=(SERVICE_NAME=${ORACLE_SID}_DGMGRL)(INSTANCE_NAME=${ORACLE_SID})(SERVER=DEDICATED)))';" +
 	"\nENABLE CONFIGURATION;"
+
+const RemoveStandbyDBFromDGConfgCMD string = "DISABLE DATABASE ${ORACLE_SID};" + 
+  	"\nREMOVE DATABASE ${ORACLE_SID};"
 
 const DBShowConfigCMD string = "SHOW CONFIGURATION;"
 
