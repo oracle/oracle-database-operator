@@ -505,6 +505,26 @@ func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
 	return "", errors.New("database role is nil")
 }
 
+func GetDatabaseOpenMode(readyPod corev1.Pod, r client.Reader,
+	config *rest.Config, ctx context.Context, req ctrl.Request, edition string) (string, error) {
+		log := ctrllog.FromContext(ctx).WithValues("GetDatabaseOpenMode",req.NamespacedName)
+
+		out,err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			fmt.Sprintf("echo -e \"%s\" | %s",GetDBOpenMode,SQLPlusCLI))
+		if err != nil {
+			return "",err
+		}
+		log.Info(out)
+		if !strings.Contains(out, "no rows selected") && !strings.Contains(out, "ORA-") {
+			out1 := strings.Replace(out, " ", "_", -1)
+			// filtering output and storing databse_role in  "database_role"
+			databaseOpenMode := strings.Fields(out1)[2]
+			// first 2 values in the slice will be column name(DATABASE_ROLE) and a seperator(--------------) .
+			return databaseOpenMode, nil
+		}
+		return "", errors.New("database open mode is nil")
+	}
+
 // Returns true if any of the pod in 'pods' is with pod.Status.Phase == phase
 func IsAnyPodWithStatus(pods []corev1.Pod, phase corev1.PodPhase) (bool, corev1.Pod) {
 	anyPodWithPhase := false
