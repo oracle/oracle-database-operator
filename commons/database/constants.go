@@ -364,7 +364,7 @@ const UninstallORDSCMD string = "\numask 177" +
 
 const GetORDSStatus string = "curl -sSkv -k -X GET https://localhost:8443/ords/_/db-api/stable/metadata-catalog/"
 
-const ValidateAdminPassword string = "conn sys/%s@${ORACLE_SID} as sysdba\nshow user"
+const ValidateAdminPassword string = "conn sys/\\\"%s\\\"@${ORACLE_SID} as sysdba\nshow user"
 
 const ReconcileError string = "ReconcileError"
 
