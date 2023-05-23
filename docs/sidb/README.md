@@ -735,16 +735,16 @@ $ kubectl apply -f dataguardbroker.yaml
   dataguardbroker.database.oracle.com/dataguardbroker-sample apply
 
 ```
-
-#### Patching DataGuardBroker Attributes
-
-The following attributes cannot be patched post DataguardBroker resource Creation : `primaryDatabaseRef, standbyDatabaseRefs, loadBalancer`.
+Or use the patch command 
 
 ```sh
-$ kubectl --type=merge -p '{"spec":{"primaryDatabaseRef":"ORCL"}}' patch dataguardbroker dataguardbroker-sample 
+$ kubectl --type=merge -p '{"spec":{"setAsPrimaryDatabase":"ORCLS1"}}' patch dataguardbroker dataguardbroker-sample
 
-  The DataguardBroker "dataguardbroker-sample" is invalid: spec.sid: Forbidden: cannot be changed
-  ```
+  dataguardbroker.database.oracle.com/dataguardbroker-sample patched
+```
+
+**NOTE :** The following attributes cannot be patched post DataguardBroker resource Creation : `primaryDatabaseRef,    protectionMode`.
+
 
 #### Delete DataguardBroker Resource
 

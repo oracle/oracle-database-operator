@@ -25,5 +25,5 @@ spec:
   ## Protection Mode for dg configuration . MaxAvailability or MaxPerformance
   protectionMode: MaxAvailability
 
-  ## Manual Switchover to this database to make it primary(if not already) . 
+  ## Manual Switchover to this database to make it primary(if not already), requires target Database SID . 
   setAsPrimaryDatabase: ""
