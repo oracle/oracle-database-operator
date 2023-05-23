@@ -370,6 +370,8 @@ func (r *OracleRestDataServiceReconciler) validateSIDBReadiness(m *dbapi.OracleR
 		log.Info(eventMsg)
 		return requeueY, sidbReadyPod
 	} else {
+		eventMsg := "login attempt failed for database admin password in secret " + m.Spec.AdminPassword.SecretName
+		log.Info(eventMsg)
 		return requeueY, sidbReadyPod
 	}
 
