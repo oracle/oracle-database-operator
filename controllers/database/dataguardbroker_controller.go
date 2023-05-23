@@ -403,7 +403,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.D
 
 		// Update Databases
 		r.updateReconcileStatus(m, sidbReadyPod, ctx, req)
-	}
+	}  
 
 	eventReason := "DG Configuration up to date"
 	eventMsg := ""
@@ -657,26 +657,28 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 	}
 
 	// ## SET PROPERTY FASTSTARTFAILOVERTARGET FOR EACH DATABASE TO ALL OTHER DATABASES IN DG CONFIG .
-	for i := 0; i < len(databases); i++ {
-		out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("dgmgrl sys@%s \"EDIT DATABASE %s SET PROPERTY FASTSTARTFAILOVERTARGET=%s\"< admin.pwd", primaryConnectString,
-				strings.Split(databases[i], ":")[0], getFSFOTargets(i, databases)))
-		if err != nil {
-			log.Error(err, err.Error())
-			return requeueY
-		}
-		log.Info("SETTING FSFO TARGET OUTPUT")
-		log.Info(out)
+	if (m.Spec.FastStartFailOver.Enable == true){
+		for i := 0; i < len(databases); i++ {
+			out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+				fmt.Sprintf("dgmgrl sys@%s \"EDIT DATABASE %s SET PROPERTY FASTSTARTFAILOVERTARGET=%s\"< admin.pwd", primaryConnectString,
+					strings.Split(databases[i], ":")[0], getFSFOTargets(i, databases)))
+			if err != nil {
+				log.Error(err, err.Error())
+				return requeueY
+			}
+			log.Info("SETTING FSFO TARGET OUTPUT")
+			log.Info(out)
 
-		out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("dgmgrl sys@%s \"SHOW DATABASE %s FASTSTARTFAILOVERTARGET\" < admin.pwd", primaryConnectString, strings.Split(databases[i], ":")[0]))
-		if err != nil {
-			log.Error(err, err.Error())
-			return requeueY
-		}
-		log.Info("FSFO TARGETS OF " + databases[i])
-		log.Info(out)
+			out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+				fmt.Sprintf("dgmgrl sys@%s \"SHOW DATABASE %s FASTSTARTFAILOVERTARGET\" < admin.pwd", primaryConnectString, strings.Split(databases[i], ":")[0]))
+			if err != nil {
+				log.Error(err, err.Error())
+				return requeueY
+			}
+			log.Info("FSFO TARGETS OF " + databases[i])
+			log.Info(out)
 
+		}
 	}
 	// Remove admin pwd file
 	_, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
@@ -689,6 +691,59 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 
 	// Set DG Configured status to true for this standbyDatabase. so that in next reconcilation, we dont configure this again
 	standbyDatabase.Status.DgBrokerConfigured = true
+	r.Status().Update(ctx, standbyDatabase)
+
+	return requeueN
+}
+
+// #############################################################################
+//
+//	Remove up DG Configuration for a given StandbyDatabase - To be Tested
+//
+// #############################################################################
+func (r *DataguardBrokerReconciler) removeDataguardBrokerConfigurationForGivenDB( m *dbapi.DataguardBroker,n *dbapi.SingleInstanceDatabase,standbyDatabase *dbapi.SingleInstanceDatabase, standbyDatabaseReadyPod corev1.Pod, sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	log := r.Log.WithValues("removeDataguardBrokerConfigurationForGivenDB", req.NamespacedName)
+
+	if standbyDatabaseReadyPod.Name == "" || sidbReadyPod.Name == ""{
+		return requeueY
+	}
+
+	// ## CHECK IF DG CONFIGURATION IS AVAILABLE IN PRIMARY DATABASE ##
+	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c", 
+		fmt.Sprintf("echo -e \"%s\" | dgmgrl / as sysdba", dbcommons.DBShowConfigCMD))
+	
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY
+	}
+	log.Info("Showconfiguration Output")
+	log.Info(out)
+
+	if strings.Contains(out, "ORA-16525") {
+		log.Info("ORA-16525: The Oracle Data Guard broker is not yet available on Primary")
+		return requeueY
+	}
+
+	// ## REMOVING STANDBY DATABASE FROM DG CONFIGURATION ##
+	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf(dbcommons.CreateDGMGRLScriptFile, dbcommons.RemoveStandbyDBFromDGConfgCMD))
+
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY
+	}
+
+	// ## SHOW CONFIGURATION 
+	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e \"%s\" | dgmgrl / as sysdba", dbcommons.DBShowConfigCMD))
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY
+	}
+	log.Info("Showconfiguration Output")
+	log.Info(out)
+	// Set DG Configured status to false for this standbyDatabase. so that in next reconcilation, we dont configure this again
+	standbyDatabase.Status.DgBrokerConfigured = false
 	r.Status().Update(ctx, standbyDatabase)
 
 	return requeueN
@@ -976,6 +1031,33 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerDeletion(req ctrl.Reque
 	// indicated by the deletion timestamp being set.
 	isDataguardBrokerMarkedToBeDeleted := m.GetDeletionTimestamp() != nil
 	if isDataguardBrokerMarkedToBeDeleted {
+
+		// Make a singleinstancedatabase with empty 
+		singleInstanceDatabase := &dbapi.SingleInstanceDatabase{}
+		err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, singleInstanceDatabase)
+		if err != nil {
+			log.Error(err,err.Error())
+			return requeueY,err
+		}
+		// Get its POD
+		// Validate if Primary Database Reference is ready
+		result, sidbReadyPod, _ := r.validateSidbReadiness(m, singleInstanceDatabase, ctx, req)
+		if result.Requeue {
+			log.Info("Reconcile queued")
+			return result, nil
+		}
+		// Get its Role 
+		out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
+		// check if its PRIMARY
+		if strings.ToUpper(out) != "PRIMARY" {
+			eventReason := "Deletion"
+			eventMsg := "DataGuard Broker cannot be deleted since primaryDatabaseRef is not in PRIMARY role"
+			log.Info("DataGuard Broker cannot be deleted since primaryDatabaseRef is not in PRIMARY role")
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+			return requeueN, nil
+		}
+		// if not PRIMARY throw error and log it 
+
 		if controllerutil.ContainsFinalizer(m, dataguardBrokerFinalizer) {
 			// Run finalization logic for dataguardBrokerFinalizer. If the
 			// finalization logic fails, don't remove the finalizer so
