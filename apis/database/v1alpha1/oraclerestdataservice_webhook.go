@@ -112,6 +112,14 @@ func (r *OracleRestDataService) ValidateCreate() error {
 		}
 	}
 
+	// Validating databaseRef and ORDS kind name not to be same
+	if r.Spec.DatabaseRef == r.Name {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("Name"),
+					 "cannot be same as DatabaseRef: " + r.Spec.DatabaseRef))
+
+	}
+
 	if len(allErrs) == 0 {
 		return nil
 	}
