@@ -2037,16 +2037,26 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			m.Status.ReleaseUpdate = version
 		}
 	}
-	oemSupport, err := isOEMSupported(r,m.Status.ReleaseUpdate)
+	dbMajorVersion, err := strconv.Atoi(strings.Split(m.Status.ReleaseUpdate,".")[0])
 	if err != nil {
 		r.Log.Error(err, err.Error())
 		return requeueY, readyPod, err
 	}
-	if oemSupport {
-		m.Status.OemExpressUrl = oemExpressUrl
-	} else {
-		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	r.Log.Info("DB Major Version is " + strconv.Itoa(dbMajorVersion))
+	// Validating that free edition of the database is only supported from database 23c onwards
+	if (m.Spec.Edition == "free" && dbMajorVersion < 23){
+		r.Log.Info("Oracle Database Free is only supported from version 23c onwards")
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "Oracle Database Free is only supported from version 23c onwards")
+		m.Status.Status = dbcommons.StatusError
+		return requeueN, readyPod, errors.New("Oracle Database Free is only supported from version 23c onwards")
 	}
+	// Checking if OEM is supported in the provided Database version 
+	if (dbMajorVersion >= 23 ) {
+		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	} else {
+		m.Status.OemExpressUrl = oemExpressUrl
+	}
+
 
 	if strings.ToUpper(m.Status.Role) == "PRIMARY" && m.Status.DatafilesPatched != "true" {
 		eventReason := "Datapatch Pending"
@@ -2623,6 +2633,13 @@ func (r *SingleInstanceDatabaseReconciler) updateORDSStatus(m *dbapi.SingleInsta
 func (r *SingleInstanceDatabaseReconciler) manageSingleInstanceDatabaseDeletion(req ctrl.Request, ctx context.Context,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 	log := r.Log.WithValues("manageSingleInstanceDatabaseDeletion", req.NamespacedName)
+	
+	log.Info("DG broker is configured with the DB " + m.Status.Sid + " : " + strconv.FormatBool(m.Status.DgBrokerConfigured))
+	if (m.Status.DgBrokerConfigured){
+		log.Info("Database cannot be deleted as it is present in a DataGuard Broker configuration")
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, "Deleting", "Database cannot be deleted as it is present in a DataGuard Broker configuration")
+		return requeueN,nil
+	}
 
 	// Check if the SingleInstanceDatabase instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
@@ -3104,20 +3121,4 @@ func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 	}
 
 	return nil
-}
-
-
-func isOEMSupported (r *SingleInstanceDatabaseReconciler,version string) (bool,error) {
-	majorVersion, err := strconv.Atoi(strings.Split(version,".")[0])
-	r.Log.Info("majorVersion of database is " + strconv.Itoa(majorVersion))
-	if err != nil {
-		return false,err
-	}
-	if majorVersion > 21{
-		r.Log.Info("major Version " + strconv.Itoa(majorVersion) +  " is greater that 21 so OEM Express is not supported")
-		return false,nil
-	} else {
-		r.Log.Info("major Version " + strconv.Itoa(majorVersion) + " is lesser than equal to 21 so OEM Express is supported")
-		return true,nil
-	}
 }
