@@ -26,6 +26,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [Creating an Oracle Data Guard Configuration](#creating-an-oracle-data-guard-configuration)
         * [Creating a Standby Database](#creating-a-standby-database)
         * [Setup DataGuardBroker Configuration for a Single Instance Database](#setup-dataguardbroker-configuration-for-a-single-instance-database)
+        * [Delete a standby database with dataguard broker configured](#delete-a-standby-database-with-dataguard-broker-configured)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
     * [REST Enable a Database](#rest-enable-a-database)
       * [Provision ORDS](#provision-ords)
@@ -755,6 +756,24 @@ $ kubectl delete dataguardbroker dgbroker-sample
 ```
 
 **NOTE :** You can only delete DataGuard broker when role of `.spec.primaryDatabaseRef` is PRIMARY
+
+### Delete a standby database with dataguard broker configured
+
+To delete a standby database in a dataguard configuration, delete the dataguardbroker resource first followed by the standby database
+
+#### Delete DataguardBroker Resource
+```sh
+$ kubectl delete dataguardbroker dgbroker-sample 
+
+  dataguardbroker.database.oracle.com/dgbroker-sample deleted
+```
+
+#### Delete Standby Database
+```sh 
+$ kubectl delete singleinstancedatabase stdby-1
+
+  singleinstancedatabase.database.oracle.com "stdby-1" deleted
+```
 
 ## OracleRestDataService Resource
 

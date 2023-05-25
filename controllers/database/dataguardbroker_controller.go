@@ -355,6 +355,21 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.D
 	sidbReadyPod corev1.Pod, adminPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("setupDataguardBrokerConfiguration", req.NamespacedName)
 
+	databases, _, err := dbcommons.GetDatabasesInDgConfig(sidbReadyPod, r, r.Config, ctx, req)
+	dbSet := make(map[string]struct{})
+	if err != nil {
+		if err.Error() != "databases in DG config is nil" {
+			return requeueY
+		}
+	}
+	if len(databases) > 0 {
+		log.Info("Databases in DG config are :")
+		for i := 0; i < len(databases); i++ {
+			log.Info(strings.Split(databases[i], ":")[0])
+			dbSet[strings.ToUpper(strings.Split(databases[i], ":")[0])] = struct{}{}
+		}
+	}
+
 	for i := 0; i < len(m.Spec.StandbyDatabaseRefs); i++ {
 
 		standbyDatabase := &dbapi.SingleInstanceDatabase{}
@@ -368,6 +383,12 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.D
 			}
 			log.Error(err, err.Error())
 			return requeueY
+		}
+		_, ok := dbSet[standbyDatabase.Status.Sid]
+		if ok {
+			log.Info("A database with the same SID is already configured in the DG")
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "A database with the same SID " + standbyDatabase.Status.Sid + " is already configured in the DG")
+			continue
 		}
 
 		// Check if dataguard broker is already configured for the standby database
