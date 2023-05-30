@@ -103,9 +103,13 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Manage SingleInstanceDatabase Deletion
 	result, err := r.manageDataguardBrokerDeletion(req, ctx, dataguardBroker)
-	if result.Requeue || err != nil {
+	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, err
+	}
+	if err != nil {
+		r.Log.Error(err,err.Error())
+		return result,err
 	}
 
 	// Fetch Primary Database Reference
@@ -251,6 +255,15 @@ func (r *DataguardBrokerReconciler) instantiateSVCSpec(m *dbapi.DataguardBroker)
 			Labels: map[string]string{
 				"app": m.Name,
 			},
+			Annotations : func() map[string]string {
+				annotations := make(map[string]string)
+				if len(m.Spec.ServiceAnnotations) != 0 {
+					for key, value := range m.Spec.ServiceAnnotations {
+						annotations[key] = value
+					}
+				}
+				return annotations
+			}(),
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -1052,33 +1065,6 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerDeletion(req ctrl.Reque
 	// indicated by the deletion timestamp being set.
 	isDataguardBrokerMarkedToBeDeleted := m.GetDeletionTimestamp() != nil
 	if isDataguardBrokerMarkedToBeDeleted {
-
-		// Make a singleinstancedatabase with empty 
-		singleInstanceDatabase := &dbapi.SingleInstanceDatabase{}
-		err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, singleInstanceDatabase)
-		if err != nil {
-			log.Error(err,err.Error())
-			return requeueY,err
-		}
-		// Get its POD
-		// Validate if Primary Database Reference is ready
-		result, sidbReadyPod, _ := r.validateSidbReadiness(m, singleInstanceDatabase, ctx, req)
-		if result.Requeue {
-			log.Info("Reconcile queued")
-			return result, nil
-		}
-		// Get its Role 
-		out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
-		// check if its PRIMARY
-		if strings.ToUpper(out) != "PRIMARY" {
-			eventReason := "Deletion"
-			eventMsg := "DataGuard Broker cannot be deleted since primaryDatabaseRef is not in PRIMARY role"
-			log.Info("DataGuard Broker cannot be deleted since primaryDatabaseRef is not in PRIMARY role")
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-			return requeueN, nil
-		}
-		// if not PRIMARY throw error and log it 
-
 		if controllerutil.ContainsFinalizer(m, dataguardBrokerFinalizer) {
 			// Run finalization logic for dataguardBrokerFinalizer. If the
 			// finalization logic fails, don't remove the finalizer so
@@ -1138,8 +1124,22 @@ func (r *DataguardBrokerReconciler) cleanupDataguardBroker(req ctrl.Request, ctx
 		return result, nil
 	}
 
+	// Get its Role 
+	out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY, err
+	}
+	// check if its PRIMARY database
+	if strings.ToUpper(out) != "PRIMARY" {
+		eventReason := "Deletion"
+		eventMsg := "DataGuard Broker cannot be deleted since primaryDatabaseRef is not in PRIMARY role"
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		return requeueY, errors.New(eventMsg)
+	}
+
 	// Get Primary database to remove dataguard configuration
-	_, out, err := dbcommons.GetDatabasesInDgConfig(sidbReadyPod, r, r.Config, ctx, req)
+	_, out, err = dbcommons.GetDatabasesInDgConfig(sidbReadyPod, r, r.Config, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY, err

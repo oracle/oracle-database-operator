@@ -6,18 +6,16 @@
 apiVersion: database.oracle.com/v1alpha1
 kind: SingleInstanceDatabase
 metadata:
-  # Creates base sidb-sample. Use singleinstancedatabase_clone.yaml for cloning
+  # Creates base standbydatabase-sample. Use singleinstancedatabase_clone.yaml for cloning
   #                           and singleinstancedatabase_patch.yaml for patching
-  name: sidb-sample
+  name: standbydatabase-sample
   namespace: default
 spec:
   
   ## Use only alphanumeric characters for sid
-  sid: ORCL1
+  sid: ORCLS
 
-  ## Reference to a source primary database from which
-  ## Format: 1. Intra-cluster: you can give name of the primary database or the database connect string in `<host>:<port>/<service_name>` format
-  ##         2. Inter-cluster: Database connect string in `<host>:<port>/<service_name>` format
+  ## Reference to a source primary database name
   primaryDatabaseRef: "sidb-sample"
 
   ## Enable this flag for creating Physical Standby Database

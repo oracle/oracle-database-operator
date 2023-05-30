@@ -69,6 +69,24 @@ var _ webhook.Defaulter = &DataguardBroker{}
 func (r *DataguardBroker) Default() {
 	dataguardbrokerlog.Info("default", "name", r.Name)
 
+	if (r.Spec.LoadBalancer) {
+		if r.Spec.ServiceAnnotations == nil {
+			r.Spec.ServiceAnnotations= make(map[string]string)
+		}
+		// Annotations required for a flexible load balancer on oci 
+		_, ok := r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"]
+		if(!ok) {
+			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"] = "flexible"
+		}
+		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
+		if(!ok) {
+			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"] = "10"
+		}
+		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
+		if(!ok) {
+			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
+		}
+	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.

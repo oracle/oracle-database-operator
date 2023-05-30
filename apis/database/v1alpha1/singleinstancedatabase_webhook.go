@@ -72,6 +72,25 @@ var _ webhook.Defaulter = &SingleInstanceDatabase{}
 func (r *SingleInstanceDatabase) Default() {
 	singleinstancedatabaselog.Info("default", "name", r.Name)
 
+	if r.Spec.LoadBalancer {
+		// Annotations required for a flexible load balancer on oci 
+		if r.Spec.ServiceAnnotations == nil {
+			r.Spec.ServiceAnnotations= make(map[string]string)
+		}
+		_, ok := r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"]
+		if(!ok) {
+			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"] = "flexible"
+		}
+		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
+		if(!ok) {
+			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"] = "10"
+		}
+		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
+		if(!ok) {
+			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
+		}
+	}
+
 	if r.Spec.AdminPassword.KeepSecret == nil {
 		keepSecret := true
 		r.Spec.AdminPassword.KeepSecret = &keepSecret
