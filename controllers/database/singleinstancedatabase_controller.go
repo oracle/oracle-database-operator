@@ -149,6 +149,10 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
+	if err != nil {
+		r.Log.Error(err,err.Error())
+		return result, err
+	}
 
 	// First validate
 	result, err = r.validate(singleInstanceDatabase, cloneFromDatabase, referredPrimaryDatabase, ctx, req)
@@ -2633,13 +2637,7 @@ func (r *SingleInstanceDatabaseReconciler) updateORDSStatus(m *dbapi.SingleInsta
 func (r *SingleInstanceDatabaseReconciler) manageSingleInstanceDatabaseDeletion(req ctrl.Request, ctx context.Context,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 	log := r.Log.WithValues("manageSingleInstanceDatabaseDeletion", req.NamespacedName)
-	
-	log.Info("DG broker is configured with the DB " + m.Status.Sid + " : " + strconv.FormatBool(m.Status.DgBrokerConfigured))
-	if (m.Status.DgBrokerConfigured){
-		log.Info("Database cannot be deleted as it is present in a DataGuard Broker configuration")
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, "Deleting", "Database cannot be deleted as it is present in a DataGuard Broker configuration")
-		return requeueN,nil
-	}
+
 
 	// Check if the SingleInstanceDatabase instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
@@ -2695,6 +2693,13 @@ func (r *SingleInstanceDatabaseReconciler) cleanupSingleInstanceDatabase(req ctr
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 		m.Status.Status = dbcommons.StatusError
 		return requeueY, nil
+	}
+
+	if (m.Status.DgBrokerConfigured){
+		eventReason := "Cannot Delete"
+		eventMsg := "Database cannot be deleted as it is present in a DataGuard Broker configuration"
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventReason)
+		return requeueY,errors.New(eventMsg)
 	}
 
 	// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
