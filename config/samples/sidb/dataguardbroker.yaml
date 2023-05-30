@@ -15,8 +15,8 @@ spec:
 
   ## Standby DB pod CRD Metadata Name to add this DB to DG config
   standbyDatabaseRefs:
-  #  - standbyDatabase-sample1
-  #  - standbyDatabase-sample2
+  #  - standbydatabase-sample
+  #  - standbydatabase-sample1
 
   ## Type of service . Applicable on cloud enviroments only
   ## if loadBalService : false , service type = "NodePort" . else "LoadBalancer"
