@@ -205,7 +205,10 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
+
+
 	if strings.ToUpper(singleInstanceDatabase.Status.Role) == "PRIMARY" {
+
 		// Update DB config
 		result, err = r.updateDBConfig(singleInstanceDatabase, readyPod, ctx, req)
 		if result.Requeue {
@@ -644,7 +647,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				VolumeSource: corev1.VolumeSource{
 					Secret: &corev1.SecretVolumeSource{
 						SecretName: m.Spec.AdminPassword.SecretName,
-						Optional:   func() *bool { i := (m.Spec.Edition != "express"); return &i }(),
+						Optional:   func() *bool { i := (m.Spec.Edition != "express" && m.Spec.Edition != "free"); return &i }(),
 						Items: []corev1.KeyToPath{{
 							Key:  m.Spec.AdminPassword.SecretKey,
 							Path: "oracle_pwd",
@@ -777,7 +780,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name:      "datamount",
 						})
 					}
-					if m.Spec.Edition == "express" || m.Spec.Image.PrebuiltDB {
+					if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB {
 						// mounts pwd as secrets for express edition
 						// or prebuilt db
 						mounts = append(mounts, corev1.VolumeMount{
@@ -2855,6 +2858,7 @@ func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconcil
 	log.Info(fmt.Sprintf("Validating primary database %s configuration...", primary.Name))
 	err = ValidateDatabaseConfiguration(primary)
 	if err != nil {
+		r.Recorder.Eventf(stdby,corev1.EventTypeWarning,"Spec Error", "all of Archivelog, Flashback and ForceLogging modes are not enabled in the primary database " + primary.Name)
 		stdby.Status.Status = dbcommons.StatusError
 		return err
 	}

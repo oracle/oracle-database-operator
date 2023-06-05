@@ -8,6 +8,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [New Database](#new-database)
       * [Pre-built Database](#pre-built-database)
       * [XE Database](#xe-database)
+      * [Free Database](#free-database)
     * [Connecting to Database](#connecting-to-database)
     * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
       * [Dynamic Persistence](#dynamic-persistence)
@@ -205,8 +206,21 @@ This command pulls the XE image uploaded on the [Oracle Container Registry](http
 - For XE database, only single replica mode (i.e. `replicas: 1`) is supported.
 - For XE database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
 
+#### Free Database
+To provision new Oracle Database Free database, use the sample **[config/samples/sidb/singleinstancedatabase_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml)** file. For example:
+
+      kubectl apply -f singleinstancedatabase_free.yaml
+
+This command pulls the Free image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/).
+
+**NOTE:**
+- Provisioning Oracle Database Free is supported for release 23c (23.2.0) and later releases.
+- For Free database, only single replica mode (i.e. `replicas: 1`) is supported.
+- For Free database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
+- Oracle Enterprise Manager is not supported from release 23c and later release. 
+
 #### Additional Information
-You are required to specify the database admin password secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml), [singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml) and [singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, and `xedb-admin-secret` respectively. You can create these secrets manually by using the sample command mentioned in the [Template YAML](#template-yaml) section. Alternatively, you can create these secrets by filling the passwords in the **[singleinstancedatabase_secrets.yaml](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying it using the command below:
+You are required to specify the database admin password secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml), [singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml), [singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) and [singleinstancedatabse_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, `xedb-admin-secret` and `free-admin-secret` respectively. You can create these secrets manually by using the sample command mentioned in the [Template YAML](#template-yaml) section. Alternatively, you can create these secrets by filling the passwords in the **[singleinstancedatabase_secrets.yaml](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying it using the command below:
 
 ```bash
 kubectl apply -f singleinstancedatabase_secrets.yaml
@@ -580,7 +594,7 @@ Before creating a standby, ArchiveLog, FlashBack, and ForceLog on primary Single
 To create a standby database, edit and apply the sample yaml file [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml).
 
 **NOTE:**
-- The `adminPassword` field of the above [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml) contains an admin password secret of the primary database ref for Standby Database creation. This secret gets deleted after the database pod becomes ready for security reasons.
+- The `adminPassword` field of the above [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml) contains an admin password secret of the primary database ref for Standby Database creation. This secret will get deleted after the database pod becomes ready if the `keepSecret` attribute of `adminPassword` field is set to `false`. By default `keepSecret` is set to `true`.
 - Mention referred primary database in `.spec.primaryDatabaseRef` in the yaml file.
 - `.spec.createAsStandby` field of the yaml file should be true.
 - Database configuration like `Archivelog`, `FlashBack`, `ForceLog`, `TCPS connections` are not supported for standby database.
@@ -757,7 +771,18 @@ $ kubectl delete dataguardbroker dgbroker-sample
 
 **NOTE :** You can only delete DataGuard broker when role of `.spec.primaryDatabaseRef` is PRIMARY
 
-### Delete a standby database with dataguard broker configured
+### Patch primary and standby databases in dataguard configuration
+
+Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched or rolled back between release updates of the same major release. While patching databases configured with the dataguard broker you need to first patch the Primary database followed by seconday/standby databases in any order. 
+
+To patch an existing database, edit and apply the **[config/samples/sidb/singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
+
+```sh
+kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase <database-name>
+
+```
+
+### Delete a database in dataguard configuration
 
 To delete a standby database in a dataguard configuration, delete the dataguardbroker resource first followed by the standby database
 
