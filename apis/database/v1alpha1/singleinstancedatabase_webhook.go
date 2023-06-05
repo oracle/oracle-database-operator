@@ -40,7 +40,8 @@ package v1alpha1
 
 import (
 	"strings"
-	"time"
+	"time"	
+	"strconv"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
@@ -360,6 +361,43 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 	if !ok {
 		return nil
 	}
+
+	if (old.Status.Role != dbcommons.ValueUnavailable && old.Status.Role != "PRIMARY") {
+		// Restriciting Patching of secondary databases archiveLog, forceLog, flashBack
+		statusArchiveLog, _ := strconv.ParseBool(old.Status.ArchiveLog)
+		if statusArchiveLog != r.Spec.ArchiveLog {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("archiveLog"), "cannot be changed"))
+		}
+		statusFlashBack, _ := strconv.ParseBool(old.Status.FlashBack)
+		if statusFlashBack != r.Spec.FlashBack {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("flashBack"), "cannot be changed"))
+		}
+		statusForceLogging, _ := strconv.ParseBool(old.Status.ForceLogging)
+		if statusForceLogging != r.Spec.ForceLogging {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("forceLog"), "cannot be changed"))
+		}
+		// Restriciting Patching of secondary databases InitParams
+		if old.Status.InitParams.SgaTarget != r.Spec.InitParams.SgaTarget {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("sgaTarget"), "cannot be changed"))
+		}
+		if old.Status.InitParams.PgaAggregateTarget != r.Spec.InitParams.PgaAggregateTarget {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("pgaAggregateTarget"), "cannot be changed"))
+		}
+		if old.Status.InitParams.CpuCount != r.Spec.InitParams.CpuCount {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("cpuCount"), "cannot be changed"))
+		}
+		if old.Status.InitParams.Processes != r.Spec.InitParams.Processes {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("processes"), "cannot be changed"))
+		}
+	}
+
 	if old.Status.DatafilesCreated == "true" && (old.Status.PrebuiltDB != r.Spec.Image.PrebuiltDB) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))
