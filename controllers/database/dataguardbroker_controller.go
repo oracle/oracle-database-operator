@@ -44,7 +44,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -543,8 +542,8 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 	}
 	log.Info("DB Admin pwd file created")
 
+	//  ORA-16532: Oracle Data Guard broker configuration does not exist , so create one
 	if strings.Contains(out, "ORA-16532") {
-		//  ORA-16532: Oracle Data Guard broker configuration does not exist , so create one
 		if m.Spec.ProtectionMode == "MaxPerformance" {
 			// Construct the password file and dgbroker command file
 			out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
@@ -565,7 +564,6 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 			}
 			log.Info("DgConfigurationMaxPerformance Output")
 			log.Info(out)
-
 		} else if m.Spec.ProtectionMode == "MaxAvailability" {
 			// ## DG CONFIGURATION FOR PRIMARY DB || MODE : MAX AVAILABILITY ##
 			out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
@@ -586,7 +584,6 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 			}
 			log.Info("DgConfigurationMaxAvailability Output")
 			log.Info(out)
-
 		} else {
 			log.Info("SPECIFY correct Protection Mode . Either MaxAvailability or MaxPerformance")
 			return requeueY
@@ -602,10 +599,11 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 			log.Info("ShowConfiguration Output")
 			log.Info(out)
 		}
-		// Set DG Configured status to true for this standbyDatabase. so that in next reconcilation, we dont configure this again
+		// Set DG Configured status to true for this standbyDatabase and primary Database. so that in next reconcilation, we dont configure this again
+		n.Status.DgBrokerConfigured = true
 		standbyDatabase.Status.DgBrokerConfigured = true
 		r.Status().Update(ctx, standbyDatabase)
-
+		r.Status().Update(ctx, n)
 		// Remove admin pwd file
 		_, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 			dbcommons.RemoveAdminPasswordFile)
@@ -1172,6 +1170,9 @@ func (r *DataguardBrokerReconciler) cleanupDataguardBroker(req ctrl.Request, ctx
 		standbyDatabase.Status.DgBrokerConfigured = false
 		r.Status().Update(ctx, standbyDatabase)
 	}
+
+	singleInstanceDatabase.Status.DgBrokerConfigured = false
+	r.Status().Update(ctx, singleInstanceDatabase)
 
 	log.Info("Successfully cleaned up Dataguard Broker")
 	return requeueN, nil
