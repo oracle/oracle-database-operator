@@ -527,6 +527,12 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 			return requeueY, err
 		}
 
+		if rp.Status.IsTcpsEnabled {
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Cannot Create", "Standby for TCPS enabled Primary Database is not supported ")
+			m.Status.Status = dbcommons.StatusError
+			return requeueY, nil
+		}
+
 		if m.Status.DatafilesCreated == "true" ||
 			!dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
 			return requeueN, nil
