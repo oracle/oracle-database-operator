@@ -58,7 +58,7 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
 
     ![acd-id-3](/images/adb/acd-id-2.png)
 
-3. Create a Kubernetes Secret to hold the password of the ADMIN user.
+3. Create a Kubernetes Secret to hold the password of the ADMIN user. **The key and the name of the secret must be the same.**
 
     You can create this secret with the following command (as an example):
 
