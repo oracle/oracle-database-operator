@@ -2705,7 +2705,7 @@ func (r *SingleInstanceDatabaseReconciler) cleanupSingleInstanceDatabase(req ctr
 	if m.Status.DgBrokerConfigured {
 		eventReason := "Cannot Delete"
 		eventMsg := "database cannot be deleted as it is present in a DataGuard Broker configuration"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventReason)
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		return requeueY, errors.New(eventMsg)
 	}
 
