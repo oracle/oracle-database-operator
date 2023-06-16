@@ -72,10 +72,8 @@ run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
 docker-build: manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
-	docker build --no-cache=true --build-arg http_proxy=${HTTP_PROXY} --build-arg https_proxy=${HTTPS_PROXY} . -t ${IMG}
-
-#docker-build-proxy: test
-# docker build --build-arg http_proxy=${http_proxy} --build-arg https_proxy=${https_proxy} build . -t ${IMG}
+	docker build --no-cache=true --build-arg http_proxy=${HTTP_PROXY} --build-arg https_proxy=${HTTPS_PROXY} \
+	             --build-arg CI_COMMIT_SHA=${CI_COMMIT_SHA} --build-arg CI_COMMIT_BRANCH=${CI_COMMIT_BRANCH}  . -t ${IMG}
 
 docker-push: ## Push docker image with the manager.
 	docker push ${IMG}
