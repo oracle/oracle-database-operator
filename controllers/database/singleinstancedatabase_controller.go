@@ -48,6 +48,8 @@ import (
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -130,7 +132,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	if singleInstanceDatabase.Status.Status == "" {
 		singleInstanceDatabase.Status.Status = dbcommons.StatusPending
 		if singleInstanceDatabase.Spec.Edition != "" {
-			singleInstanceDatabase.Status.Edition = strings.Title(singleInstanceDatabase.Spec.Edition)
+			singleInstanceDatabase.Status.Edition = cases.Title(language.English).String(singleInstanceDatabase.Spec.Edition)
 		} else {
 			singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
 		}
@@ -150,7 +152,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, nil
 	}
 	if err != nil {
-		r.Log.Error(err,err.Error())
+		r.Log.Error(err, err.Error())
 		return result, err
 	}
 
@@ -205,8 +207,6 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
-
-
 	if strings.ToUpper(singleInstanceDatabase.Status.Role) == "PRIMARY" {
 
 		// Update DB config
@@ -236,9 +236,9 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		if err != nil {
 			return requeueY, err
 		}
-		
-		databaseOpenMode,err := dbcommons.GetDatabaseOpenMode(readyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
-	
+
+		databaseOpenMode, err := dbcommons.GetDatabaseOpenMode(readyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
+
 		if err != nil {
 			r.Log.Error(err, err.Error())
 			return requeueY, err
@@ -246,7 +246,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		r.Log.Info("DB openMode Output")
 		r.Log.Info(databaseOpenMode)
 		if databaseOpenMode == "READ_ONLY" {
-			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",fmt.Sprintf("echo -e  \"%s\"  | %s",dbcommons.ModifyStdbyDBOpenMode,dbcommons.SQLPlusCLI))
+			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ModifyStdbyDBOpenMode, dbcommons.SQLPlusCLI))
 			if err != nil {
 				r.Log.Error(err, err.Error())
 				return requeueY, err
@@ -398,7 +398,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 
 	//  If Express/Free Edition, ensure Replicas=1
 	if (m.Spec.Edition == "express" || m.Spec.Edition == "free") && m.Spec.Replicas > 1 {
-		eventMsgs = append(eventMsgs, m.Spec.Edition + " edition supports only one replica")
+		eventMsgs = append(eventMsgs, m.Spec.Edition+" edition supports only one replica")
 	}
 	//  If no persistence, ensure Replicas=1
 	if m.Spec.Persistence.Size == "" && m.Spec.Replicas > 1 {
@@ -422,10 +422,10 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		eventMsgs = append(eventMsgs, "cloneFrom cannot be updated")
 	}
 	if (m.Spec.Edition == "express" || m.Spec.Edition == "free") && m.Spec.CloneFrom != "" {
-		eventMsgs = append(eventMsgs, "cloning not supported for " + m.Spec.Edition + " edition")
+		eventMsgs = append(eventMsgs, "cloning not supported for "+m.Spec.Edition+" edition")
 	}
 	if (m.Spec.Edition == "express" || m.Spec.Edition == "free") && m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
-		eventMsgs = append(eventMsgs, "Standby database creation is not supported for " + m.Spec.Edition + " edition")
+		eventMsgs = append(eventMsgs, "Standby database creation is not supported for "+m.Spec.Edition+" edition")
 	}
 	if m.Status.OrdsReference != "" && m.Status.Persistence.Size != "" && m.Status.Persistence != m.Spec.Persistence {
 		eventMsgs = append(eventMsgs, "uninstall ORDS to change Peristence")
@@ -1502,7 +1502,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		if sid == "" || pdbName == "" || edition == "" {
 			return requeueN, nil
 		}
-		m.Status.Edition = strings.Title(edition)
+		m.Status.Edition = cases.Title(language.English).String(edition)
 	}
 
 	if m.Spec.LoadBalancer {
@@ -2050,26 +2050,25 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleIn
 			m.Status.ReleaseUpdate = version
 		}
 	}
-	dbMajorVersion, err := strconv.Atoi(strings.Split(m.Status.ReleaseUpdate,".")[0])
+	dbMajorVersion, err := strconv.Atoi(strings.Split(m.Status.ReleaseUpdate, ".")[0])
 	if err != nil {
 		r.Log.Error(err, err.Error())
 		return requeueY, readyPod, err
 	}
 	r.Log.Info("DB Major Version is " + strconv.Itoa(dbMajorVersion))
 	// Validating that free edition of the database is only supported from database 23c onwards
-	if (m.Spec.Edition == "free" && dbMajorVersion < 23){
-		r.Log.Info("Oracle Database Free is only supported from version 23c onwards")
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "Oracle Database Free is only supported from version 23c onwards")
+	if m.Spec.Edition == "free" && dbMajorVersion < 23 {
+		errMsg := "the Oracle Database Free is only available from version 23c onwards"
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", errMsg)
 		m.Status.Status = dbcommons.StatusError
-		return requeueN, readyPod, errors.New("Oracle Database Free is only supported from version 23c onwards")
+		return requeueN, readyPod, errors.New(errMsg)
 	}
-	// Checking if OEM is supported in the provided Database version 
-	if (dbMajorVersion >= 23 ) {
+	// Checking if OEM is supported in the provided Database version
+	if dbMajorVersion >= 23 {
 		m.Status.OemExpressUrl = dbcommons.ValueUnavailable
 	} else {
 		m.Status.OemExpressUrl = oemExpressUrl
 	}
-
 
 	if strings.ToUpper(m.Status.Role) == "PRIMARY" && m.Status.DatafilesPatched != "true" {
 		eventReason := "Datapatch Pending"
@@ -2647,7 +2646,6 @@ func (r *SingleInstanceDatabaseReconciler) manageSingleInstanceDatabaseDeletion(
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
 	log := r.Log.WithValues("manageSingleInstanceDatabaseDeletion", req.NamespacedName)
 
-
 	// Check if the SingleInstanceDatabase instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
 	isSingleInstanceDatabaseMarkedToBeDeleted := m.GetDeletionTimestamp() != nil
@@ -2704,11 +2702,11 @@ func (r *SingleInstanceDatabaseReconciler) cleanupSingleInstanceDatabase(req ctr
 		return requeueY, nil
 	}
 
-	if (m.Status.DgBrokerConfigured){
+	if m.Status.DgBrokerConfigured {
 		eventReason := "Cannot Delete"
-		eventMsg := "Database cannot be deleted as it is present in a DataGuard Broker configuration"
+		eventMsg := "database cannot be deleted as it is present in a DataGuard Broker configuration"
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventReason)
-		return requeueY,errors.New(eventMsg)
+		return requeueY, errors.New(eventMsg)
 	}
 
 	// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
@@ -2864,7 +2862,7 @@ func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconcil
 	log.Info(fmt.Sprintf("Validating primary database %s configuration...", primary.Name))
 	err = ValidateDatabaseConfiguration(primary)
 	if err != nil {
-		r.Recorder.Eventf(stdby,corev1.EventTypeWarning,"Spec Error", "all of Archivelog, Flashback and ForceLogging modes are not enabled in the primary database " + primary.Name)
+		r.Recorder.Eventf(stdby, corev1.EventTypeWarning, "Spec Error", "all of Archivelog, Flashback and ForceLogging modes are not enabled in the primary database "+primary.Name)
 		stdby.Status.Status = dbcommons.StatusError
 		return err
 	}
