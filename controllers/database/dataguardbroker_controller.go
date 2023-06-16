@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -100,15 +101,15 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return requeueN, err
 	}
 
-	// Manage SingleInstanceDatabase Deletion
+	// Manage DataguardBroker Deletion
 	result, err := r.manageDataguardBrokerDeletion(req, ctx, dataguardBroker)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, err
 	}
 	if err != nil {
-		r.Log.Error(err,err.Error())
-		return result,err
+		r.Log.Error(err, err.Error())
+		return result, err
 	}
 
 	// Fetch Primary Database Reference
@@ -254,7 +255,7 @@ func (r *DataguardBrokerReconciler) instantiateSVCSpec(m *dbapi.DataguardBroker)
 			Labels: map[string]string{
 				"app": m.Name,
 			},
-			Annotations : func() map[string]string {
+			Annotations: func() map[string]string {
 				annotations := make(map[string]string)
 				if len(m.Spec.ServiceAnnotations) != 0 {
 					for key, value := range m.Spec.ServiceAnnotations {
@@ -399,7 +400,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.D
 		_, ok := dbSet[standbyDatabase.Status.Sid]
 		if ok {
 			log.Info("A database with the same SID is already configured in the DG")
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "A database with the same SID " + standbyDatabase.Status.Sid + " is already configured in the DG")
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "A database with the same SID "+standbyDatabase.Status.Sid+" is already configured in the DG")
 			continue
 		}
 
@@ -436,7 +437,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.D
 
 		// Update Databases
 		r.updateReconcileStatus(m, sidbReadyPod, ctx, req)
-	}  
+	}
 
 	eventReason := "DG Configuration up to date"
 	eventMsg := ""
@@ -689,7 +690,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 	}
 
 	// ## SET PROPERTY FASTSTARTFAILOVERTARGET FOR EACH DATABASE TO ALL OTHER DATABASES IN DG CONFIG .
-	if (m.Spec.FastStartFailOver.Enable == true){
+	if m.Spec.FastStartFailOver.Enable {
 		for i := 0; i < len(databases); i++ {
 			out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 				fmt.Sprintf("dgmgrl sys@%s \"EDIT DATABASE %s SET PROPERTY FASTSTARTFAILOVERTARGET=%s\"< admin.pwd", primaryConnectString,
@@ -730,20 +731,22 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 
 // #############################################################################
 //
-//	Remove up DG Configuration for a given StandbyDatabase - To be Tested
+//	Remove a Database from DG Configuration
 //
 // #############################################################################
-func (r *DataguardBrokerReconciler) removeDataguardBrokerConfigurationForGivenDB( m *dbapi.DataguardBroker,n *dbapi.SingleInstanceDatabase,standbyDatabase *dbapi.SingleInstanceDatabase, standbyDatabaseReadyPod corev1.Pod, sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+//
+//lint:ignore U1000 deferred for next release
+func (r *DataguardBrokerReconciler) removeDatabaseFromDGConfig(m *dbapi.DataguardBroker, n *dbapi.SingleInstanceDatabase, standbyDatabase *dbapi.SingleInstanceDatabase, standbyDatabaseReadyPod corev1.Pod, sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("removeDataguardBrokerConfigurationForGivenDB", req.NamespacedName)
 
-	if standbyDatabaseReadyPod.Name == "" || sidbReadyPod.Name == ""{
+	if standbyDatabaseReadyPod.Name == "" || sidbReadyPod.Name == "" {
 		return requeueY
 	}
 
 	// ## CHECK IF DG CONFIGURATION IS AVAILABLE IN PRIMARY DATABASE ##
-	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c", 
+	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf("echo -e \"%s\" | dgmgrl / as sysdba", dbcommons.DBShowConfigCMD))
-	
+
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY
@@ -757,7 +760,7 @@ func (r *DataguardBrokerReconciler) removeDataguardBrokerConfigurationForGivenDB
 	}
 
 	// ## REMOVING STANDBY DATABASE FROM DG CONFIGURATION ##
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+	_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf(dbcommons.CreateDGMGRLScriptFile, dbcommons.RemoveStandbyDBFromDGConfgCMD))
 
 	if err != nil {
@@ -765,8 +768,8 @@ func (r *DataguardBrokerReconciler) removeDataguardBrokerConfigurationForGivenDB
 		return requeueY
 	}
 
-	// ## SHOW CONFIGURATION 
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+	// ## SHOW CONFIGURATION
+	_, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf("echo -e \"%s\" | dgmgrl / as sysdba", dbcommons.DBShowConfigCMD))
 	if err != nil {
 		log.Error(err, err.Error())
@@ -1122,7 +1125,7 @@ func (r *DataguardBrokerReconciler) cleanupDataguardBroker(req ctrl.Request, ctx
 		return result, nil
 	}
 
-	// Get its Role 
+	// Get its Role
 	out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
 	if err != nil {
 		log.Error(err, err.Error())
@@ -1137,7 +1140,7 @@ func (r *DataguardBrokerReconciler) cleanupDataguardBroker(req ctrl.Request, ctx
 	}
 
 	// Get Primary database to remove dataguard configuration
-	_, out, err = dbcommons.GetDatabasesInDgConfig(sidbReadyPod, r, r.Config, ctx, req)
+	_, _, err = dbcommons.GetDatabasesInDgConfig(sidbReadyPod, r, r.Config, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY, err
