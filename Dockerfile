@@ -26,7 +26,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GO111MODULE=on go build -a -o manager 
 
 # Use oraclelinux:8-slim as base image to package the manager binary
 FROM oraclelinux:8-slim
-ARG CI_COMMIT_SHA CI_COMMIT_BRANCH
+ARG CI_COMMIT_SHA 
+ARG CI_COMMIT_BRANCH
 ENV COMMIT_SHA=${CI_COMMIT_SHA} \
     COMMIT_BRANCH=${CI_COMMIT_BRANCH}
 WORKDIR /
