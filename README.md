@@ -2,7 +2,7 @@
 
 ## Make Oracle Database Kubernetes Native - Take 2 
 
-As part of Oracle's resolution to make Oracle Database Kubernetes-native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
+As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
 In this v0.2.1 release, `OraOperator` supports the following database configurations and infrastructure:
 
@@ -15,7 +15,7 @@ In this v0.2.1 release, `OraOperator` supports the following database configurat
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Database Cloud Service (DBCS) (VMDB)
 
-Oracle will continue to extent OraOperator  to support additional Oracle Database configurations.
+Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
 
 ## Features Summary
 
@@ -50,7 +50,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
 * ### Install cert-manager
 
-  The operator uses webhooks for validating user input before persisting it in Etcd. Webhooks require TLS certificates that are generated and managed by a certificate manager.
+  The operator uses webhooks for validating user input before persisting it in etcd. Webhooks require TLS certificates that are generated and managed by a certificate manager.
 
   Install the certificate manager with the following command:
 
@@ -70,7 +70,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
   ---
   **NOTE:**
-  The above command will also upgrade the existing v0.2.0 `OraOperator` installation to the latest version i.e. v0.2.1.
+  The above command will also upgrade the existing v0.2.0 `OraOperator` installation to the latest version; for example, v0.2.1.
 
   ---
 
@@ -126,7 +126,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete pdb.database.oracle.com --all -n <namespace>
   ```
 
-  After all CRD instances are deleted, it is safe to remove the CRDs, APISerivces and operator deployment. Use the following command:
+  After all CRD instances are deleted, it is safe to remove the CRDs, APIServices and operator deployment. To remove these files, use the following command:
 
   ```sh
   kubectl delete -f oracle-database-operator.yaml --ignore-not-found=true
@@ -148,7 +148,7 @@ See [Contributing to this Repository](./CONTRIBUTING.md)
 
 ## Support
 
-You can submit a GitHub issue, or you can also file an [Oracle Support service](https://support.oracle.com/portal/) request, using the product id: 14430.
+You can submit a GitHub issue, or you can also file an [Oracle Support service](https://support.oracle.com/portal/) request, using this product ID: 14430.
 
 ## Security
 
@@ -173,5 +173,5 @@ See [Reporting security vulnerabilities](./SECURITY.md)
 
 ## License
 
-Copyright (c) 2022 Oracle and/or its affiliates.
+Copyright (c) 2022, 2023 Oracle and/or its affiliates.
 Released under the Universal Permissive License v1.0 as shown at [https://oss.oracle.com/licenses/upl/](https://oss.oracle.com/licenses/upl/)
