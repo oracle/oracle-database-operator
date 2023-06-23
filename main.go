@@ -41,10 +41,15 @@ package main
 import (
 	"context"
 	"flag"
+	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"os"
 	"strconv"
 	"time"
 
+	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
+	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
+	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -53,9 +58,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -66,8 +68,10 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
 	utilruntime.Must(databasev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(observabilityv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(monitorv1.AddToScheme(scheme))
+
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -263,6 +267,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Observability DatabaseObserver Reconciler
+	if err = (&observabilitycontroller.DatabaseObserverReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("observability").WithName("DatabaseObserver"),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("DatabaseObserver"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DatabaseObserver")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs
