@@ -6,7 +6,7 @@ As indicated in the prerequisites (see above), to interact with OCI services, ei
 
 ## Required Permissions
 
-The opeartor must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. See [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb) for sample Autonomous Database policies.
+The operator must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. See [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb) for sample Autonomous Database policies.
 
 The permission to view the workrequests is also required, so that the operator will update the resources when the work is done. See [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) for sample work request policies.
 
@@ -26,15 +26,15 @@ After you create the resource, you can use the operator to perform the following
 * [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
 * [Delete the resource](#delete-the-resource) from the cluster
 
-To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
+To debug the Oracle Autonomous Databases with Oracle Database operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
 
 ## Provision an Autonomous Database
 
-Follow the steps to provision an Autonomous Database that will map objects in your cluster.
+Follow these steps to provision an Autonomous Database that will map objects in your cluster.
 
 1. Get the `Compartment OCID`.
 
-    Login Cloud Console and click `Compartment`.
+    Log in to the Cloud Console and click `Compartment`.
 
     ![compartment-1](/images/adb/compartment-1.png)
 
@@ -42,7 +42,7 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
 
     ![compartment-2](/images/adb/compartment-2.png)
 
-2. To create an Autonomous Database on Dedicated Exadata Infrastructure (ADB-D), the OCID of Oracle Autonomous Container Database is required.
+2. To create an Autonomous Database on Dedicated Exadata Infrastructure (ADB-D), the OCID of the Oracle Autonomous Container Database is required.
 
     You can skip this step if you want to create a Autonomous Database on Shared Exadata Infrastructure (ADB-S).
 
@@ -54,13 +54,13 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
 
     ![acd-id-2](/images/adb/acd-id-1.png)
 
-    Click on the name of Autonomous Container Database and copy the `Autonomous Container Database OCID` from Cloud Console.
+    Click on the name of Autonomous Container Database and copy the `Autonomous Container Database OCID` from the Cloud Console.
 
     ![acd-id-3](/images/adb/acd-id-2.png)
 
 3. Create a Kubernetes Secret to hold the password of the ADMIN user. **The key and the name of the secret must be the same.**
 
-    You can create this secret with the following command (as an example):
+    You can create this secret by using a command similar to the following example:
 
     ```sh
     kubectl create secret generic admin-password --from-literal=admin-password='password_here'
@@ -111,9 +111,9 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
 
 5. Choose the type of network access (optional):
 
-   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the netowrk acess. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
+   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the network acess. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
 
-6. Apply the yaml:
+6. Apply the YAML:
 
     ```sh
     kubectl apply -f config/samples/adb/autonomousdatabase_create.yaml
@@ -170,9 +170,9 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 
 ## Scale the OCPU core count or storage
 
-> Note: this operation requires an `AutonomousDatabase` object to be in your cluster. This example assumes either the provision operation or the bind operation has been done by the users and the operator is authorized with API Key Authentication.
+> Note: this operation requires an `AutonomousDatabase` object to be in your cluster. To use this example, either the provision operation or the bind operation must be done, and the operator is authorized with API Key Authentication.
 
-Users can scale up or scale down the Oracle Autonomous Database OCPU core count or storage by updating the `cpuCoreCount` and `dataStorageSizeInTBs` parameters. The `isAutoScalingEnabled` indicates whether auto scaling is enabled. Here is an example of scaling the CPU count and storage size (TB) up to 2 and turning off the auto-scaling by updating the `autonomousdatabase-sample` custom resource.
+You can scale up or scale down the Oracle Autonomous Database OCPU core count or storage by updating the `cpuCoreCount` and `dataStorageSizeInTBs` parameters. The `isAutoScalingEnabled` indicates whether auto scaling is enabled. In this example, the CPU count and storage size (TB) are scaled up to 2 and the auto-scaling is turned off by updating the `autonomousdatabase-sample` custom resource.
 
 1. An example YAML file is available here: [config/samples/adb/autonomousdatabase_scale.yaml](./../../config/samples/adb/autonomousdatabase_scale.yaml)
 
@@ -339,14 +339,14 @@ To use the secret in a deployment, refer to [Using Secrets](https://kubernetes.i
 
 > Note: this operation requires an `AutonomousDatabase` object to be in your cluster. This example assumes the provision operation or the bind operation has been done by the users and the operator is authorized with API Key Authentication.
 
-Users can start/stop/terminate a database using the `lifecycleState` attribute.
+To start, stop, or terminate a database, use the `lifecycleState` attribute.
 Here's a list of the values you can set for `lifecycleState`:
 
 * `AVAILABLE`: to start the database
 * `STOPPED`: to stop the database
 * `TERMINATED`: to terminate the database
 
-1. A sample .yaml file is available here: [config/samples/adb/autonomousdatabase_stop_start_terminate.yaml](./../../config/samples/adb/autonomousdatabase_stop_start_terminate.yaml)
+1. An example .yaml file is available here: [config/samples/adb/autonomousdatabase_stop_start_terminate.yaml](./../../config/samples/adb/autonomousdatabase_stop_start_terminate.yaml)
 
     ```yaml
     ---
@@ -376,9 +376,9 @@ Here's a list of the values you can set for `lifecycleState`:
 
 The `hardLink` defines the behavior when the resource is deleted from the cluster. If the `hardLink` is set to true, the Operator terminates the Autonomous Database in OCI when the resource is removed; otherwise, the database remains unchanged. By default the value is `false` if it is not explicitly specified.
 
-Follow the steps to delete the resource and terminate the Autonomous Database.
+To delete the resource and terminate the Autonomous Database, complete these steps:
 
-1. Use the example [autonomousdatabase_delete_resource.yaml](./../../config/samples/adb/autonomousdatabase_delete_resource.yaml) which sets the attribute `hardLink` to true.
+1. Use the example [autonomousdatabase_delete_resource.yaml](./../../config/samples/adb/autonomousdatabase_delete_resource.yaml), which sets the attribute `hardLink` to true.
 
     ```yaml
     ---
@@ -415,17 +415,17 @@ Now, you can verify that the database is in TERMINATING state on the Cloud Conso
 
 ### Show the details of the resource
 
-If you edit and re-apply the `.yaml` file, the Autonomous Database controller will only update the parameters that the file contains. The parameters which are not in the file will not be impacted. To get the verbose output of the current spec, use below command:
+If you edit and reapply the `.yaml` file, then the Autonomous Database controller will only update the parameters that the file contains. The parameters that are not in the file will not be updated. To obtain the verbose output of the current spec, use the following command:
 
 ```sh
 kubectl describe adb/autonomousdatabase-sample
 ```
 
-If any error occurs during the reconciliation loop, the Operator reports the error using the resource's event stream, which shows up in kubectl describe output.
+If any error occurs during the reconciliation loop, then the operator reports the error using the resource's event stream, which shows up in kubectl describe output.
 
 ### Check the logs of the pod where the operator deploys
 
-Follow the steps to check the logs.
+To check the logs, use these steps:
 
 1. List the pod replicas
 
@@ -433,7 +433,7 @@ Follow the steps to check the logs.
     kubectl get pods -n oracle-database-operator-system
     ```
 
-2. Use the below command to check the logs of the Pod which has a failure
+2. Use the following command to check the logs of the Pod that has a failure
 
     ```sh
     kubectl logs -f pod/oracle-database-operator-controller-manager-78666fdddb-s4xcm -n oracle-database-operator-system
