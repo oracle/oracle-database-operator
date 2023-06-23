@@ -1,0 +1,52 @@
+apiVersion: observability.oracle.com/v1alpha1
+kind: DatabaseObserver
+metadata:
+  name: database-observer-sample
+spec:
+  database:
+
+    # Required
+    dbName: ""
+    # Required
+    dbPassword:
+      key: "password"
+      secret: db-password
+    dbConnectionString:
+      key: "access"
+      secret: db-connect-string
+
+    # Optional
+    # This secret contains the wallet files and must be provided if you
+    # are connecting to your database with a wallet
+    dbWallet:
+      secret: instance-wallet
+
+
+  # Configuration
+  exporter:
+    # Optional
+    # image: ""
+
+    # Optional
+    # configuration:
+    #   configmap:
+    #     key: ""
+    #     configmapName: ""
+
+    # Provides configuration to the port used by the exporter service
+    # Optional
+    service:
+      port: 9161
+
+  prometheus:
+    # Provides configuration to the port used in the service monitor
+    # Optional
+    port: metrics
+    # Used by servicemonitors, deployment and service
+    # Optional
+    labels:
+      app: app-sample-label
+
+  # Provides configuration to the exporter replicas created
+  # Optional
+  replicas: 1
