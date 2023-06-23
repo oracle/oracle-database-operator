@@ -10,6 +10,23 @@ rules:
   - ""
   resources:
   - configmaps
+  - deployments
+  - events
+  - pods
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
   - events
   - pods
   - pods/exec
@@ -73,6 +90,21 @@ rules:
   - ''''''
   resources:
   - statefulsets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - configmaps
+  - deployments
+  - pods
+  - services
   verbs:
   - create
   - delete
@@ -424,6 +456,45 @@ rules:
   - database.oracle.com
   resources:
   - singleinstancedatabases/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - prometheusrules
+  - servicemonitors
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - observability.oracle.com
+  resources:
+  - databaseobservers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - observability.oracle.com
+  resources:
+  - databaseobservers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - observability.oracle.com
+  resources:
+  - databaseobservers/status
   verbs:
   - get
   - patch
