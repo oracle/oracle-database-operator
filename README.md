@@ -96,7 +96,7 @@ The quickstarts are designed for specific database configurations:
 * [Containerized Oracle Sharded Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Database Cloud Service](./docs/dbcs/README.md)
-* [Oracle Database Observer](./doc/observability/README.md)
+* [Oracle Database Observer](./docs/observability/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases.
 
