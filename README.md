@@ -1,10 +1,10 @@
 # Oracle Database Operator for Kubernetes
 
-## Make Oracle Database Kubernetes Native - Take 2 
+## Make Oracle Database Kubernetes Native
 
 As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
-In this v0.2.1 release, `OraOperator` supports the following database configurations and infrastructure:
+In this v1.0.0 release, `OraOperator` supports the following database configurations and infrastructure:
 
 * Oracle Autonomous Database:
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
@@ -14,6 +14,7 @@ In this v0.2.1 release, `OraOperator` supports the following database configurat
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Database Cloud Service (DBCS) (VMDB)
+* Oracle Database Observer
 
 Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
 
@@ -27,18 +28,17 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
 * Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Database Cloud Service: Provision, Bind, Scale Up/Down, Liveness Probe, Manual Backup
+* Orace Database Observer: Provide Quick/Detailed Database Status
 
 The upcoming releases will support new configurations, operations and capabilities.
 
 ## Release Status
 
-**CAUTION:** The current release of `OraOperator` (v0.2.1) is for development and testing only. DO NOT USE IN PRODUCTION.
-
 This release has been installed and tested on the following Kubernetes platforms:
 
-* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.17 or later
-* [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.3 or later
-* [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.21.0 or later
+* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.24
+* [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.6
+* [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.21.0
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/) 
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
 * [Red Hat OKD](https://www.okd.io/)
@@ -68,12 +68,6 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   kubectl apply -f https://raw.githubusercontent.com/oracle/oracle-database-operator/main/oracle-database-operator.yaml
   ```
 
-  ---
-  **NOTE:**
-  The above command will also upgrade the existing v0.2.0 `OraOperator` installation to the latest version; for example, v0.2.1.
-
-  ---
-
   Ensure that the operator pods are up and running. For high availability, Operator pod replicas are set to a default of 3. You can scale this setting up or down.
 
   ```sh
@@ -102,6 +96,7 @@ The quickstarts are designed for specific database configurations:
 * [Containerized Oracle Sharded Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Database Cloud Service](./docs/dbcs/README.md)
+* [Oracle Database Observer](./doc/observability/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases.
 
