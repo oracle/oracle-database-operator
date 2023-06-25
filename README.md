@@ -14,7 +14,7 @@ In this v1.0.0 release, `OraOperator` supports the following database configurat
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Database Cloud Service (DBCS) (VMDB)
-* Oracle Database Observer
+* Cloud Native Database Observer
 
 Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
 
@@ -28,7 +28,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
 * Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Database Cloud Service: Provision, Bind, Scale Up/Down, Liveness Probe, Manual Backup
-* Orace Database Observer: Provide Quick/Detailed Database Status
+* Cloud Native Database Observer: Provide Quick/Detailed Database Status
 
 The upcoming releases will support new configurations, operations and capabilities.
 
@@ -96,7 +96,7 @@ The quickstarts are designed for specific database configurations:
 * [Containerized Oracle Sharded Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Database Cloud Service](./docs/dbcs/README.md)
-* [Oracle Database Observer](./docs/observability/README.md)
+* [Cloud Native Database Observer](./docs/observability/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases.
 
