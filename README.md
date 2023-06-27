@@ -4,7 +4,7 @@
 
 As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
-In this v1.0.0 release, `OraOperator` supports the following database configurations and infrastructure:
+In this v1.0.0 production release, `OraOperator` supports the following database configurations and infrastructure:
 
 * Oracle Autonomous Database:
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
@@ -14,7 +14,7 @@ In this v1.0.0 release, `OraOperator` supports the following database configurat
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Base Database Cloud Service (BDBCS)
-* Cloud Native Database Observer
+* Cloud Native Database Observer (Preview status)
 
 Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
 
@@ -34,7 +34,7 @@ The upcoming releases will support new configurations, operations and capabiliti
 
 ## Release Status
 
-This release has been installed and tested on the following Kubernetes platforms:
+This production release has been installed and tested on the following Kubernetes platforms:
 
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.24
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.6
@@ -143,7 +143,7 @@ See [Contributing to this Repository](./CONTRIBUTING.md)
 
 ## Support
 
-You can submit a GitHub issue, or you can also file an [Oracle Support service](https://support.oracle.com/portal/) request, using this product ID: 14430.
+You can submit a GitHub issue, and/or you file an [Oracle Support service](https://support.oracle.com/portal/) request, using this product ID: 14430.
 
 ## Security
 
