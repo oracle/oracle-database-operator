@@ -14,6 +14,7 @@ In this v1.0.0 production release, `OraOperator` supports the following database
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Base Database Cloud Service (BDBCS)
+* Oracle Data Guard (Preview status)
 * Cloud Native Database Observer (Preview status)
 
 Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
@@ -28,6 +29,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
 * Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Oracle Base Database Cloud Service (BDBCS): Provision, Bind, Scale Up/Down, Liveness Probe, Manual Backup
+* Oracle Data Guard: Provision a Standby for the SIDB resource and setup a Data Guard configuration to enable manual switch over
 * Cloud Native Database Observer: Provide Quick/Detailed Database Status
 
 The upcoming releases will support new configurations, operations and capabilities.
@@ -38,7 +40,7 @@ This production release has been installed and tested on the following Kubernete
 
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.24
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.6
-* [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.21.0
+* [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.29.0
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/) 
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
 * [Red Hat OKD](https://www.okd.io/)
@@ -92,7 +94,7 @@ The quickstarts are designed for specific database configurations:
 
 * [Oracle Autonomous Database](./docs/adb/README.md)
 * [Oracle Autonomous Container Database](./docs/adb/ACD.md)
-* [Containerized Oracle Single Instance Database](./docs/sidb/README.md)
+* [Containerized Oracle Single Instance Database and Data Guard](./docs/sidb/README.md)
 * [Containerized Oracle Sharded Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Cloud Service (BDBCS)](./docs/dbcs/README.md)
@@ -119,6 +121,8 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete autonomouscontainerdatabase.database.oracle.com --all -n <namespace>
   kubectl delete cdb.database.oracle.com --all -n <namespace>
   kubectl delete pdb.database.oracle.com --all -n <namespace>
+  kubectl delete dataguardbrokers.database.oracle.com --all -n <namespace>
+  kubectl delete databaseobservers.observability.oracle.com --all -n <namespace>
   ```
 
   After all CRD instances are deleted, it is safe to remove the CRDs, APIServices and operator deployment. To remove these files, use the following command:
