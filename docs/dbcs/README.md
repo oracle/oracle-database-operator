@@ -1,10 +1,12 @@
 # Using the DB Operator DBCS Controller 
 
-Oracle Cloud Infastructure (OCI) Database Cloud Service (DBCS) provides single-node Database (DB) systems, deployed on virtual machines, and provides two-node Oracle Real Appliation Clusters (Oracle RAC) database systems on virtual machines.
+Oracle Cloud Infastructure (OCI) Oracle Base Database Cloud Service (BDBCS) provides single-node Database (DB) systems, deployed on virtual machines, and provides two-node Oracle Real Appliation Clusters (Oracle RAC) database systems on virtual machines.
 
 The single-node DB systems and Oracle RAC systems on virtual machines are [co-managed Oracle Database cloud solutions](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/overview.htm). To manage the lifecycle of an OCI DBCS system, you can use the OCI Console, the REST API, or the Oracle Cloud Infrastructure command-line interface (CLI). At the granular level, you can use the Oracle Database CLI (DBCLI), Oracle Enterprise Manager, or Oracle SQL Developer.
 
-The Oracle DB Operator DBCS Controller is a feature of the Oracle DB Operator for Kubernetes (OraOperator) which uses OCI's DBCS service to support lifecycle management of the database systems.
+The Oracle DB Operator DBCS Controller is a feature of the Oracle DB Operator for Kubernetes (OraOperator) which uses OCI's BDBCS service to support lifecycle management of the database systems.
+
+Note: Oracle Base Database Cloud Service (BDBCS) was previously known as Database Cloud Service (DBCS).
 
 # Supported Database Editions and Versions
 
@@ -113,7 +115,7 @@ kubectl create secret generic oci-privatekey --from-file=privatekey=/root/.oci/o
 ```
 
 
-## 3. Create a Kubernetes secret named `admin-password`; This passward must meet the minimum passward requirements for the OCI DBCS Service.
+## 3. Create a Kubernetes secret named `admin-password`; This passward must meet the minimum passward requirements for the OCI BDBCS Service.
 For example:
 
 ```
@@ -123,7 +125,7 @@ kubectl create secret generic admin-password --from-file=./admin-password -n def
 ```
 
 
-## 4. Create a Kubernetes secret named `tde-password`; this passward must meet the minimum passward requirements for the OCI DBCS Service.
+## 4. Create a Kubernetes secret named `tde-password`; this passward must meet the minimum passward requirements for the OCI BDBCS Service.
 For example:
 
 ```
@@ -165,22 +167,22 @@ The key's randomart image is:
 
 # Use Cases to manage the lifecycle of an OCI DBCS System with Oracle DB Operator DBCS Controller
 
-For more informatoin about the multiple use cases available to you to deploy and manage the OCI DBCS Service-based database using the Oracle DB Operator DBCS Controller, review this list:
+For more informatoin about the multiple use cases available to you to deploy and manage the OCI BDBCS Service-based database using the Oracle DB Operator DBCS Controller, review this list:
 
-[1. Deploy a DB System using OCI DBCS Service with minimal parameters](./provisioning/dbcs_service_with_minimal_parameters.md)  
-[2. Binding to an existing DBCS System already deployed in OCI DBCS Service](./provisioning/bind_to_existing_dbcs_system.md)  
-[3. Scale UP the shape of an existing DBCS System](./provisioning/scale_up_dbcs_system_shape.md)  
-[4. Scale DOWN the shape of an existing DBCS System](./provisioning/scale_down_dbcs_system_shape.md)  
-[5. Scale UP the storage of an existing DBCS System](./provisioning/scale_up_storage.md)  
-[6. Update License type of an existing DBCS System](./provisioning/update_license.md)  
-[7. Terminate an existing DBCS System](./provisioning/terminate_dbcs_system.md)  
-[8. Create DBCS with All Parameters with Storage Management as LVM](./provisioning/dbcs_service_with_all_parameters_lvm.md)  
-[9. Create DBCS with All Parameters with Storage Management as ASM](./provisioning/dbcs_service_with_all_parameters_asm.md)  
-[10. Deploy a 2 Node RAC DB System using OCI DBCS Service](./provisioning/dbcs_service_with_2_node_rac.md)
+[1. Deploy a DB System using OCI BDBCS Service with minimal parameters](./provisioning/dbcs_service_with_minimal_parameters.md)  
+[2. Binding to an existing DBCS System already deployed in OCI BDBCS Service](./provisioning/bind_to_existing_dbcs_system.md)  
+[3. Scale UP the shape of an existing BDBCS System](./provisioning/scale_up_dbcs_system_shape.md)  
+[4. Scale DOWN the shape of an existing BDBCS System](./provisioning/scale_down_dbcs_system_shape.md)  
+[5. Scale UP the storage of an existing BDBCS System](./provisioning/scale_up_storage.md)  
+[6. Update License type of an existing BDBCS System](./provisioning/update_license.md)  
+[7. Terminate an existing BDBCS System](./provisioning/terminate_dbcs_system.md)  
+[8. Create BDBCS with All Parameters with Storage Management as LVM](./provisioning/dbcs_service_with_all_parameters_lvm.md)  
+[9. Create BDBCS with All Parameters with Storage Management as ASM](./provisioning/dbcs_service_with_all_parameters_asm.md)  
+[10. Deploy a 2 Node RAC DB System using OCI BDBCS Service](./provisioning/dbcs_service_with_2_node_rac.md)
 
 ## Connecting to OCI DBCS database deployed using Oracle DB Operator DBCS Controller
 
-After you have deployed the OCI DBCS database with the Oracle DB Operator DBCS Controller, you can connect to the database. To see how to connect and use the database, refer to the steps in [Database Connectivity](./provisioning/database_connection.md).
+After you have deployed the OCI BDBCS database with the Oracle DB Operator DBCS Controller, you can connect to the database. To see how to connect and use the database, refer to the steps in [Database Connectivity](./provisioning/database_connection.md).
 
 ## Known Issues
 
