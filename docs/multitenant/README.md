@@ -88,14 +88,14 @@ Before you want to manage the life cycle of a PDB in a CDB using the Oracle DB O
 
 Pluggable Database management operation is performed in the Container Database (CDB) and it includes create, clone, plug, unplug, delete, modify and map operations.
 
-You cannot have an ORDS enabled schema in the container database. To perform the PDB lifecycle management operations, the default CDB administrator credentials must be defined by performing the below steps on the target CDB(s):
+You cannot have an ORDS enabled schema in the container database. To perform the PDB lifecycle management operations, the default CDB administrator credentials must be defined by performing following steps on the target CDB(s):
 
 Create the CDB administrator user and grant the required privileges. In this example, the user is `C##DBAPI_CDB_ADMIN`. However, any suitable common user name can be used.
 
 ```SQL
 SQL> conn /as sysdba
  
--- Create the below users at the database level:
+-- Create following users at the database level:
 
 ALTER SESSION SET "_oracle_script"=true;
 DROP USER  C##DBAPI_CDB_ADMIN cascade;
@@ -105,7 +105,7 @@ GRANT SYSDBA TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;
 GRANT CREATE SESSION TO C##DBAPI_CDB_ADMIN CONTAINER = ALL;
 
 
--- Verify the account status of the below usernames. They should not be in locked status:
+-- Verify the account status of the following usernames. They should not be in locked status:
 
 col username        for a30
 col account_status  for a30
@@ -138,7 +138,7 @@ Please refer [here](./provisioning/ords_image.md) for the steps to build ORDS Do
   kubectl apply -f cdb_secret.yaml
   ```
   
-  **Note:** In order to get the base64 encoded value for a password, please use the below command like below at the command prompt. The value you get is the base64 encoded value for that password string.
+  **Note:** In order to get the base64 encoded value for a password, please use the following command like below at the command prompt. The value you get is the base64 encoded value for that password string.
 
   ```bash
   echo -n "<password to be encoded using base64>" | base64
