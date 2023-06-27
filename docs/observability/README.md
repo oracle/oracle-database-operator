@@ -1,7 +1,7 @@
-# Managing Observability on Kubernetes for Oracle Databases
+# Cloud Native Observability on Kubernetes for Oracle Databases
 
-Oracle Database Operator for Kubernetes (`OraOperator`) includes the
-Observability Controller for Oracle Databases, which automates the
+Oracle Database Operator for Kubernetes (`OraOperator`) includes, as a preview, the
+Cloud Native Observability Controller for Oracle Databases, which automates the
 deployment of the database observability exporter, creates Service Monitors
 for Prometheus and provides a configmap containing a JSON for a sample dashboard
 in Grafana. The following sections explain the setup and functionality
@@ -17,7 +17,7 @@ of the operator
 Oracle recommends that you follow the [requirements](./REQUIREMENTS.md).
 
 ## DatabaseObserver Custom Resource
-The Oracle Database Operator __v1.0.0__ includes the Observability controller. The Observability controller automates
+The Oracle Database Operator __v1.0.0__ includes the Observability controller, as a Preview (i.e., not a production quality feature). The Observability controller automates
 the deployment and setting up of the Oracle Database exporter and related resources to make databases observable.
 
 ### Resource Details
