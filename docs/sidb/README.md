@@ -14,8 +14,8 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [Dynamic Persistence](#dynamic-persistence)
       * [Static Persistence](#static-persistence)
     * [Configuring a Database](#configuring-a-database)
-      * [Configure ArchiveLog, Flashback and ForceLog](#configure-archivelog-flashback-and-forcelog)
-      * [Change Init Parameters](#change-init-parameters)
+      * [Switching Database Modes](#switching-database-modes)
+      * [Changing Init Parameters](#changing-init-parameters)
     * [Clone a Database](#clone-a-database)
     * [Patch a Database](#patch-a-database)
     * [Delete a Database](#delete-a-database)
@@ -24,10 +24,10 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [Setup Database with LoadBalancer](#setup-database-with-loadbalancer)
       * [Enabling TCPS Connections](#enabling-tcps-connections)
       * [Specifying Custom Ports](#specifying-custom-ports)
-      * [Creating an Oracle Data Guard Configuration](#creating-an-oracle-data-guard-configuration)
-        * [Creating a Standby Database](#creating-a-standby-database)
-        * [Setup DataGuardBroker Configuration for a Single Instance Database](#setup-dataguardbroker-configuration-for-a-single-instance-database)
-        * [Delete a standby database with dataguard broker configured](#delete-a-standby-database-with-dataguard-broker-configured)
+      * [Setup Data Guard Configuration for a Single Instance Database](#setup-data-guard-configuration-for-a-single-instance-database)
+        * [Create a Standby Database](#create-a-standby-database)
+        * [Add the Databases in Data Guard Configuration](#add-the-databases-in-data-guard-configuration)
+        * [Delete a database configured for Data Guard](#delete-a-database-configured-for-data-guard)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
     * [REST Enable a Database](#rest-enable-a-database)
       * [Provision ORDS](#provision-ords)
@@ -161,10 +161,15 @@ To provision a new database instance on the Kubernetes cluster, use the example 
       
       secret/oracle-container-registry-secret created
     ```
-    This secret can also be created using the docker config file after a successful docker login  
+    This secret can also be created from the docker config.json or from podman auth.json after a successful login
     ```sh
-    $ docker login container-registry.oracle.com
-    $ kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=.docker/config.json --type=kubernetes.io/dockerconfigjson
+    docker login container-registry.oracle.com
+    kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=.docker/config.json --type=kubernetes.io/dockerconfigjson
+    ```
+    or
+    ```sh
+    podman login container-registry.oracle.com
+    podman create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json --type=kubernetes.io/dockerconfigjson
     ```
 3. Provision a new database instance on the cluster by using the following command:
 
@@ -202,7 +207,7 @@ To provision new Oracle Database Express Edition (XE) database, use the sample *
 This command pulls the XE image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/).
 
 **NOTE:**
-- Provisioning Oracle Database express edition is supported for release 21c (21.3.0) and later releases.
+- Provisioning Oracle Database express edition is supported for release 21c (21.3.0) only.
 - For XE database, only single replica mode (i.e. `replicas: 1`) is supported.
 - For XE database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
 
@@ -366,17 +371,17 @@ spec:
 ### Configuring a Database
 The `OraOperator` facilitates you to configure the database. Various database configuration options are explained in the following subsections:
 
-#### Configure ArchiveLog, Flashback, and ForceLog
-The following database parameters can be updated after the database is created: 
+#### Switching Database Modes
+The following database modes can be updated after the database is created: 
 
 - `flashBack`
 - `archiveLog`
 - `forceLog`
 
-To change these parameters, change their attribute values, and apply the change by using the 
+To change these modes, change their attribute values, and apply the change by using the 
 `kubectl apply` or `kubectl edit/patch` commands. 
 
-**Caution**: Enable `archiveLog` mode before setting `flashback` to `ON`, and set `flashback` to `OFF` before disabling `archiveLog` mode.
+**Caution**: Enable `archiveLog` mode before setting `flashBack` to `ON`, and set `flashBack` to `OFF` before disabling `archiveLog` mode.
 
 For example:
 
@@ -393,7 +398,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath=[{.status.archiveL
   [true, true, true]
 ```
 
-#### Change Init Parameters
+#### Changing Init Parameters
 
 The following database initialization parameters can be updated after the database is created:
 
@@ -559,7 +564,6 @@ The following steps are required to connect the Database using TCPS:
   sqlplus sys@ORCL1 as sysdba
   ```
 **NOTE:**
-- Only database server authentication is supported (no mTLS).
 - When TCPS is enabled, a self-signed certificate is generated and stored inside the wallets. For users' convenience, a client-side wallet is generated and stored at `/opt/oracle/oradata/clientWallet/$ORACLE_SID` location in the pod.
 - The self-signed certificate used with TCPS has validity for 1 year. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
 - You can set the certificate renew interval with the help of `tcpsCertRenewInterval` field in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 24h, and the maximum value is 8760h (1 year). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
@@ -583,9 +587,9 @@ In case of `NodePort` service, `listenerPort`, and `tcpsListenerPort` will be th
 - If TCPS connections are enabled, and `listenerPort` is commented/removed in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, only TCPS endpoint will be exposed.
 - If LoadBalancer is enabled, and either `listenerPort` or `tcpsListenerPort` is changed, then it takes some time to complete the work requests (drain existing backend sets and create new ones). In this time, the database connectivity is broken. Although, SingleInstanceDatabase and LoadBalancer remain in the healthy state, you can check the progress of the work requests by logging into the cloud provider's console and checking the corresponding LoadBalancer.
 
-### Creating an Oracle Data Guard Configuration
+### Setup Data Guard Configuration for a Single Instance Database
 
-### Creating a Standby Database
+### Create a Standby Database
 
 #### Prerequisites
 Before creating a standby, ArchiveLog, FlashBack, and ForceLog on primary Single Instance Database(`.spec.primaryDatabaseRef`) should be turned on.
@@ -628,15 +632,14 @@ $ kubectl get singleinstancedatabase stdby-1 -o "jsonpath={.status.status}"
   Healthy
 ```
 
-### Setup DataGuardBroker Configuration for a Single Instance Database
+### Add the Databases in Data Guard Configuration
 
 #### Template YAML
-After you have created standbys, now configure dataguard broker for standbys and primary databases by mentioning the dataguard sample yaml.
 
-For the use cases detailed below a sample .yaml file is available at
+After creating standbys, setup a dataguard configuration with protection mode and switch over capability using the following sample yaml.
 [config/samples/sidb/dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml)
 
-#### Setup DataGuardBroker Resource
+#### Create DataGuardBroker Resource
 
 Provision a new DataguardBroker custom resource for a single instance database(`.spec.primaryDatabaseRef`) by specifying appropriate values for the attributes in the example `.yaml` file, and running the following command:
 
@@ -666,7 +669,6 @@ To list the DataguardBroker resources, use the following command:
     dataguardbroker-sample    ORCL      ORCLS1,ORCLS2          MaxAvailability      10.0.25.85:31555/DATAGUARD        Healthy
 
 ```
-
 
 #### Detailed Status
 
@@ -738,9 +740,9 @@ To list the DataguardBroker resources, use the following command:
     10.0.25.87:1521/DATAGUARD
   ```
 
-#### Set any database as Primary Database (Switchover)
+#### Performing a Switchover
 
-Mention SID of the any databases (SID of one of `.spec.primaryDatabaseRef` , `.spec.standbyDatabaseRefs[]`) to be set primary in the `.spec.setAsPrimaryDatabase` of [dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml) and apply the yaml file.
+Specify the approppriate SID  (SID of one of `.spec.primaryDatabaseRef` , `.spec.standbyDatabaseRefs[]`) to be set primary in the `.spec.setAsPrimaryDatabase` of [dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml) and apply the yaml file.
 
 The database will be set to primary. Ignored if the database is already primary.
 
@@ -771,7 +773,7 @@ $ kubectl delete dataguardbroker dgbroker-sample
 
 **NOTE :** You can only delete DataGuard broker when role of `.spec.primaryDatabaseRef` is PRIMARY
 
-### Patch primary and standby databases in dataguard configuration
+### Patch primary and standby databases in Data Guard configuration
 
 Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched or rolled back between release updates of the same major release. While patching databases configured with the dataguard broker you need to first patch the Primary database followed by seconday/standby databases in any order. 
 
@@ -782,9 +784,9 @@ kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullS
 
 ```
 
-### Delete a database in dataguard configuration
+### Delete a database configured for Data Guard
 
-To delete a standby database in a dataguard configuration, delete the dataguardbroker resource first followed by the standby database
+To delete a standby or primary database configured for Data Guard, delete the dataguardbroker resource first followed by the standby databases and finally the primary database
 
 #### Delete DataguardBroker Resource
 ```sh
