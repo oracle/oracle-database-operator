@@ -6,7 +6,7 @@ To deploy Oracle Database Operator for Kubernetes on Oracle Docker images, compl
   Build Single Instance Database Docker Images from source, following the instructions at [https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance), or
   use the pre-built images available at [https://container-registry.oracle.com](https://container-registry.oracle.com) by signing in and accepting the required license agreement.
 
-  Oracle Database Releases Supported: Oracle Database 19c Enterprise Edition or Standard Edition, and later releases. Oracle Database 21.3 Express Edition.
+  Oracle Database Releases Supported: Enterprise and Standard Edition for Oracle Database 19c, and later releases. Express Edition for Oracle Database 21.3  only. Oracle Database Free 23.2.0 and later Free releases
   
   Build Oracle REST Data Service Docker Images from source following the instructions at [https://github.com/oracle/docker-images/tree/main/OracleRestDataServices](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices).     
   Supported Oracle REST Data Service version is 21.4.2
@@ -19,9 +19,9 @@ To deploy Oracle Database Operator for Kubernetes on Oracle Docker images, compl
 
 * ### Minikube Cluster Environment
   
-  By default, Minikube creates a node with 2GB RAM, 2 CPUs, and 20GB disk space when a cluster is created using `minikube start` command. However, these resources (particularly disk space and RAM) may not be sufficient for running and managing Oracle Database using the OraOperator. It is recommended to have larger RAM and disk space for better performance. For example, the following command creates a Minikube cluster with 6GB RAM and 50GB disk space for the Minikube VM:
+  By default, Minikube creates a node with 2GB RAM, 2 CPUs, and 20GB disk space when a cluster is created using `minikube start` command. However, these resources (particularly disk space and RAM) may not be sufficient for running and managing Oracle Database using the OraOperator. It is recommended to have larger RAM and disk space for better performance. For example, the following command creates a Minikube cluster with 8GB RAM and 100GB disk space for the Minikube VM:
   
   ```
-  minikube start --memory=6g --disk-size=50g
+  minikube start --memory=8g --disk-size=100g
   ```
 
