@@ -5,7 +5,7 @@ Cloud Native Observability Controller for Oracle Databases, which automates the
 deployment of the database observability exporter, creates Service Monitors
 for Prometheus and provides a configmap containing a JSON for a sample dashboard
 in Grafana. The following sections explain the setup and functionality
-of the operator
+of the controller
 
 - [Requirements](#requirements)
     - [The Observability Custom Resource](#observability-custom-resource)
