@@ -8,10 +8,14 @@ in Grafana. The following sections explain the setup and functionality
 of the controller
 
 - [Requirements](#requirements)
-    - [The Observability Custom Resource](#observability-custom-resource)
-        - [Create](#create)
-        - [Delete](#delete)
-        - [Patch](#patch)
+- [The Observability Custom Resource](#observability-custom-resource)
+  - [List](#observability-list)
+  - [Quick Status](#quick-status)
+  - [Detailed Status](#detailed-status)
+- [Create](#create)
+- [Delete](#delete)
+- [Patch](#patch)
+- [Troubleshooting](#debugging-and-troubleshooting)
 
 ## Requirements
 Oracle recommends that you follow the [requirements](./REQUIREMENTS.md).
