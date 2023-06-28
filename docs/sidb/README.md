@@ -24,7 +24,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [Setup Database with LoadBalancer](#setup-database-with-loadbalancer)
       * [Enabling TCPS Connections](#enabling-tcps-connections)
       * [Specifying Custom Ports](#specifying-custom-ports)
-      * [Setup Data Guard Configuration for a Single Instance Database](#setup-data-guard-configuration-for-a-single-instance-database)
+      * [Setup Data Guard Configuration for a Single Instance Database (Preview status)](#setup-data-guard-configuration-for-a-single-instance-database-preview-status)
         * [Create a Standby Database](#create-a-standby-database)
         * [Add the Databases in Data Guard Configuration](#add-the-databases-in-data-guard-configuration)
         * [Delete a database configured for Data Guard](#delete-a-database-configured-for-data-guard)
@@ -587,7 +587,7 @@ In case of `NodePort` service, `listenerPort`, and `tcpsListenerPort` will be th
 - If TCPS connections are enabled, and `listenerPort` is commented/removed in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, only TCPS endpoint will be exposed.
 - If LoadBalancer is enabled, and either `listenerPort` or `tcpsListenerPort` is changed, then it takes some time to complete the work requests (drain existing backend sets and create new ones). In this time, the database connectivity is broken. Although, SingleInstanceDatabase and LoadBalancer remain in the healthy state, you can check the progress of the work requests by logging into the cloud provider's console and checking the corresponding LoadBalancer.
 
-### Setup Data Guard Configuration for a Single Instance Database
+### Setup Data Guard Configuration for a Single Instance Database (Preview status)
 
 ### Create a Standby Database
 
