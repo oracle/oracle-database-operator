@@ -17,7 +17,6 @@ resources:
 - bases/database.oracle.com_autonomouscontainerdatabases.yaml
 - bases/database.oracle.com_dbcssystems.yaml
 - bases/database.oracle.com_dataguardbrokers.yaml
-- bases/observability.oracle.com_databaseobservers.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:
@@ -33,7 +32,6 @@ patchesStrategicMerge:
 #- patches/webhook_in_autonomouscontainerdatabases.yaml
 #- patches/webhook_in_dbcssystems.yaml
 #- patches/webhook_in_dataguardbrokers.yaml
-#- patches/webhook_in_databaseobservers.yaml
 # +kubebuilder:scaffold:crdkustomizewebhookpatch
 
 # [CERTMANAGER] To enable webhook, uncomment all the sections with [CERTMANAGER] prefix.
@@ -48,7 +46,6 @@ patchesStrategicMerge:
 #- patches/cainjection_in_autonomouscontainerdatabases.yaml
 #- patches/cainjection_in_dbcssystems.yaml
 #- patches/cainjection_in_dataguardbrokers.yaml
-#- patches/cainjection_in_databaseobservers.yaml
 # +kubebuilder:scaffold:crdkustomizecainjectionpatch
 
 # the following config is for teaching kustomize how to do kustomization for CRDs.

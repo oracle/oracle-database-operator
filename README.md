@@ -15,7 +15,6 @@ In this v1.0.0 production release, `OraOperator` supports the following database
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Base Database Cloud Service (BDBCS)
 * Oracle Data Guard (Preview status)
-* Cloud Native Database Observer (Preview status)
 
 Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
 
@@ -30,7 +29,6 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Oracle Base Database Cloud Service (BDBCS): Provision, Bind, Scale Up/Down, Liveness Probe, Manual Backup
 * Oracle Data Guard: Provision a Standby for the SIDB resource and setup a Data Guard configuration to enable manual switch over
-* Cloud Native Database Observer: Deploy DB exporter resources, Undeploy DB exporter resources, Patch DB exporter configuration
 
 The upcoming releases will support new configurations, operations and capabilities.
 
@@ -98,7 +96,6 @@ The quickstarts are designed for specific database configurations:
 * [Containerized Oracle Sharded Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Cloud Service (BDBCS)](./docs/dbcs/README.md)
-* [Cloud Native Database Observer](./docs/observability/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases.
 
@@ -122,7 +119,6 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete cdb.database.oracle.com --all -n <namespace>
   kubectl delete pdb.database.oracle.com --all -n <namespace>
   kubectl delete dataguardbrokers.database.oracle.com --all -n <namespace>
-  kubectl delete databaseobservers.observability.oracle.com --all -n <namespace>
   ```
 
   After all CRD instances are deleted, it is safe to remove the CRDs, APIServices and operator deployment. To remove these files, use the following command:
