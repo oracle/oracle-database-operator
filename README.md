@@ -28,7 +28,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
 * Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Oracle Base Database Cloud Service (BDBCS): Provision, Bind, Scale Up/Down, Liveness Probe, Manual Backup
-* Oracle Data Guard: Provision a Standby for the SIDB resource and setup a Data Guard configuration to enable manual switch over
+* Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
 
 The upcoming releases will support new configurations, operations and capabilities.
 
