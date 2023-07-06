@@ -1,0 +1,29 @@
+#
+# Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: database.oracle.com/v1alpha1
+kind: DataguardBroker
+metadata:
+  name: dataguardbroker-sample
+  namespace: default
+spec:
+  
+  ## Primary DB ref. This can be of kind SingleInstanceDatabase or CloneDB
+  primaryDatabaseRef: "sidb-sample"
+
+  ## Standby DB pod CRD Metadata Name to add this DB to DG config
+  standbyDatabaseRefs:
+  #  - standbydatabase-sample
+  #  - standbydatabase-sample1
+
+  ## Type of service . Applicable on cloud enviroments only
+  ## if loadBalService : false , service type = "NodePort" . else "LoadBalancer"
+  loadBalancer: false
+
+  ## Protection Mode for dg configuration . MaxAvailability or MaxPerformance
+  protectionMode: MaxAvailability
+
+  ## Manual Switchover to this database to make it primary(if not already), requires target Database SID . 
+  setAsPrimaryDatabase: ""

@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2023 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -110,6 +110,14 @@ func (r *OracleRestDataService) ValidateCreate() error {
 				field.Invalid(field.NewPath("spec").Child("persistence").Child("accessMode"),
 					r.Spec.Persistence.AccessMode, "should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
 		}
+	}
+
+	// Validating databaseRef and ORDS kind name not to be same
+	if r.Spec.DatabaseRef == r.Name {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("Name"),
+					 "cannot be same as DatabaseRef: " + r.Spec.DatabaseRef))
+
 	}
 
 	if len(allErrs) == 0 {
