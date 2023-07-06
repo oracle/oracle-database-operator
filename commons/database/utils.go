@@ -505,6 +505,26 @@ func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
 	return "", errors.New("database role is nil")
 }
 
+func GetDatabaseOpenMode(readyPod corev1.Pod, r client.Reader,
+	config *rest.Config, ctx context.Context, req ctrl.Request, edition string) (string, error) {
+		log := ctrllog.FromContext(ctx).WithValues("GetDatabaseOpenMode",req.NamespacedName)
+
+		out,err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			fmt.Sprintf("echo -e \"%s\" | %s",GetDBOpenMode,SQLPlusCLI))
+		if err != nil {
+			return "",err
+		}
+		log.Info(out)
+		if !strings.Contains(out, "no rows selected") && !strings.Contains(out, "ORA-") {
+			out1 := strings.Replace(out, " ", "_", -1)
+			// filtering output and storing databse_role in  "database_role"
+			databaseOpenMode := strings.Fields(out1)[2]
+			// first 2 values in the slice will be column name(DATABASE_ROLE) and a seperator(--------------) .
+			return databaseOpenMode, nil
+		}
+		return "", errors.New("database open mode is nil")
+	}
+
 // Returns true if any of the pod in 'pods' is with pod.Status.Phase == phase
 func IsAnyPodWithStatus(pods []corev1.Pod, phase corev1.PodPhase) (bool, corev1.Pod) {
 	anyPodWithPhase := false
@@ -540,34 +560,31 @@ func GetNodeIp(r client.Reader, ctx context.Context, req ctrl.Request) string {
 
 	log := ctrllog.FromContext(ctx).WithValues("GetNodeIp", req.NamespacedName)
 
-	readyPod, _, available, _, err := FindPods(r, "", "", req.Name, req.Namespace, ctx, req)
+	//new workflow
+	nl := &corev1.NodeList{}
+	err := r.List(ctx, nl)
+	nodeip := ""
 	if err != nil {
 		log.Error(err, err.Error())
-		return ""
-	}
-	if readyPod.Name != "" {
-		available = append(available, readyPod)
-	}
-	nodeip := ""
-	for _, pod := range available {
-		if nodeip == "" {
-			nodeip = pod.Status.HostIP
-		}
-		if pod.Status.HostIP < nodeip {
-			nodeip = pod.Status.HostIP
-		}
+		return nodeip
 	}
 
-	node := &corev1.Node{}
-	err = r.Get(ctx, types.NamespacedName{Name: nodeip, Namespace: req.Namespace}, node)
-
-	if err == nil {
-		for _, address := range node.Status.Addresses {
-			if address.Type == "ExternalIP" {
+	for _, address := range nl.Items[0].Status.Addresses {
+		if address.Type == "ExternalIP" {
+			nodeip = address.Address
+			break
+		}
+	}
+	if nodeip == "" {
+		for _, address := range nl.Items[0].Status.Addresses {
+			if address.Type == "InternalIP" {
 				nodeip = address.Address
+				break
 			}
 		}
 	}
+
+	log.Info("Node IP obtained ! ", "nodeip: ", nodeip)
 
 	return nodeip
 }
@@ -673,6 +690,13 @@ func ApexPasswordValidator(pwd string) bool {
 	}
 
 	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
+}
+
+func GetSqlClient(edition string) string {
+	if edition == "express" {
+		return "su -p oracle -c \"sqlplus -s / as sysdba\""
+	}
+	return "sqlplus -s / as sysdba"
 }
 
 // Function for patching the K8s service with the payload.
