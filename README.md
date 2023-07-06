@@ -27,7 +27,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, and Application Express (Apex)
 * SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
 * Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
-* Oracle Base Database Cloud Service (BDBCS): Provision, Bind, Scale Up/Down, Liveness Probe, Manual Backup
+* Oracle Base Database Cloud Service (BDBCS): provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License
 * Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
 
 The upcoming releases will support new configurations, operations and capabilities.
