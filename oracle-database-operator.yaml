@@ -3430,7 +3430,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: container-registry.oracle.com/database/operator:0.2.1
+        image: container-registry.oracle.com/database/operator:1.0.0
         imagePullPolicy: Always
         name: manager
         ports:
