@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2023 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -40,7 +40,8 @@ package v1alpha1
 
 import (
 	"strings"
-	"time"
+	"time"	
+	"strconv"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
@@ -72,6 +73,25 @@ var _ webhook.Defaulter = &SingleInstanceDatabase{}
 func (r *SingleInstanceDatabase) Default() {
 	singleinstancedatabaselog.Info("default", "name", r.Name)
 
+	if r.Spec.LoadBalancer {
+		// Annotations required for a flexible load balancer on oci 
+		if r.Spec.ServiceAnnotations == nil {
+			r.Spec.ServiceAnnotations= make(map[string]string)
+		}
+		_, ok := r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"]
+		if(!ok) {
+			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"] = "flexible"
+		}
+		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
+		if(!ok) {
+			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"] = "10"
+		}
+		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
+		if(!ok) {
+			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
+		}
+	}
+
 	if r.Spec.AdminPassword.KeepSecret == nil {
 		keepSecret := true
 		r.Spec.AdminPassword.KeepSecret = &keepSecret
@@ -86,6 +106,8 @@ func (r *SingleInstanceDatabase) Default() {
 	if r.Spec.Sid == "" {
 		if r.Spec.Edition == "express" {
 			r.Spec.Sid = "XE"
+		} else if r.Spec.Edition == "free" {
+			r.Spec.Sid = "FREE"
 		} else {
 			r.Spec.Sid = "ORCLCDB"
 		}
@@ -94,14 +116,22 @@ func (r *SingleInstanceDatabase) Default() {
 	if r.Spec.Pdbname == "" {
 		if r.Spec.Edition == "express" {
 			r.Spec.Pdbname = "XEPDB1"
+		} else if r.Spec.Edition == "free" {
+			r.Spec.Pdbname = "FREEPDB1"
 		} else {
 			r.Spec.Pdbname = "ORCLPDB1"
 		}
 	}
 
-	if r.Spec.Edition == "express" {
+	if r.Spec.Edition == "express" || r.Spec.Edition == "free" {
 		if r.Status.Replicas == 1 {
 			// default the replicas for XE
+			r.Spec.Replicas = 1
+		}
+	}
+
+	if r.Spec.PrimaryDatabaseRef != "" && r.Spec.CreateAsStandby {
+		if r.Spec.Replicas == 0 {
 			r.Spec.Replicas = 1
 		}
 	}
@@ -141,8 +171,8 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	// Replica validation
 	if r.Spec.Replicas > 1 {
 		valMsg := ""
-		if r.Spec.Edition == "express" {
-			valMsg = "should be 1 for express edition"
+		if r.Spec.Edition == "express" || r.Spec.Edition == "free" {
+			valMsg = "should be 1 for " + r.Spec.Edition + " edition"
 		}
 		if r.Spec.Persistence.Size == "" {
 			valMsg = "should be 1 if no persistence is specified"
@@ -152,48 +182,68 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 				field.Invalid(field.NewPath("spec").Child("replicas"), r.Spec.Replicas, valMsg))
 		}
 	}
-
-	if r.Spec.Edition == "express" {
+	
+	if r.Spec.Edition == "express" || r.Spec.Edition == "free" {
 		if r.Spec.CloneFrom != "" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
-					"Cloning not supported for Express edition"))
+					"Cloning not supported for " + r.Spec.Edition + " edition"))
 		}
-		if strings.ToUpper(r.Spec.Sid) != "XE" {
+		if r.Spec.CreateAsStandby {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("createAsStandby"), r.Spec.CreateAsStandby,
+					"Physical Standby Database creation is not supported for " + r.Spec.Edition + " edition"))
+		}
+		if r.Spec.Edition == "express" && strings.ToUpper(r.Spec.Sid) != "XE" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
 					"Express edition SID must only be XE"))
 		}
-		if strings.ToUpper(r.Spec.Pdbname) != "XEPDB1" {
+		if r.Spec.Edition == "free" && strings.ToUpper(r.Spec.Sid) != "FREE" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
+					"Free edition SID must only be FREE"))
+		}
+		if r.Spec.Edition == "express" && strings.ToUpper(r.Spec.Pdbname) != "XEPDB1" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 					"Express edition PDB must be XEPDB1"))
 		}
+		if r.Spec.Edition == "free" && strings.ToUpper(r.Spec.Pdbname) != "FREEPDB1" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
+					"Free edition PDB must be FREEPDB1"))
+		}
 		if r.Spec.InitParams.CpuCount != 0 {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("initParams").Child("cpuCount"), r.Spec.InitParams.CpuCount,
-					"Express edition does not support changing init parameter cpuCount."))
+					r.Spec.Edition + " edition does not support changing init parameter cpuCount."))
 		}
 		if r.Spec.InitParams.Processes != 0 {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("initParams").Child("processes"), r.Spec.InitParams.Processes,
-					"Express edition does not support changing init parameter process."))
+					r.Spec.Edition + " edition does not support changing init parameter process."))
 		}
 		if r.Spec.InitParams.SgaTarget != 0 {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("initParams").Child("sgaTarget"), r.Spec.InitParams.SgaTarget,
-					"Express edition does not support changing init parameter sgaTarget."))
+					r.Spec.Edition + " edition does not support changing init parameter sgaTarget."))
 		}
 		if r.Spec.InitParams.PgaAggregateTarget != 0 {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("initParams").Child("pgaAggregateTarget"), r.Spec.InitParams.PgaAggregateTarget,
-					"Express edition does not support changing init parameter pgaAggregateTarget."))
+					r.Spec.Edition + " edition does not support changing init parameter pgaAggregateTarget."))
 		}
 	} else {
 		if r.Spec.Sid == "XE" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
 					"XE is reserved as the SID for Express edition of the database"))
+		}
+		if r.Spec.Sid == "FREE" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("sid"), r.Spec.Sid,
+					"FREE is reserved as the SID for FREE edition of the database"))
 		}
 	}
 
@@ -311,6 +361,49 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 	if !ok {
 		return nil
 	}
+
+	if (old.Status.Role != dbcommons.ValueUnavailable && old.Status.Role != "PRIMARY") {
+		// Restriciting Patching of secondary databases archiveLog, forceLog, flashBack
+		statusArchiveLog, _ := strconv.ParseBool(old.Status.ArchiveLog)
+		if statusArchiveLog != r.Spec.ArchiveLog {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("archiveLog"), "cannot be changed"))
+		}
+		statusFlashBack, _ := strconv.ParseBool(old.Status.FlashBack)
+		if statusFlashBack != r.Spec.FlashBack {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("flashBack"), "cannot be changed"))
+		}
+		statusForceLogging, _ := strconv.ParseBool(old.Status.ForceLogging)
+		if statusForceLogging != r.Spec.ForceLogging {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("forceLog"), "cannot be changed"))
+		}
+		// Restriciting Patching of secondary databases InitParams
+		if old.Status.InitParams.SgaTarget != r.Spec.InitParams.SgaTarget {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("sgaTarget"), "cannot be changed"))
+		}
+		if old.Status.InitParams.PgaAggregateTarget != r.Spec.InitParams.PgaAggregateTarget {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("pgaAggregateTarget"), "cannot be changed"))
+		}
+		if old.Status.InitParams.CpuCount != r.Spec.InitParams.CpuCount {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("cpuCount"), "cannot be changed"))
+		}
+		if old.Status.InitParams.Processes != r.Spec.InitParams.Processes {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("processes"), "cannot be changed"))
+		}
+	}
+
+	// if Db is in a dataguard configuration. Restrict enabling Tcps on the Primary DB
+	if old.Status.DgBrokerConfigured && r.Spec.EnableTCPS {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is in a dataguard configuration"))
+	}
+
 	if old.Status.DatafilesCreated == "true" && (old.Status.PrebuiltDB != r.Spec.Image.PrebuiltDB) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))

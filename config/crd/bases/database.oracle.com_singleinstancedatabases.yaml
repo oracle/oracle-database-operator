@@ -20,12 +20,15 @@ spec:
     - jsonPath: .status.edition
       name: Edition
       type: string
+    - jsonPath: .status.sid
+      name: Sid
+      priority: 1
+      type: string
     - jsonPath: .status.status
       name: Status
       type: string
     - jsonPath: .status.role
       name: Role
-      priority: 1
       type: string
     - jsonPath: .status.releaseUpdate
       name: Version
@@ -33,12 +36,12 @@ spec:
     - jsonPath: .status.connectString
       name: Connect Str
       type: string
-    - jsonPath: .status.tcpsConnectString
-      name: TCPS Connect Str
-      type: string
     - jsonPath: .status.pdbConnectString
       name: Pdb Connect Str
       priority: 1
+      type: string
+    - jsonPath: .status.tcpsConnectString
+      name: TCPS Connect Str
       type: string
     - jsonPath: .status.tcpsPdbConnectString
       name: TCPS Pdb Connect Str
@@ -88,6 +91,10 @@ spec:
                 type: string
               cloneFrom:
                 type: string
+              createAsStandby:
+                type: boolean
+              dgBrokerConfigured:
+                type: boolean
               edition:
                 enum:
                 - standard
@@ -155,6 +162,8 @@ spec:
                   volumeName:
                     type: string
                 type: object
+              primaryDatabaseRef:
+                type: string
               readinessCheckPeriod:
                 type: integer
               replicas:
@@ -203,13 +212,14 @@ spec:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct
                     use as an array at the field path .status.conditions.  For example,
-                    type FooStatus struct{     // Represents the observations of a
-                    foo's current state.     // Known .status.conditions.type are:
-                    \"Available\", \"Progressing\", and \"Degraded\"     // +patchMergeKey=type
-                    \    // +patchStrategy=merge     // +listType=map     // +listMapKey=type
-                    \    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`
-                    \n     // other fields }"
+                    \n \ttype FooStatus struct{ \t    // Represents the observations
+                    of a foo's current state. \t    // Known .status.conditions.type
+                    are: \"Available\", \"Progressing\", and \"Degraded\" \t    //
+                    +patchMergeKey=type \t    // +patchStrategy=merge \t    // +listType=map
+                    \t    // +listMapKey=type \t    Conditions []metav1.Condition
+                    `json:\"conditions,omitempty\" patchStrategy:\"merge\" patchMergeKey:\"type\"
+                    protobuf:\"bytes,1,rep,name=conditions\"` \n \t    // other fields
+                    \t}"
                   properties:
                     lastTransitionTime:
                       description: lastTransitionTime is the last time the condition
@@ -278,6 +288,8 @@ spec:
               datafilesPatched:
                 default: "false"
                 type: string
+              dgBrokerConfigured:
+                type: boolean
               edition:
                 type: string
               flashBack:
@@ -335,6 +347,8 @@ spec:
                 type: object
               prebuiltDB:
                 type: boolean
+              primaryDatabase:
+                type: string
               releaseUpdate:
                 type: string
               replicas:

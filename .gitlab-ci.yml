@@ -1,0 +1,31 @@
+build-operator: 
+  stage: build
+  variables:
+    IMAGE: "$DOCKER_REPO:$CI_COMMIT_BRANCH"
+    OP_YAML: oracle-database-operator.yaml
+  script:
+    - go version
+    - echo $CI_COMMIT_SHORT_SHA
+    - make docker-build IMG="$IMAGE"
+    - docker push "$IMAGE"
+    - newimage=$DOCKER_REPO@$(skopeo inspect docker://$IMAGE |  jq -r .Digest)
+    - echo $newimage
+    - docker rmi "$IMAGE" && docker system prune -f
+    - make operator-yaml IMG=$newimage
+    - if [ "$CI_COMMIT_BRANCH" != "master" ]; then sed -i "s/\(replicas.\) 3/\1 1/g" ./$OP_YAML; fi
+    - curl -s --netrc-file $HOME/.netrc_gitlab $ARTIFACTORY_REPO/$CI_COMMIT_BRANCH/$OP_YAML -T ./$OP_YAML
+  only:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /\#run-pipeline/
+      - $CI_COMMIT_BRANCH =~ /master/
+      - $CI_MERGE_REQUEST_ID != ""
+  except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /\#skip-pipeline/
+      - $CI_COMMIT_TAG != null
+
+cleanup:
+  stage: .post
+  script:
+    - echo "Clean up downloaded binaries"
+    - rm -rf bin/
