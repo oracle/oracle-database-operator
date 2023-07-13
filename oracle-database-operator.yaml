@@ -935,6 +935,10 @@ spec:
                 - MaxPerformance
                 - MaxAvailability
                 type: string
+              serviceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
               setAsPrimaryDatabase:
                 type: string
               standbyDatabaseRefs:
@@ -2214,6 +2218,7 @@ spec:
                 - standard
                 - enterprise
                 - express
+                - free
                 type: string
               enableTCPS:
                 type: boolean
@@ -3430,7 +3435,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: container-registry.oracle.com/database/operator:0.2.1
+        image: container-registry.oracle.com/database/operator:1.0.0
         imagePullPolicy: Always
         name: manager
         ports:
