@@ -935,6 +935,10 @@ spec:
                 - MaxPerformance
                 - MaxAvailability
                 type: string
+              serviceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
               setAsPrimaryDatabase:
                 type: string
               standbyDatabaseRefs:
@@ -2214,6 +2218,7 @@ spec:
                 - standard
                 - enterprise
                 - express
+                - free
                 type: string
               enableTCPS:
                 type: boolean
