@@ -164,7 +164,9 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 	// cannot change lifecycleState with other fields together (except the oci config)
 	var lifecycleChanged, otherFieldsChanged bool
 
-	lifecycleChanged = oldADB.Spec.Details.LifecycleState != "" && oldADB.Spec.Details.LifecycleState != r.Spec.Details.LifecycleState
+	lifecycleChanged = oldADB.Spec.Details.LifecycleState != "" &&
+		r.Spec.Details.LifecycleState != "" &&
+		oldADB.Spec.Details.LifecycleState != r.Spec.Details.LifecycleState
 	var copiedADB *AutonomousDatabaseSpec = r.Spec.DeepCopy()
 	copiedADB.Details.LifecycleState = oldADB.Spec.Details.LifecycleState
 	copiedADB.OCIConfig = oldADB.Spec.OCIConfig
