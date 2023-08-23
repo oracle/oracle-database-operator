@@ -55,7 +55,11 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   Install the certificate manager with the following command:
 
   ```sh
-  kubectl apply -f https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml
+  # Kubernetes 1.16+
+  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.1.1/cert-manager.yaml
+
+  # Kubernetes <1.16
+  kubectl apply --validate=false -f https://github.com/cert-manager/cert-manager/releases/download/v1.1.1/cert-manager-legacy.yaml
   ```
 
 ## Quick Install of the Operator
