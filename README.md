@@ -86,7 +86,7 @@ You should see that the operator is up and running, along with the shipped contr
 
 For more details, see [Oracle Database Operator Installation Instructions](./docs/installation/OPERATOR_INSTALLATION_README.md).
 
-## Getting Started with the Operator (Quickstart)
+## Getting Started
 
 The quickstarts are designed for specific database configurations:
 
