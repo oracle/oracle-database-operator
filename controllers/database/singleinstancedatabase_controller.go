@@ -1498,9 +1498,9 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	sid := m.Spec.Sid
 	if m.Spec.Image.PrebuiltDB {
 		edition := ""
-		sid, pdbName, edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
-		if sid == "" || pdbName == "" || edition == "" {
-			return requeueN, nil
+		_, _, edition, err := dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
+		if err != nil {
+			return requeueY, err
 		}
 		m.Status.Edition = cases.Title(language.English).String(edition)
 	}
