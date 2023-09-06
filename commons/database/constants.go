@@ -212,8 +212,8 @@ const DataguardBrokerAddDBMaxAvailabilityCMD string = "ADD DATABASE ${ORACLE_SID
 	"(CONNECT_DATA=(SERVICE_NAME=${ORACLE_SID}_DGMGRL)(INSTANCE_NAME=${ORACLE_SID})(SERVER=DEDICATED)))';" +
 	"\nENABLE CONFIGURATION;"
 
-const RemoveStandbyDBFromDGConfgCMD string = "DISABLE DATABASE ${ORACLE_SID};" + 
-  	"\nREMOVE DATABASE ${ORACLE_SID};"
+const RemoveStandbyDBFromDGConfgCMD string = "DISABLE DATABASE ${ORACLE_SID};" +
+	"\nREMOVE DATABASE ${ORACLE_SID};"
 
 const DBShowConfigCMD string = "SHOW CONFIGURATION;"
 
@@ -506,7 +506,7 @@ const SetApexUsers string = "\numask 177" +
 	"\numask 022"
 
 // Get Sid, Pdbname, Edition for prebuilt db
-const GetSidPdbEditionCMD string = "echo $ORACLE_SID,$ORACLE_PDB,$ORACLE_EDITION,Edition;"
+const GetSidPdbEditionCMD string = "echo $ORACLE_SID,$ORACLE_PDB,$ORACLE_EDITION;"
 
 // Command to enable TCPS as a formatted string. The parameter would be the port at which TCPS is enabled.
 const EnableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE"
