@@ -1511,6 +1511,8 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		m.Status.Edition = cases.Title(language.English).String(edition)
 	}
 
+	r.Log.Info("Setting connect string statues")
+
 	if m.Spec.LoadBalancer {
 		m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
 		if len(extSvc.Status.LoadBalancer.Ingress) > 0 {
