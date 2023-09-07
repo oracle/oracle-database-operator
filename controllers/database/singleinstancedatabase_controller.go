@@ -280,6 +280,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	// If LoadBalancer = true , ensure Connect String is updated
 	if singleInstanceDatabase.Status.ConnectString == dbcommons.ValueUnavailable {
+		r.Log.Info("Connect String Not available for the database " + singleInstanceDatabase.Name)
 		return requeueY, nil
 	}
 
@@ -1497,6 +1498,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	pdbName := strings.ToUpper(m.Spec.Pdbname)
 	sid := m.Spec.Sid
 	if m.Spec.Image.PrebuiltDB {
+		r.Log.Info("Initiliazing free database sid, pdb, edition")
 		edition := ""
 		sid, pdb, edition, err := dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
 		if err != nil {
