@@ -1498,10 +1498,14 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	sid := m.Spec.Sid
 	if m.Spec.Image.PrebuiltDB {
 		edition := ""
-		_, _, edition, err := dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
+		sid, pdb, edition, err := dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
 		if err != nil {
 			return requeueY, err
 		}
+		r.Log.Info("Sid for the database is " + sid)
+		r.Log.Info("Pdb for the database is " + pdb)
+		r.Log.Info("edition for the database is " + edition)
+		r.Log.Info("editon for the dataase is " + cases.Title(language.English).String(edition))
 		m.Status.Edition = cases.Title(language.English).String(edition)
 	}
 
