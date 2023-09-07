@@ -131,11 +131,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	/* Initialize Status */
 	if singleInstanceDatabase.Status.Status == "" {
 		singleInstanceDatabase.Status.Status = dbcommons.StatusPending
-		if singleInstanceDatabase.Spec.Edition != "" {
-			singleInstanceDatabase.Status.Edition = cases.Title(language.English).String(singleInstanceDatabase.Spec.Edition)
-		} else {
-			singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
-		}
+		singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
 		singleInstanceDatabase.Status.Role = dbcommons.ValueUnavailable
 		singleInstanceDatabase.Status.ConnectString = dbcommons.ValueUnavailable
 		singleInstanceDatabase.Status.PdbConnectString = dbcommons.ValueUnavailable
@@ -1508,7 +1504,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		r.Log.Info("Pdb for the database is " + pdb)
 		r.Log.Info("edition for the database is " + edition)
 		r.Log.Info("editon for the dataase is " + cases.Title(language.English).String(edition))
-		m.Status.Edition = cases.Title(language.English).String(edition)
+		m.Status.Edition = strings.TrimSpace(cases.Title(language.English).String(edition))
 	}
 
 	r.Log.Info("Setting connect string statues")
