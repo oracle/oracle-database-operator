@@ -167,13 +167,6 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, nil
 	}
 
-	// Service creation
-	result, err = r.createOrReplaceSVC(ctx, req, singleInstanceDatabase)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
-
 	// PVC Creation
 	result, err = r.createOrReplacePVC(ctx, req, singleInstanceDatabase)
 	if result.Requeue {
@@ -183,6 +176,13 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	// POD creation
 	result, err = r.createOrReplacePods(singleInstanceDatabase, cloneFromDatabase, referredPrimaryDatabase, ctx, req)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+
+	// Service creation
+	result, err = r.createOrReplaceSVC(ctx, req, singleInstanceDatabase)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
