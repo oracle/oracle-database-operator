@@ -131,7 +131,11 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	/* Initialize Status */
 	if singleInstanceDatabase.Status.Status == "" {
 		singleInstanceDatabase.Status.Status = dbcommons.StatusPending
-		singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
+		if singleInstanceDatabase.Spec.Edition != "" {
+			singleInstanceDatabase.Status.Edition = cases.Title(language.English).String(singleInstanceDatabase.Spec.Edition)
+		} else {
+			singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
+		}
 		singleInstanceDatabase.Status.Role = dbcommons.ValueUnavailable
 		singleInstanceDatabase.Status.ConnectString = dbcommons.ValueUnavailable
 		singleInstanceDatabase.Status.PdbConnectString = dbcommons.ValueUnavailable
