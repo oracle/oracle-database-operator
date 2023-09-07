@@ -594,13 +594,11 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 
 	log := ctrllog.FromContext(ctx).WithValues("GetSidbPdbEdition", req.NamespacedName)
 
-	log.Info("Finding Pods for the database " + req.Name)
 	sidbReadyPod, _, _, _, err := FindPods(r, "", "", req.Name, req.Namespace, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
 		return "", "", "", errors.New("error while fetching sidb ready pod for sidb " + req.Name)
 	}
-	log.Info("Sidb Ready Pod name is " + sidbReadyPod.Name)
 	if sidbReadyPod.Name != "" {
 		out, err := ExecCommand(r, config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
 			ctx, req, false, "bash", "-c", GetSidPdbEditionCMD)
@@ -609,7 +607,7 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 			return "", "", "", errors.New("error while execing GetSidPdbEditionCMD on sidb " + req.Name)
 		}
 		log.Info(out)
-		splitstr := strings.Split(out, ",")
+		splitstr := strings.Split(strings.TrimSpace(out), ",")
 		return splitstr[0], splitstr[1], splitstr[2], nil
 	}
 

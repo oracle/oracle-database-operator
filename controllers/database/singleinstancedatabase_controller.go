@@ -1500,15 +1500,11 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	if m.Spec.Image.PrebuiltDB {
 		r.Log.Info("Initiliazing free database sid, pdb, edition")
 		edition := ""
-		sid, pdb, edition, err := dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
+		_, _, edition, err := dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
 		if err != nil {
 			return requeueY, err
 		}
-		r.Log.Info("Sid for the database is " + sid)
-		r.Log.Info("Pdb for the database is " + pdb)
-		r.Log.Info("edition for the database is " + edition)
-		r.Log.Info("editon for the dataase is " + cases.Title(language.English).String(edition))
-		m.Status.Edition = strings.TrimSpace(cases.Title(language.English).String(edition))
+		m.Status.Edition = cases.Title(language.English).String(edition)
 	}
 
 	r.Log.Info("Setting connect string statues")
