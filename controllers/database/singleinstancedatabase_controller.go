@@ -280,7 +280,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	// If LoadBalancer = true , ensure Connect String is updated
 	if singleInstanceDatabase.Status.ConnectString == dbcommons.ValueUnavailable {
-		r.Log.Info("Connect String Not available for the database " + singleInstanceDatabase.Name)
+		r.Log.Info("Connect string not available for the database " + singleInstanceDatabase.Name)
 		return requeueY, nil
 	}
 
