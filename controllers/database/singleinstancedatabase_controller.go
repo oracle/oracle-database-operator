@@ -1504,10 +1504,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		if getSidPdbEditionErr != nil {
 			return requeueY, getSidPdbEditionErr
 		}
-		r.Log.Info("Prebuilt database: %s has SID : %s, PDB : %s, EDITION: %s", m.Name, sid, pdbName, edition)
+		r.Log.Info(fmt.Sprintf("Prebuilt database: %s has SID : %s, PDB : %s, EDITION: %s", m.Name, sid, pdbName, edition))
 		m.Status.Edition = cases.Title(language.English).String(edition)
 	}
-	r.Log.Info("Prebuilt database: %s has SID : %s, PDB : %s", m.Name, sid, pdbName)
+	r.Log.Info(fmt.Sprintf("Prebuilt database: %s has SID : %s, PDB : %s", m.Name, sid, pdbName))
 	if sid == "" {
 		sid = strings.ToUpper(m.Spec.Sid)
 	}
