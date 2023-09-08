@@ -1495,20 +1495,25 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		extSvc = svc
 	}
 
-	pdbName := strings.ToUpper(m.Spec.Pdbname)
-	sid := m.Spec.Sid
+	var sid, pdbName string
+	var getSidPdbEditionErr error
 	if m.Spec.Image.PrebuiltDB {
-		r.Log.Info("Initiliazing free database sid, pdb, edition")
-		edition := ""
-		_, _, edition, err := dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
-		if err != nil {
-			return requeueY, err
+		r.Log.Info("Initiliazing database sid, pdb, edition for prebuilt database")
+		var edition string
+		sid, pdbName, edition, getSidPdbEditionErr = dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
+		if getSidPdbEditionErr != nil {
+			return requeueY, getSidPdbEditionErr
 		}
+		r.Log.Info("Prebuilt database: %s has SID : %s, PDB : %s, EDITION: %s", m.Name, sid, pdbName, edition)
 		m.Status.Edition = cases.Title(language.English).String(edition)
 	}
-
-	r.Log.Info("Setting connect string statues")
-
+	r.Log.Info("Prebuilt database: %s has SID : %s, PDB : %s, EDITION: %s", m.Name, sid, pdbName)
+	if sid == "" {
+		sid = strings.ToUpper(m.Spec.Sid)
+	}
+	if pdbName == "" {
+		pdbName = strings.ToUpper(m.Spec.Pdbname)
+	}
 	if m.Spec.LoadBalancer {
 		m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
 		if len(extSvc.Status.LoadBalancer.Ingress) > 0 {

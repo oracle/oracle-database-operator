@@ -606,8 +606,8 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 			log.Error(err, err.Error())
 			return "", "", "", err
 		}
-		log.Info(out)
-		splitstr := strings.Split(strings.TrimSpace(out), ",")
+		log.Info("GetSidPdbEditionCMD output \n" + out)
+		splitstr := strings.Split((strings.TrimSpace(out)), ",")
 		return splitstr[0], splitstr[1], splitstr[2], nil
 	}
 	err = errors.New("ready pod name is nil")
