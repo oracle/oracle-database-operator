@@ -594,24 +594,25 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 
 	log := ctrllog.FromContext(ctx).WithValues("GetSidbPdbEdition", req.NamespacedName)
 
-	sidbReadyPod, _, _, _, err := FindPods(r, "", "", req.Name, req.Namespace, ctx, req)
+	readyPod, _, _, _, err := FindPods(r, "", "", req.Name, req.Namespace, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
-		return "", "", "", errors.New("error while fetching sidb ready pod for sidb " + req.Name)
+		return "", "", "", fmt.Errorf("error while fetching ready pod %s : \n %s", readyPod.Name, err.Error())
 	}
-	if sidbReadyPod.Name != "" {
-		out, err := ExecCommand(r, config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
+	if readyPod.Name != "" {
+		out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "",
 			ctx, req, false, "bash", "-c", GetSidPdbEditionCMD)
 		if err != nil {
 			log.Error(err, err.Error())
-			return "", "", "", errors.New("error while execing GetSidPdbEditionCMD on sidb " + req.Name)
+			return "", "", "", err
 		}
 		log.Info(out)
 		splitstr := strings.Split(strings.TrimSpace(out), ",")
 		return splitstr[0], splitstr[1], splitstr[2], nil
 	}
-
-	return "", "", "", errors.New("error while sidb ready pod name is nil")
+	err = errors.New("ready pod name is nil")
+	log.Error(err, err.Error())
+	return "", "", "", err
 }
 
 // Get Datapatch Status
