@@ -167,13 +167,6 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, nil
 	}
 
-	// Service creation
-	result, err = r.createOrReplaceSVC(ctx, req, singleInstanceDatabase)
-	if result.Requeue {
-		r.Log.Info("Reconcile queued")
-		return result, nil
-	}
-
 	// PVC Creation
 	result, err = r.createOrReplacePVC(ctx, req, singleInstanceDatabase)
 	if result.Requeue {
@@ -183,6 +176,13 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	// POD creation
 	result, err = r.createOrReplacePods(singleInstanceDatabase, cloneFromDatabase, referredPrimaryDatabase, ctx, req)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+
+	// Service creation
+	result, err = r.createOrReplaceSVC(ctx, req, singleInstanceDatabase)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -280,6 +280,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	// If LoadBalancer = true , ensure Connect String is updated
 	if singleInstanceDatabase.Status.ConnectString == dbcommons.ValueUnavailable {
+		r.Log.Info("Connect string not available for the database " + singleInstanceDatabase.Name)
 		return requeueY, nil
 	}
 
@@ -1494,17 +1495,24 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		extSvc = svc
 	}
 
-	pdbName := strings.ToUpper(m.Spec.Pdbname)
-	sid := m.Spec.Sid
+	var sid, pdbName string
+	var getSidPdbEditionErr error
 	if m.Spec.Image.PrebuiltDB {
-		edition := ""
-		sid, pdbName, edition = dbcommons.GetSidPdbEdition(r, r.Config, ctx, req)
-		if sid == "" || pdbName == "" || edition == "" {
-			return requeueN, nil
+		r.Log.Info("Initiliazing database sid, pdb, edition for prebuilt database")
+		var edition string
+		sid, pdbName, edition, getSidPdbEditionErr = dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
+		if getSidPdbEditionErr != nil {
+			return requeueY, getSidPdbEditionErr
 		}
+		r.Log.Info(fmt.Sprintf("Prebuilt database: %s has SID : %s, PDB : %s, EDITION: %s", m.Name, sid, pdbName, edition))
 		m.Status.Edition = cases.Title(language.English).String(edition)
 	}
-
+	if sid == "" {
+		sid = strings.ToUpper(m.Spec.Sid)
+	}
+	if pdbName == "" {
+		pdbName = strings.ToUpper(m.Spec.Pdbname)
+	}
 	if m.Spec.LoadBalancer {
 		m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
 		if len(extSvc.Status.LoadBalancer.Ingress) > 0 {
