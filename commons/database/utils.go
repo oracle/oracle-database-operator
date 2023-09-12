@@ -507,23 +507,23 @@ func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
 
 func GetDatabaseOpenMode(readyPod corev1.Pod, r client.Reader,
 	config *rest.Config, ctx context.Context, req ctrl.Request, edition string) (string, error) {
-		log := ctrllog.FromContext(ctx).WithValues("GetDatabaseOpenMode",req.NamespacedName)
+	log := ctrllog.FromContext(ctx).WithValues("GetDatabaseOpenMode", req.NamespacedName)
 
-		out,err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e \"%s\" | %s",GetDBOpenMode,SQLPlusCLI))
-		if err != nil {
-			return "",err
-		}
-		log.Info(out)
-		if !strings.Contains(out, "no rows selected") && !strings.Contains(out, "ORA-") {
-			out1 := strings.Replace(out, " ", "_", -1)
-			// filtering output and storing databse_role in  "database_role"
-			databaseOpenMode := strings.Fields(out1)[2]
-			// first 2 values in the slice will be column name(DATABASE_ROLE) and a seperator(--------------) .
-			return databaseOpenMode, nil
-		}
-		return "", errors.New("database open mode is nil")
+	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e \"%s\" | %s", GetDBOpenMode, SQLPlusCLI))
+	if err != nil {
+		return "", err
 	}
+	log.Info(out)
+	if !strings.Contains(out, "no rows selected") && !strings.Contains(out, "ORA-") {
+		out1 := strings.Replace(out, " ", "_", -1)
+		// filtering output and storing databse_role in  "database_role"
+		databaseOpenMode := strings.Fields(out1)[2]
+		// first 2 values in the slice will be column name(DATABASE_ROLE) and a seperator(--------------) .
+		return databaseOpenMode, nil
+	}
+	return "", errors.New("database open mode is nil")
+}
 
 // Returns true if any of the pod in 'pods' is with pod.Status.Phase == phase
 func IsAnyPodWithStatus(pods []corev1.Pod, phase corev1.PodPhase) (bool, corev1.Pod) {
@@ -590,29 +590,29 @@ func GetNodeIp(r client.Reader, ctx context.Context, req ctrl.Request) string {
 }
 
 // GetSidPdbEdition to display sid, pdbname, edition in ConnectionString
-func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context, req ctrl.Request) (string, string, string) {
+func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context, req ctrl.Request) (string, string, string, error) {
 
-	log := ctrllog.FromContext(ctx).WithValues("GetNodeIp", req.NamespacedName)
+	log := ctrllog.FromContext(ctx).WithValues("GetSidbPdbEdition", req.NamespacedName)
 
 	readyPod, _, _, _, err := FindPods(r, "", "", req.Name, req.Namespace, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
-		return "", "", ""
+		return "", "", "", fmt.Errorf("error while fetching ready pod %s : \n %s", readyPod.Name, err.Error())
 	}
 	if readyPod.Name != "" {
 		out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "",
 			ctx, req, false, "bash", "-c", GetSidPdbEditionCMD)
 		if err != nil {
 			log.Error(err, err.Error())
-			return "", "", ""
+			return "", "", "", err
 		}
-		splitstr := strings.Split(out, ",")
-		if len(splitstr) == 4 {
-			return splitstr[0], splitstr[1], splitstr[2]
-		}
+		log.Info("GetSidPdbEditionCMD output \n" + out)
+		splitstr := strings.Split((strings.TrimSpace(out)), ",")
+		return splitstr[0], splitstr[1], splitstr[2], nil
 	}
-
-	return "", "", ""
+	err = errors.New("ready pod name is nil")
+	log.Error(err, err.Error())
+	return "", "", "", err
 }
 
 // Get Datapatch Status
