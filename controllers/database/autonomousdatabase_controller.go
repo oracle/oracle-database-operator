@@ -157,15 +157,17 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 			if adbOk {
 				oldADB := e.ObjectOld.(*dbv1alpha1.AutonomousDatabase)
 
+				specChanged := !reflect.DeepEqual(oldADB.Spec, desiredADB.Spec)
 				statusChanged := !reflect.DeepEqual(oldADB.Status, desiredADB.Status)
 
 				oldLastSucSpec := oldADB.GetAnnotations()[dbv1alpha1.LastSuccessfulSpec]
 				desiredLastSucSpec := desiredADB.GetAnnotations()[dbv1alpha1.LastSuccessfulSpec]
 				lastSucSpecChanged := oldLastSucSpec != desiredLastSucSpec
 
-				if statusChanged || lastSucSpecChanged ||
+				if (!specChanged && statusChanged) || lastSucSpecChanged ||
 					(controllerutil.ContainsFinalizer(oldADB, dbv1alpha1.ADBFinalizer) != controllerutil.ContainsFinalizer(desiredADB, dbv1alpha1.ADBFinalizer)) {
-					// Don't enqueue if the status, lastSucSpec, or the finalizler changes the first time
+					// Don't enqueue in the folowing condition:
+					// 1. only status changes 2. lastSucSpec changes 3. ADBFinalizer changes
 					return false
 				}
 
@@ -276,31 +278,36 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	/******************************************************************
-	*	Requeue if it's in an intermediate state. Update the status right before
-	* exiting the reconcile, otherwise the modifiedADB will be overwritten
-	* by the object returned from the cluster.
+	* Update the resource if the spec has been changed.
+	*	Requeue if it's in an intermediate state. Update the status first
+	* , otherwise the modifiedADB will be overwritten by the object
+	* returned from the cluster.
 	******************************************************************/
-	if dbv1alpha1.IsADBIntermediateState(modifiedADB.Status.LifecycleState) {
-		logger.WithName("IsADBIntermediateState").Info("LifecycleState is " + string(modifiedADB.Status.LifecycleState) + "; reconcile queued")
-
-		if err := r.KubeClient.Status().Update(context.TODO(), modifiedADB); err != nil {
+	if !reflect.DeepEqual(modifiedADB.Spec, desiredADB.Spec) {
+		if err := r.KubeClient.Update(context.TODO(), modifiedADB); err != nil {
 			return r.manageError(logger.WithName("IsADBIntermediateState"), modifiedADB, err)
 		}
+		return emptyResult, nil
+	}
 
+	copiedADB := modifiedADB.DeepCopy()
+	if err := r.KubeClient.Status().Update(context.TODO(), modifiedADB); err != nil {
+		return r.manageError(logger.WithName("Status().Update"), modifiedADB, err)
+	}
+	modifiedADB.Spec = copiedADB.Spec
+
+	if dbv1alpha1.IsADBIntermediateState(modifiedADB.Status.LifecycleState) {
+		logger.WithName("IsADBIntermediateState").Info("LifecycleState is " + string(modifiedADB.Status.LifecycleState) + "; reconcile queued")
 		return requeueResult, nil
 	}
 
 	/******************************************************************
-	* Update the lastSucSpec and the status, and then finish the reconcile.
-	*	Requeue if it's in an intermediate state or the modifiedADB
-	* doesn't match the desiredADB.
+	* Update the lastSucSpec, and then finish the reconcile.
+	*	Requeue if the ADB is terminated, but the finalizer is not yet
+	* removed.
 	******************************************************************/
-	// Do the comparison before updating the status to avoid being overwritten
-	var requeue bool = false
-	if !reflect.DeepEqual(modifiedADB.Spec, desiredADB.Spec) {
-		requeue = true
-	}
 
+	var requeue bool = false
 	if modifiedADB.GetDeletionTimestamp() != nil &&
 		controllerutil.ContainsFinalizer(modifiedADB, dbv1alpha1.ADBFinalizer) &&
 		modifiedADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated {
@@ -310,10 +317,6 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if err := r.patchLastSuccessfulSpec(modifiedADB); err != nil {
 		return r.manageError(logger.WithName("patchLastSuccessfulSpec"), modifiedADB, err)
-	}
-
-	if err := r.KubeClient.Status().Update(context.TODO(), modifiedADB); err != nil {
-		return r.manageError(logger.WithName("Status().Update"), modifiedADB, err)
 	}
 
 	if requeue {
