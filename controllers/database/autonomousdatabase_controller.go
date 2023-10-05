@@ -157,10 +157,17 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 			if adbOk {
 				oldADB := e.ObjectOld.(*dbv1alpha1.AutonomousDatabase)
 
-				if !reflect.DeepEqual(oldADB.Status, desiredADB.Status) ||
-					(controllerutil.ContainsFinalizer(oldADB, dbv1alpha1.LastSuccessfulSpec) != controllerutil.ContainsFinalizer(desiredADB, dbv1alpha1.LastSuccessfulSpec)) ||
+				specChanged := !reflect.DeepEqual(oldADB.Spec, desiredADB.Spec)
+				statusChanged := !reflect.DeepEqual(oldADB.Status, desiredADB.Status)
+
+				oldLastSucSpec := oldADB.GetAnnotations()[dbv1alpha1.LastSuccessfulSpec]
+				desiredLastSucSpec := desiredADB.GetAnnotations()[dbv1alpha1.LastSuccessfulSpec]
+				lastSucSpecChanged := oldLastSucSpec != desiredLastSucSpec
+
+				if (!specChanged && statusChanged) || lastSucSpecChanged ||
 					(controllerutil.ContainsFinalizer(oldADB, dbv1alpha1.ADBFinalizer) != controllerutil.ContainsFinalizer(desiredADB, dbv1alpha1.ADBFinalizer)) {
-					// Don't enqueue if the status, lastSucSpec, or the finalizler changes
+					// Don't enqueue in the folowing condition:
+					// 1. only status changes 2. lastSucSpec changes 3. ADBFinalizer changes
 					return false
 				}
 
@@ -271,31 +278,36 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	/******************************************************************
-	*	Requeue if it's in an intermediate state. Update the status right before
-	* exiting the reconcile, otherwise the modifiedADB will be overwritten
-	* by the object returned from the cluster.
+	* Update the resource if the spec has been changed.
+	*	Requeue if it's in an intermediate state. Update the status first
+	* , otherwise the modifiedADB will be overwritten by the object
+	* returned from the cluster.
 	******************************************************************/
-	if dbv1alpha1.IsADBIntermediateState(modifiedADB.Status.LifecycleState) {
-		logger.WithName("IsADBIntermediateState").Info("LifecycleState is " + string(modifiedADB.Status.LifecycleState) + "; reconcile queued")
-
-		if err := r.KubeClient.Status().Update(context.TODO(), modifiedADB); err != nil {
+	if !reflect.DeepEqual(modifiedADB.Spec, desiredADB.Spec) {
+		if err := r.KubeClient.Update(context.TODO(), modifiedADB); err != nil {
 			return r.manageError(logger.WithName("IsADBIntermediateState"), modifiedADB, err)
 		}
+		return emptyResult, nil
+	}
 
+	copiedADB := modifiedADB.DeepCopy()
+	if err := r.KubeClient.Status().Update(context.TODO(), modifiedADB); err != nil {
+		return r.manageError(logger.WithName("Status().Update"), modifiedADB, err)
+	}
+	modifiedADB.Spec = copiedADB.Spec
+
+	if dbv1alpha1.IsADBIntermediateState(modifiedADB.Status.LifecycleState) {
+		logger.WithName("IsADBIntermediateState").Info("LifecycleState is " + string(modifiedADB.Status.LifecycleState) + "; reconcile queued")
 		return requeueResult, nil
 	}
 
 	/******************************************************************
-	* Update the lastSucSpec and the status, and then finish the reconcile.
-	*	Requeue if it's in an intermediate state or the modifiedADB
-	* doesn't match the desiredADB.
+	* Update the lastSucSpec, and then finish the reconcile.
+	*	Requeue if the ADB is terminated, but the finalizer is not yet
+	* removed.
 	******************************************************************/
-	// Do the comparison before updating the status to avoid being overwritten
-	var requeue bool = false
-	if !reflect.DeepEqual(modifiedADB.Spec, desiredADB.Spec) {
-		requeue = true
-	}
 
+	var requeue bool = false
 	if modifiedADB.GetDeletionTimestamp() != nil &&
 		controllerutil.ContainsFinalizer(modifiedADB, dbv1alpha1.ADBFinalizer) &&
 		modifiedADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated {
@@ -305,10 +317,6 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	if err := r.patchLastSuccessfulSpec(modifiedADB); err != nil {
 		return r.manageError(logger.WithName("patchLastSuccessfulSpec"), modifiedADB, err)
-	}
-
-	if err := r.KubeClient.Status().Update(context.TODO(), modifiedADB); err != nil {
-		return r.manageError(logger.WithName("Status().Update"), modifiedADB, err)
 	}
 
 	if requeue {
@@ -458,8 +466,6 @@ func (r *AutonomousDatabaseReconciler) validateOperation(
 	} else {
 		l.Info("No operation specified; sync the resource")
 
-		testOldADB := adb.DeepCopy()
-
 		// The user doesn't change the spec and the controller should pull the spec from the OCI.
 		specChanged, err := r.getADB(logger, adb)
 		if err != nil {
@@ -470,12 +476,12 @@ func (r *AutonomousDatabaseReconciler) validateOperation(
 			l.Info("The local spec doesn't match the oci's spec; update the CR")
 
 			// Erase the status.lifecycleState temporarily to avoid the webhook error.
-			oldADB := adb.DeepCopy()
+			tmpADB := adb.DeepCopy()
 			adb.Status.LifecycleState = ""
-			r.KubeClient.Status().Update(context.TODO(), adb)
-			adb.Spec = oldADB.Spec
-
-			adb.DeepCopy().RemoveUnchangedDetails(testOldADB.Spec)
+			if err := r.KubeClient.Status().Update(context.TODO(), adb); err != nil {
+				return false, emptyResult, err
+			}
+			adb.Spec = tmpADB.Spec
 
 			if err := r.updateCR(adb); err != nil {
 				return false, emptyResult, err
@@ -580,7 +586,9 @@ func (r *AutonomousDatabaseReconciler) validateFinalizer(logger logr.Logger, adb
 // updateCR updates the lastSucSpec and the CR
 func (r *AutonomousDatabaseReconciler) updateCR(adb *dbv1alpha1.AutonomousDatabase) error {
 	// Update the lastSucSpec
-	if err := adb.UpdateLastSuccessfulSpec(); err != nil {
+	// Should patch the lastSuccessfulSpec first, otherwise, the update event will be
+	// filtered out by predicate since the lastSuccessfulSpec is changed.
+	if err := r.patchLastSuccessfulSpec(adb); err != nil {
 		return err
 	}
 
@@ -933,22 +941,23 @@ func (r *AutonomousDatabaseReconciler) validateDesiredLifecycleState(
 }
 
 // The logic of updating the network access configurations is as follows:
-// 1. Shared databases:
-// 	 If the network access type changes
-//   a. to PUBLIC:
+//
+//  1. Shared databases:
+//     If the network access type changes
+//     a. to PUBLIC:
 //     was RESTRICTED: re-enable IsMTLSConnectionRequired if its not. Then set WhitelistedIps to an array with a single empty string entry.
 //     was PRIVATE: re-enable IsMTLSConnectionRequired if its not. Then set PrivateEndpointLabel to an emtpy string.
-//   b. to RESTRICTED:
+//     b. to RESTRICTED:
 //     was PUBLIC: set WhitelistedIps to desired IPs/CIDR blocks/VCN OCID. Configure the IsMTLSConnectionRequired settings if it is set to disabled.
 //     was PRIVATE: re-enable IsMTLSConnectionRequired if its not. Set the type to PUBLIC first, and then configure the WhitelistedIps. Finally resume the IsMTLSConnectionRequired settings if it was, or is configured as disabled.
-//   c. to PRIVATE:
+//     c. to PRIVATE:
 //     was PUBLIC: set subnetOCID and nsgOCIDs. Configure the IsMTLSConnectionRequired settings if it is set.
 //     was RESTRICTED: set subnetOCID and nsgOCIDs. Configure the IsMTLSConnectionRequired settings if it is set.
 //
-// 	 Otherwise, if the network access type remains the same, apply the network configuration, and then set the IsMTLSConnectionRequired.
+//     Otherwise, if the network access type remains the same, apply the network configuration, and then set the IsMTLSConnectionRequired.
 //
-// 2. Dedicated databases:
-//   Apply the configs directly
+//  2. Dedicated databases:
+//     Apply the configs directly
 func (r *AutonomousDatabaseReconciler) validateGeneralNetworkAccess(
 	logger logr.Logger,
 	adb *dbv1alpha1.AutonomousDatabase,
