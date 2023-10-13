@@ -661,6 +661,30 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						}},
 					},
 				},
+			}, {
+				Name: "tls-secret-vol",
+				VolumeSource: func() corev1.VolumeSource {
+					if m.Spec.TcpsTlsSecret == "" {
+						return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+					}
+					/* tls-secret is specified */
+					return corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+							SecretName: m.Spec.TcpsTlsSecret,
+							Optional:   func() *bool { i := true; return &i }(),
+							Items: []corev1.KeyToPath{
+								{
+									Key:  "tls.crt", // Mount the certificate
+									Path: "cert.crt", // Mount path inside the container
+								},
+								{
+									Key:  "tls.key", // Mount the private key
+									Path: "client.key", // Mount path inside the container
+								},
+							},
+						},
+					}
+				}(),
 			}},
 			InitContainers: func() []corev1.Container {
 				initContainers := []corev1.Container{}
@@ -795,6 +819,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							ReadOnly:  true,
 							Name:      "oracle-pwd-vol",
 							SubPath:   "oracle_pwd",
+						})
+					}
+					if m.Spec.TcpsTlsSecret != "" {
+						mounts = append(mounts, corev1.VolumeMount{
+							MountPath: dbcommons.TlsCertsLocation,
+							ReadOnly:  true,
+							Name:      "tls-secret-vol",
 						})
 					}
 					return mounts
@@ -2191,16 +2222,33 @@ func (r *SingleInstanceDatabaseReconciler) updateClientWallet(m *dbapi.SingleIns
 func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDatabase,
 	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	eventReason := "Configuring TCPS"
-	if m.Spec.EnableTCPS && !m.Status.IsTcpsEnabled {
+
+	if  (m.Spec.EnableTCPS) && 
+	    ((!m.Status.IsTcpsEnabled)||	// TCPS Enabled from a TCP state
+		 (m.Spec.TcpsTlsSecret != "" && m.Status.TcpsTlsSecret == "") ||	// TCPS Secret is added in spec
+	     (m.Spec.TcpsTlsSecret == "" && m.Status.TcpsTlsSecret != "") ||	// TCPS Secret is removed in spec
+		 (m.Spec.TcpsTlsSecret != "" && m.Status.TcpsTlsSecret != "" && m.Spec.TcpsTlsSecret != m.Status.TcpsTlsSecret)) {	//TCPS secret is changed
+
 		// Enable TCPS
 		m.Status.Status = dbcommons.StatusUpdating
 		r.Status().Update(ctx, m)
 
 		eventMsg := "Enabling TCPS in the database..."
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		
+		var TcpsCommand = dbcommons.EnableTcpsCMD
+		if m.Spec.TcpsTlsSecret != "" { // case when tls secret is either added or changed
+			TcpsCommand = "export TCPS_CERTS_LOCATION=" + dbcommons.TlsCertsLocation + " && " + dbcommons.EnableTcpsCMD
+
+			// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
+			result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
+			if result.Requeue {
+				return result, err
+			}
+		}
 
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
-			ctx, req, false, "bash", "-c", dbcommons.EnableTcpsCMD)
+			ctx, req, false, "bash", "-c", TcpsCommand)
 		if err != nil {
 			r.Log.Error(err, err.Error())
 			eventMsg = "Error encountered in enabling TCPS!"
@@ -2212,6 +2260,14 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		m.Status.CertCreationTimestamp = time.Now().Format(time.RFC3339)
 		m.Status.IsTcpsEnabled = true
 		m.Status.ClientWalletLoc = fmt.Sprintf(dbcommons.ClientWalletLocation, m.Spec.Sid)
+		// m.Spec.TcpsTlsSecret can be empty or non-empty
+		// Store secret name in case of tls-secret addition or change, otherwise would be ""
+		if m.Spec.TcpsTlsSecret != "" {
+			m.Status.TcpsTlsSecret = m.Spec.TcpsTlsSecret
+		} else{
+			m.Status.TcpsTlsSecret = ""
+		}
+
 		r.Status().Update(ctx, m)
 
 		eventMsg = "TCPS Enabled."
@@ -2246,6 +2302,8 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		m.Status.CertCreationTimestamp = ""
 		m.Status.IsTcpsEnabled = false
 		m.Status.ClientWalletLoc = ""
+		m.Status.TcpsTlsSecret = ""
+		
 		r.Status().Update(ctx, m)
 
 		eventMsg = "TCPS Disabled."
