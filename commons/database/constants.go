@@ -517,6 +517,9 @@ const RenewCertsCMD string = EnableTcpsCMD
 // Command to disable TCPS
 const DisableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE disable"
 
+// Location of tls certs
+const TlsCertsLocation string = "/run/secrets/tls_secret"
+
 // TCPS clientWallet update command
 const ClientWalletUpdate string = "sed -i -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*$/PORT=%d)/g' ${ORACLE_BASE}/oradata/clientWallet/${ORACLE_SID}/tnsnames.ora"
 

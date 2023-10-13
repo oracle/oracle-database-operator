@@ -53,7 +53,11 @@ spec:
   forceLog: false
 
   ## Enable TCPS
-  enableTCPS: false
+  enableTCPS:
+
+  ## User specified TLS-Cert Secret
+  ## The following specified TLS certs will be used instead of self-signed
+  tcpsTlsSecret:
 
   ## TCPS Certificate Renewal Interval: The time after which TCPS certificate will be renewed if TCPS connections are enabled.
   ## tcpsCertRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 4380h, 8760h etc.
