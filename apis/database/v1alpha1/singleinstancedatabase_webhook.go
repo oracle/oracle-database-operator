@@ -328,6 +328,19 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 					"Please specify tcpsCertRenewInterval in the range: 24h to 8760h"))
 		}
 	}
+
+	// tcpsTlsSecret validations
+	if !r.Spec.EnableTCPS && r.Spec.TcpsTlsSecret != "" {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("tcpsTlsSecret"),
+				" is allowed only if enableTCPS is true"))
+	}
+	if r.Spec.TcpsTlsSecret != "" && r.Spec.TcpsCertRenewInterval != "" {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("tcpsCertRenewInterval"),
+				" is applicable only for self signed certs"))
+	}
+
 	if len(allErrs) == 0 {
 		return nil
 	}
