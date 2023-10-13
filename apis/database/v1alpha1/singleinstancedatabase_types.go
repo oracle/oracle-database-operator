@@ -69,6 +69,7 @@ type SingleInstanceDatabaseSpec struct {
 	ForceLogging          bool              `json:"forceLog,omitempty"`
 	EnableTCPS            bool              `json:"enableTCPS,omitempty"`
 	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
+	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
 	DgBrokerConfigured    bool              `json:"dgBrokerConfigured,omitempty"`
 
 	CloneFrom            string `json:"cloneFrom,omitempty"`
@@ -162,6 +163,8 @@ type SingleInstanceDatabaseStatus struct {
 	ClientWalletLoc       string `json:"clientWalletLoc,omitempty"`
 	PrimaryDatabase       string `json:"primaryDatabase,omitempty"`
 	DgBrokerConfigured    bool   `json:"dgBrokerConfigured,omitempty"`
+	// +kubebuilder:default:=""
+	TcpsTlsSecret         string `json:"tcpsTlsSecret"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge

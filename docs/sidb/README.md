@@ -540,39 +540,49 @@ $ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstance
 ```
 
 ### Enabling TCPS Connections
-You can enable TCPS connections in the database by setting the `enableTCPS` field to `true` in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it using `kubectl apply` command.
+You can enable TCPS connections in the database by setting the `enableTCPS` field to `true` in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it.
 
 Alternatively, you can use the following command:
 ```bash
 kubectl patch --type=merge singleinstancedatabases.database.oracle.com sidb-sample -p '{"spec": {"enableTCPS": true}}'
 ```
-Once TCPS connections are enabled, the database connect string will change accordingly. The TCPS connections status can also be queried by the following command:
+By default self signed certs are used for TCPS connections. The TCPS connections status can also be queried by the following command:
 ```bash
 kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.isTcpsEnabled}"
 true
 ```
 
-The following steps are required to connect the Database using TCPS:
-- You need to download the wallet from the Persistent Volume (PV) attached with the database pod. The location of the wallet inside the pod is as `/opt/oracle/oradata/clientWallet/$ORACLE_SID`. **Let us assume the `ORACLE_SID` is `ORCL1`, and singleinstance database resource name is `sidb-sample` for the upcoming example command**. You can copy the wallet to the destination directory by the following command:
-  ```bash
-  kubectl cp $(kubectl get pods -l app=sidb-sample -o=jsonpath='{.items[0].metadata.name}'):/opt/oracle/oradata/clientWallet/ORCL1 <Destination directory>
-  ```
-- This wallet includes the sample `tnsnames.ora` and `sqlnet.ora` files. All the TNS entries for the database (corresponding to the CDB and PDB) resides in `tnsnames.ora` file. You need to go inside the downloaded wallet directory and set the `TNS_ADMIN` environment variable to point to the current directory as follows:
-  ```bash
-  # After going inside the downloaded wallet directory
-  export TNS_ADMIN=$(pwd)
-  ```
-  After this, you can connect using SQL\*Plus using the following sample commands:
-  ```bash
-  sqlplus sys@ORCL1 as sysdba
-  ```
-**Note:**
-- When TCPS is enabled, a self-signed certificate is generated and stored inside the wallets. For users' convenience, a client-side wallet is generated and stored at `/opt/oracle/oradata/clientWallet/$ORACLE_SID` location in the pod.
-- The self-signed certificate used with TCPS has validity for 1 year. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
+**With Self Signed Certs**
+- When TCPS is enabled, a self-signed certificate is generated and stored in wallets. For users' convenience, a client-side wallet is generated in location `/opt/oracle/oradata/clientWallet/$ORACLE_SID` in the pod.
+- The self-signed certificate used with TCPS has validity for 1 year. After the certificate is expired, it will be renewed by the `OraOperator` automatically. Download the wallet again after auto-renewal.
 - You can set the certificate renew interval with the help of `tcpsCertRenewInterval` field in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 24h, and the maximum value is 8760h (1 year). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
 - When the certificate gets created/renewed, the `.status.certCreationTimestamp` status variable gets updated accordingly. You can see this timestamp by using the following command:
   ```bash
   kubectl get singleinstancedatabase sidb-sample  -o "jsonpath={.status.certCreationTimestamp}"
+  ```
+
+**With User Provided Certs**
+- Users can provide custom certs to be used for TCPS connections instead of self signed ones.
+- Specify the certs by creating a Kubernetes tls secret resource using following command:
+  ```bash
+  kubectl create secret tls my-tls-secret --cert=path/to/cert/tls.crt --key=path/to/key/tls.key
+  ```
+- `tls.crt` is a certificate chain in the order of client, followed by intermediate and then root certificate and `tls.key` is client key.
+- Specify the secret created above (`my-tls-secret`) as the value for the attribute `tcpsTlsSecret` in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
+
+**Connecting to the Database using TCPS**
+- Download the wallet from the Persistent Volume (PV) attached with the database pod. The location of the wallet inside the pod is as `/opt/oracle/oradata/clientWallet/$ORACLE_SID`. Let us assume the `ORACLE_SID` is `ORCL1`, and singleinstance database resource name is `sidb-sample` for the upcoming example command. You can copy the wallet to the destination directory by the following command:
+  ```bash
+  kubectl cp $(kubectl get pods -l app=sidb-sample -o=jsonpath='{.items[0].metadata.name}'):/opt/oracle/oradata/clientWallet/ORCL1 <Wallet Destination directory>
+  ```
+- This wallet includes the sample `tnsnames.ora` and `sqlnet.ora` files. All the TNS entries for the database (corresponding to the CDB and PDB) reside in the `tnsnames.ora` file. Switch to the downloaded wallet directory and set the `TNS_ADMIN` environment variable to point to the current directory as follows:
+  ```bash
+  cd <Wallet Destination directory>
+  export TNS_ADMIN=$(pwd)
+  ```
+  After this, connect using SQL\*Plus using the following sample commands:
+  ```bash
+  sqlplus sys@ORCL1 as sysdba
   ```
 
 ### Specifying Custom Ports
