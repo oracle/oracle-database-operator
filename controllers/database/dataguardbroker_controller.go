@@ -961,7 +961,7 @@ func (r *DataguardBrokerReconciler) SetAsPrimaryDatabase(sidbSid string, targetS
 		if err != nil {
 			return requeueN
 		}
-		out, err := dbcommons.GetDatabaseRole(primaryReadyPod, r, r.Config, ctx, primaryReq, n.Spec.Edition)
+		out, err := dbcommons.GetDatabaseRole(primaryReadyPod, r, r.Config, ctx, primaryReq)
 		if err == nil {
 			standbyDatabase.Status.Role = strings.ToUpper(out)
 		}
@@ -974,7 +974,7 @@ func (r *DataguardBrokerReconciler) SetAsPrimaryDatabase(sidbSid string, targetS
 				Name:      n.Name,
 			},
 		}
-		out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, sidbReq, n.Spec.Edition)
+		out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, sidbReq)
 		if err == nil {
 			n.Status.Role = strings.ToUpper(out)
 		}
@@ -989,7 +989,7 @@ func (r *DataguardBrokerReconciler) SetAsPrimaryDatabase(sidbSid string, targetS
 		if err != nil {
 			return requeueN
 		}
-		out, err := dbcommons.GetDatabaseRole(targetReadyPod, r, r.Config, ctx, targetReq, n.Spec.Edition)
+		out, err := dbcommons.GetDatabaseRole(targetReadyPod, r, r.Config, ctx, targetReq)
 		if err == nil {
 			standbyDatabase.Status.Role = strings.ToUpper(out)
 		}
@@ -1002,7 +1002,7 @@ func (r *DataguardBrokerReconciler) SetAsPrimaryDatabase(sidbSid string, targetS
 				Name:      n.Name,
 			},
 		}
-		out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, sidbReq, n.Spec.Edition)
+		out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, sidbReq)
 		if err == nil {
 			n.Status.Role = strings.ToUpper(out)
 		}
@@ -1126,7 +1126,7 @@ func (r *DataguardBrokerReconciler) cleanupDataguardBroker(req ctrl.Request, ctx
 	}
 
 	// Get its Role
-	out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
+	out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY, err
