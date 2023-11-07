@@ -422,13 +422,16 @@ const InitWalletCMD string = "if [ ! -f $ORACLE_BASE/oradata/.${ORACLE_SID}${CHE
 const InitPrebuiltDbCMD string = "if [ ! -d /mnt/oradata/${ORACLE_SID} -a -d $ORACLE_BASE/oradata/${ORACLE_SID} ]; then cp -v $ORACLE_BASE/oradata/.${ORACLE_SID}$CHECKPOINT_FILE_EXTN /mnt/oradata && " +
 	" cp -vr $ORACLE_BASE/oradata/${ORACLE_SID} /mnt/oradata && cp -vr $ORACLE_BASE/oradata/dbconfig /mnt/oradata; fi "
 
-const AlterSgaPgaCpuCMD string = "echo -e  \"alter system set sga_target=%dM scope=both; \n alter system set pga_aggregate_target=%dM scope=both; \n alter system set cpu_count=%d; \" | %s "
-
+const AlterSgaPgaCMD string = "echo -e  \"alter system set sga_target=%dM scope=both; \n alter system set pga_aggregate_target=%dM scope=both; \" | %s "
+const AlterCpuCountCMD string = "echo -e \"alter system set cpu_count=%d; \" | %s"
 const AlterProcessesCMD string = "echo -e  \"alter system set processes=%d scope=spfile; \" | %s && " + CreateChkFileCMD + " && " +
 	"echo -e  \"SHUTDOWN IMMEDIATE; \n STARTUP MOUNT; \n ALTER DATABASE OPEN; \n ALTER PLUGGABLE DATABASE ALL OPEN; \n ALTER SYSTEM REGISTER;\" | %s && " +
 	RemoveChkFileCMD
 
-const GetInitParamsSQL string = "echo -e  \"select name,display_value from v\\$parameter  where name in  ('sga_target','pga_aggregate_target','cpu_count','processes') order by name asc;\" | %s"
+const GetInitParamsSQL string = "column name format a20;" +
+	"\ncolumn display_value format a20;" +
+	"\nset linesize 100 pagesize 50;" +
+	"\nselect name,display_value from v\\$parameter where name in  ('sga_target','pga_aggregate_target','cpu_count','processes') order by name asc;"
 
 const UnzipApexOnSIDBPod string = "if [ -f /opt/oracle/oradata/apex-latest.zip ]; then unzip -o /opt/oracle/oradata/apex-latest.zip -d /opt/oracle/oradata/${ORACLE_SID^^}; else echo \"apex-latest.zip not found\"; fi;"
 

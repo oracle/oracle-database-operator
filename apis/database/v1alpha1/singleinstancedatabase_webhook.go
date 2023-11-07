@@ -39,9 +39,9 @@
 package v1alpha1
 
 import (
-	"strings"
-	"time"	
 	"strconv"
+	"strings"
+	"time"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
@@ -74,20 +74,20 @@ func (r *SingleInstanceDatabase) Default() {
 	singleinstancedatabaselog.Info("default", "name", r.Name)
 
 	if r.Spec.LoadBalancer {
-		// Annotations required for a flexible load balancer on oci 
+		// Annotations required for a flexible load balancer on oci
 		if r.Spec.ServiceAnnotations == nil {
-			r.Spec.ServiceAnnotations= make(map[string]string)
+			r.Spec.ServiceAnnotations = make(map[string]string)
 		}
 		_, ok := r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"]
-		if(!ok) {
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"] = "flexible"
 		}
-		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
-		if(!ok) {
+		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"] = "10"
 		}
-		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
-		if(!ok) {
+		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
 		}
 	}
@@ -168,6 +168,29 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
+	if r.Spec.CreateAsStandby {
+		if r.Spec.ArchiveLog != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("archiveLog"),
+					r.Spec.ArchiveLog, "archiveLog cannot be specified for standby databases"))
+		}
+		if r.Spec.FlashBack != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("flashBack"),
+					r.Spec.FlashBack, "flashBack cannot be specified for standby databases"))
+		}
+		if r.Spec.ForceLogging != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("forceLog"),
+					r.Spec.ForceLogging, "forceLog cannot be specified for standby databases"))
+		}
+		if r.Spec.InitParams != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("initParams"),
+					r.Spec.InitParams, "initParams cannot be specified for standby databases"))
+		}
+	}
+
 	// Replica validation
 	if r.Spec.Replicas > 1 {
 		valMsg := ""
@@ -182,17 +205,17 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 				field.Invalid(field.NewPath("spec").Child("replicas"), r.Spec.Replicas, valMsg))
 		}
 	}
-	
+
 	if r.Spec.Edition == "express" || r.Spec.Edition == "free" {
 		if r.Spec.CloneFrom != "" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
-					"Cloning not supported for " + r.Spec.Edition + " edition"))
+					"Cloning not supported for "+r.Spec.Edition+" edition"))
 		}
 		if r.Spec.CreateAsStandby {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("createAsStandby"), r.Spec.CreateAsStandby,
-					"Physical Standby Database creation is not supported for " + r.Spec.Edition + " edition"))
+					"Physical Standby Database creation is not supported for "+r.Spec.Edition+" edition"))
 		}
 		if r.Spec.Edition == "express" && strings.ToUpper(r.Spec.Sid) != "XE" {
 			allErrs = append(allErrs,
@@ -217,22 +240,22 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		if r.Spec.InitParams.CpuCount != 0 {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("initParams").Child("cpuCount"), r.Spec.InitParams.CpuCount,
-					r.Spec.Edition + " edition does not support changing init parameter cpuCount."))
+					r.Spec.Edition+" edition does not support changing init parameter cpuCount."))
 		}
 		if r.Spec.InitParams.Processes != 0 {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("initParams").Child("processes"), r.Spec.InitParams.Processes,
-					r.Spec.Edition + " edition does not support changing init parameter process."))
+					r.Spec.Edition+" edition does not support changing init parameter process."))
 		}
 		if r.Spec.InitParams.SgaTarget != 0 {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("initParams").Child("sgaTarget"), r.Spec.InitParams.SgaTarget,
-					r.Spec.Edition + " edition does not support changing init parameter sgaTarget."))
+					r.Spec.Edition+" edition does not support changing init parameter sgaTarget."))
 		}
 		if r.Spec.InitParams.PgaAggregateTarget != 0 {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("initParams").Child("pgaAggregateTarget"), r.Spec.InitParams.PgaAggregateTarget,
-					r.Spec.Edition + " edition does not support changing init parameter pgaAggregateTarget."))
+					r.Spec.Edition+" edition does not support changing init parameter pgaAggregateTarget."))
 		}
 	} else {
 		if r.Spec.Sid == "XE" {
@@ -260,16 +283,16 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	if r.Status.FlashBack == "true" && r.Spec.FlashBack {
-		if !r.Spec.ArchiveLog {
+	if r.Status.FlashBack == "true" && r.Spec.FlashBack != nil && *r.Spec.FlashBack {
+		if r.Spec.ArchiveLog != nil && !*r.Spec.ArchiveLog {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("archiveLog"), r.Spec.ArchiveLog,
 					"Cannot disable Archivelog. Please disable Flashback first."))
 		}
 	}
 
-	if r.Status.ArchiveLog == "false" && !r.Spec.ArchiveLog {
-		if r.Spec.FlashBack {
+	if r.Status.ArchiveLog == "false" && r.Spec.ArchiveLog != nil && !*r.Spec.ArchiveLog {
+		if *r.Spec.FlashBack {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("flashBack"), r.Spec.FlashBack,
 					"Cannot enable Flashback. Please enable Archivelog first."))
@@ -306,6 +329,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 					"listenerPort can not be 2484 as the default port for tcpsListenerPort is 2484."))
 		}
 	}
+
 	if r.Spec.EnableTCPS && r.Spec.ListenerPort != 0 && r.Spec.TcpsListenerPort != 0 && r.Spec.ListenerPort == r.Spec.TcpsListenerPort {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), r.Spec.TcpsListenerPort,
@@ -339,6 +363,14 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("tcpsCertRenewInterval"),
 				" is applicable only for self signed certs"))
+	}
+
+	if r.Spec.InitParams != nil {
+		if (r.Spec.InitParams.PgaAggregateTarget != 0 && r.Spec.InitParams.SgaTarget == 0) || (r.Spec.InitParams.PgaAggregateTarget == 0 && r.Spec.InitParams.SgaTarget != 0) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("initParams"),
+					r.Spec.InitParams, "initParams value invalid : Provide values for both pgaAggregateTarget and SgaTarget"))
+		}
 	}
 
 	if len(allErrs) == 0 {
@@ -375,39 +407,42 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		return nil
 	}
 
-	if (old.Status.Role != dbcommons.ValueUnavailable && old.Status.Role != "PRIMARY") {
+	if old.Status.Role != dbcommons.ValueUnavailable && old.Status.Role != "PRIMARY" {
 		// Restriciting Patching of secondary databases archiveLog, forceLog, flashBack
 		statusArchiveLog, _ := strconv.ParseBool(old.Status.ArchiveLog)
-		if statusArchiveLog != r.Spec.ArchiveLog {
+		if r.Spec.ArchiveLog != nil && (statusArchiveLog != *r.Spec.ArchiveLog) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("archiveLog"), "cannot be changed"))
 		}
 		statusFlashBack, _ := strconv.ParseBool(old.Status.FlashBack)
-		if statusFlashBack != r.Spec.FlashBack {
+		if r.Spec.FlashBack != nil && (statusFlashBack != *r.Spec.FlashBack) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("flashBack"), "cannot be changed"))
 		}
 		statusForceLogging, _ := strconv.ParseBool(old.Status.ForceLogging)
-		if statusForceLogging != r.Spec.ForceLogging {
+		if r.Spec.ForceLogging != nil && (statusForceLogging != *r.Spec.ForceLogging) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("forceLog"), "cannot be changed"))
 		}
+
 		// Restriciting Patching of secondary databases InitParams
-		if old.Status.InitParams.SgaTarget != r.Spec.InitParams.SgaTarget {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("sgaTarget"), "cannot be changed"))
-		}
-		if old.Status.InitParams.PgaAggregateTarget != r.Spec.InitParams.PgaAggregateTarget {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("pgaAggregateTarget"), "cannot be changed"))
-		}
-		if old.Status.InitParams.CpuCount != r.Spec.InitParams.CpuCount {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("cpuCount"), "cannot be changed"))
-		}
-		if old.Status.InitParams.Processes != r.Spec.InitParams.Processes {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("processes"), "cannot be changed"))
+		if r.Spec.InitParams != nil {
+			if old.Status.InitParams.SgaTarget != r.Spec.InitParams.SgaTarget {
+				allErrs = append(allErrs,
+					field.Forbidden(field.NewPath("spec").Child("initParams").Child("sgaTarget"), "cannot be changed"))
+			}
+			if old.Status.InitParams.PgaAggregateTarget != r.Spec.InitParams.PgaAggregateTarget {
+				allErrs = append(allErrs,
+					field.Forbidden(field.NewPath("spec").Child("initParams").Child("pgaAggregateTarget"), "cannot be changed"))
+			}
+			if old.Status.InitParams.CpuCount != r.Spec.InitParams.CpuCount {
+				allErrs = append(allErrs,
+					field.Forbidden(field.NewPath("spec").Child("initParams").Child("cpuCount"), "cannot be changed"))
+			}
+			if old.Status.InitParams.Processes != r.Spec.InitParams.Processes {
+				allErrs = append(allErrs,
+					field.Forbidden(field.NewPath("spec").Child("initParams").Child("processes"), "cannot be changed"))
+			}
 		}
 	}
 
