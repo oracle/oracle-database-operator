@@ -64,9 +64,9 @@ type SingleInstanceDatabaseSpec struct {
 	ListenerPort          int               `json:"listenerPort,omitempty"`
 	TcpsListenerPort      int               `json:"tcpsListenerPort,omitempty"`
 	ServiceAnnotations    map[string]string `json:"serviceAnnotations,omitempty"`
-	FlashBack             bool              `json:"flashBack,omitempty"`
-	ArchiveLog            bool              `json:"archiveLog,omitempty"`
-	ForceLogging          bool              `json:"forceLog,omitempty"`
+	FlashBack             *bool             `json:"flashBack,omitempty"`
+	ArchiveLog            *bool             `json:"archiveLog,omitempty"`
+	ForceLogging          *bool             `json:"forceLog,omitempty"`
 	EnableTCPS            bool              `json:"enableTCPS,omitempty"`
 	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
 	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
@@ -85,7 +85,7 @@ type SingleInstanceDatabaseSpec struct {
 	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
 	Image         SingleInstanceDatabaseImage         `json:"image"`
 	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
-	InitParams    SingleInstanceDatabaseInitParams    `json:"initParams,omitempty"`
+	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
 }
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
@@ -164,7 +164,7 @@ type SingleInstanceDatabaseStatus struct {
 	PrimaryDatabase       string `json:"primaryDatabase,omitempty"`
 	DgBrokerConfigured    bool   `json:"dgBrokerConfigured,omitempty"`
 	// +kubebuilder:default:=""
-	TcpsTlsSecret         string `json:"tcpsTlsSecret"`
+	TcpsTlsSecret string `json:"tcpsTlsSecret"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge

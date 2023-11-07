@@ -45,6 +45,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -400,6 +401,75 @@ func CheckDBConfig(readyPod corev1.Pod, r client.Reader, config *rest.Config,
 	return flashBackStatus, archiveLogStatus, forceLoggingStatus, requeueN
 }
 
+func CheckDBInitParams(sidbReadyPod corev1.Pod, r client.Reader, config *rest.Config,
+	ctx context.Context, req ctrl.Request) (int, int, int, int, error) {
+	log := ctrllog.FromContext(ctx).WithValues("CheckDBParams", req.NamespacedName)
+
+	if sidbReadyPod.Name == "" {
+		log.Info("No Pod is Ready")
+		// As No pod is ready now , turn on mode when pod is ready . so requeue the request
+		return -1, -1, -1, -1, fmt.Errorf("no pod is ready")
+	}
+
+	log.Info("Check database init params")
+
+	out, err := ExecCommand(r, config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba", GetInitParamsSQL))
+	if err != nil {
+		log.Error(err, err.Error())
+		return -1, -1, -1, -1, err
+	}
+	if strings.Contains(out, "no rows selected") {
+		return -1, -1, -1, -1, errors.New("cannot fetch values for database init params")
+	}
+	if strings.Contains(out, "ORA-") {
+		return -1, -1, -1, -1, fmt.Errorf("error while getting database init params\n%s", out)
+	}
+	log.Info(fmt.Sprintf("Database initParams are \n%s", out))
+	initParams := strings.Split(out, "\n")
+	initParams = initParams[3:]
+	log.Info(fmt.Sprintf("%v", initParams))
+	log.Info(fmt.Sprintf("length of initParams is %v", len(initParams)))
+
+	log.Info("After parsing init param are " + strings.Join(initParams, ","))
+
+	log.Info("Parsing cpuCount")
+	log.Info(strings.Fields(initParams[0])[1])
+	cpu_count, err := strconv.Atoi(strings.Fields(initParams[0])[1])
+	if err != nil {
+		return -1, -1, -1, -1, err
+	}
+	log.Info("After parsing cpuCount", "cpuCount", cpu_count)
+
+	log.Info("Parsing pga_aggregate_target_value")
+	log.Info(strings.Fields(initParams[1])[1])
+	pga_aggregate_target_value := strings.Fields(initParams[1])[1]
+	pga_aggregate_target, err := strconv.Atoi(pga_aggregate_target_value[0 : len(pga_aggregate_target_value)-1])
+	if err != nil {
+		return -1, -1, -1, -1, err
+	}
+	log.Info("After parsing pga_aggregate_target_value", "pga_aggregate_target_value", pga_aggregate_target)
+
+	log.Info("Parsing processes")
+	log.Info(strings.Fields(initParams[2])[1])
+	processes, err := strconv.Atoi(strings.Fields(initParams[2])[1])
+	if err != nil {
+		return -1, -1, -1, -1, err
+	}
+	log.Info("After parsing processes", "processes", processes)
+
+	log.Info("parsing sga_target_value")
+	log.Info(strings.Fields(initParams[3])[1])
+	sga_target_value := strings.Fields(initParams[3])[1]
+	sga_target, err := strconv.Atoi(sga_target_value[0 : len(sga_target_value)-1])
+	if err != nil {
+		return -1, -1, -1, -1, err
+	}
+	log.Info("After parsing sgaTarget", "sgaTarget", sga_target)
+
+	return cpu_count, pga_aggregate_target, processes, sga_target, nil
+}
+
 // CHECKS IF SID IN DATABASES SLICE , AND ITS DGROLE
 func IsDatabaseFound(sid string, databases []string, dgrole string) (bool, bool) {
 	found := false
@@ -458,34 +528,37 @@ func GetDatabasesInDgConfig(readyPod corev1.Pod, r client.Reader,
 
 // Returns Database version
 func GetDatabaseVersion(readyPod corev1.Pod, r client.Reader,
-	config *rest.Config, ctx context.Context, req ctrl.Request, edition string) (string, string, error) {
+	config *rest.Config, ctx context.Context, req ctrl.Request, edition string) (string, error) {
+
 	log := ctrllog.FromContext(ctx).WithValues("GetDatabaseVersion", req.NamespacedName)
 
 	// ## FIND DATABASES PRESENT IN DG CONFIGURATION
 	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf("echo -e  \"%s\"  | %s", GetVersionSQL, SQLPlusCLI))
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	log.Info("GetDatabaseVersion Output")
 	log.Info(out)
-
-	if !strings.Contains(out, "no rows selected") && !strings.Contains(out, "ORA-") {
-		out1 := strings.Replace(out, " ", "_", -1)
-		// filtering output and storing databses in dg configuration in  "databases" slice
-		out2 := strings.Fields(out1)
-
-		// first 2 values in the slice will be column name(VERSION) and a seperator(--------------) . so the version would be out2[2]
-		version := out2[2]
-		return version, out, nil
+	if strings.Contains(out, "no rows selected") {
+		return "", errors.New("cannot fetch database version")
 	}
-	return "", out, errors.New("database version is nil")
+	if strings.Contains(out, "ORA-") {
+		return "", errors.New("error while trying to get the database version " + out)
+	}
 
+	out1 := strings.Replace(out, " ", "_", -1)
+	// filtering output and storing databses in dg configuration in  "databases" slice
+	out2 := strings.Fields(out1)
+	// first 2 values in the slice will be column name(VERSION) and a seperator(--------------) . so the version would be out2[2]
+	version := out2[2]
+	return version, nil
 }
 
 // Fetch role by quering the DB
 func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
-	config *rest.Config, ctx context.Context, req ctrl.Request, edition string) (string, error) {
+	config *rest.Config, ctx context.Context, req ctrl.Request) (string, error) {
+
 	log := ctrllog.FromContext(ctx).WithValues("GetDatabaseRole", req.NamespacedName)
 
 	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
@@ -497,7 +570,7 @@ func GetDatabaseRole(readyPod corev1.Pod, r client.Reader,
 	if !strings.Contains(out, "no rows selected") && !strings.Contains(out, "ORA-") {
 		out = strings.Replace(out, " ", "_", -1)
 		// filtering output and storing databse_role in  "database_role"
-		databaseRole := strings.Fields(out)[2]
+		databaseRole := strings.ToUpper(strings.Fields(out)[2])
 
 		// first 2 values in the slice will be column name(DATABASE_ROLE) and a seperator(--------------) .
 		return databaseRole, nil
