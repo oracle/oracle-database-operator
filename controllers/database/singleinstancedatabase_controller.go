@@ -412,25 +412,11 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	if m.Status.Sid != "" && !strings.EqualFold(m.Spec.Sid, m.Status.Sid) {
 		eventMsgs = append(eventMsgs, "sid cannot be updated")
 	}
-	if m.Spec.CloneFrom == "" && m.Spec.Edition != "" && m.Status.Edition != "" && !strings.EqualFold(m.Status.Edition, m.Spec.Edition) {
-		eventMsgs = append(eventMsgs, "edition cannot be updated")
-	}
 	if m.Status.Charset != "" && !strings.EqualFold(m.Status.Charset, m.Spec.Charset) {
 		eventMsgs = append(eventMsgs, "charset cannot be updated")
 	}
 	if m.Status.Pdbname != "" && !strings.EqualFold(m.Status.Pdbname, m.Spec.Pdbname) {
 		eventMsgs = append(eventMsgs, "pdbName cannot be updated")
-	}
-	if m.Status.CloneFrom != "" &&
-		(m.Status.CloneFrom == dbcommons.NoCloneRef && m.Spec.CloneFrom != "" ||
-			m.Status.CloneFrom != dbcommons.NoCloneRef && m.Status.CloneFrom != m.Spec.CloneFrom) {
-		eventMsgs = append(eventMsgs, "cloneFrom cannot be updated")
-	}
-	if (m.Spec.Edition == "express" || m.Spec.Edition == "free") && m.Spec.CloneFrom != "" {
-		eventMsgs = append(eventMsgs, "cloning not supported for "+m.Spec.Edition+" edition")
-	}
-	if (m.Spec.Edition == "express" || m.Spec.Edition == "free") && m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
-		eventMsgs = append(eventMsgs, "Standby database creation is not supported for "+m.Spec.Edition+" edition")
 	}
 	if m.Status.OrdsReference != "" && m.Status.Persistence.Size != "" && m.Status.Persistence != m.Spec.Persistence {
 		eventMsgs = append(eventMsgs, "uninstall ORDS to change Peristence")
@@ -466,20 +452,16 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	m.Status.Pdbname = m.Spec.Pdbname
 	m.Status.Persistence = m.Spec.Persistence
 	m.Status.PrebuiltDB = m.Spec.Image.PrebuiltDB
-	if m.Spec.CloneFrom == "" {
-		m.Status.CloneFrom = dbcommons.NoCloneRef
-	} else {
-		m.Status.CloneFrom = m.Spec.CloneFrom
-	}
-	if m.Spec.CloneFrom != "" {
+
+	if m.Spec.CreateAs == "clone" {
 		// Once a clone database has created , it has no link with its reference
 		if m.Status.DatafilesCreated == "true" ||
-			!dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
+			!dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
 			return requeueN, nil
 		}
 
 		// Fetch the Clone database reference
-		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.CloneFrom}, n)
+		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, n)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
@@ -492,7 +474,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		if n.Status.Status != dbcommons.StatusReady {
 			m.Status.Status = dbcommons.StatusPending
 			eventReason := "Source Database Pending"
-			eventMsg := "status of database " + m.Spec.CloneFrom + " is not ready, retrying..."
+			eventMsg := "status of database " + n.Name + " is not ready, retrying..."
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 			err = errors.New(eventMsg)
 			return requeueY, err
@@ -509,10 +491,10 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		}
 
 		m.Status.Edition = n.Status.Edition
-
+		m.Status.PrimaryDatabase = n.Name
 	}
 
-	if m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
+	if m.Spec.CreateAs == "standby" {
 
 		// Fetch the Primary database reference, required for all iterations
 		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
@@ -744,19 +726,19 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "WALLET_DIR",
-								Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
+								Value: "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet",
 							},
 						},
 						Command: []string{"/bin/sh"},
 						Args: func() []string {
 							edition := ""
-							if m.Spec.CloneFrom == "" {
+							if m.Spec.CreateAs != "clone" {
 								edition = m.Spec.Edition
 								if m.Spec.Edition == "" {
 									edition = "enterprise"
 								}
 							} else {
-								if !dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
+								if !dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
 									edition = m.Spec.Edition
 								} else {
 									edition = n.Spec.Edition
@@ -791,22 +773,41 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				},
 				Ports: []corev1.ContainerPort{{ContainerPort: dbcommons.CONTAINER_LISTENER_PORT}, {ContainerPort: 5500}},
 
-				ReadinessProbe: &corev1.Probe{
-					ProbeHandler: corev1.ProbeHandler{
-						Exec: &corev1.ExecAction{
-							Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
-						},
-					},
-					InitialDelaySeconds: 20,
-					TimeoutSeconds:      20,
-					PeriodSeconds: func() int32 {
-						if m.Spec.ReadinessCheckPeriod > 0 {
-							return int32(m.Spec.ReadinessCheckPeriod)
+				ReadinessProbe: func() *corev1.Probe {
+					if m.Spec.CreateAs == "primary" {
+						return &corev1.Probe{
+							ProbeHandler: corev1.ProbeHandler{
+								Exec: &corev1.ExecAction{
+									Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
+								},
+							},
+							InitialDelaySeconds: 20,
+							TimeoutSeconds:      20,
+							PeriodSeconds: func() int32 {
+								if m.Spec.ReadinessCheckPeriod > 0 {
+									return int32(m.Spec.ReadinessCheckPeriod)
+								}
+								return 60
+							}(),
 						}
-						return 60
-					}(),
-				},
-
+					} else {
+						return &corev1.Probe{
+							ProbeHandler: corev1.ProbeHandler{
+								Exec: &corev1.ExecAction{
+									Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/oradata/.$ORACLE_SID$CHECKPOINT_FILE_EXTN ]; then if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi else true; fi "},
+								},
+							},
+							InitialDelaySeconds: 0,
+							TimeoutSeconds:      20,
+							PeriodSeconds: func() int32 {
+								if m.Spec.ReadinessCheckPeriod > 0 {
+									return int32(m.Spec.ReadinessCheckPeriod)
+								}
+								return 60
+							}(),
+						}
+					}
+				}(),
 				VolumeMounts: func() []corev1.VolumeMount {
 					mounts := []corev1.VolumeMount{}
 					if m.Spec.Persistence.Size != "" {
@@ -816,8 +817,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						})
 					}
 					if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB {
-						// mounts pwd as secrets for express edition
-						// or prebuilt db
+						// mounts pwd as secrets for express edition or prebuilt db
 						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: "/run/secrets/oracle_pwd",
 							ReadOnly:  true,
@@ -856,7 +856,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 						}
 					}
-					if m.Spec.CloneFrom != "" {
+					if m.Spec.CreateAs == "clone" {
 						// Clone DB use-case
 						return []corev1.EnvVar{
 							{
@@ -873,25 +873,18 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "WALLET_DIR",
-								Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
+								Value: "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet",
 							},
 							{
 								Name: "PRIMARY_DB_CONN_STR",
 								Value: func() string {
-									if dbcommons.IsSourceDatabaseOnCluster(m.Spec.CloneFrom) {
+									if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
 										return n.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + n.Spec.Sid
 									}
-									return m.Spec.CloneFrom
+									return m.Spec.PrimaryDatabaseRef
 								}(),
 							},
-							{
-								Name: "ORACLE_HOSTNAME",
-								ValueFrom: &corev1.EnvVarSource{
-									FieldRef: &corev1.ObjectFieldSelector{
-										FieldPath: "status.podIP",
-									},
-								},
-							},
+							CreateOracleHostnameEnvVarObj(m, n),
 							{
 								Name:  "CLONE_DB",
 								Value: "true",
@@ -902,7 +895,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 						}
 
-					} else if m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
+					} else if m.Spec.CreateAs == "standby" {
 						//Standby DB Usecase
 						return []corev1.EnvVar{
 							{
@@ -919,7 +912,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "WALLET_DIR",
-								Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
+								Value: "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet",
 							},
 							{
 								Name: "PRIMARY_DB_CONN_STR",
@@ -994,7 +987,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								if m.Spec.Image.PrebuiltDB {
 									return "" // No wallets for prebuilt DB
 								}
-								return "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet"
+								return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
 							}(),
 						},
 						{
@@ -1071,7 +1064,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	}
 
 	// Adding pod anti-affinity for standby cases
-	if m.Spec.PrimaryDatabaseRef != "" && m.Spec.CreateAsStandby {
+	if m.Spec.CreateAs == "standby" {
 		weightedPodAffinityTerm := corev1.WeightedPodAffinityTerm{
 			Weight: 100,
 			PodAffinityTerm: corev1.PodAffinityTerm{
@@ -1835,7 +1828,7 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 		return requeueY, nil
 	}
 
-	if m.Spec.CloneFrom == "" && m.Spec.Edition != "express" {
+	if m.Spec.CreateAs != "clone" && m.Spec.Edition != "express" {
 		//Check if Edition of m.Spec.Sid is same as m.Spec.Edition
 		getEditionFile := dbcommons.GetEnterpriseEditionFileCMD
 		eventReason := m.Spec.Sid + " is a enterprise edition"
@@ -2019,86 +2012,96 @@ func (r *SingleInstanceDatabaseReconciler) deletePods(ctx context.Context, req c
 //	ValidateDBReadiness and return the ready POD
 //
 // #############################################################################
-func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(m *dbapi.SingleInstanceDatabase,
+func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(sidb *dbapi.SingleInstanceDatabase,
 	ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod, error) {
 
-	readyPod, _, available, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
-		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
+	log := r.Log.WithValues("validateDBReadiness", req.NamespacedName)
+
+	log.Info("Validating readiness for database")
+
+	sidbReadyPod, _, available, _, err := dbcommons.FindPods(r, sidb.Spec.Image.Version,
+		sidb.Spec.Image.PullFrom, sidb.Name, sidb.Namespace, ctx, req)
 	if err != nil {
 		r.Log.Error(err, err.Error())
-		return requeueY, readyPod, err
+		return requeueY, sidbReadyPod, err
 	}
-	if readyPod.Name == "" {
-		m.Status.Status = dbcommons.StatusPending
+
+	if sidbReadyPod.Name == "" {
+		sidb.Status.Status = dbcommons.StatusPending
+		log.Info("no pod currently in ready state")
 		if ok, _ := dbcommons.IsAnyPodWithStatus(available, corev1.PodFailed); ok {
 			eventReason := "Database Failed"
 			eventMsg := "pod creation failed"
-			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-		} else if ok, runningPod := dbcommons.IsAnyPodWithStatus(available, corev1.PodRunning); ok {
-			r.Log.Info("Database Creating...", "Name", m.Name)
-			m.Status.Status = dbcommons.StatusCreating
-			if m.Spec.CloneFrom != "" {
-				// Required since clone creates the datafiles under primary database SID folder
-				r.Log.Info("Creating the SID directory link for clone database", "name", m.Spec.Sid)
-				_, err := dbcommons.ExecCommand(r, r.Config, runningPod.Name, runningPod.Namespace, "",
-					ctx, req, false, "bash", "-c", dbcommons.CreateSIDlinkCMD)
-				if err != nil {
-					r.Log.Info(err.Error())
-				}
-			}
-			out, err := dbcommons.ExecCommand(r, r.Config, runningPod.Name, runningPod.Namespace, "",
-				ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD)
-			if err != nil {
-				r.Log.Info(err.Error())
-			}
-			r.Log.Info("GetCheckpointFileCMD Output : \n" + out)
-
-			if out != "" {
-				eventReason := "Database Unhealthy"
-				eventMsg := "datafiles exists"
-				r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-				m.Status.DatafilesCreated = "true"
-				m.Status.Status = dbcommons.StatusNotReady
-				r.updateORDSStatus(m, ctx, req)
-			}
-
+			r.Recorder.Eventf(sidb, corev1.EventTypeNormal, eventReason, eventMsg)
+		} else if ok, _ := dbcommons.IsAnyPodWithStatus(available, corev1.PodRunning); ok {
+			log.Info("Database Creating....", "Name", sidb.Name)
+			sidb.Status.Status = dbcommons.StatusCreating
 		} else {
-			r.Log.Info("Database Pending...", "Name", m.Name)
+			log.Info("Database Pending....", "Name", sidb.Name)
 		}
-
-		// As No pod is ready now , turn on mode when pod is ready . so requeue the request
-		return requeueY, readyPod, errors.New("no pod is ready currently")
+		log.Info("no pod currently in ready state")
+		return requeueY, sidbReadyPod, nil
 	}
 
-	version, err := dbcommons.GetDatabaseVersion(readyPod, r, r.Config, ctx, req, m.Spec.Edition)
+	if sidb.Spec.CreateAs == "clone" {
+		// Required since clone creates the datafiles under primary database SID folder
+		r.Log.Info("Creating the SID directory link for clone database", "name", sidb.Spec.Sid)
+		_, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
+			ctx, req, false, "bash", "-c", dbcommons.CreateSIDlinkCMD)
+		if err != nil {
+			r.Log.Info(err.Error())
+		}
+	}
+	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD)
 	if err != nil {
-		return requeueY, readyPod, err
+		r.Log.Info(err.Error())
+	}
+
+	if out != "" {
+		log.Info("Database initialzied")
+		eventReason := "Database Unhealthy"
+		eventMsg := "datafiles exists"
+		r.Recorder.Eventf(sidb, corev1.EventTypeNormal, eventReason, eventMsg)
+		sidb.Status.DatafilesCreated = "true"
+		sidb.Status.Status = dbcommons.StatusNotReady
+		r.updateORDSStatus(sidb, ctx, req)
+	} else {
+		log.Info("Database Creating....", "Name", sidb.Name)
+		return requeueY, sidbReadyPod, nil
+	}
+
+	version, err := dbcommons.GetDatabaseVersion(sidbReadyPod, r, r.Config, ctx, req)
+	if err != nil {
+		return requeueY, sidbReadyPod, err
 	}
 	dbMajorVersion, err := strconv.Atoi(strings.Split(version, ".")[0])
 	if err != nil {
 		r.Log.Error(err, err.Error())
-		return requeueY, readyPod, err
+		return requeueY, sidbReadyPod, err
 	}
 	r.Log.Info("DB Major Version is " + strconv.Itoa(dbMajorVersion))
 	// Validating that free edition of the database is only supported from database 23c onwards
-	if m.Spec.Edition == "free" && dbMajorVersion < 23 {
+	if sidb.Spec.Edition == "free" && dbMajorVersion < 23 {
 		errMsg := "the Oracle Database Free is only available from version 23c onwards"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", errMsg)
-		m.Status.Status = dbcommons.StatusError
-		return requeueY, readyPod, errors.New(errMsg)
+		r.Recorder.Eventf(sidb, corev1.EventTypeWarning, "Spec Error", errMsg)
+		sidb.Status.Status = dbcommons.StatusError
+		return requeueY, sidbReadyPod, errors.New(errMsg)
 	}
 
-	available = append(available, readyPod)
+	available = append(available, sidbReadyPod)
 	podNamesFinal := dbcommons.GetPodNames(available)
-	r.Log.Info("Final "+m.Name+" Pods After Deleting (or) Adding Extra Pods ( Including The Ready Pod ) ", "Pod Names", podNamesFinal)
-	r.Log.Info(m.Name+" Replicas Available", "Count", len(podNamesFinal))
-	r.Log.Info(m.Name+" Replicas Required", "Count", m.Spec.Replicas)
+	r.Log.Info("Final "+sidb.Name+" Pods After Deleting (or) Adding Extra Pods ( Including The Ready Pod ) ", "Pod Names", podNamesFinal)
+	r.Log.Info(sidb.Name+" Replicas Available", "Count", len(podNamesFinal))
+	r.Log.Info(sidb.Name+" Replicas Required", "Count", sidb.Spec.Replicas)
 
 	eventReason := "Database Ready"
-	eventMsg := "database open on pod " + readyPod.Name + " scheduled on node " + readyPod.Status.HostIP
-	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+	eventMsg := "database open on pod " + sidbReadyPod.Name + " scheduled on node " + sidbReadyPod.Status.HostIP
+	r.Recorder.Eventf(sidb, corev1.EventTypeNormal, eventReason, eventMsg)
 
-	return requeueN, readyPod, nil
+	sidb.Status.CreatedAs = sidb.Spec.CreateAs
+
+	return requeueN, sidbReadyPod, nil
 
 }
 
@@ -2470,7 +2473,6 @@ func (r *SingleInstanceDatabaseReconciler) updateInitParameters(m *dbapi.SingleI
 		}
 		log.Info("AlterProcessesCMD Output:" + out)
 	}
-
 	return requeueN, nil
 }
 
@@ -2716,7 +2718,7 @@ func (r *SingleInstanceDatabaseReconciler) updateSidbStatus(sidb *dbapi.SingleIn
 	sidb.Status.Role = sidbRole
 
 	// Get database version and update the status
-	version, err := dbcommons.GetDatabaseVersion(sidbReadyPod, r, r.Config, ctx, req, sidb.Spec.Edition)
+	version, err := dbcommons.GetDatabaseVersion(sidbReadyPod, r, r.Config, ctx, req)
 	if err != nil {
 		return err
 	}
@@ -2888,8 +2890,11 @@ func (r *SingleInstanceDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) er
 		Complete(r)
 }
 
-// StandbyDatabase functions
-// Primary DB Validation
+// #############################################################################
+//
+//	Check primary database status
+//
+// #############################################################################
 func CheckPrimaryDatabaseStatus(p *dbapi.SingleInstanceDatabase) error {
 
 	if p.Status.Status != dbcommons.StatusReady {
@@ -2898,6 +2903,11 @@ func CheckPrimaryDatabaseStatus(p *dbapi.SingleInstanceDatabase) error {
 	return nil
 }
 
+// #############################################################################
+//
+//	Check if refered database is the primary database
+//
+// #############################################################################
 func CheckDatabaseRoleAsPrimary(p *dbapi.SingleInstanceDatabase) error {
 
 	if strings.ToUpper(p.Status.Role) != "PRIMARY" {
@@ -2906,6 +2916,11 @@ func CheckDatabaseRoleAsPrimary(p *dbapi.SingleInstanceDatabase) error {
 	return nil
 }
 
+// #############################################################################
+//
+//	Get ready pod for the singleinstancedatabase resource
+//
+// #############################################################################
 func GetDatabaseReadyPod(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (corev1.Pod, error) {
 
 	dbReadyPod, _, _, _, err := dbcommons.FindPods(r, d.Spec.Image.Version,
@@ -2914,6 +2929,11 @@ func GetDatabaseReadyPod(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx c
 	return dbReadyPod, err
 }
 
+// #############################################################################
+//
+//	Get admin password for singleinstancedatabase
+//
+// #############################################################################
 func GetDatabaseAdminPassword(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx context.Context) (string, error) {
 
 	adminPasswordSecret := &corev1.Secret{}
@@ -2926,6 +2946,11 @@ func GetDatabaseAdminPassword(r client.Reader, d *dbapi.SingleInstanceDatabase, 
 	return adminPassword, nil
 }
 
+// #############################################################################
+//
+//	Validate primary singleinstancedatabase admin password
+//
+// #############################################################################
 func ValidatePrimaryDatabaseAdminPassword(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase,
 	adminPassword string, ctx context.Context, req ctrl.Request) error {
 
@@ -2952,6 +2977,11 @@ func ValidatePrimaryDatabaseAdminPassword(r *SingleInstanceDatabaseReconciler, p
 	return nil
 }
 
+// #############################################################################
+//
+//	Validate refered primary database db params are all enabled
+//
+// #############################################################################
 func ValidateDatabaseConfiguration(p *dbapi.SingleInstanceDatabase) error {
 	if p.Status.ArchiveLog == "false" || p.Status.FlashBack == "false" || p.Status.ForceLogging == "false" {
 		return fmt.Errorf("all of Archivelog, Flashback and ForceLogging modes are not enabled in the primary database %v", p.Name)
@@ -2959,6 +2989,11 @@ func ValidateDatabaseConfiguration(p *dbapi.SingleInstanceDatabase) error {
 	return nil
 }
 
+// #############################################################################
+//
+//	Validate refered primary database for standby sidb creation
+//
+// #############################################################################
 func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
@@ -3010,7 +3045,11 @@ func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconcil
 	return nil
 }
 
-// Primary DB Setup
+// #############################################################################
+//
+//	Get total database pods for singleinstancedatabase
+//
+// #############################################################################
 func GetTotalDatabasePods(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (int, error) {
 	_, totalPods, _, _, err := dbcommons.FindPods(r, d.Spec.Image.Version,
 		d.Spec.Image.PullFrom, d.Name, d.Namespace, ctx, req)
@@ -3018,6 +3057,11 @@ func GetTotalDatabasePods(r client.Reader, d *dbapi.SingleInstanceDatabase, ctx 
 	return totalPods, err
 }
 
+// #############################################################################
+//
+//	Set tns names for primary database for dataguard configuraion
+//
+// #############################################################################
 func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
 	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 
@@ -3048,6 +3092,11 @@ func SetupTnsNamesPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.Sin
 	return nil
 }
 
+// #############################################################################
+//
+//	Restarting listners in database
+//
+// #############################################################################
 func RestartListenerInDatabase(r *SingleInstanceDatabaseReconciler, primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	r.Log.Info("Restarting listener in the database through pod", "primary database pod name", primaryReadyPod.Name)
 	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "",
@@ -3060,6 +3109,11 @@ func RestartListenerInDatabase(r *SingleInstanceDatabaseReconciler, primaryReady
 	return nil
 }
 
+// #############################################################################
+//
+//	Setup primary listener for dataguard configuration
+//
+// #############################################################################
 func SetupListenerPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.SingleInstanceDatabase, s *dbapi.SingleInstanceDatabase,
 	primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 
@@ -3091,6 +3145,11 @@ func SetupListenerPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.Sin
 	return nil
 }
 
+// #############################################################################
+//
+//	Setup init parameters of primary database for dataguard configuration
+//
+// #############################################################################
 func SetupInitParamsPrimaryForDG(r *SingleInstanceDatabaseReconciler, primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	r.Log.Info("Running StandbyDatabasePrerequisitesSQL in the primary database")
 	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
@@ -3103,6 +3162,11 @@ func SetupInitParamsPrimaryForDG(r *SingleInstanceDatabaseReconciler, primaryRea
 	return nil
 }
 
+// #############################################################################
+//
+//	Setup primary database for standby singleinstancedatabase
+//
+// #############################################################################
 func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
@@ -3144,7 +3208,11 @@ func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 
 }
 
-// Standby DB Setup
+// #############################################################################
+//
+//	Get all pdbs in a singleinstancedatabase
+//
+// #############################################################################
 func GetAllPdbInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ([]string, error) {
 	var pdbs []string
 	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "",
@@ -3159,6 +3227,11 @@ func GetAllPdbInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.
 	return pdbs, nil
 }
 
+// #############################################################################
+//
+//	Setup tnsnames.ora for all the pdb list in the singleinstancedatabase
+//
+// #############################################################################
 func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request, pdbList []string) error {
 	for _, pdb := range pdbList {
@@ -3196,6 +3269,11 @@ func SetupTnsNamesForPDBListInDatabase(r *SingleInstanceDatabaseReconciler, d *d
 	return nil
 }
 
+// #############################################################################
+//
+//	Setup tnsnames.ora in standby database for primary singleinstancedatabase
+//
+// #############################################################################
 func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
 	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 
@@ -3210,6 +3288,11 @@ func SetupPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dba
 	return nil
 }
 
+// #############################################################################
+//
+//	Enabling flashback in singleinstancedatabase
+//
+// #############################################################################
 func EnableFlashbackInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.GetSqlClient("enterprise")))
@@ -3221,6 +3304,11 @@ func EnableFlashbackInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod c
 	return nil
 }
 
+// #############################################################################
+//
+//	setup standby database
+//
+// #############################################################################
 func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
@@ -3272,4 +3360,35 @@ func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 	}
 
 	return nil
+}
+
+// #############################################################################
+//
+//	Create oracle hostname environment variable object to be passed to sidb
+//
+// #############################################################################
+func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPrimaryDatabase *dbapi.SingleInstanceDatabase) corev1.EnvVar {
+	dbMajorVersion, err := strconv.Atoi(strings.Split(referedPrimaryDatabase.Status.ReleaseUpdate, ".")[0])
+	if err != nil {
+		// r.Log.Error(err, err.Error())
+		return corev1.EnvVar{
+			Name:  "ORACLE_HOSTNAME",
+			Value: "",
+		}
+	}
+	if dbMajorVersion >= 23 {
+		return corev1.EnvVar{
+			Name:  "ORACLE_HOSTNAME",
+			Value: sidb.Name,
+		}
+	} else {
+		return corev1.EnvVar{
+			Name: "ORACLE_HOSTNAME",
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "status.podIP",
+				},
+			},
+		}
+	}
 }

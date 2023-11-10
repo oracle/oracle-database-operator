@@ -98,9 +98,13 @@ func (r *SingleInstanceDatabase) Default() {
 	}
 
 	if r.Spec.Edition == "" {
-		if r.Spec.CloneFrom == "" && !r.Spec.Image.PrebuiltDB {
+		if r.Spec.CreateAs == "clone" && !r.Spec.Image.PrebuiltDB {
 			r.Spec.Edition = "enterprise"
 		}
+	}
+
+	if r.Spec.CreateAs == "" {
+		r.Spec.CreateAs = "primary"
 	}
 
 	if r.Spec.Sid == "" {
@@ -130,7 +134,7 @@ func (r *SingleInstanceDatabase) Default() {
 		}
 	}
 
-	if r.Spec.PrimaryDatabaseRef != "" && r.Spec.CreateAsStandby {
+	if r.Spec.PrimaryDatabaseRef != "" && r.Spec.CreateAs == "standby" {
 		if r.Spec.Replicas == 0 {
 			r.Spec.Replicas = 1
 		}
@@ -168,7 +172,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	if r.Spec.CreateAsStandby {
+	if r.Spec.CreateAs == "standby" {
 		if r.Spec.ArchiveLog != nil {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("archiveLog"),
@@ -206,15 +210,20 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
+	if (r.Spec.CreateAs == "clone" || r.Spec.CreateAs == "standby") && r.Spec.PrimaryDatabaseRef == "" {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("primaryDatabaseRef"), r.Spec.PrimaryDatabaseRef, "Primary Database reference cannot be null for a secondary database"))
+	}
+
 	if r.Spec.Edition == "express" || r.Spec.Edition == "free" {
-		if r.Spec.CloneFrom != "" {
+		if r.Spec.CreateAs == "clone" {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
+				field.Invalid(field.NewPath("spec").Child("createAs"), r.Spec.CreateAs,
 					"Cloning not supported for "+r.Spec.Edition+" edition"))
 		}
-		if r.Spec.CreateAsStandby {
+		if r.Spec.CreateAs == "standby" {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("createAsStandby"), r.Spec.CreateAsStandby,
+				field.Invalid(field.NewPath("spec").Child("createAs"), r.Spec.CreateAs,
 					"Physical Standby Database creation is not supported for "+r.Spec.Edition+" edition"))
 		}
 		if r.Spec.Edition == "express" && strings.ToUpper(r.Spec.Sid) != "XE" {
@@ -270,15 +279,15 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	if r.Spec.CloneFrom != "" {
+	if r.Spec.CreateAs != "clone" {
 		if r.Spec.Image.PrebuiltDB {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
+				field.Invalid(field.NewPath("spec").Child("createAs"), r.Spec.CreateAs,
 					"cannot clone to create a prebuilt db"))
-		} else if strings.Contains(r.Spec.CloneFrom, ":") && strings.Contains(r.Spec.CloneFrom, "/") && r.Spec.Edition == "" {
+		} else if strings.Contains(r.Spec.PrimaryDatabaseRef, ":") && strings.Contains(r.Spec.PrimaryDatabaseRef, "/") && r.Spec.Edition == "" {
 			//Edition must be passed when cloning from a source database other than same k8s cluster
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
+				field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CreateAs,
 					"Edition must be passed when cloning from a source database other than same k8s cluster"))
 		}
 	}
@@ -407,6 +416,18 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		return nil
 	}
 
+	if old.Status.CreatedAs == "clone" {
+		if r.Spec.Edition != "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("edition"), "Edition of a cloned singleinstancedatabase cannot be changed post creation"))
+		}
+
+		if !strings.EqualFold(old.Status.PrimaryDatabase, r.Spec.PrimaryDatabaseRef) {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "Primary database of a cloned singleinstancedatabase cannot be changed post creation"))
+		}
+	}
+
 	if old.Status.Role != dbcommons.ValueUnavailable && old.Status.Role != "PRIMARY" {
 		// Restriciting Patching of secondary databases archiveLog, forceLog, flashBack
 		statusArchiveLog, _ := strconv.ParseBool(old.Status.ArchiveLog)
@@ -456,7 +477,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))
 	}
-	if r.Spec.CloneFrom == "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
+	if r.Spec.Edition != "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("edition"), "cannot be changed"))
 	}
@@ -472,11 +493,11 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("pdbname"), "cannot be changed"))
 	}
-	if old.Status.CloneFrom != "" &&
-		(old.Status.CloneFrom == dbcommons.NoCloneRef && r.Spec.CloneFrom != "" ||
-			old.Status.CloneFrom != dbcommons.NoCloneRef && old.Status.CloneFrom != r.Spec.CloneFrom) {
+	if old.Status.CreatedAs == "clone" &&
+		(old.Status.PrimaryDatabase == dbcommons.ValueUnavailable && r.Spec.PrimaryDatabaseRef != "" ||
+			old.Status.PrimaryDatabase != dbcommons.ValueUnavailable && old.Status.PrimaryDatabase != r.Spec.PrimaryDatabaseRef) {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("cloneFrom"), "cannot be changed"))
+			field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "cannot be changed"))
 	}
 	if old.Status.OrdsReference != "" && r.Status.Persistence != r.Spec.Persistence {
 		allErrs = append(allErrs,

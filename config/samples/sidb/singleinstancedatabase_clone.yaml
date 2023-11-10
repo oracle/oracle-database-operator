@@ -15,7 +15,10 @@ spec:
   
   ## A source database ref to clone from.
   ## Make sure the source database has been created by applying singeinstancedatabase_create.yaml
-  cloneFrom: sidb-sample
+  primaryDatabaseRef: sidb-sample
+
+  ## Intended type of database.
+  createAs: clone
 
   ## Should refer to SourceDB secret
   ## Secret containing SIDB password mapped to secretKey 
