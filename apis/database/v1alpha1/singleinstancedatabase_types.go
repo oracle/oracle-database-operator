@@ -72,9 +72,9 @@ type SingleInstanceDatabaseSpec struct {
 	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
 	DgBrokerConfigured    bool              `json:"dgBrokerConfigured,omitempty"`
 
-	CloneFrom            string `json:"cloneFrom,omitempty"`
-	PrimaryDatabaseRef   string `json:"primaryDatabaseRef,omitempty"`
-	CreateAsStandby      bool   `json:"createAsStandby,omitempty"`
+	PrimaryDatabaseRef string `json:"primaryDatabaseRef,omitempty"`
+	// +kubebuilder:validation:Enum=primary;standby;clone
+	CreateAs             string `json:"createAs,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
 	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
 
@@ -146,7 +146,7 @@ type SingleInstanceDatabaseStatus struct {
 	Pdbname              string `json:"pdbName,omitempty"`
 	InitSgaSize          int    `json:"initSgaSize,omitempty"`
 	InitPgaSize          int    `json:"initPgaSize,omitempty"`
-	CloneFrom            string `json:"cloneFrom,omitempty"`
+	CreatedAs            string `json:"createdAs,omitempty"`
 	FlashBack            string `json:"flashBack,omitempty"`
 	ArchiveLog           string `json:"archiveLog,omitempty"`
 	ForceLogging         string `json:"forceLog,omitempty"`
