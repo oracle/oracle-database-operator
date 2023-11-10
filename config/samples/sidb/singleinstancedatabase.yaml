@@ -11,19 +11,16 @@ spec:
   
   ## Use only alphanumeric characters for sid up to a maximum of 8 characters
   sid: ORCL1
-  
-  ## Specify a source database ref to copy/clone from any SIDB in current K8s cluster instead of creating a fresh one
-  ## If cloning from an external containerized DB which could be either standalone or in any K8s cluster,
-  ## specify connect string as `<host>:<port>/<service_name>` instead of source database ref
-  cloneFrom: ""
 
-  ## Reference to a source primary database from which
+  ## Type of database. 
+  ## Valid values for createAs are primary, standby or clone
+  createAs: primary
+
+  ## Reference to a source primary database.
+  ## Valid for standby and clone databases.
   ## Format: 1. Intra-cluster: you can give name of the primary database or the database connect string in `<host>:<port>/<service_name>` format
   ##         2. Inter-cluster: Database connect string in `<host>:<port>/<service_name>` format
   primaryDatabaseRef: ""
-
-  ## Enable this flag for creating Physical Standby Database
-  createAsStandby: false
 
   ## DB edition. N/A if cloning from a Source DB in current K8s cluster (if cloneFrom is set to a database ref)
   ## Valid values for edition are enterprise, standard or express

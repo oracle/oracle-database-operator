@@ -50,8 +50,6 @@ const DBA_GUID int64 = 54322
 
 const SQLPlusCLI string = "sqlplus -s / as sysdba"
 
-const NoCloneRef string = "Unavailable"
-
 const GetVersionSQL string = "SELECT VERSION_FULL FROM V\\$INSTANCE;"
 
 const CheckModesSQL string = "SELECT 'log_mode:' || log_mode AS log_mode ,'flashback_on:' || flashback_on AS flashback_on ,'force_logging:' || force_logging AS force_logging FROM v\\$database;"
