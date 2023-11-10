@@ -430,7 +430,6 @@ func CheckDBInitParams(sidbReadyPod corev1.Pod, r client.Reader, config *rest.Co
 	initParams = initParams[3:]
 	log.Info(fmt.Sprintf("%v", initParams))
 	log.Info(fmt.Sprintf("length of initParams is %v", len(initParams)))
-
 	log.Info("After parsing init param are " + strings.Join(initParams, ","))
 
 	log.Info("Parsing cpuCount")
@@ -528,7 +527,7 @@ func GetDatabasesInDgConfig(readyPod corev1.Pod, r client.Reader,
 
 // Returns Database version
 func GetDatabaseVersion(readyPod corev1.Pod, r client.Reader,
-	config *rest.Config, ctx context.Context, req ctrl.Request, edition string) (string, error) {
+	config *rest.Config, ctx context.Context, req ctrl.Request) (string, error) {
 
 	log := ctrllog.FromContext(ctx).WithValues("GetDatabaseVersion", req.NamespacedName)
 
