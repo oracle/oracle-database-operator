@@ -18,8 +18,8 @@ spec:
   ## Reference to a source primary database name
   primaryDatabaseRef: "sidb-sample"
 
-  ## Enable this flag for creating Physical Standby Database
-  createAsStandby: true
+  ## Intended type of database.
+  createAs: standby
 
   ## Secret containing SIDB password mapped to secretKey 
   adminPassword:

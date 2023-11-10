@@ -423,7 +423,7 @@ The following attributes cannot be modified after creating the Single Instance D
 - `edition`
 - `charset`
 - `pdbName`
-- `cloneFrom`
+- `primaryDatabaseRef`
 
 If you attempt to changing one of these attributes, then you receive an error similar to the following:
 
@@ -613,7 +613,7 @@ To create a standby database, edit and apply the sample yaml file [config/sample
 **Note:**
 - The `adminPassword` field of the above [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml) contains an admin password secret of the primary database ref for Standby Database creation. This secret will get deleted after the database pod becomes ready if the `keepSecret` attribute of `adminPassword` field is set to `false`. By default `keepSecret` is set to `true`.
 - Mention referred primary database in `.spec.primaryDatabaseRef` in the yaml file.
-- `.spec.createAsStandby` field of the yaml file should be true.
+- `.spec.createAs` field of the yaml file should be set to "standby".
 - Database configuration like `Archivelog`, `FlashBack`, `ForceLog`, `TCPS connections` are not supported for standby database.
 
 #### List Standby Databases
