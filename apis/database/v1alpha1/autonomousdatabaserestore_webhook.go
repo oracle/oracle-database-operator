@@ -46,6 +46,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -65,7 +66,7 @@ func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) er
 var _ webhook.Validator = &AutonomousDatabaseRestore{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateCreate() error {
+func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error) {
 	autonomousdatabaserestorelog.Info("validate create", "name", r.Name)
 
 	var allErrs field.ErrorList
@@ -104,31 +105,31 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseRestore"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateUpdate(old runtime.Object) error {
+func (r *AutonomousDatabaseRestore) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	autonomousdatabaserestorelog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseRestore"},
 		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateDelete() error {
+func (r *AutonomousDatabaseRestore) ValidateDelete() (admission.Warnings, error) {
 	autonomousdatabaserestorelog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }

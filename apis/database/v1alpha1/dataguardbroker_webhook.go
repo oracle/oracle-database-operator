@@ -48,6 +48,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -95,38 +96,38 @@ func (r *DataguardBroker) Default() {
 var _ webhook.Validator = &DataguardBroker{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateCreate() error {
+func (r *DataguardBroker) ValidateCreate() (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate create", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object creation.
-	return nil
+	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateUpdate(old runtime.Object) error {
+func (r *DataguardBroker) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate update", "name", r.Name)
 
 	dataguardbrokerlog.Info("validate update", "name", r.Name)
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	err := r.ValidateCreate()
+	_, err := r.ValidateCreate()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Validate Deletion
 	if r.GetDeletionTimestamp() != nil {
-		err := r.ValidateDelete()
+		warnings, err := r.ValidateDelete()
 		if err != nil {
-			return err
+			return warnings, err
 		}
 	}
 
 	// Now check for updation errors
 	oldObj, ok := old.(*DataguardBroker)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	if oldObj.Status.ProtectionMode != "" && !strings.EqualFold(r.Spec.ProtectionMode, oldObj.Status.ProtectionMode) {
@@ -139,18 +140,18 @@ func (r *DataguardBroker) ValidateUpdate(old runtime.Object) error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "DataguardBroker"},
 		r.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateDelete() error {
+func (r *DataguardBroker) ValidateDelete() (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }
