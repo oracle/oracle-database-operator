@@ -52,6 +52,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -147,7 +148,7 @@ func (r *SingleInstanceDatabase) Default() {
 var _ webhook.Validator = &SingleInstanceDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateCreate() error {
+func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 
@@ -383,37 +384,37 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object) error {
+func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object) (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate update", "name", r.Name)
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	err := r.ValidateCreate()
+	warnings, err := r.ValidateCreate()
 	if err != nil {
-		return err
+		return warnings, err
 	}
 
 	// Validate Deletion
 	if r.GetDeletionTimestamp() != nil {
-		err := r.ValidateDelete()
+		warnings, err := r.ValidateDelete()
 		if err != nil {
-			return err
+			return warnings, err
 		}
 	}
 
 	// Now check for updation errors
 	old, ok := oldRuntimeObject.(*SingleInstanceDatabase)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	if old.Status.CreatedAs == "clone" {
@@ -504,16 +505,16 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 			field.Forbidden(field.NewPath("spec").Child("persistence"), "uninstall ORDS to change Persistence"))
 	}
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateDelete() error {
+func (r *SingleInstanceDatabase) ValidateDelete() (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate delete", "name", r.Name)
 	var allErrs field.ErrorList
 	if r.Status.OrdsReference != "" {
@@ -521,9 +522,9 @@ func (r *SingleInstanceDatabase) ValidateDelete() error {
 			field.Forbidden(field.NewPath("status").Child("ordsReference"), "delete "+r.Status.OrdsReference+" to cleanup this SIDB"))
 	}
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
 }

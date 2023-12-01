@@ -46,6 +46,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -76,7 +77,7 @@ func (r *AutonomousDatabaseBackup) Default() {
 var _ webhook.Validator = &AutonomousDatabaseBackup{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseBackup) ValidateCreate() error {
+func (r *AutonomousDatabaseBackup) ValidateCreate() (admission.Warnings, error) {
 	autonomousdatabasebackuplog.Info("validate create", "name", r.Name)
 
 	var allErrs field.ErrorList
@@ -92,15 +93,15 @@ func (r *AutonomousDatabaseBackup) ValidateCreate() error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseBackup"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) error {
+func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	autonomousdatabasebackuplog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
@@ -132,17 +133,17 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseBackup"},
 		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseBackup) ValidateDelete() error {
+func (r *AutonomousDatabaseBackup) ValidateDelete() (admission.Warnings, error) {
 	autonomousdatabasebackuplog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }

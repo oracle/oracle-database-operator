@@ -66,7 +66,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	"github.com/oracle/oracle-database-operator/commons/annotations"
@@ -92,11 +91,11 @@ func (r *AutonomousDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbv1alpha1.AutonomousDatabase{}).
 		Watches(
-			&source.Kind{Type: &dbv1alpha1.AutonomousDatabaseBackup{}},
+			&dbv1alpha1.AutonomousDatabaseBackup{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueMapFn()),
 		).
 		Watches(
-			&source.Kind{Type: &dbv1alpha1.AutonomousDatabaseRestore{}},
+			&dbv1alpha1.AutonomousDatabaseRestore{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueMapFn()),
 		).
 		WithEventFilter(predicate.And(r.eventFilterPredicate(), r.watchPredicate())).
@@ -105,7 +104,7 @@ func (r *AutonomousDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error 
 }
 
 func (r *AutonomousDatabaseReconciler) enqueueMapFn() handler.MapFunc {
-	return func(o client.Object) []reconcile.Request {
+	return func(ctx context.Context, o client.Object) []reconcile.Request {
 		reqs := make([]reconcile.Request, len(o.GetOwnerReferences()))
 
 		for _, owner := range o.GetOwnerReferences() {
