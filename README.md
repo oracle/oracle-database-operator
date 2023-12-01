@@ -9,7 +9,7 @@ In this v1.0.0 production release, `OraOperator` supports the following database
 * Oracle Autonomous Database:
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
   * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
-  * Oracle Autonomous Container Database (ACD) (infrastructure) the infrastructure for provisionning Autonomous Databases.
+  * Oracle Autonomous Container Database (ACD) (infrastructure) the infrastructure for provisioning Autonomous Databases.
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
