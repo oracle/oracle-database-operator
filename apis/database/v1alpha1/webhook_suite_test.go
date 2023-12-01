@@ -61,6 +61,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 // To avoid dot import
@@ -136,11 +138,15 @@ var _ = BeforeSuite(func() {
 	webhookInstallOptions := &testEnv.WebhookInstallOptions
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:             scheme,
-		Host:               webhookInstallOptions.LocalServingHost,
-		Port:               webhookInstallOptions.LocalServingPort,
-		CertDir:            webhookInstallOptions.LocalServingCertDir,
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Port:    webhookInstallOptions.LocalServingPort,
+			Host:    webhookInstallOptions.LocalServingHost,
+			CertDir: webhookInstallOptions.LocalServingCertDir,
+		}),
 		LeaderElection:     false,
-		MetricsBindAddress: "0",
+		Metrics:            metricsserver.Options{
+			BindAddress: "0",
+		},
 	})
 	Expect(err).NotTo(HaveOccurred())
 

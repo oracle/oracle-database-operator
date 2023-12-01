@@ -44,7 +44,7 @@ import (
 	"strings"
 	"time"
 
-	goyaml "gopkg.in/yaml.v2"
+	goyaml "gopkg.in/yaml.v3"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 
