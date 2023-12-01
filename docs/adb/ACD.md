@@ -8,7 +8,7 @@ As indicated in the prerequisites (see above), to interact with OCI services, ei
 
 ## Required Permissions
 
-The opeartor must be given the required type of access in a policy written by an administrator to manage the Autonomous Container Databases. See [Create an Autonomous Container Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/create-acd.html) for the required policies.
+The operator must be given the required type of access in a policy written by an administrator to manage the Autonomous Container Databases. See [Create an Autonomous Container Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/create-acd.html) for the required policies.
 
 The permission to view the workrequests is also required, so that the operator will update the resources when the work is done. See [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) for sample work request policies.
 

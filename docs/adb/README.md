@@ -111,7 +111,7 @@ Follow these steps to provision an Autonomous Database that will map objects in 
 
 5. Choose the type of network access (optional):
 
-   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the network acess. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
+   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the network access. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
 
 6. Apply the YAML:
 
