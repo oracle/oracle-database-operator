@@ -3,6 +3,7 @@ build-operator:
   variables:
     IMAGE: "$DOCKER_REPO:$CI_COMMIT_SHORT_SHA"
     OP_YAML: oracle-database-operator.yaml
+    BUILD_INTERNAL: "true"
   script:
     - go version
     - make docker-build IMG="$IMAGE"
