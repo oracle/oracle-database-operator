@@ -53,6 +53,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
@@ -88,10 +89,12 @@ func main() {
 
 	ctrl.SetLogger(zap.New(func(o *zap.Options) { *o = *options }))
 
+	// By default, a Manager will create a WebhookServer with port 9443
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:             scheme,
-		MetricsBindAddress: metricsAddr,
-		Port:               9443,
+		Metrics:            metricsserver.Options{
+			BindAddress: metricsAddr,
+		},
 		LeaderElection:     enableLeaderElection,
 		LeaderElectionID:   "a9d608ea.oracle.com",
 	})

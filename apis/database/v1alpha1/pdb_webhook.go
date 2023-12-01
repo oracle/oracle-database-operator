@@ -54,6 +54,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -121,7 +122,7 @@ func (r *PDB) Default() {
 var _ webhook.Validator = &PDB{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *PDB) ValidateCreate() error {
+func (r *PDB) ValidateCreate() (admission.Warnings, error) {
 	pdblog.Info("ValidateCreate-Validating PDB spec for : " + r.Name)
 
 	var allErrs field.ErrorList
@@ -134,9 +135,9 @@ func (r *PDB) ValidateCreate() error {
 
 	if len(allErrs) == 0 {
 		pdblog.Info("PDB Resource : " + r.Name + " successfully validated for Action : " + action)
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "PDB"},
 		r.Name, allErrs)
 }
@@ -242,12 +243,12 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *PDB) ValidateUpdate(old runtime.Object) error {
+func (r *PDB) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	pdblog.Info("ValidateUpdate-Validating PDB spec for : " + r.Name)
 
 	isPDBMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
 	if isPDBMarkedToBeDeleted {
-		return nil
+		return nil, nil
 	}
 
 	var allErrs field.ErrorList
@@ -272,19 +273,19 @@ func (r *PDB) ValidateUpdate(old runtime.Object) error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "PDB"},
 		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *PDB) ValidateDelete() error {
+func (r *PDB) ValidateDelete() (admission.Warnings, error) {
 	pdblog.Info("ValidateDelete-Validating PDB spec for : " + r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }
 
 // Validate common specs needed for all PDB Actions

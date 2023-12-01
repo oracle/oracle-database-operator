@@ -50,6 +50,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -97,7 +98,7 @@ var _ webhook.Validator = &AutonomousDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 // ValidateCreate checks if the spec is valid for a provisioning or a binding operation
-func (r *AutonomousDatabase) ValidateCreate() error {
+func (r *AutonomousDatabase) ValidateCreate() (admission.Warnings, error) {
 
 	var allErrs field.ErrorList
 
@@ -115,15 +116,15 @@ func (r *AutonomousDatabase) ValidateCreate() error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabase"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
+func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 	var oldADB *AutonomousDatabase = old.(*AutonomousDatabase)
 
@@ -131,7 +132,7 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 
 	// skip the update of adding ADB OCID or binding
 	if oldADB.Status.LifecycleState == "" {
-		return nil
+		return nil, nil
 	}
 
 	// cannot update when the old state is in intermediate, except for the change to the hardLink or the terminate operatrion during valid lifecycleState
@@ -187,9 +188,9 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 	allErrs = validateNetworkAccess(r, allErrs)
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabase"},
 		r.Name, allErrs)
 }
@@ -263,11 +264,11 @@ func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) fie
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabase) ValidateDelete() error {
+func (r *AutonomousDatabase) ValidateDelete() (admission.Warnings, error) {
 	autonomousdatabaselog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }
 
 // Returns true if AutonomousContainerDatabaseOCID has value.
