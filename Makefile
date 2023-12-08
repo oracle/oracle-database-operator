@@ -75,7 +75,7 @@ GOLANG_VERSION ?= 1.21.4
 ## Download golang in the Dockerfile if BUILD_INTERNAL is set to true.
 ## Otherwise, use golang image from docker hub as the builder.
 ifeq ($(BUILD_INTERNAL), true)
-BUILDER_IMG = oraclelinux:8-slim
+BUILDER_IMG = oraclelinux:8
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg GOLANG_VERSION=$(GOLANG_VERSION)
 else
 BUILDER_IMG = golang:$(GOLANG_VERSION)
