@@ -94,6 +94,7 @@ func CreateAndGetDbcsId(logger logr.Logger, kubeClient client.Client, dbClient d
 	dbcsDetails.CompartmentId = common.String(dbcs.Spec.DbSystem.CompartmentId)
 	dbcsDetails.SubnetId = common.String(dbcs.Spec.DbSystem.SubnetId)
 	dbcsDetails.Shape = common.String(dbcs.Spec.DbSystem.Shape)
+        dbcsDetails.Domain = common.String(dbcs.Spec.DbSystem.Domain)
 	if dbcs.Spec.DbSystem.DisplayName != "" {
 		dbcsDetails.DisplayName = common.String(dbcs.Spec.DbSystem.DisplayName)
 	}
