@@ -249,9 +249,11 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	return requeueY, nil
 }
 
-/*************************************************
- * Validate the PDB Spec
- /************************************************/
+/*
+************************************************
+  - Validate the PDB Spec
+    /***********************************************
+*/
 func (r *PDBReconciler) validatePhase(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) {
 
 	log := r.Log.WithValues("validatePhase", req.NamespacedName)
@@ -282,9 +284,11 @@ func (r *PDBReconciler) validatePhase(ctx context.Context, req ctrl.Request, pdb
 	log.Info("Validation complete")
 }
 
-/****************************************************************
- * Check for Duplicate PDB. Same PDB name on the same CDB resource.
- /***************************************************************/
+/*
+***************************************************************
+  - Check for Duplicate PDB. Same PDB name on the same CDB resource.
+    /**************************************************************
+*/
 func (r *PDBReconciler) checkDuplicatePDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
 	log := r.Log.WithValues("checkDuplicatePDB", req.NamespacedName)
@@ -325,9 +329,11 @@ func (r *PDBReconciler) checkDuplicatePDB(ctx context.Context, req ctrl.Request,
 	return nil
 }
 
-/****************************************************************
- * Get the Custom Resource for the CDB mentioned in the PDB Spec
- /***************************************************************/
+/*
+***************************************************************
+  - Get the Custom Resource for the CDB mentioned in the PDB Spec
+    /**************************************************************
+*/
 func (r *PDBReconciler) getCDBResource(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) (dbapi.CDB, error) {
 
 	log := r.Log.WithValues("getCDBResource", req.NamespacedName)
@@ -354,9 +360,11 @@ func (r *PDBReconciler) getCDBResource(ctx context.Context, req ctrl.Request, pd
 	return cdb, nil
 }
 
-/****************************************************************
- * Get the ORDS Pod for the CDB mentioned in the PDB Spec
- /***************************************************************/
+/*
+***************************************************************
+  - Get the ORDS Pod for the CDB mentioned in the PDB Spec
+    /**************************************************************
+*/
 func (r *PDBReconciler) getORDSPod(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) (corev1.Pod, error) {
 
 	log := r.Log.WithValues("getORDSPod", req.NamespacedName)
@@ -382,9 +390,11 @@ func (r *PDBReconciler) getORDSPod(ctx context.Context, req ctrl.Request, pdb *d
 	return cdbPod, nil
 }
 
-/*************************************************
- * Get Secret Key for a Secret Name
- /************************************************/
+/*
+************************************************
+  - Get Secret Key for a Secret Name
+    /***********************************************
+*/
 func (r *PDBReconciler) getSecret(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB, secretName string, keyName string) (string, error) {
 
 	log := r.Log.WithValues("getSecret", req.NamespacedName)
@@ -404,9 +414,11 @@ func (r *PDBReconciler) getSecret(ctx context.Context, req ctrl.Request, pdb *db
 	return string(secret.Data[keyName]), nil
 }
 
-/*************************************************
- * Issue a REST API Call to the ORDS container
- /************************************************/
+/*
+************************************************
+  - Issue a REST API Call to the ORDS container
+    /***********************************************
+*/
 func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB, url string, payload map[string]string, action string) (string, error) {
 	log := r.Log.WithValues("callAPI", req.NamespacedName)
 
@@ -596,9 +608,11 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	return respData, nil
 }
 
-/*************************************************
- * Create a PDB
- /************************************************/
+/*
+************************************************
+  - Create a PDB
+    /***********************************************
+*/
 func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
 	log := r.Log.WithValues("createPDB", req.NamespacedName)
@@ -681,8 +695,8 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	if cdb.Spec.DBServer != "" {
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
-		ParseTnsAlias(&(cdb.Spec.DBTnsurl), &(pdb.Spec.PDBName))
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+		ParseTnsAlias(&(pdb.Status.ConnString), &(pdb.Spec.PDBName))
 	}
 
 	log.Info("New connect strinng", "tnsurl", cdb.Spec.DBTnsurl)
@@ -691,9 +705,11 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	return nil
 }
 
-/*************************************************
- * Clone a PDB
- /************************************************/
+/*
+************************************************
+  - Clone a PDB
+    /***********************************************
+*/
 func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
 	if pdb.Spec.PDBName == pdb.Spec.SrcPDBName {
@@ -758,8 +774,8 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 	if cdb.Spec.DBServer != "" {
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
-		ParseTnsAlias(&(cdb.Spec.DBTnsurl), &(pdb.Spec.PDBName))
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+		ParseTnsAlias(&(pdb.Status.ConnString), &(pdb.Spec.PDBName))
 	}
 
 	log.Info("Cloned PDB successfully", "Source PDB Name", pdb.Spec.SrcPDBName, "Clone PDB Name", pdb.Spec.PDBName)
@@ -767,9 +783,11 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 	return nil
 }
 
-/*************************************************
- * Plug a PDB
- /************************************************/
+/*
+************************************************
+  - Plug a PDB
+    /***********************************************
+*/
 func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
 	log := r.Log.WithValues("plugPDB", req.NamespacedName)
@@ -845,9 +863,11 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 	return nil
 }
 
-/*************************************************
- * Unplug a PDB
- /************************************************/
+/*
+************************************************
+  - Unplug a PDB
+    /***********************************************
+*/
 func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
 	log := r.Log.WithValues("unplugPDB", req.NamespacedName)
@@ -894,8 +914,8 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	if cdb.Spec.DBServer != "" {
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
-		ParseTnsAlias(&(cdb.Spec.DBTnsurl), &(pdb.Spec.PDBName))
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+		ParseTnsAlias(&(pdb.Status.ConnString), &(pdb.Spec.PDBName))
 	}
 
 	if err := r.Status().Update(ctx, pdb); err != nil {
@@ -928,9 +948,11 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	return nil
 }
 
-/*************************************************
- * Modify a PDB state
- /************************************************/
+/*
+************************************************
+  - Modify a PDB state
+    /***********************************************
+*/
 func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
 	log := r.Log.WithValues("modifyPDB", req.NamespacedName)
@@ -1003,9 +1025,11 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 	return nil
 }
 
-/*************************************************
- * Get PDB State
- /************************************************/
+/*
+************************************************
+  - Get PDB State
+    /***********************************************
+*/
 func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
 	log := r.Log.WithValues("getPDBState", req.NamespacedName)
@@ -1052,9 +1076,11 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 	return nil
 }
 
-/*************************************************
- * Map Database PDB to Kubernetes PDB CR
- /************************************************/
+/*
+************************************************
+  - Map Database PDB to Kubernetes PDB CR
+    /***********************************************
+*/
 func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
 	log := r.Log.WithValues("mapPDB", req.NamespacedName)
@@ -1096,8 +1122,8 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 	if cdb.Spec.DBServer != "" {
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
-		ParseTnsAlias(&(cdb.Spec.DBTnsurl), &(pdb.Spec.PDBName))
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+		ParseTnsAlias(&(pdb.Status.ConnString), &(pdb.Spec.PDBName))
 	}
 
 	if err := r.Status().Update(ctx, pdb); err != nil {
@@ -1108,9 +1134,11 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 	return nil
 }
 
-/*************************************************
- * Delete a PDB
- /************************************************/
+/*
+************************************************
+  - Delete a PDB
+    /***********************************************
+*/
 func (r *PDBReconciler) deletePDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
 	log := r.Log.WithValues("deletePDB", req.NamespacedName)
@@ -1143,9 +1171,11 @@ func (r *PDBReconciler) deletePDB(ctx context.Context, req ctrl.Request, pdb *db
 	return nil
 }
 
-/*************************************************
- *   Check PDB deletion
- /************************************************/
+/*
+************************************************
+  - Check PDB deletion
+    /***********************************************
+*/
 func (r *PDBReconciler) managePDBDeletion(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 	log := r.Log.WithValues("managePDBDeletion", req.NamespacedName)
 
@@ -1187,9 +1217,11 @@ func (r *PDBReconciler) managePDBDeletion(ctx context.Context, req ctrl.Request,
 	return nil
 }
 
-/*************************************************
- *   Finalization logic for PDBFinalizer
- /************************************************/
+/*
+************************************************
+  - Finalization logic for PDBFinalizer
+    /***********************************************
+*/
 func (r *PDBReconciler) deletePDBInstance(req ctrl.Request, ctx context.Context, pdb *dbapi.PDB) error {
 
 	log := r.Log.WithValues("deletePDBInstance", req.NamespacedName)
@@ -1227,9 +1259,11 @@ func (r *PDBReconciler) deletePDBInstance(req ctrl.Request, ctx context.Context,
 	return nil
 }
 
-/**************************************************************
- * SetupWithManager sets up the controller with the Manager.
- /*************************************************************/
+/*
+*************************************************************
+  - SetupWithManager sets up the controller with the Manager.
+    /************************************************************
+*/
 func (r *PDBReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.PDB{}).
@@ -1253,6 +1287,7 @@ Enh 35357707 - PROVIDE THE PDB TNSALIAS INFORMATION
 **************************************************************/
 
 func ParseTnsAlias(tns *string, pdbsrv *string) {
+	var swaptns string
 	fmt.Printf("Analyzing string [%s]\n", *tns)
 	fmt.Printf("Relacing  srv [%s]\n", *pdbsrv)
 
@@ -1266,9 +1301,9 @@ func ParseTnsAlias(tns *string, pdbsrv *string) {
 		return
 	}
 
-	*pdbsrv = fmt.Sprintf("SERVICE_NAME=%s", *pdbsrv)
+	swaptns = fmt.Sprintf("SERVICE_NAME=%s", *pdbsrv)
 	tnsreg := regexp.MustCompile(`SERVICE_NAME=\w+`)
-	*tns = tnsreg.ReplaceAllString(*tns, *pdbsrv)
+	*tns = tnsreg.ReplaceAllString(*tns, swaptns)
 
 	fmt.Printf("Newstring [%s]\n", *tns)
 
