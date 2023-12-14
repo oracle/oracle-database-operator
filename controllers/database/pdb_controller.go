@@ -672,7 +672,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	}
 	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
 	if err != nil {
-		log.Error(err, "callAPI error", err.Error())
+		log.Error(err, "callAPI error", "err", err.Error())
 		return err
 	}
 
