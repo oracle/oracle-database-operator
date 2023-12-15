@@ -52,8 +52,9 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
 
-	corev1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -164,9 +165,9 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 				lastSucSpecChanged := oldLastSucSpec != desiredLastSucSpec
 
 				if (!specChanged && statusChanged) || lastSucSpecChanged ||
-					(controllerutil.ContainsFinalizer(oldADB, dbv1alpha1.ADBFinalizer) != controllerutil.ContainsFinalizer(desiredADB, dbv1alpha1.ADBFinalizer)) {
+					(controllerutil.ContainsFinalizer(oldADB, dbv1alpha1.ADB_FINALIZER) != controllerutil.ContainsFinalizer(desiredADB, dbv1alpha1.ADB_FINALIZER)) {
 					// Don't enqueue in the folowing condition:
-					// 1. only status changes 2. lastSucSpec changes 3. ADBFinalizer changes
+					// 1. only status changes 2. lastSucSpec changes 3. ADB_FINALIZER changes
 					return false
 				}
 
@@ -278,18 +279,22 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	/******************************************************************
 	* Update the resource if the spec has been changed.
-	*	Requeue if it's in an intermediate state. Update the status first
-	* , otherwise the modifiedADB will be overwritten by the object
-	* returned from the cluster.
+	*	This will trigger another reconcile, so returns with an empty
+	* result.
 	******************************************************************/
 	if !reflect.DeepEqual(modifiedADB.Spec, desiredADB.Spec) {
 		if err := r.KubeClient.Update(context.TODO(), modifiedADB); err != nil {
-			return r.manageError(logger.WithName("IsADBIntermediateState"), modifiedADB, err)
+			return r.manageError(logger.WithName("updateSpec"), modifiedADB, err)
 		}
 		return emptyResult, nil
 	}
 
+	/******************************************************************
+	* Update the status at the end of every reconcile.
+	******************************************************************/
 	copiedADB := modifiedADB.DeepCopy()
+
+	updateCondition(modifiedADB, nil)
 	if err := r.KubeClient.Status().Update(context.TODO(), modifiedADB); err != nil {
 		return r.manageError(logger.WithName("Status().Update"), modifiedADB, err)
 	}
@@ -308,7 +313,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	var requeue bool = false
 	if modifiedADB.GetDeletionTimestamp() != nil &&
-		controllerutil.ContainsFinalizer(modifiedADB, dbv1alpha1.ADBFinalizer) &&
+		controllerutil.ContainsFinalizer(modifiedADB, dbv1alpha1.ADB_FINALIZER) &&
 		modifiedADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated {
 		logger.Info("The ADB is TERMINATED. The CR is to be deleted but finalizer is not yet removed; reconcile queued")
 		requeue = true
@@ -350,20 +355,24 @@ func (r *AutonomousDatabaseReconciler) setupOCIClients(logger logr.Logger, adb *
 	return nil
 }
 
-func (r *AutonomousDatabaseReconciler) manageError(logger logr.Logger, adb *dbv1alpha1.AutonomousDatabase, issue error) (ctrl.Result, error) {
+func (r *AutonomousDatabaseReconciler) manageError(logger logr.Logger, adb *dbv1alpha1.AutonomousDatabase, err error) (ctrl.Result, error) {
 	l := logger.WithName("manageError")
-	// Has synced at least once
-	if adb.Status.LifecycleState != "" {
-		// Send event
-		r.Recorder.Event(adb, corev1.EventTypeWarning, "UpdateFailed", issue.Error())
+	if adb.Status.LifecycleState == "" {
+		// First time entering reconcile
+		updateCondition(adb, err)
 
-		var finalIssue = issue
+		l.Error(err, "CreateFailed")
+
+		return emptyResult, nil
+	} else {
+		// Has synced at least once
+		var finalError = err
 
 		// Roll back
 		ociADB := adb.DeepCopy()
 		specChanged, err := r.getADB(l, ociADB)
 		if err != nil {
-			finalIssue = k8s.CombineErrors(finalIssue, err)
+			finalError = k8s.CombineErrors(finalError, err)
 		}
 
 		// Will exit the Reconcile anyway after the manageError is called.
@@ -371,25 +380,72 @@ func (r *AutonomousDatabaseReconciler) manageError(logger logr.Logger, adb *dbv1
 			// Clear the lifecycleState first to avoid the webhook error when update during an intermediate state
 			adb.Status.LifecycleState = ""
 			if err := r.KubeClient.Status().Update(context.TODO(), adb); err != nil {
-				finalIssue = k8s.CombineErrors(finalIssue, err)
+				finalError = k8s.CombineErrors(finalError, err)
 			}
 
 			adb.Spec = ociADB.Spec
 
 			if err := r.KubeClient.Update(context.TODO(), adb); err != nil {
-				finalIssue = k8s.CombineErrors(finalIssue, err)
+				finalError = k8s.CombineErrors(finalError, err)
 			}
 		}
 
-		l.Error(finalIssue, "UpdateFailed")
+		updateCondition(adb, err)
+
+		l.Error(finalError, "UpdateFailed")
 
 		return emptyResult, nil
-	} else {
-		// Send event
-		r.Recorder.Event(adb, corev1.EventTypeWarning, "CreateFailed", issue.Error())
-
-		return emptyResult, issue
 	}
+}
+
+const CONDITION_TYPE_COMPLETE = "Complete"
+const CONDITION_REASON_COMPLETE = "ReconcileComplete"
+
+func updateCondition(adb *dbv1alpha1.AutonomousDatabase, err error) {
+	var condition metav1.Condition
+
+	errMsg := func() string {
+		if err != nil {
+			return err.Error()
+		}
+		return "no reconcile errors"
+	}()
+
+	// If error occurs, ReconcileComplete will be marked as true and the error message will still be listed
+	// If the ADB lifecycleState is intermediate, then ReconcileComplete will be marked as false
+	if err != nil {
+		condition = metav1.Condition {
+			Type:               CONDITION_TYPE_COMPLETE,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: adb.GetGeneration(),
+			Reason:             CONDITION_REASON_COMPLETE,
+			Message:            errMsg,
+			Status:             metav1.ConditionTrue,
+		}
+	} else if dbv1alpha1.IsADBIntermediateState(adb.Status.LifecycleState) {
+		condition = metav1.Condition {
+			Type:               CONDITION_TYPE_COMPLETE,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: adb.GetGeneration(),
+			Reason:             CONDITION_REASON_COMPLETE,
+			Message:            errMsg,
+			Status:             metav1.ConditionFalse,
+		}
+	} else {
+		condition = metav1.Condition{
+			Type:               CONDITION_TYPE_COMPLETE,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: adb.GetGeneration(),
+			Reason:             CONDITION_REASON_COMPLETE,
+			Message:            errMsg,
+			Status:             metav1.ConditionTrue,
+		}
+	}
+
+	if len(adb.Status.Conditions) > 0 {
+		meta.RemoveStatusCondition(&adb.Status.Conditions, condition.Type)
+	}
+	meta.SetStatusCondition(&adb.Status.Conditions, condition)
 }
 
 func (r *AutonomousDatabaseReconciler) validateOperation(
@@ -397,7 +453,7 @@ func (r *AutonomousDatabaseReconciler) validateOperation(
 	adb *dbv1alpha1.AutonomousDatabase,
 	ociADB *dbv1alpha1.AutonomousDatabase) (exit bool, result ctrl.Result, err error) {
 
-	lastSpec, err := adb.GetLastSuccessfulSpec()
+	lastSucSpec, err := adb.GetLastSuccessfulSpec()
 	if err != nil {
 		return false, emptyResult, err
 	}
@@ -405,7 +461,7 @@ func (r *AutonomousDatabaseReconciler) validateOperation(
 	l := logger.WithName("validateOperation")
 
 	// If lastSucSpec is nil, then it's CREATE or BIND opertaion
-	if lastSpec == nil {
+	if lastSucSpec == nil {
 		if adb.Spec.Details.AutonomousDatabaseOCID == nil {
 			l.Info("Create operation")
 			err := r.createADB(logger, adb)
@@ -443,7 +499,7 @@ func (r *AutonomousDatabaseReconciler) validateOperation(
 	// the user updates the spec (UPDATE operation), otherwise it's a SYNC operation.
 	lastDifADB := adb.DeepCopy()
 
-	lastDetailsChanged, err := lastDifADB.RemoveUnchangedDetails(*lastSpec)
+	lastDetailsChanged, err := lastDifADB.RemoveUnchangedDetails(*lastSucSpec)
 	if err != nil {
 		return false, emptyResult, err
 	}
@@ -501,7 +557,7 @@ func (r *AutonomousDatabaseReconciler) validateCleanup(logger logr.Logger, adb *
 		return false, nil
 	}
 
-	if controllerutil.ContainsFinalizer(adb, dbv1alpha1.ADBFinalizer) {
+	if controllerutil.ContainsFinalizer(adb, dbv1alpha1.ADB_FINALIZER) {
 		if adb.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminating {
 			// Delete in progress, continue with the reconcile logic
 			return false, nil
@@ -511,7 +567,7 @@ func (r *AutonomousDatabaseReconciler) validateCleanup(logger logr.Logger, adb *
 			// The adb has been deleted. Remove the finalizer and exit the reconcile.
 			// Once all finalizers have been removed, the object will be deleted.
 			l.Info("Resource is in TERMINATED state; remove the finalizer")
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, adb, dbv1alpha1.ADBFinalizer); err != nil {
+			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, adb, dbv1alpha1.ADB_FINALIZER); err != nil {
 				return false, err
 			}
 			return true, nil
@@ -520,7 +576,7 @@ func (r *AutonomousDatabaseReconciler) validateCleanup(logger logr.Logger, adb *
 		if adb.Spec.Details.AutonomousDatabaseOCID == nil {
 			l.Info("Missing AutonomousDatabaseOCID to terminate Autonomous Database; remove the finalizer anyway", "Name", adb.Name, "Namespace", adb.Namespace)
 			// Remove finalizer anyway.
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, adb, dbv1alpha1.ADBFinalizer); err != nil {
+			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, adb, dbv1alpha1.ADB_FINALIZER); err != nil {
 				return false, err
 			}
 			return true, nil
@@ -552,18 +608,18 @@ func (r *AutonomousDatabaseReconciler) validateFinalizer(logger logr.Logger, adb
 	// Delete is not schduled. Update the finalizer for this CR if hardLink is present
 	var finalizerChanged = false
 	if adb.Spec.HardLink != nil {
-		if *adb.Spec.HardLink && !controllerutil.ContainsFinalizer(adb, dbv1alpha1.ADBFinalizer) {
+		if *adb.Spec.HardLink && !controllerutil.ContainsFinalizer(adb, dbv1alpha1.ADB_FINALIZER) {
 			l.Info("Finalizer added")
-			if err := k8s.AddFinalizerAndPatch(r.KubeClient, adb, dbv1alpha1.ADBFinalizer); err != nil {
+			if err := k8s.AddFinalizerAndPatch(r.KubeClient, adb, dbv1alpha1.ADB_FINALIZER); err != nil {
 				return false, err
 			}
 
 			finalizerChanged = true
 
-		} else if !*adb.Spec.HardLink && controllerutil.ContainsFinalizer(adb, dbv1alpha1.ADBFinalizer) {
+		} else if !*adb.Spec.HardLink && controllerutil.ContainsFinalizer(adb, dbv1alpha1.ADB_FINALIZER) {
 			l.Info("Finalizer removed")
 
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, adb, dbv1alpha1.ADBFinalizer); err != nil {
+			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, adb, dbv1alpha1.ADB_FINALIZER); err != nil {
 				return false, err
 			}
 
@@ -1220,6 +1276,8 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 	if err != nil {
 		return err
 	}
+
+	adb.Status.WalletExpiringDate = oci.WalletExpiringDate(data)
 
 	label := map[string]string{"app": adb.GetName()}
 
