@@ -172,7 +172,7 @@ Here's a list of the values you can set for `action`:
 
 * `RESTART`: to restart the database
 * `TERMINATE`: to terminate the database
-* `SYNC`: to sync the database, will describe in the next section
+* `SYNC`: to sync the local database with the remote one
 
 1. A sample .yaml file is available here: [config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml](./../../config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml)
 
