@@ -2,7 +2,7 @@
 
 To restore an Autonomous Database from a backup, use this document.
 
-You can either use any existing manual or automatic backup to restore your database, or you can restore and recover your database to any point in time in the 60-day retention period of your automatic backups. For point-in-time restores, you specify a timestamp. Your Autonomous Database identifies which backup to use for the fastest restore.
+You can either use any existing on-demand or automatic backup to restore your database, or you can restore and recover your database to any point in time in the 60-day retention period of your automatic backups. For point-in-time restores, you specify a timestamp. Your Autonomous Database identifies which backup to use for the fastest restore.
 
 ## Restore an Autonomous Database
 
