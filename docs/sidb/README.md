@@ -12,6 +12,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
     * [Connecting to Database](#connecting-to-database)
     * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
       * [Dynamic Persistence](#dynamic-persistence)
+        * [Storage Expansion](#storage-expansion)
       * [Static Persistence](#static-persistence)
     * [Configuring a Database](#configuring-a-database)
       * [Switching Database Modes](#switching-database-modes)
@@ -294,6 +295,16 @@ In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by m
 **Note:** 
 - Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`. These volumes are deleted when their corresponding database deployment is deleted. To retain volumes, use static provisioning, as explained in the Block Volume Static Provisioning section.
 - In **Minikube**, the dynamic persistence provisioning class is **standard**.
+
+#### Storage Expansion
+When using dynamic persistence, you can at any time scale up your persistent volumes by simply patching the singleinstancedatabase resource using the following command :
+```sh
+$ kubectl patch singleinstancedatabase sidb-sample -p '{"spec":{"persistence":{"size":"100Gi"}}}' --type=merge
+```
+
+**Note:**
+- For storage expansion to work, the storage class should have been configured to `allowVolumeExpansion:true`
+- User can only scale up a volume/storage and not scale down
 
 #### Static Persistence
 In **Static Persistence Provisioning**, you have to create a volume manually, and then use the name of this volume with the `<.spec.persistence.volumeName>` field which corresponds to the `volumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment. 
