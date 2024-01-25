@@ -53,6 +53,7 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -93,6 +94,7 @@ var oemExpressUrl string
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services;nodes;events,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -1221,17 +1223,23 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Contex
 	pvc := &corev1.PersistentVolumeClaim{}
 	// Get retrieves an obj ( a struct pointer ) for the given object key from the Kubernetes Cluster.
 	err := r.Get(ctx, types.NamespacedName{Name: m.Name, Namespace: m.Namespace}, pvc)
+
 	if err == nil {
 		if *pvc.Spec.StorageClassName != m.Spec.Persistence.StorageClass ||
-			pvc.Spec.Resources.Requests["storage"] != resource.MustParse(m.Spec.Persistence.Size) ||
 			(m.Spec.Persistence.VolumeName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.VolumeName) ||
 			pvc.Spec.AccessModes[0] != corev1.PersistentVolumeAccessMode(m.Spec.Persistence.AccessMode) {
-			// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
+			// PV change use cases which would trigger recreation of SIDB pods are :-
+			// 1. Change in storage class
+			// 2. Change in volume name
+			// 3. Change in volume access mode
+
+			// deleting singleinstancedatabase resource
 			result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
 			if result.Requeue {
 				return result, err
 			}
 
+			// deleting persistent volume claim
 			log.Info("Deleting PVC", " name ", pvc.Name)
 			err = r.Delete(ctx, pvc)
 			if err != nil {
@@ -1239,11 +1247,52 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Contex
 				return requeueN, err
 			}
 			pvcDeleted = true
+
+		} else if pvc.Spec.Resources.Requests["storage"] != resource.MustParse(m.Spec.Persistence.Size) {
+			// check the storage class of the pvc
+			// if the storage class doesn't support resize the throw an error event and try expanding via deleting and recreating the pv and pods
+			if pvc.Spec.StorageClassName == nil || *pvc.Spec.StorageClassName == "" {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "PVC not resizable", "Cannot resize pvc as storage class is either nil or default")
+				return requeueN, fmt.Errorf("cannot resize pvc as storage class is either nil or default")
+			}
+
+			storageClassName := *pvc.Spec.StorageClassName
+			storageClass := &storagev1.StorageClass{}
+			err := r.Get(ctx, types.NamespacedName{Name: storageClassName}, storageClass)
+			if err != nil {
+				return requeueY, fmt.Errorf("error while fetching the storage class")
+			}
+
+			if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "PVC not resizable", "The storage class doesn't support volume expansion")
+				return requeueN, fmt.Errorf("the storage class %s doesn't support volume expansion", storageClassName)
+			}
+
+			newPVCSize := resource.MustParse(m.Spec.Persistence.Size)
+			newPVCSizeAdd := &newPVCSize
+			if newPVCSizeAdd.Cmp(pvc.Spec.Resources.Requests["storage"]) < 0 {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Cannot Resize PVC", "Forbidden: field can not be less than previous value")
+				return requeueN, fmt.Errorf("Resizing PVC to lower size volume not allowed")
+			}
+
+			// Expanding the persistent volume claim
+			pvc.Spec.Resources.Requests["storage"] = resource.MustParse(m.Spec.Persistence.Size)
+			log.Info("Updating PVC", "pvc", pvc.Name, "volume", pvc.Spec.VolumeName)
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, "Updating PVC - volume expansion", "Resizing the pvc for storage expansion")
+			err = r.Update(ctx, pvc)
+			if err != nil {
+				log.Error(err, "Error while updating the PVCs")
+				return requeueY, fmt.Errorf("error while updating the PVCs")
+			}
+
 		} else {
+
 			log.Info("Found Existing PVC", "Name", pvc.Name)
 			return requeueN, nil
+
 		}
 	}
+
 	if pvcDeleted || err != nil && apierrors.IsNotFound(err) {
 		// Define a new PVC
 		pvc = r.instantiatePVCSpec(m)

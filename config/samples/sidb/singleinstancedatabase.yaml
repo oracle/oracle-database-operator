@@ -88,6 +88,8 @@ spec:
   ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
   ## volumeName is optional. Specify for binding to a specific PV and set storageClass to an empty string to disable automatic volume provisioning
   persistence:
+    ## if the storageClass supports volume expansion, patch the size attribute to expand the volume
+    ## Shrinking volumes is not allowed
     size: 100Gi
     ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
     storageClass: "oci-bv"
