@@ -93,7 +93,7 @@ var oemExpressUrl string
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services;nodes;events,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services;nodes;events;persistentvolumes,verbs=create;delete;get;list;patch;update;watch
 //+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -169,13 +169,20 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, nil
 	}
 
-	// PVC Creation
-	result, err = r.createOrReplacePVC(ctx, req, singleInstanceDatabase)
+	// PVC Creation for Datafiles Volume
+	result, err = r.createOrReplacePVCforDatafilesVol(ctx, req, singleInstanceDatabase)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
 
+	// PVC Creation for customScripts Volume
+	result, err = r.createOrReplacePVCforCustomScriptsVol(ctx, req, singleInstanceDatabase)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+	
 	// POD creation
 	result, err = r.createOrReplacePods(singleInstanceDatabase, cloneFromDatabase, referredPrimaryDatabase, ctx, req)
 	if result.Requeue {
@@ -624,7 +631,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}
 			}(),
 			Volumes: []corev1.Volume{{
-				Name: "datamount",
+				Name: "datafiles-vol",
 				VolumeSource: func() corev1.VolumeSource {
 					if m.Spec.Persistence.Size == "" {
 						return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
@@ -673,6 +680,20 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					}
 				}(),
+			}, {
+				Name: "custom-scripts-vol",
+				VolumeSource: func() corev1.VolumeSource {
+					if m.Spec.Persistence.ScriptsVolumeName == "" || m.Spec.Persistence.ScriptsVolumeName == m.Spec.Persistence.DatafilesVolumeName {
+						return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+					}
+					/* Persistence.ScriptsVolumeName is specified */
+					return corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: m.Name + "-" + m.Spec.Persistence.ScriptsVolumeName,
+							ReadOnly:  false,
+						},
+					}
+				}(),
 			}},
 			InitContainers: func() []corev1.Container {
 				initContainers := []corev1.Container{}
@@ -687,7 +708,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 						VolumeMounts: []corev1.VolumeMount{{
 							MountPath: "/opt/oracle/oradata",
-							Name:      "datamount",
+							Name:      "datafiles-vol",
 						}},
 					})
 					if m.Spec.Image.PrebuiltDB {
@@ -701,7 +722,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							VolumeMounts: []corev1.VolumeMount{{
 								MountPath: "/mnt/oradata",
-								Name:      "datamount",
+								Name:      "datafiles-vol",
 							}},
 							Env: []corev1.EnvVar{
 								{
@@ -757,7 +778,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 						VolumeMounts: []corev1.VolumeMount{{
 							MountPath: "/opt/oracle/oradata",
-							Name:      "datamount",
+							Name:      "datafiles-vol",
 						}},
 					})
 				}
@@ -815,7 +836,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					if m.Spec.Persistence.Size != "" {
 						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: "/opt/oracle/oradata",
-							Name:      "datamount",
+							Name:      "datafiles-vol",
 						})
 					}
 					if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB {
@@ -832,6 +853,32 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							MountPath: dbcommons.TlsCertsLocation,
 							ReadOnly:  true,
 							Name:      "tls-secret-vol",
+						})
+					}
+					if m.Spec.Persistence.ScriptsVolumeName != "" {
+						mounts = append(mounts, corev1.VolumeMount{
+							MountPath: "/opt/oracle/scripts/startup/",
+							ReadOnly:  true,
+							Name: func() string {
+								if m.Spec.Persistence.ScriptsVolumeName != m.Spec.Persistence.DatafilesVolumeName {
+									return "custom-scripts-vol"
+								} else {
+									return "datafiles-vol"
+								}
+							}(), 
+							SubPath:   "startup",
+						})
+						mounts = append(mounts, corev1.VolumeMount{
+							MountPath: "/opt/oracle/scripts/setup/",
+							ReadOnly:  true,
+							Name: func() string {
+								if m.Spec.Persistence.ScriptsVolumeName != m.Spec.Persistence.DatafilesVolumeName {
+									return "custom-scripts-vol"
+								} else {
+									return "datafiles-vol"
+								}
+							}(), 
+							SubPath:   "setup",
 						})
 					}
 					return mounts
@@ -1180,7 +1227,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 				},
 			},
 			StorageClassName: &m.Spec.Persistence.StorageClass,
-			VolumeName:       m.Spec.Persistence.VolumeName,
+			VolumeName:       m.Spec.Persistence.DatafilesVolumeName,
 			Selector: func() *metav1.LabelSelector {
 				if m.Spec.Persistence.StorageClass != "oci" {
 					return nil
@@ -1206,17 +1253,129 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 
 // #############################################################################
 //
-//	Stake a claim for Persistent Volume
+//	Stake a claim for Persistent Volume for customScript Volume
 //
 // #############################################################################
-func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Context, req ctrl.Request,
+
+func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforCustomScriptsVol(ctx context.Context, req ctrl.Request,
 	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
+
+	log := r.Log.WithValues("createPVC CustomScripts Vol", req.NamespacedName)
+
+	// if customScriptsVolumeName is not present or it is same than DatafilesVolumeName
+	if m.Spec.Persistence.ScriptsVolumeName == "" || m.Spec.Persistence.ScriptsVolumeName == m.Spec.Persistence.DatafilesVolumeName {
+		return requeueN, nil
+	}
+
+	pvcDeleted := false
+	pvcName := string(m.Name) + "-" + string(m.Spec.Persistence.ScriptsVolumeName)
+	// Check if the PVC already exists using r.Get, if not create a new one using r.Create
+	pvc := &corev1.PersistentVolumeClaim{}
+	// Get retrieves an obj ( a struct pointer ) for the given object key from the Kubernetes Cluster.
+	err := r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: m.Namespace}, pvc)
+
+	if err == nil {
+		if (m.Spec.Persistence.ScriptsVolumeName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.ScriptsVolumeName)  {
+			// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
+			result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
+			if result.Requeue {
+				return result, err
+			}
+
+			log.Info("Deleting PVC", " name ", pvc.Name)
+			err = r.Delete(ctx, pvc)
+			if err != nil {
+				r.Log.Error(err, "Failed to delete Pvc", "Pvc.Name", pvc.Name)
+				return requeueN, err
+			}
+			pvcDeleted = true
+		} else {
+			log.Info("Found Existing PVC", "Name", pvc.Name)
+			return requeueN, nil
+		}
+	}
+	if pvcDeleted || err != nil && apierrors.IsNotFound(err) {
+		// Define a new PVC
+
+		// get accessMode and storage of pv mentioned to be used in pvc spec
+		pv := &corev1.PersistentVolume{}
+		pvName := m.Spec.Persistence.ScriptsVolumeName
+		// Get retrieves an obj ( a struct pointer ) for the given object key from the Kubernetes Cluster.
+		pvErr := r.Get(ctx, types.NamespacedName{Name: pvName, Namespace: m.Namespace}, pv)
+		if pvErr != nil {
+			log.Error(pvErr, "Failed to get PV")
+			return requeueY, pvErr
+		}
+
+		volumeQty := pv.Spec.Capacity[corev1.ResourceStorage]
+
+		AccessMode := pv.Spec.AccessModes[0]
+		Storage := int(volumeQty.Value())
+		StorageClass := ""
+
+		log.Info(fmt.Sprintf("PV storage: %v\n",Storage))
+		log.Info(fmt.Sprintf("PV AccessMode: %v\n",AccessMode))
+		
+		pvc := &corev1.PersistentVolumeClaim{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "PersistentVolumeClaim",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      pvcName ,
+				Namespace: m.Namespace,
+				Labels: map[string]string{
+					"app": m.Name,
+				},
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: func() []corev1.PersistentVolumeAccessMode {
+					var accessMode []corev1.PersistentVolumeAccessMode
+					accessMode = append(accessMode, corev1.PersistentVolumeAccessMode(AccessMode))
+					return accessMode
+				}(),
+				Resources: corev1.ResourceRequirements{
+					Requests: map[corev1.ResourceName]resource.Quantity{
+						// Requests describes the minimum amount of compute resources required
+						"storage": *resource.NewQuantity(int64(Storage), resource.BinarySI),
+					},
+				},
+				StorageClassName: &StorageClass,
+				VolumeName:       pvName,
+			},
+		}
+
+		// Set SingleInstanceDatabase instance as the owner and controller
+		ctrl.SetControllerReference(m, pvc, r.Scheme)
+
+		log.Info("Creating a new PVC", "PVC.Namespace", pvc.Namespace, "PVC.Name", pvc.Name)
+		err = r.Create(ctx, pvc)
+		if err != nil {
+			log.Error(err, "Failed to create new PVC", "PVC.Namespace", pvc.Namespace, "PVC.Name", pvc.Name)
+			return requeueY, err
+		}
+		return requeueN, nil
+	} else if err != nil {
+		log.Error(err, "Failed to get PVC")
+		return requeueY, err
+	}
+
+	return requeueN, nil		
+}
+
+// #############################################################################
+//
+//	Stake a claim for Persistent Volume for Datafiles Volume
+//
+// #############################################################################
+func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx context.Context, req ctrl.Request,
+	m *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
+
+	log := r.Log.WithValues("createPVC Datafiles-Vol", req.NamespacedName)
 
 	// Don't create PVC if persistence is not chosen
 	if m.Spec.Persistence.Size == "" {
 		return requeueN, nil
 	}
-	log := r.Log.WithValues("createPVC", req.NamespacedName)
 
 	pvcDeleted := false
 	// Check if the PVC already exists using r.Get, if not create a new one using r.Create
@@ -1226,7 +1385,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVC(ctx context.Contex
 
 	if err == nil {
 		if *pvc.Spec.StorageClassName != m.Spec.Persistence.StorageClass ||
-			(m.Spec.Persistence.VolumeName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.VolumeName) ||
+			(m.Spec.Persistence.DatafilesVolumeName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.DatafilesVolumeName) ||
 			pvc.Spec.AccessModes[0] != corev1.PersistentVolumeAccessMode(m.Spec.Persistence.AccessMode) {
 			// PV change use cases which would trigger recreation of SIDB pods are :-
 			// 1. Change in storage class
