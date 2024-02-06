@@ -154,7 +154,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 
 	// Persistence spec validation
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" ||
-		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.VolumeName != "") {
+		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.DatafilesVolumeName != "") {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), r.Spec.Persistence,
 				"invalid persistence specification, specify required size"))
@@ -193,6 +193,11 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("initParams"),
 					r.Spec.InitParams, "initParams cannot be specified for standby databases"))
+		}
+		if r.Spec.Persistence.ScriptsVolumeName != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("persistence").Child("scriptsVolumeName"),
+				r.Spec.Persistence.ScriptsVolumeName, "scriptsVolumeName cannot be specified for standby databases"))
 		}
 	}
 

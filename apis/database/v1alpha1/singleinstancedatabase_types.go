@@ -94,7 +94,8 @@ type SingleInstanceDatabasePersistence struct {
 	StorageClass string `json:"storageClass,omitempty"`
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
 	AccessMode            string `json:"accessMode,omitempty"`
-	VolumeName            string `json:"volumeName,omitempty"`
+	DatafilesVolumeName   string `json:"datafilesVolumeName,omitempty"`
+	ScriptsVolumeName   string `json:"scriptsVolumeName,omitempty"`
 	VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
 }
 
