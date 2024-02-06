@@ -31,6 +31,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
         * [Perform a Switchover](#perform-a-switchover)
         * [Patch Primary and Standby databases in Data Guard configuration](#patch-primary-and-standby-databases-in-data-guard-configuration)
         * [Delete the Data Guard Configuration](#delete-the-data-guard-configuration)
+      * [Execute Custom Scripts](#execute-custom-scripts)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
     * [REST Enable a Database](#rest-enable-a-database)
       * [Provision ORDS](#provision-ords)
@@ -307,7 +308,7 @@ $ kubectl patch singleinstancedatabase sidb-sample -p '{"spec":{"persistence":{"
 - User can only scale up a volume/storage and not scale down
 
 #### Static Persistence
-In **Static Persistence Provisioning**, you have to create a volume manually, and then use the name of this volume with the `<.spec.persistence.volumeName>` field which corresponds to the `volumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment. 
+In **Static Persistence Provisioning**, you have to create a volume manually, and then use the name of this volume with the `<.spec.persistence.datafilesVolumeName>` field which corresponds to the `datafilesVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment.
 For example in **Minikube**, a persistent volume can be provisioned using the sample yaml file below:
 ```yaml
 apiVersion: v1
@@ -323,7 +324,7 @@ spec:
   hostPath:
     path: /data/oradata
 ```
-The persistent volume name (i.e. db-vol) can be mentioned in the `volumeName` field of the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. `storageClass` field is not required in this case, and can be left empty.
+The persistent volume name (i.e. db-vol) can be mentioned in the `datafilesVolumeName` field of the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. `storageClass` field is not required in this case, and can be left empty.
 
 Static Persistence Provisioning in Oracle Cloud Infrastructure (OCI) is explained in the following subsections:
 
@@ -814,6 +815,13 @@ $ kubectl delete singleinstancedatabase stdby-1
 
   singleinstancedatabase.database.oracle.com "stdby-1" deleted
 ```
+
+### Execute Custom Scripts
+
+Custom scripts (sql and/or shell scripts) can be executed after the initial database setup and/or after each startup of the database. SQL scripts will be executed as sysdba, shell scripts will be executed as the current user. To ensure proper order it is recommended to prefix your scripts with a number. For example `01_users.sql`, `02_permissions.sql`, etc. Place all such scripts in setup and startup folders created in a persistent volume to execute them post setup and post startup respectively.
+
+Create a persistent volume using [static provisioning](#static-persistence) and then specify the name of this volume with the `<.spec.persistence.scriptsVolumeName>` field which corresponds to the `scriptVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**.
+
 
 ## OracleRestDataService Resource
 
