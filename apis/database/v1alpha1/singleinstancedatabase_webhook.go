@@ -197,7 +197,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 		if r.Spec.Persistence.ScriptsVolumeName != "" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("persistence").Child("scriptsVolumeName"),
-				r.Spec.Persistence.ScriptsVolumeName, "scriptsVolumeName cannot be specified for standby databases"))
+					r.Spec.Persistence.ScriptsVolumeName, "scriptsVolumeName cannot be specified for standby databases"))
 		}
 	}
 
