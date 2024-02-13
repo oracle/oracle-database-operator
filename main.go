@@ -41,6 +41,7 @@ package main
 import (
 	"context"
 	"flag"
+	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"os"
 	"strconv"
 	"time"
@@ -57,6 +58,9 @@ import (
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
+
+	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
+	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -67,7 +71,8 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
+	utilruntime.Must(observabilityv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(monitorv1.AddToScheme(scheme))
 	utilruntime.Must(databasev1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
@@ -91,12 +96,12 @@ func main() {
 
 	// By default, a Manager will create a WebhookServer with port 9443
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:             scheme,
-		Metrics:            metricsserver.Options{
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
 			BindAddress: metricsAddr,
 		},
-		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "a9d608ea.oracle.com",
+		LeaderElection:   enableLeaderElection,
+		LeaderElectionID: "a9d608ea.oracle.com",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -266,6 +271,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Observability DatabaseObserver Reconciler
+	if err = (&observabilitycontroller.DatabaseObserverReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("observability").WithName("DatabaseObserver"),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("DatabaseObserver"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DatabaseObserver")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs
