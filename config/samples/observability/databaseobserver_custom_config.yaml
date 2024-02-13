@@ -1,0 +1,28 @@
+# example
+apiVersion: observability.oracle.com/v1alpha1
+kind: DatabaseObserver
+metadata:
+  name: obs-sample
+  namespace: observer
+spec:
+  database:
+    dbUser:
+      key: "username"
+      secret: db-secret
+
+    dbPassword:
+      key: "password"
+      secret: db-secret
+
+    dbConnectionString:
+      key: "connection"
+      secret: db-secret
+
+    dbWallet:
+      secret: instance-wallet
+
+  exporter:
+   configuration:
+     configmap:
+       key: "config.toml"
+       configmapName: "devcm-oradevdb-config"
