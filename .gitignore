@@ -6,3 +6,7 @@ onpremtest/*
 ords/*zip
 .gitattributes
 .vscode
+
+# development
+.idea
+.local
