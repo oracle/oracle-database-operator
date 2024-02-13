@@ -93,7 +93,9 @@ var oemExpressUrl string
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services;nodes;events;persistentvolumes,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list
+//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -182,7 +184,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
-	
+
 	// POD creation
 	result, err = r.createOrReplacePods(singleInstanceDatabase, cloneFromDatabase, referredPrimaryDatabase, ctx, req)
 	if result.Requeue {
@@ -865,8 +867,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								} else {
 									return "datafiles-vol"
 								}
-							}(), 
-							SubPath:   "startup",
+							}(),
+							SubPath: "startup",
 						})
 						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: "/opt/oracle/scripts/setup/",
@@ -877,8 +879,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								} else {
 									return "datafiles-vol"
 								}
-							}(), 
-							SubPath:   "setup",
+							}(),
+							SubPath: "setup",
 						})
 					}
 					return mounts
@@ -1275,7 +1277,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforCustomScriptsVol
 	err := r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: m.Namespace}, pvc)
 
 	if err == nil {
-		if (m.Spec.Persistence.ScriptsVolumeName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.ScriptsVolumeName)  {
+		if m.Spec.Persistence.ScriptsVolumeName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.ScriptsVolumeName {
 			// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
 			result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
 			if result.Requeue {
@@ -1313,15 +1315,15 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforCustomScriptsVol
 		Storage := int(volumeQty.Value())
 		StorageClass := ""
 
-		log.Info(fmt.Sprintf("PV storage: %v\n",Storage))
-		log.Info(fmt.Sprintf("PV AccessMode: %v\n",AccessMode))
-		
+		log.Info(fmt.Sprintf("PV storage: %v\n", Storage))
+		log.Info(fmt.Sprintf("PV AccessMode: %v\n", AccessMode))
+
 		pvc := &corev1.PersistentVolumeClaim{
 			TypeMeta: metav1.TypeMeta{
 				Kind: "PersistentVolumeClaim",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      pvcName ,
+				Name:      pvcName,
 				Namespace: m.Namespace,
 				Labels: map[string]string{
 					"app": m.Name,
@@ -1359,7 +1361,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforCustomScriptsVol
 		return requeueY, err
 	}
 
-	return requeueN, nil		
+	return requeueN, nil
 }
 
 // #############################################################################
