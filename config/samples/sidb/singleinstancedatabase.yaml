@@ -91,6 +91,8 @@ spec:
     ## if the storageClass supports volume expansion, patch the size attribute to expand the volume
     ## Shrinking volumes is not allowed
     size: 100Gi
+    ## set ownership/permissions for writing to datafiles volume. This is usually needed for NFS volumes. 
+    setWritePermissions: true
     ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud services
     storageClass: "oci-bv"
     ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
