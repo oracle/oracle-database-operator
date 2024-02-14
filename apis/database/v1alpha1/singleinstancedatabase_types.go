@@ -97,6 +97,7 @@ type SingleInstanceDatabasePersistence struct {
 	DatafilesVolumeName   string `json:"datafilesVolumeName,omitempty"`
 	ScriptsVolumeName     string `json:"scriptsVolumeName,omitempty"`
 	VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
+	SetWritePermissions   *bool  `json:"setWritePermissions,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters

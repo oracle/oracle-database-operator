@@ -699,7 +699,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			}},
 			InitContainers: func() []corev1.Container {
 				initContainers := []corev1.Container{}
-				if m.Spec.Persistence.Size != "" {
+				if m.Spec.Persistence.Size != "" && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
 					initContainers = append(initContainers, corev1.Container{
 						Name:    "init-permissions",
 						Image:   m.Spec.Image.PullFrom,
@@ -1111,6 +1111,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					Name: m.Spec.Image.PullSecrets,
 				},
 			},
+			ServiceAccountName: m.Spec.ServiceAccountName,
 		},
 	}
 
