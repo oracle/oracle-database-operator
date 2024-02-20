@@ -152,6 +152,15 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, containsNamespace := namespaces[r.Namespace]
+	// Check if the allowed namespaces maps contains the required namespace
+	if len(namespaces) == 0 && !containsNamespace {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+				"Oracle database operator doesn't watch over this namespace"))
+	}
+
 	// Persistence spec validation
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" ||
 		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.DatafilesVolumeName != "") {

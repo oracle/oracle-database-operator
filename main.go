@@ -41,17 +41,22 @@ package main
 import (
 	"context"
 	"flag"
-	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -94,15 +99,25 @@ func main() {
 
 	ctrl.SetLogger(zap.New(func(o *zap.Options) { *o = *options }))
 
-	// By default, a Manager will create a WebhookServer with port 9443
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	watchNamespaces, err := getWatchNamespace()
+	if err != nil {
+		setupLog.Error(err, "Failed to get watch namespaces")
+		os.Exit(1)
+	}
+	opt := ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: metricsAddr,
 		},
 		LeaderElection:   enableLeaderElection,
 		LeaderElectionID: "a9d608ea.oracle.com",
-	})
+		NewCache: func(config *rest.Config, opts cache.Options) (cache.Cache, error) {
+			opts.DefaultNamespaces = watchNamespaces
+			return cache.New(config, opts)
+		},
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), opt)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
@@ -297,4 +312,36 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func getWatchNamespace() (map[string]cache.Config, error) {
+	// WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE
+	// which specifies the Namespace to watch.
+	// An empty value means the operator is running with cluster scope.
+
+	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
+	var nsmap map[string]cache.Config
+	ns, found := os.LookupEnv(watchNamespaceEnvVar)
+	values := strings.Split(ns, ",")
+	if len(values) == 1 && values[0] == "" {
+		fmt.Printf(":CLUSTER SCOPED:\n")
+		return nil, nil
+	}
+	fmt.Printf(":NAMESPACE SCOPED:\n")
+	fmt.Printf("WATCH LIST=%s\n", values)
+	nsmap = make(map[string]cache.Config, len(values))
+	if !found {
+		return nsmap, fmt.Errorf("%s must be set", watchNamespaceEnvVar)
+	}
+
+	if ns == "" {
+		return nil, nil
+	}
+
+	for _, ns := range values {
+		nsmap[ns] = cache.Config{}
+	}
+
+	return nsmap, nil
+
 }
