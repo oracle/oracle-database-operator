@@ -41,6 +41,7 @@ package v1alpha1
 import (
 	"strings"
 
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -70,21 +71,21 @@ var _ webhook.Defaulter = &DataguardBroker{}
 func (r *DataguardBroker) Default() {
 	dataguardbrokerlog.Info("default", "name", r.Name)
 
-	if (r.Spec.LoadBalancer) {
+	if r.Spec.LoadBalancer {
 		if r.Spec.ServiceAnnotations == nil {
-			r.Spec.ServiceAnnotations= make(map[string]string)
+			r.Spec.ServiceAnnotations = make(map[string]string)
 		}
-		// Annotations required for a flexible load balancer on oci 
+		// Annotations required for a flexible load balancer on oci
 		_, ok := r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"]
-		if(!ok) {
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"] = "flexible"
 		}
-		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
-		if(!ok) {
+		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"] = "10"
 		}
-		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
-		if(!ok) {
+		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
 		}
 	}
@@ -98,9 +99,19 @@ var _ webhook.Validator = &DataguardBroker{}
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *DataguardBroker) ValidateCreate() (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate create", "name", r.Name)
+	var allErrs field.ErrorList
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, containsNamespace := namespaces[r.Namespace]
+	// Check if the allowed namespaces maps contains the required namespace
+	if len(namespaces) == 0 && !containsNamespace {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+				"Oracle database operator doesn't watch over this namespace"))
+	}
 
-	// TODO(user): fill in your validation logic upon object creation.
-	return nil, nil
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: "database.oracle.com", Kind: "Dataguard"},
+		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
