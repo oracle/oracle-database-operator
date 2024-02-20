@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -92,6 +93,15 @@ func (r *OracleRestDataService) ValidateCreate() (admission.Warnings, error) {
 
 	var allErrs field.ErrorList
 
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, containsNamespace := namespaces[r.Namespace]
+	// Check if the allowed namespaces maps contains the required namespace
+	if len(namespaces) == 0 && !containsNamespace {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+				"Oracle database operator doesn't watch over this namespace"))
+	}
+
 	// Persistence spec validation
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" ||
 		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.VolumeName != "") {
@@ -117,7 +127,7 @@ func (r *OracleRestDataService) ValidateCreate() (admission.Warnings, error) {
 	if r.Spec.DatabaseRef == r.Name {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("Name"),
-					 "cannot be same as DatabaseRef: " + r.Spec.DatabaseRef))
+				"cannot be same as DatabaseRef: "+r.Spec.DatabaseRef))
 
 	}
 
