@@ -45,6 +45,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -784,4 +785,17 @@ func PatchService(config *rest.Config, namespace string, ctx context.Context, re
 	log.Info("Patching the service", "Service", svcName)
 	_, err = client.CoreV1().Services(namespace).Patch(ctx, svcName, types.MergePatchType, []byte(payload), metav1.PatchOptions{})
 	return err
+}
+
+func GetWatchNamespaces() map[string]bool {
+	// Fetching the allowed namespaces from env variables
+	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
+	ns, _ := os.LookupEnv(watchNamespaceEnvVar)
+	values := strings.Split(strings.TrimSpace(ns), ",")
+	namespaces := make(map[string]bool)
+	// put slice values into map
+	for _, s := range values {
+		namespaces[s] = true
+	}
+	return namespaces
 }
