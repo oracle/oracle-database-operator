@@ -31,6 +31,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * Oracle Base Database Cloud Service (BDBCS): provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License
 * Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
 * Oracle Database Metrics Exporter: create, patch, delete
+* Watch over a set of namespaces or all the namespaces in the cluster using the "WATCH_NAMESPACE" env variable of the operator deployment
 
 The upcoming releases will support new configurations, operations and capabilities.
 

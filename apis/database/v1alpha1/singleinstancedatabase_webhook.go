@@ -155,7 +155,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 	namespaces := dbcommons.GetWatchNamespaces()
 	_, containsNamespace := namespaces[r.Namespace]
 	// Check if the allowed namespaces maps contains the required namespace
-	if len(namespaces) == 0 && !containsNamespace {
+	if len(namespaces) != 0 && !containsNamespace {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
 				"Oracle database operator doesn't watch over this namespace"))
