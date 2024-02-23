@@ -1223,7 +1223,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 				accessMode = append(accessMode, corev1.PersistentVolumeAccessMode(m.Spec.Persistence.AccessMode))
 				return accessMode
 			}(),
-			Resources: corev1.ResourceRequirements{
+			Resources: corev1.VolumeResourceRequirements{
 				Requests: map[corev1.ResourceName]resource.Quantity{
 					// Requests describes the minimum amount of compute resources required
 					"storage": resource.MustParse(m.Spec.Persistence.Size),
@@ -1336,7 +1336,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforCustomScriptsVol
 					accessMode = append(accessMode, corev1.PersistentVolumeAccessMode(AccessMode))
 					return accessMode
 				}(),
-				Resources: corev1.ResourceRequirements{
+				Resources: corev1.VolumeResourceRequirements{
 					Requests: map[corev1.ResourceName]resource.Quantity{
 						// Requests describes the minimum amount of compute resources required
 						"storage": *resource.NewQuantity(int64(Storage), resource.BinarySI),
