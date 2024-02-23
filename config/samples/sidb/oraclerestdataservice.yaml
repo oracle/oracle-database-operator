@@ -44,7 +44,7 @@ spec:
   ## Build the ORDS image following instructions at
   ## https://github.com/oracle/docker-images/tree/main/OracleRestDataServices
   image:
-    pullFrom:
+    pullFrom: container-registry.oracle.com/database/ords:21.4.2-gh
     pullSecrets:
 
   ## Dedicated persistent storage is optional. If not specified, ORDS will use persistent storage from .spec.databaseRef
