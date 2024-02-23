@@ -141,10 +141,14 @@ func buildPodSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardS
 			RunAsUser: &user,
 			FSGroup:   &group,
 		},
-		InitContainers: buildInitContainerSpecForShard(instance, OraShardSpex),
-		Containers:     buildContainerSpecForShard(instance, OraShardSpex),
-		Volumes:        buildVolumeSpecForShard(instance, OraShardSpex),
+		Containers: buildContainerSpecForShard(instance, OraShardSpex),
+		Volumes:    buildVolumeSpecForShard(instance, OraShardSpex),
 	}
+
+	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
+		spec.InitContainers = buildInitContainerSpecForShard(instance, OraShardSpex)
+	}
+
 	if len(instance.Spec.DbImagePullSecret) > 0 {
 		spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
@@ -171,14 +175,8 @@ func buildVolumeSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraSha
 			Name: OraShardSpex.Name + "secretmap-vol3",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: instance.Spec.Secret,
+					SecretName: instance.Spec.DbSecret.Name,
 				},
-			},
-		},
-		{
-			Name: OraShardSpex.Name + "orascript-vol5",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		},
 		{
@@ -196,7 +194,9 @@ func buildVolumeSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraSha
 	if len(instance.Spec.StagePvcName) != 0 {
 		result = append(result, corev1.Volume{Name: OraShardSpex.Name + "orastage-vol7", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.StagePvcName}}})
 	}
-
+	if instance.Spec.IsDownloadScripts {
+		result = append(result, corev1.Volume{Name: OraShardSpex.Name + "orascript-vol5", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}})
+	}
 	return result
 }
 
@@ -218,28 +218,50 @@ func buildContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase, Ora
 		VolumeMounts: buildVolumeMountSpecForShard(instance, OraShardSpex),
 		LivenessProbe: &corev1.Probe{
 			// TODO: Investigate if it's ok to call status every 10 seconds
-			FailureThreshold:    int32(30),
-			PeriodSeconds:       int32(240),
-			InitialDelaySeconds: int32(300),
-			TimeoutSeconds:      int32(120),
+			FailureThreshold:    int32(3),
+			InitialDelaySeconds: int32(30),
+			PeriodSeconds: func() int32 {
+				if instance.Spec.LivenessCheckPeriod > 0 {
+					return int32(instance.Spec.LivenessCheckPeriod)
+				}
+				return 60
+			}(),
+			TimeoutSeconds: int32(30),
 			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
-					Command: getLivenessCmd("SHARD"),
+					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
 				},
 			},
 		},
 		/**
+		ReadinessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				Exec: &corev1.ExecAction{
+					//Command: getReadinessCmd("SHARD"),
+					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
+				},
+			},
+			InitialDelaySeconds: 20,
+			TimeoutSeconds:      20,
+			PeriodSeconds: func() int32 {
+				if instance.Spec.ReadinessCheckPeriod > 0 {
+					return int32(instance.Spec.ReadinessCheckPeriod)
+				}
+				return 60
+			}(),
+		},
+		**/
 		// Disabling this because ping stop working and sharding topologu never gets configured.
 		StartupProbe: &corev1.Probe{
-			FailureThreshold: int32(30),
-			PeriodSeconds:    int32(180),
-			Handler: corev1.Handler{
+			FailureThreshold:    int32(30),
+			PeriodSeconds:       int32(180),
+			InitialDelaySeconds: int32(30),
+			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
-					Command: getLivenessCmd("SHARD"),
+					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
 				},
 			},
 		},
-		**/
 		Env: buildEnvVarsSpec(instance, OraShardSpex.EnvVars, OraShardSpex.Name, "SHARD", false, "NONE"),
 	}
 
@@ -257,10 +279,10 @@ func buildContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase, Ora
 	return result
 }
 
-//Function to build the init Container Spec
+// Function to build the init Container Spec
 func buildInitContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) []corev1.Container {
 	var result []corev1.Container
-	privFlag := true
+	privFlag := false
 	var uid int64 = 0
 
 	// building the init Container Spec
@@ -300,7 +322,9 @@ func buildVolumeMountSpecForShard(instance *databasev1alpha1.ShardingDatabase, O
 	var result []corev1.VolumeMount
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
-	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "orascript-vol5", MountPath: oraScriptMount})
+	if instance.Spec.IsDownloadScripts {
+		result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})
+	}
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "oradshm-vol6", MountPath: oraShm})
 
 	if len(instance.Spec.StagePvcName) != 0 {
@@ -331,7 +355,7 @@ func volumeClaimTemplatesForShard(instance *databasev1alpha1.ShardingDatabase, O
 					corev1.ReadWriteOnce,
 				},
 				StorageClassName: &instance.Spec.StorageClass,
-				Resources: corev1.ResourceRequirements{
+				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraShardSpex.StorageSizeInGb), 10) + "Gi"),
 					},
