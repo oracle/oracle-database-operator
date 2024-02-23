@@ -72,9 +72,13 @@ rules:
   - ""
   resources:
   - events
-  - nodes
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumeclaims
-  - persistentvolumes
   - pods
   - pods/exec
   - pods/log
@@ -90,21 +94,10 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - events
-  - nodes
-  - persistentvolumeclaims
-  - pods
-  - pods/exec
-  - pods/log
-  - services
+  - persistentvolumes
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - ''''''
   resources:
@@ -169,9 +162,9 @@ rules:
   - ""
   resources:
   - configmaps
+  - containers
   - events
   - namespaces
-  - nodes
   - persistentvolumeclaims
   - pods
   - pods/exec
