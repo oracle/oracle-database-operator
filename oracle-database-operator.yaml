@@ -2978,11 +2978,10 @@ rules:
   - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   creationTimestamp: null
   name: oracle-database-operator-manager-role
-  namespace: oracle-database-operator-system
 rules:
 - apiGroups:
   - ""
@@ -3547,21 +3546,7 @@ metadata:
   namespace: oracle-database-operator-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: oracle-database-operator-manager-role
-subjects:
-- kind: ServiceAccount
-  name: default
-  namespace: oracle-database-operator-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: oracle-database-operator-oracle-database-operator-manager-rolebinding1
-  namespace: shns
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
+  kind: ClusterRole
   name: oracle-database-operator-manager-role
 subjects:
 - kind: ServiceAccount
@@ -4002,7 +3987,7 @@ spec:
         - /manager
         env:
         - name: WATCH_NAMESPACE
-          value: "oracle-database-operator-system,shns"
+          value: ""
         image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator
         imagePullPolicy: Always
         name: manager
