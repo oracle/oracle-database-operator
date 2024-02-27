@@ -710,6 +710,10 @@ func buildCatalogParams(instance *databasealphav1.ShardingDatabase) string {
 		region_arr = append(region_arr, instance.Spec.Shard[i].ShardRegion)
 	}
 
+	for i := 0; i < len(instance.Spec.Gsm); i++ {
+		region_arr = append(region_arr, instance.Spec.Gsm[i].Region)
+	}
+
 	slices.Sort(region_arr)
 	region_arr = slices.Compact(region_arr) //[a b c d]
 	for i := 0; i < len(region_arr); i++ {
