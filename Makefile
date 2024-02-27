@@ -71,7 +71,7 @@ build: generate fmt vet ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
-GOLANG_VERSION ?= 1.21.0
+GOLANG_VERSION ?= 1.21.7
 ## Download golang in the Dockerfile if BUILD_INTERNAL is set to true.
 ## Otherwise, use golang image from docker hub as the builder.
 ifeq ($(BUILD_INTERNAL), true)
