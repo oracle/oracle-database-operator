@@ -194,14 +194,14 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	r.getOnsConfigProvider(instance, idx)
 
 	// =============================== Checking Namespace ==============
-	if instance.Spec.Namespace != "" {
-		err = shardingv1.AddNamespace(instance, r.Client, r.Log)
-		if err != nil {
-			//r.setCrdLifeCycleState(instance, &result, &err, stateType)
-			result = resultNq
-			return result, err
-		}
-	} else {
+	if instance.Spec.Namespace == "" {
+		///err = shardingv1.AddNamespace(instance, r.Client, r.Log)
+		//if err != nil {
+		//		//r.setCrdLifeCycleState(instance, &result, &err, stateType)
+		//		result = resultNq
+		//		return result, err
+		//	}
+		//	} else {
 		instance.Spec.Namespace = "default"
 	}
 
