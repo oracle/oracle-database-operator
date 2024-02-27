@@ -3556,11 +3556,11 @@ subjects:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: oracle-database-operator-oracle-database-operator-proxy-rolebinding
+  name: oracle-database-operator-proxy-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: proxy-role
+  name: oracle-database-operator-oracle-database-operator-proxy-role
 subjects:
 - kind: ServiceAccount
   name: default
