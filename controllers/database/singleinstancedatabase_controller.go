@@ -95,6 +95,7 @@ var oemExpressUrl string
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services,verbs=create;delete;get;list;patch;update;watch
 //+kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list
+//+kubebuilder:rbac:groups="",resources=nodes,verbs=watch;list
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
 
