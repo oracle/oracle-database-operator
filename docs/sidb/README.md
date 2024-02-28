@@ -580,7 +580,7 @@ true
   kubectl create secret tls my-tls-secret --cert=path/to/cert/tls.crt --key=path/to/key/tls.key
   ```
 - `tls.crt` is a certificate chain in the order of client, followed by intermediate and then root certificate and `tls.key` is client key.
-- Specify the secret created above (`my-tls-secret`) as the value for the attribute `tcpsTlsSecret` in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
+- Specify the secret created above (`my-tls-secret`) as the value for the attribute `tcpsTlsSecret` in the [config/samples/sidb/singleinstancedatabase_tcps.yaml](../../config/samples/sidb/singleinstancedatabase_tcps.yaml) file, and apply it.
 
 **Connecting to the Database using TCPS**
 - Download the wallet from the Persistent Volume (PV) attached with the database pod. The location of the wallet inside the pod is as `/opt/oracle/oradata/clientWallet/$ORACLE_SID`. Let us assume the `ORACLE_SID` is `ORCL1`, and singleinstance database resource name is `sidb-sample` for the upcoming example command. You can copy the wallet to the destination directory by the following command:
@@ -820,7 +820,7 @@ $ kubectl delete singleinstancedatabase stdby-1
 
 Custom scripts (sql and/or shell scripts) can be executed after the initial database setup and/or after each startup of the database. SQL scripts will be executed as sysdba, shell scripts will be executed as the current user. To ensure proper order it is recommended to prefix your scripts with a number. For example `01_users.sql`, `02_permissions.sql`, etc. Place all such scripts in setup and startup folders created in a persistent volume to execute them post setup and post startup respectively.
 
-Create a persistent volume using [static provisioning](#static-persistence) and then specify the name of this volume with the `<.spec.persistence.scriptsVolumeName>` field which corresponds to the `scriptVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**.
+Create a persistent volume using [static provisioning](#static-persistence) and then specify the name of this volume with the `<.spec.persistence.scriptsVolumeName>` field which corresponds to the `scriptsVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**.
 
 
 ## OracleRestDataService Resource
