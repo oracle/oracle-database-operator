@@ -98,6 +98,7 @@ var _ webhook.Validator = &DataguardBroker{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *DataguardBroker) ValidateCreate() (admission.Warnings, error) {
+
 	dataguardbrokerlog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 	namespaces := dbcommons.GetWatchNamespaces()
@@ -107,6 +108,10 @@ func (r *DataguardBroker) ValidateCreate() (admission.Warnings, error) {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
 				"Oracle database operator doesn't watch over this namespace"))
+	}
+
+	if len(allErrs) == 0 {
+		return nil, nil
 	}
 
 	return nil, apierrors.NewInvalid(
