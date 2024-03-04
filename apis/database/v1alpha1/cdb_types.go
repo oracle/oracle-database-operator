@@ -52,7 +52,6 @@ type CDBSpec struct {
 	// Name of the CDB Service
 	ServiceName string `json:"serviceName,omitempty"`
 
-
 	// Password for the CDB System Administrator
 	SysAdminPwd CDBSysAdminPassword `json:"sysAdminPwd,omitempty"`
 	// User in the root container with sysdba priviledges to manage PDB lifecycle
@@ -86,7 +85,7 @@ type CDBSpec struct {
 	DBPort int `json:"dbPort,omitempty"`
 	// Node Selector for running the Pod
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
-        DBTnsurl string `json:"dbTnsurl,omitempty"`  
+	DBTnsurl     string            `json:"dbTnsurl,omitempty"`
 }
 
 // CDBSecret defines the secretName
@@ -155,6 +154,7 @@ type CDBStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.replicas",name="Replicas",type="integer",description="Replicas"
 // +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the CDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
+// +kubebuilder:resource:path=CDBS,scope=Namespaced
 
 // CDB is the Schema for the cdbs API
 type CDB struct {
