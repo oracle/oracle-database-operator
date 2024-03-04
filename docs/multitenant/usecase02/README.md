@@ -8,9 +8,10 @@
     - [UNPLUG DATABASE](#unplug-database)
     - [PLUG DATABASE](#plug-database)
     - [CLONE PDB](#clone-pdb)
-    - [UNPLUG AND PLUG WITH TDE](#unplug-and-plug-with-tde)
 
 ### INTRODUCTION
+
+> &#9758; The examples of this folder are based on single namespace   **oracle-database-operator-system**
 
 This page explains how to plug and unplug database a pdb; it assumes that you have already configured a pluggable database (see usecase01) 
 The following table reports the parameters required to configure and use oracle multi tenant controller for pluggable database lifecycle management.
@@ -108,6 +109,9 @@ MSG=Success
 Prepare a new yaml file **pdb_unplug.yaml**  to unplug the pdbdev database. Make sure that the  path of the xml file is correct and check the existence of all the required secrets.
 
 ```yaml
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
 #pdb_unplug.yaml
 apiVersion: database.oracle.com/v1alpha1
 kind: PDB
@@ -118,6 +122,7 @@ metadata:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
+  cdbNamespace: "oracle-database-operator-system"
   cdbName: "DB12"
   pdbName: "pdbdev"
   xmlFileName: "/tmp/pdbunplug.xml"
@@ -134,11 +139,23 @@ spec:
     secret:
       secretName: "db-ca"
       key: "ca.crt"
+  webServerUser:
+    secret:
+      secretName: "pdb1-secret"
+      key: "webserver_user"
+  webServerPwd:
+    secret:
+      secretName: "pdb1-secret"
+      key: "webserver_pwd"
+
 ```
 
 Close the pluggable database by applying the following yaml file **pdb_close.yaml** 
 
 ```yaml
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
 #pdb_close.yaml
 apiVersion: database.oracle.com/v1alpha1
 kind: PDB
@@ -149,6 +166,7 @@ metadata:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
+  cdbNamespace: "oracle-database-operator-system"
   cdbName: "DB12"
   pdbName: "pdbdev"
   adminName:
@@ -253,7 +271,9 @@ DATAFILE  UNPROT  COARSE   JAN 03 14:00:00  Y    system.353.1125061021
 Prepare a new yaml file **pdb_plug.yaml** to plug the database back into the container. 
 
 ```yaml 
-
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
 # pdb_plug.yaml
 apiVersion: database.oracle.com/v1alpha1
 kind: PDB
@@ -264,6 +284,7 @@ metadata:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
+  cdbNamespace: "oracle-database-operator-system"
   cdbName: "DB12"
   pdbName: "pdbdev"
   xmlFileName: "/tmp/pdbunplug.xml"
@@ -362,6 +383,7 @@ metadata:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
+  cdbNamespace: "oracle-database-operator-system"
   cdbName: "DB12"
   pdbName: "pdb2-clone"
   srcPdbName: "pdbdev"
@@ -458,6 +480,13 @@ PDBDEV(3):Buffer Cache flush finished: 3
 ```
 ### UNPLUG AND PLUG WITH TDE
 
+
+<span style="color:red">
+
+> &#9888; __WARNING FOR THE TDE USERS__ &#9888; According to the [ords documentation](https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/op-database-pdbs-pdb_name-post.html) the plug and unplug operation with tde is supported only if ords runs on the same host of the database which is not the case of operator where ords runs on an isolated pods. Do not use pdb controller for unplug and plug operation with tde in production environments.   
+
+</span>
+
 You can use unplug and plug database with TDE; in order to do that you have to specify a key store path and create new kubernets secret for TDE using the following yaml file. **tde_secrete.yaml**. The procedure to unplug and plug database does not change apply the same file. 
 
 ```yaml
@@ -491,6 +520,7 @@ metadata:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
+  cdbNamespace: "oracle-database-operator-system"
   cdbName: "DB12"
   pdbName: "pdbdev"
   adminName:
@@ -541,6 +571,7 @@ metadata:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
+  cdbNamespace: "oracle-database-operator-system"
   cdbName: "DB12"
   pdbName: "pdbdev"
   adminName:

@@ -1773,6 +1773,9 @@ spec:
               cdbName:
                 description: Name of the CDB
                 type: string
+              cdbNamespace:
+                description: CDB Namespace
+                type: string
               cdbResName:
                 description: Name of the CDB Custom Resource that runs the ORDS container
                 type: string
@@ -1925,6 +1928,40 @@ spec:
               unlimitedStorage:
                 description: Relevant for Create and Plug operations. True for unlimited storage. Even when set to true, totalSize and tempSize MUST be specified in the request if Action is Create.
                 type: boolean
+              webServerPwd:
+                description: Password for the Web ServerPDB User
+                properties:
+                  secret:
+                    description: PDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              webServerUser:
+                description: Web Server User with SQL Administrator role to allow us to authenticate to the PDB Lifecycle Management REST endpoints
+                properties:
+                  secret:
+                    description: PDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
               xmlFileName:
                 description: XML metadata filename to be used for Plug or Unplug operations
                 type: string
