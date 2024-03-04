@@ -18,7 +18,7 @@
 #
 #  
 # This makefile helps to speed up the  kubectl commands executions to deploy and test
-# the OnPremises operator. Although it has few functionality you can adapt to your needs  
+# the mutlitenant operator. Although it has few functionality you can adapt to your needs  
 # by adding much more targets.
 #
 # Quick start:
@@ -40,18 +40,10 @@
 # +-----------------------------+---------------------------------------------+
 # |pdb_secret.yaml              | Secret file for the pdb creation            |
 # +-----------------------------+---------------------------------------------+
-# |tde_secret.yaml              | Secret file for the tablepsace enc.         |
-# +-----------------------------+---------------------------------------------+
 # |cdb_create.yaml              | Rest server pod creation                    |
 # +-----------------------------+---------------------------------------------+
 # |pdb_create.yaml              | Pluggable database creation                 |
 # +-----------------------------+---------------------------------------------+
-# |pdb_close.yaml               | Close pluggable database                    |
-# +-----------------------------+---------------------------------------------+
-# |pdb_open.yaml                | Open pluggable database                     |
-# +-----------------------------+---------------------------------------------+
-# |pdb_map.yaml                 | Map an existing pdb                         |
-# +-----------------------------+---------------------------------------------+ 
 # |oracle-database-operator.yaml| Database operator                           |
 # +-----------------------------+---------------------------------------------+
 # |Dockerfiles                  | Dockerfile for CBD                          |
@@ -100,15 +92,6 @@
 # |  |                          +---------------------------------------------+
 # |  +---> checkpdb             | Monitor PDB status                          |
 # +-----------------------------+---------------------------------------------+
-# |step11                       | Close pluggable database                    |
-# +-----------------------------+---------------------------------------------+
-# |step12                       | Open pluggable database                     |
-# +-----------------------------+---------------------------------------------+
-# |step13                       | Map pluggable database                      |
-# +-----------------------------+---------------------------------------------+
-# | Before testing step13 delete the crd:                                     |
-# |    kubectl delete pdb pdb1 -n oracle-database-operator-system             |
-# +---------------------------------------------------------------------------+
 # |                        DIAGNOSTIC  TARGETS                                |
 # +-----------------------------+---------------------------------------------+
 # | dump                        | Dump  pods info into a file                 |
@@ -120,11 +103,16 @@
 
 
 ################ TAB 2 VARIABLES ############
-OCIR=[...........YOUR REGISTRY...........]
-OCIRPATH=[...PATH IN YOUR REGISTRY.....]/$(REST_SERVER)-dboper:$(ORDSVERSION)
-#############################################
 REST_SERVER=ords
 ORDSVERSION=latest
+
+OCIR=[container registry]
+OCIRPATH=$(REST_SERVER)-dboper:$(ORDSVERSION)
+
+#examples:
+#OCIR=lin.ocir.io
+#OCIRPATH=/sampletenancy/samplepath/sampledir/$(REST_SERVER)-dboper:$(ORDSVERSION)
+#############################################
 DOCKER=/usr/bin/docker
 KUBECTL=/usr/bin/kubectl
 ORDS=/usr/local/bin/ords
@@ -135,21 +123,20 @@ URLPATH=/_/db-api/stable/database/pdbs/
 OPENSSL=/usr/bin/openssl
 ORDSPORT=8888
 MAKE=/usr/bin/make
-DOCKERFILE=../../../ords/Dockerfile
-RUNSCRIPT=../../../ords/runOrdsSSL.sh
+DOCKERFILE=Dockerfile
 RM=/usr/bin/rm
-CP=/usr/bin/cp
 ECHO=/usr/bin/echo
-NAMESPACE=oracle-database-operator-system
 CERTMANAGER=https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml
-CDB_SECRET=cdb_secret.yaml
-PDB_SECRET=pdb_secret.yaml
-TDE_SECRET=tde_secret.yaml
+CDB_SECRET_YAML=cdb_secret.yaml
+PDB_SECRET_YAML=pdb_secret.yaml
+TDE_SECRET_YAML=tde_secret.yaml
+CDB_NAMESPACE_YAML=ns_namespace_cdb.yaml
+PDB_NAMESPACE_YAML=ns_namespace_pdb.yaml
+OPR_NAMESPACE=oracle-database-operator-system
+PDB_NAMESPACE=$(shell grep namespace $(PDB_NAMESPACE_YAML)  |cut -d: -f 2| tr -d ' ')
+CDB_NAMESPACE=$(shell grep namespace $(CDB_NAMESPACE_YAML)  |cut -d: -f 2| tr -d ' ')
 CDB=cdb_create.yaml
 PDB=pdb_create.yaml
-PDB_CLOSE=pdb_close.yaml
-PDB_OPEN=pdb_open.yaml 
-PDB_MAP=pdb_map.yaml
 SKEY=tls.key
 SCRT=tls.crt
 CART=ca.crt
@@ -165,29 +152,23 @@ step7:   tlssecret
 step8:   dbsecret 
 step9:   cdb
 step10:  pdb
-step11:  close 
-step12:  open
-step13:  map
 
 checkstep9: checkcdb
 
 
 createimage:
-	$(CP) $(DOCKERFILE) . 
-	$(CP) $(RUNSCRIPT) .
 	@echo "BUILDING CDB IMAGES"
 	@if [[ ! -f ./Dockerfile ]]; \
          then\
          echo "DOCKERFILE DOES NOT EXISTS";\
          exit 1; \
         fi; 
-	@if [[ ! -f ./runOrdsSSL.sh ]]; \
+	@if [[ ! -f ../runOrdsSSL.sh ]]; \
          then\
          echo "DOCKERFILE DOES NOT EXISTS";\
          exit 1; \
         fi; 
 	$(DOCKER) build -t $(IMAGE) . 
-	$(RM) ./Dockerfile ./runOrdsSSL.sh
 
 tagimage: 
 	@echo "TAG IMAGE"
@@ -205,46 +186,48 @@ dboperator:
 	@echo "ORACLE DATABASE OPERATOR"
 	$(KUBECTL) apply -f $(DBOPERATOR)
 
+namespace:
+	$(KUBECTL) get namespaces
+	$(KUBECTL) apply -f  $(CDB_NAMESPACE_YAML)
+	$(KUBECTL) apply -f  $(PDB_NAMESPACE_YAML)
+	$(KUBECTL) get namespaces
+
 tlscert:
 	@echo "CREATING TLS CERTIFICATES"
 	$(OPENSSL) genrsa -out ca.key 2048
 	$(OPENSSL) req -new -x509 -days 365 -key ca.key -subj "/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=$(COMPANY) Root CA" -out ca.crt
-	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=cdb-dev-$(REST_SERVER).$(NAMESPACE)" -out server.csr
-	$(ECHO) "subjectAltName=DNS:cdb-dev-$(REST_SERVER).$(NAMESPACE),DNS:www.example.com" > extfile.txt
+	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=cdb-dev-$(REST_SERVER).$(CDB_NAMESPACE)" -out server.csr
+	$(ECHO) "subjectAltName=DNS:cdb-dev-$(REST_SERVER).$(CDB_NAMESPACE),DNS:www.example.com" > extfile.txt
 	$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out $(SCRT)
 
 tlssecret:
-	@echo "CREATING TLS SECRETS"
-	$(KUBECTL) create secret tls db-tls --key="$(SKEY)" --cert="$(SCRT)"  -n $(NAMESPACE)
-	$(KUBECTL) create secret generic db-ca --from-file="$(CART)" -n $(NAMESPACE)
+	$(KUBECTL) create secret tls db-tls --key="$(SKEY)" --cert="$(SCRT)"  -n $(CDB_NAMESPACE)
+	$(KUBECTL) create secret generic db-ca --from-file="$(CART)" -n $(CDB_NAMESPACE)
+	$(KUBECTL) create secret tls db-tls --key="$(SKEY)" --cert="$(SCRT)"  -n $(PDB_NAMESPACE)
+	$(KUBECTL) create secret generic db-ca --from-file="$(CART)"  -n $(PDB_NAMESPACE)
+	$(KUBECTL) create secret tls db-tls --key="$(SKEY)" --cert="$(SCRT)"  -n $(OPR_NAMESPACE)
+	$(KUBECTL) create secret generic db-ca --from-file="$(CART)"  -n $(OPR_NAMESPACE)
+
 
 dbsecret:
 	@echo "CREATING DB SECRETS"
-	$(KUBECTL) apply -f $(CDB_SECRET) -n $(NAMESPACE)
-	$(KUBECTL) apply -f $(PDB_SECRET) -n $(NAMESPACE)
-	$(KUBECTL) apply -f $(TDE_SECRET) -n $(NAMESPACE)
+	$(KUBECTL) apply -f $(CDB_SECRET_YAML) 
+	$(KUBECTL) apply -f $(PDB_SECRET_YAML) 
+	$(KUBECTL) apply -f $(TDE_SECRET_YAML) 
+
 
 cdb:
 	@echo "CREATING REST SRV POD"
 	$(KUBECTL) apply -f $(CDB)
 
 checkcdb:
-	$(KUBECTL) logs -f `$(KUBECTL) get pods -n $(NAMESPACE)|grep $(REST_SERVER)|cut -d ' ' -f 1` -n $(NAMESPACE)
+	$(KUBECTL) logs -f `$(KUBECTL) get pods -n $(CDB_NAMESPACE)|grep $(REST_SERVER)|cut -d ' ' -f 1` -n $(CDB_NAMESPACE)
 
 pdb:
 	$(KUBECTL) apply -f $(PDB)
 
-close:
-	$(KUBECTL) apply -f $(PDB_CLOSE)
-
-open:
-	$(KUBECTL) apply -f $(PDB_OPEN)
-
-map:
-	$(KUBECTL) apply -f $(PDB_MAP)
-
 checkpdb:
-	$(KUBECTL) get pdbs -n $(NAMESPACE)
+	$(KUBECTL) get pdbs -n $(OPR_NAMESPACE)
 
 dump:
 	@$(eval TMPSP := $(shell date "+%y%m%d%H%M%S" ))
@@ -252,31 +235,52 @@ dump:
 	@>$(DIAGFILE)
 	@echo "OPERATOR DUMP"  >> $(DIAGFILE)
 	@echo "~~~~~~~~~~~~~"  >> $(DIAGFILE)
-	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(NAMESPACE)|grep oracle-database-operator-controller|head -1|cut  -d ' ' -f 1` -n $(NAMESPACE) >>$(DIAGFILE)
-	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(NAMESPACE)|grep oracle-database-operator-controller|head -2|tail -1 | cut -d ' ' -f 1` -n $(NAMESPACE) >>$(DIAGFILE)
-	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(NAMESPACE)|grep oracle-database-operator-controller|tail -1|cut  -d ' ' -f 1` -n $(NAMESPACE) >>$(DIAGFILE)
+	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep oracle-database-operator-controller|head -1|cut  -d ' ' -f 1` -n $(OPR_NAMESPACE) >>$(DIAGFILE)
+	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep oracle-database-operator-controller|head -2|tail -1 | cut -d ' ' -f 1` -n $(OPR_NAMESPACE) >>$(DIAGFILE)
+	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep oracle-database-operator-controller|tail -1|cut  -d ' ' -f 1` -n $(OPR_NAMESPACE) >>$(DIAGFILE)
 	@echo "CDB LOG DUMP" >> $(DIAGFILE)
 	@echo "~~~~~~~~" >> $(DIAGFILE)
-	$(KUBECTL) logs `$(KUBECTL) get pods -n $(NAMESPACE)|grep $(REST_SERVER)|  cut -d ' ' -f 1` -n $(NAMESPACE)  >>$(DIAGFILE)
+	$(KUBECTL) logs `$(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep $(REST_SERVER)|  cut -d ' ' -f 1` -n $(OPR_NAMESPACE)  >>$(DIAGFILE)
 	@echo "SECRET DMP" >>$(DIAGFILE)
 	@echo "~~~~~~~~" >> $(DIAGFILE)
-	$(KUBECTL) get secrets  -o yaml -n $(NAMESPACE) >> $(DIAGFILE)
+	$(KUBECTL) get secrets  -o yaml -n $(OPR_NAMESPACE) >> $(DIAGFILE)
 	@echo "CDB/PDB DMP" >> $(DIAGFILE)
-	$(KUBECTL) get pdbs  -o yaml -n $(NAMESPACE) >> $(DIAGFILE)
-	$(KUBECTL) get cdb  -o yaml -n $(NAMESPACE) >> $(DIAGFILE)
+	$(KUBECTL) get pdbs  -o yaml -n $(OPR_NAMESPACE) >> $(DIAGFILE)
+	$(KUBECTL) get cdb  -o yaml -n $(OPR_NAMESPACE) >> $(DIAGFILE)
 	@echo "CLUSTER INFO" >>  $(DIAGFILE)
 	$(KUBECTL) get nodes -o wide
 	$(KUBECTL) get svc --namespace=kube-system
 
 reloadop:
 	echo "RESTARTING OPERATOR"
-	$(eval OP1 := $(shell $(KUBECTL) get pods -n $(NAMESPACE)|grep oracle-database-operator-controller|head -1|cut  -d ' ' -f 1 ))
-	$(eval OP2 := $(shell $(KUBECTL) get pods -n $(NAMESPACE)|grep oracle-database-operator-controller|head -2|tail -1|cut  -d ' ' -f 1 ))
-	$(eval OP3 := $(shell $(KUBECTL) get pods -n $(NAMESPACE)|grep oracle-database-operator-controller|tail -1|cut  -d ' ' -f 1 ))
-	$(KUBECTL) get pod $(OP1) -n $(NAMESPACE) -o yaml | kubectl replace --force -f -
-	$(KUBECTL) get pod $(OP2) -n $(NAMESPACE) -o yaml | kubectl replace --force -f -
-	$(KUBECTL) get pod $(OP3) -n $(NAMESPACE) -o yaml | kubectl replace --force -f -
+	$(eval OP1 := $(shell $(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep oracle-database-operator-controller|head -1|cut  -d ' ' -f 1 ))
+	$(eval OP2 := $(shell $(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep oracle-database-operator-controller|head -2|tail -1|cut  -d ' ' -f 1 ))
+	$(eval OP3 := $(shell $(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep oracle-database-operator-controller|tail -1|cut  -d ' ' -f 1 ))
+	$(KUBECTL) get pod $(OP1) -n $(OPR_NAMESPACE) -o yaml | kubectl replace --force -f -
+	$(KUBECTL) get pod $(OP2) -n $(OPR_NAMESPACE) -o yaml | kubectl replace --force -f -
+	$(KUBECTL) get pod $(OP3) -n $(OPR_NAMESPACE) -o yaml | kubectl replace --force -f -
 
 login:
-	$(KUBECTL) exec -it  `$(KUBECTL) get pods -n $(NAMESPACE)|grep $(REST_SERVER)|cut -d ' ' -f 1` -n $(NAMESPACE) bash
+	$(KUBECTL) exec -it  `$(KUBECTL) get pods -n $(CDB_NAMESPACE) |grep $(REST_SERVER)|cut -d ' ' -f 1` -n $(CDB_NAMESPACE) bash
+
+cdblog:
+	$(KUBECTL) logs -f `$(KUBECTL) get pods -n $(CDB_NAMESPACE)|grep $(REST_SERVER)|cut -d ' ' -f 1` -n $(CDB_NAMESPACE)
+
+
+
+xlog1:
+	$(KUBECTL) logs -f  pod/`$(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep oracle-database-operator-controller|head -1|cut -d ' ' -f 1` -n $(OPR_NAMESPACE)
+
+xlog2:
+	$(KUBECTL) logs -f  pod/`$(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep oracle-database-operator-controller|head -2|tail -1|cut -d ' ' -f 1` -n $(OPR_NAMESPACE)
+
+xlog3:
+	$(KUBECTL) logs -f  pod/`$(KUBECTL) get pods -n $(OPR_NAMESPACE)|grep oracle-database-operator-controller|tail -1|cut -d ' ' -f 1` -n $(OPR_NAMESPACE)
+
+checkdep:
+	 $(KUBECTL) api-resources --verbs=list --namespaced -o name | xargs -n 1 $(KUBECTL) get -n $(OPR_NAMESPACE)
+	 $(KUBECTL) api-resources --verbs=list --namespaced -o name | xargs -n 1 $(KUBECTL) get -n $(CBD_NAMESPACE)
+	 $(KUBECTL) api-resources --verbs=list --namespaced -o name | xargs -n 1 $(KUBECTL) get -n $(PDB_NAMESPACE)
+
+
 
