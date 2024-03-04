@@ -220,9 +220,11 @@ func (r *CDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	return requeueN, nil
 }
 
-/**********************************************************
- * Create a ReplicaSet for pods based on the ORDS container
- /********************************************************/
+/*
+*********************************************************
+  - Create a ReplicaSet for pods based on the ORDS container
+    /*******************************************************
+*/
 func (r *CDBReconciler) createORDSInstances(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
 	log := r.Log.WithValues("createORDSInstances", req.NamespacedName)
@@ -251,9 +253,11 @@ func (r *CDBReconciler) createORDSInstances(ctx context.Context, req ctrl.Reques
 	return nil
 }
 
-/*************************************************
- * Validate ORDS Pod. Check if there are any errors
- /************************************************/
+/*
+************************************************
+  - Validate ORDS Pod. Check if there are any errors
+    /***********************************************
+*/
 func (r *CDBReconciler) validateORDSPods(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
 	log := r.Log.WithValues("validateORDSPod", req.NamespacedName)
@@ -311,9 +315,12 @@ func (r *CDBReconciler) validateORDSPods(ctx context.Context, req ctrl.Request, 
 	return nil
 }
 
-/************************
- * Create Pod spec
-/************************/
+/*
+***********************
+  - Create Pod spec
+
+/***********************
+*/
 func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 
 	podSpec := corev1.PodSpec{
@@ -531,9 +538,12 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 	return podSpec
 }
 
-/************************
- * Create ReplicaSet spec
-/************************/
+/*
+***********************
+  - Create ReplicaSet spec
+
+/***********************
+*/
 func (r *CDBReconciler) createReplicaSetSpec(cdb *dbapi.CDB) *appsv1.ReplicaSet {
 
 	replicas := int32(cdb.Spec.Replicas)
@@ -570,9 +580,11 @@ func (r *CDBReconciler) createReplicaSetSpec(cdb *dbapi.CDB) *appsv1.ReplicaSet 
 	return replicaSet
 }
 
-/**********************************************************
- * Evaluate change in Spec post creation and instantiation
- /********************************************************/
+/*
+*********************************************************
+  - Evaluate change in Spec post creation and instantiation
+    /*******************************************************
+*/
 func (r *CDBReconciler) deleteReplicaSet(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 	log := r.Log.WithValues("deleteReplicaSet", req.NamespacedName)
 
@@ -596,9 +608,11 @@ func (r *CDBReconciler) deleteReplicaSet(ctx context.Context, req ctrl.Request, 
 	return nil
 }
 
-/**********************************************************
- * Evaluate change in Spec post creation and instantiation
- /********************************************************/
+/*
+*********************************************************
+  - Evaluate change in Spec post creation and instantiation
+    /*******************************************************
+*/
 func (r *CDBReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 	log := r.Log.WithValues("evaluateSpecChange", req.NamespacedName)
 
@@ -673,9 +687,11 @@ func (r *CDBReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Request
 	return nil
 }
 
-/*************************************************
- * Create a Cluster Service for ORDS CDB Pod
- /************************************************/
+/*
+************************************************
+  - Create a Cluster Service for ORDS CDB Pod
+    /***********************************************
+*/
 func (r *CDBReconciler) createORDSSVC(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
 	log := r.Log.WithValues("createORDSSVC", req.NamespacedName)
@@ -701,9 +717,11 @@ func (r *CDBReconciler) createORDSSVC(ctx context.Context, req ctrl.Request, cdb
 	return nil
 }
 
-/************************
- * Create Service spec
- /************************/
+/*
+***********************
+  - Create Service spec
+    /***********************
+*/
 func (r *CDBReconciler) createSvcSpec(cdb *dbapi.CDB) *corev1.Service {
 
 	svc := &corev1.Service{
@@ -726,9 +744,11 @@ func (r *CDBReconciler) createSvcSpec(cdb *dbapi.CDB) *corev1.Service {
 	return svc
 }
 
-/*************************************************
- *   Check CDB deletion
- /************************************************/
+/*
+************************************************
+  - Check CDB deletion
+    /***********************************************
+*/
 func (r *CDBReconciler) manageCDBDeletion(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 	log := r.Log.WithValues("manageCDBDeletion", req.NamespacedName)
 
@@ -781,9 +801,12 @@ func (r *CDBReconciler) manageCDBDeletion(ctx context.Context, req ctrl.Request,
 	return nil
 }
 
-/*************************************************
- * Delete CDB Resource
-/************************************************/
+/*
+************************************************
+  - Delete CDB Resource
+
+/***********************************************
+*/
 func (r *CDBReconciler) deleteCDBInstance(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
 	log := r.Log.WithValues("deleteCDBInstance", req.NamespacedName)
@@ -824,9 +847,11 @@ func (r *CDBReconciler) deleteCDBInstance(ctx context.Context, req ctrl.Request,
 	return nil
 }
 
-/*************************************************
- * Get Secret Key for a Secret Name
- /************************************************/
+/*
+************************************************
+  - Get Secret Key for a Secret Name
+    /***********************************************
+*/
 func (r *CDBReconciler) verifySecrets(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
 	log := r.Log.WithValues("verifySecrets", req.NamespacedName)
@@ -855,9 +880,11 @@ func (r *CDBReconciler) verifySecrets(ctx context.Context, req ctrl.Request, cdb
 	return nil
 }
 
-/*************************************************
- * Get Secret Key for a Secret Name
- /************************************************/
+/*
+************************************************
+  - Get Secret Key for a Secret Name
+    /***********************************************
+*/
 func (r *CDBReconciler) checkSecret(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB, secretName string) error {
 
 	log := r.Log.WithValues("checkSecret", req.NamespacedName)
@@ -877,9 +904,11 @@ func (r *CDBReconciler) checkSecret(ctx context.Context, req ctrl.Request, cdb *
 	return nil
 }
 
-/*************************************************
- * Delete Secrets
- /************************************************/
+/*
+************************************************
+  - Delete Secrets
+    /***********************************************
+*/
 func (r *CDBReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) {
 
 	log := r.Log.WithValues("deleteSecrets", req.NamespacedName)
@@ -935,9 +964,11 @@ func (r *CDBReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, cdb
 	}
 }
 
-/**************************************************************
- * SetupWithManager sets up the controller with the Manager.
- /*************************************************************/
+/*
+*************************************************************
+  - SetupWithManager sets up the controller with the Manager.
+    /************************************************************
+*/
 func (r *CDBReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.CDB{}).
