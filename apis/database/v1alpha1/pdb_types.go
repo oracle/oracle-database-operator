@@ -51,6 +51,8 @@ type PDBSpec struct {
 	PDBTlsCrt PDBTLSCRT `json:"pdbTlsCrt,omitempty"`
 	PDBTlsCat PDBTLSCAT `json:"pdbTlsCat,omitempty"`
 
+	// CDB Namespace
+	CDBNamespace string `json:"cdbNamespace,omitempty"`
 	// Name of the CDB Custom Resource that runs the ORDS container
 	CDBResName string `json:"cdbResName,omitempty"`
 	// Name of the CDB
@@ -63,6 +65,10 @@ type PDBSpec struct {
 	AdminName PDBAdminName `json:"adminName,omitempty"`
 	// The administrator password for the new PDB. This property is required when the Action property is Create.
 	AdminPwd PDBAdminPassword `json:"adminPwd,omitempty"`
+	// Web Server User with SQL Administrator role to allow us to authenticate to the PDB Lifecycle Management REST endpoints
+	WebServerUsr WebServerUserPDB `json:"webServerUser,omitempty"`
+	// Password for the Web ServerPDB User
+	WebServerPwd WebServerPasswordPDB `json:"webServerPwd,omitempty"`
 	// Relevant for Create and Plug operations. As defined in the  Oracle Multitenant Database documentation. Values can be a filename convert pattern or NONE.
 	FileNameConversions string `json:"fileNameConversions,omitempty"`
 	// This property is required when the Action property is Plug. As defined in the Oracle Multitenant Database documentation. Values can be a source filename convert pattern or NONE.
@@ -130,6 +136,17 @@ type TDESecret struct {
 	Secret PDBSecret `json:"secret"`
 }
 
+// WebServerUser defines the secret containing Web Server User mapped to key 'webServerUser' to manage PDB lifecycle
+
+type WebServerUserPDB struct {
+	Secret PDBSecret `json:"secret"`
+}
+
+// WebServerPassword defines the secret containing password for Web Server User mapped to key 'webServerPwd' to manage PDB lifecycle
+type WebServerPasswordPDB struct {
+	Secret PDBSecret `json:"secret"`
+}
+
 // PDBSecret defines the secretName
 type PDBSecret struct {
 	SecretName string `json:"secretName"`
@@ -180,6 +197,8 @@ type PDBStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.totalSize",name="PDB Size",type="string",description="Total Size of the PDB"
 // +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the PDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
+// +kubebuilder:resource:path=PDBS,scope=Namespaced
+
 // PDB is the Schema for the pdbs API
 type PDB struct {
 	metav1.TypeMeta   `json:",inline"`

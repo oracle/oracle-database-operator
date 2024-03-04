@@ -264,6 +264,11 @@ kubectl create secret generic db-ca --from-file=<certfile> -n oracle-database-op
 ----
 #### Apply cdb.yaml
 
+
+**note:** <span style="color:red">
+ Before creating the CDB pod make sure that all the pluggable databases in the container DB are open.  
+</span>
+
 + Create ords container 
 
 ```bash

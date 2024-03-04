@@ -6,13 +6,13 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.6.1
   creationTimestamp: null
-  name: pdbs.database.oracle.com
+  name: PDBS.database.oracle.com
 spec:
   group: database.oracle.com
   names:
     kind: PDB
     listKind: PDBList
-    plural: pdbs
+    plural: PDBS
     singular: pdb
   scope: Namespaced
   versions:
