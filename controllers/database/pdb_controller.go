@@ -128,6 +128,12 @@ var floodcontrol bool = false
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs/finalizers,verbs=get;create;update;patch;delete
 
+// +kubebuilder:rbac:groups=core,resources=pods;pods/log;pods/exec;secrets;containers;services;events;configmaps;namespaces,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups='',resources=statefulsets/finalizers,verbs=get;list;watch;create;update;patch;delete
+
+
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
@@ -137,6 +143,7 @@ var floodcontrol bool = false
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.9.2/pkg/reconcile
+
 func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("multitenantoperator", req.NamespacedName)
 	log.Info("Reconcile requested")
@@ -291,23 +298,20 @@ func (r *PDBReconciler) validatePhase(ctx context.Context, req ctrl.Request, pdb
 */
 func (r *PDBReconciler) checkDuplicatePDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
-	log := r.Log.WithValues("checkDuplicatePDB", req.NamespacedName)
-
 	// Name of the CDB CR that holds the ORDS container
 	cdbResName := pdb.Spec.CDBResName
-	//cdbame := pdb.Spec.CDBName
 
-	// Name of the PDB resource
+	log := r.Log.WithValues("checkDuplicatePDB", pdb.Spec.CDBNamespace)
 	pdbResName := pdb.Spec.PDBName
 
 	pdbList := &dbapi.PDBList{}
 
-	listOpts := []client.ListOption{client.InNamespace(req.Namespace), client.MatchingFields{"spec.pdbName": pdbResName}}
+	listOpts := []client.ListOption{client.InNamespace(pdb.Spec.CDBNamespace), client.MatchingFields{"spec.pdbName": pdbResName}}
 
 	// List retrieves list of objects for a given namespace and list options.
 	err := r.List(ctx, pdbList, listOpts...)
 	if err != nil {
-		log.Info("Failed to list pdbs", "Namespace", req.Namespace, "Error", err)
+		log.Info("Failed to list pdbs", "Namespace", pdb.Spec.CDBNamespace, "Error", err)
 		return err
 	}
 
@@ -342,15 +346,16 @@ func (r *PDBReconciler) getCDBResource(ctx context.Context, req ctrl.Request, pd
 
 	// Name of the CDB CR that holds the ORDS container
 	cdbResName := pdb.Spec.CDBResName
+	cdbNamespace := pdb.Spec.CDBNamespace
 
 	// Get CDB CR corresponding to the CDB name specified in the PDB spec
 	err := r.Get(context.Background(), client.ObjectKey{
-		Namespace: req.Namespace,
+		Namespace: cdbNamespace,
 		Name:      cdbResName,
 	}, &cdb)
 
 	if err != nil {
-		log.Info("Failed to get CRD for CDB", "Name", cdbResName, "Namespace", req.Namespace, "Error", err.Error())
+		log.Info("Failed to get CRD for CDB", "Name", cdbResName, "Namespace", pdb.Spec.CDBNamespace, "Error", err.Error())
 		pdb.Status.Msg = "Unable to get CRD for CDB : " + cdbResName
 		r.Status().Update(ctx, pdb)
 		return cdb, err
@@ -376,12 +381,12 @@ func (r *PDBReconciler) getORDSPod(ctx context.Context, req ctrl.Request, pdb *d
 
 	// Get ORDS Pod associated with the CDB Name specified in the PDB Spec
 	err := r.Get(context.Background(), client.ObjectKey{
-		Namespace: req.Namespace,
+		Namespace: pdb.Spec.CDBNamespace,
 		Name:      cdbResName + "-ords",
 	}, &cdbPod)
 
 	if err != nil {
-		log.Info("Failed to get Pod for CDB", "Name", cdbResName, "Namespace", req.Namespace, "Error", err.Error())
+		log.Info("Failed to get Pod for CDB", "Name", cdbResName, "Namespace", pdb.Spec.CDBNamespace, "Error", err.Error())
 		pdb.Status.Msg = "Unable to get ORDS Pod for CDB : " + cdbResName
 		return cdbPod, err
 	}
@@ -486,37 +491,37 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 
 	log.Info("Issuing REST call", "URL", url, "Action", action)
 
-	cdb, err := r.getCDBResource(ctx, req, pdb)
-	if err != nil {
-		return "", err
-	}
+	/*
+		cdb, err := r.getCDBResource(ctx, req, pdb)
+		if err != nil {
+			return "", err
+		}
+	*/
 
-	// Get Web Server User
-	//secret := &corev1.Secret{}
-	err = r.Get(ctx, types.NamespacedName{Name: cdb.Spec.WebServerUser.Secret.SecretName, Namespace: cdb.Namespace}, secret)
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.WebServerUsr.Secret.SecretName, Namespace: pdb.Namespace}, secret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Secret not found:" + cdb.Spec.WebServerUser.Secret.SecretName)
+			log.Info("Secret not found:" + pdb.Spec.WebServerUsr.Secret.SecretName)
 			return "", err
 		}
 		log.Error(err, "Unable to get the secret.")
 		return "", err
 	}
-	webUser := string(secret.Data[cdb.Spec.WebServerUser.Secret.Key])
+
+	webUser := string(secret.Data[pdb.Spec.WebServerUsr.Secret.Key])
 	webUser = strings.TrimSpace(webUser)
 
-	// Get Web Server User Password
 	secret = &corev1.Secret{}
-	err = r.Get(ctx, types.NamespacedName{Name: cdb.Spec.WebServerPwd.Secret.SecretName, Namespace: cdb.Namespace}, secret)
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.WebServerPwd.Secret.SecretName, Namespace: pdb.Namespace}, secret)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Secret not found:" + cdb.Spec.WebServerPwd.Secret.SecretName)
+			log.Info("Secret not found:" + pdb.Spec.WebServerPwd.Secret.SecretName)
 			return "", err
 		}
 		log.Error(err, "Unable to get the secret.")
 		return "", err
 	}
-	webUserPwd := string(secret.Data[cdb.Spec.WebServerPwd.Secret.Key])
+	webUserPwd := string(secret.Data[pdb.Spec.WebServerPwd.Secret.Key])
 	webUserPwd = strings.TrimSpace(webUserPwd)
 
 	var httpreq *http.Request
@@ -676,7 +681,8 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		values["tdeSecret"] = tdeSecret
 	}
 
-	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
+	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 
 	pdb.Status.TotalSize = pdb.Spec.TotalSize
 	pdb.Status.Phase = pdbPhaseCreate
@@ -686,7 +692,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	}
 	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
 	if err != nil {
-		log.Error(err, "callAPI error", err.Error())
+		log.Error(err, "callAPI error", "err", err.Error())
 		return err
 	}
 
@@ -757,7 +763,9 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 		values["tempSize"] = pdb.Spec.TempSize
 	}
 
-	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.SrcPDBName + "/"
+	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.SrcPDBName + "/"
+	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.SrcPDBName + "/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.SrcPDBName + "/"
 
 	pdb.Status.Phase = pdbPhaseClone
 	pdb.Status.Msg = "Waiting for PDB to be cloned"
@@ -837,7 +845,9 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 		values["asClone"] = strconv.FormatBool(*(pdb.Spec.AsClone))
 	}
 
-	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
+	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
+	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 
 	pdb.Status.TotalSize = pdb.Spec.TotalSize
 	pdb.Status.Phase = pdbPhasePlug
@@ -905,7 +915,9 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 		values["tdeExport"] = strconv.FormatBool(*(pdb.Spec.TDEExport))
 	}
 
-	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
+	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
+
 	log.Info("CallAPI(url)", "url", url)
 
 	pdb.Status.Phase = pdbPhaseUnplug
@@ -999,7 +1011,8 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 	log.Info("PDB STATUS OPENMODE", "pdb.Status.OpenMode=", pdb.Status.OpenMode)
 
 	pdbName := pdb.Spec.PDBName
-	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+	//url := "https://" + pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
 
 	pdb.Status.Phase = pdbPhaseModify
 	pdb.Status.ModifyOption = pdb.Spec.PDBState + "-" + pdb.Spec.ModifyOption
@@ -1042,7 +1055,9 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 	}
 
 	pdbName := pdb.Spec.PDBName
-	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
 
 	pdb.Status.Msg = "Getting PDB state"
 	if err := r.Status().Update(ctx, pdb); err != nil {
@@ -1093,7 +1108,9 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 	}
 
 	pdbName := pdb.Spec.PDBName
-	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
+	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
+	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
 
 	pdb.Status.Msg = "Mapping PDB"
 	if err := r.Status().Update(ctx, pdb); err != nil {
@@ -1242,7 +1259,7 @@ func (r *PDBReconciler) deletePDBInstance(req ctrl.Request, ctx context.Context,
 	}
 
 	pdbName := pdb.Spec.PDBName
-	url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
+	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
 
 	pdb.Status.Phase = pdbPhaseDelete
 	pdb.Status.Msg = "Waiting for PDB to be deleted"

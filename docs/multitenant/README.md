@@ -6,6 +6,13 @@
 
 > <span style="color:red"> WARNING: Examples with https are located in the use case directories </span>
 
+Detailed examples can be found here
+
+- [Usecase01](./usecase01) pdb crd and cdb pod are running in the same namesaoce 
+- [Usecase02](./usecase02) unplug and plug operation examples  
+- [Usecase03](./usecase03) multiple namespace example cdb pod ,pdb crd and pod operator are running in different namespaces
+
+
 CDBs and PDBs are part of the Oracle Database [Multitenant Architecture](https://docs.oracle.com/en/database/oracle/oracle-database/21/multi/introduction-to-the-multitenant-architecture.html#GUID-AB84D6C9-4BBE-4D36-992F-2BB85739329F). The Multitenant Database Controller is a feature of Oracle DB Operator for Kubernetes (`OraOperator`), which helps to manage the lifecycle of Pluggable Databases (PDBs) in an Oracle Container Database (CDB).
 
 The target CDB for which PDB lifecycle management is needed can be running on a machine on-premises. To manage the PDBs of that target CDB, you can run the Oracle DB Operator on a Kubernetes system on-premises (For Example: [Oracle Linux Cloud Native Environment or OLCNE](https://docs.oracle.com/en/operating-systems/olcne/)).
@@ -127,6 +134,8 @@ See this [provisioning example setup](./provisioning/example_setup_using_oci_oke
 + ## Kubernetes Secrets
 
   Oracle DB Operator Multitenant Database Controller uses Kubernetes Secrets to store usernames and passwords that you must have to manage the lifecycle operations of a PDB in the target CDB. In addition, to use https protocol, all certificates need to be stored using Kubernetes Secret. 
+
+  **Note** <span style="color:red"> In multi namespace enviroment you have to create specific secrets for each namespaces </span>
 
 ### Secrets for CDB CRD
 
