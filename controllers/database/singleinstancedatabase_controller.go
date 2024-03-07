@@ -2863,15 +2863,19 @@ func (r *SingleInstanceDatabaseReconciler) updateDBConfig(m *dbapi.SingleInstanc
 	// Needs to restart the Non Ready Pods ( Delete old ones and create new ones )
 	if m.Status.FlashBack == strconv.FormatBool(false) && flashBackStatus {
 
-		// call FindPods() to fetch pods all version/images of the same SIDB kind
+		// 	// call FindPods() to fetch pods all version/images of the same SIDB kind
 		readyPod, replicasFound, available, _, err := dbcommons.FindPods(r, "", "", m.Name, m.Namespace, ctx, req)
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY, err
 		}
-		// delete non ready Pods as flashback needs restart of pods
+		// delete non ready Pods as flashback needs restart of pods to make sure failover works in sidbs with multiple replicas
 		_, err = r.deletePods(ctx, req, m, available, readyPod, replicasFound, 1)
-		return requeueY, err
+		if err != nil {
+			log.Error(err, err.Error())
+			return requeueY, err
+		}
+		return requeueN, err
 	}
 
 	m.Status.FlashBack = strconv.FormatBool(flashBackStatus)
