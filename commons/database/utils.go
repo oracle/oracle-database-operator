@@ -791,10 +791,14 @@ func GetWatchNamespaces() map[string]bool {
 	// Fetching the allowed namespaces from env variables
 	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
 	ns, _ := os.LookupEnv(watchNamespaceEnvVar)
-	values := strings.Split(strings.TrimSpace(ns), ",")
+	ns = strings.TrimSpace(ns)
 	namespaces := make(map[string]bool)
+	if len(ns) == 0 {
+		return namespaces
+	}
+	namespacesArr := strings.Split(ns, ",")
 	// put slice values into map
-	for _, s := range values {
+	for _, s := range namespacesArr {
 		namespaces[s] = true
 	}
 	return namespaces

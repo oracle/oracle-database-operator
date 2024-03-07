@@ -261,25 +261,10 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 					"Free edition PDB must be FREEPDB1"))
 		}
-		if r.Spec.InitParams.CpuCount != 0 {
+		if r.Spec.InitParams != nil {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("cpuCount"), r.Spec.InitParams.CpuCount,
-					r.Spec.Edition+" edition does not support changing init parameter cpuCount."))
-		}
-		if r.Spec.InitParams.Processes != 0 {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("processes"), r.Spec.InitParams.Processes,
-					r.Spec.Edition+" edition does not support changing init parameter process."))
-		}
-		if r.Spec.InitParams.SgaTarget != 0 {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("sgaTarget"), r.Spec.InitParams.SgaTarget,
-					r.Spec.Edition+" edition does not support changing init parameter sgaTarget."))
-		}
-		if r.Spec.InitParams.PgaAggregateTarget != 0 {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("pgaAggregateTarget"), r.Spec.InitParams.PgaAggregateTarget,
-					r.Spec.Edition+" edition does not support changing init parameter pgaAggregateTarget."))
+				field.Invalid(field.NewPath("spec").Child("initParams"), *r.Spec.InitParams,
+					r.Spec.Edition+" edition does not support changing init parameters"))
 		}
 	} else {
 		if r.Spec.Sid == "XE" {
@@ -294,7 +279,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 		}
 	}
 
-	if r.Spec.CreateAs != "clone" {
+	if r.Spec.CreateAs == "clone" {
 		if r.Spec.Image.PrebuiltDB {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("createAs"), r.Spec.CreateAs,
