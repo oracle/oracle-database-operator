@@ -35,5 +35,5 @@ spec:
     storageClass: "oci-bv"
     accessMode: "ReadWriteOnce"
 
-  ## Count of Database Pods. Should be 1 for express edition.
+  ## Count of Database Pods. Should be 1 for free edition.
   replicas: 1
