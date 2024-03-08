@@ -2,6 +2,7 @@
 # Copyright (c) 2022, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
+---
 apiVersion: database.oracle.com/v1alpha1
 kind: ShardingDatabase
 metadata:
@@ -11,42 +12,58 @@ spec:
  shard:
     - name: shard1
       storageSizeInGb: 50
+      imagePullPolicy: "Always"
+      shardSpace: sspace1
+      shardRegion: primary
     - name: shard2
       storageSizeInGb: 50
-      isDelete: true
+      imagePullPolicy: "Always"
+      shardSpace: sspace2
+      shardRegion: primary
     - name: shard3
       storageSizeInGb: 50
+      imagePullPolicy: "Always"
+      shardSpace: sspace3
+      shardRegion: primary
     - name: shard4
       storageSizeInGb: 50
+      imagePullPolicy: "Always"
+      shardSpace: sspace4
+      shardRegion: primary
+      isDelete: True
     - name: shard5
-      storageSizeInGb: 50            
+      storageSizeInGb: 50
+      imagePullPolicy: "Always"
+      shardSpace: sspace5
+      shardRegion: primary
  catalog:
     - name: catalog
       storageSizeInGb: 50
+      imagePullPolicy: "Always"
  gsm:
     - name: gsm1
+      imagePullPolicy: "Always"
       storageSizeInGb: 50
-      replicas: 1
-      envVars:
-        - name:  "SERVICE1_PARAMS"
-          value: "service_name=oltp_rw_svc;service_role=primary"
-        - name:  "SERVICE2_PARAMS"
-          value: "service_name=oltp_ro_svc;service_role=primary"
+      region: primary
     - name: gsm2
+      imagePullPolicy: "Always"
       storageSizeInGb: 50
-      replicas: 1
-      envVars:
-        - name:  "SERVICE1_PARAMS"
-          value: "service_name=oltp_rw_svc;service_role=primary"
-        - name:  "SERVICE2_PARAMS"
-          value: "service_name=oltp_ro_svc;service_role=primary"
+      region: standby
  storageClass: oci
  dbImage: container-registry.oracle.com/database/enterprise:latest
  dbImagePullSecret: ocr-reg-cred
  gsmImage: container-registry.oracle.com/database/gsm:latest
  gsmImagePullSecret: ocr-reg-cred
- scriptsLocation: "set -ex;curl https://codeload.github.com/oracle/db-sharding/tar.gz/master |   tar -xz --strip=4 db-sharding-master/docker-based-sharding-deployment/dockerfiles/21.3.0/scripts; cp -i -r scripts/* /opt/oracle/scripts/sharding/scripts/;cp -i -r scripts/*py /opt/oracle/scripts/sharding"
- secret: db-user-pass
- isExternalSvc: false
+ shardingType: USER
+ isExternalSvc: False
  isDeleteOraPvc: True
+ dbSecret:
+   name: db-user-pass-rsa
+   pwdFileName: pwdfile.enc
+   keyFileName: key.pem
+ gsmService:
+   - name: oltp_rw_svc
+     role: primary
+   - name: oltp_ro_svc
+     role: primary
  namespace: shns

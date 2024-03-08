@@ -9,7 +9,7 @@ This example uses file `oraclesi.yaml` to provision a single instance Oracle Dat
 * A Persistent Volume Claim
 * Repository location for Database Docker Image: `image: container-registry.oracle.com/database/enterprise:latest`
 * Namespace: `shns`
-* Tag `nodeSelector` to deploy the Single Oracle Database in AD `EU-FRANKFURT-1-AD-1`
+* Tag `nodeSelector` to deploy the Single Oracle Database in AD `PHX-AD-1`
 
 In this example, we are using pre-built Oracle Database image available on [Oracle Container Registry](https://container-registry.oracle.com/)
   * To pull the above image from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
