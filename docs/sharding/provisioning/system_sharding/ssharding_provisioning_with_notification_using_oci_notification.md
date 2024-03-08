@@ -1,15 +1,17 @@
-# Provisioning Oracle Database Sharding Topology and Send Notification Using OCI Notification Service
+# Provisioning Oracle Sharded Database with System Sharding and send Notification using OCI Notification Service
 
-This use case demonstrates how to use a notification service like OCI Notification service to send an email notification when a particular operation is completed on an Oracle Database sharding topology provisioned using the Oracle Database sharding controller. 
+**IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-This example uses `shard_prov_send_notification.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
+This use case demonstrates how to use a notification service like OCI Notification service to send an email notification when a particular operation is completed on an Oracle Database sharding topology provisioned using the Oracle Database sharding controller.
+
+This example uses `ssharding_shard_prov_send_notification.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Two sharding Pods: `shard1` and `shard2`
+* Three sharding Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * Database Cloning from the `BLOCK VOLUME FULL BACKUP` of the Persistent Volume that has the Database Gold Image created earlier.
-* OCID of the Block Volume Backup: `ocid1.volumebackup.oc1.eu-frankfurt-1.abtheljtjlc7oce3sgq55vnskb4sjdip5sdaighm54hpmlcg7avgc76pjbea`
+* OCID of the Block Volume Backup: `ocid1.volumebackup.oc1.phx.abyhqljrxtv7tu5swqb3lzc7vpzwbwzdktd2y4k2vjjy2srmgu2w7bqdftjq`
 * Configmap to send notification email when a particular operation is completed. For example: When a shard is added.
 
 **NOTE:**
@@ -26,8 +28,8 @@ To do this:
     user=ocid1.user.oc1........fx7omxfq
     fingerprint=fa:18:98:...............:8a
     tenancy=ocid1.tenancy.oc1..aaaa.......orpn7inq
-    region=eu-frankfurt-1
-    topicid=ocid1.onstopic.oc1.eu-frankfurt-1.aaa............6xrq
+    region=us-phoenix-1
+    topicid=ocid1.onstopic.oc1.phx.aaa............6xrq
     ```
 2. Create a configmap using the below command using the file created above:
     ```sh
@@ -61,14 +63,14 @@ To do this:
 
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `shard_prov.yaml`.
-  * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../README.md#3-oracle-database-and-global-data-services-docker-images)
+  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_send_notification.yaml`.
+  * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
 
-Use the file: [shard_prov_send_notification.yaml](./shard_prov_send_notification.yaml) for this use case as below:
+Use the file: [ssharding_shard_prov_send_notification.yaml](./ssharding_shard_prov_send_notification.yaml) for this use case as below:
 
-1. Deploy the `shard_prov_send_notification.yaml` file:
+1. Deploy the `ssharding_shard_prov_send_notification.yaml` file:
     ```sh
-    kubectl apply -f shard_prov_send_notification.yaml
+    kubectl apply -f ssharding_shard_prov_send_notification.yaml
     ```
 2. Check the status of the deployment:
     ```sh
