@@ -61,15 +61,64 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.12.0/cert-manager.yaml
   ```
 
-## Quick Install of the Operator
+* ### Role Binding for access management
 
-  To install the operator in the cluster quickly, you can use a single [oracle-database-operator.yaml](https://github.com/oracle/oracle-database-operator/blob/main/oracle-database-operator.yaml) file. 
+  When the Oracle DB Operator is dealing with multiple namespaces and access management is required, you need to complete additional steps:
+  - To have the Oralce DB Operator monitor only certain defined namespaces which you want it to monitor.
+  - To apply role binding for those namespaces for access control.
 
-  Run the following command
+  Follow the below steps:
 
-  ```sh
-  kubectl apply -f https://raw.githubusercontent.com/oracle/oracle-database-operator/main/oracle-database-operator.yaml
-  ```
+  1. Download the [oracle-database-operator.yaml](https://github.com/oracle/oracle-database-operator/blob/main/oracle-database-operator.yaml) file.
+  2. Add the comma separated namespaces under `WATCH_NAMESPACE`. For example:
+     ```sh
+     - name: WATCH_NAMESPACE
+       value: "oracle-database-operator-system,shns"
+     ```
+     This is needed when you want the DB Operator to monitor the namespaces `shns` and `oracle-database-operator-system`.
+
+     If you are going to work with more namespaces, then you will need to add them under `WATCH_NAMESPACE`. 
+
+     Save the `oracle-database-operator-system.yaml` file after this change.
+  3. Create a role binding file for the namespace you are going to work in. 
+
+     In this case, its the namespace `shns` and you need to create a file like below for it:
+
+     ```sh
+     ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: RoleBinding
+     metadata:
+       name: oracle-database-operator-oracle-database-operator-manager-rolebinding1
+       namespace: shns
+     roleRef:
+       apiGroup: rbac.authorization.k8s.io
+       kind: ClusterRole
+       name: oracle-database-operator-manager-role
+     subjects:
+     - kind: ServiceAccount
+       name: default
+       namespace: oracle-database-operator-system
+     ```
+
+     If you are testing with multiple namespaces, make sure you create that many binding files and apply them before applying `oracle-database-operator.yaml`. 
+
+     NOTE: You need to change the namespace in that binding file from `shns` and also change the binding name `oracle-database-operator-oracle-database-operator-manager-rolebinding1` to a new binding name.
+
+  4. Apply the role binding file like below:
+     ```sh
+     kubectl apply -f shns_binding.yaml
+     ```
+
+## Install Oracle DB Operator
+
+   Once the above prerequisite changes have been done, to install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from above step.
+
+   Run the following command
+
+   ```sh
+   kubectl apply -f oracle-database-operator.yaml
+   ```
 
   Ensure that the operator pods are up and running. For high availability, Operator pod replicas are set to a default of 3. You can scale this setting up or down.
 
