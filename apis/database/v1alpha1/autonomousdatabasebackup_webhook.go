@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -81,6 +82,19 @@ func (r *AutonomousDatabaseBackup) ValidateCreate() (admission.Warnings, error) 
 	autonomousdatabasebackuplog.Info("validate create", "name", r.Name)
 
 	var allErrs field.ErrorList
+
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, hasEmptyString := namespaces[""]
+	isClusterScoped := len(namespaces) == 1 && hasEmptyString
+	if !isClusterScoped {
+		_, containsNamespace := namespaces[r.Namespace]
+		// Check if the allowed namespaces maps contains the required namespace
+		if len(namespaces) != 0 && !containsNamespace {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+					"Oracle database operator doesn't watch over this namespace"))
+		}
+	}
 
 	if r.Spec.Target.K8sADB.Name == nil && r.Spec.Target.OCIADB.OCID == nil {
 		allErrs = append(allErrs,

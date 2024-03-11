@@ -7,8 +7,9 @@ ARG BUILDER_IMG
 FROM ${BUILDER_IMG} as builder
 
 # Download golang if BUILD_INTERNAL is set to true
+ARG INSTALL_GO
 ARG GOLANG_VERSION
-RUN if [ -n "$GOLANG_VERSION" ]; then \
+RUN if [ "$INSTALL_GO" = "true" ]; then \
         curl -LJO https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz &&\
         rm -rf /usr/local/go && tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-amd64.tar.gz &&\
         rm go${GOLANG_VERSION}.linux-amd64.tar.gz; \

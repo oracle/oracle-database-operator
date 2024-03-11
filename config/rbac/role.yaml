@@ -78,6 +78,13 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - nodes
+  verbs:
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumeclaims
   - pods
   - pods/exec
@@ -166,6 +173,26 @@ rules:
   - events
   - namespaces
   - persistentvolumeclaims
+  - pods
+  - pods/exec
+  - pods/log
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - containers
+  - events
+  - namespaces
   - pods
   - pods/exec
   - pods/log
