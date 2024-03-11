@@ -93,32 +93,29 @@ func (r *AutonomousDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		For(&dbv1alpha1.AutonomousDatabase{}).
 		Watches(
 			&dbv1alpha1.AutonomousDatabaseBackup{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueMapFn()),
+			handler.EnqueueRequestsFromMapFunc(r.enqueueMapFn),
 		).
 		Watches(
 			&dbv1alpha1.AutonomousDatabaseRestore{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueMapFn()),
+			handler.EnqueueRequestsFromMapFunc(r.enqueueMapFn),
 		).
 		WithEventFilter(predicate.And(r.eventFilterPredicate(), r.watchPredicate())).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 50}). // ReconcileHandler is never invoked concurrently with the same object.
 		Complete(r)
 }
+func (r *AutonomousDatabaseReconciler) enqueueMapFn(ctx context.Context, o client.Object) []reconcile.Request {
+	reqs := make([]reconcile.Request, len(o.GetOwnerReferences()))
 
-func (r *AutonomousDatabaseReconciler) enqueueMapFn() handler.MapFunc {
-	return func(ctx context.Context, o client.Object) []reconcile.Request {
-		reqs := make([]reconcile.Request, len(o.GetOwnerReferences()))
-
-		for _, owner := range o.GetOwnerReferences() {
-			reqs = append(reqs, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      owner.Name,
-					Namespace: o.GetNamespace(),
-				},
-			})
-		}
-
-		return reqs
+	for _, owner := range o.GetOwnerReferences() {
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      owner.Name,
+				Namespace: o.GetNamespace(),
+			},
+		})
 	}
+
+	return reqs
 }
 
 func (r *AutonomousDatabaseReconciler) watchPredicate() predicate.Predicate {

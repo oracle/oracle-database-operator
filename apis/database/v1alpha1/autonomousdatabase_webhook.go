@@ -43,6 +43,7 @@ import (
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -99,10 +100,22 @@ var _ webhook.Validator = &AutonomousDatabase{}
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 // ValidateCreate checks if the spec is valid for a provisioning or a binding operation
 func (r *AutonomousDatabase) ValidateCreate() (admission.Warnings, error) {
-
 	var allErrs field.ErrorList
 
 	autonomousdatabaselog.Info("validate create", "name", r.Name)
+
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, hasEmptyString := namespaces[""]
+	isClusterScoped := len(namespaces) == 1 && hasEmptyString
+	if !isClusterScoped {
+		_, containsNamespace := namespaces[r.Namespace]
+		// Check if the allowed namespaces maps contains the required namespace
+		if len(namespaces) != 0 && !containsNamespace {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+					"Oracle database operator doesn't watch over this namespace"))
+		}
+	}
 
 	if r.Spec.Details.AutonomousDatabaseOCID == nil { // provisioning operation
 		allErrs = validateCommon(r, allErrs)
