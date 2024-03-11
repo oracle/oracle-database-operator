@@ -55,7 +55,8 @@ type AutonomousDatabaseBackupSpec struct {
 	Target                       TargetSpec `json:"target,omitempty"`
 	DisplayName                  *string    `json:"displayName,omitempty"`
 	AutonomousDatabaseBackupOCID *string    `json:"autonomousDatabaseBackupOCID,omitempty"`
-
+	IsLongTermBackup             *bool      `json:"isLongTermBackup,omitempty"`
+	RetentionPeriodInDays        *int       `json:"retentionPeriodInDays,omitempty"`
 	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
 }
 

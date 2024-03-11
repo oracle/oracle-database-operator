@@ -197,7 +197,7 @@ type PDBStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.totalSize",name="PDB Size",type="string",description="Total Size of the PDB"
 // +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the PDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
-// +kubebuilder:resource:path=PDBS,scope=Namespaced
+// +kubebuilder:resource:path=pdbs,scope=Namespaced
 
 // PDB is the Schema for the pdbs API
 type PDB struct {

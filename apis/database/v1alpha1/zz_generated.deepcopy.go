@@ -288,6 +288,16 @@ func (in *AutonomousDatabaseBackupSpec) DeepCopyInto(out *AutonomousDatabaseBack
 		*out = new(string)
 		**out = **in
 	}
+	if in.IsLongTermBackup != nil {
+		in, out := &in.IsLongTermBackup, &out.IsLongTermBackup
+		*out = new(bool)
+		**out = **in
+	}
+	if in.RetentionPeriodInDays != nil {
+		in, out := &in.RetentionPeriodInDays, &out.RetentionPeriodInDays
+		*out = new(int)
+		**out = **in
+	}
 	in.OCIConfig.DeepCopyInto(&out.OCIConfig)
 }
 
