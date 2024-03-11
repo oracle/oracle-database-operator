@@ -154,7 +154,7 @@ type CDBStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.replicas",name="Replicas",type="integer",description="Replicas"
 // +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the CDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
-// +kubebuilder:resource:path=CDBS,scope=Namespaced
+// +kubebuilder:resource:path=cdbs,scope=Namespaced
 
 // CDB is the Schema for the cdbs API
 type CDB struct {

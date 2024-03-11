@@ -408,6 +408,8 @@ func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.A
 	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
 		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
 			AutonomousDatabaseId: common.String(adbOCID),
+			IsLongTermBackup: adbBackup.Spec.IsLongTermBackup,
+			RetentionPeriodInDays: adbBackup.Spec.RetentionPeriodInDays,
 		},
 	}
 
