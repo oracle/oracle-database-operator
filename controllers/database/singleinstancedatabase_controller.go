@@ -2438,10 +2438,23 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		if m.Spec.TcpsTlsSecret != "" { // case when tls secret is either added or changed
 			TcpsCommand = "export TCPS_CERTS_LOCATION=" + dbcommons.TlsCertsLocation + " && " + dbcommons.EnableTcpsCMD
 
-			// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
-			result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
-			if result.Requeue {
-				return result, err
+			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
+				ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.PodMountsCmd, dbcommons.TlsCertsLocation))
+			r.Log.Info("Mount Check Output")
+			r.Log.Info(out)
+			if err != nil {
+				r.Log.Error(err, err.Error())
+					return requeueY, nil
+			}
+
+			if (m.Status.TcpsTlsSecret != "" ) || // case when TCPS Secret is changed
+			   (!strings.Contains(out, dbcommons.TlsCertsLocation)) { // if mount is not there in pod
+					// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
+				result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
+				if result.Requeue {
+					return result, err
+				}
+				m.Status.TcpsTlsSecret = ""	// to avoid reconciled pod deletions, in case of TCPS secret change and it fails
 			}
 		}
 
