@@ -714,27 +714,27 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name:      "datafiles-vol",
 						}},
 					})
-					if m.Spec.Image.PrebuiltDB {
-						initContainers = append(initContainers, corev1.Container{
-							Name:    "init-prebuiltdb",
-							Image:   m.Spec.Image.PullFrom,
-							Command: []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
-							SecurityContext: &corev1.SecurityContext{
-								RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
-								RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+				}
+				if m.Spec.Image.PrebuiltDB {
+					initContainers = append(initContainers, corev1.Container{
+						Name:    "init-prebuiltdb",
+						Image:   m.Spec.Image.PullFrom,
+						Command: []string{"/bin/sh", "-c", dbcommons.InitPrebuiltDbCMD},
+						SecurityContext: &corev1.SecurityContext{
+							RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+							RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+						},
+						VolumeMounts: []corev1.VolumeMount{{
+							MountPath: "/mnt/oradata",
+							Name:      "datafiles-vol",
+						}},
+						Env: []corev1.EnvVar{
+							{
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
 							},
-							VolumeMounts: []corev1.VolumeMount{{
-								MountPath: "/mnt/oradata",
-								Name:      "datafiles-vol",
-							}},
-							Env: []corev1.EnvVar{
-								{
-									Name:  "ORACLE_SID",
-									Value: strings.ToUpper(m.Spec.Sid),
-								},
-							},
-						})
-					}
+						},
+					})
 				}
 				/* Wallet only for edition barring express and free editions, non-prebuiltDB */
 				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB {
@@ -2444,17 +2444,17 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			r.Log.Info(out)
 			if err != nil {
 				r.Log.Error(err, err.Error())
-					return requeueY, nil
+				return requeueY, nil
 			}
 
-			if (m.Status.TcpsTlsSecret != "" ) || // case when TCPS Secret is changed
-			   (!strings.Contains(out, dbcommons.TlsCertsLocation)) { // if mount is not there in pod
-					// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
+			if (m.Status.TcpsTlsSecret != "") || // case when TCPS Secret is changed
+				(!strings.Contains(out, dbcommons.TlsCertsLocation)) { // if mount is not there in pod
+				// call deletePods() with zero pods in avaiable and nil readyPod to delete all pods
 				result, err := r.deletePods(ctx, req, m, []corev1.Pod{}, corev1.Pod{}, 0, 0)
 				if result.Requeue {
 					return result, err
 				}
-				m.Status.TcpsTlsSecret = ""	// to avoid reconciled pod deletions, in case of TCPS secret change and it fails
+				m.Status.TcpsTlsSecret = "" // to avoid reconciled pod deletions, in case of TCPS secret change and it fails
 			}
 		}
 
