@@ -4,7 +4,7 @@
 
 As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
 
-In this v1.0.0 production release, `OraOperator` supports the following database configurations and infrastructure:
+In this v1.1.0 production release, `OraOperator` supports the following database configurations and infrastructure:
 
 * Oracle Autonomous Database:
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
@@ -15,7 +15,7 @@ In this v1.0.0 production release, `OraOperator` supports the following database
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Base Database Cloud Service (BDBCS)
 * Oracle Data Guard (Preview status)
-* Oracle Database Metrics Exporter (Preview status)
+* Oracle Database Observability  (Preview status)
 
 Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
 
@@ -30,7 +30,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Oracle Base Database Cloud Service (BDBCS): provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License
 * Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
-* Oracle Database Metrics Exporter: create, patch, delete
+* Oracle Database Observability: create, patch, delete
 * Watch over a set of namespaces or all the namespaces in the cluster using the "WATCH_NAMESPACE" env variable of the operator deployment
 
 The upcoming releases will support new configurations, operations and capabilities.
@@ -63,9 +63,9 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
 * ### Role Binding for access management
 
-  When the Oracle DB Operator is dealing with multiple namespaces and access management is required, you need to complete additional steps:
-  - To have the Oralce DB Operator monitor only certain defined namespaces which you want it to monitor.
-  - To apply role binding for those namespaces for access control.
+  When the Oracle DB Operator is operating with multiple namespaces and access management is required, you need to complete the following additional steps:
+  - Have the Oralce DB Operator monitor only certain defined namespaces.
+  - Apply role binding for those namespaces for access control.
 
   Follow the below steps:
 
@@ -75,7 +75,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
      - name: WATCH_NAMESPACE
        value: "oracle-database-operator-system,shns"
      ```
-     This is needed when you want the DB Operator to monitor the namespaces `shns` and `oracle-database-operator-system`.
+     This is needed when you want the DB Operator to monitor `shns` and `oracle-database-operator-system` namespaces.
 
      If you are going to work with more namespaces, then you will need to add them under `WATCH_NAMESPACE`. 
 
@@ -151,7 +151,7 @@ The quickstarts are designed for specific database configurations:
 
 
 The quickstarts are designed for non-database configurations:
-* [Oracle Database Metrics Exporter](./docs/observability/README.md)
+* [Oracle Database Observability](./docs/observability/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases.
 
