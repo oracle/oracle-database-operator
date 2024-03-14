@@ -41,8 +41,7 @@ spec:
     keepSecret: true
 
   ## ORDS image details
-  ## Build the ORDS image following instructions at
-  ## https://github.com/oracle/docker-images/tree/main/OracleRestDataServices
+  ## Supported ORDS image is container-registry.oracle.com/database/ords:21.4.2-gh
   image:
     pullFrom: container-registry.oracle.com/database/ords:21.4.2-gh
     pullSecrets:
