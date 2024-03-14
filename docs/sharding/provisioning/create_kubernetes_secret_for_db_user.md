@@ -12,13 +12,11 @@ Please refer the below example for the above steps:
 
 ```sh
 # Create a directory for files for the secret:
-mkdir /tmp/.secret_loc/
+rm -rf /tmp/.secrets/ 
+mkdir /tmp/.secrets/
 
 # Create directories and initialize the variables
-PDIR="/tmp/.secret_loc"
-RSADIR="${PDIR}"/"rsakey"
-rm -rf "${RSADIR}"
-mkdir -p "${RSADIR}"
+RSADIR="/tmp/.secrets"
 PRIVKEY="${RSADIR}"/"key.pem"
 PUBKEY="${RSADIR}"/"key.pub"
 NAMESPACE="shns"
@@ -27,16 +25,15 @@ PWDFILE_ENC="${RSADIR}"/"pwdfile.enc"
 SECRET_NAME="db-user-pass-rsa"
 
 # Generate the RSA Key
-cd ${RSADIR}
-openssl genrsa -out key.pem
-openssl rsa -in key.pem -out key.pub -pubout
+openssl genrsa -out "${RSADIR}"/key.pem
+openssl rsa -in "${RSADIR}"/key.pem -out "${RSADIR}"/key.pub -pubout
 
 # Create a text file with the password
 rm -f $PWDFILE_ENC
 echo ORacle_23c > ${RSADIR}/pwdfile.txt
 
 # Create encrypted file from the text file using the RSA key
-openssl rsautl -in $PWDFILE -out $PWDFILE_ENC -pubin -inkey $PUBKEY -encrypt
+openssl pkeyutl -in $PWDFILE -out $PWDFILE_ENC -pubin -inkey $PUBKEY -encrypt
 
 # Remove the initial text file:
 rm -f $PWDFILE
