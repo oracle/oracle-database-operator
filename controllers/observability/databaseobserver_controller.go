@@ -91,6 +91,13 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	api := &apiv1.DatabaseObserver{}
 	if e := r.Get(context.TODO(), req.NamespacedName, api); e != nil {
 
+		// if CR is not found or does not exist then
+		// consider either CR has been deleted
+		if apiError.IsNotFound(e) {
+			r.Log.WithName(constants.LogReconcile).Info(constants.LogCREnd)
+			return ctrl.Result{}, nil
+		}
+
 		r.Log.WithName(constants.LogReconcile).Error(e, constants.ErrorCRRetrieve)
 		r.Recorder.Event(api, corev1.EventTypeWarning, constants.EventReasonFailedCRRetrieval, constants.EventMessageFailedCRRetrieval)
 		return ctrl.Result{}, e
