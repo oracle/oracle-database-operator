@@ -161,10 +161,12 @@ To provision a new database instance on the Kubernetes cluster, use the example 
 2. If you have not already done so, create an image pull secret for the Oracle Container Registry:
 
     ```sh
-    $ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<oracle-sso-password>' --docker-email='<oracle-sso-email-address>'
+    $ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<container-registry-auth-token>' --docker-email='<oracle-sso-email-address>'
       
-      secret/oracle-container-registry-secret created
+      secret/oracle-container-registry-secret created 
     ```
+    Note: Generate the auth token from user profile section on top right of the page after logging into container-registry.oracle.com
+    
     This secret can also be created from the docker config.json or from podman auth.json after a successful login
     ```sh
     docker login container-registry.oracle.com
