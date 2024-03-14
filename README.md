@@ -69,7 +69,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
   Follow the below steps:
 
-  1. Download the [oracle-database-operator.yaml](https://github.com/oracle/oracle-database-operator/blob/main/oracle-database-operator.yaml) file.
+  1. Download the [oracle-database-operator.yaml](./oracle-database-operator.yaml) file.
   2. Add the comma separated namespaces under `WATCH_NAMESPACE`. For example:
      ```sh
      - name: WATCH_NAMESPACE
@@ -109,6 +109,14 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
      ```sh
      kubectl apply -f shns_binding.yaml
      ```
+  
+* ### ClusterRole and ClusterRoleBinding for NodePort services
+
+  For exposing services on each Node's IP and port (the NodePort) apply the [oracle-database-operator-nodes-rbac.yaml](./oracle-database-operator-nodes-rbac.yaml). This is not required for LoadBalancer services.
+
+  ```sh
+    kubectl apply -f oracle-database-operator-nodes-rbac.yaml
+  ```
 
 ## Install Oracle DB Operator
 
