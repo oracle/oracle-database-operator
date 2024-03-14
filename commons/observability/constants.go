@@ -120,6 +120,7 @@ const (
 // Log Infos
 const (
 	LogCRStart         = "Started DatabaseObserver instance reconciliation"
+	LogCREnd           = "Ended DatabaseObserver instance reconciliation, resource must have been deleted."
 	LogResourceCreated = "Created DatabaseObserver resource successfully"
 	LogResourceUpdated = "Updated DatabaseObserver resource successfully"
 	LogResourceFound   = "Validated DatabaseObserver resource readiness"
