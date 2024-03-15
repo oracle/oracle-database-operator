@@ -536,6 +536,11 @@ func GetResourceState(logger logr.Logger, dbClient database.DatabaseClient, Id s
 
 func SetDBCSStatus(dbClient database.DatabaseClient, dbcs *databasev1alpha1.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
 
+         if dbcs.Spec.Id == nil {
+                dbcs.Status.State = "FAILED"
+                return nil
+        }
+
 	dbcsId := *dbcs.Spec.Id
 
 	dbcsReq := database.GetDbSystemRequest{
