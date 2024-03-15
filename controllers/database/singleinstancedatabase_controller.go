@@ -2426,8 +2426,10 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			(m.Spec.TcpsTlsSecret == "" && m.Status.TcpsTlsSecret != "") || // TCPS Secret is removed in spec
 			(m.Spec.TcpsTlsSecret != "" && m.Status.TcpsTlsSecret != "" && m.Spec.TcpsTlsSecret != m.Status.TcpsTlsSecret)) { //TCPS secret is changed
 
-		// Enable TCPS
-		m.Status.Status = dbcommons.StatusUpdating
+		// Set status to Updating, except when an error has been thrown from configTCPS script
+		if m.Status.Status != dbcommons.StatusError {
+			m.Status.Status = dbcommons.StatusUpdating
+		}
 		r.Status().Update(ctx, m)
 
 		eventMsg := "Enabling TCPS in the database..."
@@ -2437,6 +2439,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 		if m.Spec.TcpsTlsSecret != "" { // case when tls secret is either added or changed
 			TcpsCommand = "export TCPS_CERTS_LOCATION=" + dbcommons.TlsCertsLocation + " && " + dbcommons.EnableTcpsCMD
 
+			// Checking for tls-secret mount in pods
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 				ctx, req, false, "bash", "-c", fmt.Sprintf(dbcommons.PodMountsCmd, dbcommons.TlsCertsLocation))
 			r.Log.Info("Mount Check Output")
@@ -2457,12 +2460,15 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 			}
 		}
 
+		// Enable TCPS
 		out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
 			ctx, req, false, "bash", "-c", TcpsCommand)
 		if err != nil {
 			r.Log.Error(err, err.Error())
 			eventMsg = "Error encountered in enabling TCPS!"
 			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			m.Status.Status = dbcommons.StatusError
+			r.Status().Update(ctx, m)
 			return requeueY, nil
 		}
 		r.Log.Info("enableTcps Output : \n" + out)
