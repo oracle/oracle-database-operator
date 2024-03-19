@@ -619,7 +619,8 @@ In case of `NodePort` service, `listenerPort`, and `tcpsListenerPort` will be th
 ### Create a Standby Database
 
 #### Prerequisites
-Before creating a standby, ArchiveLog, FlashBack, and ForceLog on primary Single Instance Database(`.spec.primaryDatabaseRef`) should be turned on.
+- Before creating a Standby, ensure that ArchiveLog, FlashBack, and ForceLog on primary Single Instance Database(`.spec.primaryDatabaseRef`) are turned on.
+- Standby database is not supported for TCPS enabled Primary databases.
 
 #### Template YAML
 To create a standby database, edit and apply the sample yaml file [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml).
