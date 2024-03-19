@@ -467,10 +467,15 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		}
 	}
 
-	// if Db is in a dataguard configuration. Restrict enabling Tcps on the Primary DB
-	if old.Status.DgBrokerConfigured && r.Spec.EnableTCPS {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is in a dataguard configuration"))
+	// if Db is in a dataguard configuration or referred by Standby databases then Restrict enabling Tcps on the Primary DB
+	if r.Spec.EnableTCPS {
+		if old.Status.DgBrokerConfigured {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is in a dataguard configuration"))
+		} else if len(old.Status.StandbyDatabases) != 0 {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is referred by one or more standby databases"))
+		}
 	}
 
 	if old.Status.DatafilesCreated == "true" && (old.Status.PrebuiltDB != r.Spec.Image.PrebuiltDB) {
