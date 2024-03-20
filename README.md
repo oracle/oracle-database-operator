@@ -63,59 +63,53 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
 * ### Role Binding for access management
 
-  When the Oracle DB Operator is operating with multiple namespaces and access management is required, you need to complete the following additional steps:
-  - Have the Oralce DB Operator monitor only certain defined namespaces.
-  - Apply role binding for those namespaces for access control.
+  OraOperator supports the following two modes of deployment:
+  ##### 1. Cluster Scope Deployment
 
-  Follow the below steps:
+    This is the default mode wherein OraOperator is deployed to operate in a cluster scope and watch all the namespaces cluster wide
 
-  1. Download the [oracle-database-operator.yaml](./oracle-database-operator.yaml) file.
-  2. Add the comma separated namespaces under `WATCH_NAMESPACE`. For example:
-     ```sh
-     - name: WATCH_NAMESPACE
-       value: "oracle-database-operator-system,shns"
-     ```
-     This is needed when you want the DB Operator to monitor `shns` and `oracle-database-operator-system` namespaces.
+  - Grant the `serviceaccount:oracle-database-operator-system:default` cluster wide access for the resources by applying [cluster-role-binding.yaml](./rbac/cluster-role-binding.yaml)
+      
+    ```sh
+      kubectl apply -f cluster-role-binding.yaml
+    ```
 
-     If you are going to work with more namespaces, then you will need to add them under `WATCH_NAMESPACE`. 
+  - Then apply the [oracle-database-operator.yaml](./oracle-database-operator.yaml) to deploy the Operator
 
-     Save the `oracle-database-operator-system.yaml` file after this change.
-  3. Create a role binding file for the namespace you are going to work in. 
+    ```sh
+      kubectl apply -f oracle-database-operator.yaml
+    ```
 
-     In this case, its the namespace `shns` and you need to create a file like below for it:
+  ##### 2. Namespaced Scope Deployment
 
-     ```sh
-     ---
-     apiVersion: rbac.authorization.k8s.io/v1
-     kind: RoleBinding
-     metadata:
-       name: oracle-database-operator-oracle-database-operator-manager-rolebinding1
-       namespace: shns
-     roleRef:
-       apiGroup: rbac.authorization.k8s.io
-       kind: ClusterRole
-       name: oracle-database-operator-manager-role
-     subjects:
-     - kind: ServiceAccount
-       name: default
-       namespace: oracle-database-operator-system
-     ```
+   In this mode OraOperator can be deployed to operate in a namespaced scope and watch one or many namespaces
 
-     If you are testing with multiple namespaces, make sure you create that many binding files and apply them before applying `oracle-database-operator.yaml`. 
+  - Grant `serviceaccount:oracle-database-operator-system:default` service account with resource access in the required namespaces. For example, to watch only the default namespace, apply the [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml)
 
-     NOTE: You need to change the namespace in that binding file from `shns` and also change the binding name `oracle-database-operator-oracle-database-operator-manager-rolebinding1` to a new binding name.
+    ```sh
+      kubectl apply -f default-ns-role-binding.yaml
+    ```
+    For watching additional namespaces, create different role binding files for each namespace taking [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml) as a template and changing the `metadata.name` and `metadata.namespace` fields
 
-  4. Apply the role binding file like below:
-     ```sh
-     kubectl apply -f shns_binding.yaml
-     ```
+  - Now edit the [oracle-database-operator.yaml](./oracle-database-operator.yaml) to add the required namespaces under `WATCH_NAMESPACE`. Use comma separated values for multiple namespaces
+
+    ```sh
+    - name: WATCH_NAMESPACE
+      value: "default"
+    ```
+  - Then apply the edited [oracle-database-operator.yaml](./oracle-database-operator.yaml) to deploy the Operator
+
+    ```sh
+      kubectl apply -f oracle-database-operator.yaml
+    ```
+
   
 * ### ClusterRole and ClusterRoleBinding for NodePort services
 
-  For exposing services on each Node's IP and port (the NodePort) apply the [oracle-database-operator-nodes-rbac.yaml](./oracle-database-operator-nodes-rbac.yaml). This is not required for LoadBalancer services.
+  For exposing services on each Node's IP and port (the NodePort) apply the [node-rbac.yaml](./rbac/node-rbac.yaml). This is not required for LoadBalancer services.
 
   ```sh
-    kubectl apply -f oracle-database-operator-nodes-rbac.yaml
+    kubectl apply -f manager-role-nodes-rbac.yaml
   ```
 
 ## Install Oracle DB Operator
