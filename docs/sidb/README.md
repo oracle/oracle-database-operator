@@ -47,7 +47,20 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
 
 ## Prerequisites
 
-Oracle strongly recommends that you follow the [prerequisites](./PREREQUISITES.md).
+* Oracle strongly recommends that you follow the [prerequisites](./PREREQUISITES.md)
+* For managing the required levels of access, configure [role binding](../../README.md#role-binding-for-access-management)
+* For exposing the database via Nodeport services, apply [RBAC](../../rbac/node-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/node-rbac.yaml
+  ```
+* For automatic storage expansion of block volumes, apply [RBAC](../../rbac/storage-class-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/storage-class-rbac.yaml
+  ```
+* For automatic execution of custom scripts post database setup or startup, apply [RBAC](../../rbac/persistent-volume-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/persistent-volume-rbac.yaml
+  ```
 
 ## SingleInstanceDatabase Resource
 
@@ -306,7 +319,8 @@ $ kubectl patch singleinstancedatabase sidb-sample -p '{"spec":{"persistence":{"
 ```
 
 **Note:**
-- For storage expansion to work, the storage class should have been configured to `allowVolumeExpansion:true`
+- Storage expansion requires the storage class to be configured with `allowVolumeExpansion:true`
+- Storage expansion requires read and watch access for storage account as mentioned in [prerequisites](#prerequisites)
 - User can only scale up a volume/storage and not scale down
 
 #### Static Persistence
@@ -791,7 +805,7 @@ $ kubectl --type=merge -p '{"spec":{"setAsPrimaryDatabase":"ORCLS1"}}' patch dat
 
 ### Patch Primary and Standby databases in Data Guard configuration
 
-Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched or rolled back between release updates of the same major release. While patching databases configured with the dataguard broker you need to first patch the Primary database followed by seconday/standby databases in any order. 
+Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched or rolled back between release updates of the same major release. While patching databases configured with the dataguard broker you need to first patch the Primary database followed by Standby databases in any order.
 
 To patch an existing database, edit and apply the **[config/samples/sidb/singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
 
@@ -825,6 +839,8 @@ Custom scripts (sql and/or shell scripts) can be executed after the initial data
 
 Create a persistent volume using [static provisioning](#static-persistence) and then specify the name of this volume with the `<.spec.persistence.scriptsVolumeName>` field which corresponds to the `scriptsVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**.
 
+**Note:**
+- Executing custom scripts requires read and list access for persistent volumes as mentioned in [prerequisites](#prerequisites)
 
 ## OracleRestDataService Resource
 
