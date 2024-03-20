@@ -208,6 +208,12 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 				field.Invalid(field.NewPath("spec").Child("persistence").Child("scriptsVolumeName"),
 					r.Spec.Persistence.ScriptsVolumeName, "scriptsVolumeName cannot be specified for standby databases"))
 		}
+		if r.Spec.EnableTCPS {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("enableTCPS"),
+					r.Spec.EnableTCPS, "enableTCPS cannot be specified for standby databases"))
+		}
+		
 	}
 
 	// Replica validation
