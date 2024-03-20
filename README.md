@@ -71,7 +71,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   - Grant the `serviceaccount:oracle-database-operator-system:default` cluster wide access for the resources by applying [cluster-role-binding.yaml](./rbac/cluster-role-binding.yaml)
       
     ```sh
-      kubectl apply -f cluster-role-binding.yaml
+      kubectl apply -f rbac/cluster-role-binding.yaml
     ```
 
   - Then apply the [oracle-database-operator.yaml](./oracle-database-operator.yaml) to deploy the Operator
@@ -87,7 +87,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   - Grant `serviceaccount:oracle-database-operator-system:default` service account with resource access in the required namespaces. For example, to watch only the default namespace, apply the [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml)
 
     ```sh
-      kubectl apply -f default-ns-role-binding.yaml
+      kubectl apply -f rbac/default-ns-role-binding.yaml
     ```
     For watching additional namespaces, create different role binding files for each namespace taking [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml) as a template and changing the `metadata.name` and `metadata.namespace` fields
 
@@ -109,7 +109,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   For exposing services on each Node's IP and port (the NodePort) apply the [node-rbac.yaml](./rbac/node-rbac.yaml). This is not required for LoadBalancer services.
 
   ```sh
-    kubectl apply -f manager-role-nodes-rbac.yaml
+    kubectl apply -f rbac/node-rbac.yaml
   ```
 
 ## Install Oracle DB Operator
