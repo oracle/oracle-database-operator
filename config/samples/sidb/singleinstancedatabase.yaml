@@ -17,8 +17,8 @@ spec:
   createAs: primary
 
   ## Reference to a source primary database.
-  ## Valid for standby and clone databases.
-  ## The name of the primary database resource from the same namespace
+  ## Valid only for createAs clone or standby
+  ## The name of a source primary database resource from the same namespace
   primaryDatabaseRef: ""
 
   ## DB edition. N/A for createAs clone or standby
@@ -26,7 +26,7 @@ spec:
   edition: enterprise
   
   ## Secret containing SIDB password mapped to secretKey. secretKey defaults to oracle_pwd
-  ## Should refer to adminPassword of Source DB if createAs is standby or clone
+  ## Should refer to adminPassword of Source DB if createAs is clone or standby
   ## This secret will be deleted after creation of the database unless keepSecret is set to true which is the default
   adminPassword:
     secretName: 
