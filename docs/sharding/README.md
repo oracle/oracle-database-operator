@@ -127,6 +127,23 @@ In this example, the deployment uses the YAML file based on `OCI OKE` cluster. T
 [6. Scale Out - Add Shards to an existing Oracle Sharded Database provisioned earlier with User Defined Sharding](./provisioning/user-defined-sharding/udsharding_scale_out_add_shards.md)  
 [7. Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with User Defined Sharding](./provisioning/user-defined-sharding/udsharding_scale_in_delete_an_existing_shard.md)
 
+
+## Provisioning Sharding Topology with System Sharding with SNR RAFT enabled in a Cloud-Based Kubernetes Cluster
+
+Deploy Oracle Database Sharding Topology with `System Sharding with SNR RAFT enabled` on your Cloud based Kubernetes cluster. 
+
+**NOTE: SNR RAFT Feature is available only for Oracle 23c RDBMS and Oracle 23c GSM version.**
+
+In this example, the deployment uses the YAML file based on `OCI OKE` cluster. There are multiple use case possible for deploying the Oracle Database Sharding Topology covered by below examples:
+
+[1. Provisioning Oracle Sharded Database with System Sharding with SNR RAFT enabled without Database Gold Image](./provisioning/snr_system_sharding/snr_ssharding_provisioning_without_db_gold_image.md)  
+[2. Provisioning Oracle Sharded Database with System Sharding with SNR RAFT enabled with additional control on resources like Memory and CPU allocated to Pods](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_control_on_resources.md)  
+[3. Provisioning Oracle Sharded Database with System Sharding with SNR RAFT enabled by cloning database from your own Database Gold Image in the same Availability Domain(AD)](./provisioning/snr_system_sharding/snr_ssharding_provisioning_by_cloning_db_gold_image_in_same_ad.md)  
+[4. Provisioning Oracle Sharded Database with System Sharding with SNR RAFT enabled by cloning database from your own Database Gold Image across Availability Domains(ADs)](./provisioning/snr_system_sharding/snr_ssharding_provisioning_by_cloning_db_from_gold_image_across_ads.md)  
+[5. Provisioning Oracle Sharded Database with System Sharding with SNR RAFT enabled and send Notification using OCI Notification Service](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_notification_using_oci_notification.md)  
+[6. Scale Out - Add Shards to an existing Oracle Sharded Database provisioned earlier with System Sharding with SNR RAFT enabled](./provisioning/snr_system_sharding/snr_ssharding_scale_out_add_shards.md)  
+[7. Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with System Sharding with SNR RAFT enabled](./provisioning/snr_system_sharding/snr_ssharding_scale_in_delete_an_existing_shard.md)
+
 ## Connecting to Shard Databases
 
 After the Oracle Database Sharding Topology has been provisioned using the Sharding Controller in Oracle Database Kubernetes Operator, you can follow the steps in this document to connect to the Sharded Database or to the individual Shards: [Database Connectivity](./provisioning/database_connection.md)
