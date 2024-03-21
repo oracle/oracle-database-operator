@@ -15,7 +15,7 @@ spec:
   ## Use only alphanumeric characters for sid
   sid: ORCLS
 
-  ## Reference to a source primary database name
+  ## The name of a source primary database resource from the same namespace
   primaryDatabaseRef: "sidb-sample"
 
   ## Intended type of database.

@@ -13,31 +13,30 @@ spec:
   sid: ORCL1
 
   ## Type of database. 
-  ## Valid values for createAs are primary, standby or clone
+  ## Valid values for createAs are primary, clone or standby
   createAs: primary
 
   ## Reference to a source primary database.
-  ## Valid for standby and clone databases.
-  ## Format: 1. Intra-cluster: you can give name of the primary database or the database connect string in `<host>:<port>/<service_name>` format
-  ##         2. Inter-cluster: Database connect string in `<host>:<port>/<service_name>` format
+  ## Valid only for createAs clone or standby
+  ## The name of a source primary database resource from the same namespace
   primaryDatabaseRef: ""
 
-  ## DB edition. N/A if cloning from a Source DB in current K8s cluster (if cloneFrom is set to a database ref)
+  ## DB edition. N/A for createAs clone or standby
   ## Valid values for edition are enterprise, standard or express
   edition: enterprise
   
   ## Secret containing SIDB password mapped to secretKey. secretKey defaults to oracle_pwd
-  ## Should refer to adminPassword of Source DB if cloning from a Source DB (i.e if cloneFrom is set)
+  ## Should refer to adminPassword of Source DB if createAs is clone or standby
   ## This secret will be deleted after creation of the database unless keepSecret is set to true which is the default
   adminPassword:
     secretName: 
     secretKey:
     keepSecret: true
 
-  ## DB character set. N/A if cloning from a Source DB (if cloneFrom is set)
+  ## DB character set. N/A for createAs clone or standby
   charset: AL32UTF8
 
-  ## PDB name. N/A if cloning from a Source DB (if cloneFrom is set)
+  ## PDB name.  N/A for createAs clone or standby
   pdbName: orclpdb1
 
   ## Enable/Disable Flashback
@@ -63,7 +62,7 @@ spec:
   ## If this field is commented out/removed from the yaml, it will disable the auto-renewal feature for TCPS certificate
   tcpsCertRenewInterval: 8760h
 
-  ## NA if cloning from a SourceDB (cloneFrom is set)
+  ##  N/A for createAs clone or standby
   ## Specify both sgaSize and pgaSize (in MB) or dont specify both
   ## Specify Non-Zero value to use
   ## You cannot change these initParams for Oracle Database Express (XE) edition
