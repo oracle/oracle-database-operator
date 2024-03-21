@@ -13,7 +13,7 @@ spec:
   ## Use only alphanumeric characters for sid
   sid: ORCL2
   
-  ## A source database ref to clone from.
+  ## The name of the source primary database resource to clone from the same namespace
   ## Make sure the source database has been created by applying singeinstancedatabase_create.yaml
   primaryDatabaseRef: sidb-sample
 
