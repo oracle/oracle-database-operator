@@ -58,18 +58,10 @@ spec:
       imagePullPolicy: "Always"
       storageSizeInGb: 50
       region: primary
-      nodeSelector:
-        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-3"
-      pvMatchLabels:
-        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-3"
     - name: gsm2
       imagePullPolicy: "Always"
       storageSizeInGb: 50
       region: standby
-      nodeSelector:
-        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-3"
-      pvMatchLabels:
-        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-3"
  storageClass: oci
  dbImage: container-registry.oracle.com/database/enterprise:latest
  dbImagePullSecret: ocr-reg-cred
