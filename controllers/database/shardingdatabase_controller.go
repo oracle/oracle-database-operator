@@ -902,6 +902,32 @@ func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev1alpha1.Sha
 			}
 		}
 
+		// Check Secret configuration
+		if instance.Spec.DbSecret == nil {
+			return fmt.Errorf("Secret specification cannot be null, you need to set secret details")
+		} else {
+			if len(instance.Spec.DbSecret.Name) == 0 {
+				return fmt.Errorf("instance.Spec.DbSecret.Name cannot be empty")
+			}
+			if len(instance.Spec.DbSecret.PwdFileName) == 0 {
+				return fmt.Errorf("instance.Spec.DbSecret.PwdFileName cannot be empty")
+			}
+			if strings.ToLower(instance.Spec.DbSecret.EncryptionType) != "base64" {
+				if strings.ToLower(instance.Spec.DbSecret.KeyFileName) == "" {
+					return fmt.Errorf("instance.Spec.DbSecret.KeyFileName cannot be empty")
+				}
+			}
+			if len(instance.Spec.DbSecret.PwdFileMountLocation) == 0 {
+				msg := "instance.Spec.DbSecret.PwdFileMountLocation is not set. Setting it to default " + shardingv1.GetSecretMount()
+				shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+			}
+
+			if len(instance.Spec.DbSecret.KeyFileMountLocation) == 0 {
+				msg := "instance.Spec.DbSecret.KeyFileMountLocation is not set. Setting it to default " + shardingv1.GetSecretMount()
+				shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+			}
+		}
+
 		// Once the initial Spec is been validated then update the last Sucessful Spec
 		err = instance.UpdateLastSuccessfulSpec(r.Client)
 		if err != nil {

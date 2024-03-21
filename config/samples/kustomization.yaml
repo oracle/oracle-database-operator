@@ -18,5 +18,4 @@ resources:
   - dbcs/database_v1alpha1_dbcssystem.yaml
   - database_v1alpha1_dataguardbroker.yaml
   - observability/databaseobserver.yaml
-- database_v1alpha1_shardingdatabase.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples
