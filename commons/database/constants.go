@@ -522,7 +522,7 @@ const DisableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE disable"
 const TlsCertsLocation string = "/run/secrets/tls_secret"
 
 // Check Mount in pods
-const PodMountsCmd string =  "awk '$2 == \"%s\" {print}' /proc/mounts"
+const PodMountsCmd string = "awk '$2 == \"%s\" {print}' /proc/mounts"
 
 // TCPS clientWallet update command
 const ClientWalletUpdate string = "sed -i -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*$/PORT=%d)/g' ${ORACLE_BASE}/oradata/clientWallet/${ORACLE_SID}/tnsnames.ora"
