@@ -72,6 +72,8 @@ import (
 var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
 
+var ErrNoReadyPod = errors.New("SingleInstanceDatabase has no ready pod currently")
+
 // Filter events that trigger reconcilation
 func ResourceEventHandler() predicate.Predicate {
 	return predicate.Funcs{
@@ -683,9 +685,9 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 		splitstr := strings.Split((strings.TrimSpace(out)), ",")
 		return splitstr[0], splitstr[1], splitstr[2], nil
 	}
-	err = errors.New("ready pod name is nil")
-	log.Error(err, err.Error())
-	return "", "", "", err
+	// err = errors.New("ready pod name is nil")
+	log.Error(err, ErrNoReadyPod.Error())
+	return "", "", "", ErrNoReadyPod
 }
 
 // Get Datapatch Status
