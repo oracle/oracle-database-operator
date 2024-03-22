@@ -1740,6 +1740,9 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		r.Log.Info("Initiliazing database sid, pdb, edition for prebuilt database")
 		var edition string
 		sid, pdbName, edition, getSidPdbEditionErr = dbcommons.GetSidPdbEdition(r, r.Config, ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: m.Namespace, Name: m.Name}})
+		if errors.Is(getSidPdbEditionErr, dbcommons.ErrNoReadyPod) {
+			return requeueN, nil
+		}
 		if getSidPdbEditionErr != nil {
 			return requeueY, getSidPdbEditionErr
 		}
@@ -2245,8 +2248,26 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(sidb *dbapi.Singl
 			eventMsg := "pod creation failed"
 			r.Recorder.Eventf(sidb, corev1.EventTypeNormal, eventReason, eventMsg)
 		} else if ok, _ := dbcommons.IsAnyPodWithStatus(available, corev1.PodRunning); ok {
-			log.Info("Database Creating....", "Name", sidb.Name)
-			sidb.Status.Status = dbcommons.StatusCreating
+
+			out, err := dbcommons.ExecCommand(r, r.Config, available[0].Name, sidb.Namespace, "",
+				ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD)
+			if err != nil {
+				r.Log.Info(err.Error())
+			}
+
+			if out != "" {
+				log.Info("Database initialzied")
+				eventReason := "Database Unhealthy"
+				eventMsg := "datafiles exists"
+				r.Recorder.Eventf(sidb, corev1.EventTypeNormal, eventReason, eventMsg)
+				sidb.Status.DatafilesCreated = "true"
+				sidb.Status.Status = dbcommons.StatusNotReady
+				r.updateORDSStatus(sidb, ctx, req)
+			} else {
+				log.Info("Database Creating....", "Name", sidb.Name)
+				sidb.Status.Status = dbcommons.StatusCreating
+			}
+
 		} else {
 			log.Info("Database Pending....", "Name", sidb.Name)
 		}
@@ -2262,24 +2283,6 @@ func (r *SingleInstanceDatabaseReconciler) validateDBReadiness(sidb *dbapi.Singl
 		if err != nil {
 			r.Log.Info(err.Error())
 		}
-	}
-	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
-		ctx, req, false, "bash", "-c", dbcommons.GetCheckpointFileCMD)
-	if err != nil {
-		r.Log.Info(err.Error())
-	}
-
-	if out != "" {
-		log.Info("Database initialzied")
-		eventReason := "Database Unhealthy"
-		eventMsg := "datafiles exists"
-		r.Recorder.Eventf(sidb, corev1.EventTypeNormal, eventReason, eventMsg)
-		sidb.Status.DatafilesCreated = "true"
-		sidb.Status.Status = dbcommons.StatusNotReady
-		r.updateORDSStatus(sidb, ctx, req)
-	} else {
-		log.Info("Database Creating....", "Name", sidb.Name)
-		return requeueY, sidbReadyPod, nil
 	}
 
 	version, err := dbcommons.GetDatabaseVersion(sidbReadyPod, r, r.Config, ctx, req)
@@ -3217,8 +3220,18 @@ func ValidatePrimaryDatabaseAdminPassword(r *SingleInstanceDatabaseReconciler, p
 //
 // #############################################################################
 func ValidateDatabaseConfiguration(p *dbapi.SingleInstanceDatabase) error {
+	var missingModes []string
+	if p.Status.ArchiveLog == "false" {
+		missingModes = append(missingModes, "ArchiveLog")
+	}
+	if p.Status.FlashBack == "false" {
+		missingModes = append(missingModes, "FlashBack")
+	}
+	if p.Status.ForceLogging == "false" {
+		missingModes = append(missingModes, "ForceLogging")
+	}
 	if p.Status.ArchiveLog == "false" || p.Status.FlashBack == "false" || p.Status.ForceLogging == "false" {
-		return fmt.Errorf("all of Archivelog, Flashback and ForceLogging modes are not enabled in the primary database %v", p.Name)
+		return fmt.Errorf("%v modes are not enabled in the primary database %v", strings.Join(missingModes, ","), p.Name)
 	}
 	return nil
 }
@@ -3269,7 +3282,7 @@ func ValidatePrimaryDatabaseForStandbyCreation(r *SingleInstanceDatabaseReconcil
 	log.Info(fmt.Sprintf("Validating primary database %s configuration...", primary.Name))
 	err = ValidateDatabaseConfiguration(primary)
 	if err != nil {
-		r.Recorder.Eventf(stdby, corev1.EventTypeWarning, "Spec Error", "all of Archivelog, Flashback and ForceLogging modes are not enabled in the primary database "+primary.Name)
+		r.Recorder.Eventf(stdby, corev1.EventTypeWarning, "Spec Error", err.Error())
 		stdby.Status.Status = dbcommons.StatusError
 		return err
 	}
