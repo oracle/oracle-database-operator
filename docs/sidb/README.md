@@ -3,6 +3,8 @@
 Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Instance Database Controller, which enables provisioning, cloning, and patching of Oracle Single Instance Databases on Kubernetes. It also enables configuring the database for Oracle REST Data Services with Oracle APEX development platform. The following sections explain the setup and functionality of the operator
 
   * [Prerequisites](#prerequisites)
+    * [Mandatory roles and privileges requirements for Oracle Single Instance Database Controller](#mandatory-roles-and-privileges-requirements-for-oracle-single-instance-database-controller)
+    * [Options roles and privileges requirements for Oracle Single Instance Database Controller](#optional-roles-and-privileges-requirements-for-oracle-single-instance-database-controller)
   * [SingleInstanceDatabase Resource](#singleinstancedatabase-resource)
     * [Create a Database](#create-a-database)
       * [New Database](#new-database)
@@ -61,6 +63,31 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
   ```sh
     kubectl apply -f rbac/persistent-volume-rbac.yaml
   ```
+
+  ### Mandatory roles and privileges requirements for Oracle Single Instance Database Controller 
+
+  Single Instance Database(sidb) controller uses Kubernetes objects such as :-
+
+  | Resources | Verbs |
+  | --- | --- |
+  | Pods | create delete get list patch update watch | 
+  | Containers | create delete get list patch update watch |
+  | PersistentVolumeClaims | create delete get list patch update watch | 
+  | Services | create delete get list patch update watch | 
+  | Secrets | create delete get list patch update watch | 
+  | Events | create patch |
+
+  ### Optional roles and privileges requirements for Oracle Single Instance Database Controller 
+
+  Single Instance Database(sidb) controller uses Kubernetes objects for some  
+  features which can be given to the controller when using those features; 
+  features and access are :-
+  
+  | Functionality | Resources | Verbs |
+  | --- | --- | --- | 
+  | NodePort serivces | Nodes | list watch |
+  | Storage Expansion with block volumes | StorageClasses | get list watch |
+  | Custom scripts execution | PersistentVolumes | get list watch |
 
 ## SingleInstanceDatabase Resource
 
