@@ -187,6 +187,7 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 // +kubebuilder:rbac:groups=database.oracle.com,resources=autonomouscontainerdatabases,verbs=get;list
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=create;get;list;update
 // +kubebuilder:rbac:groups="",resources=configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile is the funtion that the operator calls every time when the reconciliation loop is triggered.
 // It go to the beggining of the reconcile if an error is returned. We won't return a error if it is related
