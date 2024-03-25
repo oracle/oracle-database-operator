@@ -1,7 +1,7 @@
 # Managing Observability on Kubernetes for Oracle Databases
 
 Oracle Database Operator for Kubernetes (`OraOperator`) includes the
-Oracle Database Metrics Exporter controller for Oracle Databases, which enables users to observe 
+Observability controller for Oracle Databases and adds the `DatabaseObserver` CRD, which enables users to observe 
 Oracle Databases by scraping database metrics using SQL queries. The controller 
 automates the deployment and maintenance of the metrics exporter container image,
 metrics exporter service and a Prometheus servicemonitor.
@@ -17,26 +17,26 @@ of the controller.
   * [Get Status](#get-detailed-status)
   * [Update](#patch-resource)
   * [Delete](#delete-resource)
+* [Mandatory Roles and Privileges](#mandatory-roles-and-privileges-requirements-for-observability-controller)
 * [Debugging and troubleshooting](#debugging-and-troubleshooting)
 
 ## Prerequisites
 The `DatabaseObserver` custom resource has the following pre-requisites:
 
 1. Prometheus and its `servicemonitor` custom resource definition must be installed on the cluster.
-  
-   The Oracle Database metrics exporter controller creates multiple
-2. Kubernetes resources that include
+
+- The Observability controller creates multiple Kubernetes resources that include
   a Prometheus `servicemonitor`. In order for the controller
   to create ServiceMonitors, the ServiceMonitor custom resource must exist.
 
 2. A pre-existing Oracle Database and the proper database grants and privileges.
 
-   The Oracle Database metrics exporter exports metrics through SQL queries that the user can control 
+- The controller exports metrics through SQL queries that the user can control 
    and specify through a _toml_ file. The necessary access privileges to the tables used in the queries
    are not provided and applied automatically.
 
 ### The DatabaseObserver Custom Resource
-The Oracle Database Operator (__v1.1.0__) includes the Oracle Database Metrics Exporter controller which automates
+The Oracle Database Operator (__v1.1.0__) includes the Oracle Database Observability controller which automates
 the deployment and setting up of the Oracle Database metrics exporter and the related resources to make Oracle databases observable.
 
 In the sample YAML file found in 
@@ -63,6 +63,9 @@ the databaseObserver custom resource offers the following properties to be confi
 | `spec.replicas`                                       | number  | 1               | Optional     | _1_                                                                   |
 | `spec.ociConfig.configMapName`                        | 	string | -               | 	Conditional | _oci-cred_                                                            |
 | `spec.ociConfig.secretName`                           | 	string | -               | 	Conditional | _oci-privatekey_                                                      |
+
+
+
 
 
 ### Configuration
@@ -173,7 +176,7 @@ value for every ConditionType.
 
 
 ### Patch Resource
-The metrics exporter controller currently supports updates for most of the fields in the manifest. An example of patching the databaseObserver resource is as follows:
+The Observability controller currently supports updates for most of the fields in the manifest. An example of patching the databaseObserver resource is as follows:
 ```bash
 kubectl --type=merge -p '{"spec":{"exporter":{"image":"container-registry.oracle.com/database/observability-exporter:latest"}}}' patch databaseobserver obs-sample
 ```
@@ -202,6 +205,28 @@ To delete the DatabaseObserver custom resource and all related resources:
 kubectl delete databaseobserver obs-sample
 ```
 
+## Mandatory roles and privileges requirements for Observability Controller
+
+The Observability controller issues the following policy rules for the following resources. Besides
+databaseobserver resources, the controller manages its own service, deployment, pods and servicemonitor 
+and gets and lists configmaps and secrets.
+
+| Resources                                             | Verbs                                     |
+|-------------------------------------------------------|-------------------------------------------|
+| services                                              | create delete get list patch update watch |
+| deployments                                           | create delete get list patch update watch |
+| pods                                                  | create delete get list patch update watch |
+| events                                                | create delete get list patch update watch |
+| services.apps                                         | create delete get list patch update watch |
+| deployments.apps                                      | create delete get list patch update watch |
+| pods.apps                                             | create delete get list patch update watch |
+| servicemonitors.monitoring.coreos.com                 | create delete get list patch update watch |
+| databaseobservers.observability.oracle.com            | create delete get list patch update watch |
+| databaseobservers.observability.oracle.com/status     | get patch update                          |
+| configmaps                                            | get list                                  |
+| secrets                                               | get list                                  |
+| configmaps.apps                                       | get list                                  |
+| databaseobservers.observability.oracle.com/finalizers | update                                    |
 
 ## Debugging and troubleshooting
 
