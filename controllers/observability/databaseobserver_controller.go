@@ -70,9 +70,11 @@ type DatabaseObserverReconciler struct {
 //+kubebuilder:rbac:groups=observability.oracle.com,resources=databaseobservers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=observability.oracle.com,resources=databaseobservers/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=observability.oracle.com,resources=databaseobservers/finalizers,verbs=update
-//+kubebuilder:rbac:groups=apps,resources=pods;deployments;services;configmaps,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups="",resources=pods;deployments;services;secrets;configmaps;events,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheusrules;servicemonitors,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=apps,resources=pods;deployments;services,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=apps,resources=configmaps,verbs=get;list
+//+kubebuilder:rbac:groups="",resources=pods;deployments;services;events,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=secrets;configmaps,verbs=get;list
+//+kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
