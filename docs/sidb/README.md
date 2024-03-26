@@ -494,8 +494,6 @@ To create copies of your existing database quickly, you can use the cloning func
 
 To quickly clone the existing database sidb-sample created above, use the sample **[config/samples/sidb/singleinstancedatabase_clone.yaml](../../config/samples/sidb/singleinstancedatabase_clone.yaml)** file.
 
-**Note**: To clone a database, the source database must have archiveLog mode set to true.
-
 For example:
 
 ```sh
@@ -505,7 +503,10 @@ $ kubectl apply -f singleinstancedatabase_clone.yaml
   singleinstancedatabase.database.oracle.com/sidb-sample-clone created
 ```
 
-**Note:** The clone database can specify a database image that is different from the source database. In such cases, cloning is supported only between databases of the same major release.
+**Note:**
+- To clone a database, the source database must have archiveLog mode set to true.
+- The clone database can specify a database image that is different from the source database. In such cases, cloning is supported only between databases of the same major release.
+- Only enterprise and standard editions support cloning.
 
 ### Patch a Database
 
@@ -524,7 +525,10 @@ singleinstancedatabase.database.oracle.com/sidb-sample patched
 
 ```
 
-After patching is complete, the database pods are restarted with the new release update image. For minimum downtime, ensure that you have multiple replicas of the database pods running before you start the patch operation.
+After patching is complete, the database pods are restarted with the new release update image.
+
+**Note:**
+- Only enterprise and standard editions support patching.
 
 #### Patch after Cloning
     

@@ -12,18 +12,19 @@ spec:
   ## Use only alphanumeric characters for sid up to a maximum of 8 characters
   sid: ORCL1
 
+  ## DB edition. N/A for createAs clone or standby
+  ## Valid values for edition are enterprise, standard, express or free
+  edition: enterprise
+
   ## Type of database. 
   ## Valid values for createAs are primary, clone or standby
+  ## Valid only for enterprise and standard editions
   createAs: primary
 
   ## Reference to a source primary database.
   ## Valid only for createAs clone or standby
   ## The name of a source primary database resource from the same namespace
   primaryDatabaseRef: ""
-
-  ## DB edition. N/A for createAs clone or standby
-  ## Valid values for edition are enterprise, standard or express
-  edition: enterprise
   
   ## Secret containing SIDB password mapped to secretKey. secretKey defaults to oracle_pwd
   ## Should refer to adminPassword of Source DB if createAs is clone or standby
