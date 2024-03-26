@@ -10,23 +10,6 @@ rules:
   - ""
   resources:
   - configmaps
-  - deployments
-  - events
-  - pods
-  - secrets
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
   - events
   - pods
   - pods/exec
@@ -60,6 +43,21 @@ rules:
   resources:
   - configmaps
   - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - deployments
+  - events
+  - pods
+  - services
   verbs:
   - create
   - delete
@@ -114,6 +112,12 @@ rules:
   - apps
   resources:
   - configmaps
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apps
+  resources:
   - deployments
   - pods
   - services
@@ -495,7 +499,6 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
-  - prometheusrules
   - servicemonitors
   verbs:
   - create
