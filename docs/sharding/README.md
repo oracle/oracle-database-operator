@@ -26,14 +26,14 @@ The Oracle Sharding database controller provides end-to-end automation of Oracle
 
 To create a Sharding Topology, complete the steps in the following sections below:
 
-1. [Prerequsites for running Oracle Sharding Database Controller](#prerequsites-for-running-oracle-sharding-database-controller)
+1. [Prerequisites for running Oracle Sharding Database Controller](#prerequisites-for-running-oracle-sharding-database-controller)
 2. [Provisioning Sharding Topology in a Cloud based Kubernetes Cluster (OKE in this case)](#provisioning-sharding-topology-in-a-cloud-based-kubernetes-cluster-oke-in-this-case)
 3. [Connecting to Shard Databases](#connecting-to-shard-databases)
 4. [Debugging and Troubleshooting](#debugging-and-troubleshooting)
 
 **Note** Before proceeding to the next section, you must complete the instructions given in each section, based on your enviornment, before proceeding to next section.
 
-## Prerequsites for Running Oracle Sharding Database Controller
+## Prerequisites for Running Oracle Sharding Database Controller
 
 **IMPORTANT:** You must make the changes specified in this section before you proceed to the next section.
 
@@ -43,6 +43,19 @@ To create a Sharding Topology, complete the steps in the following sections belo
 * An On-Premises Kubernetes Cluster, such as [Oracle Linux Cloud Native Environment (OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) cluster.
 
 To use Oracle Sharding Database Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Release Status Section](../../README.md#release-status).
+
+#### Mandatory roles and privileges requirements for Oracle Sharding Database Controller 
+
+  Oracle Sharding Database Controller uses Kubernetes objects such as :-
+
+  | Resources | Verbs |
+  | --- | --- |
+  | Pods | create delete get list patch update watch | 
+  | Containers | create delete get list patch update watch |
+  | PersistentVolumeClaims | create delete get list patch update watch | 
+  | Services | create delete get list patch update watch | 
+  | Secrets | create delete get list patch update watch | 
+  | Events | create patch |
 
 ### 2. Deploy Oracle Database Operator
 
