@@ -11,7 +11,7 @@ To deploy Oracle Single Instance Database in Kubernetes using the OraOperator, c
   Build Oracle REST Data Service Container Images from source following the instructions at [https://github.com/oracle/docker-images/tree/main/OracleRestDataServices](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices).     
   Supported Oracle REST Data Service version is 21.4.2
 
-* ### Ensure Sufficient Disk Space in Kubernetes Workers Nodes 
+* ### Ensure Sufficient Disk Space in Kubernetes Worker Nodes 
 
   Provision Kubernetes worker nodes with recommended 250 GiB or more of free disk space required for pulling the base and patched database container images. If deploying on cloud you may choose to increase the custom boot volume size of the worker nodes. 
 
