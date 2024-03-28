@@ -3,8 +3,8 @@
 Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Instance Database Controller, which enables provisioning, cloning, and patching of Oracle Single Instance Databases on Kubernetes. It also enables configuring the database for Oracle REST Data Services with Oracle APEX development platform. The following sections explain the setup and functionality of the operator
 
   * [Prerequisites](#prerequisites)
-    * [Mandatory roles and privileges requirements for Oracle Single Instance Database Controller](#mandatory-roles-and-privileges-requirements-for-oracle-single-instance-database-controller)
-    * [Options roles and privileges requirements for Oracle Single Instance Database Controller](#optional-roles-and-privileges-requirements-for-oracle-single-instance-database-controller)
+    * [Mandatory Resource Privileges](#mandatory-resource-privileges)
+    * [Optional Resource Privileges](#optional-resource-privileges)
   * [SingleInstanceDatabase Resource](#singleinstancedatabase-resource)
     * [Create a Database](#create-a-database)
       * [New Database](#new-database)
@@ -49,26 +49,13 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
 
 ## Prerequisites
 
-* Oracle strongly recommends that you follow the [prerequisites](./PREREQUISITES.md)
-* For managing the required levels of access, configure [role binding](../../README.md#role-binding-for-access-management)
-* For exposing the database via Nodeport services, apply [RBAC](../../rbac/node-rbac.yaml)
-  ```sh
-    kubectl apply -f rbac/node-rbac.yaml
-  ```
-* For automatic storage expansion of block volumes, apply [RBAC](../../rbac/storage-class-rbac.yaml)
-  ```sh
-    kubectl apply -f rbac/storage-class-rbac.yaml
-  ```
-* For automatic execution of custom scripts post database setup or startup, apply [RBAC](../../rbac/persistent-volume-rbac.yaml)
-  ```sh
-    kubectl apply -f rbac/persistent-volume-rbac.yaml
-  ```
+Oracle strongly recommends to comply with the [prerequisites](./PREREQUISITES.md) and the following requirements
 
-  ### Mandatory roles and privileges requirements for Oracle Single Instance Database Controller 
+  ### Mandatory Resource Privileges
 
-  Single Instance Database(sidb) controller uses Kubernetes objects such as :-
+  Single Instance Database(sidb) controller mandatorily requires the following Kubernetes resource privileges:
 
-  | Resources | Verbs |
+  | Resources | Privileges  |
   | --- | --- |
   | Pods | create delete get list patch update watch | 
   | Containers | create delete get list patch update watch |
@@ -77,17 +64,32 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
   | Secrets | create delete get list patch update watch | 
   | Events | create patch |
 
-  ### Optional roles and privileges requirements for Oracle Single Instance Database Controller 
+  For managing the required levels of access, configure [role binding](../../README.md#role-binding-for-access-management)
 
-  Single Instance Database(sidb) controller uses Kubernetes objects for some  
-  features which can be given to the controller when using those features; 
-  features and access are :-
-  
-  | Functionality | Resources | Verbs |
+  ### Optional Resource Privileges
+
+  Single Instance Database(sidb) controller optionally requires the following Kubernetes resource privileges depending on the functionality being used:
+
+  | Functionality | Resources | Privileges |
   | --- | --- | --- | 
-  | NodePort serivces | Nodes | list watch |
+  | NodePort Services | Nodes | list watch |
   | Storage Expansion with block volumes | StorageClasses | get list watch |
-  | Custom scripts execution | PersistentVolumes | get list watch |
+  | Custom Scripts Execution | PersistentVolumes | get list watch |
+
+
+  For exposing the database via Nodeport services, apply [RBAC](../../rbac/node-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/node-rbac.yaml
+  ```
+  For automatic storage expansion of block volumes, apply [RBAC](../../rbac/storage-class-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/storage-class-rbac.yaml
+  ```
+  For automatic execution of custom scripts post database setup or startup, apply [RBAC](../../rbac/persistent-volume-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/persistent-volume-rbac.yaml
+  ```
+
 
 ## SingleInstanceDatabase Resource
 
@@ -215,7 +217,7 @@ To provision a new database instance on the Kubernetes cluster, use the example 
     or
     ```sh
     podman login container-registry.oracle.com
-    podman create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json --type=kubernetes.io/dockerconfigjson
+    kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json --type=kubernetes.io/dockerconfigjson
     ```
 3. Provision a new database instance on the cluster by using the following command:
 
