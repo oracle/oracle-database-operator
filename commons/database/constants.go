@@ -100,6 +100,8 @@ const StandbyDatabasePrerequisitesSQL string = "ALTER SYSTEM SET db_create_file_
 	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 SIZE 200M;" +
 	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 SIZE 200M;" +
 	"\nALTER SYSTEM SET STANDBY_FILE_MANAGEMENT=AUTO;" +
+	"\nALTER SYSTEM SET dg_broker_config_file1='/opt/oracle/oradata/dbconfig/dr1${ORACLE_SID}.dat' scope=both;" +
+	"\nALTER SYSTEM SET dg_broker_config_file2='/opt/oracle/oradata/dbconfig/dr2${ORACLE_SID}.dat';" +
 	"\nALTER SYSTEM SET dg_broker_start=TRUE;"
 
 const GetDBOpenMode string = "select open_mode from v\\$database;"

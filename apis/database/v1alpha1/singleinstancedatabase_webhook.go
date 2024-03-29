@@ -134,12 +134,6 @@ func (r *SingleInstanceDatabase) Default() {
 			r.Spec.Replicas = 1
 		}
 	}
-
-	if r.Spec.PrimaryDatabaseRef != "" && r.Spec.CreateAs == "standby" {
-		if r.Spec.Replicas == 0 {
-			r.Spec.Replicas = 1
-		}
-	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -213,7 +207,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 				field.Invalid(field.NewPath("spec").Child("enableTCPS"),
 					r.Spec.EnableTCPS, "enableTCPS cannot be specified for standby databases"))
 		}
-		
+
 	}
 
 	// Replica validation
