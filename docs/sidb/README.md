@@ -579,7 +579,8 @@ The command above will delete the database pods and associated service.
 Some advanced database configuration scenarios are as follows:
 
 #### Run Database with Multiple Replicas
-In multiple replicas mode, more than one pod is created for the database. The database is open and mounted by one of the replica pods. Other replica pods have instances started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down. Multiple replicas are also helpful in [patching](#patch-existing-database) operation. Ensure that you have multiple replicas of the database pods running before you start the patching operation for minimum downtime.
+In multiple replicas mode, more than one pod is created for the database. Setting the replica count equal to or more than the number of worker nodes helps in distributing the replicas accross all the nodes that have access to the database persistent storage volume.  
+The database is open and mounted by one of the replica pods. Other replica pods have the database instance started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down.
 
 To enable multiple replicas, update the replica attribute in the `.yaml`, and apply by using the `kubectl apply` or `kubectl scale` commands.
 
@@ -838,7 +839,7 @@ $ kubectl --type=merge -p '{"spec":{"setAsPrimaryDatabase":"ORCLS1"}}' patch dat
 
 ### Patch Primary and Standby databases in Data Guard configuration
 
-Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched or rolled back between release updates of the same major release. While patching databases configured with the dataguard broker you need to first patch the Primary database followed by Standby databases in any order.
+Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched between release updates of the same major release. 
 
 To patch an existing database, edit and apply the **[config/samples/sidb/singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
 
@@ -846,6 +847,15 @@ To patch an existing database, edit and apply the **[config/samples/sidb/singlei
 kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase <database-name>
 
 ```
+Follow these steps for patching databases configured with the dataguard broker:
+1. First patch all the standby databases by replacing the image with the new release update image
+2. Perform switch over of the primary to one of the standby databases
+3. Now patch the original primary database (currently standby after #2)  
+   After #3 the software for primary and standby databases is at the same release update
+4. Now bounce the current primary database by updating the replica count to 0 and then 1  
+   #4 will trigger a datapatch execution resulting in patching of the datafiles
+5. Finally perform switch over of the current primary back to the original primary (current standby)
+
 
 ### Delete the Data Guard Configuration
 
