@@ -16,6 +16,8 @@ spec:
     # ociADB:
     #   ocid: ocid1.autonomousdatabase...
   displayName: autonomousdatabasebackup-sample
+  isLongTermBackup: true
+  retentionPeriodInDays: 90 # minimum retention period is 90 days
   
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:
