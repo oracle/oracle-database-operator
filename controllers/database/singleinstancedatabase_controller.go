@@ -244,9 +244,11 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 
 	} else {
 		// Database is in role of standby
-		err = SetupStandbyDatabase(r, singleInstanceDatabase, referredPrimaryDatabase, ctx, req)
-		if err != nil {
-			return requeueY, err
+		if !singleInstanceDatabase.Status.DgBrokerConfigured {
+			err = SetupStandbyDatabase(r, singleInstanceDatabase, referredPrimaryDatabase, ctx, req)
+			if err != nil {
+				return requeueY, err
+			}
 		}
 
 		databaseOpenMode, err := dbcommons.GetDatabaseOpenMode(readyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
@@ -257,7 +259,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 		r.Log.Info("DB openMode Output")
 		r.Log.Info(databaseOpenMode)
-		if databaseOpenMode == "READ_ONLY" {
+		if databaseOpenMode == "READ_ONLY" || databaseOpenMode == "MOUNTED" {
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ModifyStdbyDBOpenMode, dbcommons.SQLPlusCLI))
 			if err != nil {
 				r.Log.Error(err, err.Error())
@@ -792,7 +794,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				Lifecycle: &corev1.Lifecycle{
 					PreStop: &corev1.LifecycleHandler{
 						Exec: &corev1.ExecAction{
-							Command: []string{"/bin/sh", "-c", "/bin/echo -en 'shutdown abort;\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"},
+							Command: []string{"/bin/sh", "-c", "/bin/echo -en 'shutdown immediate;\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"},
 						},
 					},
 				},
@@ -3400,7 +3402,7 @@ func SetupListenerPrimaryForDG(r *SingleInstanceDatabaseReconciler, p *dbapi.Sin
 func SetupInitParamsPrimaryForDG(r *SingleInstanceDatabaseReconciler, primaryReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
 	r.Log.Info("Running StandbyDatabasePrerequisitesSQL in the primary database")
 	out, err := dbcommons.ExecCommand(r, r.Config, primaryReadyPod.Name, primaryReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba", dbcommons.StandbyDatabasePrerequisitesSQL))
+		fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.StandbyDatabasePrerequisitesSQL, dbcommons.SQLPlusCLI))
 	if err != nil {
 		return fmt.Errorf("unable to run StandbyDatabasePrerequisitesSQL in primary database")
 	}
@@ -3465,6 +3467,7 @@ func GetAllPdbInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod corev1.
 	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "",
 		ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba", dbcommons.GetPdbsSQL))
 	if err != nil {
+		r.Log.Error(err, err.Error())
 		return pdbs, err
 	}
 	r.Log.Info("GetPdbsSQL Output")

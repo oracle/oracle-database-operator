@@ -43,3 +43,5 @@ spec:
   ## if loadBalService : false, service type = "NodePort" else "LoadBalancer"
   loadBalancer: false
 
+  replicas: 1 
+  
