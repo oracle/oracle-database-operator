@@ -260,6 +260,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		r.Log.Info("DB openMode Output")
 		r.Log.Info(databaseOpenMode)
 		if databaseOpenMode == "READ_ONLY" || databaseOpenMode == "MOUNTED" {
+			// Changing the open mode for sidb to "READ ONLY WITH APPLY"
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ModifyStdbyDBOpenMode, dbcommons.SQLPlusCLI))
 			if err != nil {
 				r.Log.Error(err, err.Error())
