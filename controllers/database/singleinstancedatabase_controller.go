@@ -791,6 +791,12 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			Containers: []corev1.Container{{
 				Name:  m.Name,
 				Image: m.Spec.Image.PullFrom,
+				SecurityContext: &corev1.SecurityContext{
+					Capabilities: &corev1.Capabilities{
+						// Allow priority elevation for DB processes
+						Add: []corev1.Capability{"SYS_NICE"},
+					},
+				},
 				Lifecycle: &corev1.Lifecycle{
 					PreStop: &corev1.LifecycleHandler{
 						Exec: &corev1.ExecAction{
