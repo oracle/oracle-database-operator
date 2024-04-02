@@ -129,8 +129,9 @@ func (r *SingleInstanceDatabase) Default() {
 	}
 
 	if r.Spec.Edition == "express" || r.Spec.Edition == "free" {
-		if r.Status.Replicas == 1 {
-			// default the replicas for XE
+		// Allow zero replicas as a means to bounce the DB
+		if r.Status.Replicas == 1 && r.Spec.Replicas > 1 {
+			// If not zero, default the replicas to 1
 			r.Spec.Replicas = 1
 		}
 	}
