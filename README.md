@@ -61,10 +61,10 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
   ```
 
-* ### Role Binding for access management
+* ### Create Role Bindings for Access Management
 
   OraOperator supports the following two modes of deployment:
-  ##### 1. Cluster Scope Deployment
+  ##### 1. Cluster Scoped Deployment
 
     This is the default mode wherein OraOperator is deployed to operate in a cluster scope and watch all the namespaces cluster wide
 
@@ -80,7 +80,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
       kubectl apply -f oracle-database-operator.yaml
     ```
 
-  ##### 2. Namespaced Scope Deployment
+  ##### 2. Namespace Scoped Deployment
 
    In this mode OraOperator can be deployed to operate in a namespaced scope and watch one or many namespaces
 
@@ -161,7 +161,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 
   To uninstall the operator, the final step consists of deciding whether you want to delete the custom resource definitions (CRDs) and Kubernetes APIServices introduced into the cluster by the operator. Choose one of the following options:
 
-* ### Deleting the CRDs and APIServices
+* ### Delete the CRDs and APIServices
 
   To delete all the CRD instances deployed to cluster by the operator, run the following commands, where <namespace> is the namespace of the cluster object:
 
@@ -179,6 +179,14 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   kubectl delete dataguardbrokers.database.oracle.com --all -n <namespace>
   kubectl delete databaseobserver.observability.oracle.com --all -n <namespace>
   ```
+
+* ### Delete the RBACs
+
+  ```sh
+  cat rbac/* | kubectl delete -f -
+  ```
+
+* ### Delete the Deployment
 
   After all CRD instances are deleted, it is safe to remove the CRDs, APIServices and operator deployment. To remove these files, use the following command:
 
@@ -227,5 +235,5 @@ See [Reporting security vulnerabilities](./SECURITY.md)
 
 ## License
 
-Copyright (c) 2022, 2023 Oracle and/or its affiliates.
+Copyright (c) 2022, 2024 Oracle and/or its affiliates.
 Released under the Universal Permissive License v1.0 as shown at [https://oss.oracle.com/licenses/upl/](https://oss.oracle.com/licenses/upl/)
