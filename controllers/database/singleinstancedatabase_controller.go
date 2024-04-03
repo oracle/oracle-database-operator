@@ -801,7 +801,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				Lifecycle: &corev1.Lifecycle{
 					PreStop: &corev1.LifecycleHandler{
 						Exec: &corev1.ExecAction{
-							Command: []string{"/bin/sh", "-c", "/bin/echo -en 'shutdown immediate;\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"},
+							Command: func() []string {
+								// To terminate any zombie instances left over due to forced termination
+								shutdown_mode := "abort"
+								if m.Spec.CreateAs == "standby" {
+									shutdown_mode = "immediate"
+								}
+								return []string{"/bin/sh", "-c", "/bin/echo -en 'shutdown " + shutdown_mode + ";\n' | env ORACLE_SID=${ORACLE_SID^^} sqlplus -S / as sysdba"}
+							}(),
 						},
 					},
 				},
