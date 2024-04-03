@@ -867,7 +867,6 @@ $ kubectl delete dataguardbroker dgbroker-sample
 
   dataguardbroker.database.oracle.com/dgbroker-sample deleted
 ```
-**Note:** Deleting of DataGuardBroker resource is allowed only when role of `.spec.primaryDatabaseRef` is PRIMARY
 
 #### Delete Standby Database
 ```sh 
