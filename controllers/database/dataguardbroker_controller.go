@@ -398,16 +398,16 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.D
 			log.Error(err, err.Error())
 			return requeueY
 		}
-		_, ok := dbSet[standbyDatabase.Status.Sid]
-		if ok {
-			log.Info("A database with the same SID is already configured in the DG")
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "A database with the same SID "+standbyDatabase.Status.Sid+" is already configured in the DG")
-			continue
-		}
 
 		// Check if dataguard broker is already configured for the standby database
 		if standbyDatabase.Status.DgBrokerConfigured {
 			log.Info("Dataguard broker for standbyDatabase : " + standbyDatabase.Name + " is already configured")
+			continue
+		}
+		_, ok := dbSet[standbyDatabase.Status.Sid]
+		if ok {
+			log.Info("A database with the same SID is already configured in the DG")
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "A database with the same SID "+standbyDatabase.Status.Sid+" is already configured in the DG")
 			continue
 		}
 
