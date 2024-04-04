@@ -508,7 +508,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		m.Status.PrimaryDatabase = n.Name
 	}
 
-	if m.Spec.CreateAs == "standby" {
+	if m.Spec.CreateAs == "standby" && m.Status.Role != "PRIMARY" {
 
 		// Fetch the Primary database reference, required for all iterations
 		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
@@ -545,7 +545,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 			return requeueY, err
 		}
 
-		r.Log.Info("Settingup Primary Database for standby creation...")
+		r.Log.Info("Setting up Primary Database for standby creation...")
 		err = SetupPrimaryDatabase(r, m, rp, ctx, req)
 		if err != nil {
 			return requeueY, err
