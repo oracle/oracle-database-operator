@@ -868,6 +868,8 @@ $ kubectl delete dataguardbroker dgbroker-sample
   dataguardbroker.database.oracle.com/dgbroker-sample deleted
 ```
 
+**Note:** If a switch over to standby was performed, make sure to switch back to the orginal primary database before deleting the dataguard broker resource
+
 #### Delete Standby Database
 ```sh 
 $ kubectl delete singleinstancedatabase stdby-1
@@ -881,8 +883,7 @@ Custom scripts (sql and/or shell scripts) can be executed after the initial data
 
 Create a persistent volume using [static provisioning](#static-persistence) and then specify the name of this volume with the `<.spec.persistence.scriptsVolumeName>` field which corresponds to the `scriptsVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**.
 
-**Note:**
-- Executing custom scripts requires read and list access for persistent volumes as mentioned in [prerequisites](#prerequisites)
+**Note:** Executing custom scripts requires read and list access for persistent volumes as mentioned in [prerequisites](#prerequisites)
 
 ## OracleRestDataService Resource
 
