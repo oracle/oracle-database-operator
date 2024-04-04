@@ -802,8 +802,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					PreStop: &corev1.LifecycleHandler{
 						Exec: &corev1.ExecAction{
 							Command: func() []string {
+								// For patching use cases shutdown immediate is needed especially for standby databases
 								shutdown_mode := "immediate"
 								if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
+									// express/free do not support patching
 									// To terminate any zombie instances left over due to forced termination
 									shutdown_mode = "abort"
 								}
