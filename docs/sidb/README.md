@@ -584,7 +584,20 @@ The database is open and mounted by one of the replica pods. Other replica pods 
 
 To enable multiple replicas, update the replica attribute in the `.yaml`, and apply by using the `kubectl apply` or `kubectl scale` commands.
 
+The following table depicts the fail over matrix for any destructive operation to the primary replica pod
+
+| Pod Destructive Operation | Pod Restart/FailOver|
+  | --- | --- | 
+  | Database instance crash | Yes | 
+  | Force delete pod with zero grace period | Yes | 
+  | Gracefully delete pod | Yes |
+  | Node running primary replica dies | Yes | 
+  | Direct shutdown [All modes] | Yes | 
+  | Maintenance shutdown [All modes] | No |
+  | PDB close | No |
+  
 **Note:** 
+- Maintence shutdown/startup can be executed using the scripts /home/oracle/shutDown.sh and /home/oracle/startUp.sh 
 - This functionality requires the [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s) extended images. The database image from the container registry `container-registry.oracle.com` includes the K8s extension.
 - Because Oracle Database Express Edition (XE) does not support [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s), it does not support multiple replicas.
 - If the `ReadWriteOnce` access mode is used, all the replicas will be scheduled on the same node where the persistent volume would be mounted.
