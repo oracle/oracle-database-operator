@@ -187,14 +187,6 @@ func (r *DatabaseObserverReconciler) initialize(ctx context.Context, api *apiv1.
 // validateSpecs method checks the values and secrets passed in the spec
 func (r *DatabaseObserverReconciler) validateSpecs(api *apiv1.DatabaseObserver) error {
 
-	// If all of {DB Password Secret Name and vaultOCID+vaultSecretName} have no value, then error out
-	if api.Spec.Database.DBPassword.SecretName == "" &&
-		api.Spec.Database.DBPassword.VaultOCID == "" &&
-		api.Spec.Database.DBPassword.VaultSecretName == "" {
-		r.Recorder.Event(api, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPasswordMissing)
-		return errors.New(constants.ErrorSpecValidationMissingDBPassword)
-	}
-
 	// If either Vault Fields are empty, then assume a DBPassword secret is supplied. If the DBPassword secret not found, then error out
 	if api.Spec.Database.DBPassword.VaultOCID == "" || api.Spec.Database.DBPassword.VaultSecretName == "" {
 		dbSecret := &corev1.Secret{}
