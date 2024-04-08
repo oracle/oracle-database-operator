@@ -109,7 +109,6 @@ const (
 const (
 	ErrorCRRetrieve                           = "an error occurred with retrieving the cr"
 	ErrorStatusUpdate                         = "an error occurred with updating the cr status"
-	ErrorSpecValidationMissingDBPassword      = "an error occurred with validating the spec due to missing dbpassword values"
 	ErrorSpecValidationFailedDueToAnError     = "an error occurred with validating the exporter deployment spec"
 	ErrorDeploymentPodsFailure                = "an error occurred with deploying exporter deployment pods"
 	ErrorDeploymentUpdate                     = "an error occurred with updating exporter deployment"
