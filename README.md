@@ -66,7 +66,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   OraOperator supports the following two modes of deployment:
   ##### 1. Cluster Scoped Deployment
 
-    This is the default mode wherein OraOperator is deployed to operate in a cluster scope and watch all the namespaces cluster wide
+    This is the default mode, in which OraOperator is deployed to operate in a cluster, and to monitor all the namespaces in the cluster.
 
   - Grant the `serviceaccount:oracle-database-operator-system:default` cluster wide access for the resources by applying [cluster-role-binding.yaml](./rbac/cluster-role-binding.yaml)
       
@@ -74,7 +74,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
       kubectl apply -f rbac/cluster-role-binding.yaml
     ```
 
-  - Then apply the [oracle-database-operator.yaml](./oracle-database-operator.yaml) to deploy the Operator
+  - Next, apply the [oracle-database-operator.yaml](./oracle-database-operator.yaml) to deploy the Operator
 
     ```sh
       kubectl apply -f oracle-database-operator.yaml
@@ -82,22 +82,22 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
   ##### 2. Namespace Scoped Deployment
 
-   In this mode OraOperator can be deployed to operate in a namespaced scope and watch one or many namespaces
+   In this mode, OraOperator can be deployed to operate in a namespace, and to monitor one or many namespaces.
 
-  - Grant `serviceaccount:oracle-database-operator-system:default` service account with resource access in the required namespaces. For example, to watch only the default namespace, apply the [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml)
+  - Grant `serviceaccount:oracle-database-operator-system:default` service account with resource access in the required namespaces. For example, to monitor only the default namespace, apply the [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml)
 
     ```sh
       kubectl apply -f rbac/default-ns-role-binding.yaml
     ```
-    For watching additional namespaces, create different role binding files for each namespace taking [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml) as a template and changing the `metadata.name` and `metadata.namespace` fields
+    To watch additional namespaces, create different role binding files for each namespace, using [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml) as a template, and changing the `metadata.name` and `metadata.namespace` fields
 
-  - Now edit the [oracle-database-operator.yaml](./oracle-database-operator.yaml) to add the required namespaces under `WATCH_NAMESPACE`. Use comma separated values for multiple namespaces
+  - Next, edit the [oracle-database-operator.yaml](./oracle-database-operator.yaml) to add the required namespaces under `WATCH_NAMESPACE`. Use comma-delimited values for multiple namespaces.
 
     ```sh
     - name: WATCH_NAMESPACE
       value: "default"
     ```
-  - Then apply the edited [oracle-database-operator.yaml](./oracle-database-operator.yaml) to deploy the Operator
+  - Finally, apply the edited [oracle-database-operator.yaml](./oracle-database-operator.yaml) to deploy the Operator
 
     ```sh
       kubectl apply -f oracle-database-operator.yaml
@@ -106,7 +106,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   
 * ### ClusterRole and ClusterRoleBinding for NodePort services
 
-  For exposing services on each Node's IP and port (the NodePort) apply the [node-rbac.yaml](./rbac/node-rbac.yaml). This is not required for LoadBalancer services.
+  To expose services on each node's IP and port (the NodePort) apply the [node-rbac.yaml](./rbac/node-rbac.yaml). Note that this step is not required for LoadBalancer services.
 
   ```sh
     kubectl apply -f rbac/node-rbac.yaml
@@ -114,7 +114,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
 ## Install Oracle DB Operator
 
-   Once the above prerequisite changes have been done, to install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from above step.
+   After you have completed the preceding prerequisite changes, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
 
    Run the following command
 
@@ -142,7 +142,7 @@ For more details, see [Oracle Database Operator Installation Instructions](./doc
 
 ## Getting Started with the Operator (Quickstart)
 
-The quickstarts are designed for specific database configurations:
+The following quickstarts are designed for specific database configurations:
 
 * [Oracle Autonomous Database](./docs/adb/README.md)
 * [Oracle Autonomous Container Database](./docs/adb/ACD.md)
@@ -152,7 +152,7 @@ The quickstarts are designed for specific database configurations:
 * [Oracle Base Database Cloud Service (BDBCS)](./docs/dbcs/README.md)
 
 
-The quickstarts are designed for non-database configurations:
+The following quickstart is designed for non-database configurations:
 * [Oracle Database Observability](./docs/observability/README.md)
 
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases.
@@ -196,7 +196,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 
   Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods, services, PVCs, and so on) are deleted. However, if that happens, then the CRD deletion stops responding. This is because the CRD instances have properties that prevent their deletion, and that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
 
-## Docs of the supported Oracle Database configurations
+## Documentation for the supported Oracle Database configurations
 
 * [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
 * [Components of Dedicated Autonomous Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/components.html)
@@ -210,7 +210,7 @@ See [Contributing to this Repository](./CONTRIBUTING.md)
 
 ## Support
 
-You can submit a GitHub issue, and/or you file an [Oracle Support service](https://support.oracle.com/portal/) request, using this product ID: 14430.
+You can submit a GitHub issue, oir submit an issue and then file an [Oracle Support service](https://support.oracle.com/portal/) request. To file an issue or a service request, use the following product ID: 14430.
 
 ## Security
 
