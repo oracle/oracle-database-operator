@@ -41,6 +41,7 @@ package controllers
 import (
 	"context"
 	"errors"
+
 	//"fmt"
 	"strconv"
 	"strings"
@@ -281,7 +282,8 @@ func (r *CDBReconciler) validateORDSPods(ctx context.Context, req ctrl.Request, 
 		return errors.New("Waiting for ORDS pods to start")
 	}
 
-	getORDSStatus := " curl -sSkv -k -X GET https://localhost:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/stable/metadata-catalog/ || curl  -sSkv -X GET http://localhost:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/stable/metadata-catalog/ "
+	/* /opt/oracle/ords/secrets/$TLSKEY /opt/oracle/ords/secrets/$TLSCRT */
+	getORDSStatus := " curl --cert /opt/oracle/ords/secrets/tls.crt  --key /opt/oracle/ords/secrets/tls.key  -sSkv -k -X GET https://localhost:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/stable/metadata-catalog/ || curl --cert /opt/oracle/ords/secrets/tls.crt  --key /opt/oracle/ords/secrets/tls.key   -sSkv -X GET http://localhost:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/stable/metadata-catalog/ "
 	readyPods := 0
 	for _, pod := range podList.Items {
 		if pod.Status.Phase == corev1.PodRunning {
