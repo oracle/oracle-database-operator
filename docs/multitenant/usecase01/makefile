@@ -154,6 +154,8 @@ SKEY=tls.key
 SCRT=tls.crt
 CART=ca.crt
 COMPANY=oracle
+LOCALHOST=localhost
+RESTPREFIX=cdb-dev
 
 step1:   createimage
 step2:   tagimage
@@ -205,12 +207,19 @@ dboperator:
 	@echo "ORACLE DATABASE OPERATOR"
 	$(KUBECTL) apply -f $(DBOPERATOR)
 
+
+#C: Country
+#ST: State
+#L: locality (city)
+#O: Organization Name Organization Unit
+#CN: Common Name
+
 tlscert:
-	@echo "CREATING TLS CERTIFICATES"
+	 @echo "CREATING TLS CERTIFICATES"
 	$(OPENSSL) genrsa -out ca.key 2048
-	$(OPENSSL) req -new -x509 -days 365 -key ca.key -subj "/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=$(COMPANY) Root CA" -out ca.crt
-	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=cdb-dev-$(REST_SERVER).$(NAMESPACE)" -out server.csr
-	$(ECHO) "subjectAltName=DNS:cdb-dev-$(REST_SERVER).$(NAMESPACE),DNS:www.example.com" > extfile.txt
+	$(OPENSSL) req -new -x509 -days 365 -key ca.key -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER) /CN=$(LOCALHOST)  Root CA " -out ca.crt
+	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER) /CN=$(LOCALHOST)" -out server.csr
+	$(ECHO) "subjectAltName=DNS:cdb-dev-$(REST_SERVER),DNS:www.example.com" > extfile.txt
 	$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out $(SCRT)
 
 tlssecret:
