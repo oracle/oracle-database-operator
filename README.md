@@ -30,7 +30,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Oracle Base Database Cloud Service (BDBCS): provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License
 * Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
-* Oracle Database Observability: create, patch, delete
+* Oracle Database Observability: create, patch, delete databaseObserver resources
 * Watch over a set of namespaces or all the namespaces in the cluster using the "WATCH_NAMESPACE" env variable of the operator deployment
 
 The upcoming releases will support new configurations, operations and capabilities.
