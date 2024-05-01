@@ -120,3 +120,31 @@ To set up the instance principals, you will have to:
 3. To apply the policy, click Create.
 
 At this stage, the instances where the operator deploys have been granted sufficient permissions to call OCI services. You can now proceed to the installation.
+
+### Authorized with OKE Workload Identity
+
+OKE Workload Identity grants the operator pods policy-driven access to OCI resources using OCI Identity and Access Management (IAM).
+When using OKE Workload Identity, only the region must be specified in the ConfigMap corresponding to the `ociConfigMap` attribute. The `ociSecret` attribute should not be specified in the `.yaml` file.
+
+To set up the OKE Workload Identity, you will have to:
+
+### Configure Cluster Region
+
+The operator reads the OCI region from a ConfigMap.
+
+```sh
+kubectl create configmap oci-cred \
+--from-literal=region=<REGION>
+```
+
+### Define Policies
+
+1. Get the compartment name where the database resides/will be created.
+2. Get the OCID of the OKE Cluster where the Oracle Database Operator is running.
+3. Create the following policy in OCI IAM, supplying your compartment name and OKE Cluster OCID:
+
+```
+Allow any-user to manage all-resources in compartment <compartment-name> where all {request.principal.namespace='oracle-database-operator-system',request.principal.type='workload',request.principal.cluster_id='<cluster-ocid>',request.principal.service_account='default'}
+```
+
+After creating the policy, operator pods will be granted sufficient permissions to call OCI services. You can now proceed to the installation.
