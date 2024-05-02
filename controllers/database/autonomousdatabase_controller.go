@@ -412,7 +412,7 @@ func updateCondition(adb *dbv1alpha1.AutonomousDatabase, err error) {
 	// If error occurs, ReconcileComplete will be marked as true and the error message will still be listed
 	// If the ADB lifecycleState is intermediate, then ReconcileComplete will be marked as false
 	if err != nil {
-		condition = metav1.Condition {
+		condition = metav1.Condition{
 			Type:               CONDITION_TYPE_COMPLETE,
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: adb.GetGeneration(),
@@ -421,7 +421,7 @@ func updateCondition(adb *dbv1alpha1.AutonomousDatabase, err error) {
 			Status:             metav1.ConditionTrue,
 		}
 	} else if dbv1alpha1.IsADBIntermediateState(adb.Status.LifecycleState) {
-		condition = metav1.Condition {
+		condition = metav1.Condition{
 			Type:               CONDITION_TYPE_COMPLETE,
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: adb.GetGeneration(),
@@ -1006,6 +1006,7 @@ func (r *AutonomousDatabaseReconciler) validateDesiredLifecycleState(
 //     c. to PRIVATE:
 //     was PUBLIC: set subnetOCID and nsgOCIDs. Configure the IsMTLSConnectionRequired settings if it is set.
 //     was RESTRICTED: set subnetOCID and nsgOCIDs. Configure the IsMTLSConnectionRequired settings if it is set.
+//     *Note: OCI requires nsgOCIDs to be an empty string rather than nil when we don't want the adb to be included in any network security group.
 //
 //     Otherwise, if the network access type remains the same, apply the network configuration, and then set the IsMTLSConnectionRequired.
 //
@@ -1219,6 +1220,12 @@ func (r *AutonomousDatabaseReconciler) validateNetworkAccess(
 	l := logger.WithName("validateNetworkAccess")
 
 	l.Info("Sending request to OCI to configure network access options")
+
+	// When the network access type is set to PRIVATE, any nil type of nsgOCIDs needs to be set to an empty string, otherwise, OCI SDK returns a 400 error
+	if difADB.Spec.Details.NetworkAccess.AccessType == dbv1alpha1.NetworkAccessTypePrivate &&
+		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs == nil {
+		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = []string{}
+	}
 
 	resp, err := r.dbService.UpdateNetworkAccess(*adb.Spec.Details.AutonomousDatabaseOCID, difADB)
 	if err != nil {
