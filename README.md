@@ -19,6 +19,20 @@ In this v1.1.0 production release, `OraOperator` supports the following database
 
 Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
 
+## New in this Release
+* Namespace scope deployment option
+* Support for Oracle Database 23ai Free (with SIDB)
+* Automatic Storage Expansion for SIDB and Sharded DB
+* User-Defined Sharding
+* TCPS support customer provided certs
+* Execute custom scripts during DB setup/startup
+* Long-term backup for Autonomous Databases (ADB)
+* Patching for SIDB Primary/Standby in Data Guard
+* Wallet expiry date for ADB
+* Condition Metadata for ADB
+* OKE workload Identify
+* Database Observability (Preview - Metrics)
+
 ## Features Summary
 
 This release of Oracle Database Operator for Kubernetes (the operator) supports the following lifecycle operations:
