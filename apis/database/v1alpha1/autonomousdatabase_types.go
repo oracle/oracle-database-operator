@@ -335,7 +335,7 @@ func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDataba
 	if *ociObj.IsDedicated {
 		adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
 	} else {
-		if ociObj.NsgIds != nil {
+		if ociObj.NsgIds != nil || ociObj.PrivateEndpoint != nil || ociObj.PrivateEndpointIp != nil || ociObj.PrivateEndpointLabel != nil {
 			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
 		} else if ociObj.WhitelistedIps != nil {
 			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypeRestricted
