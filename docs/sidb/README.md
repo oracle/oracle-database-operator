@@ -270,7 +270,7 @@ This command pulls the Free image uploaded on the [Oracle Container Registry](ht
 - Provisioning Oracle Database Free is supported for release 23.3.0 and later releases.
 - For Free database, only single replica mode (i.e. `replicas: 1`) is supported.
 - For Free database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
-- Oracle Enterprise Manager is not supported from release 23.3.0 and later releases. 
+- Oracle Enterprise Manager Express (OEM Express) is not supported from release 23.3.0 and later releases. 
 
 #### Additional Information
 You are required to specify the database admin password secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml), [singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml), [singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) and [singleinstancedatabse_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, `xedb-admin-secret` and `free-admin-secret` respectively. You can create these secrets manually by using the sample command mentioned in the [Template YAML](#template-yaml) section. Alternatively, you can create these secrets by filling the passwords in the **[singleinstancedatabase_secrets.yaml](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying it using the command below:
