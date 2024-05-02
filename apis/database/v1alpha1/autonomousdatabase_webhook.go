@@ -240,12 +240,13 @@ func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) fie
 					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("privateEndpoint").Child("subnetOCID"),
 						fmt.Sprintf("subnetOCID cannot be empty when the network access type is %s", NetworkAccessTypePrivate)))
 			}
+		}
 
-			if adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs == nil {
-				allErrs = append(allErrs,
-					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("privateEndpoint").Child("nsgOCIDs"),
-						fmt.Sprintf("nsgOCIDs cannot be empty when the network access type is %s", NetworkAccessTypePrivate)))
-			}
+		// NsgOCIDs only applies to PRIVATE accessType
+		if adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs != nil && adb.Spec.Details.NetworkAccess.AccessType != NetworkAccessTypePrivate {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("privateEndpoint").Child("nsgOCIDs"),
+					fmt.Sprintf("NsgOCIDs cannot only be applied when network access type is %s.", NetworkAccessTypePrivate)))
 		}
 
 		// IsAccessControlEnabled is not applicable to a shared database
