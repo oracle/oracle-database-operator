@@ -407,8 +407,8 @@ func (d *databaseService) ListAutonomousDatabaseBackups(adbOCID string) (databas
 func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error) {
 	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
 		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
-			AutonomousDatabaseId: common.String(adbOCID),
-			IsLongTermBackup: adbBackup.Spec.IsLongTermBackup,
+			AutonomousDatabaseId:  common.String(adbOCID),
+			IsLongTermBackup:      adbBackup.Spec.IsLongTermBackup,
 			RetentionPeriodInDays: adbBackup.Spec.RetentionPeriodInDays,
 		},
 	}
