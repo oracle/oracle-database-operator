@@ -27,10 +27,10 @@ Oracle will continue to extend `OraOperator` to support additional Oracle Databa
 * TCPS support customer provided certs
 * Execute custom scripts during DB setup/startup
 * Patching for SIDB Primary/Standby in Data Guard
-* Long-term backup for Autonomous Databases (ADB)
-* Wallet expiry date for ADB
-* Condition Metadata for ADB
-* OKE workload Identify
+* Long-term backup for Autonomous Databases (ADB): Moves to long-term backup and removes the deprecated mandatory backup
+* Wallet expiry date for ADB: A user-freindly enhancement to display wallet expiry date in the status of assiciated ADB
+* Wait-for-Completion option for ADB: Supports `kubectl wait` command that allows user to wait a specific condition on ADB
+* OKE workload Identify: Supports OKE workload indentity authentication method. For more details, refer to [Oracle Autonomous Database (ADB) Prerequisites](docs/adb/ADB_PREREQUISITES.md#authorized-with-oke-workload-identity)
 * Database Observability (Preview - Metrics)
 
 ## Features Summary
