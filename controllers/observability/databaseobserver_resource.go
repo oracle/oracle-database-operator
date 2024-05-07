@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -100,8 +101,9 @@ func (resource *ObservabilityServiceResource) generate(api *apiv1.DatabaseObserv
 			Selector: rSelector,
 			Ports: []corev1.ServicePort{
 				{
-					Name: "metrics",
-					Port: rPort,
+					Name:       "metrics",
+					Port:       rPort,
+					TargetPort: intstr.FromInt32(constants.DefaultServiceTargetPort),
 				},
 			},
 		},
