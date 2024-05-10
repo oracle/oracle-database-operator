@@ -1,5 +1,5 @@
 -------------------------------------
-Operator SDK 1.26.1
+Operator SDK 1.32.0
 https://github.com/operator-framework/operator-sdk
 Apache 2.0
 
@@ -208,7 +208,7 @@ Apache License:
    limitations under the License.
    
    ------------------------------
-   GO lang 
+   GO lang 1.21.4
    https://github.com/golang
 
 
@@ -241,18 +241,18 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 -------------------------
-apimachinery 0.27.2
+apimachinery 0.28.4
 https://github.com/kubernetes/apimachinery/tr
 Apache 2.0
 
 -------------------------
-controller-runtime 0.15.0
-https://github.com/kubernetes-sigs/controller-runtime/tree/v0.14.6
+controller-runtime 0.16.3
+https://github.com/kubernetes-sigs/controller-runtime/releases/tag/v0.16.3
 Apache 2.0
 
 -------------------------
-golang 1.20.2
-https://github.com/golang/go/archive/refs/tags/go1.20.2.zip
+golang 1.21.4
+https://github.com/golang/go/releases/tag/go1.21.4
 BSD 2-clause or 3-clause
 
 
@@ -1008,14 +1008,14 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    limitations under the License.
 
 --------------------------
-Logr
+Logr 1.3.0
 https://pkg.go.dev/github.com/go-logr/logr
-https://github.com/go-logr/logr/tree/v1.2.4
+https://github.com/go-logr/logr/tree/v1.3.0
 Apache 2.0 License
 
 -------------------------
-OCI Go SDK
-github.com/oracle/oci-go-sdk/v43
+OCI Go SDK 65.53.0
+https://github.com/oracle/oci-go-sdk/releases/tag/v65.53.0
 
 Dual-License: UPL + Apache 2.0
 
@@ -1065,8 +1065,8 @@ The Universal Permissive License (UPL), Version 1.0
 
 
 -------------------------
-ginkgo 2.9.7
-https://github.com/onsi/ginkgo/tree/v2.9.7
+ginkgo 2.13.1
+https://github.com/onsi/ginkgo/releases/tag/v2.13.1
 MIT
 ------------------------------------
 Gomega
@@ -1075,37 +1075,37 @@ MIT License
 Copyright (c) 2013-2014 Onsi Fakhouri
 
 ----------------------------
-gomega 1.27.7
+gomega 1.30.0
 http://onsi.github.io/gomega/
 MIT
 
 -------------------------
-Kubernetes api
+Kubernetes api 0.28.4
 https://pkg.go.dev/k8s.io/api
 Apache 2.0
 
 ----------------------------------
-Kubernetes apimachinery
+Kubernetes apimachinery 0.28.4
 https://pkg.go.dev/k8s.io/apimachinery
 Apache 2.0
 
 -----------------------------------
-Kubernetes client-go
+Kubernetes client-go 0.28.4
 https://pkg.go.dev/k8s.io/client-go
 Apache 2.0
 
 -------------------------------------
-Kubernetes controller-runtime project
+Kubernetes controller-runtime project 0.16.3
 https://pkg.go.dev/sigs.k8s.io/controller-runtime
 Apache 2.0
 
 ------------------------------------
-kubernetes-sigs/yaml 1.3.0
+kubernetes-sigs/yaml 1.4.0
 https://github.com/kubernetes-sigs/yaml/tree/v1.3.0
 MIT 
 
 -------------------------
-OCI SDK for Go 65.37.1
+OCI SDK for Go 65.53.0
 https://github.com/oracle/oci-go-sdk
 Multiple Licenses: Apache 2.0, UPL
 
@@ -1135,8 +1135,8 @@ https://pkg.go.dev/sigs.k8s.io/yaml
 Dual license: BSD-3-Clause, MIT
 
 ------------------------------------
-zap 1.24.0
-https://github.com/uber-go/zap/tree/v1.24.0
+zap 1.26.0
+https://github.com/uber-go/zap/releases/tag/v1.26.0
 MIT
 
 ------------------------------------
@@ -1192,7 +1192,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------
-Ginkgo
+Ginkgo 2.13.1
 github.com/onsi/ginkgo
 MIT License 
 Copyright (c) 2013-2014 Onsi Fakhouri

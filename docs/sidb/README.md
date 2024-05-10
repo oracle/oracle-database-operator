@@ -3,6 +3,8 @@
 Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Instance Database Controller, which enables provisioning, cloning, and patching of Oracle Single Instance Databases on Kubernetes. It also enables configuring the database for Oracle REST Data Services with Oracle APEX development platform. The following sections explain the setup and functionality of the operator
 
   * [Prerequisites](#prerequisites)
+    * [Mandatory Resource Privileges](#mandatory-resource-privileges)
+    * [Optional Resource Privileges](#optional-resource-privileges)
   * [SingleInstanceDatabase Resource](#singleinstancedatabase-resource)
     * [Create a Database](#create-a-database)
       * [New Database](#new-database)
@@ -12,6 +14,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
     * [Connecting to Database](#connecting-to-database)
     * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
       * [Dynamic Persistence](#dynamic-persistence)
+        * [Storage Expansion](#storage-expansion)
       * [Static Persistence](#static-persistence)
     * [Configuring a Database](#configuring-a-database)
       * [Switching Database Modes](#switching-database-modes)
@@ -30,6 +33,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
         * [Perform a Switchover](#perform-a-switchover)
         * [Patch Primary and Standby databases in Data Guard configuration](#patch-primary-and-standby-databases-in-data-guard-configuration)
         * [Delete the Data Guard Configuration](#delete-the-data-guard-configuration)
+      * [Execute Custom Scripts](#execute-custom-scripts)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
     * [REST Enable a Database](#rest-enable-a-database)
       * [Provision ORDS](#provision-ords)
@@ -45,7 +49,47 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
 
 ## Prerequisites
 
-Oracle strongly recommends that you follow the [prerequisites](./PREREQUISITES.md).
+Oracle strongly recommends to comply with the [prerequisites](./PREREQUISITES.md) and the following requirements
+
+  ### Mandatory Resource Privileges
+
+  Single Instance Database(sidb) controller mandatorily requires the following Kubernetes resource privileges:
+
+  | Resources | Privileges  |
+  | --- | --- |
+  | Pods | create delete get list patch update watch | 
+  | Containers | create delete get list patch update watch |
+  | PersistentVolumeClaims | create delete get list patch update watch | 
+  | Services | create delete get list patch update watch | 
+  | Secrets | create delete get list patch update watch | 
+  | Events | create patch |
+
+  For managing the required levels of access, configure [role binding](../../README.md#role-binding-for-access-management)
+
+  ### Optional Resource Privileges
+
+  Single Instance Database(sidb) controller optionally requires the following Kubernetes resource privileges depending on the functionality being used:
+
+  | Functionality | Resources | Privileges |
+  | --- | --- | --- | 
+  | NodePort Services | Nodes | list watch |
+  | Storage Expansion with block volumes | StorageClasses | get list watch |
+  | Custom Scripts Execution | PersistentVolumes | get list watch |
+
+
+  For exposing the database via Nodeport services, apply [RBAC](../../rbac/node-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/node-rbac.yaml
+  ```
+  For automatic storage expansion of block volumes, apply [RBAC](../../rbac/storage-class-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/storage-class-rbac.yaml
+  ```
+  For automatic execution of custom scripts post database setup or startup, apply [RBAC](../../rbac/persistent-volume-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/persistent-volume-rbac.yaml
+  ```
+
 
 ## SingleInstanceDatabase Resource
 
@@ -159,10 +203,12 @@ To provision a new database instance on the Kubernetes cluster, use the example 
 2. If you have not already done so, create an image pull secret for the Oracle Container Registry:
 
     ```sh
-    $ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<oracle-sso-password>' --docker-email='<oracle-sso-email-address>'
+    $ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<container-registry-auth-token>' --docker-email='<oracle-sso-email-address>'
       
-      secret/oracle-container-registry-secret created
+      secret/oracle-container-registry-secret created 
     ```
+    Note: Generate the auth token from user profile section on top right of the page after logging into container-registry.oracle.com
+    
     This secret can also be created from the docker config.json or from podman auth.json after a successful login
     ```sh
     docker login container-registry.oracle.com
@@ -171,7 +217,7 @@ To provision a new database instance on the Kubernetes cluster, use the example 
     or
     ```sh
     podman login container-registry.oracle.com
-    podman create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json --type=kubernetes.io/dockerconfigjson
+    kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json --type=kubernetes.io/dockerconfigjson
     ```
 3. Provision a new database instance on the cluster by using the following command:
 
@@ -221,10 +267,10 @@ To provision new Oracle Database Free database, use the sample **[config/samples
 This command pulls the Free image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/).
 
 **Note:**
-- Provisioning Oracle Database Free is supported for release 23c (23.2.0) and later releases.
+- Provisioning Oracle Database Free is supported for release 23.3.0 and later releases.
 - For Free database, only single replica mode (i.e. `replicas: 1`) is supported.
 - For Free database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
-- Oracle Enterprise Manager is not supported from release 23c and later release. 
+- Oracle Enterprise Manager Express (OEM Express) is not supported from release 23.3.0 and later releases. 
 
 #### Additional Information
 You are required to specify the database admin password secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml), [singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml), [singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) and [singleinstancedatabse_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, `xedb-admin-secret` and `free-admin-secret` respectively. You can create these secrets manually by using the sample command mentioned in the [Template YAML](#template-yaml) section. Alternatively, you can create these secrets by filling the passwords in the **[singleinstancedatabase_secrets.yaml](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying it using the command below:
@@ -281,7 +327,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.oemExpres
 
   https://10.0.25.54:5500/em
 ```
-**Note:** OEM Express is not available for 23c and later releases
+**Note:** OEM Express is not available for 23.3.0 and later releases
 
 ### Database Persistence (Storage) Configuration Options
 The database persistence can be achieved in the following two ways:
@@ -295,8 +341,19 @@ In **Dynamic Persistence Provisioning**, a persistent volume is provisioned by m
 - Generally, the `Reclaim Policy` of such dynamically provisioned volumes is `Delete`. These volumes are deleted when their corresponding database deployment is deleted. To retain volumes, use static provisioning, as explained in the Block Volume Static Provisioning section.
 - In **Minikube**, the dynamic persistence provisioning class is **standard**.
 
+#### Storage Expansion
+When using dynamic persistence, you can at any time scale up your persistent volumes by simply patching the singleinstancedatabase resource using the following command :
+```sh
+$ kubectl patch singleinstancedatabase sidb-sample -p '{"spec":{"persistence":{"size":"100Gi"}}}' --type=merge
+```
+
+**Note:**
+- Storage expansion requires the storage class to be configured with `allowVolumeExpansion:true`
+- Storage expansion requires read and watch access for storage account as mentioned in [prerequisites](#prerequisites)
+- User can only scale up a volume/storage and not scale down
+
 #### Static Persistence
-In **Static Persistence Provisioning**, you have to create a volume manually, and then use the name of this volume with the `<.spec.persistence.volumeName>` field which corresponds to the `volumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment. 
+In **Static Persistence Provisioning**, you have to create a volume manually, and then use the name of this volume with the `<.spec.persistence.datafilesVolumeName>` field which corresponds to the `datafilesVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment.
 For example in **Minikube**, a persistent volume can be provisioned using the sample yaml file below:
 ```yaml
 apiVersion: v1
@@ -312,7 +369,7 @@ spec:
   hostPath:
     path: /data/oradata
 ```
-The persistent volume name (i.e. db-vol) can be mentioned in the `volumeName` field of the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. `storageClass` field is not required in this case, and can be left empty.
+The persistent volume name (i.e. db-vol) can be mentioned in the `datafilesVolumeName` field of the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. `storageClass` field is not required in this case, and can be left empty.
 
 Static Persistence Provisioning in Oracle Cloud Infrastructure (OCI) is explained in the following subsections:
 
@@ -423,7 +480,7 @@ The following attributes cannot be modified after creating the Single Instance D
 - `edition`
 - `charset`
 - `pdbName`
-- `cloneFrom`
+- `primaryDatabaseRef`
 
 If you attempt to changing one of these attributes, then you receive an error similar to the following:
 
@@ -439,8 +496,6 @@ To create copies of your existing database quickly, you can use the cloning func
 
 To quickly clone the existing database sidb-sample created above, use the sample **[config/samples/sidb/singleinstancedatabase_clone.yaml](../../config/samples/sidb/singleinstancedatabase_clone.yaml)** file.
 
-**Note**: To clone a database, the source database must have archiveLog mode set to true.
-
 For example:
 
 ```sh
@@ -450,7 +505,10 @@ $ kubectl apply -f singleinstancedatabase_clone.yaml
   singleinstancedatabase.database.oracle.com/sidb-sample-clone created
 ```
 
-**Note:** The clone database can specify a database image that is different from the source database. In such cases, cloning is supported only between databases of the same major release.
+**Note:**
+- To clone a database, the source database must have archiveLog mode set to true.
+- The clone database can specify a database image that is different from the source database. In such cases, cloning is supported only between databases of the same major release.
+- Only enterprise and standard editions support cloning.
 
 ### Patch a Database
 
@@ -469,7 +527,10 @@ singleinstancedatabase.database.oracle.com/sidb-sample patched
 
 ```
 
-After patching is complete, the database pods are restarted with the new release update image. For minimum downtime, ensure that you have multiple replicas of the database pods running before you start the patch operation.
+After patching is complete, the database pods are restarted with the new release update image.
+
+**Note:**
+- Only enterprise and standard editions support patching.
 
 #### Patch after Cloning
     
@@ -518,11 +579,25 @@ The command above will delete the database pods and associated service.
 Some advanced database configuration scenarios are as follows:
 
 #### Run Database with Multiple Replicas
-In multiple replicas mode, more than one pod is created for the database. The database is open and mounted by one of the replica pods. Other replica pods have instances started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down. Multiple replicas are also helpful in [patching](#patch-existing-database) operation. Ensure that you have multiple replicas of the database pods running before you start the patching operation for minimum downtime.
+In multiple replicas mode, more than one pod is created for the database. Setting the replica count equal to or more than the number of worker nodes helps in distributing the replicas accross all the nodes that have access to the database persistent storage volume.  
+The database is open and mounted by one of the replica pods. Other replica pods have the database instance started but not mounted, and serve to provide a quick cold fail-over in case the active pod goes down.
 
 To enable multiple replicas, update the replica attribute in the `.yaml`, and apply by using the `kubectl apply` or `kubectl scale` commands.
 
+The following table depicts the fail over matrix for any destructive operation to the primary replica pod
+
+| Pod Destructive Operation | Pod Restart/FailOver|
+  | --- | --- | 
+  | Database instance crash | Yes | 
+  | Force delete pod with zero grace period | Yes | 
+  | Gracefully delete pod | Yes |
+  | Node running primary replica dies | Yes | 
+  | Direct shutdown [All modes] | Yes | 
+  | Maintenance shutdown [All modes] | No |
+  | PDB close | No |
+  
 **Note:** 
+- Maintence shutdown/startup can be executed using the scripts /home/oracle/shutDown.sh and /home/oracle/startUp.sh 
 - This functionality requires the [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s) extended images. The database image from the container registry `container-registry.oracle.com` includes the K8s extension.
 - Because Oracle Database Express Edition (XE) does not support [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s), it does not support multiple replicas.
 - If the `ReadWriteOnce` access mode is used, all the replicas will be scheduled on the same node where the persistent volume would be mounted.
@@ -540,39 +615,49 @@ $ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstance
 ```
 
 ### Enabling TCPS Connections
-You can enable TCPS connections in the database by setting the `enableTCPS` field to `true` in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it using `kubectl apply` command.
+You can enable TCPS connections in the database by setting the `enableTCPS` field to `true` in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it.
 
 Alternatively, you can use the following command:
 ```bash
 kubectl patch --type=merge singleinstancedatabases.database.oracle.com sidb-sample -p '{"spec": {"enableTCPS": true}}'
 ```
-Once TCPS connections are enabled, the database connect string will change accordingly. The TCPS connections status can also be queried by the following command:
+By default self signed certs are used for TCPS connections. The TCPS connections status can also be queried by the following command:
 ```bash
 kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.isTcpsEnabled}"
 true
 ```
 
-The following steps are required to connect the Database using TCPS:
-- You need to download the wallet from the Persistent Volume (PV) attached with the database pod. The location of the wallet inside the pod is as `/opt/oracle/oradata/clientWallet/$ORACLE_SID`. **Let us assume the `ORACLE_SID` is `ORCL1`, and singleinstance database resource name is `sidb-sample` for the upcoming example command**. You can copy the wallet to the destination directory by the following command:
-  ```bash
-  kubectl cp $(kubectl get pods -l app=sidb-sample -o=jsonpath='{.items[0].metadata.name}'):/opt/oracle/oradata/clientWallet/ORCL1 <Destination directory>
-  ```
-- This wallet includes the sample `tnsnames.ora` and `sqlnet.ora` files. All the TNS entries for the database (corresponding to the CDB and PDB) resides in `tnsnames.ora` file. You need to go inside the downloaded wallet directory and set the `TNS_ADMIN` environment variable to point to the current directory as follows:
-  ```bash
-  # After going inside the downloaded wallet directory
-  export TNS_ADMIN=$(pwd)
-  ```
-  After this, you can connect using SQL\*Plus using the following sample commands:
-  ```bash
-  sqlplus sys@ORCL1 as sysdba
-  ```
-**Note:**
-- When TCPS is enabled, a self-signed certificate is generated and stored inside the wallets. For users' convenience, a client-side wallet is generated and stored at `/opt/oracle/oradata/clientWallet/$ORACLE_SID` location in the pod.
-- The self-signed certificate used with TCPS has validity for 1 year. After the certificate is expired, it will be renewed by the `OraOperator` automatically. You need to download the wallet again after the auto-renewal.
+**With Self Signed Certs**
+- When TCPS is enabled, a self-signed certificate is generated and stored in wallets. For users' convenience, a client-side wallet is generated in location `/opt/oracle/oradata/clientWallet/$ORACLE_SID` in the pod.
+- The self-signed certificate used with TCPS has validity for 1 year. After the certificate is expired, it will be renewed by the `OraOperator` automatically. Download the wallet again after auto-renewal.
 - You can set the certificate renew interval with the help of `tcpsCertRenewInterval` field in the **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** file. The minimum accepted value is 24h, and the maximum value is 8760h (1 year). The certificates used with TCPS will automatically be renewed after this interval. If this field is omitted/commented in the yaml file, the certificates will not be renewed automatically.
 - When the certificate gets created/renewed, the `.status.certCreationTimestamp` status variable gets updated accordingly. You can see this timestamp by using the following command:
   ```bash
   kubectl get singleinstancedatabase sidb-sample  -o "jsonpath={.status.certCreationTimestamp}"
+  ```
+
+**With User Provided Certs**
+- Users can provide custom certs to be used for TCPS connections instead of self signed ones.
+- Specify the certs by creating a Kubernetes tls secret resource using following command:
+  ```bash
+  kubectl create secret tls my-tls-secret --cert=path/to/cert/tls.crt --key=path/to/key/tls.key
+  ```
+- `tls.crt` is a certificate chain in the order of client, followed by intermediate and then root certificate and `tls.key` is client key.
+- Specify the secret created above (`my-tls-secret`) as the value for the attribute `tcpsTlsSecret` in the [config/samples/sidb/singleinstancedatabase_tcps.yaml](../../config/samples/sidb/singleinstancedatabase_tcps.yaml) file, and apply it.
+
+**Connecting to the Database using TCPS**
+- Download the wallet from the Persistent Volume (PV) attached with the database pod. The location of the wallet inside the pod is as `/opt/oracle/oradata/clientWallet/$ORACLE_SID`. Let us assume the `ORACLE_SID` is `ORCL1`, and singleinstance database resource name is `sidb-sample` for the upcoming example command. You can copy the wallet to the destination directory by the following command:
+  ```bash
+  kubectl cp $(kubectl get pods -l app=sidb-sample -o=jsonpath='{.items[0].metadata.name}'):/opt/oracle/oradata/clientWallet/ORCL1 <Wallet Destination directory>
+  ```
+- This wallet includes the sample `tnsnames.ora` and `sqlnet.ora` files. All the TNS entries for the database (corresponding to the CDB and PDB) reside in the `tnsnames.ora` file. Switch to the downloaded wallet directory and set the `TNS_ADMIN` environment variable to point to the current directory as follows:
+  ```bash
+  cd <Wallet Destination directory>
+  export TNS_ADMIN=$(pwd)
+  ```
+  After this, connect using SQL\*Plus using the following sample commands:
+  ```bash
+  sqlplus sys@ORCL1 as sysdba
   ```
 
 ### Specifying Custom Ports
@@ -595,7 +680,8 @@ In case of `NodePort` service, `listenerPort`, and `tcpsListenerPort` will be th
 ### Create a Standby Database
 
 #### Prerequisites
-Before creating a standby, ArchiveLog, FlashBack, and ForceLog on primary Single Instance Database(`.spec.primaryDatabaseRef`) should be turned on.
+- Before creating a Standby, ensure that ArchiveLog, FlashBack, and ForceLog on primary Single Instance Database(`.spec.primaryDatabaseRef`) are turned on.
+- Standby database is not supported for TCPS enabled Primary databases.
 
 #### Template YAML
 To create a standby database, edit and apply the sample yaml file [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml).
@@ -603,7 +689,7 @@ To create a standby database, edit and apply the sample yaml file [config/sample
 **Note:**
 - The `adminPassword` field of the above [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml) contains an admin password secret of the primary database ref for Standby Database creation. This secret will get deleted after the database pod becomes ready if the `keepSecret` attribute of `adminPassword` field is set to `false`. By default `keepSecret` is set to `true`.
 - Mention referred primary database in `.spec.primaryDatabaseRef` in the yaml file.
-- `.spec.createAsStandby` field of the yaml file should be true.
+- `.spec.createAs` field of the yaml file should be set to "standby".
 - Database configuration like `Archivelog`, `FlashBack`, `ForceLog`, `TCPS connections` are not supported for standby database.
 
 #### List Standby Databases
@@ -766,7 +852,7 @@ $ kubectl --type=merge -p '{"spec":{"setAsPrimaryDatabase":"ORCLS1"}}' patch dat
 
 ### Patch Primary and Standby databases in Data Guard configuration
 
-Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched or rolled back between release updates of the same major release. While patching databases configured with the dataguard broker you need to first patch the Primary database followed by seconday/standby databases in any order. 
+Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched between release updates of the same major release. 
 
 To patch an existing database, edit and apply the **[config/samples/sidb/singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
 
@@ -774,6 +860,15 @@ To patch an existing database, edit and apply the **[config/samples/sidb/singlei
 kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase <database-name>
 
 ```
+Follow these steps for patching databases configured with the dataguard broker:
+1. First patch all the standby databases by replacing the image with the new release update image
+2. Perform switch over of the primary to one of the standby databases
+3. Now patch the original primary database (currently standby after #2)  
+   After #3 the software for primary and standby databases is at the same release update
+4. Now bounce the current primary database by updating the replica count to 0 and then 1  
+   #4 will trigger a datapatch execution resulting in patching of the datafiles
+5. Finally perform switch over of the current primary back to the original primary (current standby)
+
 
 ### Delete the Data Guard Configuration
 
@@ -785,7 +880,8 @@ $ kubectl delete dataguardbroker dgbroker-sample
 
   dataguardbroker.database.oracle.com/dgbroker-sample deleted
 ```
-**Note:** Deleting of DataGuardBroker resource is allowed only when role of `.spec.primaryDatabaseRef` is PRIMARY
+
+**Note:** If a switch over to standby was performed, make sure to switch back to the original primary database before deleting the dataguard broker resource
 
 #### Delete Standby Database
 ```sh 
@@ -793,6 +889,14 @@ $ kubectl delete singleinstancedatabase stdby-1
 
   singleinstancedatabase.database.oracle.com "stdby-1" deleted
 ```
+
+### Execute Custom Scripts
+
+Custom scripts (sql and/or shell scripts) can be executed after the initial database setup and/or after each startup of the database. SQL scripts will be executed as sysdba, shell scripts will be executed as the current user. To ensure proper order it is recommended to prefix your scripts with a number. For example `01_users.sql`, `02_permissions.sql`, etc. Place all such scripts in setup and startup folders created in a persistent volume to execute them post setup and post startup respectively.
+
+Create a persistent volume using [static provisioning](#static-persistence) and then specify the name of this volume with the `<.spec.persistence.scriptsVolumeName>` field which corresponds to the `scriptsVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**.
+
+**Note:** Executing custom scripts requires read and list access for persistent volumes as mentioned in [prerequisites](#prerequisites)
 
 ## OracleRestDataService Resource
 

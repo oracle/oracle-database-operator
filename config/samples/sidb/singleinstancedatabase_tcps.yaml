@@ -34,7 +34,12 @@ spec:
   ## Enable TCPS
   enableTCPS: true
 
-  ## TCPS Certificate Renewal Interval: The time after which TCPS certificate will be renewed if TCPS connections are enabled.
+  ## User specified TLS-Cert Secret
+  ## The following specified TLS certs will be used instead of self-signed
+  tcpsTlsSecret: my-tls-secret
+
+  ## TCPS Certificate Renewal Interval: (Valid for Self-Signed Certificates)
+  ## The time after which TCPS certificate will be renewed if TCPS connections are enabled.
   ## tcpsCertRenewInterval can be in hours(h), minutes(m) and seconds(s); e.g. 4380h, 8760h etc.
   ## Maximum value is 8760h (1 year), Minimum value is 24h; Default value is 8760h (1 year)
   ## If this field is commented out/removed from the yaml, it will disable the auto-renewal feature for TCPS certificate

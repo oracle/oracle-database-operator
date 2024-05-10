@@ -41,4 +41,7 @@ spec:
           requests:
             cpu: 400m
             memory: 400Mi
+        env:
+          - name : WATCH_NAMESPACE
+            value : ""
       terminationGracePeriodSeconds: 10

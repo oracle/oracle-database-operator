@@ -111,7 +111,7 @@ Follow these steps to provision an Autonomous Database that will map objects in 
 
 5. Choose the type of network access (optional):
 
-   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the network acess. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
+   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the network access. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
 
 6. Apply the YAML:
 
@@ -410,6 +410,18 @@ To delete the resource and terminate the Autonomous Database, complete these ste
     ```
 
 Now, you can verify that the database is in TERMINATING state on the Cloud Console.
+
+## Roles and Privileges requirements for Oracle Autonomous Database Controller
+
+Autonomous Database controller uses Kubernetes objects such as:
+
+  | Resources | Verbs |
+  | --- | --- |
+  | Configmaps | get list watch create update patch delete | 
+  | Secrets | get list watch create update patch delete | 
+  | Events | create patch |
+
+The defintion of all the Kubernetes Objects, which are to be used by the Oracle Autonomous Database Controller, comes from the `oracle-database-operator.yaml` file which is applied to deploy the **Oracle Database Operator**.
 
 ## Debugging and troubleshooting
 

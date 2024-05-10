@@ -3,7 +3,18 @@
 #
 
 # Build the manager binary
-FROM golang:1.19 as builder
+ARG BUILDER_IMG
+FROM ${BUILDER_IMG} as builder
+
+# Download golang if BUILD_INTERNAL is set to true
+ARG INSTALL_GO
+ARG GOLANG_VERSION
+RUN if [ "$INSTALL_GO" = "true" ]; then \
+        curl -LJO https://go.dev/dl/go${GOLANG_VERSION}.linux-amd64.tar.gz &&\
+        rm -rf /usr/local/go && tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-amd64.tar.gz &&\
+        rm go${GOLANG_VERSION}.linux-amd64.tar.gz; \
+    fi
+ENV PATH=${GOLANG_VERSION:+"${PATH}:/usr/local/go/bin"}
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
