@@ -41,6 +41,7 @@ package v1alpha1
 import (
 	"strings"
 
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -48,6 +49,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -69,21 +71,21 @@ var _ webhook.Defaulter = &DataguardBroker{}
 func (r *DataguardBroker) Default() {
 	dataguardbrokerlog.Info("default", "name", r.Name)
 
-	if (r.Spec.LoadBalancer) {
+	if r.Spec.LoadBalancer {
 		if r.Spec.ServiceAnnotations == nil {
-			r.Spec.ServiceAnnotations= make(map[string]string)
+			r.Spec.ServiceAnnotations = make(map[string]string)
 		}
-		// Annotations required for a flexible load balancer on oci 
+		// Annotations required for a flexible load balancer on oci
 		_, ok := r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"]
-		if(!ok) {
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"] = "flexible"
 		}
-		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
-		if(!ok) {
+		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"] = "10"
 		}
-		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
-		if(!ok) {
+		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
 		}
 	}
@@ -95,38 +97,53 @@ func (r *DataguardBroker) Default() {
 var _ webhook.Validator = &DataguardBroker{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateCreate() error {
-	dataguardbrokerlog.Info("validate create", "name", r.Name)
+func (r *DataguardBroker) ValidateCreate() (admission.Warnings, error) {
 
-	// TODO(user): fill in your validation logic upon object creation.
-	return nil
+	dataguardbrokerlog.Info("validate create", "name", r.Name)
+	var allErrs field.ErrorList
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, containsNamespace := namespaces[r.Namespace]
+	// Check if the allowed namespaces maps contains the required namespace
+	if len(namespaces) != 0 && !containsNamespace {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+				"Oracle database operator doesn't watch over this namespace"))
+	}
+
+	if len(allErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: "database.oracle.com", Kind: "Dataguard"},
+		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateUpdate(old runtime.Object) error {
+func (r *DataguardBroker) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate update", "name", r.Name)
 
 	dataguardbrokerlog.Info("validate update", "name", r.Name)
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	err := r.ValidateCreate()
+	_, err := r.ValidateCreate()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Validate Deletion
 	if r.GetDeletionTimestamp() != nil {
-		err := r.ValidateDelete()
+		warnings, err := r.ValidateDelete()
 		if err != nil {
-			return err
+			return warnings, err
 		}
 	}
 
 	// Now check for updation errors
 	oldObj, ok := old.(*DataguardBroker)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	if oldObj.Status.ProtectionMode != "" && !strings.EqualFold(r.Spec.ProtectionMode, oldObj.Status.ProtectionMode) {
@@ -139,18 +156,18 @@ func (r *DataguardBroker) ValidateUpdate(old runtime.Object) error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "DataguardBroker"},
 		r.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateDelete() error {
+func (r *DataguardBroker) ValidateDelete() (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }

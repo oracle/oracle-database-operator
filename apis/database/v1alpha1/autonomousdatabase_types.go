@@ -43,14 +43,14 @@ import (
 	"reflect"
 
 	"github.com/oracle/oci-go-sdk/v65/database"
-	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // name of our custom finalizer
-const ADBFinalizer = "database.oracle.com/adb-finalizer"
+const ADB_FINALIZER = "database.oracle.com/adb-finalizer"
 
 // AutonomousDatabaseSpec defines the desired state of AutonomousDatabase
 // Important: Run "make" to regenerate code after modifying this file
@@ -159,7 +159,13 @@ type AutonomousDatabaseStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	LifecycleState       database.AutonomousDatabaseLifecycleStateEnum `json:"lifecycleState,omitempty"`
 	TimeCreated          string                                        `json:"timeCreated,omitempty"`
+	WalletExpiringDate   string                                        `json:"walletExpiringDate,omitempty"`
 	AllConnectionStrings []ConnectionStringProfile                     `json:"allConnectionStrings,omitempty"`
+	// +patchMergeKey=type
+	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 type TLSAuthenticationEnum string
@@ -192,8 +198,8 @@ type ConnectionStringSpec struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.details.dbWorkload",name="Workload Type",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.timeCreated",name="Created",type=string
 type AutonomousDatabase struct {
-	metaV1.TypeMeta   `json:",inline"`
-	metaV1.ObjectMeta `json:"metadata,omitempty"`
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
 	Spec   AutonomousDatabaseSpec   `json:"spec,omitempty"`
 	Status AutonomousDatabaseStatus `json:"status,omitempty"`
@@ -203,8 +209,8 @@ type AutonomousDatabase struct {
 
 // AutonomousDatabaseList contains a list of AutonomousDatabase
 type AutonomousDatabaseList struct {
-	metaV1.TypeMeta `json:",inline"`
-	metaV1.ListMeta `json:"metadata,omitempty"`
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []AutonomousDatabase `json:"items"`
 }
 
@@ -329,7 +335,7 @@ func (adb *AutonomousDatabase) UpdateFromOCIADB(ociObj database.AutonomousDataba
 	if *ociObj.IsDedicated {
 		adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
 	} else {
-		if ociObj.NsgIds != nil {
+		if ociObj.NsgIds != nil || ociObj.PrivateEndpoint != nil || ociObj.PrivateEndpointIp != nil || ociObj.PrivateEndpointLabel != nil {
 			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
 		} else if ociObj.WhitelistedIps != nil {
 			adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypeRestricted

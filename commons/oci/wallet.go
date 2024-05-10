@@ -42,6 +42,7 @@ import (
 	"archive/zip"
 	"io"
 	"io/ioutil"
+	"strings"
 )
 
 // ExtractWallet extracts the wallet and returns a map object which holds the byte values of the unzipped files.
@@ -76,27 +77,34 @@ func saveWalletZip(content io.ReadCloser) (string, error) {
 }
 
 func unzipWallet(path string) (map[string][]byte, error) {
-	data := map[string][]byte{}
+	files := map[string][]byte{}
 
 	reader, err := zip.OpenReader(path)
 	if err != nil {
-		return data, err
+		return files, err
 	}
 
 	defer reader.Close()
 	for _, file := range reader.File {
 		reader, err := file.Open()
 		if err != nil {
-			return data, err
+			return files, err
 		}
 
 		content, err := ioutil.ReadAll(reader)
 		if err != nil {
-			return data, err
+			return files, err
 		}
 
-		data[file.Name] = content
+		files[file.Name] = content
 	}
 
-	return data, nil
+	return files, nil
+}
+
+func WalletExpiringDate(files map[string][]byte) string {
+	data := string(files["README"])
+
+	line := data[strings.Index(data, "this wallet will expire on"):strings.Index(data, ".\nIn order to avoid")]
+	return strings.TrimSpace(strings.TrimPrefix(line, "this wallet will expire on"))
 }

@@ -78,7 +78,7 @@ func UpdateGsmStatusData(instance *databasealphav1.ShardingDatabase, Specidx int
 		K8sInternalSvcName := svcName + "." + getInstanceNs(instance) + ".svc.cluster.local"
 		_, K8sInternalSvcIP, _ := GetSvcIp(instance.Spec.Gsm[Specidx].Name+"-0", K8sInternalSvcName, instance, kubeClient, kubeConfig, logger)
 		_, K8sExternalSvcIP, _ := GetSvcIp(instance.Spec.Gsm[Specidx].Name+"-0", k8sExternalSvcName, instance, kubeClient, kubeConfig, logger)
-		DbPasswordSecret := instance.Spec.Secret
+		DbPasswordSecret := instance.Spec.DbSecret.Name
 		instance.Status.Gsm.Services = GetGsmServices(instance.Spec.Gsm[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
 
 		//	externIp := strings.Replace(K8sInternalSvcIP, "/r/n", "", -1)
@@ -125,7 +125,7 @@ func UpdateCatalogStatusData(instance *databasealphav1.ShardingDatabase, Specidx
 		K8sInternalSvcName := svcName + "." + getInstanceNs(instance) + ".svc.cluster.local"
 		_, K8sInternalSvcIP, _ := GetSvcIp(instance.Spec.Catalog[Specidx].Name+"-0", K8sInternalSvcName, instance, kubeClient, kubeConfig, logger)
 		_, K8sExternalSvcIP, _ := GetSvcIp(instance.Spec.Catalog[Specidx].Name+"-0", k8sExternalSvcName, instance, kubeClient, kubeConfig, logger)
-		DbPasswordSecret := instance.Spec.Secret
+		DbPasswordSecret := instance.Spec.DbSecret.Name
 		oracleSid := GetSidName(instance.Spec.Catalog[Specidx].EnvVars, instance.Spec.Catalog[Specidx].Name)
 		oraclePdb := GetPdbName(instance.Spec.Catalog[Specidx].EnvVars, instance.Spec.Catalog[Specidx].Name)
 		role := GetDbRole(instance.Spec.Catalog[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
@@ -185,7 +185,7 @@ func UpdateShardStatusData(instance *databasealphav1.ShardingDatabase, Specidx i
 		K8sInternalSvcName := svcName + "." + getInstanceNs(instance) + ".svc.cluster.local"
 		_, K8sInternalSvcIP, _ := GetSvcIp(instance.Spec.Shard[Specidx].Name+"-0", K8sInternalSvcName, instance, kubeClient, kubeConfig, logger)
 		_, K8sExternalSvcIP, _ := GetSvcIp(instance.Spec.Shard[Specidx].Name+"-0", k8sExternalSvcName, instance, kubeClient, kubeConfig, logger)
-		DbPasswordSecret := instance.Spec.Secret
+		DbPasswordSecret := instance.Spec.DbSecret.Name
 		oracleSid := GetSidName(instance.Spec.Shard[Specidx].EnvVars, instance.Spec.Shard[Specidx].Name)
 		oraclePdb := GetPdbName(instance.Spec.Shard[Specidx].EnvVars, instance.Spec.Shard[Specidx].Name)
 		role := GetDbRole(instance.Spec.Shard[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
@@ -347,7 +347,7 @@ func CheckGsmStatus(gname string, instance *databasealphav1.ShardingDatabase, ku
 	return nil
 }
 
-//============ Functiont o check the status of the Shard and catalog =========
+// ============ Functiont o check the status of the Shard and catalog =========
 // ================================ Validate shard ===========================
 func ValidateDbSetup(podName string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {

@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -46,6 +47,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -86,10 +88,19 @@ func (r *OracleRestDataService) Default() {
 var _ webhook.Validator = &OracleRestDataService{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateCreate() error {
+func (r *OracleRestDataService) ValidateCreate() (admission.Warnings, error) {
 	oraclerestdataservicelog.Info("validate create", "name", r.Name)
 
 	var allErrs field.ErrorList
+
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, containsNamespace := namespaces[r.Namespace]
+	// Check if the allowed namespaces maps contains the required namespace
+	if len(namespaces) != 0 && !containsNamespace {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+				"Oracle database operator doesn't watch over this namespace"))
+	}
 
 	// Persistence spec validation
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" ||
@@ -116,34 +127,34 @@ func (r *OracleRestDataService) ValidateCreate() error {
 	if r.Spec.DatabaseRef == r.Name {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("Name"),
-					 "cannot be same as DatabaseRef: " + r.Spec.DatabaseRef))
+				"cannot be same as DatabaseRef: "+r.Spec.DatabaseRef))
 
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateUpdate(oldRuntimeObject runtime.Object) error {
+func (r *OracleRestDataService) ValidateUpdate(oldRuntimeObject runtime.Object) (admission.Warnings, error) {
 	oraclerestdataservicelog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	err := r.ValidateCreate()
+	warnings, err := r.ValidateCreate()
 	if err != nil {
-		return err
+		return warnings, err
 	}
 
 	// Now check for updation errors
 	old, ok := oldRuntimeObject.(*OracleRestDataService)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	if old.Status.DatabaseRef != "" && old.Status.DatabaseRef != r.Spec.DatabaseRef {
@@ -156,18 +167,18 @@ func (r *OracleRestDataService) ValidateUpdate(oldRuntimeObject runtime.Object) 
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
 		r.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateDelete() error {
+func (r *OracleRestDataService) ValidateDelete() (admission.Warnings, error) {
 	oraclerestdataservicelog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }

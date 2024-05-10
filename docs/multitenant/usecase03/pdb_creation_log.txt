@@ -1,0 +1,6 @@
+kubectl apply -f pdb_create.yaml 
+pdb.database.oracle.com/pdb1 created
+
+kubectl get pdbs -n pdbnamespace 
+NAME   CONNECT_STRING                                                                                                                                                                                                                                                                                                                               CDB NAME   PDB NAME   PDB STATE    PDB SIZE   STATUS   MESSAGE
+pdb1   (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=pdbdev)))   DB12       pdbdev     READ WRITE   0.78G      Ready    Success
