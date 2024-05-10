@@ -2,7 +2,6 @@
 # Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-
 apiVersion: database.oracle.com/v1alpha1
 kind: PDB
 metadata:
@@ -12,8 +11,9 @@ metadata:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
+  cdbNamespace: "oracle-database-operator-system"
   cdbName: "DB12"
-  pdbName: "pdb2-clone"
+  pdbName: "pdb2_clone"
   srcPdbName: "pdbdev"
   fileNameConversions: "NONE"
   totalSize: "UNLIMITED"
@@ -38,5 +38,12 @@ spec:
     secret:
       secretName: "db-ca"
       key: "ca.crt"
+  webServerUser:
+    secret:
+      secretName: "pdb1-secret"
+      key: "webserver_user"
+  webServerPwd:
+    secret:
+      secretName: "pdb1-secret"
+      key: "webserver_pwd"
   action: "Clone"
-

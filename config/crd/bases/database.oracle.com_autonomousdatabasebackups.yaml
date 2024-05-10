@@ -61,6 +61,8 @@ spec:
                 type: string
               displayName:
                 type: string
+              isLongTermBackup:
+                type: boolean
               ociConfig:
                 description: "*********************** *\tOCI config ***********************"
                 properties:
@@ -69,6 +71,8 @@ spec:
                   secretName:
                     type: string
                 type: object
+              retentionPeriodInDays:
+                type: integer
               target:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file'

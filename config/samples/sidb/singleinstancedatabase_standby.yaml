@@ -15,11 +15,11 @@ spec:
   ## Use only alphanumeric characters for sid
   sid: ORCLS
 
-  ## Reference to a source primary database name
+  ## The name of a source primary database resource from the same namespace
   primaryDatabaseRef: "sidb-sample"
 
-  ## Enable this flag for creating Physical Standby Database
-  createAsStandby: true
+  ## Intended type of database.
+  createAs: standby
 
   ## Secret containing SIDB password mapped to secretKey 
   adminPassword:
@@ -43,3 +43,5 @@ spec:
   ## if loadBalService : false, service type = "NodePort" else "LoadBalancer"
   loadBalancer: false
 
+  replicas: 1 
+  
