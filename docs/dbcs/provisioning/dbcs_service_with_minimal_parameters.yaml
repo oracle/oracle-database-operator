@@ -6,14 +6,20 @@ spec:
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dbSystem:
-    availabilityDomain: "OLou:PHX-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya"
+    availabilityDomain: "OLou:EU-MILAN-1-AD-1" 
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaaks5baeqlvv4kyj2jiwnrbxgzm3gsumcfy4c6ntj2ro5i3a5gzhhq"
     dbAdminPaswordSecret: "admin-password"
-    dbName: "db0130"
-    dbVersion: "21c"
+    dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
+    dbName: "testdb"
+    displayName: "dbsystem0130"
+    licenseModel: "BRING_YOUR_OWN_LICENSE"
+    dbVersion: "19c"
     dbWorkload: "OLTP"
-    hostName: "host0130"
+    hostName: "host1205"
     shape: "VM.Standard2.1"
-    sshPublicKeys:
-      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a"
+    domain: "vcndns.oraclevcn.com"
+    sshPublicKeys: 
+     - "oci-publickey"
+    subnetId: "ocid1.subnet.oc1.eu-milan-1.aaaaaaaaeiy3tvcsnyg6upfp3ydtu7jmfnmoyifq2ax6y45b5qpdbpide5xa"
+
+ 

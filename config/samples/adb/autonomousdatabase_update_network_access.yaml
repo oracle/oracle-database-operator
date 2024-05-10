@@ -32,7 +32,7 @@ spec:
       # accessType: PRIVATE
       # privateEndpoint:
       #   subnetOCID: ocid1.subnet...
-      #   nsgOCIDs:
+      #   nsgOCIDs: # Optional
       #   - ocid1.networksecuritygroup...
 
       # # Uncomment this block to configure the network access of an dedicated Autonomous Database (ADB-D) with an access control list.

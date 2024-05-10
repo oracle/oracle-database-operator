@@ -1,25 +1,46 @@
 # Create kubernetes secret for db user
 
-Create a Kubernetes secret named "db-user-pass" using a password in a text file and then encrypt it using an `openssl` key. The text file will be removed after secret is created.
+Below are the steps to create an encrypted file with a password for the DB User:
+
+- Create a text file which is having the password which you want to use for the DB user.
+- Create an RSA key pair using `openssl`.
+- Encrypt the text file with password using `openssl` with the RSA key pair generated earlier.
+- Remove the initial text file.
+- Create the Kubernetes secret named `db-user-pass-rsa` using the encrypted file.
+
+Please refer the below example for the above steps:
 
 ```sh
+# Create a directory for files for the secret:
+rm -rf /tmp/.secrets/ 
 mkdir /tmp/.secrets/
 
-# Generate a random openssl key
-openssl rand -hex 64 -out /tmp/.secrets/pwd.key
+# Create directories and initialize the variables
+RSADIR="/tmp/.secrets"
+PRIVKEY="${RSADIR}"/"key.pem"
+PUBKEY="${RSADIR}"/"key.pub"
+NAMESPACE="shns"
+PWDFILE="${RSADIR}"/"pwdfile.txt"
+PWDFILE_ENC="${RSADIR}"/"pwdfile.enc"
+SECRET_NAME="db-user-pass-rsa"
 
-# Use a password you want and add it to a text file
-echo ORacle_21c > /tmp/.secrets/common_os_pwdfile
+# Generate the RSA Key
+openssl genrsa -out "${RSADIR}"/key.pem
+openssl rsa -in "${RSADIR}"/key.pem -out "${RSADIR}"/key.pub -pubout
 
-# Encrypt the file with the password with the random openssl key generated above
-openssl enc -aes-256-cbc -md md5 -salt -in /tmp/.secrets/common_os_pwdfile -out /tmp/.secrets/common_os_pwdfile.enc -pass file:/tmp/.secrets/pwd.key
+# Create a text file with the password
+rm -f $PWDFILE_ENC
+echo ORacle_23c > ${RSADIR}/pwdfile.txt
 
-# Remove the password text file
-rm -f /tmp/.secrets/common_os_pwdfile
+# Create encrypted file from the text file using the RSA key
+openssl pkeyutl -in $PWDFILE -out $PWDFILE_ENC -pubin -inkey $PUBKEY -encrypt
 
-# Create the Kubernetes secret in namespace "shns"
-kubectl create secret generic db-user-pass --from-file=/tmp/.secrets/common_os_pwdfile.enc --from-file=/tmp/.secrets/pwd.key -n shns
+# Remove the initial text file:
+rm -f $PWDFILE
 
-# Check the secret details 
-kubectl get secret -n shns
+# Deleting the existing secret if existing
+kubectl delete secret $SECRET_NAME -n  $NAMESPACE
+
+# Create the Kubernetes secret in namespace "NAMESPACE"
+kubectl create secret generic $SECRET_NAME --from-file=$PWDFILE_ENC --from-file=${PRIVKEY} -n $NAMESPACE
 ```

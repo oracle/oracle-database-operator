@@ -49,6 +49,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -83,7 +84,7 @@ func (r *CDB) Default() {
 var _ webhook.Validator = &CDB{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *CDB) ValidateCreate() error {
+func (r *CDB) ValidateCreate() (admission.Warnings, error) {
 	cdblog.Info("ValidateCreate", "name", r.Name)
 
 	var allErrs field.ErrorList
@@ -92,32 +93,32 @@ func (r *CDB) ValidateCreate() error {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("serviceName"), "Please specify CDB Service name"))
 	}
-        
-        if reflect.ValueOf(r.Spec.CDBTlsKey).IsZero()  {
-                allErrs = append(allErrs,
-                        field.Required(field.NewPath("spec").Child("cdbTlsKey"), "Please specify CDB Tls key(secret)"))
-        }
 
-        if reflect.ValueOf(r.Spec.CDBTlsCrt).IsZero()  {
-                allErrs = append(allErrs,
-                        field.Required(field.NewPath("spec").Child("cdbTlsCrt"), "Please specify CDB Tls Certificate(secret)"))
-        }
+	if reflect.ValueOf(r.Spec.CDBTlsKey).IsZero() {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("cdbTlsKey"), "Please specify CDB Tls key(secret)"))
+	}
+
+	if reflect.ValueOf(r.Spec.CDBTlsCrt).IsZero() {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("cdbTlsCrt"), "Please specify CDB Tls Certificate(secret)"))
+	}
 
 	/*if r.Spec.SCANName == "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("scanName"), "Please specify SCAN Name for CDB"))
 	}*/
 
-	if ((r.Spec.DBServer == "" && r.Spec.DBTnsurl == "") || (r.Spec.DBServer != "" && r.Spec.DBTnsurl != ""))  {
+	if (r.Spec.DBServer == "" && r.Spec.DBTnsurl == "") || (r.Spec.DBServer != "" && r.Spec.DBTnsurl != "") {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbServer"), "Please specify Database Server Name/IP Address or tnsalias string"))
 	}
 
-        if r.Spec.DBTnsurl != "" && ( r.Spec.DBServer != "" || r.Spec.DBPort != 0 || r.Spec.ServiceName != "" ) { 
+	if r.Spec.DBTnsurl != "" && (r.Spec.DBServer != "" || r.Spec.DBPort != 0 || r.Spec.ServiceName != "") {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbServer"), "DBtnsurl is orthogonal to (DBServer,DBport,Services)"))
-        }
- 
+	}
+
 	if r.Spec.DBPort == 0 && r.Spec.DBServer != "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify DB Server Port"))
@@ -159,20 +160,20 @@ func (r *CDB) ValidateCreate() error {
 			field.Required(field.NewPath("spec").Child("webServerPwd"), "Please specify password for the Web Server User having SQL Administrator role"))
 	}
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "CDB"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *CDB) ValidateUpdate(old runtime.Object) error {
+func (r *CDB) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	cdblog.Info("validate update", "name", r.Name)
 
 	isCDBMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
 	if isCDBMarkedToBeDeleted {
-		return nil
+		return nil, nil
 	}
 
 	var allErrs field.ErrorList
@@ -180,7 +181,7 @@ func (r *CDB) ValidateUpdate(old runtime.Object) error {
 	// Check for updation errors
 	oldCDB, ok := old.(*CDB)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	if r.Spec.DBPort < 0 {
@@ -201,18 +202,18 @@ func (r *CDB) ValidateUpdate(old runtime.Object) error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "CDB"},
 		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *CDB) ValidateDelete() error {
+func (r *CDB) ValidateDelete() (admission.Warnings, error) {
 	cdblog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }

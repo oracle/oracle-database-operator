@@ -54,6 +54,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -77,8 +78,8 @@ func (r *PDB) Default() {
 
 	if action == "DELETE" {
 		if r.Spec.DropAction == "" {
-			r.Spec.DropAction = "KEEP"
-			pdblog.Info(" - dropAction : KEEP")
+			r.Spec.DropAction = "INCLUDING"
+			pdblog.Info(" - dropAction : INCLUDING")
 		}
 	} else if action != "MODIFY" && action != "STATUS" {
 		if r.Spec.ReuseTempFile == nil {
@@ -121,7 +122,7 @@ func (r *PDB) Default() {
 var _ webhook.Validator = &PDB{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *PDB) ValidateCreate() error {
+func (r *PDB) ValidateCreate() (admission.Warnings, error) {
 	pdblog.Info("ValidateCreate-Validating PDB spec for : " + r.Name)
 
 	var allErrs field.ErrorList
@@ -134,9 +135,9 @@ func (r *PDB) ValidateCreate() error {
 
 	if len(allErrs) == 0 {
 		pdblog.Info("PDB Resource : " + r.Name + " successfully validated for Action : " + action)
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "PDB"},
 		r.Name, allErrs)
 }
@@ -147,21 +148,21 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 
 	pdblog.Info("Valdiating PDB Resource Action : " + action)
 
-        if reflect.ValueOf(r.Spec.PDBTlsKey).IsZero() {
-                        *allErrs = append(*allErrs,
-                        field.Required(field.NewPath("spec").Child("pdbTlsKey"), "Please specify PDB Tls Key(secret)"))
-                }
+	if reflect.ValueOf(r.Spec.PDBTlsKey).IsZero() {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("pdbTlsKey"), "Please specify PDB Tls Key(secret)"))
+	}
 
-        if reflect.ValueOf(r.Spec.PDBTlsCrt).IsZero() {
-                        *allErrs = append(*allErrs,
-                        field.Required(field.NewPath("spec").Child("pdbTlsCrt"), "Please specify PDB Tls Certificate(secret)"))
-                }
+	if reflect.ValueOf(r.Spec.PDBTlsCrt).IsZero() {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("pdbTlsCrt"), "Please specify PDB Tls Certificate(secret)"))
+	}
 
-        if reflect.ValueOf(r.Spec.PDBTlsCat).IsZero() {
-                        *allErrs = append(*allErrs,
-                        field.Required(field.NewPath("spec").Child("pdbTlsCat"), "Please specify PDB Tls Certificate Authority(secret)"))
-                }
-     
+	if reflect.ValueOf(r.Spec.PDBTlsCat).IsZero() {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("pdbTlsCat"), "Please specify PDB Tls Certificate Authority(secret)"))
+	}
+
 	switch action {
 	case "CREATE":
 		if reflect.ValueOf(r.Spec.AdminName).IsZero() {
@@ -172,6 +173,15 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("adminPwd"), "Please specify PDB System Administrator Password"))
 		}
+		if reflect.ValueOf(r.Spec.WebServerUsr).IsZero() {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("WebServerUser"), "Please specify the http webServerUser"))
+		}
+		if reflect.ValueOf(r.Spec.WebServerPwd).IsZero() {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("webServerPwd"), "Please specify the http webserverPassword"))
+		}
+
 		if r.Spec.FileNameConversions == "" {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("fileNameConversions"), "Please specify a value for fileNameConversions. Values can be a filename convert pattern or NONE"))
@@ -242,12 +252,12 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *PDB) ValidateUpdate(old runtime.Object) error {
+func (r *PDB) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	pdblog.Info("ValidateUpdate-Validating PDB spec for : " + r.Name)
 
 	isPDBMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
 	if isPDBMarkedToBeDeleted {
-		return nil
+		return nil, nil
 	}
 
 	var allErrs field.ErrorList
@@ -272,19 +282,19 @@ func (r *PDB) ValidateUpdate(old runtime.Object) error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "PDB"},
 		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *PDB) ValidateDelete() error {
+func (r *PDB) ValidateDelete() (admission.Warnings, error) {
 	pdblog.Info("ValidateDelete-Validating PDB spec for : " + r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }
 
 // Validate common specs needed for all PDB Actions
