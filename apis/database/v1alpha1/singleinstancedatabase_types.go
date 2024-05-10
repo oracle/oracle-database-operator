@@ -64,16 +64,17 @@ type SingleInstanceDatabaseSpec struct {
 	ListenerPort          int               `json:"listenerPort,omitempty"`
 	TcpsListenerPort      int               `json:"tcpsListenerPort,omitempty"`
 	ServiceAnnotations    map[string]string `json:"serviceAnnotations,omitempty"`
-	FlashBack             bool              `json:"flashBack,omitempty"`
-	ArchiveLog            bool              `json:"archiveLog,omitempty"`
-	ForceLogging          bool              `json:"forceLog,omitempty"`
+	FlashBack             *bool             `json:"flashBack,omitempty"`
+	ArchiveLog            *bool             `json:"archiveLog,omitempty"`
+	ForceLogging          *bool             `json:"forceLog,omitempty"`
 	EnableTCPS            bool              `json:"enableTCPS,omitempty"`
 	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
+	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
 	DgBrokerConfigured    bool              `json:"dgBrokerConfigured,omitempty"`
 
-	CloneFrom            string `json:"cloneFrom,omitempty"`
-	PrimaryDatabaseRef   string `json:"primaryDatabaseRef,omitempty"`
-	CreateAsStandby      bool   `json:"createAsStandby,omitempty"`
+	PrimaryDatabaseRef string `json:"primaryDatabaseRef,omitempty"`
+	// +kubebuilder:validation:Enum=primary;standby;clone
+	CreateAs             string `json:"createAs,omitempty"`
 	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
 	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
 
@@ -84,7 +85,7 @@ type SingleInstanceDatabaseSpec struct {
 	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
 	Image         SingleInstanceDatabaseImage         `json:"image"`
 	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
-	InitParams    SingleInstanceDatabaseInitParams    `json:"initParams,omitempty"`
+	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
 }
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
@@ -93,8 +94,10 @@ type SingleInstanceDatabasePersistence struct {
 	StorageClass string `json:"storageClass,omitempty"`
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
 	AccessMode            string `json:"accessMode,omitempty"`
-	VolumeName            string `json:"volumeName,omitempty"`
+	DatafilesVolumeName   string `json:"datafilesVolumeName,omitempty"`
+	ScriptsVolumeName     string `json:"scriptsVolumeName,omitempty"`
 	VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
+	SetWritePermissions   *bool  `json:"setWritePermissions,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters
@@ -145,7 +148,7 @@ type SingleInstanceDatabaseStatus struct {
 	Pdbname              string `json:"pdbName,omitempty"`
 	InitSgaSize          int    `json:"initSgaSize,omitempty"`
 	InitPgaSize          int    `json:"initPgaSize,omitempty"`
-	CloneFrom            string `json:"cloneFrom,omitempty"`
+	CreatedAs            string `json:"createdAs,omitempty"`
 	FlashBack            string `json:"flashBack,omitempty"`
 	ArchiveLog           string `json:"archiveLog,omitempty"`
 	ForceLogging         string `json:"forceLog,omitempty"`
@@ -162,6 +165,8 @@ type SingleInstanceDatabaseStatus struct {
 	ClientWalletLoc       string `json:"clientWalletLoc,omitempty"`
 	PrimaryDatabase       string `json:"primaryDatabase,omitempty"`
 	DgBrokerConfigured    bool   `json:"dgBrokerConfigured,omitempty"`
+	// +kubebuilder:default:=""
+	TcpsTlsSecret string `json:"tcpsTlsSecret"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge

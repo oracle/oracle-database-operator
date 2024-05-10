@@ -89,10 +89,12 @@ spec:
                 type: boolean
               charset:
                 type: string
-              cloneFrom:
+              createAs:
+                enum:
+                - primary
+                - standby
+                - clone
                 type: string
-              createAsStandby:
-                type: boolean
               dgBrokerConfigured:
                 type: boolean
               edition:
@@ -100,6 +102,7 @@ spec:
                 - standard
                 - enterprise
                 - express
+                - free
                 type: string
               enableTCPS:
                 type: boolean
@@ -153,13 +156,17 @@ spec:
                     - ReadWriteOnce
                     - ReadWriteMany
                     type: string
+                  datafilesVolumeName:
+                    type: string
+                  scriptsVolumeName:
+                    type: string
+                  setWritePermissions:
+                    type: boolean
                   size:
                     type: string
                   storageClass:
                     type: string
                   volumeClaimAnnotation:
-                    type: string
-                  volumeName:
                     type: string
                 type: object
               primaryDatabaseRef:
@@ -184,6 +191,8 @@ spec:
                 type: string
               tcpsListenerPort:
                 type: integer
+              tcpsTlsSecret:
+                type: string
             required:
             - image
             type: object
@@ -202,8 +211,6 @@ spec:
               charset:
                 type: string
               clientWalletLoc:
-                type: string
-              cloneFrom:
                 type: string
               clusterConnectString:
                 type: string
@@ -282,6 +289,8 @@ spec:
                 x-kubernetes-list-type: map
               connectString:
                 type: string
+              createdAs:
+                type: string
               datafilesCreated:
                 default: "false"
                 type: string
@@ -336,13 +345,17 @@ spec:
                     - ReadWriteOnce
                     - ReadWriteMany
                     type: string
+                  datafilesVolumeName:
+                    type: string
+                  scriptsVolumeName:
+                    type: string
+                  setWritePermissions:
+                    type: boolean
                   size:
                     type: string
                   storageClass:
                     type: string
                   volumeClaimAnnotation:
-                    type: string
-                  volumeName:
                     type: string
                 type: object
               prebuiltDB:
@@ -367,9 +380,13 @@ spec:
                 type: string
               tcpsPdbConnectString:
                 type: string
+              tcpsTlsSecret:
+                default: ""
+                type: string
             required:
             - isTcpsEnabled
             - persistence
+            - tcpsTlsSecret
             type: object
         type: object
     served: true

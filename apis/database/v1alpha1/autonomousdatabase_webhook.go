@@ -43,6 +43,7 @@ import (
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -50,6 +51,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -97,11 +99,23 @@ var _ webhook.Validator = &AutonomousDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 // ValidateCreate checks if the spec is valid for a provisioning or a binding operation
-func (r *AutonomousDatabase) ValidateCreate() error {
-
+func (r *AutonomousDatabase) ValidateCreate() (admission.Warnings, error) {
 	var allErrs field.ErrorList
 
 	autonomousdatabaselog.Info("validate create", "name", r.Name)
+
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, hasEmptyString := namespaces[""]
+	isClusterScoped := len(namespaces) == 1 && hasEmptyString
+	if !isClusterScoped {
+		_, containsNamespace := namespaces[r.Namespace]
+		// Check if the allowed namespaces maps contains the required namespace
+		if len(namespaces) != 0 && !containsNamespace {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+					"Oracle database operator doesn't watch over this namespace"))
+		}
+	}
 
 	if r.Spec.Details.AutonomousDatabaseOCID == nil { // provisioning operation
 		allErrs = validateCommon(r, allErrs)
@@ -115,15 +129,15 @@ func (r *AutonomousDatabase) ValidateCreate() error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabase"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
+func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 	var oldADB *AutonomousDatabase = old.(*AutonomousDatabase)
 
@@ -131,7 +145,7 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 
 	// skip the update of adding ADB OCID or binding
 	if oldADB.Status.LifecycleState == "" {
-		return nil
+		return nil, nil
 	}
 
 	// cannot update when the old state is in intermediate, except for the change to the hardLink or the terminate operatrion during valid lifecycleState
@@ -187,9 +201,9 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) error {
 	allErrs = validateNetworkAccess(r, allErrs)
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabase"},
 		r.Name, allErrs)
 }
@@ -226,12 +240,13 @@ func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) fie
 					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("privateEndpoint").Child("subnetOCID"),
 						fmt.Sprintf("subnetOCID cannot be empty when the network access type is %s", NetworkAccessTypePrivate)))
 			}
+		}
 
-			if adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs == nil {
-				allErrs = append(allErrs,
-					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("privateEndpoint").Child("nsgOCIDs"),
-						fmt.Sprintf("nsgOCIDs cannot be empty when the network access type is %s", NetworkAccessTypePrivate)))
-			}
+		// NsgOCIDs only applies to PRIVATE accessType
+		if adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs != nil && adb.Spec.Details.NetworkAccess.AccessType != NetworkAccessTypePrivate {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("privateEndpoint").Child("nsgOCIDs"),
+					fmt.Sprintf("NsgOCIDs cannot only be applied when network access type is %s.", NetworkAccessTypePrivate)))
 		}
 
 		// IsAccessControlEnabled is not applicable to a shared database
@@ -263,11 +278,11 @@ func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) fie
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabase) ValidateDelete() error {
+func (r *AutonomousDatabase) ValidateDelete() (admission.Warnings, error) {
 	autonomousdatabaselog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }
 
 // Returns true if AutonomousContainerDatabaseOCID has value.

@@ -1,0 +1,336 @@
+kubectl get pods -n cdbnamespace 
+NAME                    READY   STATUS              RESTARTS   AGE
+cdb-dev-ords-rs-pgqqh   0/1     ContainerCreating   0          1s
+
+kubectl get pods -n cdbnamespace 
+NAME                    READY   STATUS    RESTARTS   AGE
+cdb-dev-ords-rs-pgqqh   1/1     Running   0          6s
+
+kubectl logs -f `/usr/bin/kubectl get pods -n cdbnamespace|grep ords|cut -d ' ' -f 1` -n cdbnamespace
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+NOT_INSTALLED=2
+ SETUP 
+====================================================
+CONFIG=/etc/ords/config
+total 0
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:20 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: db.connectionType was set to: customurl in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:21 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: db.customURL was set to: jdbc:oracle:thin:@(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS))) in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:23 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: security.requestValidationFunction was set to: false in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:25 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: jdbc.MaxLimit was set to: 100 in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:27 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: jdbc.InitialLimit was set to: 50 in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:29 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The global setting named: error.externalPath was set to: /opt/oracle/ords/error
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:31 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The global setting named: standalone.access.log was set to: /home/oracle
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:32 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The global setting named: standalone.https.port was set to: 8888
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:34 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The global setting named: standalone.https.cert was set to: /opt/oracle/ords//secrets/tls.crt
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:36 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The global setting named: standalone.https.cert.key was set to: /opt/oracle/ords//secrets/tls.key
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:38 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: restEnabledSql.active was set to: true in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:40 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The global setting named: security.verifySSL was set to: true
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:42 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The global setting named: database.api.enabled was set to: true
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:43 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: plsql.gateway.mode was set to: disabled in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:45 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The global setting named: database.api.management.services.disabled was set to: false
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:47 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: misc.pagination.maxRows was set to: 1000 in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:49 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: db.cdb.adminUser was set to: C##DBAPI_CDB_ADMIN AS SYSDBA in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:51 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+The setting named: db.cdb.adminUser.password was set to: ****** in configuration: default
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:53 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+Created user welcome in file /etc/ords/config/global/credentials
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:17:55 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+Oracle REST Data Services - Non-Interactive Install
+
+Retrieving information..
+Completed verifying Oracle REST Data Services schema version 23.3.0.r2891830.
+Connecting to database user: ORDS_PUBLIC_USER url: jdbc:oracle:thin:@(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))
+The setting named: db.serviceNameSuffix was set to:  in configuration: default
+The setting named: db.username was set to: ORDS_PUBLIC_USER in configuration: default
+The setting named: db.password was set to: ****** in configuration: default
+The setting named: security.requestValidationFunction was set to: ords_util.authorize_plsql_gateway in configuration: default
+2024-01-25T17:17:58.898Z INFO        Oracle REST Data Services schema version 23.3.0.r2891830 is installed.
+2024-01-25T17:17:58.900Z INFO        To run in standalone mode, use the ords serve command:
+2024-01-25T17:17:58.900Z INFO        ords --config /etc/ords/config serve
+2024-01-25T17:17:58.900Z INFO        Visit the ORDS Documentation to access tutorials, developer guides and more to help you get started with the new ORDS Command Line Interface (http://oracle.com/rest).
+Picked up _JAVA_OPTIONS: -Xms1126M -Xmx1126M
+
+ORDS: Release 23.3 Production on Thu Jan 25 17:18:00 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+2024-01-25T17:18:00.960Z INFO        HTTP and HTTP/2 cleartext listening on host: 0.0.0.0 port: 8080
+2024-01-25T17:18:00.963Z INFO        HTTPS and HTTPS/2 listening on host: 0.0.0.0 port: 8888
+2024-01-25T17:18:00.980Z INFO        Disabling document root because the specified folder does not exist: /etc/ords/config/global/doc_root
+2024-01-25T17:18:00.981Z INFO        Default forwarding from / to contextRoot configured.
+2024-01-25T17:18:06.634Z INFO        Configuration properties for: |default|lo|
+db.serviceNameSuffix=
+java.specification.version=21
+conf.use.wallet=true
+database.api.management.services.disabled=false
+sun.jnu.encoding=UTF-8
+user.region=US
+java.class.path=/opt/oracle/ords/ords.war
+java.vm.vendor=Oracle Corporation
+standalone.https.cert.key=/opt/oracle/ords//secrets/tls.key
+sun.arch.data.model=64
+nashorn.args=--no-deprecation-warning
+java.vendor.url=https://java.oracle.com/
+resource.templates.enabled=false
+user.timezone=UTC
+java.vm.specification.version=21
+os.name=Linux
+sun.java.launcher=SUN_STANDARD
+user.country=US
+sun.boot.library.path=/usr/java/jdk-21/lib
+sun.java.command=/opt/oracle/ords/ords.war --config /etc/ords/config serve --port 8888 --secure
+jdk.debug=release
+sun.cpu.endian=little
+user.home=/home/oracle
+oracle.dbtools.launcher.executable.jar.path=/opt/oracle/ords/ords.war
+user.language=en
+db.cdb.adminUser.password=******
+java.specification.vendor=Oracle Corporation
+java.version.date=2023-10-17
+database.api.enabled=true
+java.home=/usr/java/jdk-21
+db.username=ORDS_PUBLIC_USER
+file.separator=/
+java.vm.compressedOopsMode=32-bit
+line.separator=
+
+restEnabledSql.active=true
+java.specification.name=Java Platform API Specification
+java.vm.specification.vendor=Oracle Corporation
+java.awt.headless=true
+standalone.https.cert=/opt/oracle/ords//secrets/tls.crt
+db.password=******
+sun.management.compiler=HotSpot 64-Bit Tiered Compilers
+security.requestValidationFunction=ords_util.authorize_plsql_gateway
+misc.pagination.maxRows=1000
+java.runtime.version=21.0.1+12-LTS-29
+user.name=oracle
+error.externalPath=/opt/oracle/ords/error
+stdout.encoding=UTF-8
+path.separator=:
+db.cdb.adminUser=C##DBAPI_CDB_ADMIN AS SYSDBA
+os.version=5.4.17-2136.323.8.1.el7uek.x86_64
+java.runtime.name=Java(TM) SE Runtime Environment
+file.encoding=UTF-8
+plsql.gateway.mode=disabled
+security.verifySSL=true
+standalone.https.port=8888
+java.vm.name=Java HotSpot(TM) 64-Bit Server VM
+java.vendor.url.bug=https://bugreport.java.com/bugreport/
+java.io.tmpdir=/tmp
+oracle.dbtools.cmdline.ShellCommand=ords
+java.version=21.0.1
+user.dir=/home/oracle/keystore
+os.arch=amd64
+java.vm.specification.name=Java Virtual Machine Specification
+jdbc.MaxLimit=100
+oracle.dbtools.cmdline.home=/opt/oracle/ords
+native.encoding=UTF-8
+java.library.path=/usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib
+java.vendor=Oracle Corporation
+java.vm.info=mixed mode, sharing
+stderr.encoding=UTF-8
+java.vm.version=21.0.1+12-LTS-29
+sun.io.unicode.encoding=UnicodeLittle
+jdbc.InitialLimit=50
+db.connectionType=customurl
+java.class.version=65.0
+db.customURL=jdbc:oracle:thin:@(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))
+standalone.access.log=/home/oracle
+
+2024-01-25T17:18:10.381Z INFO        
+
+Mapped local pools from /etc/ords/config/databases:
+  /ords/                              => default                        => VALID     
+
+
+2024-01-25T17:18:10.532Z INFO        Oracle REST Data Services initialized
+Oracle REST Data Services version : 23.3.0.r2891830
+Oracle REST Data Services server info: jetty/10.0.17
+Oracle REST Data Services java info: Java HotSpot(TM) 64-Bit Server VM 21.0.1+12-LTS-29
+
+
+exec -it `kubectl get pods -n cdbnamespace |grep ords|cut -d ' ' -f 1` -n cdbnamespace bash
+[oracle@cdb-dev-ords-rs-pgqqh ~]$ ps -ef|grep java
+oracle    1147  1116 10 17:17 ?        00:00:21 /usr/java/jdk-21/bin/java -Doracle.dbtools.cmdline.home=/opt/oracle/ords -Duser.language=en -Duser.region=US -Dfile.encoding=UTF-8 -Djava.awt.headless=true -Dnashorn.args=--no-deprecation-warning -Doracle.dbtools.cmdline.ShellCommand=ords -Duser.timezone=UTC -jar /opt/oracle/ords/ords.war --config /etc/ords/config serve --port 8888 --secure
+oracle    1227  1200  0 17:21 pts/0    00:00:00 grep --color=auto java

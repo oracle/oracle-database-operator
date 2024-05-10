@@ -16,7 +16,18 @@ spec:
     singular: shardingdatabase
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.gsm.state
+      name: Gsm State
+      type: string
+    - jsonPath: .status.gsm.services
+      name: Services
+      type: string
+    - jsonPath: .status.gsm.shards
+      name: shards
+      priority: 1
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ShardingDatabase is the Schema for the shardingdatabases API
@@ -36,6 +47,8 @@ spec:
           spec:
             description: ShardingDatabaseSpec defines the desired state of ShardingDatabase
             properties:
+              InvitedNodeSubnet:
+                type: string
               catalog:
                 items:
                   description: CatalogSpec defines the desired state of CatalogSpec
@@ -82,6 +95,28 @@ spec:
                       description: ResourceRequirements describes the compute resource
                         requirements.
                       properties:
+                        claims:
+                          description: "Claims lists the names of resources, defined
+                            in spec.resourceClaims, that are used by this container.
+                            \n This is an alpha field and requires enabling the DynamicResourceAllocation
+                            feature gate. \n This field is immutable. It can only
+                            be set for containers."
+                          items:
+                            description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                            properties:
+                              name:
+                                description: Name must match the name of one entry
+                                  in pod.spec.resourceClaims of the Pod where this
+                                  field is used. It makes that resource available
+                                  inside a container.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
                         limits:
                           additionalProperties:
                             anyOf:
@@ -102,8 +137,8 @@ spec:
                           description: 'Requests describes the minimum amount of compute
                             resources required. If Requests is omitted for a container,
                             it defaults to Limits if that is explicitly specified,
-                            otherwise to an implementation-defined value. More info:
-                            https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                            otherwise to an implementation-defined value. Requests
+                            cannot exceed Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                           type: object
                       type: object
                     storageSizeInGb:
@@ -117,11 +152,41 @@ spec:
                 type: string
               dbImagePullSecret:
                 type: string
+              dbSecret:
+                description: Secret Details
+                properties:
+                  encryptionType:
+                    type: string
+                  keyFileMountLocation:
+                    type: string
+                  keyFileName:
+                    type: string
+                  keySecretName:
+                    type: string
+                  name:
+                    type: string
+                  nsConfigMap:
+                    type: string
+                  nsSecret:
+                    type: string
+                  pwdFileMountLocation:
+                    type: string
+                  pwdFileName:
+                    type: string
+                required:
+                - name
+                - pwdFileName
+                type: object
               gsm:
                 items:
                   description: GsmSpec defines the desired state of GsmSpec
                   properties:
+                    directorName:
+                      type: string
                     envVars:
+                      description: Replicas         int32                        `json:"replicas,omitempty"`                                        //
+                        Gsm Replicas. If you set OraGsmPvcName then it is set default
+                        to 1.
                       items:
                         description: EnvironmentVariable represents a named variable
                           accessible for containers.
@@ -155,13 +220,34 @@ spec:
                       type: object
                     pvcName:
                       type: string
-                    replicas:
-                      format: int32
-                      type: integer
+                    region:
+                      type: string
                     resources:
                       description: ResourceRequirements describes the compute resource
                         requirements.
                       properties:
+                        claims:
+                          description: "Claims lists the names of resources, defined
+                            in spec.resourceClaims, that are used by this container.
+                            \n This is an alpha field and requires enabling the DynamicResourceAllocation
+                            feature gate. \n This field is immutable. It can only
+                            be set for containers."
+                          items:
+                            description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                            properties:
+                              name:
+                                description: Name must match the name of one entry
+                                  in pod.spec.resourceClaims of the Pod where this
+                                  field is used. It makes that resource available
+                                  inside a container.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
                         limits:
                           additionalProperties:
                             anyOf:
@@ -182,8 +268,8 @@ spec:
                           description: 'Requests describes the minimum amount of compute
                             resources required. If Requests is omitted for a container,
                             it defaults to Limits if that is explicitly specified,
-                            otherwise to an implementation-defined value. More info:
-                            https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                            otherwise to an implementation-defined value. Requests
+                            cannot exceed Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                           type: object
                       type: object
                     storageSizeInGb:
@@ -193,9 +279,108 @@ spec:
                   - name
                   type: object
                 type: array
+              gsmDevMode:
+                type: string
               gsmImage:
                 type: string
               gsmImagePullSecret:
+                type: string
+              gsmService:
+                items:
+                  description: Service Definition
+                  properties:
+                    available:
+                      type: string
+                    clbGoal:
+                      type: string
+                    commitOutcome:
+                      type: string
+                    drainTimeout:
+                      type: string
+                    dtp:
+                      type: string
+                    edition:
+                      type: string
+                    failoverDelay:
+                      type: string
+                    failoverMethod:
+                      type: string
+                    failoverPrimary:
+                      type: string
+                    failoverRestore:
+                      type: string
+                    failoverRetry:
+                      type: string
+                    failoverType:
+                      type: string
+                    gdsPool:
+                      type: string
+                    lag:
+                      type: integer
+                    locality:
+                      type: string
+                    name:
+                      type: string
+                    notification:
+                      type: string
+                    pdbName:
+                      type: string
+                    policy:
+                      type: string
+                    preferred:
+                      type: string
+                    prferredAll:
+                      type: string
+                    regionFailover:
+                      type: string
+                    retention:
+                      type: string
+                    role:
+                      type: string
+                    sessionState:
+                      type: string
+                    sqlTransactionProfile:
+                      type: string
+                    stopOption:
+                      type: string
+                    tableFamily:
+                      type: string
+                    tfaPolicy:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              gsmShardGroup:
+                items:
+                  properties:
+                    deployAs:
+                      type: string
+                    name:
+                      type: string
+                    region:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              gsmShardSpace:
+                items:
+                  description: ShardSpace Specs
+                  properties:
+                    chunks:
+                      type: integer
+                    name:
+                      type: string
+                    protectionMode:
+                      type: string
+                    shardGroup:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              invitedNodeSubnetFlag:
                 type: string
               isClone:
                 type: boolean
@@ -205,13 +390,15 @@ spec:
                 type: boolean
               isDeleteOraPvc:
                 type: boolean
+              isDownloadScripts:
+                type: boolean
               isExternalSvc:
                 type: boolean
+              isTdeWallet:
+                type: boolean
+              liveinessCheckPeriod:
+                type: integer
               namespace:
-                type: string
-              nsConfigMap:
-                type: string
-              nsSecret:
                 type: string
               portMappings:
                 items:
@@ -233,9 +420,11 @@ spec:
                   - targetPort
                   type: object
                 type: array
-              scriptsLocation:
+              readinessCheckPeriod:
+                type: integer
+              replicationType:
                 type: string
-              secret:
+              scriptsLocation:
                 type: string
               shard:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
@@ -244,6 +433,8 @@ spec:
                   description: ShardSpec is a specification of Shards for an application
                     deployment.
                   properties:
+                    deployAs:
+                      type: string
                     envVars:
                       items:
                         description: EnvironmentVariable represents a named variable
@@ -286,6 +477,28 @@ spec:
                       description: ResourceRequirements describes the compute resource
                         requirements.
                       properties:
+                        claims:
+                          description: "Claims lists the names of resources, defined
+                            in spec.resourceClaims, that are used by this container.
+                            \n This is an alpha field and requires enabling the DynamicResourceAllocation
+                            feature gate. \n This field is immutable. It can only
+                            be set for containers."
+                          items:
+                            description: ResourceClaim references one entry in PodSpec.ResourceClaims.
+                            properties:
+                              name:
+                                description: Name must match the name of one entry
+                                  in pod.spec.resourceClaims of the Pod where this
+                                  field is used. It makes that resource available
+                                  inside a container.
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
                         limits:
                           additionalProperties:
                             anyOf:
@@ -306,10 +519,16 @@ spec:
                           description: 'Requests describes the minimum amount of compute
                             resources required. If Requests is omitted for a container,
                             it defaults to Limits if that is explicitly specified,
-                            otherwise to an implementation-defined value. More info:
-                            https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
+                            otherwise to an implementation-defined value. Requests
+                            cannot exceed Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/'
                           type: object
                       type: object
+                    shardGroup:
+                      type: string
+                    shardRegion:
+                      type: string
+                    shardSpace:
+                      type: string
                     storageSizeInGb:
                       format: int32
                       type: integer
@@ -317,6 +536,16 @@ spec:
                   - name
                   type: object
                 type: array
+              shardBuddyRegion:
+                type: string
+              shardConfigName:
+                type: string
+              shardRegion:
+                items:
+                  type: string
+                type: array
+              shardingType:
+                type: string
               stagePvcName:
                 type: string
               storageClass:
@@ -326,7 +555,6 @@ spec:
             - dbImage
             - gsm
             - gsmImage
-            - secret
             - shard
             type: object
           status:

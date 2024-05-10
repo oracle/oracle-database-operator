@@ -71,12 +71,23 @@ build: generate fmt vet ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
 
-docker-build: manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
-	docker build --no-cache=true --build-arg http_proxy=${HTTP_PROXY} --build-arg https_proxy=${HTTPS_PROXY} \
-	             --build-arg CI_COMMIT_SHA=${CI_COMMIT_SHA} --build-arg CI_COMMIT_BRANCH=${CI_COMMIT_BRANCH}  . -t ${IMG}
+GOLANG_VERSION ?= 1.21.7
+## Download golang in the Dockerfile if BUILD_INTERNAL is set to true.
+## Otherwise, use golang image from docker hub as the builder.
+ifeq ($(BUILD_INTERNAL), true)
+BUILDER_IMG = oraclelinux:8
+BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg GOLANG_VERSION=$(GOLANG_VERSION) --build-arg INSTALL_GO=true
+else
+BUILDER_IMG = golang:$(GOLANG_VERSION)
+BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg INSTALL_GO=false
+endif
+docker-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
+	docker build --no-cache=true --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
+	             --build-arg CI_COMMIT_SHA=$(CI_COMMIT_SHA) --build-arg CI_COMMIT_BRANCH=$(CI_COMMIT_BRANCH) \
+	             $(BUILD_ARGS) . -t $(IMG)
 
 docker-push: ## Push docker image with the manager.
-	docker push ${IMG}
+	docker push $(IMG)
 
 ##@ Deployment
 
@@ -87,17 +98,17 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
 # Bug:34265574
 # Used sed to reposition the controller-manager Deployment after the certificate creation in the OPERATOR_YAML  
 operator-yaml: manifests kustomize
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > "${OPERATOR_YAML}"
-	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "${OPERATOR_YAML}"
-	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "${OPERATOR_YAML}.bak")  >>  "${OPERATOR_YAML}"
-	rm "${OPERATOR_YAML}.bak"
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	$(KUSTOMIZE) build config/default > "$(OPERATOR_YAML)"
+	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "$(OPERATOR_YAML)"
+	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_YAML).bak")  >>  "$(OPERATOR_YAML)"
+	rm "$(OPERATOR_YAML).bak"
 
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/default | kubectl delete -f -

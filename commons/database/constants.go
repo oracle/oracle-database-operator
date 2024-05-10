@@ -50,8 +50,6 @@ const DBA_GUID int64 = 54322
 
 const SQLPlusCLI string = "sqlplus -s / as sysdba"
 
-const NoCloneRef string = "Unavailable"
-
 const GetVersionSQL string = "SELECT VERSION_FULL FROM V\\$INSTANCE;"
 
 const CheckModesSQL string = "SELECT 'log_mode:' || log_mode AS log_mode ,'flashback_on:' || flashback_on AS flashback_on ,'force_logging:' || force_logging AS force_logging FROM v\\$database;"
@@ -102,6 +100,8 @@ const StandbyDatabasePrerequisitesSQL string = "ALTER SYSTEM SET db_create_file_
 	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 SIZE 200M;" +
 	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 SIZE 200M;" +
 	"\nALTER SYSTEM SET STANDBY_FILE_MANAGEMENT=AUTO;" +
+	"\nALTER SYSTEM SET dg_broker_config_file1='/opt/oracle/oradata/dbconfig/dr1${ORACLE_SID}.dat' scope=both;" +
+	"\nALTER SYSTEM SET dg_broker_config_file2='/opt/oracle/oradata/dbconfig/dr2${ORACLE_SID}.dat';" +
 	"\nALTER SYSTEM SET dg_broker_start=TRUE;"
 
 const GetDBOpenMode string = "select open_mode from v\\$database;"
@@ -422,13 +422,16 @@ const InitWalletCMD string = "if [ ! -f $ORACLE_BASE/oradata/.${ORACLE_SID}${CHE
 const InitPrebuiltDbCMD string = "if [ ! -d /mnt/oradata/${ORACLE_SID} -a -d $ORACLE_BASE/oradata/${ORACLE_SID} ]; then cp -v $ORACLE_BASE/oradata/.${ORACLE_SID}$CHECKPOINT_FILE_EXTN /mnt/oradata && " +
 	" cp -vr $ORACLE_BASE/oradata/${ORACLE_SID} /mnt/oradata && cp -vr $ORACLE_BASE/oradata/dbconfig /mnt/oradata; fi "
 
-const AlterSgaPgaCpuCMD string = "echo -e  \"alter system set sga_target=%dM scope=both; \n alter system set pga_aggregate_target=%dM scope=both; \n alter system set cpu_count=%d; \" | %s "
-
+const AlterSgaPgaCMD string = "echo -e  \"alter system set sga_target=%dM scope=both; \n alter system set pga_aggregate_target=%dM scope=both; \" | %s "
+const AlterCpuCountCMD string = "echo -e \"alter system set cpu_count=%d; \" | %s"
 const AlterProcessesCMD string = "echo -e  \"alter system set processes=%d scope=spfile; \" | %s && " + CreateChkFileCMD + " && " +
 	"echo -e  \"SHUTDOWN IMMEDIATE; \n STARTUP MOUNT; \n ALTER DATABASE OPEN; \n ALTER PLUGGABLE DATABASE ALL OPEN; \n ALTER SYSTEM REGISTER;\" | %s && " +
 	RemoveChkFileCMD
 
-const GetInitParamsSQL string = "echo -e  \"select name,display_value from v\\$parameter  where name in  ('sga_target','pga_aggregate_target','cpu_count','processes') order by name asc;\" | %s"
+const GetInitParamsSQL string = "column name format a20;" +
+	"\ncolumn display_value format a20;" +
+	"\nset linesize 100 pagesize 50;" +
+	"\nselect name,display_value from v\\$parameter where name in  ('sga_target','pga_aggregate_target','cpu_count','processes') order by name asc;"
 
 const UnzipApexOnSIDBPod string = "if [ -f /opt/oracle/oradata/apex-latest.zip ]; then unzip -o /opt/oracle/oradata/apex-latest.zip -d /opt/oracle/oradata/${ORACLE_SID^^}; else echo \"apex-latest.zip not found\"; fi;"
 
@@ -516,6 +519,12 @@ const RenewCertsCMD string = EnableTcpsCMD
 
 // Command to disable TCPS
 const DisableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE disable"
+
+// Location of tls certs
+const TlsCertsLocation string = "/run/secrets/tls_secret"
+
+// Check Mount in pods
+const PodMountsCmd string = "awk '$2 == \"%s\" {print}' /proc/mounts"
 
 // TCPS clientWallet update command
 const ClientWalletUpdate string = "sed -i -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*$/PORT=%d)/g' ${ORACLE_BASE}/oradata/clientWallet/${ORACLE_SID}/tnsnames.ora"
