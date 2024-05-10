@@ -16,5 +16,6 @@ resources:
   - sharding/shardingdatabase.yaml
   - sharding/sharding_v1alpha1_provshard.yaml
   - dbcs/database_v1alpha1_dbcssystem.yaml
-- database_v1alpha1_dataguardbroker.yaml
+  - database_v1alpha1_dataguardbroker.yaml
+  - observability/databaseobserver.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples

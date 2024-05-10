@@ -46,6 +46,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -62,15 +63,15 @@ func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) 
 var _ webhook.Validator = &AutonomousContainerDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateCreate() error {
+func (r *AutonomousContainerDatabase) ValidateCreate() (admission.Warnings, error) {
 	autonomouscontainerdatabaselog.Info("validate create", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object creation.
-	return nil
+	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) error {
+func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 	var oldACD *AutonomousContainerDatabase = old.(*AutonomousContainerDatabase)
 
@@ -78,7 +79,7 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) error {
 
 	// skip the update of adding ADB OCID or binding
 	if oldACD.Status.LifecycleState == "" {
-		return nil
+		return nil, nil
 	}
 
 	// cannot update when the old state is in intermediate state, except for the terminate operatrion
@@ -95,17 +96,17 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousContainerDatabase"},
 		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateDelete() error {
+func (r *AutonomousContainerDatabase) ValidateDelete() (admission.Warnings, error) {
 	autonomouscontainerdatabaselog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
-	return nil
+	return nil, nil
 }

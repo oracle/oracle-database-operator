@@ -39,9 +39,9 @@
 package v1alpha1
 
 import (
-	"strings"
-	"time"	
 	"strconv"
+	"strings"
+	"time"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
@@ -52,6 +52,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -74,20 +75,20 @@ func (r *SingleInstanceDatabase) Default() {
 	singleinstancedatabaselog.Info("default", "name", r.Name)
 
 	if r.Spec.LoadBalancer {
-		// Annotations required for a flexible load balancer on oci 
+		// Annotations required for a flexible load balancer on oci
 		if r.Spec.ServiceAnnotations == nil {
-			r.Spec.ServiceAnnotations= make(map[string]string)
+			r.Spec.ServiceAnnotations = make(map[string]string)
 		}
 		_, ok := r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"]
-		if(!ok) {
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"] = "flexible"
 		}
-		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
-		if(!ok) {
+		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"] = "10"
 		}
-		_,ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
-		if(!ok) {
+		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
+		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
 		}
 	}
@@ -98,9 +99,13 @@ func (r *SingleInstanceDatabase) Default() {
 	}
 
 	if r.Spec.Edition == "" {
-		if r.Spec.CloneFrom == "" && !r.Spec.Image.PrebuiltDB {
+		if r.Spec.CreateAs == "clone" && !r.Spec.Image.PrebuiltDB {
 			r.Spec.Edition = "enterprise"
 		}
+	}
+
+	if r.Spec.CreateAs == "" {
+		r.Spec.CreateAs = "primary"
 	}
 
 	if r.Spec.Sid == "" {
@@ -124,14 +129,9 @@ func (r *SingleInstanceDatabase) Default() {
 	}
 
 	if r.Spec.Edition == "express" || r.Spec.Edition == "free" {
-		if r.Status.Replicas == 1 {
-			// default the replicas for XE
-			r.Spec.Replicas = 1
-		}
-	}
-
-	if r.Spec.PrimaryDatabaseRef != "" && r.Spec.CreateAsStandby {
-		if r.Spec.Replicas == 0 {
+		// Allow zero replicas as a means to bounce the DB
+		if r.Status.Replicas == 1 && r.Spec.Replicas > 1 {
+			// If not zero, default the replicas to 1
 			r.Spec.Replicas = 1
 		}
 	}
@@ -143,13 +143,22 @@ func (r *SingleInstanceDatabase) Default() {
 var _ webhook.Validator = &SingleInstanceDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateCreate() error {
+func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, containsNamespace := namespaces[r.Namespace]
+	// Check if the allowed namespaces maps contains the required namespace
+	if len(namespaces) != 0 && !containsNamespace {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+				"Oracle database operator doesn't watch over this namespace"))
+	}
+
 	// Persistence spec validation
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" ||
-		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.VolumeName != "") {
+		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.DatafilesVolumeName != "") {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), r.Spec.Persistence,
 				"invalid persistence specification, specify required size"))
@@ -168,6 +177,40 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
+	if r.Spec.CreateAs == "standby" {
+		if r.Spec.ArchiveLog != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("archiveLog"),
+					r.Spec.ArchiveLog, "archiveLog cannot be specified for standby databases"))
+		}
+		if r.Spec.FlashBack != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("flashBack"),
+					r.Spec.FlashBack, "flashBack cannot be specified for standby databases"))
+		}
+		if r.Spec.ForceLogging != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("forceLog"),
+					r.Spec.ForceLogging, "forceLog cannot be specified for standby databases"))
+		}
+		if r.Spec.InitParams != nil {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("initParams"),
+					r.Spec.InitParams, "initParams cannot be specified for standby databases"))
+		}
+		if r.Spec.Persistence.ScriptsVolumeName != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("persistence").Child("scriptsVolumeName"),
+					r.Spec.Persistence.ScriptsVolumeName, "scriptsVolumeName cannot be specified for standby databases"))
+		}
+		if r.Spec.EnableTCPS {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("enableTCPS"),
+					r.Spec.EnableTCPS, "enableTCPS cannot be specified for standby databases"))
+		}
+
+	}
+
 	// Replica validation
 	if r.Spec.Replicas > 1 {
 		valMsg := ""
@@ -182,17 +225,22 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 				field.Invalid(field.NewPath("spec").Child("replicas"), r.Spec.Replicas, valMsg))
 		}
 	}
-	
+
+	if (r.Spec.CreateAs == "clone" || r.Spec.CreateAs == "standby") && r.Spec.PrimaryDatabaseRef == "" {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("spec").Child("primaryDatabaseRef"), r.Spec.PrimaryDatabaseRef, "Primary Database reference cannot be null for a secondary database"))
+	}
+
 	if r.Spec.Edition == "express" || r.Spec.Edition == "free" {
-		if r.Spec.CloneFrom != "" {
+		if r.Spec.CreateAs == "clone" {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
-					"Cloning not supported for " + r.Spec.Edition + " edition"))
+				field.Invalid(field.NewPath("spec").Child("createAs"), r.Spec.CreateAs,
+					"Cloning not supported for "+r.Spec.Edition+" edition"))
 		}
-		if r.Spec.CreateAsStandby {
+		if r.Spec.CreateAs == "standby" {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("createAsStandby"), r.Spec.CreateAsStandby,
-					"Physical Standby Database creation is not supported for " + r.Spec.Edition + " edition"))
+				field.Invalid(field.NewPath("spec").Child("createAs"), r.Spec.CreateAs,
+					"Physical Standby Database creation is not supported for "+r.Spec.Edition+" edition"))
 		}
 		if r.Spec.Edition == "express" && strings.ToUpper(r.Spec.Sid) != "XE" {
 			allErrs = append(allErrs,
@@ -214,25 +262,10 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 					"Free edition PDB must be FREEPDB1"))
 		}
-		if r.Spec.InitParams.CpuCount != 0 {
+		if r.Spec.InitParams != nil {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("cpuCount"), r.Spec.InitParams.CpuCount,
-					r.Spec.Edition + " edition does not support changing init parameter cpuCount."))
-		}
-		if r.Spec.InitParams.Processes != 0 {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("processes"), r.Spec.InitParams.Processes,
-					r.Spec.Edition + " edition does not support changing init parameter process."))
-		}
-		if r.Spec.InitParams.SgaTarget != 0 {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("sgaTarget"), r.Spec.InitParams.SgaTarget,
-					r.Spec.Edition + " edition does not support changing init parameter sgaTarget."))
-		}
-		if r.Spec.InitParams.PgaAggregateTarget != 0 {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("pgaAggregateTarget"), r.Spec.InitParams.PgaAggregateTarget,
-					r.Spec.Edition + " edition does not support changing init parameter pgaAggregateTarget."))
+				field.Invalid(field.NewPath("spec").Child("initParams"), *r.Spec.InitParams,
+					r.Spec.Edition+" edition does not support changing init parameters"))
 		}
 	} else {
 		if r.Spec.Sid == "XE" {
@@ -247,29 +280,29 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	if r.Spec.CloneFrom != "" {
+	if r.Spec.CreateAs == "clone" {
 		if r.Spec.Image.PrebuiltDB {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("cloneFrom"), r.Spec.CloneFrom,
+				field.Invalid(field.NewPath("spec").Child("createAs"), r.Spec.CreateAs,
 					"cannot clone to create a prebuilt db"))
-		} else if strings.Contains(r.Spec.CloneFrom, ":") && strings.Contains(r.Spec.CloneFrom, "/") && r.Spec.Edition == "" {
+		} else if strings.Contains(r.Spec.PrimaryDatabaseRef, ":") && strings.Contains(r.Spec.PrimaryDatabaseRef, "/") && r.Spec.Edition == "" {
 			//Edition must be passed when cloning from a source database other than same k8s cluster
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CloneFrom,
+				field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CreateAs,
 					"Edition must be passed when cloning from a source database other than same k8s cluster"))
 		}
 	}
 
-	if r.Status.FlashBack == "true" && r.Spec.FlashBack {
-		if !r.Spec.ArchiveLog {
+	if r.Status.FlashBack == "true" && r.Spec.FlashBack != nil && *r.Spec.FlashBack {
+		if r.Spec.ArchiveLog != nil && !*r.Spec.ArchiveLog {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("archiveLog"), r.Spec.ArchiveLog,
 					"Cannot disable Archivelog. Please disable Flashback first."))
 		}
 	}
 
-	if r.Status.ArchiveLog == "false" && !r.Spec.ArchiveLog {
-		if r.Spec.FlashBack {
+	if r.Status.ArchiveLog == "false" && r.Spec.ArchiveLog != nil && !*r.Spec.ArchiveLog {
+		if *r.Spec.FlashBack {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("flashBack"), r.Spec.FlashBack,
 					"Cannot enable Flashback. Please enable Archivelog first."))
@@ -306,6 +339,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 					"listenerPort can not be 2484 as the default port for tcpsListenerPort is 2484."))
 		}
 	}
+
 	if r.Spec.EnableTCPS && r.Spec.ListenerPort != 0 && r.Spec.TcpsListenerPort != 0 && r.Spec.ListenerPort == r.Spec.TcpsListenerPort {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("tcpsListenerPort"), r.Spec.TcpsListenerPort,
@@ -328,87 +362,128 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 					"Please specify tcpsCertRenewInterval in the range: 24h to 8760h"))
 		}
 	}
-	if len(allErrs) == 0 {
-		return nil
+
+	// tcpsTlsSecret validations
+	if !r.Spec.EnableTCPS && r.Spec.TcpsTlsSecret != "" {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("tcpsTlsSecret"),
+				" is allowed only if enableTCPS is true"))
+	}
+	if r.Spec.TcpsTlsSecret != "" && r.Spec.TcpsCertRenewInterval != "" {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("tcpsCertRenewInterval"),
+				" is applicable only for self signed certs"))
 	}
 
-	return apierrors.NewInvalid(
+	if r.Spec.InitParams != nil {
+		if (r.Spec.InitParams.PgaAggregateTarget != 0 && r.Spec.InitParams.SgaTarget == 0) || (r.Spec.InitParams.PgaAggregateTarget == 0 && r.Spec.InitParams.SgaTarget != 0) {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("initParams"),
+					r.Spec.InitParams, "initParams value invalid : Provide values for both pgaAggregateTarget and SgaTarget"))
+		}
+	}
+
+	if len(allErrs) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object) error {
+func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object) (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate update", "name", r.Name)
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	err := r.ValidateCreate()
+	warnings, err := r.ValidateCreate()
 	if err != nil {
-		return err
+		return warnings, err
 	}
 
 	// Validate Deletion
 	if r.GetDeletionTimestamp() != nil {
-		err := r.ValidateDelete()
+		warnings, err := r.ValidateDelete()
 		if err != nil {
-			return err
+			return warnings, err
 		}
 	}
 
 	// Now check for updation errors
 	old, ok := oldRuntimeObject.(*SingleInstanceDatabase)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
-	if (old.Status.Role != dbcommons.ValueUnavailable && old.Status.Role != "PRIMARY") {
+	if old.Status.CreatedAs == "clone" {
+		if r.Spec.Edition != "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("edition"), "Edition of a cloned singleinstancedatabase cannot be changed post creation"))
+		}
+
+		if !strings.EqualFold(old.Status.PrimaryDatabase, r.Spec.PrimaryDatabaseRef) {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "Primary database of a cloned singleinstancedatabase cannot be changed post creation"))
+		}
+	}
+
+	if old.Status.Role != dbcommons.ValueUnavailable && old.Status.Role != "PRIMARY" {
 		// Restriciting Patching of secondary databases archiveLog, forceLog, flashBack
 		statusArchiveLog, _ := strconv.ParseBool(old.Status.ArchiveLog)
-		if statusArchiveLog != r.Spec.ArchiveLog {
+		if r.Spec.ArchiveLog != nil && (statusArchiveLog != *r.Spec.ArchiveLog) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("archiveLog"), "cannot be changed"))
 		}
 		statusFlashBack, _ := strconv.ParseBool(old.Status.FlashBack)
-		if statusFlashBack != r.Spec.FlashBack {
+		if r.Spec.FlashBack != nil && (statusFlashBack != *r.Spec.FlashBack) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("flashBack"), "cannot be changed"))
 		}
 		statusForceLogging, _ := strconv.ParseBool(old.Status.ForceLogging)
-		if statusForceLogging != r.Spec.ForceLogging {
+		if r.Spec.ForceLogging != nil && (statusForceLogging != *r.Spec.ForceLogging) {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("forceLog"), "cannot be changed"))
 		}
+
 		// Restriciting Patching of secondary databases InitParams
-		if old.Status.InitParams.SgaTarget != r.Spec.InitParams.SgaTarget {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("sgaTarget"), "cannot be changed"))
-		}
-		if old.Status.InitParams.PgaAggregateTarget != r.Spec.InitParams.PgaAggregateTarget {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("pgaAggregateTarget"), "cannot be changed"))
-		}
-		if old.Status.InitParams.CpuCount != r.Spec.InitParams.CpuCount {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("cpuCount"), "cannot be changed"))
-		}
-		if old.Status.InitParams.Processes != r.Spec.InitParams.Processes {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("InitParams").Child("processes"), "cannot be changed"))
+		if r.Spec.InitParams != nil {
+			if old.Status.InitParams.SgaTarget != r.Spec.InitParams.SgaTarget {
+				allErrs = append(allErrs,
+					field.Forbidden(field.NewPath("spec").Child("initParams").Child("sgaTarget"), "cannot be changed"))
+			}
+			if old.Status.InitParams.PgaAggregateTarget != r.Spec.InitParams.PgaAggregateTarget {
+				allErrs = append(allErrs,
+					field.Forbidden(field.NewPath("spec").Child("initParams").Child("pgaAggregateTarget"), "cannot be changed"))
+			}
+			if old.Status.InitParams.CpuCount != r.Spec.InitParams.CpuCount {
+				allErrs = append(allErrs,
+					field.Forbidden(field.NewPath("spec").Child("initParams").Child("cpuCount"), "cannot be changed"))
+			}
+			if old.Status.InitParams.Processes != r.Spec.InitParams.Processes {
+				allErrs = append(allErrs,
+					field.Forbidden(field.NewPath("spec").Child("initParams").Child("processes"), "cannot be changed"))
+			}
 		}
 	}
 
-	// if Db is in a dataguard configuration. Restrict enabling Tcps on the Primary DB
-	if old.Status.DgBrokerConfigured && r.Spec.EnableTCPS {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is in a dataguard configuration"))
+	// if Db is in a dataguard configuration or referred by Standby databases then Restrict enabling Tcps on the Primary DB
+	if r.Spec.EnableTCPS {
+		if old.Status.DgBrokerConfigured {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is in a dataguard configuration"))
+		} else if len(old.Status.StandbyDatabases) != 0 {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is referred by one or more standby databases"))
+		}
 	}
 
 	if old.Status.DatafilesCreated == "true" && (old.Status.PrebuiltDB != r.Spec.Image.PrebuiltDB) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image").Child("prebuiltDB"), "cannot be changed"))
 	}
-	if r.Spec.CloneFrom == "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
+	if r.Spec.Edition != "" && old.Status.Edition != "" && !strings.EqualFold(old.Status.Edition, r.Spec.Edition) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("edition"), "cannot be changed"))
 	}
@@ -424,27 +499,27 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("pdbname"), "cannot be changed"))
 	}
-	if old.Status.CloneFrom != "" &&
-		(old.Status.CloneFrom == dbcommons.NoCloneRef && r.Spec.CloneFrom != "" ||
-			old.Status.CloneFrom != dbcommons.NoCloneRef && old.Status.CloneFrom != r.Spec.CloneFrom) {
+	if old.Status.CreatedAs == "clone" &&
+		(old.Status.PrimaryDatabase == dbcommons.ValueUnavailable && r.Spec.PrimaryDatabaseRef != "" ||
+			old.Status.PrimaryDatabase != dbcommons.ValueUnavailable && old.Status.PrimaryDatabase != r.Spec.PrimaryDatabaseRef) {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("cloneFrom"), "cannot be changed"))
+			field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "cannot be changed"))
 	}
 	if old.Status.OrdsReference != "" && r.Status.Persistence != r.Spec.Persistence {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("persistence"), "uninstall ORDS to change Persistence"))
 	}
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateDelete() error {
+func (r *SingleInstanceDatabase) ValidateDelete() (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate delete", "name", r.Name)
 	var allErrs field.ErrorList
 	if r.Status.OrdsReference != "" {
@@ -452,9 +527,9 @@ func (r *SingleInstanceDatabase) ValidateDelete() error {
 			field.Forbidden(field.NewPath("status").Child("ordsReference"), "delete "+r.Status.OrdsReference+" to cleanup this SIDB"))
 	}
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
 }
