@@ -177,19 +177,7 @@ checkstep9: checkcdb
 createimage:
 	$(CP) $(DOCKERFILE) . 
 	$(CP) $(RUNSCRIPT) .
-	@echo "BUILDING CDB IMAGES"
-	@if [[ ! -f ./Dockerfile ]]; \
-         then\
-         echo "DOCKERFILE DOES NOT EXISTS";\
-         exit 1; \
-        fi; 
-	@if [[ ! -f ./runOrdsSSL.sh ]]; \
-         then\
-         echo "DOCKERFILE DOES NOT EXISTS";\
-         exit 1; \
-        fi; 
 	$(DOCKER) build -t $(IMAGE) . 
-	$(RM) ./Dockerfile ./runOrdsSSL.sh
 
 tagimage: 
 	@echo "TAG IMAGE"
@@ -219,7 +207,7 @@ tlscert:
 	$(OPENSSL) genrsa -out ca.key 2048
 	$(OPENSSL) req -new -x509 -days 365 -key ca.key -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER) /CN=$(LOCALHOST)  Root CA " -out ca.crt
 	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER) /CN=$(LOCALHOST)" -out server.csr
-	$(ECHO) "subjectAltName=DNS:cdb-dev-$(REST_SERVER),DNS:www.example.com" > extfile.txt
+	$(ECHO) "subjectAltName=DNS:$(RESTPREFIX)-$(REST_SERVER),DNS:www.example.com" > extfile.txt
 	$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out $(SCRT)
 
 tlssecret:
