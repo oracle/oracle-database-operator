@@ -64,9 +64,9 @@ spec:
   tcpsCertRenewInterval: 8760h
 
   ##  N/A for createAs clone or standby
-  ## Specify both sgaSize and pgaSize (in MB) or dont specify both
   ## Specify Non-Zero value to use
-  ## You cannot change these initParams for Oracle Database Express (XE) edition
+  ## sgaTarget and pagAggregateTarget must be in MB
+  ## You cannot change these initParams for Oracle Database Express (XE) and Oracle Database Free edition
   initParams:
     cpuCount: 0
     processes: 0
