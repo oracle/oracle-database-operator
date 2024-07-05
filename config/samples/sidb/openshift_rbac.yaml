@@ -76,7 +76,7 @@ rules:
     - securitycontextconstraints
     resourceNames:
     - sidb-oracle-user-scc
-    - sidb-oracle-root-scc
+    - sidb-oracle-root-user-scc
 ---
 
 kind: RoleBinding
