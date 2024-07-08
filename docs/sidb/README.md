@@ -5,6 +5,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
   * [Prerequisites](#prerequisites)
     * [Mandatory Resource Privileges](#mandatory-resource-privileges)
     * [Optional Resource Privileges](#optional-resource-privileges)
+    * [OpenShift Security Context Constraints](#openshift-security-context-constraints)
   * [SingleInstanceDatabase Resource](#singleinstancedatabase-resource)
     * [Create a Database](#create-a-database)
       * [New Database](#new-database)
@@ -46,6 +47,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
     * [Delete ORDS](#delete-ords)
   * [Maintenance Operations](#maintenance-operations)
   * [Additional Information](#additional-information)
+
 
 ## Prerequisites
 
@@ -89,7 +91,30 @@ Oracle strongly recommends to comply with the [prerequisites](./PREREQUISITES.md
   ```sh
     kubectl apply -f rbac/persistent-volume-rbac.yaml
   ```
+  
+  ### OpenShift Security Context Constraints
 
+  OpenShift requires additional Security Context Constraints (SCC) for deploying and managing the SingleInstanceDatabase resource. Follow these steps to create the appropriate SCCs before deploying the SingleInstanceDatabase resource.
+
+  1. Create a new project/namespace for deploying the SingleInstanceDatabase resource
+
+  ```sh
+    oc new-project sidb-ns
+  ```
+
+  **Note:** OpenShift recommends not to deploy in namespaces starting with `kube`, `openshift` and the `default` namespace.
+
+  2. Apply the file [openshift_rbac.yaml](../../config/samples/sidb/openshift_rbac.yaml) with cluster-admin user privileges.
+
+  ```sh
+    oc apply -f openshift-rbac.yaml
+  ```
+
+  This would result in creation of SCC (Security Context Constraints) and serviceaccount `sidb-sa` in the namespace `sidb-ns` which has access to the SCC.
+
+  **Note:** The above config yaml file will bind the SCC to the serviceaccount `sidb-sa` in namespace `sidb-ns`. For any other project/namespace update the file appropriately with the namespace before applying.
+
+  3. Set the `serviceAccountName` attribute to `sidb-sa` and the namespace to `sidb-ns` in **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** before deploying the SingleInstanceDatabase resource.
 
 ## SingleInstanceDatabase Resource
 
@@ -961,12 +986,12 @@ $ kubectl describe oraclerestdataservice ords-sample
 
 ### Template YAML
   
-The template `.yaml` file for Oracle Rest Data Services (`OracleRestDataService` kind), including all the configurable options, is available at **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)**.
+The template `.yaml` file for Oracle Rest Data Services (`OracleRestDataService` kind), including all the configurable options, is available at **[config/samples/sidb/oraclerestdataservice.yaml](../../config/samples/sidb/oraclerestdataservice.yaml)**.
 
 **Note:**  
 - The `adminPassword` and `ordsPassword` fields in the `oraclerestdataservice.yaml` file contains secrets for authenticating the Single Instance Database and the ORDS user with the following roles: `SQL Administrator, System Administrator, SQL Developer, oracle.dbtools.autorest.any.schema`.  
 - To build the ORDS image, use the following instructions: [Building Oracle REST Data Services Install Images](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices#building-oracle-rest-data-services-install-images).
-- By default, ORDS uses self-signed certificates. To use certificates from the Certificate Authority, the ORDS image needs to be rebuilt after specifying the values of `ssl.cert` and `ssl.cert.key` in the [standalone.properties](https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/standalone.properties.tmpl) file. After you rebuild the ORDS image, use the rebuilt image in the **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)** file.
+- By default, ORDS uses self-signed certificates. To use certificates from the Certificate Authority, the ORDS image needs to be rebuilt after specifying the values of `ssl.cert` and `ssl.cert.key` in the [standalone.properties](https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/standalone.properties.tmpl) file. After you rebuild the ORDS image, use the rebuilt image in the **[config/samples/sidb/oraclerestdataservice.yaml](../../config/samples/sidb/oraclerestdataservice.yaml)** file.
 - If you want to install ORDS in a [prebuilt database](#provision-a-pre-built-database), make sure to attach the **database persistence** by uncommenting the `persistence` section in the **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file, while provisioning the prebuilt database.
 
 ### REST Enable a Database
@@ -1114,7 +1139,7 @@ Fetch all entries from 'DEPT' table by calling the following API
 Database Actions is a web-based interface that uses Oracle REST Data Services to provide development, data tools, administration and monitoring features for Oracle Database.
 
 * To use Database Actions, you must sign in as a database user whose schema has been REST-enabled.
-* To enable a schema for REST, you can specify appropriate values for the `.spec.restEnableSchemas` attributes details in the sample `yaml` **[config/samples/sidb/oraclerestdataservice.yaml](config/samples/sidb/oraclerestdataservice.yaml)**, which are needed for authorizing Database Actions.
+* To enable a schema for REST, you can specify appropriate values for the `.spec.restEnableSchemas` attributes details in the sample `yaml` **[config/samples/sidb/oraclerestdataservice.yaml](../../config/samples/sidb/oraclerestdataservice.yaml)**, which are needed for authorizing Database Actions.
 * Schema are created (if they exist) with the username as `.spec.restEnableSchema[].schema` and password as `.spec.ordsPassword.`.
 * UrlMapping `.spec.restEnableSchema[].urlMapping` is optional and is defaulted to `.spec.restEnableSchema[].schema`.
 
@@ -1148,7 +1173,7 @@ Using APEX, developers can quickly develop and deploy compelling apps that solve
 
 The `OraOperator` facilitates installation of APEX in the database and also configures ORDS for it. The following section will explain installing APEX with configured ORDS:
 
-* For quick provisioning, use the sample **[config/samples/sidb/oraclerestdataservice_apex.yaml](../../confi/samples/sidb/oraclerestdataservice_apex.yaml)** file. For example:
+* For quick provisioning, use the sample **[config/samples/sidb/oraclerestdataservice_apex.yaml](../../config/samples/sidb/oraclerestdataservice_apex.yaml)** file. For example:
 
       kubectl apply -f oraclerestdataservice_apex.yaml
 
