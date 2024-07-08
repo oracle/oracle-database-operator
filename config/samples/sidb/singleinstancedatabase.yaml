@@ -65,7 +65,7 @@ spec:
 
   ##  N/A for createAs clone or standby
   ## Specify Non-Zero value to use
-  ## sgaTarget and pagAggregateTarget must be in MB
+  ## sgaTarget and pgaAggregateTarget must be in MB
   ## You cannot change these initParams for Oracle Database Express (XE) and Oracle Database Free edition
   initParams:
     cpuCount: 0
