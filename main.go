@@ -39,10 +39,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -70,8 +74,9 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme                       = runtime.NewScheme()
+	setupLog                     = ctrl.Log.WithName("setup")
+	universalInstanceGuid string = "63624bfd-67b9-11ea-81b7-0a580aed61c8"
 )
 
 func init() {
@@ -95,6 +100,14 @@ func main() {
 	options := &zap.Options{
 		Development: true,
 		TimeEncoder: zapcore.RFC3339TimeEncoder,
+	}
+
+	// zap-level=2 enables verbose logging
+	dbg, _ := os.LookupEnv("TT_DEBUG")
+	if dbg == "1" || dbg == "99" {
+		options.Level = zapcore.Level(-2)
+	} else {
+		options.Level = zapcore.Level(-1)
 	}
 
 	ctrl.SetLogger(zap.New(func(o *zap.Options) { *o = *options }))
@@ -202,6 +215,16 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "OracleRestDataService")
 		os.Exit(1)
 	}
+
+	setupLog.Info("Setting up TT Reconciler.")
+	if err = (&databasecontroller.TimesTenClassicReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "TimesTenClassic")
+		os.Exit(1)
+	}
+	setupLog.Info("TT Reconciler set.")
 
 	// Set RECONCILE_INTERVAL environment variable if you want to change the default value from 15 secs
 	interval := os.Getenv("RECONCILE_INTERVAL")
@@ -312,6 +335,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	setupLog.Info("Calling setupTimesten")
+	timestenHome, err := setupTimesTen()
+	if err != nil {
+		setupLog.Error(err, "could not create the operator's TimesTen instance")
+		os.Exit(1)
+	} else {
+		os.Setenv("TIMESTEN_HOME", timestenHome)
+		setupLog.Info("env TIMESTEN_HOME set to " + timestenHome)
+	}
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
@@ -349,4 +382,241 @@ func getWatchNamespace() (map[string]cache.Config, error) {
 
 	return nsmap, nil
 
+}
+
+// Command to run a shell command, returning the output to the caller
+func runShellCommand(cmd []string) (int, []string, []string) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	var ourRc int
+
+	c := exec.Command(cmd[0])
+	c.Args = cmd[0:]
+	c.Stdout = &stdout
+	c.Stderr = &stderr
+	err := c.Run()
+	if err == nil {
+		// Command ran with exit code 0
+		ourRc = 0
+	} else {
+		exitError, ok := err.(*exec.ExitError)
+		if ok {
+			ourRc = exitError.ExitCode()
+		} else {
+			setupLog.Error(err, "Error starting process: "+err.Error())
+			return 254, []string{}, []string{}
+		}
+	}
+
+	printCmd := ""
+	for _, l := range cmd {
+		printCmd = printCmd + l + " "
+	}
+	setupLog.Info("runShellCommand '" + printCmd + "': rc " + strconv.Itoa(ourRc))
+
+	var outStdout []string
+	for _, l := range strings.Split(stdout.String(), "\n") {
+		outStdout = append(outStdout, l)
+	}
+
+	var outStderr []string
+	for _, l := range strings.Split(stderr.String(), "\n") {
+		outStderr = append(outStderr, l)
+	}
+
+	return ourRc, outStdout, outStderr
+}
+
+func makeNewTimestenInstallation() (string, error) {
+	us := "makeNewTimestenInstallation"
+	setupLog.Info(us + " entered")
+	defer setupLog.Info(us + " returns")
+	mntDistroDir := "/mnt/mizuniga/distros"
+	distroZipFile := "timesten2211220.server.linux8664.zip"
+	ttDistroVer := "22.1.1.22.0"
+
+	rcCopyZip, stdoutCopyZip, stderrCopyZip := runShellCommand([]string{"cp", mntDistroDir + "/" + distroZipFile, "/tmp/"})
+	if rcCopyZip != 0 {
+		err := errors.New("Error " + strconv.Itoa(rcCopyZip) + " copying TimesTen binaries")
+		setupLog.Error(err, "Error copying binaries", "stdout", stdoutCopyZip, "stderr", stderrCopyZip)
+		return "", err
+	}
+
+	rclsZip, stdoutlsZip, stderrlsZip := runShellCommand([]string{"ls", "/tmp/" + distroZipFile})
+	if rcCopyZip != 0 {
+		err := errors.New("Error " + strconv.Itoa(rclsZip) + " verifying TimesTen binaries")
+		setupLog.Error(err, "Error verifying binaries", "stdout", stdoutlsZip, "stderr", stderrlsZip)
+		return "", err
+	}
+
+	rcMkdir, stdoutMkdir, stderrMkdir := runShellCommand([]string{"mkdir", "/tmp/tt"})
+	if rcMkdir != 0 {
+		err := errors.New("Error " + strconv.Itoa(rcMkdir) + " mkdir /tmp/tt to place TimesTen binaries")
+		setupLog.Error(err, "Error mkdir /tmp/tt to place", "stdout", stdoutMkdir, "stderr", stderrMkdir)
+		if rcMkdir != 1 {
+			return "", err
+		}
+	}
+
+	rcUnzip, stdoutUnzip, stderrUnzip := runShellCommand([]string{"unzip", "-q", "/tmp/" + distroZipFile, "-d", "/timesten/installations/"})
+	if rcUnzip != 0 {
+		err := errors.New("Error " + strconv.Itoa(rcUnzip) + " unzip TimesTen binaries")
+		setupLog.Error(err, "Error unzipping binaries", "stdout", stdoutUnzip, "stderr", stderrUnzip)
+		return "", err
+	}
+	_, out, _ := runShellCommand([]string{"ls", "-la", "/timesten/installation/"})
+	setupLog.Info(strings.Join(out, "\n"))
+	_, out2, _ := runShellCommand([]string{"ls", "-la", "/timesten/installations/"})
+	setupLog.Info(strings.Join(out2, "\n"))
+
+	//rcCopyUnzip, stdoutCopyUnzip, stderrCopyUnzip := runShellCommand([]string{"cp", "-R", "/tmp/tt/tt" + ttDistroVer + "/", "/timesten/installations/tt" + ttDistroVer + "/"})
+	//if rcCopyUnzip != 0 {
+	//	err := errors.New("Error " + strconv.Itoa(rcCopyUnzip) + " copy unziped TimesTen binaries")
+	//	setupLog.Error(err, "Error copy unziped binaries", "stdout", stdoutCopyUnzip, "stderr", stderrCopyUnzip)
+	//	return err
+	//}
+
+	rcChmod, stdoutChmod, stderrChmod := runShellCommand([]string{"chmod", "550", "/timesten/installations/tt" + ttDistroVer})
+	if rcChmod != 0 {
+		err := errors.New("Error " + strconv.Itoa(rcUnzip) + " chmod unziped TimesTen binaries")
+		setupLog.Error(err, "Error chmod unziped binaries", "stdout", stdoutChmod, "stderr", stderrChmod)
+		return "", err
+	}
+	return "/timesten/installations/tt" + ttDistroVer, nil
+}
+
+// See if a TimesTen installation already exists and create one if not
+func findTimesTenInstallation(location string, makeNewOnePlease bool) (string, error) {
+	us := "findTimesTenInstallation"
+	setupLog.Info(us + " entered")
+	defer setupLog.Info(us + " returns")
+
+	xArgs := []string{"-c", "ls -d /*/installation"}
+	loc, err := exec.Command("/bin/bash", xArgs...).Output()
+	if err != nil {
+		setupLog.Error(err, us+": cannot find installation: "+string(loc))
+		panic(err)
+	}
+	loca := strings.TrimSpace(string(loc))
+	setupLog.Info(us + ": found '" + loca + "'")
+	lsArgs := []string{"-c", "ls " + loca + "/*/bin/ttInstanceCreate"}
+	lsBinOut, lsErr := exec.Command("/bin/bash", lsArgs...).Output()
+
+	if lsErr == nil {
+		return loca + "/*", nil
+	}
+	setupLog.Error(lsErr, us+": cannot find installation binaries: "+string(lsBinOut))
+
+	installLoc, newInstallErr := makeNewTimestenInstallation()
+
+	if newInstallErr != nil {
+		setupLog.Error(newInstallErr, us+": cannot find installation binaries: "+string(loca))
+		panic(newInstallErr)
+	}
+	return installLoc, nil
+}
+
+// Make a TimesTen instance
+func makeTimesTenInstance(location string, instanceName string) (string, error) {
+	us := "makeTimesTenInstance"
+	setupLog.Info(us + " entered")
+	defer setupLog.Info(us + " returns")
+
+	installation, err := findTimesTenInstallation(location, true)
+	if err != nil {
+		return "", err
+	}
+
+	rc, stdout, stderr := runShellCommand([]string{installation + "/bin/ttInstanceCreate", "-location", location, "-name", instanceName})
+	if rc != 0 {
+		err := errors.New("Error " + strconv.Itoa(rc) + " creating TimesTen instance")
+		setupLog.Error(err, "Error creating instance", "stdout", stdout, "stderr", stderr)
+		return "", err
+	}
+
+	// We have to modify the instance guid to a well known value so the
+	// agents can read the Oracle Wallets that we create.
+
+	ttc, err := ioutil.ReadFile(location + "/" + instanceName + "/conf/timesten.conf")
+	if err != nil {
+		setupLog.Error(err, "Error reading "+location+"/"+instanceName+"/conf/timesten.conf")
+		return "", err
+	}
+
+	ttclines := strings.Split(string(ttc), "\n")
+	for i, l := range ttclines {
+		if strings.HasPrefix(l, "instance_guid=") {
+			ttclines[i] = "instance_guid=" + universalInstanceGuid
+		}
+	}
+
+	err = ioutil.WriteFile(location+"/"+instanceName+"/conf/timesten.conf", []byte(strings.Join(ttclines, "\n")), 0600)
+	if err != nil {
+		setupLog.Error(err, "Error writing "+location+"/"+instanceName+"/conf/timesten.conf")
+		return "", err
+	}
+
+	return location + "/" + instanceName, nil
+}
+
+func setupTimesTen() (string, error) {
+	us := "setupTimesTen"
+	setupLog.Info(us + " entered")
+	defer setupLog.Info(us + " returns")
+
+	timestenHome, ok := os.LookupEnv("TIMESTEN_HOME")
+	if ok {
+		setupLog.Info(us + ": using TimesTen instance in " + timestenHome)
+		return timestenHome, nil
+	}
+
+	// We want to use an instance in $HOME/instance1
+
+	instanceName := "instance1"
+
+	//reqLogger.Info(us + ": sleep 60")
+	//time.Sleep(60 * time.Second)
+	//reqLogger.Info(us + ": sleep done")
+
+	// See if there are any TimesTen distributions we can use
+
+	homeDir, ok := os.LookupEnv("HOME")
+	if !ok {
+		err := errors.New(us + ": TimesTen not configured and HOME directory not set")
+		//reqLogger.Error(err, us + ": TimesTen not configured and HOME directory not set")
+		setupLog.Error(err, us+": TimesTen not configured and HOME directory not set")
+		return "", err
+	}
+
+	fullInstanceName := "/timesten" + "/" + instanceName
+	st, err := os.Stat(fullInstanceName)
+	if err == nil {
+		if st.IsDir() {
+			// Let's go ahead and use it
+			setupLog.Info(us + ": found TimesTen instance " + fullInstanceName)
+			os.Setenv("TIMESTEN_HOME", fullInstanceName)
+			return fullInstanceName, nil
+		} else {
+			e := errors.New(fullInstanceName + " exists but is not a directory")
+			setupLog.Error(e, "Could not make TimesTen instance")
+			panic(e)
+		}
+	} else {
+		if os.IsNotExist(err) {
+			// Great, let's make it. First we have to find an installation we can use
+			setupLog.Info(us + ": TimesTen instance not found")
+			timestenHome, err := makeTimesTenInstance(homeDir, instanceName)
+			if err == nil {
+				return timestenHome, nil
+			} else {
+				panic(err)
+			}
+
+		} else {
+			e := errors.New(fullInstanceName + " exists but is not readable")
+			setupLog.Error(e, "Could not make TimesTen instance")
+			panic(e)
+		}
+	}
 }
