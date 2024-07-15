@@ -165,6 +165,8 @@ spec:
                 type: string
               displayName:
                 type: string
+              isLongTermBackup:
+                type: boolean
               ociConfig:
                 description: "*********************** *\tOCI config ***********************"
                 properties:
@@ -173,6 +175,8 @@ spec:
                   secretName:
                     type: string
                 type: object
+              retentionPeriodInDays:
+                type: integer
               target:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "make" to regenerate code after modifying this file'
                 properties:
@@ -1264,7 +1268,7 @@ spec:
                   dbAdminPaswordSecret:
                     type: string
                   dbBackupConfig:
-                    description: DB Backup COnfig Network Struct
+                    description: DB Backup Config Network Struct
                     properties:
                       autoBackupEnabled:
                         type: boolean
@@ -1348,6 +1352,39 @@ spec:
                 type: string
               ociSecret:
                 type: string
+              pdbConfig:
+                description: PDBConfig defines details of PDB struct for DBCS systems
+                properties:
+                  containerDatabaseId:
+                    description: The OCID (https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the CDB
+                    type: string
+                  freeformTags:
+                    additionalProperties:
+                      type: string
+                    description: '// Free-form tags for this resource. Each tag is a simple key-value pair with no predefined name, type, or namespace. // For more information, see Resource Tags (https://docs.cloud.oracle.com/Content/General/Concepts/resourcetags.htm). // Example: `{"Department": "Finance"}`'
+                    type: object
+                  isDelete:
+                    description: // Whether to delete the PDB mentioned
+                    type: boolean
+                  pdbAdminPassword:
+                    description: // A strong password for PDB Admin. The password must be at least nine characters and contain at least two uppercase, two lowercase, two numbers, and two special characters. The special characters must be _, \#, or -.
+                    type: string
+                  pdbName:
+                    description: The name for the pluggable database (PDB). The name is unique in the context of a Database. The name must begin with an alphabetic character and can contain a maximum of thirty alphanumeric characters. Special characters are not permitted. The pluggable database name should not be same as the container database name.
+                    type: string
+                  pluggableDatabaseId:
+                    description: The OCID (https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the PDB
+                    type: string
+                  shouldPdbAdminAccountBeLocked:
+                    description: // The locked mode of the pluggable database admin account. If false, the user needs to provide the PDB Admin Password to connect to it. // If true, the pluggable database will be locked and user cannot login to it.
+                    type: boolean
+                  tdeWalletPassword:
+                    description: // The existing TDE wallet password of the CDB.
+                    type: string
+                required:
+                - containerDatabaseId
+                - pdbName
+                type: object
             required:
             - ociConfigMap
             type: object
@@ -3024,23 +3061,6 @@ rules:
   - ""
   resources:
   - configmaps
-  - deployments
-  - events
-  - pods
-  - secrets
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
   - events
   - pods
   - pods/exec
@@ -3085,6 +3105,21 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - deployments
+  - events
+  - pods
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - events
   verbs:
   - create
@@ -3112,6 +3147,7 @@ rules:
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - ''''''
   resources:
@@ -3128,6 +3164,12 @@ rules:
   - apps
   resources:
   - configmaps
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apps
+  resources:
   - deployments
   - pods
   - services
@@ -3180,6 +3222,26 @@ rules:
   - events
   - namespaces
   - persistentvolumeclaims
+  - pods
+  - pods/exec
+  - pods/log
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - containers
+  - events
+  - namespaces
   - pods
   - pods/exec
   - pods/log
@@ -3489,7 +3551,6 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
-  - prometheusrules
   - servicemonitors
   verbs:
   - create
@@ -3805,6 +3866,26 @@ webhooks:
     resources:
     - singleinstancedatabases
   sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-observability-oracle-com-v1alpha1-databaseobserver
+  failurePolicy: Fail
+  name: mdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -3999,6 +4080,26 @@ webhooks:
     resources:
     - singleinstancedatabases
   sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-observability-oracle-com-v1alpha1-databaseobserver
+  failurePolicy: Fail
+  name: vdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -4025,7 +4126,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:basedb-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:
