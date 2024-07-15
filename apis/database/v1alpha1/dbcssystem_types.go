@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022-2024 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -42,6 +42,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/go-logr/logr"
 	dbcsv1 "github.com/oracle/oracle-database-operator/commons/annotations"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -57,6 +58,7 @@ type DbcsSystemSpec struct {
 	OCIConfigMap string          `json:"ociConfigMap"`
 	OCISecret    string          `json:"ociSecret,omitempty"`
 	HardLink     bool            `json:"hardLink,omitempty"`
+	PdbConfigs   []PDBConfig     `json:"pdbConfigs,omitempty"`
 }
 
 // DbSystemDetails Spec
@@ -96,7 +98,7 @@ type DbSystemDetails struct {
 	DbBackupConfig             Backupconfig      `json:"dbBackupConfig,omitempty"`
 }
 
-// DB Backup COnfig Network Struct
+// DB Backup Config Network Struct
 type Backupconfig struct {
 	AutoBackupEnabled        *bool   `json:"autoBackupEnabled,omitempty"`
 	RecoveryWindowsInDays    *int    `json:"recoveryWindowsInDays,omitempty"`
@@ -206,6 +208,25 @@ func (dbcs *DbcsSystem) GetLastSuccessfulSpec() (*DbcsSystemSpec, error) {
 		return nil, err
 	}
 
+	return &sucSpec, nil
+}
+func (dbcs *DbcsSystem) GetLastSuccessfulSpecWithLog(log logr.Logger) (*DbcsSystemSpec, error) {
+	val, ok := dbcs.GetAnnotations()[lastSuccessfulSpec]
+	if !ok {
+		log.Info("No last successful spec annotation found")
+		return nil, nil
+	}
+
+	specBytes := []byte(val)
+	sucSpec := DbcsSystemSpec{}
+
+	err := json.Unmarshal(specBytes, &sucSpec)
+	if err != nil {
+		log.Error(err, "Failed to unmarshal last successful spec")
+		return nil, err
+	}
+
+	log.Info("Successfully retrieved last successful spec", "spec", sucSpec)
 	return &sucSpec, nil
 }
 
