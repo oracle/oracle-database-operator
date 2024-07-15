@@ -94,7 +94,7 @@ func CreateAndGetDbcsId(logger logr.Logger, kubeClient client.Client, dbClient d
 	dbcsDetails.CompartmentId = common.String(dbcs.Spec.DbSystem.CompartmentId)
 	dbcsDetails.SubnetId = common.String(dbcs.Spec.DbSystem.SubnetId)
 	dbcsDetails.Shape = common.String(dbcs.Spec.DbSystem.Shape)
-        dbcsDetails.Domain = common.String(dbcs.Spec.DbSystem.Domain)
+	dbcsDetails.Domain = common.String(dbcs.Spec.DbSystem.Domain)
 	if dbcs.Spec.DbSystem.DisplayName != "" {
 		dbcsDetails.DisplayName = common.String(dbcs.Spec.DbSystem.DisplayName)
 	}
@@ -420,34 +420,51 @@ func GetListDatabaseRsp(logger logr.Logger, dbClient database.DatabaseClient, db
 
 func UpdateDbcsSystemIdInst(log logr.Logger, dbClient database.DatabaseClient, dbcs *databasev1alpha1.DbcsSystem, kubeClient client.Client, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
 	//logger := log.WithName("UpdateDbcsSystemInstance")
+	log.Info("DB System Getting Updated with func UpdateDbcsSystemIdInst")
 
 	updateFlag := false
 	updateDbcsDetails := database.UpdateDbSystemDetails{}
-	oldSpec, err := dbcs.GetLastSuccessfulSpec()
+	// Log annotations before retrieving the old spec
+	log.Info("Current annotations", "annotations", dbcs.GetAnnotations())
+	// oldSpec, err := dbcs.GetLastSuccessfulSpecWithLog()
+	oldSpec, err := dbcs.GetLastSuccessfulSpecWithLog(log) // Use the new method
 	if err != nil {
+		log.Error(err, "Failed to get last successful spec")
 		return err
 	}
 
+	if oldSpec == nil {
+		log.Info("oldSpec is nil")
+	} else {
+		log.Info("Details of oldSpec", "oldSpec", oldSpec)
+	}
+	// Log the entire oldSpec to see its contents
+	log.Info("Details of updateFlag -> " + fmt.Sprint(updateFlag))
+
 	if dbcs.Spec.DbSystem.CpuCoreCount > 0 && dbcs.Spec.DbSystem.CpuCoreCount != oldSpec.DbSystem.CpuCoreCount {
+		log.Info("DB System cpu core count is: " + fmt.Sprint(dbcs.Spec.DbSystem.CpuCoreCount) + " DB System old cpu count is: " + fmt.Sprint(oldSpec.DbSystem.CpuCoreCount))
 		updateDbcsDetails.CpuCoreCount = common.Int(dbcs.Spec.DbSystem.CpuCoreCount)
 		updateFlag = true
 	}
 	if dbcs.Spec.DbSystem.Shape != "" && dbcs.Spec.DbSystem.Shape != oldSpec.DbSystem.Shape {
+		log.Info("DB System desired shape is :" + string(dbcs.Spec.DbSystem.Shape) + "DB System old shape is " + string(oldSpec.DbSystem.Shape))
 		updateDbcsDetails.Shape = common.String(dbcs.Spec.DbSystem.Shape)
 		updateFlag = true
 	}
 
 	if dbcs.Spec.DbSystem.LicenseModel != "" && dbcs.Spec.DbSystem.LicenseModel != oldSpec.DbSystem.LicenseModel {
 		licenceModel := getLicenceModel(dbcs)
+		log.Info("DB System desired License Model is :" + string(dbcs.Spec.DbSystem.LicenseModel) + "DB Sytsem old License Model is " + string(oldSpec.DbSystem.LicenseModel))
 		updateDbcsDetails.LicenseModel = database.UpdateDbSystemDetailsLicenseModelEnum(licenceModel)
 		updateFlag = true
 	}
 
 	if dbcs.Spec.DbSystem.InitialDataStorageSizeInGB != 0 && dbcs.Spec.DbSystem.InitialDataStorageSizeInGB != oldSpec.DbSystem.InitialDataStorageSizeInGB {
+		log.Info("DB System desired Storage Size is :" + fmt.Sprint(dbcs.Spec.DbSystem.InitialDataStorageSizeInGB) + "DB System old Storage Size is " + fmt.Sprint(oldSpec.DbSystem.InitialDataStorageSizeInGB))
 		updateDbcsDetails.DataStorageSizeInGBs = &dbcs.Spec.DbSystem.InitialDataStorageSizeInGB
 		updateFlag = true
 	}
-
+	log.Info("Details of updateFlag after validations is" + fmt.Sprint(updateFlag))
 	if updateFlag {
 		updateDbcsRequest := database.UpdateDbSystemRequest{
 			DbSystemId:            common.String(*dbcs.Spec.Id),
@@ -536,10 +553,10 @@ func GetResourceState(logger logr.Logger, dbClient database.DatabaseClient, Id s
 
 func SetDBCSStatus(dbClient database.DatabaseClient, dbcs *databasev1alpha1.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
 
-         if dbcs.Spec.Id == nil {
-                dbcs.Status.State = "FAILED"
-                return nil
-        }
+	if dbcs.Spec.Id == nil {
+		dbcs.Status.State = "FAILED"
+		return nil
+	}
 
 	dbcsId := *dbcs.Spec.Id
 
