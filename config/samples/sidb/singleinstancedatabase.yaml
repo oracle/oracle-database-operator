@@ -103,6 +103,21 @@ spec:
     ## Optionally specify a volume containing scripts in 'setup' and 'startup' folders to be executed during database setup and startup respectively.
     scriptsVolumeName: ""
 
+  ## Database pod resource details
+  ## cpu can be expressed in terms of cpu units and can be a plain integer or fractional value
+  ## memory is measured in bytes and can be expressed in plain integer or as a fixed-point number
+  ## using one of these quantity suffixes: E, P, T, G, M, k.
+  ## You can also use the power-of-two equivalents: Ei, Pi, Ti, Gi, Mi, Ki.
+  resources:
+    ## requests denotes minimum node resources required/to be utilized by the database pod
+    requests:
+      cpu: 
+      memory:
+    ## limits specifies the maximum node resources that can be utilized by the database pod
+    limits: 
+      cpu:
+      memory:
+
   ## Type of service . Applicable on cloud enviroments only
   ## if loadBalService : false, service type = "NodePort" else "LoadBalancer"
   loadBalancer: false
