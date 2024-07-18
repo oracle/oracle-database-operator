@@ -1096,6 +1096,38 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					}
 
 				}(),
+
+				Resources: func() corev1.ResourceRequirements {
+					if m.Spec.Resources.Requests != nil && m.Spec.Resources.Limits != nil {
+						return corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								"cpu":    resource.MustParse(m.Spec.Resources.Requests.Cpu),
+								"memory": resource.MustParse(m.Spec.Resources.Requests.Memory),
+							},
+							Limits: corev1.ResourceList{
+								"cpu":    resource.MustParse(m.Spec.Resources.Limits.Cpu),
+								"memory": resource.MustParse(m.Spec.Resources.Requests.Memory),
+							},
+						}
+					} else if m.Spec.Resources.Requests != nil {
+						return corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								"cpu":    resource.MustParse(m.Spec.Resources.Requests.Cpu),
+								"memory": resource.MustParse(m.Spec.Resources.Requests.Memory),
+							},
+						}
+					} else if m.Spec.Resources.Limits != nil {
+						return corev1.ResourceRequirements{
+							Limits: corev1.ResourceList{
+								"cpu":    resource.MustParse(m.Spec.Resources.Limits.Cpu),
+								"memory": resource.MustParse(m.Spec.Resources.Requests.Memory),
+							},
+						}
+					} else {
+						return corev1.ResourceRequirements{}
+					}
+
+				}(),
 			}},
 
 			TerminationGracePeriodSeconds: func() *int64 { i := int64(30); return &i }(),
