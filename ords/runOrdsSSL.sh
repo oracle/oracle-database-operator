@@ -1,16 +1,44 @@
 #!/bin/bash
-#
-# Since: June, 2022
-# Author: matteo.malvezzi@oracle.com
-# Description: Setup and runs Oracle Rest Data Services 22.2.
-#
-# DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS HEADER.
-#
-# Copyright (c) 2014-2017 Oracle and/or its affiliates. All rights reserved.
-#
-#    MODIFIED    (DD-Mon-YY)
-#    mmalvezz    25-Jun-22   - Initial version
-#    mmalvezz    17-Oct-22   - db.customURL utilization  
+
+cat <<EOF
+** Copyright (c) 2022 Oracle and/or its affiliates.
+**
+** The Universal Permissive License (UPL), Version 1.0
+**
+** Subject to the condition set forth below, permission is hereby granted to any
+** person obtaining a copy of this software, associated documentation and/or data
+** (collectively the "Software"), free of charge and under any and all copyright
+** rights in the Software, and any and all patent rights owned or freely
+** licensable by each licensor hereunder covering either (i) the unmodified
+** Software as contributed to or provided by such licensor, or (ii) the Larger
+** Works (as defined below), to deal in both
+**
+** (a) the Software, and
+** (b) any piece of software and/or hardware listed in the lrgrwrks.txt file if
+** one is included with the Software (each a "Larger Work" to which the Software
+** is contributed by such licensors),
+**
+** without restriction, including without limitation the rights to copy, create
+** derivative works of, display, perform, and distribute the Software and make,
+** use, sell, offer for sale, import, export, have made, and have sold the
+** Software and the Larger Work(s), and to sublicense the foregoing rights on
+** either these or other terms.
+**
+** This license is subject to the following condition:
+** The above copyright notice and either this complete permission notice or at
+** a minimum a reference to the UPL must be included in all copies or
+** substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+** SOFTWARE.
+EOF
+
+echo "ORDSVERSIN:$ORDSVERSION"
 
 export ORDS=/usr/local/bin/ords
 export ETCFILE=/etc/ords.conf
@@ -21,16 +49,12 @@ export KEYSTORE=~/keystore
 export OPENSSL=/usr/bin/openssl
 export PASSFILE=${KEYSTORE}/PASSWORD
 export HN=`hostname`
-#export KEY=${KEYSTORE}/${HN}-key.der
-#export CERTIFICATE=${KEYSTORE}/${HN}.der
 export KEY=$ORDS_HOME/secrets/$TLSKEY
 export CERTIFICATE=$ORDS_HOME/secrets/$TLSCRT
 export TNS_ADMIN=/opt/oracle/ords/
 export TNSNAME=${TNS_ADMIN}/tnsnames.ora 
 export TNSALIAS=ordstns
 echo "${TNSALIAS}=${DBTNSURL}" >$TNSNAME
-
-
 
 
 function SetParameter() {
@@ -67,61 +91,12 @@ function SetParameter() {
   $ORDS --config ${CONFIG} config    set   misc.pagination.maxRows                     1000
   $ORDS --config ${CONFIG} config    set   db.cdb.adminUser                            "${CDBADMIN_USER:-C##DBAPI_CDB_ADMIN} AS SYSDBA"
   $ORDS --config ${CONFIG} config    secret --password-stdin db.cdb.adminUser.password << EOF
-${CDBADMIN_PWD:-WElcome_12##}
+${CDBADMIN_PWD:-PROVIDE_A_PASSWORD}
 EOF
 
-##  $ORDS --config ${CONFIG} config  set db.username  "SYS  AS SYSDBA"
-##  $ORDS --config ${CONFIG} config  secret --password-stdin db.password <<EOF
-## WElcome_12##
-## EOF
-
-  $ORDS --config ${CONFIG} config  user add --password-stdin ${WEBSERVER_USER:-ordspdbadmin} "SQL Administrator, System Administrator" <<EOF
+$ORDS --config ${CONFIG} config  user add --password-stdin ${WEBSERVER_USER:-ordspdbadmin} "SQL Administrator, System Administrator" <<EOF
 ${WEBSERVER_PASSWORD:-welcome1}
 EOF
-
-}
-
-
-function setupHTTPS() {
-
-rm -rf  ${KEYSTORE}
-
-
-[ ! -d ${KEYSTORE} ] && {
-   mkdir ${KEYSTORE}
-}
-
-cd $KEYSTORE
-
-cat <<EOF  >$PASSFILE
-welcome1
-EOF
-
-## $JAVA_HOME/bin/keytool -genkey -keyalg RSA -alias selfsigned -keystore keystore.jks \
-##   -dname "CN=${HN}, OU=Example Department, O=Example Company, L=Birmingham, ST=West Midlands, C=GB" \
-##   -storepass welcome1 -validity 3600 -keysize 2048 -keypass welcome1
-##
-##
-## $JAVA_HOME/bin/keytool -importkeystore -srckeystore keystore.jks -srcalias selfsigned -srcstorepass welcome1 \
-##   -destkeystore keystore.p12 -deststoretype PKCS12 -deststorepass welcome1 -destkeypass welcome1
-##
-##
-## ${OPENSSL} pkcs12 -in ${KEYSTORE}/keystore.p12 -nodes -nocerts -out ${KEYSTORE}/${HN}-key.pem -passin file:${PASSFILE}
-## ${OPENSSL} pkcs12 -in ${KEYSTORE}/keystore.p12 -nokeys -out ${KEYSTORE}/${HN}.pem -passin file:${PASSFILE}
-## ${OPENSSL} pkcs8 -topk8 -inform PEM -outform DER -in ${HN}-key.pem -out ${HN}-key.der -nocrypt
-## ${OPENSSL} x509 -inform PEM -outform DER -in ${HN}.pem -out ${HN}.der
-
-
-
-
-
-
-
-
-rm $PASSFILE
-ls -ltr $KEYSTORE
-
-
 
 }
 
@@ -163,7 +138,6 @@ export ORDS_LOGS=/tmp
     ORDS_PASSWORD=`cat $ORDS_HOME/secrets/$ORDS_PWD_KEY`
   }
 
-setupHTTPS;
 
 SetParameter;
 $ORDS --config                           ${CONFIG} install                 \
@@ -173,8 +147,8 @@ $ORDS --config                           ${CONFIG} install                 \
       --log-folder                       ${ORDS_LOGS}                      \
       --proxy-user                                                         \
       --password-stdin <<EOF
-${SYSDBA_PASSWORD:-WElcome_12##}
-${ORDS_PASSWORD:-WElcome_12##}
+${SYSDBA_PASSWORD:-PROVIDE_A_PASSWORD}
+${ORDS_PASSWORD:-PROVIDE_A_PASSWORD}
 EOF
 
 
@@ -187,8 +161,13 @@ fi
 
 }
 
-NOT_INSTALLED=`$ORDS --config $CONFIG config list | grep "INFO: The" |wc -l `
+export CKF=/tmp/checkfile
+
+$ORDS --config $CONFIG config list 1>${CKF} 2>&1 
+echo "checkfile" >> ${CKF}
+NOT_INSTALLED=`cat ${CKF} | grep "INFO: The" |wc -l `
 echo NOT_INSTALLED=$NOT_INSTALLED
+
 
 function StartUp () {
   $ORDS  --config $CONFIG serve     --port 8888 --secure
