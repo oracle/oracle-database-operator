@@ -197,6 +197,13 @@ func buildVolumeSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraSha
 	if instance.Spec.IsDownloadScripts {
 		result = append(result, corev1.Volume{Name: OraShardSpex.Name + "orascript-vol5", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}})
 	}
+
+	if checkTdeWalletFlag(instance) {
+		if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
+			result = append(result, corev1.Volume{Name: OraShardSpex.Name + "shared-storage-vol8", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.TdeWalletPvc}}})
+		}
+	}
+
 	return result
 }
 
@@ -209,7 +216,7 @@ func buildContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase, Ora
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
 			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{"NET_RAW"},
+				Add: []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
 			},
 		},
 		Resources: corev1.ResourceRequirements{
@@ -329,6 +336,16 @@ func buildVolumeMountSpecForShard(instance *databasev1alpha1.ShardingDatabase, O
 
 	if len(instance.Spec.StagePvcName) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "orastage-vol7", MountPath: oraStage})
+	}
+
+	if checkTdeWalletFlag(instance) {
+		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
+			result = append(result, corev1.VolumeMount{Name: instance.Name + "shared-storage" + instance.Spec.Catalog[0].Name + "-0", MountPath: getTdeWalletMountLoc(instance)})
+		} else {
+			if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
+				result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "shared-storage-vol8", MountPath: getTdeWalletMountLoc(instance)})
+			}
+		}
 	}
 
 	return result
