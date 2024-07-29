@@ -1,4 +1,4 @@
-# Provisioning Oracle Sharded Database with System-Managed Sharding without Database Gold Image
+# Provisioning Oracle Sharded Database with System-Managed Sharding with number of chunks specified
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
@@ -6,11 +6,14 @@ In this use case, the database is created automatically using DBCA during the pr
 
 **NOTE:** In this use case, because DBCA creates the database automatically during the deployment, the time required to create the database is greater than the time it takes when the database is created by cloning from a Database Gold Image.
 
-This example uses `ssharding_shard_prov.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
+By default, the System-Managed Sharding deploys the Sharded Database with 120 chunks per Shard Database. If, for example, we have three shards in the Sharded Database, it will be total of 360 chunks. In this example, the Sharded Database will be deployed with non-default number of chunks specified using parameter `CATALOG_CHUNKS`.
+
+This example uses `ssharding_shard_prov_chunks.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
 * Three sharding Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
+* Total number of chunks as `120` specified by variable `CATALOG_CHUNKS` (it will be 40 chunks per shard)
 * Namespace: `shns`
 
 
@@ -21,11 +24,11 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * In case you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you will need to add the additional parameter `dbEdition: "free"` to the below .yaml file.
   
 
-Use the file: [ssharding_shard_prov.yaml](./ssharding_shard_prov.yaml) for this use case as below:
+Use the file: [ssharding_shard_prov_chunks.yaml](./ssharding_shard_prov_chunks.yaml) for this use case as below:
 
-1. Deploy the `ssharding_shard_prov.yaml` file:
+1. Deploy the `ssharding_shard_prov_chunks.yaml` file:
     ```sh
-    kubectl apply -f ssharding_shard_prov.yaml
+    kubectl apply -f ssharding_shard_prov_chunks.yaml
     ```
 1. Check the status of the deployment:
     ```sh
