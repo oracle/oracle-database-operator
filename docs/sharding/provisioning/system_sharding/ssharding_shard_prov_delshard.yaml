@@ -26,7 +26,7 @@ spec:
       shardGroup: shardgroup1
       shardRegion: primary
     - name: shard4
-      isDelete: True
+      isDelete: enable
       storageSizeInGb: 50
       imagePullPolicy: "Always"
       shardGroup: shardgroup1

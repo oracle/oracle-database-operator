@@ -1,4 +1,4 @@
-# Provisioning Oracle Sharded Database with System Sharding by cloning database from your own Database Gold Image in the same Availability Domain(AD)
+# Provisioning Oracle Sharded Database with System-Managed Sharding by cloning database from your own Database Gold Image in the same Availability Domain(AD)
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
@@ -23,6 +23,8 @@ Choosing this option takes substantially less time during the Oracle Database Sh
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * Database Cloning from the Database Gold Image present in Persistent Volume having OCID: `ocid1.volume.oc1.phx.abyhqljr3z3w72t6ay5eud7d5w3kdfhktfp6gwb6euy5tzwfaxgmbvwqlvsq`
+
+**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
 
 NOTE: In this case, the Persistent Volume with DB Gold Image was provisioned in the Availability Domain `PHX-AD-1`. The Shards and Catalog will be provisioned in the same Availability Domain `PHX-AD-1` by cloning the database.
 

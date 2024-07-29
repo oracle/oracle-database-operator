@@ -2,6 +2,7 @@
 # Copyright (c) 2022, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
+---
 apiVersion: database.oracle.com/v1alpha1
 kind: ShardingDatabase
 metadata:
@@ -12,32 +13,34 @@ spec:
     - name: shard1
       storageSizeInGb: 50
       imagePullPolicy: "Always"
-      shardSpace: sspace1
+      shardGroup: shardgroup1
       shardRegion: primary
+      envVars:
+        - name: "DB_EVENTS"
+          value: "10798 trace name context forever, level 7:scope=spfile;immediate trace name GWM_TRACE level 263"
     - name: shard2
       storageSizeInGb: 50
       imagePullPolicy: "Always"
-      shardSpace: sspace2
+      shardGroup: shardgroup1
       shardRegion: primary
+      envVars:
+        - name: "DB_EVENTS"
+          value: "10798 trace name context forever, level 7:scope=spfile;immediate trace name GWM_TRACE level 263"
     - name: shard3
       storageSizeInGb: 50
       imagePullPolicy: "Always"
-      shardSpace: sspace3
+      shardGroup: shardgroup1
       shardRegion: primary
-    - name: shard4
-      storageSizeInGb: 50
-      imagePullPolicy: "Always"
-      shardSpace: sspace4
-      shardRegion: primary
-    - name: shard5
-      storageSizeInGb: 50
-      imagePullPolicy: "Always"
-      shardSpace: sspace5
-      shardRegion: primary
+      envVars:
+        - name: "DB_EVENTS"
+          value: "10798 trace name context forever, level 7:scope=spfile;immediate trace name GWM_TRACE level 263"
  catalog:
     - name: catalog
       storageSizeInGb: 50
       imagePullPolicy: "Always"
+       envVars:
+        - name: "DB_EVENTS"
+          value: "10798 trace name context forever, level 7:scope=spfile;immediate trace name GWM_TRACE level 263"
  gsm:
     - name: gsm1
       imagePullPolicy: "Always"
@@ -52,7 +55,6 @@ spec:
  dbImagePullSecret: ocr-reg-cred
  gsmImage: container-registry.oracle.com/database/gsm:latest
  gsmImagePullSecret: ocr-reg-cred
- shardingType: USER
  isExternalSvc: False
  isDeleteOraPvc: True
  dbSecret:
