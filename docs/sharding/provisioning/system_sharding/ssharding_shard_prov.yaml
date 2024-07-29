@@ -55,4 +55,3 @@ spec:
    - name: oltp_ro_svc
      role: primary
  namespace: shns
-

@@ -2114,7 +2114,7 @@ spec:
                       description: PullPolicy describes a policy for if/when to pull a container image
                       type: string
                     isDelete:
-                      type: boolean
+                      type: string
                     label:
                       type: string
                     name:
@@ -2177,6 +2177,8 @@ spec:
                   - name
                   type: object
                 type: array
+              dbEdition:
+                type: string
               dbImage:
                 type: string
               dbImagePullSecret:
@@ -2206,6 +2208,8 @@ spec:
                 - name
                 - pwdFileName
                 type: object
+              fssStorageClass:
+                type: string
               gsm:
                 items:
                   description: GsmSpec defines the desired state of GsmSpec
@@ -2230,7 +2234,7 @@ spec:
                       description: PullPolicy describes a policy for if/when to pull a container image
                       type: string
                     isDelete:
-                      type: boolean
+                      type: string
                     label:
                       type: string
                     name:
@@ -2407,7 +2411,7 @@ spec:
               isExternalSvc:
                 type: boolean
               isTdeWallet:
-                type: boolean
+                type: string
               liveinessCheckPeriod:
                 type: integer
               namespace:
@@ -2461,7 +2465,12 @@ spec:
                       description: PullPolicy describes a policy for if/when to pull a container image
                       type: string
                     isDelete:
-                      type: boolean
+                      enum:
+                      - enable
+                      - disable
+                      - failed
+                      - force
+                      type: string
                     label:
                       type: string
                     name:
@@ -2543,6 +2552,10 @@ spec:
               stagePvcName:
                 type: string
               storageClass:
+                type: string
+              tdeWalletPvc:
+                type: string
+              tdeWalletPvcMountLocation:
                 type: string
             required:
             - catalog
@@ -3847,6 +3860,26 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-shardingdatabase
+  failurePolicy: Fail
+  name: mshardingdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   - v1beta1
   clientConfig:
     service:
@@ -4057,6 +4090,27 @@ webhooks:
     - UPDATE
     resources:
     - pdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-shardingdatabase
+  failurePolicy: Fail
+  name: vshardingdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - shardingdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
