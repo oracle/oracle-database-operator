@@ -1,8 +1,10 @@
-# Provisioning Oracle Sharded Database with System-Managed Sharding by cloning database from your own Database Gold Image across Availability Domains(ADs)
+# Provisioning System managed Sharding Topology with Raft replication enabled by cloning database from your own Database Gold Image across Availability Domains(ADs)
+
+**NOTE: RAFT Replication Feature is available only for Oracle 23c RDBMS and Oracle 23c GSM version.**
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-In this test case, you provision the Oracle Database sharding topology with System-Managed Sharding while provisioning the Catalog and Shard Databases by cloning from an existing Oracle Database Gold Image created earlier.
+In this test case, you provision the System managed Sharding Topology with Raft replication enabled while provisioning the Catalog and Shard Databases by cloning from an existing Oracle Database Gold Image created earlier.
 
 This use case applies when you want to provision the database Pods on a Kubernetes Node in any availability domain (AD), which can also be different from the availability domain (AD) of the Block Volume that has the Oracle Database Gold Image provisioned earlier.
 
@@ -19,7 +21,7 @@ NOTE:
     ```sh
     kubectl get pv -n shns
     ```
-2. Create a Block Volume Backup for this Block Volume, and use the OCID of the Block Volume Backup in the next step. This example uses `ssharding_shard_prov_clone_across_ads.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
+2. Create a Block Volume Backup for this Block Volume, and use the OCID of the Block Volume Backup in the next step. This example uses `snr_ssharding_shard_prov_clone_across_ads.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
 * Three sharding Pods: `shard1`, `shard2` and `shard3`
@@ -27,23 +29,23 @@ NOTE:
 * Namespace: `shns`
 * Database Cloning from the `BLOCK VOLUME FULL BACKUP` of the Persistent Volume which had the Gold Image.
 * OCID of the Block Volume Backup: `ocid1.volumebackup.oc1.phx.abyhqljrxtv7tu5swqb3lzc7vpzwbwzdktd2y4k2vjjy2srmgu2w7bqdftjq`
+* `RAFT Replication` enabled
 
 NOTE: In this case, the Persistent Volume with DB Gold Image was provisioned in the Availability Domain `PHX-AD-1`. The Shards and Catalog will be provisioned across multiple Availability Domains by cloning the database.
-
 
 **NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
 
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_clone_across_ads.yaml`.
+  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `snr_ssharding_shard_prov_clone_across_ads.yaml`.
   * The `dbImage` used during provisioning the Persistent Volume with Database Gold Image and the `dbImage` used for deploying the Shard or Catalog Database by cloning should be same.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
 
-Use the file: [ssharding_shard_prov_clone_across_ads.yaml](./ssharding_shard_prov_clone_across_ads.yaml) for this use case as below:
+Use the file: [snr_ssharding_shard_prov_clone_across_ads.yaml](./snr_ssharding_shard_prov_clone_across_ads.yaml) for this use case as below:
 
-1. Deploy the `ssharding_shard_prov_clone_across_ads.yaml` file:
+1. Deploy the `snr_ssharding_shard_prov_clone_across_ads.yaml` file:
     ```sh
-    kubectl apply -f ssharding_shard_prov_clone_across_ads.yaml
+    kubectl apply -f snr_ssharding_shard_prov_clone_across_ads.yaml
     ```
 2. Check the status of the deployment:
     ```sh
