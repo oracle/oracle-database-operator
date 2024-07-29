@@ -1,8 +1,8 @@
-# Provisioning Oracle Sharded Database with System Sharding with additional control on resources like Memory and CPU allocated to Pods
+# Provisioning Oracle Sharded Database with System-Managed Sharding with additional control on resources like Memory and CPU allocated to Pods
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-In this use case, there are additional tags used to control resources such as CPU and Memory used by the different Pods when the Oracle Sharding topology with System Sharding is deployed using Oracle Sharding controller.
+In this use case, there are additional tags used to control resources such as CPU and Memory used by the different Pods when the Oracle Sharding topology with System-Managed Sharding is deployed using Oracle Sharding controller.
 
 This example uses `ssharding_shard_prov_memory_cpu.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
@@ -17,6 +17,9 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
   * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_memory_cpu.yaml`.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
+  * In case you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you will need to add the additional parameter `dbEdition: "free"` to the below .yaml file.
+
+  **NOTE:** For Oracle Database 23ai Free, you can control the `CPU` and `Memory` allocation of the PODs using tags `cpu` and `memory` respectively but tags `INIT_SGA_SIZE` and `INIT_PGA_SIZE` to control the SGA and PGA allocation at the database level are `not` supported.
 
 Use the YAML file [ssharding_shard_prov_memory_cpu.yaml](./ssharding_shard_prov_memory_cpu.yaml).
 
