@@ -3,6 +3,6 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-existing
 spec:
-  id: "ocid1.dbsystem.oc1.iad.anuwcljsabf7htyag4akvoakzw4qk7cae55qyp7hlffbouozvyl5ngoputza"
+  id: "ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
