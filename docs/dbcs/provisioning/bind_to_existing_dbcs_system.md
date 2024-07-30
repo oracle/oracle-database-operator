@@ -14,16 +14,16 @@ This example uses `bind_to_existing_dbcs_system.yaml` to bind to an existing DBC
 Use the file: [bind_to_existing_dbcs_system.yaml](./bind_to_existing_dbcs_system.yaml) for this use case as below:
 
 1. Deploy the .yaml file:  
-```bash
-[root@docker-test-server DBCS]# kubectl apply -f bind_to_existing_dbcs_system.yaml
+```sh
+[root@docker-test-server DBCS]# kubectl apply -f bind_dbcs.yaml
 dbcssystem.database.oracle.com/dbcssystem-existing created
 ```
 
-2. Monitor the Oracle DB Leader Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the DBCS VMDB deployment. 
+2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the DBCS VMDB deployment. 
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```bash
+```
 [root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
