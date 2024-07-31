@@ -165,6 +165,8 @@ spec:
                 type: string
               displayName:
                 type: string
+              isLongTermBackup:
+                type: boolean
               ociConfig:
                 description: "*********************** *\tOCI config ***********************"
                 properties:
@@ -173,6 +175,8 @@ spec:
                   secretName:
                     type: string
                 type: object
+              retentionPeriodInDays:
+                type: integer
               target:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "make" to regenerate code after modifying this file'
                 properties:
@@ -3037,23 +3041,6 @@ rules:
   - ""
   resources:
   - configmaps
-  - deployments
-  - events
-  - pods
-  - secrets
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
   - events
   - pods
   - secrets
@@ -3114,6 +3101,21 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - deployments
+  - events
+  - pods
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - events
   verbs:
   - create
@@ -3141,6 +3143,7 @@ rules:
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - ''''''
   resources:
@@ -3157,6 +3160,12 @@ rules:
   - apps
   resources:
   - configmaps
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apps
+  resources:
   - deployments
   - pods
   - services
@@ -3209,6 +3218,26 @@ rules:
   - events
   - namespaces
   - persistentvolumeclaims
+  - pods
+  - pods/exec
+  - pods/log
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - containers
+  - events
+  - namespaces
   - pods
   - pods/exec
   - pods/log
@@ -3518,7 +3547,6 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
-  - prometheusrules
   - servicemonitors
   verbs:
   - create
@@ -3854,6 +3882,26 @@ webhooks:
     resources:
     - singleinstancedatabases
   sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-observability-oracle-com-v1alpha1-databaseobserver
+  failurePolicy: Fail
+  name: mdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -4068,6 +4116,26 @@ webhooks:
     - DELETE
     resources:
     - singleinstancedatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-observability-oracle-com-v1alpha1-databaseobserver
+  failurePolicy: Fail
+  name: vdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
   sideEffects: None
 ---
 apiVersion: apps/v1
