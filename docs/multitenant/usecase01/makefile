@@ -178,6 +178,7 @@ createimage:
 	$(CP) $(DOCKERFILE) . 
 	$(CP) $(RUNSCRIPT) .
 	$(DOCKER) build -t $(IMAGE) . 
+	$(RM) ./Dockerfile ./runOrdsSSL.sh
 
 tagimage: 
 	@echo "TAG IMAGE"
