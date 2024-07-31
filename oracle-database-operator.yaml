@@ -2787,6 +2787,23 @@ spec:
                 type: integer
               replicas:
                 type: integer
+              resources:
+                properties:
+                  limits:
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                    type: object
+                  requests:
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                    type: object
+                type: object
               serviceAccountName:
                 type: string
               serviceAnnotations:
@@ -3037,22 +3054,6 @@ metadata:
   creationTimestamp: null
   name: oracle-database-operator-manager-role
 rules:
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - events
-  - pods
-  - secrets
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - ""
   resources:
