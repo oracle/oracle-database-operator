@@ -105,7 +105,8 @@ type ShardingDatabaseStatus struct {
 
 	Shard   map[string]string `json:"shards,omitempty"`
 	Catalog map[string]string `json:"catalogs,omitempty"`
-	Gsm     GsmStatus         `json:"gsm,omitempty"`
+
+	Gsm GsmStatus `json:"gsm,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
