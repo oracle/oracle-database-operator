@@ -3056,6 +3056,22 @@ rules:
   - configmaps
   - events
   - pods
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - events
+  - pods
   - pods/exec
   - pods/log
   - replicasets

@@ -9,7 +9,7 @@ In this v1.1.0 production release, `OraOperator` supports the following database
 * Oracle Autonomous Database:
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
   * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
-  * Oracle Autonomous Container Database (ACD) (infrastructure) the infrastructure for provisioning Autonomous Databases.
+  * Oracle Autonomous Container Database (ACD) (infrastructure) is the infrastructure for provisioning Autonomous Databases.
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
@@ -21,6 +21,7 @@ Oracle will continue to extend `OraOperator` to support additional Oracle Databa
 
 ## New in V1.1.0 Release
 * Namespace scope deployment option
+* Enhanced security with namespace scope deployment option
 * Support for Oracle Database 23ai Free (with SIDB)
 * Automatic Storage Expansion for SIDB and Sharded DB
 * User-Defined Sharding
@@ -28,9 +29,9 @@ Oracle will continue to extend `OraOperator` to support additional Oracle Databa
 * Execute custom scripts during DB setup/startup
 * Patching for SIDB Primary/Standby in Data Guard
 * Long-term backup for Autonomous Databases (ADB): Support for [long-term retention backup](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/backup-long-term.html) and removed support for the deprecated mandatory backup
-* Wallet expiry date for ADB: A user-freindly enhancement to display wallet expiry date in the status of assiciated ADB
-* Wait-for-Completion option for ADB: Supports `kubectl wait` command that allows user to wait a specific condition on ADB
-* OKE workload Identify: Supports OKE workload indentity authentication method. For more details, refer to [Oracle Autonomous Database (ADB) Prerequisites](docs/adb/ADB_PREREQUISITES.md#authorized-with-oke-workload-identity)
+* Wallet expiry date for ADB: A user-friendly enhancement to display the wallet expiry date in the status of the associated ADB
+* Wait-for-Completion option for ADB: Supports `kubectl wait` command that allows the user to wait for a specific condition on ADB
+* OKE workload Identify: Supports OKE workload identity authentication method (i.e., uses OKE credentials). For more details, refer to [Oracle Autonomous Database (ADB) Prerequisites](docs/adb/ADB_PREREQUISITES.md#authorized-with-oke-workload-identity)
 * Database Observability (Preview - Metrics)
 
 ## Features Summary
@@ -47,7 +48,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * Oracle Database Observability: create, patch, delete databaseObserver resources
 * Watch over a set of namespaces or all the namespaces in the cluster using the "WATCH_NAMESPACE" env variable of the operator deployment
 
-The upcoming releases will support new configurations, operations and capabilities.
+The upcoming releases will support new configurations, operations, and capabilities.
 
 ## Release Status
 
