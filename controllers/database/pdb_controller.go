@@ -44,6 +44,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+
 	//"encoding/pem"
 	"errors"
 	"fmt"
@@ -59,6 +60,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -132,7 +134,6 @@ var floodcontrol bool = false
 // +kubebuilder:rbac:groups=core,resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups='',resources=statefulsets/finalizers,verbs=get;list;watch;create;update;patch;delete
-
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -651,6 +652,9 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		log.Info("Database already exists ", "PDB Name", pdb.Spec.PDBName)
 		return nil
 	}
+
+	pdbAdminName = strings.TrimSuffix(pdbAdminName, "\n")
+	pdbAdminPwd = strings.TrimSuffix(pdbAdminPwd, "\n")
 
 	values := map[string]string{
 		"method":              "CREATE",
