@@ -109,6 +109,8 @@
 # | Before testing step13 delete the crd:                                     |
 # |    kubectl delete pdb pdb1 -n oracle-database-operator-system             |
 # +---------------------------------------------------------------------------+
+# |step14                       | delete pdb                                  |
+# +-----------------------------+---------------------------------------------+
 # |                        DIAGNOSTIC  TARGETS                                |
 # +-----------------------------+---------------------------------------------+
 # | dump                        | Dump  pods info into a file                 |
@@ -170,6 +172,7 @@ step10:  pdb
 step11:  close 
 step12:  open
 step13:  map
+step14:  delete
 
 checkstep9: checkcdb
 
@@ -206,9 +209,9 @@ dboperator:
 tlscert:
 	 @echo "CREATING TLS CERTIFICATES"
 	$(OPENSSL) genrsa -out ca.key 2048
-	$(OPENSSL) req -new -x509 -days 365 -key ca.key -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER) /CN=$(LOCALHOST)  Root CA " -out ca.crt
-	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER) /CN=$(LOCALHOST)" -out server.csr
-	$(ECHO) "subjectAltName=DNS:$(RESTPREFIX)-$(REST_SERVER),DNS:www.example.com" > extfile.txt
+	$(OPENSSL) req -new -x509 -days 365 -key ca.key -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER).$(NAMESPACE) /CN=$(LOCALHOST)  Root CA " -out ca.crt
+	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER).$(NAMESPACE) /CN=$(LOCALHOST)" -out server.csr
+	$(ECHO) "subjectAltName=DNS:$(RESTPREFIX)-$(REST_SERVER).$(NAMESPACE),DNS:www.example.com" > extfile.txt
 	$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out $(SCRT)
 
 tlssecret:
@@ -243,6 +246,9 @@ map:
 
 checkpdb:
 	$(KUBECTL) get pdbs -n $(NAMESPACE)
+
+delete:
+	$(KUBECTL) apply -f pdb_delete.yaml
 
 dump:
 	@$(eval TMPSP := $(shell date "+%y%m%d%H%M%S" ))
