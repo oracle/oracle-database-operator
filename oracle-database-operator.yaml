@@ -4164,7 +4164,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator
+        image: lin.ocir.io/intsanjaysingh/mmalvezz/testppr/operatormntnns:latest
         imagePullPolicy: Always
         name: manager
         ports:
