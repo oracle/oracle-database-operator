@@ -6,38 +6,38 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.6.1
   creationTimestamp: null
-  name: pdbs.database.oracle.com
+  name: cdbs.database.oracle.com
 spec:
   group: database.oracle.com
   names:
-    kind: PDB
-    listKind: PDBList
-    plural: pdbs
-    singular: pdb
+    kind: CDB
+    listKind: CDBList
+    plural: cdbs
+    singular: cdb
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: The connect string to be used
-      jsonPath: .status.connString
-      name: Connect_String
-      type: string
     - description: Name of the CDB
       jsonPath: .spec.cdbName
       name: CDB Name
       type: string
-    - description: Name of the PDB
-      jsonPath: .spec.pdbName
-      name: PDB Name
+    - description: ' Name of the DB Server'
+      jsonPath: .spec.dbServer
+      name: DB Server
       type: string
-    - description: PDB Open Mode
-      jsonPath: .status.openMode
-      name: PDB State
+    - description: DB server port
+      jsonPath: .spec.dbPort
+      name: DB Port
+      type: integer
+    - description: ' string of the tnsalias'
+      jsonPath: .spec.dbTnsurl
+      name: TNS STRING
       type: string
-    - description: Total Size of the PDB
-      jsonPath: .status.totalSize
-      name: PDB Size
-      type: string
-    - description: Status of the PDB Resource
+    - description: Replicas
+      jsonPath: .spec.replicas
+      name: Replicas
+      type: integer
+    - description: Status of the CDB Resource
       jsonPath: .status.phase
       name: Status
       type: string
@@ -48,29 +48,28 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
+        description: CDB is the Schema for the cdbs API
         properties:
           apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
+            description: CDBSpec defines the desired state of CDB
             properties:
-              action:
-                enum:
-                - Create
-                - Clone
-                - Plug
-                - Unplug
-                - Delete
-                - Modify
-                - Status
-                - Map
-                type: string
-              adminName:
+              cdbAdminPwd:
+                description: Password for the CDB Administrator to manage PDB lifecycle
                 properties:
                   secret:
+                    description: CDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -83,9 +82,12 @@ spec:
                 required:
                 - secret
                 type: object
-              adminPwd:
+              cdbAdminUser:
+                description: User in the root container with sysdba priviledges to
+                  manage PDB lifecycle
                 properties:
                   secret:
+                    description: CDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -98,49 +100,76 @@ spec:
                 required:
                 - secret
                 type: object
-              asClone:
-                type: boolean
-              assertivePdbDeletion:
-                type: boolean
               cdbName:
+                description: Name of the CDB
                 type: string
-              cdbNamespace:
+              cdbTlsCrt:
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbTlsKey:
+                properties:
+                  secret:
+                    description: CDBSecret defines the secretName
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              dbPort:
+                description: DB server port
+                type: integer
+              dbServer:
+                description: Name of the DB server
                 type: string
-              cdbResName:
+              dbTnsurl:
                 type: string
-              copyAction:
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                description: Node Selector for running the Pod
+                type: object
+              ordsImage:
+                description: ORDS Image Name
+                type: string
+              ordsImagePullPolicy:
+                description: ORDS Image Pull Policy
                 enum:
-                - COPY
-                - NOCOPY
-                - MOVE
+                - Always
+                - Never
                 type: string
-              dropAction:
-                enum:
-                - INCLUDING
-                - KEEP
+              ordsImagePullSecret:
+                description: The name of the image pull secret in case of a private
+                  docker repository.
                 type: string
-              fileNameConversions:
-                type: string
-              getScript:
-                type: boolean
-              modifyOption:
-                enum:
-                - IMMEDIATE
-                - NORMAL
-                - READ ONLY
-                - READ WRITE
-                - RESTRICTED
-                type: string
-              pdbName:
-                type: string
-              pdbState:
-                enum:
-                - OPEN
-                - CLOSE
-                type: string
-              pdbTlsCat:
+              ordsPort:
+                description: ORDS server port. For now, keep it as 8888. TO BE USED
+                  IN FUTURE RELEASE.
+                type: integer
+              ordsPwd:
+                description: Password for user ORDS_PUBLIC_USER
                 properties:
                   secret:
+                    description: CDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -153,9 +182,17 @@ spec:
                 required:
                 - secret
                 type: object
-              pdbTlsCrt:
+              replicas:
+                description: Number of ORDS Containers to create
+                type: integer
+              serviceName:
+                description: Name of the CDB Service
+                type: string
+              sysAdminPwd:
+                description: Password for the CDB System Administrator
                 properties:
                   secret:
+                    description: CDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -168,74 +205,11 @@ spec:
                 required:
                 - secret
                 type: object
-              pdbTlsKey:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              reuseTempFile:
-                type: boolean
-              sourceFileNameConversions:
-                type: string
-              sparseClonePath:
-                type: string
-              srcPdbName:
-                type: string
-              tdeExport:
-                type: boolean
-              tdeImport:
-                type: boolean
-              tdeKeystorePath:
-                type: string
-              tdePassword:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              tdeSecret:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              tempSize:
-                type: string
-              totalSize:
-                type: string
-              unlimitedStorage:
-                type: boolean
               webServerPwd:
+                description: Password for the Web Server User
                 properties:
                   secret:
+                    description: CDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -249,8 +223,11 @@ spec:
                 - secret
                 type: object
               webServerUser:
+                description: Web Server User with SQL Administrator role to allow
+                  us to authenticate to the PDB Lifecycle Management REST endpoints
                 properties:
                   secret:
+                    description: CDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -263,29 +240,19 @@ spec:
                 required:
                 - secret
                 type: object
-              xmlFileName:
-                type: string
-            required:
-            - action
             type: object
           status:
+            description: CDBStatus defines the observed state of CDB
             properties:
-              action:
-                type: string
-              connString:
-                type: string
-              modifyOption:
-                type: string
               msg:
-                type: string
-              openMode:
+                description: Message
                 type: string
               phase:
+                description: Phase of the CDB Resource
                 type: string
               status:
+                description: CDB Resource Status
                 type: boolean
-              totalSize:
-                type: string
             required:
             - phase
             - status
