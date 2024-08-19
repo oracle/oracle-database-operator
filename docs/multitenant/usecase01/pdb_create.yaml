@@ -43,4 +43,5 @@ spec:
   totalSize: "1G"
   tempSize: "100M"
   action: "Create"
+  assertivePdbDeletion: true
 
