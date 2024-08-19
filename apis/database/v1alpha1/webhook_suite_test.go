@@ -61,8 +61,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 // To avoid dot import
@@ -137,14 +137,14 @@ var _ = BeforeSuite(func() {
 	// start webhook server using Manager
 	webhookInstallOptions := &testEnv.WebhookInstallOptions
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme:             scheme,
+		Scheme: scheme,
 		WebhookServer: webhook.NewServer(webhook.Options{
 			Port:    webhookInstallOptions.LocalServingPort,
 			Host:    webhookInstallOptions.LocalServingHost,
 			CertDir: webhookInstallOptions.LocalServingCertDir,
 		}),
-		LeaderElection:     false,
-		Metrics:            metricsserver.Options{
+		LeaderElection: false,
+		Metrics: metricsserver.Options{
 			BindAddress: "0",
 		},
 	})
