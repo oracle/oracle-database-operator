@@ -6,12 +6,12 @@ apiVersion: database.oracle.com/v1alpha1
 kind: PDB
 metadata:
   name: pdb2
-  namespace: oracle-database-operator-system
+  namespace: pdbnamespace 
   labels:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
-  cdbNamespace: "oracle-database-operator-system"
+  cdbNamespace: "cdbnamespace"
   cdbName: "DB12"
   pdbName: "pdb2_clone"
   srcPdbName: "pdbdev"
