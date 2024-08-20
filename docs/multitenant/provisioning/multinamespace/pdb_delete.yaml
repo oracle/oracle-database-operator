@@ -2,22 +2,15 @@ apiVersion: database.oracle.com/v1alpha1
 kind: PDB
 metadata:
   name: pdb1
-  namespace: oracle-database-operator-system
+  namespace: pdbnamespace
   labels:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
-  cdbNamespace: "oracle-database-operator-system"
-  cdbName: "DB12"
+  cdbNamespace: "cdbnamespace"
   pdbName: "pdbdev"
-  adminName:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_user" 
-  adminPwd:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_pwd"
+  action: "Delete"
+  dropAction: "INCLUDING"
   pdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -38,8 +31,4 @@ spec:
     secret:
       secretName: "pdb1-secret"
       key: "webserver_pwd"
-  fileNameConversions: "NONE"
-  totalSize: "1G"
-  tempSize: "100M"
-  action: "Map"
-  assertivePdbDeletion: true
+        

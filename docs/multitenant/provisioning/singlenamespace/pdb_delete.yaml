@@ -1,32 +1,16 @@
-#
-# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
-# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
-#
 apiVersion: database.oracle.com/v1alpha1
 kind: PDB
 metadata:
-  name: pdb2
+  name: pdb1
   namespace: oracle-database-operator-system
   labels:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
   cdbNamespace: "oracle-database-operator-system"
-  cdbName: "DB12"
-  pdbName: "pdb2_clone"
-  srcPdbName: "pdbdev"
-  fileNameConversions: "NONE"
-  totalSize: "UNLIMITED"
-  tempSize: "UNLIMITED"
-  assertivePdbDeletion: true
-  adminName:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_user"
-  adminPwd:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_pwd"
+  pdbName: "pdbdev"
+  action: "Delete"
+  dropAction: "INCLUDING"
   pdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -47,4 +31,4 @@ spec:
     secret:
       secretName: "pdb1-secret"
       key: "webserver_pwd"
-  action: "Clone"
+        

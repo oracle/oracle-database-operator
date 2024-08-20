@@ -19,9 +19,9 @@
 
 ### INTRODUCTION
 
-> &#9758; This folder contains the yaml files required to configure and manage cdb and pdb in different namespaces. The main change here is the possibility to specify the namespace where CDB will be created, this implies the introduction of a new parameter at PDB level in order to specify the CDB namespace.
+> &#9758; This folder contains the yaml files required to configure and manage cdb and pdb in different namespaces. The main change here is the possibility to specify the namespace where CDB will be created, this implies the introduction of new parameter at PDB level in order to specify the CDB namespace.
 
-Tasks performed in the usecase03 are the same ones of the other usecases with the exception that controller pods cdb pods and pdb crd are running in different namespaces. You must be aware of the fact that secrets must be created in the proper namespaces; cdb secrets  go into cdb namespace , pdb secrets go into pdbnamespace while certificate secrets need to be created in every namespace.  
+Tasks performed in the usecase03 are the same ones of the other usecase01 with the exception that controller pods cdb pods and pdb crd are running in different namespaces. You must be aware of the fact that secrets must be created in the proper namespaces; cdb secrets  go into cdb namespace , pdb secrets go into pdbnamespace while certificate secrets need to be created in every namespace.  
 
 
 | yaml file parameters            	| value  	| description /ords parameter                     |
@@ -53,6 +53,7 @@ Tasks performed in the usecase03 are the same ones of the other usecases with th
 | tdeExport           | <BOOLEAN\>              | [tdeExport] |
 | tdeSecret           | <TDE secret is required if the tdeExport flag is set to true\>  | [tdeSecret][tdeSecret] |
 | tdePassword         | <TDE password for unplug operations only\>  | [tdeSecret][tdeSecret] | 
+|  assertivePdbDeletion | boolean             | [turn on imperative approach on crd deleteion][imperative]     |
 
 ![generla schema](./NamespaceSegregation.png)
 
@@ -261,6 +262,7 @@ In order to facilitate the command execution use the [makefile](./makefile) avai
 |reloadop                     | Reload the db operator              |
 |login                        | Login into cdb pod                  |
 
-</span>
+[imperative]:https://kubernetes.io/docs/concepts/overview/working-with-objects/object-management/
 
+</span>
 

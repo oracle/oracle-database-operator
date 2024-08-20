@@ -2,7 +2,7 @@ apiVersion: database.oracle.com/v1alpha1
 kind: CDB 
 metadata: 
   name: cdb-dev
-  namespace: cdbnamespace
+  namespace: oracle-database-operator-system
 spec:
   cdbName: "DB12"
   ordsImage: ".............your registry............./ords-dboper:latest"
