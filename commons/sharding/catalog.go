@@ -485,7 +485,7 @@ func UpdateProvForCatalog(instance *databasev1alpha1.ShardingDatabase,
 			oraSpexRes := OraCatalogSpex.Resources
 
 			if !reflect.DeepEqual(shardContaineRes, oraSpexRes) {
-				isUpdate = true
+				isUpdate = false
 			}
 		}
 	}
