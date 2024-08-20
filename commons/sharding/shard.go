@@ -480,7 +480,7 @@ func UpdateProvForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpe
 			oraSpexRes := OraShardSpex.Resources
 
 			if !reflect.DeepEqual(shardContaineRes, oraSpexRes) {
-				isUpdate = true
+				isUpdate = false
 			}
 		}
 	}

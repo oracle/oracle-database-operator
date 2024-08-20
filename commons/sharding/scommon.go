@@ -1326,7 +1326,7 @@ func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *database
 
 	_, _, err := ExecCommand(gsmPodName, getOnlineShardCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
-		msg := "Shard: " + GetFmtStr(sparams) + " is not onine in GSM."
+		msg := "Shard: " + GetFmtStr(sparams) + " is not online in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
 		return err
 	}
@@ -1533,7 +1533,7 @@ func CheckIsDeleteFlag(delStr string, instance *databasealphav1.ShardingDatabase
 		return true
 	}
 	if strings.ToLower(delStr) == "failed" {
-		LogMessages("INFO", "manual intervention required", nil, instance, logger)
+		      // LogMessages("INFO", "manual intervention required", nil, instance, logger)
 	}
 	return false
 }
