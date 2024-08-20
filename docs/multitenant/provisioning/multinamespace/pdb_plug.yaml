@@ -5,28 +5,23 @@
 apiVersion: database.oracle.com/v1alpha1
 kind: PDB
 metadata:
-  name: pdb2
-  namespace: oracle-database-operator-system
+  name: pdb1
+  namespace: pdbnamespace
   labels:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
-  cdbNamespace: "oracle-database-operator-system"
+  cdbNamespace: "cdbnamespace"
   cdbName: "DB12"
-  pdbName: "pdb2_clone"
-  srcPdbName: "pdbdev"
+  pdbName: "pdbdev"
+  xmlFileName: "/tmp/pdb.xml"
   fileNameConversions: "NONE"
-  totalSize: "UNLIMITED"
-  tempSize: "UNLIMITED"
+  sourceFileNameConversions: "NONE"
+  copyAction: "MOVE"
+  totalSize: "1G"
+  tempSize: "100M"
+  action: "Plug"
   assertivePdbDeletion: true
-  adminName:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_user"
-  adminPwd:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_pwd"
   pdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -47,4 +42,5 @@ spec:
     secret:
       secretName: "pdb1-secret"
       key: "webserver_pwd"
-  action: "Clone"
+
+

@@ -139,6 +139,7 @@ ORDSPORT=8888
 MAKE=/usr/bin/make
 DOCKERFILE=../../../ords/Dockerfile
 RUNSCRIPT=../../../ords/runOrdsSSL.sh
+ORDSIMGDIR=../../../ords
 RM=/usr/bin/rm
 CP=/usr/bin/cp
 ECHO=/usr/bin/echo
@@ -178,10 +179,7 @@ checkstep9: checkcdb
 
 
 createimage:
-	$(CP) $(DOCKERFILE) . 
-	$(CP) $(RUNSCRIPT) .
-	$(DOCKER) build -t $(IMAGE) . 
-	$(RM) ./Dockerfile ./runOrdsSSL.sh
+	$(DOCKER) build -t $(IMAGE) $(ORDSIMGDIR)
 
 tagimage: 
 	@echo "TAG IMAGE"
