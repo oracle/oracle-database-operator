@@ -35,16 +35,27 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
+        description: OracleRestDataService is the Schema for the oraclerestdataservices
+          API
         properties:
           apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
+            description: OracleRestDataServiceSpec defines the desired state of OracleRestDataService
             properties:
               adminPassword:
+                description: OracleRestDataServicePassword defines the secret containing
+                  Password mapped to secretKey
                 properties:
                   keepSecret:
                     type: boolean
@@ -57,6 +68,8 @@ spec:
                 - secretName
                 type: object
               apexPassword:
+                description: OracleRestDataServicePassword defines the secret containing
+                  Password mapped to secretKey
                 properties:
                   keepSecret:
                     type: boolean
@@ -71,6 +84,8 @@ spec:
               databaseRef:
                 type: string
               image:
+                description: OracleRestDataServiceImage defines the Image source and
+                  pullSecrets for POD
                 properties:
                   pullFrom:
                     type: string
@@ -90,6 +105,8 @@ spec:
               oracleService:
                 type: string
               ordsPassword:
+                description: OracleRestDataServicePassword defines the secret containing
+                  Password mapped to secretKey
                 properties:
                   keepSecret:
                     type: boolean
@@ -104,6 +121,8 @@ spec:
               ordsUser:
                 type: string
               persistence:
+                description: OracleRestDataServicePersistence defines the storage
+                  releated params
                 properties:
                   accessMode:
                     enum:
@@ -122,6 +141,8 @@ spec:
                 type: integer
               restEnableSchemas:
                 items:
+                  description: OracleRestDataServicePDBSchemas defines the PDB Schemas
+                    to be ORDS Enabled
                   properties:
                     enable:
                       type: boolean
@@ -148,6 +169,8 @@ spec:
             - ordsPassword
             type: object
           status:
+            description: OracleRestDataServiceStatus defines the observed state of
+              OracleRestDataService
             properties:
               apexConfigured:
                 type: boolean
@@ -162,6 +185,8 @@ spec:
               databaseRef:
                 type: string
               image:
+                description: OracleRestDataServiceImage defines the Image source and
+                  pullSecrets for POD
                 properties:
                   pullFrom:
                     type: string
@@ -181,6 +206,9 @@ spec:
               serviceIP:
                 type: string
               status:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
                 type: string
             type: object
         type: object
