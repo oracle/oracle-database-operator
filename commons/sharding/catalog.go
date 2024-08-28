@@ -526,3 +526,4 @@ func UpdateProvForCatalog(instance *databasev1alpha1.ShardingDatabase,
 
 	return ctrl.Result{}, nil
 }
+
