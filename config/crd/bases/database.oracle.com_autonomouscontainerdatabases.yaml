@@ -32,14 +32,24 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
+        description: AutonomousContainerDatabase is the Schema for the autonomouscontainerdatabases
+          API
         properties:
           apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
+            description: AutonomousContainerDatabaseSpec defines the desired state
+              of AutonomousContainerDatabase
             properties:
               action:
                 enum:
@@ -48,6 +58,8 @@ spec:
                 - TERMINATE
                 type: string
               autonomousContainerDatabaseOCID:
+                description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file'
                 type: string
               autonomousExadataVMClusterOCID:
                 type: string
@@ -63,6 +75,7 @@ spec:
                 default: false
                 type: boolean
               ociConfig:
+                description: "*********************** *\tOCI config ***********************"
                 properties:
                   configMapName:
                     type: string
@@ -70,14 +83,21 @@ spec:
                     type: string
                 type: object
               patchModel:
+                description: 'AutonomousContainerDatabasePatchModelEnum Enum with
+                  underlying type: string'
                 enum:
                 - RELEASE_UPDATES
                 - RELEASE_UPDATE_REVISIONS
                 type: string
             type: object
           status:
+            description: AutonomousContainerDatabaseStatus defines the observed state
+              of AutonomousContainerDatabase
             properties:
               lifecycleState:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
                 type: string
               timeCreated:
                 type: string
