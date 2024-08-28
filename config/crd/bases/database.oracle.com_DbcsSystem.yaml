@@ -19,14 +19,22 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
+        description: DbcsSystem is the Schema for the dbcssystems API
         properties:
           apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
+            description: DbcsSystemSpec defines the desired state of DbcsSystem
             properties:
               dbSystem:
                 properties:
@@ -43,6 +51,7 @@ spec:
                   dbAdminPaswordSecret:
                     type: string
                   dbBackupConfig:
+                    description: DB Backup COnfig Network Struct
                     properties:
                       autoBackupEnabled:
                         type: boolean
@@ -130,6 +139,7 @@ spec:
             - ociConfigMap
             type: object
           status:
+            description: DbcsSystemStatus defines the observed state of DbcsSystem
             properties:
               availabilityDomain:
                 type: string
@@ -143,6 +153,7 @@ spec:
                 type: string
               dbInfo:
                 items:
+                  description: DbcsSystemStatus defines the observed state of DbcsSystem
                   properties:
                     dbHomeId:
                       type: string
