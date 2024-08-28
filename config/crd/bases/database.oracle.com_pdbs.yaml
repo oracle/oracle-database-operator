@@ -48,16 +48,26 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
+        description: PDB is the Schema for the pdbs API
         properties:
           apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
             type: string
           kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
             type: string
           metadata:
             type: object
           spec:
+            description: PDBSpec defines the desired state of PDB
             properties:
               action:
+                description: 'Action to be taken: Create/Clone/Plug/Unplug/Delete/Modify/Status/Map.
+                  Map is used to map a Databse PDB to a Kubernetes PDB CR.'
                 enum:
                 - Create
                 - Clone
@@ -69,8 +79,11 @@ spec:
                 - Map
                 type: string
               adminName:
+                description: The administrator username for the new PDB. This property
+                  is required when the Action property is Create.
                 properties:
                   secret:
+                    description: PDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -84,8 +97,11 @@ spec:
                 - secret
                 type: object
               adminPwd:
+                description: The administrator password for the new PDB. This property
+                  is required when the Action property is Create.
                 properties:
                   secret:
+                    description: PDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -99,31 +115,48 @@ spec:
                 - secret
                 type: object
               asClone:
+                description: Indicate if 'AS CLONE' option should be used in the command
+                  to plug in a PDB. This property is applicable when the Action property
+                  is PLUG but not required.
                 type: boolean
               assertivePdbDeletion:
+                description: turn on the assertive approach to delete pdb resource
+                  kubectl delete pdb ..... automatically triggers the pluggable database
+                  deletion
                 type: boolean
               cdbName:
+                description: Name of the CDB
                 type: string
               cdbNamespace:
+                description: CDB Namespace
                 type: string
               cdbResName:
+                description: Name of the CDB Custom Resource that runs the ORDS container
                 type: string
               copyAction:
+                description: To copy files or not while cloning a PDB
                 enum:
                 - COPY
                 - NOCOPY
                 - MOVE
                 type: string
               dropAction:
+                description: Specify if datafiles should be removed or not. The value
+                  can be INCLUDING or KEEP (default).
                 enum:
                 - INCLUDING
                 - KEEP
                 type: string
               fileNameConversions:
+                description: Relevant for Create and Plug operations. As defined in
+                  the  Oracle Multitenant Database documentation. Values can be a
+                  filename convert pattern or NONE.
                 type: string
               getScript:
+                description: Whether you need the script only or execute the script
                 type: boolean
               modifyOption:
+                description: Extra options for opening and closing a PDB
                 enum:
                 - IMMEDIATE
                 - NORMAL
@@ -132,8 +165,11 @@ spec:
                 - RESTRICTED
                 type: string
               pdbName:
+                description: The name of the new PDB. Relevant for both Create and
+                  Plug Actions.
                 type: string
               pdbState:
+                description: The target state of the PDB
                 enum:
                 - OPEN
                 - CLOSE
@@ -141,6 +177,7 @@ spec:
               pdbTlsCat:
                 properties:
                   secret:
+                    description: PDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -156,6 +193,7 @@ spec:
               pdbTlsCrt:
                 properties:
                   secret:
+                    description: PDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -171,6 +209,7 @@ spec:
               pdbTlsKey:
                 properties:
                   secret:
+                    description: PDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -184,22 +223,35 @@ spec:
                 - secret
                 type: object
               reuseTempFile:
+                description: Whether to reuse temp file
                 type: boolean
               sourceFileNameConversions:
+                description: This property is required when the Action property is
+                  Plug. As defined in the Oracle Multitenant Database documentation.
+                  Values can be a source filename convert pattern or NONE.
                 type: string
               sparseClonePath:
+                description: A Path specified for sparse clone snapshot copy. (Optional)
                 type: string
               srcPdbName:
+                description: Name of the Source PDB from which to clone
                 type: string
               tdeExport:
+                description: TDE export for unplug operations
                 type: boolean
               tdeImport:
+                description: TDE import for plug operations
                 type: boolean
               tdeKeystorePath:
+                description: TDE keystore path is required if the tdeImport or tdeExport
+                  flag is set to true. Can be used in plug or unplug operations.
                 type: string
               tdePassword:
+                description: TDE password if the tdeImport or tdeExport flag is set
+                  to true. Can be used in create, plug or unplug operations
                 properties:
                   secret:
+                    description: PDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -213,8 +265,11 @@ spec:
                 - secret
                 type: object
               tdeSecret:
+                description: TDE secret is required if the tdeImport or tdeExport
+                  flag is set to true. Can be used in plug or unplug operations.
                 properties:
                   secret:
+                    description: PDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -228,14 +283,26 @@ spec:
                 - secret
                 type: object
               tempSize:
+                description: Relevant for Create and Clone operations. Total size
+                  for temporary tablespace as defined in the Oracle Multitenant Database
+                  documentation. See size_clause description in Database SQL Language
+                  Reference documentation.
                 type: string
               totalSize:
+                description: Relevant for create and plug operations. Total size as
+                  defined in the Oracle Multitenant Database documentation. See size_clause
+                  description in Database SQL Language Reference documentation.
                 type: string
               unlimitedStorage:
+                description: Relevant for Create and Plug operations. True for unlimited
+                  storage. Even when set to true, totalSize and tempSize MUST be specified
+                  in the request if Action is Create.
                 type: boolean
               webServerPwd:
+                description: Password for the Web ServerPDB User
                 properties:
                   secret:
+                    description: PDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -249,8 +316,11 @@ spec:
                 - secret
                 type: object
               webServerUser:
+                description: Web Server User with SQL Administrator role to allow
+                  us to authenticate to the PDB Lifecycle Management REST endpoints
                 properties:
                   secret:
+                    description: PDBSecret defines the secretName
                     properties:
                       key:
                         type: string
@@ -264,27 +334,37 @@ spec:
                 - secret
                 type: object
               xmlFileName:
+                description: XML metadata filename to be used for Plug or Unplug operations
                 type: string
             required:
             - action
             type: object
           status:
+            description: PDBStatus defines the observed state of PDB
             properties:
               action:
+                description: Last Completed Action
                 type: string
               connString:
+                description: PDB Connect String
                 type: string
               modifyOption:
+                description: Modify Option of the PDB
                 type: string
               msg:
+                description: Message
                 type: string
               openMode:
+                description: Open mode of the PDB
                 type: string
               phase:
+                description: Phase of the PDB Resource
                 type: string
               status:
+                description: PDB Resource Status
                 type: boolean
               totalSize:
+                description: Total size of the PDB
                 type: string
             required:
             - phase
