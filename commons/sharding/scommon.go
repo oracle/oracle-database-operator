@@ -294,6 +294,10 @@ func buildEnvVarsSpec(instance *databasealphav1.ShardingDatabase, variables []da
 			result = append(result, corev1.EnvVar{Name: "DEV_MODE", Value: "TRUE"})
 		}
 
+		if instance.Spec.InvitedNodeSubnetFlag == "" {
+			 instance.Spec.InvitedNodeSubnetFlag = "FALSE"
+
+		}
 		if strings.ToUpper(instance.Spec.InvitedNodeSubnetFlag) != "FALSE" {
 			result = append(result, corev1.EnvVar{Name: "INVITED_NODE_SUBNET_FLAG", Value: "TRUE"})
 			if instance.Spec.InvitedNodeSubnet != "" {
