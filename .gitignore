@@ -1,3 +1,7 @@
+# development
+.idea
+.local
+
 operator.tgz
 cover.out
 bin
@@ -6,7 +10,4 @@ onpremtest/*
 ords/*zip
 .gitattributes
 .vscode
-
-# development
-.idea
-.local
+.gitlab-ci.yml
