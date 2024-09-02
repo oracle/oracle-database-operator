@@ -114,6 +114,10 @@ type PDBSpec struct {
 	// The target state of the PDB
 	// +kubebuilder:validation:Enum=OPEN;CLOSE
 	PDBState string `json:"pdbState,omitempty"`
+	// turn on the assertive approach to delete pdb resource
+	// kubectl delete pdb ..... automatically triggers the pluggable database
+	// deletion
+	AssertivePdbDeletion bool `json:"assertivePdbDeletion,omitempty"`
 }
 
 // PDBAdminName defines the secret containing Sys Admin User mapped to key 'adminName' for PDB

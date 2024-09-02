@@ -7,3 +7,7 @@ ords/*zip
 .gitattributes
 .vscode
 .gitlab-ci.yml
+
+# development
+.idea
+.local

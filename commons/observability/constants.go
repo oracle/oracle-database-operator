@@ -38,6 +38,7 @@ const (
 
 	DefaultExporterImage                 = "container-registry.oracle.com/database/observability-exporter:1.1.0"
 	DefaultServicePort                   = 9161
+	DefaultServiceTargetPort             = 9161
 	DefaultPrometheusPort                = "metrics"
 	DefaultReplicaCount                  = 1
 	DefaultExporterConfigMountRootPath   = "/oracle/observability"
