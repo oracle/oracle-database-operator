@@ -123,8 +123,10 @@ URLPATH=/_/db-api/stable/database/pdbs/
 OPENSSL=/usr/bin/openssl
 ORDSPORT=8888
 MAKE=/usr/bin/make
-DOCKERFILE=Dockerfile
+DOCKERFILE=../../../ords/Dockerfile
+RUNSCRIPT=../../../ords/runOrdsSSL.sh
 RM=/usr/bin/rm
+CP=/bin/cp
 ECHO=/usr/bin/echo
 CERTMANAGER=https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml
 CDB_SECRET_YAML=cdb_secret.yaml
@@ -161,16 +163,8 @@ checkstep9: checkcdb
 
 createimage:
 	@echo "BUILDING CDB IMAGES"
-	@if [[ ! -f ./Dockerfile ]]; \
-         then\
-         echo "DOCKERFILE DOES NOT EXISTS";\
-         exit 1; \
-        fi; 
-	@if [[ ! -f ../runOrdsSSL.sh ]]; \
-         then\
-         echo "DOCKERFILE DOES NOT EXISTS";\
-         exit 1; \
-        fi; 
+	$(CP) $(DOCKERFILE) .
+	$(CP) $(RUNSCRIPT) .
 	$(DOCKER) build -t $(IMAGE) . 
 
 tagimage: 
@@ -201,7 +195,7 @@ tlscert:
 	$(OPENSSL) genrsa -out ca.key 2048
 	$(OPENSSL) req -new -x509 -days 365 -key ca.key -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER).$(CDB_NAMESPACE) /CN=$(LOCALHOST)  Root CA " -out ca.crt
 	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER).$(CDB_NAMESPACE) /CN=$(LOCALHOST)" -out server.csr
-	$(ECHO) "subjectAltName=DNS:cdb-dev-$(REST_SERVER),DNS:www.example.com" > extfile.txt
+	$(ECHO) "subjectAltName=DNS:$(RESTPREFIX)-$(REST_SERVER).$(CDB_NAMESPACE),DNS:www.example.com" > extfile.txt
 	$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out $(SCRT)
 
 
