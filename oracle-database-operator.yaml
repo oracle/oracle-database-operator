@@ -3061,6 +3061,23 @@ rules:
   - ""
   resources:
   - configmaps
+  - deployments
+  - events
+  - pods
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
   - events
   - pods
   - pods/exec
@@ -4167,7 +4184,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-VV
+        image: container-registry.oracle.com/database/operator:latest
         imagePullPolicy: Always
         name: manager
         ports:
