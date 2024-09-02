@@ -134,6 +134,8 @@ In this setup example [provisioning example setup](./provisioning/example_setup_
 
   **Note** <span style="color:red"> In multi namespace enviroment you have to create specific secrets for each namespaces </span>
 
+  **Note** <span style="color:red"> In multi namespace enviroment you have to create specific secrets for each namespaces </span>
+
 ### Secrets for CDB CRD
 
   Create a secret file as shown here: [config/samples/multitenant/cdb_secret.yaml](../multitenant/provisioning/singlenamespace/cdb_create.yaml). Modify this file with the `base64` encoded values of the required passwords for CDB, and use this file to create the required secrets.
