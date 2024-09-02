@@ -295,7 +295,7 @@ func buildEnvVarsSpec(instance *databasealphav1.ShardingDatabase, variables []da
 		}
 
 		if instance.Spec.InvitedNodeSubnetFlag == "" {
-			 instance.Spec.InvitedNodeSubnetFlag = "FALSE"
+			instance.Spec.InvitedNodeSubnetFlag = "FALSE"
 
 		}
 		if strings.ToUpper(instance.Spec.InvitedNodeSubnetFlag) != "FALSE" {
@@ -1537,7 +1537,7 @@ func CheckIsDeleteFlag(delStr string, instance *databasealphav1.ShardingDatabase
 		return true
 	}
 	if strings.ToLower(delStr) == "failed" {
-		      // LogMessages("INFO", "manual intervention required", nil, instance, logger)
+		// LogMessages("INFO", "manual intervention required", nil, instance, logger)
 	}
 	return false
 }
