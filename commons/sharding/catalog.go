@@ -43,9 +43,8 @@ import (
 	"reflect"
 	"strconv"
 
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-
 	"github.com/go-logr/logr"
+	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -198,6 +197,12 @@ func buildVolumeSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraC
 		result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "orascript-vol5", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}})
 	}
 
+	if checkTdeWalletFlag(instance) {
+		if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
+			result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "shared-storage-vol8", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.TdeWalletPvc}}})
+		}
+	}
+
 	return result
 }
 
@@ -210,7 +215,7 @@ func buildContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, O
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
 			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{"NET_RAW"},
+				Add: []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
 			},
 		},
 		Resources: corev1.ResourceRequirements{
@@ -328,6 +333,15 @@ func buildVolumeMountSpecForCatalog(instance *databasev1alpha1.ShardingDatabase,
 		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "orastage-vol7", MountPath: oraStage})
 	}
 
+	if checkTdeWalletFlag(instance) {
+		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
+			result = append(result, corev1.VolumeMount{Name: instance.Name + "shared-storage", MountPath: getTdeWalletMountLoc(instance)})
+		} else {
+			if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
+				result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "shared-storage-vol8", MountPath: getTdeWalletMountLoc(instance)})
+			}
+		}
+	}
 	return result
 }
 
@@ -370,6 +384,34 @@ func volumeClaimTemplatesForCatalog(instance *databasev1alpha1.ShardingDatabase,
 
 	if len(OraCatalogSpex.PvMatchLabels) > 0 {
 		claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraCatalogSpex.PvMatchLabels}
+	}
+
+	if checkTdeWalletFlag(instance) {
+		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
+			{
+				pvcClaim := corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            instance.Name + "shared-storage",
+						Namespace:       instance.Spec.Namespace,
+						OwnerReferences: getOwnerRef(instance),
+						Labels:          buildLabelsForCatalog(instance, "sharding"),
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteMany,
+						},
+						StorageClassName: &instance.Spec.FssStorageClass,
+						Resources: corev1.VolumeResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraCatalogSpex.StorageSizeInGb), 10) + "Gi"),
+							},
+						},
+					},
+				}
+
+				claims = append(claims, pvcClaim)
+			}
+		}
 	}
 
 	return claims
@@ -454,7 +496,7 @@ func UpdateProvForCatalog(instance *databasev1alpha1.ShardingDatabase,
 			oraSpexRes := OraCatalogSpex.Resources
 
 			if !reflect.DeepEqual(shardContaineRes, oraSpexRes) {
-				isUpdate = true
+				isUpdate = false
 			}
 		}
 	}
