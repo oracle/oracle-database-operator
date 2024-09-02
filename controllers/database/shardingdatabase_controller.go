@@ -94,8 +94,8 @@ type ShardingDatabaseReconciler struct {
 	Namespace  string
 }
 
-var 	sentFailMsg=make(map[string]bool)
-var 	sentCompleteMsg=make(map[string]bool)
+var sentFailMsg = make(map[string]bool)
+var sentCompleteMsg = make(map[string]bool)
 
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases/status,verbs=get;update;patch
@@ -1350,7 +1350,7 @@ func (r *ShardingDatabaseReconciler) updateShardTopologyShardsInGsm(instance *da
 		for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
 			OraShardSpex := instance.Spec.Shard[i]
 			if strings.ToLower(OraShardSpex.IsDelete) == "failed" {
-				 continue
+				continue
 			}
 			//	stateStr := shardingv1.GetGsmShardStatus(instance, OraShardSpex.Name)
 			if !shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
@@ -1575,12 +1575,12 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev1alpha1
 					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev1alpha1.AddingShardErrorState))
 					title = "Shard Addition Failure"
 					message = "Error occurred during shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " addition."
-					shardingv1.LogMessages("INFO", title + ":" + message, nil, instance, r.Log)
+					shardingv1.LogMessages("INFO", title+":"+message, nil, instance, r.Log)
 					if sentFailMsg[OraShardSpex.Name] != true {
-					   r.sendMessage(instance, title, message)
+						r.sendMessage(instance, title, message)
 					}
-					sentFailMsg[OraShardSpex.Name]=true
-					sentCompleteMsg[OraShardSpex.Name]=false
+					sentFailMsg[OraShardSpex.Name] = true
+					sentCompleteMsg[OraShardSpex.Name] = false
 					deployFlag = false
 				}
 			}
@@ -1631,13 +1631,13 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev1alpha1.Sha
 	if oldStateStr != string(databasev1alpha1.ShardOnlineState) {
 		title = "Shard Addition Completed"
 		message = "Shard addition completed for shard " + shardingv1.GetFmtStr(shardSfSet.Name) + " in GSM."
-		shardingv1.LogMessages("INFO", title + ":" + message, nil, instance, r.Log)
+		shardingv1.LogMessages("INFO", title+":"+message, nil, instance, r.Log)
 		if sentCompleteMsg[shardSfSet.Name] != true {
-       r.sendMessage(instance, title, message)
+			r.sendMessage(instance, title, message)
 		}
 
-	  sentCompleteMsg[shardSfSet.Name] = true
-	  sentFailMsg[shardSfSet.Name] = false
+		sentCompleteMsg[shardSfSet.Name] = true
+		sentFailMsg[shardSfSet.Name] = false
 	}
 	return nil
 }
@@ -1745,10 +1745,10 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev1alpha1.Shar
 							if err == nil {
 								break
 							} else {
-	              if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
-                   // If ShardingType is not "USER", do not perform the patching.. continue
-		               continue
-	              }
+								if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
+									// If ShardingType is not "USER", do not perform the patching.. continue
+									continue
+								}
 								instance.Spec.Shard[i].IsDelete = "failed"
 								err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
 								if err != nil {
@@ -1948,15 +1948,15 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev1alpha
 	message := "Inside the deployStatefulSet function"
 	shardingv1.LogMessages("DEBUG", message, nil, instance, r.Log)
 	// See if StatefulSets already exists and create if it doesn't
-        // Error : invalid memory address or nil pointer dereference" (runtime error: invalid memory address or nil pointer dereference)
-        // This happens during unit test cases
-        for i := 0; i < 5; i++ {
-                if r.Scheme == nil {
-                        time.Sleep(time.Second * 40)
-                } else {
-                        break
-                }
-        }
+	// Error : invalid memory address or nil pointer dereference" (runtime error: invalid memory address or nil pointer dereference)
+	// This happens during unit test cases
+	for i := 0; i < 5; i++ {
+		if r.Scheme == nil {
+			time.Sleep(time.Second * 40)
+		} else {
+			break
+		}
+	}
 	controllerutil.SetControllerReference(instance, dep, r.Scheme)
 	found := &appsv1.StatefulSet{}
 	err := r.Client.Get(context.TODO(), types.NamespacedName{
@@ -2008,8 +2008,8 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev1alpha1.
 	msg = "checkShardState():ShardType=" + strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType))
 	shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
 	if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
-     // ShardingType is not "USER", so return
-		 return err
+		// ShardingType is not "USER", so return
+		return err
 	}
 
 	if len(instance.Status.Gsm.Shards) > 0 {
@@ -2021,10 +2021,10 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev1alpha1.
 				err = fmt.Errorf(eventMsg)
 				break
 			} else if currState == string(databasev1alpha1.DeletingState) {
-		    eventMsg = "Shard Deletion in progress. Requeuing"
-        err = fmt.Errorf(eventMsg)
+				eventMsg = "Shard Deletion in progress. Requeuing"
+				err = fmt.Errorf(eventMsg)
 				err = nil
-		    break
+				break
 			} else if OraShardSpex.IsDelete == "failed" {
 				eventMsg = "Shard Deletion  failed. Manual intervention required. Requeuing"
 				err = fmt.Errorf(eventMsg)
@@ -2039,11 +2039,11 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev1alpha1.
 				break
 			} else {
 				eventMsg = "checkShardState() : Shard State=[" + currState + "]"
-        shardingv1.LogMessages("INFO", eventMsg, nil, instance, r.Log)
+				shardingv1.LogMessages("INFO", eventMsg, nil, instance, r.Log)
 				err = nil
 			}
 		}
-	  r.publishEvents(instance, eventMsg, currState)
+		r.publishEvents(instance, eventMsg, currState)
 	}
 	return err
 }
