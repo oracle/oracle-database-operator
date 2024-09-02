@@ -1,8 +1,8 @@
-# Scale Out - Add Shards to an existing Oracle Sharded Database provisioned earlier with System Sharding
+# Scale Out - Add Shards to an existing Oracle Sharded Database provisioned earlier with System-Managed Sharding
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-This use case demonstrates adding a new shard to an existing Oracle Database sharding topology with System Sharding provisioned earlier using Oracle Database Sharding controller.
+This use case demonstrates adding a new shard to an existing Oracle Database sharding topology with System-Managed Sharding provisioned earlier using Oracle Database Sharding controller.
 
 In this use case, the existing Oracle Database sharding topology is having:
 
@@ -15,6 +15,7 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
   * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_extshard.yaml`.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
+  * If the existing Sharding Topology was deployed using [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then the additional parameter `dbEdition: "free"` will be needed for the below .yaml file as well.
 
 This use case adds two new shards `shard4`,`shard5` to above Sharding Topology.
 

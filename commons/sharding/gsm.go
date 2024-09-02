@@ -466,7 +466,7 @@ func UpdateProvForGsm(instance *databasev1alpha1.ShardingDatabase,
 			oraSpexRes := OraGsmSpex.Resources
 
 			if !reflect.DeepEqual(shardContaineRes, oraSpexRes) {
-				isUpdate = true
+				isUpdate = false
 			}
 		}
 	}

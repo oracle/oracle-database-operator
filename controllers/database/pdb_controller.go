@@ -44,6 +44,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+
 	//"encoding/pem"
 	"errors"
 	"fmt"
@@ -59,6 +60,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	//metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -119,10 +121,13 @@ var (
 )
 
 const PDBFinalizer = "database.oracle.com/PDBfinalizer"
+const ONE = 1
+const ZERO = 0
 
 var tdePassword string
 var tdeSecret string
 var floodcontrol bool = false
+var assertivePdbDeletion bool = false /* Global variable for assertive pdb deletion */
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=pdbs/status,verbs=get;update;patch
@@ -133,7 +138,10 @@ var floodcontrol bool = false
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups='',resources=statefulsets/finalizers,verbs=get;list;watch;create;update;patch;delete
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> gitlab-origin/master
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
@@ -183,9 +191,9 @@ func (r *PDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	// Finalizer section
-	err = r.managePDBDeletion(ctx, req, pdb)
+	err = r.managePDBDeletion2(ctx, req, pdb)
 	if err != nil {
-		log.Info("Reconcile queued")
+		log.Info("managePDBDeletion2 Error Deleting resource ")
 		return requeueY, nil
 	}
 
@@ -652,6 +660,9 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		return nil
 	}
 
+	pdbAdminName = strings.TrimSuffix(pdbAdminName, "\n")
+	pdbAdminPwd = strings.TrimSuffix(pdbAdminPwd, "\n")
+
 	values := map[string]string{
 		"method":              "CREATE",
 		"pdb_name":            pdb.Spec.PDBName,
@@ -681,7 +692,6 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		values["tdeSecret"] = tdeSecret
 	}
 
-	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 
 	pdb.Status.TotalSize = pdb.Spec.TotalSize
@@ -705,6 +715,10 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		ParseTnsAlias(&(pdb.Status.ConnString), &(pdb.Spec.PDBName))
 	}
 
+	assertivePdbDeletion = pdb.Spec.AssertivePdbDeletion
+	if pdb.Spec.AssertivePdbDeletion == true {
+		r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Created", "PDB '%s' assertive pdb deletion turned on", pdb.Spec.PDBName)
+	}
 	log.Info("New connect strinng", "tnsurl", cdb.Spec.DBTnsurl)
 	log.Info("Created PDB Resource", "PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
@@ -786,6 +800,11 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 		ParseTnsAlias(&(pdb.Status.ConnString), &(pdb.Spec.PDBName))
 	}
 
+	assertivePdbDeletion = pdb.Spec.AssertivePdbDeletion
+	if pdb.Spec.AssertivePdbDeletion == true {
+		r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Clone", "PDB '%s' assertive pdb deletion turned on", pdb.Spec.PDBName)
+	}
+
 	log.Info("Cloned PDB successfully", "Source PDB Name", pdb.Spec.SrcPDBName, "Clone PDB Name", pdb.Spec.PDBName)
 	r.getPDBState(ctx, req, pdb)
 	return nil
@@ -845,8 +864,6 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 		values["asClone"] = strconv.FormatBool(*(pdb.Spec.AsClone))
 	}
 
-	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
-	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/"
 
 	pdb.Status.TotalSize = pdb.Spec.TotalSize
@@ -866,6 +883,11 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+	}
+
+	assertivePdbDeletion = pdb.Spec.AssertivePdbDeletion
+	if pdb.Spec.AssertivePdbDeletion == true {
+		r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Plugged", "PDB '%s' assertive pdb deletion turned on", pdb.Spec.PDBName)
 	}
 
 	log.Info("Successfully plugged PDB", "PDB Name", pdb.Spec.PDBName)
@@ -915,7 +937,6 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 		values["tdeExport"] = strconv.FormatBool(*(pdb.Spec.TDEExport))
 	}
 
-	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
 	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.PDBName + "/"
 
 	log.Info("CallAPI(url)", "url", url)
@@ -1011,7 +1032,6 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 	log.Info("PDB STATUS OPENMODE", "pdb.Status.OpenMode=", pdb.Status.OpenMode)
 
 	pdbName := pdb.Spec.PDBName
-	//url := "https://" + pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
 	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
 
 	pdb.Status.Phase = pdbPhaseModify
@@ -1055,8 +1075,6 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 	}
 
 	pdbName := pdb.Spec.PDBName
-	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
-	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
 	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
 
 	pdb.Status.Msg = "Getting PDB state"
@@ -1108,8 +1126,6 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 	}
 
 	pdbName := pdb.Spec.PDBName
-	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
-	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
 	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
 
 	pdb.Status.Msg = "Mapping PDB"
@@ -1129,12 +1145,15 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 		log.Error(err, "Failed to get state of PDB :"+pdbName, "err", err.Error())
 	}
 
-	//fmt.Printf("%+v\n", objmap)
 	totSizeInBytes := objmap["total_size"].(float64)
 	totSizeInGB := totSizeInBytes / 1024 / 1024 / 1024
 
 	pdb.Status.OpenMode = objmap["open_mode"].(string)
 	pdb.Status.TotalSize = fmt.Sprintf("%.2f", totSizeInGB) + "G"
+	assertivePdbDeletion = pdb.Spec.AssertivePdbDeletion
+	if pdb.Spec.AssertivePdbDeletion == true {
+		r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Mapped", "PDB '%s' assertive pdb deletion turned on", pdb.Spec.PDBName)
+	}
 
 	if cdb.Spec.DBServer != "" {
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
@@ -1188,49 +1207,72 @@ func (r *PDBReconciler) deletePDB(ctx context.Context, req ctrl.Request, pdb *db
 	return nil
 }
 
-/*
-************************************************
+/*************************************************
   - Check PDB deletion
-    /***********************************************
-*/
-func (r *PDBReconciler) managePDBDeletion(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
+**************************************************/
+
+func (r *PDBReconciler) managePDBDeletion2(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 	log := r.Log.WithValues("managePDBDeletion", req.NamespacedName)
-
-	// Check if the PDB instance is marked to be deleted, which is
-	// indicated by the deletion timestamp being set.
-	isPDBMarkedToBeDeleted := pdb.GetDeletionTimestamp() != nil
-	if isPDBMarkedToBeDeleted {
-		log.Info("Marked to be deleted")
-		pdb.Status.Phase = pdbPhaseDelete
-		pdb.Status.Status = true
-		r.Status().Update(ctx, pdb)
-
-		if controllerutil.ContainsFinalizer(pdb, PDBFinalizer) {
-			// Remove PDBFinalizer. Once all finalizers have been
-			// removed, the object will be deleted.
-			log.Info("Removing finalizer")
-			controllerutil.RemoveFinalizer(pdb, PDBFinalizer)
-			err := r.Update(ctx, pdb)
-			if err != nil {
-				log.Info("Could not remove finalizer", "err", err.Error())
+	if pdb.ObjectMeta.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(pdb, PDBFinalizer) {
+			controllerutil.AddFinalizer(pdb, PDBFinalizer)
+			if err := r.Update(ctx, pdb); err != nil {
 				return err
 			}
-			log.Info("Successfully removed PDB resource")
-			return nil
 		}
+	} else {
+		log.Info("Pdb marked to be delted")
+		if controllerutil.ContainsFinalizer(pdb, PDBFinalizer) {
+			if assertivePdbDeletion == true {
+				log.Info("Deleting pdb CRD: Assertive approach is turned on ")
+				cdb, err := r.getCDBResource(ctx, req, pdb)
+				if err != nil {
+					log.Error(err, "Cannont find cdb resource ", "err", err.Error())
+					return err
+				}
+
+				pdbName := pdb.Spec.PDBName
+				if pdb.Status.OpenMode == "READ WRITE" {
+					valuesclose := map[string]string{
+						"state":        "CLOSE",
+						"modifyOption": "IMMEDIATE",
+						"getScript":    "FALSE"}
+					url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
+					_, errclose := r.callAPI(ctx, req, pdb, url, valuesclose, "POST")
+					if errclose != nil {
+						log.Info("Warning error closing pdb continue anyway")
+					}
+				}
+
+				valuesdrop := map[string]string{
+					"action":    "INCLUDING",
+					"getScript": "FALSE"}
+				url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
+
+				log.Info("Call Delete()")
+				_, errdelete := r.callAPI(ctx, req, pdb, url, valuesdrop, "DELETE")
+				if errdelete != nil {
+					log.Error(errdelete, "Fail to delete pdb :"+pdb.Name, "err", err.Error())
+					return errdelete
+				}
+			} /* END OF ASSERTIVE SECTION */
+
+			log.Info("Marked to be deleted")
+			pdb.Status.Phase = pdbPhaseDelete
+			pdb.Status.Status = true
+			r.Status().Update(ctx, pdb)
+
+			controllerutil.RemoveFinalizer(pdb, PDBFinalizer)
+			if err := r.Update(ctx, pdb); err != nil {
+				log.Info("Cannot remove finalizer")
+				return err
+			}
+
+		}
+
+		return nil
 	}
 
-	// Add finalizer for this CR
-	if !controllerutil.ContainsFinalizer(pdb, PDBFinalizer) {
-		log.Info("Adding finalizer")
-		controllerutil.AddFinalizer(pdb, PDBFinalizer)
-		err := r.Update(ctx, pdb)
-		if err != nil {
-			log.Info("Could not add finalizer", "err", err.Error())
-			return err
-		}
-		pdb.Status.Status = false
-	}
 	return nil
 }
 
