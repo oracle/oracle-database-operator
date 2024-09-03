@@ -20,6 +20,7 @@ In this v1.1.0 production release, `OraOperator` supports the following database
 Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
 
 ## New in V1.1.0 Release
+* Namespace scope deployment option
 * Enhanced security with namespace scope deployment option
 * Support for Oracle Database 23ai Free (with SIDB)
 * Automatic Storage Expansion for SIDB and Sharded DB

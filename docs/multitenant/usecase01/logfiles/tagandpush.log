@@ -1,0 +1,14 @@
+/usr/bin/docker tag oracle/ords-dboper:latest [.......]/ords-dboper:latest
+
+/usr/bin/docker push [your container registry]/ords-dboper:latest
+The push refers to repository [your container registry]
+0405aac3af1c: Pushed
+6be46e8e1e21: Pushed
+c9884830a66d: Pushed
+a46244557bb9: Pushing [===========================>                       ]  261.8MB/469.9MB
+f988845e261e: Pushed
+fe07ec0b1f5a: Layer already exists
+2ac63de5f950: Layer already exists
+386cd7a64c01: Layer already exists
+826c69252b8b: Layer already exists
+
