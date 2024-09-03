@@ -63,12 +63,33 @@ import (
 // ExecCMDInContainer execute command in first container of a pod
 func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasealphav1.ShardingDatabase, logger logr.Logger) (string, string, error) {
 
+	var err1  error = nil
 	var msg string
 	var (
 		execOut bytes.Buffer
 		execErr bytes.Buffer
 	)
 
+	for i := 0; i < 5; i++ {
+           if scheme.Scheme == nil {
+              time.Sleep(time.Second * 40)
+           } else {
+              break
+           }
+        }
+
+	if kubeClient == nil {
+	      msg = "ExecCommand() : kubeClient is nil"
+	      err1 = fmt.Errorf(msg)
+	      return "Error:","kubeClient is nil",err1
+        }
+	if kubeConfig == nil {
+	      msg = "ExecCommand() : kubeConfig is nil"
+	      err1 = fmt.Errorf(msg)
+	      return "Error:","kubeConfig is nil",err1
+	}
+
+	msg = ""
 	req := kubeClient.CoreV1().RESTClient().
 		Post().
 		Namespace(instance.Spec.Namespace).

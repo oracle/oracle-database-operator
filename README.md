@@ -20,6 +20,7 @@ In this v1.1.0 production release, `OraOperator` supports the following database
 Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
 
 ## New in V1.1.0 Release
+* Namespace scope deployment option
 * Enhanced security with namespace scope deployment option
 * Support for Oracle Database 23ai Free (with SIDB)
 * Automatic Storage Expansion for SIDB and Sharded DB
@@ -125,7 +126,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   ```sh
     kubectl apply -f rbac/node-rbac.yaml
   ```
-
+# Installation
 ## Install Oracle DB Operator
 
    After you have completed the preceding prerequisite changes, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.

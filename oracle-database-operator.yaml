@@ -165,6 +165,8 @@ spec:
                 type: string
               displayName:
                 type: string
+              isLongTermBackup:
+                type: boolean
               ociConfig:
                 description: "*********************** *\tOCI config ***********************"
                 properties:
@@ -173,6 +175,8 @@ spec:
                   secretName:
                     type: string
                 type: object
+              retentionPeriodInDays:
+                type: integer
               target:
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster Important: Run "make" to regenerate code after modifying this file'
                 properties:
@@ -1770,6 +1774,9 @@ spec:
               asClone:
                 description: Indicate if 'AS CLONE' option should be used in the command to plug in a PDB. This property is applicable when the Action property is PLUG but not required.
                 type: boolean
+              assertivePdbDeletion:
+                description: turn on the assertive approach to delete pdb resource kubectl delete pdb ..... automatically triggers the pluggable database deletion
+                type: boolean
               cdbName:
                 description: Name of the CDB
                 type: string
@@ -2077,7 +2084,7 @@ spec:
                       description: PullPolicy describes a policy for if/when to pull a container image
                       type: string
                     isDelete:
-                      type: boolean
+                      type: string
                     label:
                       type: string
                     name:
@@ -2140,6 +2147,8 @@ spec:
                   - name
                   type: object
                 type: array
+              dbEdition:
+                type: string
               dbImage:
                 type: string
               dbImagePullSecret:
@@ -2169,6 +2178,8 @@ spec:
                 - name
                 - pwdFileName
                 type: object
+              fssStorageClass:
+                type: string
               gsm:
                 items:
                   description: GsmSpec defines the desired state of GsmSpec
@@ -2193,7 +2204,7 @@ spec:
                       description: PullPolicy describes a policy for if/when to pull a container image
                       type: string
                     isDelete:
-                      type: boolean
+                      type: string
                     label:
                       type: string
                     name:
@@ -2370,7 +2381,7 @@ spec:
               isExternalSvc:
                 type: boolean
               isTdeWallet:
-                type: boolean
+                type: string
               liveinessCheckPeriod:
                 type: integer
               namespace:
@@ -2424,7 +2435,12 @@ spec:
                       description: PullPolicy describes a policy for if/when to pull a container image
                       type: string
                     isDelete:
-                      type: boolean
+                      enum:
+                      - enable
+                      - disable
+                      - failed
+                      - force
+                      type: string
                     label:
                       type: string
                     name:
@@ -2506,6 +2522,10 @@ spec:
               stagePvcName:
                 type: string
               storageClass:
+                type: string
+              tdeWalletPvc:
+                type: string
+              tdeWalletPvcMountLocation:
                 type: string
             required:
             - catalog
@@ -2770,6 +2790,23 @@ spec:
                 type: integer
               replicas:
                 type: integer
+              resources:
+                properties:
+                  limits:
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                    type: object
+                  requests:
+                    properties:
+                      cpu:
+                        type: string
+                      memory:
+                        type: string
+                    type: object
+                type: object
               serviceAccountName:
                 type: string
               serviceAnnotations:
@@ -3085,6 +3122,21 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - deployments
+  - events
+  - pods
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - events
   verbs:
   - create
@@ -3112,6 +3164,7 @@ rules:
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - ''''''
   resources:
@@ -3128,6 +3181,12 @@ rules:
   - apps
   resources:
   - configmaps
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apps
+  resources:
   - deployments
   - pods
   - services
@@ -3180,6 +3239,26 @@ rules:
   - events
   - namespaces
   - persistentvolumeclaims
+  - pods
+  - pods/exec
+  - pods/log
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - containers
+  - events
+  - namespaces
   - pods
   - pods/exec
   - pods/log
@@ -3489,7 +3568,6 @@ rules:
 - apiGroups:
   - monitoring.coreos.com
   resources:
-  - prometheusrules
   - servicemonitors
   verbs:
   - create
@@ -3786,6 +3864,26 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-shardingdatabase
+  failurePolicy: Fail
+  name: mshardingdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   - v1beta1
   clientConfig:
     service:
@@ -3804,6 +3902,26 @@ webhooks:
     - UPDATE
     resources:
     - singleinstancedatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-observability-oracle-com-v1alpha1-databaseobserver
+  failurePolicy: Fail
+  name: mdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
   sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -3979,6 +4097,27 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-shardingdatabase
+  failurePolicy: Fail
+  name: vshardingdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   - v1beta1
   clientConfig:
     service:
@@ -3998,6 +4137,26 @@ webhooks:
     - DELETE
     resources:
     - singleinstancedatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-observability-oracle-com-v1alpha1-databaseobserver
+  failurePolicy: Fail
+  name: vdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
   sideEffects: None
 ---
 apiVersion: apps/v1
