@@ -13,7 +13,7 @@
 
 > &#9758; The examples of this folder are based on single namespace   **oracle-database-operator-system**
 
-This page explains how to plug and unplug database a pdb; it assumes that you have already configured a pluggable database (see usecase01) 
+This page explains how to plug and unplug database a pdb; it assumes that you have already configured a pluggable database (see [usecase01](../usecase01/README.md)) 
 The following table reports the parameters required to configure and use oracle multi tenant controller for pluggable database lifecycle management.
 
 | yaml file parameters            	| value  	| description /ords parameter                     |
@@ -78,7 +78,7 @@ The following table reports the parameters required to configure and use oracle 
 
 ### UNPLUG DATABASE 
 
-Use the following command to check kubernets pdb resources. Note that the output of the commands can be tailored to fit to your needs. Just check the structure of pdb resource  **kubectl get pdbs -n oracle-database-operator-system -o=json** and modify the script accordingly. For the sake of simplicity put this command in a single script **checkpdbs.sh**.
+Use the following command to check kubernets pdb resources. Note that the output of the commands can be tailored to meet your needs. Just check the structure of pdb resource  **kubectl get pdbs -n oracle-database-operator-system -o=json** and modify the script accordingly. For the sake of simplicity put this command in a single script **checkpdbs.sh**.
 
 ```bash
 kubectl get pdbs -n oracle-database-operator-system -o=jsonpath='{range .items[*]}
@@ -92,7 +92,7 @@ kubectl get pdbs -n oracle-database-operator-system -o=jsonpath='{range .items[*
 {"\n"}{end}'
 ```
 
-We assume that the pluggable database pdbdev is already configured on opened in read write mode  
+We assume that the pluggable database pdbdev is already configured and opened in read write mode  
 
 ```bash
 ./checkpdbs.sh
@@ -106,7 +106,7 @@ MSG=Success
 
 ```
 
-Prepare a new yaml file **pdb_unplug.yaml**  to unplug the pdbdev database. Make sure that the  path of the xml file is correct and check the existence of all the required secrets.
+Prepare a new yaml file **pdb_unplug.yaml**  to unplug the pdbdev database. Make sure that the  path of the xml file is correct and check the existence of all the required secrets. Do not reuse an existing xml files.
 
 ```yaml
 # Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
@@ -248,7 +248,7 @@ Completed: DROP PLUGGABLE DATABASE "pdbdev" KEEP DATAFILES
 ```
 
 
-login to the server and check xml file existence. Get the datafile path on the ASM filesystem.
+login to the server and check xml file existence. Verify the datafile path on the ASM filesystem.
 
 ```bash
 ls -ltr /tmp/pdbunplug.xml

@@ -94,7 +94,7 @@ func CreateAndGetDbcsId(logger logr.Logger, kubeClient client.Client, dbClient d
 	dbcsDetails.CompartmentId = common.String(dbcs.Spec.DbSystem.CompartmentId)
 	dbcsDetails.SubnetId = common.String(dbcs.Spec.DbSystem.SubnetId)
 	dbcsDetails.Shape = common.String(dbcs.Spec.DbSystem.Shape)
-        dbcsDetails.Domain = common.String(dbcs.Spec.DbSystem.Domain)
+	dbcsDetails.Domain = common.String(dbcs.Spec.DbSystem.Domain)
 	if dbcs.Spec.DbSystem.DisplayName != "" {
 		dbcsDetails.DisplayName = common.String(dbcs.Spec.DbSystem.DisplayName)
 	}
@@ -536,10 +536,10 @@ func GetResourceState(logger logr.Logger, dbClient database.DatabaseClient, Id s
 
 func SetDBCSStatus(dbClient database.DatabaseClient, dbcs *databasev1alpha1.DbcsSystem, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient) error {
 
-         if dbcs.Spec.Id == nil {
-                dbcs.Status.State = "FAILED"
-                return nil
-        }
+	if dbcs.Spec.Id == nil {
+		dbcs.Status.State = "FAILED"
+		return nil
+	}
 
 	dbcsId := *dbcs.Spec.Id
 

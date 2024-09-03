@@ -1,4 +1,4 @@
-# Provisioning Oracle Sharded Database with System Sharding and send Notification using OCI Notification Service
+# Provisioning Oracle Sharded Database with System-Managed Sharding and send Notification using OCI Notification Service
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
@@ -65,6 +65,9 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
   * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_send_notification.yaml`.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
+  * In case you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you will need to add the additional parameter `dbEdition: "free"` to the below .yaml file.
+  
+**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
 
 Use the file: [ssharding_shard_prov_send_notification.yaml](./ssharding_shard_prov_send_notification.yaml) for this use case as below:
 
