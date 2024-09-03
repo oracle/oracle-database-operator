@@ -54,8 +54,28 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - deployments
   - events
-  - nodes
+  - pods
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumeclaims
   - pods
   - pods/exec
@@ -70,9 +90,38 @@ rules:
   - update
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - persistentvolumes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - ''''''
   resources:
   - statefulsets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - pods
+  - services
   verbs:
   - create
   - delete
@@ -118,10 +167,30 @@ rules:
   - ""
   resources:
   - configmaps
+  - containers
   - events
   - namespaces
-  - nodes
   - persistentvolumeclaims
+  - pods
+  - pods/exec
+  - pods/log
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - containers
+  - events
+  - namespaces
   - pods
   - pods/exec
   - pods/log
@@ -428,3 +497,49 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - servicemonitors
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - observability.oracle.com
+  resources:
+  - databaseobservers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - observability.oracle.com
+  resources:
+  - databaseobservers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - observability.oracle.com
+  resources:
+  - databaseobservers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  verbs:
+  - get
+  - list
+  - watch

@@ -76,7 +76,8 @@ const dataguardBrokerFinalizer = "database.oracle.com/dataguardbrokerfinalizer"
 //+kubebuilder:rbac:groups=database.oracle.com,resources=dataguardbrokers,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=dataguardbrokers/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=dataguardbrokers/finalizers,verbs=update
-//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services;nodes;events,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services,verbs=create;delete;get;list;patch;update;watch
+//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -397,16 +398,16 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.D
 			log.Error(err, err.Error())
 			return requeueY
 		}
-		_, ok := dbSet[standbyDatabase.Status.Sid]
-		if ok {
-			log.Info("A database with the same SID is already configured in the DG")
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "A database with the same SID "+standbyDatabase.Status.Sid+" is already configured in the DG")
-			continue
-		}
 
 		// Check if dataguard broker is already configured for the standby database
 		if standbyDatabase.Status.DgBrokerConfigured {
 			log.Info("Dataguard broker for standbyDatabase : " + standbyDatabase.Name + " is already configured")
+			continue
+		}
+		_, ok := dbSet[standbyDatabase.Status.Sid]
+		if ok {
+			log.Info("A database with the same SID is already configured in the DG")
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "A database with the same SID "+standbyDatabase.Status.Sid+" is already configured in the DG")
 			continue
 		}
 
@@ -834,6 +835,22 @@ func (r *DataguardBrokerReconciler) SetAsPrimaryDatabase(sidbSid string, targetS
 		return requeueY
 	}
 
+	dbInDgConfig := false
+	for i := 0; i < len(databases); i++ {
+		splitstr := strings.Split(databases[i], ":")
+		if strings.ToUpper(splitstr[0]) == strings.ToUpper(targetSid) {
+			dbInDgConfig = true
+			break
+		}
+	}
+
+	if !dbInDgConfig {
+		eventReason := "Cannot Switchover"
+		eventMsg := fmt.Sprintf("Database %s not a part of the dataguard configuration", targetSid)
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		return requeueN
+	}
+
 	// Fetch the current Primary database
 	primarySid := dbcommons.GetPrimaryDatabase(databases)
 	if strings.EqualFold(primarySid, targetSid) {
@@ -1125,20 +1142,6 @@ func (r *DataguardBrokerReconciler) cleanupDataguardBroker(req ctrl.Request, ctx
 		return result, nil
 	}
 
-	// Get its Role
-	out, err := dbcommons.GetDatabaseRole(sidbReadyPod, r, r.Config, ctx, req)
-	if err != nil {
-		log.Error(err, err.Error())
-		return requeueY, err
-	}
-	// check if its PRIMARY database
-	if strings.ToUpper(out) != "PRIMARY" {
-		eventReason := "Deletion"
-		eventMsg := "DataGuard Broker cannot be deleted since primaryDatabaseRef is not in PRIMARY role"
-		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-		return requeueY, errors.New(eventMsg)
-	}
-
 	// Get Primary database to remove dataguard configuration
 	_, _, err = dbcommons.GetDatabasesInDgConfig(sidbReadyPod, r, r.Config, ctx, req)
 	if err != nil {
@@ -1148,7 +1151,7 @@ func (r *DataguardBrokerReconciler) cleanupDataguardBroker(req ctrl.Request, ctx
 
 	//primarySid := dbcommons.GetPrimaryDatabase(databases)
 
-	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 		fmt.Sprintf("echo -e  \"%s\"  | dgmgrl / as sysdba ", dbcommons.RemoveDataguardConfiguration))
 	if err != nil {
 		log.Error(err, err.Error())

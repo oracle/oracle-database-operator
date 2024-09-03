@@ -41,21 +41,31 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"go.uber.org/zap/zapcore"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
+
+	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
+	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -66,7 +76,8 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
+	utilruntime.Must(observabilityv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(monitorv1.AddToScheme(scheme))
 	utilruntime.Must(databasev1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
@@ -88,13 +99,25 @@ func main() {
 
 	ctrl.SetLogger(zap.New(func(o *zap.Options) { *o = *options }))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:             scheme,
-		MetricsBindAddress: metricsAddr,
-		Port:               9443,
-		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "a9d608ea.oracle.com",
-	})
+	watchNamespaces, err := getWatchNamespace()
+	if err != nil {
+		setupLog.Error(err, "Failed to get watch namespaces")
+		os.Exit(1)
+	}
+	opt := ctrl.Options{
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: metricsAddr,
+		},
+		LeaderElection:   enableLeaderElection,
+		LeaderElectionID: "a9d608ea.oracle.com",
+		NewCache: func(config *rest.Config, opts cache.Options) (cache.Cache, error) {
+			opts.DefaultNamespaces = watchNamespaces
+			return cache.New(config, opts)
+		},
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), opt)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
@@ -226,6 +249,13 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
 			os.Exit(1)
 		}
+		if err = (&databasev1alpha1.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
+		}
+		if err = (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
+			os.Exit(1)
+		}
 	}
 
 	// PDB Reconciler
@@ -263,6 +293,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Observability DatabaseObserver Reconciler
+	if err = (&observabilitycontroller.DatabaseObserverReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("observability").WithName("DatabaseObserver"),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("DatabaseObserver"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DatabaseObserver")
+		os.Exit(1)
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs
@@ -279,4 +320,36 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func getWatchNamespace() (map[string]cache.Config, error) {
+	// WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE
+	// which specifies the Namespace to watch.
+	// An empty value means the operator is running with cluster scope.
+
+	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
+	var nsmap map[string]cache.Config
+	ns, found := os.LookupEnv(watchNamespaceEnvVar)
+	values := strings.Split(ns, ",")
+	if len(values) == 1 && values[0] == "" {
+		fmt.Printf(":CLUSTER SCOPED:\n")
+		return nil, nil
+	}
+	fmt.Printf(":NAMESPACE SCOPED:\n")
+	fmt.Printf("WATCH LIST=%s\n", values)
+	nsmap = make(map[string]cache.Config, len(values))
+	if !found {
+		return nsmap, fmt.Errorf("%s must be set", watchNamespaceEnvVar)
+	}
+
+	if ns == "" {
+		return nil, nil
+	}
+
+	for _, ns := range values {
+		nsmap[ns] = cache.Config{}
+	}
+
+	return nsmap, nil
+
 }

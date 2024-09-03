@@ -132,6 +132,26 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v1alpha1-shardingdatabase
+  failurePolicy: Fail
+  name: mshardingdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   - v1beta1
   clientConfig:
     service:
@@ -150,6 +170,26 @@ webhooks:
     - UPDATE
     resources:
     - singleinstancedatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-observability-oracle-com-v1alpha1-databaseobserver
+  failurePolicy: Fail
+  name: mdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
   sideEffects: None
 
 ---
@@ -325,6 +365,27 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v1alpha1-shardingdatabase
+  failurePolicy: Fail
+  name: vshardingdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   - v1beta1
   clientConfig:
     service:
@@ -344,4 +405,24 @@ webhooks:
     - DELETE
     resources:
     - singleinstancedatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-observability-oracle-com-v1alpha1-databaseobserver
+  failurePolicy: Fail
+  name: vdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
   sideEffects: None

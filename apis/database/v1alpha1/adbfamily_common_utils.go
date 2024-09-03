@@ -173,9 +173,9 @@ func traverse(lastSpec interface{}, curSpec interface{}) bool {
 	return changed
 }
 
-// 1. If the current field is with a zero value, then the field is unchanged.
-// 2. If the current field is NOT with a zero value, then we want to comapre it with the last field.
-//    In this case if the last field is with a zero value, then the field is changed
+//  1. If the current field is with a zero value, then the field is unchanged.
+//  2. If the current field is NOT with a zero value, then we want to comapre it with the last field.
+//     In this case if the last field is with a zero value, then the field is changed
 func hasChanged(lastField reflect.Value, curField reflect.Value) bool {
 	zero := reflect.Zero(lastField.Type()).Interface()
 	lastFieldIsZero := reflect.DeepEqual(lastField.Interface(), zero)

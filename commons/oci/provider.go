@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2024 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -40,6 +40,8 @@ package oci
 
 import (
 	"errors"
+	"fmt"
+	"os"
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/common/auth"
@@ -65,7 +67,9 @@ type APIKeyAuth struct {
 }
 
 func GetOCIProvider(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
-	if authData.ConfigMapName != nil && authData.SecretName != nil {
+	if authData.ConfigMapName != nil && authData.SecretName == nil {
+		return getWorkloadIdentityProvider(kubeClient, authData)
+	} else if authData.ConfigMapName != nil && authData.SecretName != nil {
 		provider, err := getProviderWithAPIKey(kubeClient, authData)
 		if err != nil {
 			return nil, err
@@ -78,6 +82,30 @@ func GetOCIProvider(kubeClient client.Client, authData APIKeyAuth) (common.Confi
 		return nil, errors.New("both the OCI ConfigMap and the privateKey are required to authorize with API signing key; " +
 			"leave them both empty to authorize with Instance Principal")
 	}
+}
+
+func getWorkloadIdentityProvider(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
+	ociConfigMap, err := k8s.FetchConfigMap(kubeClient, authData.Namespace, *authData.ConfigMapName)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure configmap is set with proper data
+	if len(ociConfigMap.Data) == 0 {
+		return nil, fmt.Errorf("OCI ConfigMap %s has no data", ociConfigMap.Name)
+	}
+	region, ok := ociConfigMap.Data[regionKey]
+	if !ok || len(region) == 0 {
+		return nil, fmt.Errorf("OCI Region Key %s missing from OCI ConfigMap %s", regionKey, ociConfigMap.Name)
+	}
+	// OCI SDK requires specific, dynamic environment variables for workload identity.
+	if err = os.Setenv(auth.ResourcePrincipalVersionEnvVar, auth.ResourcePrincipalVersion2_2); err != nil {
+
+		return nil, fmt.Errorf("unable to set OCI SDK environment variable %s: %v", auth.ResourcePrincipalVersionEnvVar, err)
+	}
+	if err = os.Setenv(auth.ResourcePrincipalRegionEnvVar, region); err != nil {
+		return nil, fmt.Errorf("unable to set OCI SDK environment variable %s: %v", auth.ResourcePrincipalRegionEnvVar, err)
+	}
+	return auth.OkeWorkloadIdentityConfigurationProvider()
 }
 
 func getProviderWithAPIKey(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {

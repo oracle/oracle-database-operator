@@ -40,13 +40,18 @@ package commons
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"slices"
 
 	databasealphav1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 
 	"regexp"
 	"strconv"
 	"strings"
+
+	"os"
 
 	"github.com/go-logr/logr"
 	"github.com/oracle/oci-go-sdk/v65/common"
@@ -77,6 +82,7 @@ const (
 	oraRunAsUser              = int64(54321)
 	oraFsGroup                = int64(54321)
 	oraScriptMount            = "/opt/oracle/scripts/sharding/scripts"
+	oraDbScriptMount          = "/opt/oracle/scripts/sharding"
 	oraDataMount              = "/opt/oracle/oradata"
 	oraGsmDataMount           = "/opt/oracle/gsmdata"
 	oraConfigMapMount         = "/mnt/config-map"
@@ -91,6 +97,9 @@ const (
 	oraLocalOnsPort           = 6123
 	oraAgentPort              = 8080
 	ShardingDatabaseFinalizer = "Shardingdb.oracle.com"
+	TmpLoc                    = "/var/tmp"
+	connectFailureMaxTries    = 5
+	errorDialingBackendEOF    = "error dialing backend: EOF"
 )
 
 // Function to build the env var specification
@@ -98,43 +107,34 @@ func buildEnvVarsSpec(instance *databasealphav1.ShardingDatabase, variables []da
 	var result []corev1.EnvVar
 	var varinfo string
 	var sidFlag bool = false
-	var secretFlag bool = false
-	var pwdFileFLag bool = false
-	var pwdKeyFlag bool = false
+	//var sidValue string
+	var pdbValue string
 	var pdbFlag bool = false
 	var sDirectParam bool = false
 	var sGroup1Params bool = false
-	var sGroup2Params bool = false
+	//var sGroup2Params bool = false
 	var catalogParams bool = false
 	var oldPdbFlag bool = false
 	var oldSidFlag bool = false
 	var archiveLogFlag bool = false
 	var shardSetupFlag bool = false
+	var dbUnameFlag bool = false
+	var ofreePdbFlag bool = false
 
 	for _, variable := range variables {
 		if variable.Name == "ORACLE_SID" {
 			sidFlag = true
-		}
-		if variable.Name == "SECRET_VOLUME" {
-			secretFlag = true
-		}
-		if variable.Name == "COMMON_OS_PWD_FILE" {
-			pwdFileFLag = true
-		}
-		if variable.Name == "PWD_KEY" {
-			pwdKeyFlag = true
+			//sidValue = variable.Value
 		}
 		if variable.Name == "ORACLE_PDB" {
 			pdbFlag = true
+			pdbValue = variable.Value
 		}
 		if variable.Name == "SHARD_DIRECTOR_PARAMS" {
 			sDirectParam = true
 		}
 		if variable.Name == "SHARD1_GROUP_PARAMS" {
 			sGroup1Params = true
-		}
-		if variable.Name == "SHARD2_GROUP_PARAMS" {
-			sGroup2Params = true
 		}
 		if variable.Name == "CATALOG_PARAMS" {
 			catalogParams = true
@@ -151,8 +151,32 @@ func buildEnvVarsSpec(instance *databasealphav1.ShardingDatabase, variables []da
 		if variable.Name == "OLD_ORACLE_PDB" {
 			archiveLogFlag = true
 		}
+		if variable.Name == "DB_UNIQUE_NAME" {
+			dbUnameFlag = true
+		}
+		if variable.Name == "ORACLE_FREE_PDB" {
+			ofreePdbFlag = true
+		}
+
 		result = append(result, corev1.EnvVar{Name: variable.Name, Value: variable.Value})
 	}
+
+	if !dbUnameFlag {
+		if strings.ToLower(instance.Spec.DbEdition) == "free" {
+			result = append(result, corev1.EnvVar{Name: "DB_UNIQUE_NAME", Value: strings.ToUpper(name)})
+		}
+	}
+
+	if !ofreePdbFlag {
+		if strings.ToLower(instance.Spec.DbEdition) == "free" {
+			if pdbFlag {
+				result = append(result, corev1.EnvVar{Name: "ORACLE_FREE_PDB", Value: pdbValue})
+			} else {
+				result = append(result, corev1.EnvVar{Name: "ORACLE_FREE_PDB", Value: strings.ToUpper(name) + "PDB"})
+			}
+		}
+	}
+
 	if !shardSetupFlag {
 		if restype == "SHARD" {
 			result = append(result, corev1.EnvVar{Name: "SHARD_SETUP", Value: "true"})
@@ -172,46 +196,112 @@ func buildEnvVarsSpec(instance *databasealphav1.ShardingDatabase, variables []da
 			result = append(result, corev1.EnvVar{Name: "ENABLE_ARCHIVELOG", Value: "true"})
 		}
 	}
-
 	if !sidFlag {
-		if restype == "SHARD" {
-			result = append(result, corev1.EnvVar{Name: "ORACLE_SID", Value: strings.ToUpper(name)})
-		}
-		if restype == "CATALOG" {
-			result = append(result, corev1.EnvVar{Name: "ORACLE_SID", Value: strings.ToUpper(name)})
+		if strings.ToLower(instance.Spec.DbEdition) == "free" {
+			result = append(result, corev1.EnvVar{Name: "ORACLE_SID", Value: "FREE"})
+		} else {
+			if restype == "SHARD" {
+				result = append(result, corev1.EnvVar{Name: "ORACLE_SID", Value: strings.ToUpper(name)})
+			}
+			if restype == "CATALOG" {
+				result = append(result, corev1.EnvVar{Name: "ORACLE_SID", Value: strings.ToUpper(name)})
+			}
 		}
 	}
 	if !pdbFlag {
-		if restype == "SHARD" {
-			result = append(result, corev1.EnvVar{Name: "ORACLE_PDB", Value: strings.ToUpper(name) + "PDB"})
+		if strings.ToLower(instance.Spec.DbEdition) == "free" {
+			result = append(result, corev1.EnvVar{Name: "ORACLE_PDB", Value: "FREEPDB"})
+		} else {
+			if restype == "SHARD" {
+				result = append(result, corev1.EnvVar{Name: "ORACLE_PDB", Value: strings.ToUpper(name) + "PDB"})
+			}
+			if restype == "CATALOG" {
+				result = append(result, corev1.EnvVar{Name: "ORACLE_PDB", Value: strings.ToUpper(name) + "PDB"})
+			}
 		}
-		if restype == "CATALOG" {
-			result = append(result, corev1.EnvVar{Name: "ORACLE_PDB", Value: strings.ToUpper(name) + "PDB"})
-		}
 	}
-	if !secretFlag {
-		result = append(result, corev1.EnvVar{Name: "SECRET_VOLUME", Value: "/mnt/secrets"})
+	// Secret Settings
+
+	if strings.ToLower(instance.Spec.DbSecret.EncryptionType) != "base64" {
+		result = append(result, corev1.EnvVar{Name: "PWD_KEY", Value: instance.Spec.DbSecret.KeyFileName})
+		result = append(result, corev1.EnvVar{Name: "COMMON_OS_PWD_FILE", Value: instance.Spec.DbSecret.PwdFileName})
+	} else {
+		result = append(result, corev1.EnvVar{Name: "PASSWORD_FILE", Value: instance.Spec.DbSecret.PwdFileName})
 	}
-	if !pwdFileFLag {
-		result = append(result, corev1.EnvVar{Name: "COMMON_OS_PWD_FILE", Value: "common_os_pwdfile.enc"})
+	if len(instance.Spec.DbSecret.PwdFileMountLocation) != 0 {
+		result = append(result, corev1.EnvVar{Name: "SECRET_VOLUME", Value: instance.Spec.DbSecret.PwdFileMountLocation})
+	} else {
+		result = append(result, corev1.EnvVar{Name: "SECRET_VOLUME", Value: oraSecretMount})
 	}
-	if !pwdKeyFlag {
-		result = append(result, corev1.EnvVar{Name: "PWD_KEY", Value: "pwd.key"})
+	if len(instance.Spec.DbSecret.KeyFileMountLocation) != 0 {
+		result = append(result, corev1.EnvVar{Name: "KEY_SECRET_VOLUME", Value: instance.Spec.DbSecret.KeyFileMountLocation})
+	} else {
+		result = append(result, corev1.EnvVar{Name: "KEY_SECRET_VOLUME", Value: oraSecretMount})
 	}
+
 	if restype == "GSM" {
 		if !sDirectParam {
-			// varinfo = "director_name=sharddirector" + sDirectorCounter + ";director_region=primary;director_port=1521"
+			//varinfo = "director_name=sharddirector" + sDirectorCounter + ";director_region=primary;director_port=1521"
 			varinfo = directorParams
 			result = append(result, corev1.EnvVar{Name: "SHARD_DIRECTOR_PARAMS", Value: varinfo})
 		}
-		if !sGroup1Params {
-			varinfo = "group_name=shardgroup1;deploy_as=primary;group_region=primary"
-			result = append(result, corev1.EnvVar{Name: "SHARD1_GROUP_PARAMS", Value: varinfo})
+		if strings.ToUpper(instance.Spec.ShardingType) != "USER" {
+			if !sGroup1Params {
+				if len(instance.Spec.GsmShardGroup) > 0 {
+					for i := 0; i < len(instance.Spec.GsmShardGroup); i++ {
+						if strings.ToUpper(instance.Spec.GsmShardGroup[i].DeployAs) == "PRIMARY" {
+							group_name := instance.Spec.GsmShardGroup[i].Name
+							//deploy_as := instance.Spec.ShardGroup[i].DeployAs
+							region := instance.Spec.GsmShardGroup[i].Region
+							varinfo = "group_name=" + group_name + ";" + "deploy_as=primary;" + "group_region=" + region
+							result = append(result, corev1.EnvVar{Name: "SHARD1_GROUP_PARAMS", Value: varinfo})
+						}
+						if strings.ToUpper(instance.Spec.GsmShardGroup[i].DeployAs) == "STANDBY" {
+							group_name := instance.Spec.GsmShardGroup[i].Name
+							//deploy_as := instance.Spec.ShardGroup[i].DeployAs
+							region := instance.Spec.GsmShardGroup[i].Region
+							varinfo = "group_name=" + group_name + ";" + "deploy_as=standby;" + "group_region=" + region
+							result = append(result, corev1.EnvVar{Name: "SHARD2_GROUP_PARAMS", Value: varinfo})
+						}
+					}
+				}
+			} else {
+				varinfo = "group_name=shardgroup1;deploy_as=primary;group_region=primary"
+				result = append(result, corev1.EnvVar{Name: "SHARD1_GROUP_PARAMS", Value: varinfo})
+			}
 		}
-		if instance.Spec.IsDataGuard {
-			if !sGroup2Params {
-				varinfo = "group_name=shardgroup2;deploy_as=standby;group_region=standby"
-				result = append(result, corev1.EnvVar{Name: "SHARD2_GROUP_PARAMS", Value: varinfo})
+
+		if strings.ToUpper(instance.Spec.ShardingType) == "USER" {
+			result = append(result, corev1.EnvVar{Name: "SHARDING_TYPE", Value: "USER"})
+		}
+		// SERVICE Params setting
+		var svc string
+		if len(instance.Spec.GsmService) > 0 {
+			svc = ""
+			for i := 0; i < len(instance.Spec.GsmService); i++ {
+				svc = svc + "service_name=" + instance.Spec.GsmService[i].Name + ";"
+				if len(instance.Spec.GsmService[i].Role) != 0 {
+					svc = svc + "service_role=" + instance.Spec.GsmService[i].Role
+				} else {
+					svc = svc + "service_role=primary"
+				}
+				result = append(result, corev1.EnvVar{Name: "SERVICE" + fmt.Sprint(i) + "_PARAMS", Value: svc})
+				svc = ""
+			}
+		}
+
+		if strings.ToUpper(instance.Spec.GsmDevMode) != "FALSE" {
+			result = append(result, corev1.EnvVar{Name: "DEV_MODE", Value: "TRUE"})
+		}
+
+		if instance.Spec.InvitedNodeSubnetFlag == "" {
+			instance.Spec.InvitedNodeSubnetFlag = "FALSE"
+
+		}
+		if strings.ToUpper(instance.Spec.InvitedNodeSubnetFlag) != "FALSE" {
+			result = append(result, corev1.EnvVar{Name: "INVITED_NODE_SUBNET_FLAG", Value: "TRUE"})
+			if instance.Spec.InvitedNodeSubnet != "" {
+				result = append(result, corev1.EnvVar{Name: "INVITED_NODE_SUBNET", Value: instance.Spec.InvitedNodeSubnet})
 			}
 		}
 		if !catalogParams {
@@ -625,33 +715,84 @@ func buildCatalogParams(instance *databasealphav1.ShardingDatabase) string {
 	var sidFlag bool = false
 	var pdbFlag bool = false
 	var portFlag bool = false
-	var regionFlag bool = false
 	var cnameFlag bool = false
 	var chunksFlag bool = false
 	var sidName string
 	var pdbName string
 	var cport string
-	var cregion string
 	var cname string
 	var catchunks string
+	var catalog_region, shard_space string
 
 	result = "catalog_host=" + instance.Spec.Catalog[0].Name + "-0" + "." + instance.Spec.Catalog[0].Name + ";"
+
+	//Checking if replcia type set to native
+	var sspace_arr []string
+	if strings.ToUpper(instance.Spec.ShardingType) == "USER" {
+		shard_space = ""
+		result = result + "sharding_type=user;"
+		for i := 0; i < len(instance.Spec.Shard); i++ {
+			sspace_arr = append(sspace_arr, instance.Spec.Shard[i].ShardSpace)
+		}
+		slices.Sort(sspace_arr)
+		sspace_arr = slices.Compact(sspace_arr) //[a b c d]
+		for i := 0; i < len(sspace_arr); i++ {
+			shard_space = shard_space + sspace_arr[i] + ","
+		}
+		shard_space = strings.TrimSuffix(shard_space, ",")
+		result = result + "shard_space=" + shard_space + ";"
+	} else if strings.ToUpper(instance.Spec.ReplicationType) == "NATIVE" {
+		result = result + "repl_type=native;"
+	} else {
+		fmt.Fprintln(os.Stdout, []any{""}...)
+	}
+
+	var region_arr []string
+	for i := 0; i < len(instance.Spec.Shard); i++ {
+		region_arr = append(region_arr, instance.Spec.Shard[i].ShardRegion)
+	}
+
+	for i := 0; i < len(instance.Spec.Gsm); i++ {
+		region_arr = append(region_arr, instance.Spec.Gsm[i].Region)
+	}
+
+	slices.Sort(region_arr)
+	region_arr = slices.Compact(region_arr) //[a b c d]
+	for i := 0; i < len(region_arr); i++ {
+		catalog_region = catalog_region + region_arr[i] + ","
+	}
+	catalog_region = strings.TrimSuffix(catalog_region, ",")
+	result = result + "catalog_region=" + catalog_region + ";"
+
+	if len(instance.Spec.ShardConfigName) != 0 {
+		result = result + "shard_configname=" + instance.Spec.ShardConfigName + ";"
+	}
+
 	for _, variable := range variables {
-		if variable.Name == "ORACLE_SID" {
+		if variable.Name == "DB_UNIQUE_NAME" {
 			sidFlag = true
 			sidName = variable.Value
+		} else {
+			if variable.Name == "ORACLE_SID" {
+				sidFlag = true
+				sidName = variable.Value
+			}
 		}
-		if variable.Name == "ORACLE_PDB" {
-			pdbFlag = true
-			pdbName = variable.Value
+		if variable.Name == "ORACLE_FREE_PDB" {
+			if strings.ToLower(instance.Spec.DbEdition) == "free" {
+				pdbFlag = true
+				pdbName = variable.Value
+			}
+		}
+		if strings.ToLower(instance.Spec.DbEdition) != "free" {
+			if variable.Name == "ORACLE_PDB" {
+				pdbFlag = true
+				pdbName = variable.Value
+			}
 		}
 		if variable.Name == "CATALOG_PORT" {
 			portFlag = true
 			cport = variable.Value
-		}
-		if variable.Name == "CATALOG_REGION" {
-			regionFlag = true
-			cregion = variable.Value
 		}
 		if variable.Name == "CATALOG_NAME" {
 			cnameFlag = true
@@ -661,22 +802,33 @@ func buildCatalogParams(instance *databasealphav1.ShardingDatabase) string {
 			chunksFlag = true
 			catchunks = variable.Value
 		}
+
 	}
 
 	if !sidFlag {
 		varinfo = "catalog_db=" + strings.ToUpper(instance.Spec.Catalog[0].Name) + ";"
 		result = result + varinfo
 	} else {
-		varinfo = "catalog_db=" + strings.ToUpper(sidName) + ";"
-		result = result + varinfo
+		if strings.ToLower(instance.Spec.DbEdition) == "free" {
+			varinfo = "catalog_db=" + strings.ToUpper(instance.Spec.Catalog[0].Name) + ";"
+			result = result + varinfo
+		} else {
+			varinfo = "catalog_db=" + strings.ToUpper(sidName) + ";"
+			result = result + varinfo
+		}
 	}
 
 	if !pdbFlag {
 		varinfo = "catalog_pdb=" + strings.ToUpper(instance.Spec.Catalog[0].Name) + "PDB" + ";"
 		result = result + varinfo
 	} else {
-		varinfo = "catalog_pdb=" + strings.ToUpper(pdbName) + ";"
-		result = result + varinfo
+		if strings.ToLower(instance.Spec.DbEdition) == "free" {
+			varinfo = "catalog_pdb=" + strings.ToUpper(instance.Spec.Catalog[0].Name) + "PDB" + ";"
+			result = result + varinfo
+		} else {
+			varinfo = "catalog_pdb=" + strings.ToUpper(pdbName) + ";"
+			result = result + varinfo
+		}
 	}
 
 	if !portFlag {
@@ -694,18 +846,15 @@ func buildCatalogParams(instance *databasealphav1.ShardingDatabase) string {
 		varinfo = "catalog_name=" + strings.ToUpper(cname) + ";"
 		result = result + varinfo
 	}
+
 	if chunksFlag {
 		result = result + "catalog_chunks=" + catchunks + ";"
-	}
-
-	if !regionFlag {
-		varinfo = "catalog_region=primary,standby"
-		result = result + varinfo
 	} else {
-		varinfo = "catalog_region=" + cregion
-		result = result + varinfo
+		if strings.ToLower(instance.Spec.DbEdition) == "free" && strings.ToUpper(instance.Spec.ShardingType) != "USER" && strings.ToUpper(instance.Spec.ShardingType) != "NATIVE" {
+			result = result + "catalog_chunks=12;"
+		}
 	}
-
+	result = strings.TrimSuffix(result, ";")
 	return result
 }
 
@@ -731,64 +880,137 @@ func buildDirectorParams(instance *databasealphav1.ShardingDatabase, oraGsmSpex 
 		result = result + varinfo
 	}
 
-	switch idx {
-	case 0:
-		varinfo = "director_region=primary;"
+	if oraGsmSpex.Region != "" {
+		varinfo = "director_region=" + oraGsmSpex.Region + ";"
 		result = result + varinfo
-	case 1:
-		varinfo = "director_region=standby;"
+	} else {
+		switch idx {
+		case 0:
+			varinfo = "director_region=primary;"
+			result = result + varinfo
+		case 1:
+			varinfo = "director_region=standby;"
+			result = result + varinfo
+		default:
+			// Do nothing
+		}
 		result = result + varinfo
-	default:
-		// Do nothing
 	}
 
 	if !dportFlag {
 		varinfo = "director_port=1522"
 		result = result + varinfo
 	}
-
+	result = strings.TrimSuffix(result, ";")
 	return result
 }
 
-func BuildShardParams(sfSet *appsv1.StatefulSet) string {
+func BuildShardParams(instance *databasealphav1.ShardingDatabase, sfSet *appsv1.StatefulSet, OraShardSpex databasev1alpha1.ShardSpec) string {
 	var variables []corev1.EnvVar = sfSet.Spec.Template.Spec.Containers[0].Env
 	var result string
 	var varinfo string
 	var isShardPort bool = false
-	var isShardGrp bool = false
+	var freePdbFlag bool = false
+	var freePdbValue string
+	var pdbFlag bool = false
+	var pdbValue string
+	var dbUnameFlag bool = false
+	var sidFlag bool = false
+	var dbUname string
+	var sidName string
+
+	//var isShardGrp bool = false
+	//var i int32
+	//var isShardSpace bool = false
+	//var isShardRegion bool = false
 
 	result = "shard_host=" + sfSet.Name + "-0" + "." + sfSet.Name + ";"
 	for _, variable := range variables {
-		if variable.Name == "ORACLE_SID" {
-			varinfo = "shard_db=" + variable.Value + ";"
-			result = result + varinfo
+		if variable.Name == "DB_UNIQUE_NAME" {
+			dbUnameFlag = true
+			dbUname = variable.Value
+		} else {
+			if variable.Name == "ORACLE_SID" {
+				sidFlag = true
+				sidName = variable.Value
+			}
 		}
+		if variable.Name == "ORACLE_FREE_PDB" {
+			freePdbFlag = true
+			freePdbValue = variable.Value
+		}
+
 		if variable.Name == "ORACLE_PDB" {
-			varinfo = "shard_pdb=" + variable.Value + ";"
-			result = result + varinfo
+			pdbFlag = true
+			pdbValue = variable.Value
 		}
+
 		if variable.Name == "SHARD_PORT" {
 			varinfo = "shard_port=" + variable.Value + ";"
 			result = result + varinfo
 			isShardPort = true
 		}
-		if variable.Name == "SHARD_GROUP" {
-			varinfo = "shard_group=" + variable.Value + ";"
+
+	}
+
+	if dbUnameFlag {
+		varinfo = "shard_db=" + dbUname + ";"
+		result = result + varinfo
+	}
+
+	if sidFlag && !dbUnameFlag {
+		if strings.ToLower(instance.Spec.DbEdition) != "free" {
+			varinfo = "shard_db=" + sidName + ";"
 			result = result + varinfo
-			isShardGrp = true
+		} else {
+			varinfo = "shard_db=" + sfSet.Name + ";"
+			result = result + varinfo
 		}
+	}
+
+	if !sidFlag && !dbUnameFlag {
+		if strings.ToLower(instance.Spec.DbEdition) != "free" {
+			varinfo = "shard_db=" + sfSet.Name + ";"
+			result = result + varinfo
+		}
+	}
+
+	if freePdbFlag {
+		if strings.ToLower(instance.Spec.DbEdition) == "free" {
+			varinfo = "shard_pdb=" + freePdbValue + ";"
+			result = result + varinfo
+		}
+	} else {
+		if pdbFlag {
+			varinfo = "shard_pdb=" + pdbValue + ";"
+			result = result + varinfo
+		}
+	}
+
+	if OraShardSpex.ShardGroup != "" {
+		varinfo = "shard_group=" + OraShardSpex.ShardGroup + ";"
+		result = result + varinfo
+	}
+
+	if OraShardSpex.ShardSpace != "" {
+		varinfo = "shard_space=" + OraShardSpex.ShardSpace + ";"
+		result = result + varinfo
+	}
+	if OraShardSpex.ShardRegion != "" {
+		varinfo = "shard_region=" + OraShardSpex.ShardRegion + ";"
+		result = result + varinfo
+	}
+
+	if OraShardSpex.DeployAs != "" {
+		varinfo = "deploy_as=" + OraShardSpex.DeployAs + ";"
+		result = result + varinfo
 	}
 
 	if !isShardPort {
 		varinfo = "shard_port=" + "1521" + ";"
 		result = result + varinfo
 	}
-
-	if !isShardGrp {
-		varinfo = "shard_group=" + "shardgroup1"
-		result = result + varinfo
-	}
-
+	result = strings.TrimSuffix(result, ";")
 	return result
 }
 
@@ -858,7 +1080,7 @@ func getNoChunksCmd(sparamStr string) []string {
 
 func shardValidationCmd() []string {
 
-	var oraShardValidateCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkliveness=true ", "--optype=primaryshard"}
+	var oraShardValidateCmd = []string{oraDbScriptMount + "/cmdExec", "/bin/python", oraDbScriptMount + "/main.py ", "--checkliveness=true ", "--optype=primaryshard"}
 	return oraShardValidateCmd
 }
 
@@ -884,23 +1106,45 @@ func getShardDelCmd(sparams string) []string {
 func getLivenessCmd(resType string) []string {
 	var livenessCmd []string
 	if resType == "SHARD" {
-		livenessCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkliveness=true", "--optype=primaryshard"}
+		livenessCmd = []string{oraDbScriptMount + "/cmdExec", "/bin/python", oraDbScriptMount + "/main.py ", "--checkliveness=true", "--optype=primaryshard"}
 	}
 	if resType == "CATALOG" {
-		livenessCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkliveness=true", "--optype=catalog"}
+		livenessCmd = []string{oraDbScriptMount + "/cmdExec", "/bin/python", oraDbScriptMount + "/main.py ", "--checkliveness=true", "--optype=catalog"}
 	}
 	if resType == "GSM" {
 		livenessCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkliveness=true", "--optype=gsm"}
 	}
 	if resType == "STANDBY" {
-		livenessCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkliveness=true", "--optype=standbyshard"}
+		livenessCmd = []string{oraDbScriptMount + "/cmdExec", "/bin/python", oraDbScriptMount + "/main.py ", "--checkliveness=true", "--optype=standbyshard"}
 	}
 	return livenessCmd
+}
+
+func getReadinessCmd(resType string) []string {
+	var readynessCmd []string
+	if resType == "SHARD" {
+		readynessCmd = []string{oraDbScriptMount + "/cmdExec", "/bin/python", oraDbScriptMount + "/main.py ", "--checkreadyness=true", "--optype=primaryshard"}
+	}
+	if resType == "CATALOG" {
+		readynessCmd = []string{oraDbScriptMount + "/cmdExec", "/bin/python", oraDbScriptMount + "/main.py ", "--checkreadyness=true", "--optype=catalog"}
+	}
+	if resType == "GSM" {
+		readynessCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkreadyness=true", "--optype=gsm"}
+	}
+	if resType == "STANDBY" {
+		readynessCmd = []string{oraDbScriptMount + "/cmdExec", "/bin/python", oraDbScriptMount + "/main.py ", "--checkreadyness=true", "--optype=standbyshard"}
+	}
+	return readynessCmd
 }
 
 func getGsmShardValidateCmd(shardName string) []string {
 	var validateCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--validateshard=" + strconv.Quote(shardName), "--optype=gsm"}
 	return validateCmd
+}
+
+func GetTdeKeyLocCmd() []string {
+	var tdeKeyCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--gettdekey=true", "--optype=gsm"}
+	return tdeKeyCmd
 }
 
 func getOnlineShardCmd(sparamStr string) []string {
@@ -927,9 +1171,9 @@ func getInitContainerCmd(resType string, name string,
 ) string {
 	var initCmd string
 	if resType == "WEB" {
-		initCmd = "chown -R 54321:54321 " + oraScriptMount + ";chmod 755 " + oraScriptMount + "/*;chown -R 54321:54321 /opt/oracle/oradata;chmod 750 /opt/oracle/oradata"
+		initCmd = "chown -R 54321:54321 " + oraDbScriptMount + ";chmod 755 " + oraDbScriptMount + "/*;chown -R 54321:54321 /opt/oracle/oradata;chmod 750 /opt/oracle/oradata"
 	} else {
-		initCmd = resType + ";chown -R 54321:54321 " + oraScriptMount + ";chmod 755 " + oraScriptMount + "/*;chown -R 54321:54321 /opt/oracle/oradata;chmod 750 /opt/oracle/oradata"
+		initCmd = resType + ";chown -R 54321:54321 " + oraDbScriptMount + ";chmod 755 " + oraDbScriptMount + "/*;chown -R 54321:54321 /opt/oracle/oradata;chmod 750 /opt/oracle/oradata"
 	}
 	return initCmd
 }
@@ -943,6 +1187,11 @@ func getGsmInitContainerCmd(resType string, name string,
 		initCmd = resType + ";chown -R 54321:54321 " + oraScriptMount + ";chmod 755 " + oraScriptMount + "/*;chown -R 54321:54321 /opt/oracle/gsmdata;chmod 750 /opt/oracle/gsmdata"
 	}
 	return initCmd
+}
+
+func getResetPasswdCmd(sparamStr string) []string {
+	var resetPasswdCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--resetpassword=true"}
+	return resetPasswdCmd
 }
 
 func GetFmtStr(pstr string,
@@ -1081,7 +1330,7 @@ func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *database
 
 	_, _, err := ExecCommand(gsmPodName, getOnlineShardCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
-		msg := "Shard: " + GetFmtStr(sparams) + " is not onine in GSM."
+		msg := "Shard: " + GetFmtStr(sparams) + " is not online in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
 		return err
 	}
@@ -1231,6 +1480,28 @@ func SfsetLabelPatch(sfSetFound *appsv1.StatefulSet, sfSetPod *corev1.Pod, insta
 	return nil
 }
 
+func InstanceShardPatch(obj client.Object, instance *databasealphav1.ShardingDatabase, kClient client.Client, id int32, field string, value string,
+) error {
+
+	var err error
+	instSpec := instance.Spec
+	instSpec.Shard[id].IsDelete = "failed"
+	instshardM, _ := json.Marshal(struct {
+		Spec *databasealphav1.ShardingDatabaseSpec `json:"spec":`
+	}{
+		Spec: &instSpec,
+	})
+
+	patch1 := client.RawPatch(types.MergePatchType, instshardM)
+	err = kClient.Patch(context.TODO(), obj, patch1)
+
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
 // Send Notification
 
 func SendNotification(title string, body string, instance *databasealphav1.ShardingDatabase, topicId string, rclient ons.NotificationDataPlaneClient, logger logr.Logger,
@@ -1248,4 +1519,32 @@ func SendNotification(title string, body string, instance *databasealphav1.Shard
 		logger.Error(err, "Error occurred while sending a notification")
 		LogMessages("DEBUG", msg, nil, instance, logger)
 	}
+}
+
+func GetSecretMount() string {
+	return oraSecretMount
+}
+
+func checkTdeWalletFlag(instance *databasev1alpha1.ShardingDatabase) bool {
+	if strings.ToLower(instance.Spec.IsTdeWallet) == "enable" {
+		return true
+	}
+	return false
+}
+
+func CheckIsDeleteFlag(delStr string, instance *databasealphav1.ShardingDatabase, logger logr.Logger) bool {
+	if strings.ToLower(delStr) == "enable" {
+		return true
+	}
+	if strings.ToLower(delStr) == "failed" {
+		// LogMessages("INFO", "manual intervention required", nil, instance, logger)
+	}
+	return false
+}
+
+func getTdeWalletMountLoc(instance *databasev1alpha1.ShardingDatabase) string {
+	if len(instance.Spec.TdeWalletPvcMountLocation) > 0 {
+		return instance.Spec.TdeWalletPvcMountLocation
+	}
+	return "/tdewallet/" + instance.Name
 }

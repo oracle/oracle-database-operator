@@ -5,16 +5,29 @@
 
 ## Append samples you want in your CSV to this file as resources ##
 resources:
-  - onpremdb/pdb.yaml
-  - onpremdb/cdb.yaml
-  - adb/autonomousdatabase_create.yaml
+  - multitenant/pdb_plug.yaml
+  - multitenant/cdb_secret.yaml
+  - multitenant/pdb_secret.yaml
+  - multitenant/pdb_clone.yaml
+  - multitenant/cdb.yaml
+  - sidb/singleinstancedatabase_patch.yaml
+  - sidb/oraclerestdataservice_apex.yaml
+  - sidb/singleinstancedatabase_express.yaml
+  - sidb/singleinstancedatabase_secrets.yaml
+  - sidb/singleinstancedatabase_clone.yaml
+  - sidb/singleinstancedatabase_prebuiltdb.yaml
+  - sidb/dataguardbroker.yaml
+  - sidb/oraclerestdataservice_secrets.yaml
+  - sidb/singleinstancedatabase_free.yaml
+  - sidb/singleinstancedatabase_standby.yaml
+  - sidb/openshift_rbac.yaml
+  - sharding/sharding_v1alpha1_provshard_clonespec1.yaml
+  - sharding/shardingdatabase.yaml
+  - sharding/sharding_v1alpha1_provshard_clonespec.yaml
+  - observability/databaseobserver_vault.yaml
+  - observability/databaseobserver_minimal.yaml
   - adb/autonomousdatabase_bind.yaml
   - adb/autonomousdatabase_backup.yaml
   - adb/autonomousdatabase_restore.yaml
-  - acd/autonomouscontainerdatabase_create.yaml
-  - sidb/singleinstancedatabase.yaml
-  - sharding/shardingdatabase.yaml
-  - sharding/sharding_v1alpha1_provshard.yaml
-  - dbcs/database_v1alpha1_dbcssystem.yaml
-- database_v1alpha1_dataguardbroker.yaml
+  - acd/autonomouscontainerdatabase_restart_terminate.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples

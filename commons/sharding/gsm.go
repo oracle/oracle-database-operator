@@ -121,6 +121,7 @@ func buildStatefulSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsm
 		},
 		VolumeClaimTemplates: volumeClaimTemplatesForGsm(instance, OraGsmSpex),
 	}
+	/**
 	if OraGsmSpex.Replicas == 0 {
 		OraGsmSpex.Replicas = 1
 		sfsetspec.Replicas = &OraGsmSpex.Replicas
@@ -128,6 +129,7 @@ func buildStatefulSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsm
 		OraGsmSpex.Replicas = 1
 		sfsetspec.Replicas = &OraGsmSpex.Replicas
 	}
+	**/
 
 	return sfsetspec
 }
@@ -143,10 +145,14 @@ func buildPodSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex 
 			RunAsUser: &user,
 			FSGroup:   &group,
 		},
-		InitContainers: buildInitContainerSpecForGsm(instance, OraGsmSpex),
-		Containers:     buildContainerSpecForGsm(instance, OraGsmSpex),
-		Volumes:        buildVolumeSpecForGsm(instance, OraGsmSpex),
+		Containers: buildContainerSpecForGsm(instance, OraGsmSpex),
+		Volumes:    buildVolumeSpecForGsm(instance, OraGsmSpex),
 	}
+
+	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
+		spec.InitContainers = buildInitContainerSpecForGsm(instance, OraGsmSpex)
+	}
+
 	if len(instance.Spec.GsmImagePullSecret) > 0 {
 		spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
@@ -171,14 +177,8 @@ func buildVolumeSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSp
 			Name: OraGsmSpex.Name + "secretmap-vol3",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: instance.Spec.Secret,
+					SecretName: instance.Spec.DbSecret.Name,
 				},
-			},
-		},
-		{
-			Name: OraGsmSpex.Name + "orascript-vol5",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		},
 		{
@@ -197,6 +197,9 @@ func buildVolumeSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSp
 		result = append(result, corev1.Volume{Name: OraGsmSpex.Name + "orastage-vol7", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.StagePvcName}}})
 	}
 
+	if instance.Spec.IsDownloadScripts {
+		result = append(result, corev1.Volume{Name: OraGsmSpex.Name + "orascript-vol5", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}})
+	}
 	return result
 }
 
@@ -230,10 +233,15 @@ func buildContainerSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGs
 		VolumeMounts: buildVolumeMountSpecForGsm(instance, OraGsmSpex),
 		LivenessProbe: &corev1.Probe{
 			// TODO: Investigate if it's ok to call status every 10 seconds
-			FailureThreshold:    int32(30),
-			PeriodSeconds:       int32(240),
-			InitialDelaySeconds: int32(300),
-			TimeoutSeconds:      int32(60),
+			FailureThreshold:    int32(3),
+			InitialDelaySeconds: int32(30),
+			PeriodSeconds: func() int32 {
+				if instance.Spec.LivenessCheckPeriod > 0 {
+					return int32(instance.Spec.LivenessCheckPeriod)
+				}
+				return 60
+			}(),
+			TimeoutSeconds: int32(20),
 			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
 					Command: getLivenessCmd("GSM"),
@@ -263,7 +271,7 @@ func buildContainerSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGs
 	return result
 }
 
-//Function to build the init Container Spec
+// Function to build the init Container Spec
 func buildInitContainerSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
@@ -305,7 +313,9 @@ func buildVolumeMountSpecForGsm(instance *databasev1alpha1.ShardingDatabase, Ora
 	var result []corev1.VolumeMount
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "-oradata-vol4", MountPath: oraGsmDataMount})
-	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "orascript-vol5", MountPath: oraScriptMount})
+	if instance.Spec.IsDownloadScripts {
+		result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "orascript-vol5", MountPath: oraScriptMount})
+	}
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "oradshm-vol6", MountPath: oraShm})
 
 	if len(instance.Spec.StagePvcName) != 0 {
@@ -336,7 +346,7 @@ func volumeClaimTemplatesForGsm(instance *databasev1alpha1.ShardingDatabase, Ora
 					corev1.ReadWriteOnce,
 				},
 				StorageClassName: &instance.Spec.StorageClass,
-				Resources: corev1.ResourceRequirements{
+				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraGsmSpex.StorageSizeInGb), 10) + "Gi"),
 					},
@@ -443,7 +453,7 @@ func UpdateProvForGsm(instance *databasev1alpha1.ShardingDatabase,
 	// Ensure deployment replicas match the desired state
 	if sfSet.Spec.Replicas != nil {
 		if *sfSet.Spec.Replicas != size {
-			msg = "Current StatefulSet replicas do not match configured Shard Replicas. Gsm is configured with only 1 but current replicas is set with " + strconv.FormatInt(int64(*sfSet.Spec.Replicas), 10)
+			msg = "Current StatefulSet replicas do not match configured GSM Replicas. Gsm is configured with only 1 but current replicas is set with " + strconv.FormatInt(int64(*sfSet.Spec.Replicas), 10)
 			LogMessages("DEBUG", msg, nil, instance, logger)
 			isUpdate = true
 		}
@@ -456,7 +466,7 @@ func UpdateProvForGsm(instance *databasev1alpha1.ShardingDatabase,
 			oraSpexRes := OraGsmSpex.Resources
 
 			if !reflect.DeepEqual(shardContaineRes, oraSpexRes) {
-				isUpdate = true
+				isUpdate = false
 			}
 		}
 	}

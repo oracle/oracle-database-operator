@@ -42,10 +42,16 @@
 # +-----------------------------+---------------------------------------------+
 # |tde_secret.yaml              | Secret file for the tablepsace enc.         |
 # +-----------------------------+---------------------------------------------+
-# |cdb.yaml                     | Rest server pod creation                    |
+# |cdb_create.yaml              | Rest server pod creation                    |
 # +-----------------------------+---------------------------------------------+
-# |pdb.yaml                     | Pluggable database creation                 |
+# |pdb_create.yaml              | Pluggable database creation                 |
 # +-----------------------------+---------------------------------------------+
+# |pdb_close.yaml               | Close pluggable database                    |
+# +-----------------------------+---------------------------------------------+
+# |pdb_open.yaml                | Open pluggable database                     |
+# +-----------------------------+---------------------------------------------+
+# |pdb_map.yaml                 | Map an existing pdb                         |
+# +-----------------------------+---------------------------------------------+ 
 # |oracle-database-operator.yaml| Database operator                           |
 # +-----------------------------+---------------------------------------------+
 # |Dockerfiles                  | Dockerfile for CBD                          |
@@ -94,6 +100,17 @@
 # |  |                          +---------------------------------------------+
 # |  +---> checkpdb             | Monitor PDB status                          |
 # +-----------------------------+---------------------------------------------+
+# |step11                       | Close pluggable database                    |
+# +-----------------------------+---------------------------------------------+
+# |step12                       | Open pluggable database                     |
+# +-----------------------------+---------------------------------------------+
+# |step13                       | Map pluggable database                      |
+# +-----------------------------+---------------------------------------------+
+# | Before testing step13 delete the crd:                                     |
+# |    kubectl delete pdb pdb1 -n oracle-database-operator-system             |
+# +---------------------------------------------------------------------------+
+# |step14                       | delete pdb                                  |
+# +-----------------------------+---------------------------------------------+
 # |                        DIAGNOSTIC  TARGETS                                |
 # +-----------------------------+---------------------------------------------+
 # | dump                        | Dump  pods info into a file                 |
@@ -120,20 +137,28 @@ URLPATH=/_/db-api/stable/database/pdbs/
 OPENSSL=/usr/bin/openssl
 ORDSPORT=8888
 MAKE=/usr/bin/make
-DOCKERFILE=Dockerfile
+DOCKERFILE=../../../ords/Dockerfile
+RUNSCRIPT=../../../ords/runOrdsSSL.sh
+ORDSIMGDIR=../../../ords
 RM=/usr/bin/rm
+CP=/usr/bin/cp
 ECHO=/usr/bin/echo
 NAMESPACE=oracle-database-operator-system
 CERTMANAGER=https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml
 CDB_SECRET=cdb_secret.yaml
 PDB_SECRET=pdb_secret.yaml
 TDE_SECRET=tde_secret.yaml
-CDB=cdb.yaml
-PDB=pdb.yaml
+CDB=cdb_create.yaml
+PDB=pdb_create.yaml
+PDB_CLOSE=pdb_close.yaml
+PDB_OPEN=pdb_open.yaml 
+PDB_MAP=pdb_map.yaml
 SKEY=tls.key
 SCRT=tls.crt
 CART=ca.crt
 COMPANY=oracle
+LOCALHOST=localhost
+RESTPREFIX=cdb-dev
 
 step1:   createimage
 step2:   tagimage
@@ -145,23 +170,16 @@ step7:   tlssecret
 step8:   dbsecret 
 step9:   cdb
 step10:  pdb
+step11:  close 
+step12:  open
+step13:  map
+step14:  delete
 
 checkstep9: checkcdb
 
 
 createimage:
-	@echo "BUILDING CDB IMAGES"
-	@if [[ ! -f ./Dockerfile ]]; \
-         then\
-         echo "DOCKERFILE DOES NOT EXISTS";\
-         exit 1; \
-        fi; 
-	@if [[ ! -f ../runOrdsSSL.sh ]]; \
-         then\
-         echo "DOCKERFILE DOES NOT EXISTS";\
-         exit 1; \
-        fi; 
-	$(DOCKER) build -t $(IMAGE) . 
+	$(DOCKER) build -t $(IMAGE) $(ORDSIMGDIR)
 
 tagimage: 
 	@echo "TAG IMAGE"
@@ -179,12 +197,19 @@ dboperator:
 	@echo "ORACLE DATABASE OPERATOR"
 	$(KUBECTL) apply -f $(DBOPERATOR)
 
+
+#C: Country
+#ST: State
+#L: locality (city)
+#O: Organization Name Organization Unit
+#CN: Common Name
+
 tlscert:
-	@echo "CREATING TLS CERTIFICATES"
+	 @echo "CREATING TLS CERTIFICATES"
 	$(OPENSSL) genrsa -out ca.key 2048
-	$(OPENSSL) req -new -x509 -days 365 -key ca.key -subj "/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=$(COMPANY) Root CA" -out ca.crt
-	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=CN/ST=GD/L=SZ/O=$(COMPANY), Inc./CN=cdb-dev-$(REST_SERVER)" -out server.csr
-	$(ECHO) "subjectAltName=DNS:cdb-dev-$(REST_SERVER),DNS:www.example.com" > extfile.txt
+	$(OPENSSL) req -new -x509 -days 365 -key ca.key -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER).$(NAMESPACE) /CN=$(LOCALHOST)  Root CA " -out ca.crt
+	$(OPENSSL) req -newkey rsa:2048 -nodes -keyout $(SKEY) -subj "/C=US/ST=California/L=SanFrancisco/O=$(COMPANY) /CN=$(RESTPREFIX)-$(REST_SERVER).$(NAMESPACE) /CN=$(LOCALHOST)" -out server.csr
+	$(ECHO) "subjectAltName=DNS:$(RESTPREFIX)-$(REST_SERVER).$(NAMESPACE),DNS:www.example.com" > extfile.txt
 	$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out $(SCRT)
 
 tlssecret:
@@ -208,8 +233,20 @@ checkcdb:
 pdb:
 	$(KUBECTL) apply -f $(PDB)
 
+close:
+	$(KUBECTL) apply -f $(PDB_CLOSE)
+
+open:
+	$(KUBECTL) apply -f $(PDB_OPEN)
+
+map:
+	$(KUBECTL) apply -f $(PDB_MAP)
+
 checkpdb:
 	$(KUBECTL) get pdbs -n $(NAMESPACE)
+
+delete:
+	$(KUBECTL) apply -f pdb_delete.yaml
 
 dump:
 	@$(eval TMPSP := $(shell date "+%y%m%d%H%M%S" ))

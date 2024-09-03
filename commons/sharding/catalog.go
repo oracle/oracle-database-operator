@@ -43,9 +43,8 @@ import (
 	"reflect"
 	"strconv"
 
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-
 	"github.com/go-logr/logr"
+	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -141,10 +140,14 @@ func buildPodSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCata
 			RunAsUser: &user,
 			FSGroup:   &group,
 		},
-		InitContainers: buildInitContainerSpecForCatalog(instance, OraCatalogSpex),
-		Containers:     buildContainerSpecForCatalog(instance, OraCatalogSpex),
-		Volumes:        buildVolumeSpecForCatalog(instance, OraCatalogSpex),
+		Containers: buildContainerSpecForCatalog(instance, OraCatalogSpex),
+		Volumes:    buildVolumeSpecForCatalog(instance, OraCatalogSpex),
 	}
+
+	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
+		spec.InitContainers = buildInitContainerSpecForCatalog(instance, OraCatalogSpex)
+	}
+
 	if len(instance.Spec.DbImagePullSecret) > 0 {
 		spec.ImagePullSecrets = []corev1.LocalObjectReference{
 			{
@@ -170,14 +173,8 @@ func buildVolumeSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraC
 			Name: OraCatalogSpex.Name + "secretmap-vol3",
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{
-					SecretName: instance.Spec.Secret,
+					SecretName: instance.Spec.DbSecret.Name,
 				},
-			},
-		},
-		{
-			Name: OraCatalogSpex.Name + "orascript-vol5",
-			VolumeSource: corev1.VolumeSource{
-				EmptyDir: &corev1.EmptyDirVolumeSource{},
 			},
 		},
 		{
@@ -196,6 +193,16 @@ func buildVolumeSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraC
 		result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "orastage-vol7", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.StagePvcName}}})
 	}
 
+	if instance.Spec.IsDownloadScripts {
+		result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "orascript-vol5", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}})
+	}
+
+	if checkTdeWalletFlag(instance) {
+		if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
+			result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "shared-storage-vol8", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.TdeWalletPvc}}})
+		}
+	}
+
 	return result
 }
 
@@ -208,7 +215,7 @@ func buildContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, O
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
 			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{"NET_RAW"},
+				Add: []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
 			},
 		},
 		Resources: corev1.ResourceRequirements{
@@ -217,29 +224,49 @@ func buildContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, O
 		VolumeMounts: buildVolumeMountSpecForCatalog(instance, OraCatalogSpex),
 		LivenessProbe: &corev1.Probe{
 			// TODO: Investigate if it's ok to call status every 10 seconds
-			FailureThreshold:    int32(30),
-			PeriodSeconds:       int32(240),
-			InitialDelaySeconds: int32(300),
-			TimeoutSeconds:      int32(60),
+			FailureThreshold:    int32(3),
+			InitialDelaySeconds: int32(30),
+			PeriodSeconds: func() int32 {
+				if instance.Spec.LivenessCheckPeriod > 0 {
+					return int32(instance.Spec.LivenessCheckPeriod)
+				}
+				return 60
+			}(),
+			TimeoutSeconds: int32(30),
 			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
-					Command: getLivenessCmd("CATALOG"),
+					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
 				},
 			},
 		},
 		/**
-		// Disabling this because the pod is not reachable till the time startup probe completes and without network pod configuration cannot be completed.
-		StartupProbe: &corev1.Probe{
-			// Initial delay should be big, because shard setup takes time
-			FailureThreshold: int32(30),
-			PeriodSeconds:    int32(120),
-			Handler: corev1.Handler{
+		ReadinessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
 				Exec: &corev1.ExecAction{
-					Command: getLivenessCmd("CATALOG"),
+					//Command: getReadinessCmd("CATALOG"),
+					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
+				},
+			},
+			InitialDelaySeconds: 20,
+			TimeoutSeconds:      20,
+			PeriodSeconds: func() int32 {
+				if instance.Spec.ReadinessCheckPeriod > 0 {
+					return int32(instance.Spec.ReadinessCheckPeriod)
+				}
+				return 60
+			}(),
+		},
+		**/
+		StartupProbe: &corev1.Probe{
+			FailureThreshold:    int32(120),
+			PeriodSeconds:       int32(40),
+			InitialDelaySeconds: int32(30),
+			ProbeHandler: corev1.ProbeHandler{
+				Exec: &corev1.ExecAction{
+					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
 				},
 			},
 		},
-		**/
 		Env: buildEnvVarsSpec(instance, OraCatalogSpex.EnvVars, OraCatalogSpex.Name, "CATALOG", false, ""),
 	}
 	if instance.Spec.IsClone {
@@ -256,7 +283,7 @@ func buildContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, O
 	return result
 }
 
-//Function to build the init Container Spec
+// Function to build the init Container Spec
 func buildInitContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
@@ -297,13 +324,24 @@ func buildVolumeMountSpecForCatalog(instance *databasev1alpha1.ShardingDatabase,
 	var result []corev1.VolumeMount
 	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
-	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "orascript-vol5", MountPath: oraScriptMount})
+	if instance.Spec.IsDownloadScripts {
+		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})
+	}
 	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "oradshm-vol6", MountPath: oraShm})
 
 	if len(instance.Spec.StagePvcName) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "orastage-vol7", MountPath: oraStage})
 	}
 
+	if checkTdeWalletFlag(instance) {
+		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
+			result = append(result, corev1.VolumeMount{Name: instance.Name + "shared-storage", MountPath: getTdeWalletMountLoc(instance)})
+		} else {
+			if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
+				result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "shared-storage-vol8", MountPath: getTdeWalletMountLoc(instance)})
+			}
+		}
+	}
 	return result
 }
 
@@ -328,7 +366,7 @@ func volumeClaimTemplatesForCatalog(instance *databasev1alpha1.ShardingDatabase,
 					corev1.ReadWriteOnce,
 				},
 				StorageClassName: &instance.Spec.StorageClass,
-				Resources: corev1.ResourceRequirements{
+				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraCatalogSpex.StorageSizeInGb), 10) + "Gi"),
 					},
@@ -346,6 +384,34 @@ func volumeClaimTemplatesForCatalog(instance *databasev1alpha1.ShardingDatabase,
 
 	if len(OraCatalogSpex.PvMatchLabels) > 0 {
 		claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraCatalogSpex.PvMatchLabels}
+	}
+
+	if checkTdeWalletFlag(instance) {
+		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
+			{
+				pvcClaim := corev1.PersistentVolumeClaim{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:            instance.Name + "shared-storage",
+						Namespace:       instance.Spec.Namespace,
+						OwnerReferences: getOwnerRef(instance),
+						Labels:          buildLabelsForCatalog(instance, "sharding"),
+					},
+					Spec: corev1.PersistentVolumeClaimSpec{
+						AccessModes: []corev1.PersistentVolumeAccessMode{
+							corev1.ReadWriteMany,
+						},
+						StorageClassName: &instance.Spec.FssStorageClass,
+						Resources: corev1.VolumeResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraCatalogSpex.StorageSizeInGb), 10) + "Gi"),
+							},
+						},
+					},
+				}
+
+				claims = append(claims, pvcClaim)
+			}
+		}
 	}
 
 	return claims
@@ -430,7 +496,7 @@ func UpdateProvForCatalog(instance *databasev1alpha1.ShardingDatabase,
 			oraSpexRes := OraCatalogSpex.Resources
 
 			if !reflect.DeepEqual(shardContaineRes, oraSpexRes) {
-				isUpdate = true
+				isUpdate = false
 			}
 		}
 	}
