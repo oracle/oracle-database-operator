@@ -30,7 +30,7 @@ spec:
       imagePullPolicy: "Always"
       shardSpace: sspace4
       shardRegion: primary
-      isDelete: True
+      isDelete: enable
     - name: shard5
       storageSizeInGb: 50
       imagePullPolicy: "Always"

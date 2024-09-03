@@ -25,6 +25,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
     * [Delete a Database](#delete-a-database)
     * [Advanced Database Configurations](#advanced-database-configurations)
       * [Run Database with Multiple Replicas](#run-database-with-multiple-replicas)
+      * [Database Pod Resource Management](#database-pod-resource-management)
       * [Setup Database with LoadBalancer](#setup-database-with-loadbalancer)
       * [Enabling TCPS Connections](#enabling-tcps-connections)
       * [Specifying Custom Ports](#specifying-custom-ports)
@@ -627,6 +628,9 @@ The following table depicts the fail over matrix for any destructive operation t
 - Because Oracle Database Express Edition (XE) does not support [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s), it does not support multiple replicas.
 - If the `ReadWriteOnce` access mode is used, all the replicas will be scheduled on the same node where the persistent volume would be mounted.
 - If the `ReadWriteMany` access mode is used, all the replicas will be distributed on different nodes. So, it is recommended to have replicas more than or equal to the number of the nodes as the database image is downloaded on all those nodes. This is beneficial in quick cold fail-over scenario (when the active pod dies) as the image would already be available on that node.
+
+#### Database Pod Resource Management
+When creating a Single Instance Database you can specify the cpu and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod gets scheduled on one of the pods that has the required resources available. To use database pod resource management specify values for the `resources` attributes in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
 
 #### Setup Database with LoadBalancer
 For the Single Instance Database, the default service is the `NodePort` service. You can enable the `LoadBalancer` service by using `kubectl patch` command.

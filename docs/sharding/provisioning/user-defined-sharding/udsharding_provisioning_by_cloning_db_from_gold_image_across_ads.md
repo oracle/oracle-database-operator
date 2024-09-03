@@ -37,6 +37,8 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * The `dbImage` used during provisioning the Persistent Volume with Database Gold Image and the `dbImage` used for deploying the Shard or Catalog Database by cloning should be same.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
 
+**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
+
 Use the file: [udsharding_shard_prov_clone_across_ads.yaml](./udsharding_shard_prov_clone_across_ads.yaml) for this use case as below:
 
 1. Deploy the `udsharding_shard_prov_clone_across_ads.yaml` file:

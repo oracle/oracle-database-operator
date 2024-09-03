@@ -22,18 +22,21 @@ The Sharding Database controller in Oracle Database Operator deploys Oracle Shar
 
 The Oracle Sharding database controller provides end-to-end automation of Oracle Database sharding topology deployment in Kubernetes clusters.
 
-## Using Oracle Sharding Database Operator
+## Using Oracle Database Operator Sharding Controller
 
-To create a Sharding Topology, complete the steps in the following sections below:
+Following sections provide the details for deploying Oracle Globally Distributed Database (Oracle Sharded Database) using Oracle Database Operator Sharding Controller with different use cases:
 
-1. [Prerequisites for running Oracle Sharding Database Controller](#prerequisites-for-running-oracle-sharding-database-controller)
-2. [Provisioning Sharding Topology in a Cloud based Kubernetes Cluster (OKE in this case)](#provisioning-sharding-topology-in-a-cloud-based-kubernetes-cluster-oke-in-this-case)
-3. [Connecting to Shard Databases](#connecting-to-shard-databases)
-4. [Debugging and Troubleshooting](#debugging-and-troubleshooting)
+* [Prerequisites for running Oracle Sharding Database Controller](#prerequisites-for-running-oracle-sharding-database-controller)
+* [Oracle Database 23ai Free](#oracle-database-23ai-free)
+* [Provisioning Sharding Topology with System-Managed Sharding in a Cloud-Based Kubernetes Cluster](#provisioning-sharding-topology-with-system-managed-sharding-in-a-cloud-based-kubernetes-cluster)
+* [Provisioning Sharding Topology with User Defined Sharding in a Cloud-Based Kubernetes Cluster](#provisioning-sharding-topology-with-user-defined-sharding-in-a-cloud-based-kubernetes-cluster)
+* [Provisioning System-Managed Sharding Topology with Raft replication enabled in a Cloud-Based Kubernetes Cluster](#provisioning-system-managed-sharding-topology-with-raft-replication-enabled-in-a-cloud-based-kubernetes-cluster)
+* [Connecting to Shard Databases](#connecting-to-shard-databases)
+* [Debugging and Troubleshooting](#debugging-and-troubleshooting)
 
 **Note** Before proceeding to the next section, you must complete the instructions given in each section, based on your enviornment, before proceeding to next section.
 
-## Prerequisites for Running Oracle Sharding Database Controller
+## Prerequisites for running Oracle Sharding Database Controller
 
 **IMPORTANT:** You must make the changes specified in this section before you proceed to the next section.
 
@@ -85,6 +88,8 @@ You can either download the images and push them to your Docker Images Repositor
 
 **Note**: In the sharding example yaml files, we are using GDS and database images available on [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:10::::::).
 
+**Note:** In case you want to use the `Oracle Database 23ai Free` Image for Database and GSM, refer to section [Oracle Database 23ai Free](#oracle-database-23ai-free) for more details.
+
 ### 4. Create a namespace for the Oracle DB Sharding Setup
 
   Create a Kubernetes namespace named `shns`. All the resources belonging to the Oracle Database Sharding Setup will be provisioned in this namespace named `shns`. For example:
@@ -101,7 +106,7 @@ You can either download the images and push them to your Docker Images Repositor
 
 Create a Kubernetes secret named `db-user-pass-rsa` using these steps: [Create Kubernetes Secret](./provisioning/create_kubernetes_secret_for_db_user.md)
 
-After you have the above prerequsites completed, you can proceed to the next section for your environment to provision the Oracle Database Sharding Topology.
+After you have the above prerequisites completed, you can proceed to the next section for your environment to provision the Oracle Database Sharding Topology.
 
 ### 6. Provisioning a Persistent Volume having an Oracle Database Gold Image
 
@@ -111,19 +116,35 @@ In case of an `OCI OKE` cluster, you can use this Persistent Volume during provi
 
 You can refer [here](./provisioning/provisioning_persistent_volume_having_db_gold_image.md) for the steps involved.
 
-## Provisioning Sharding Topology with System Sharding in a Cloud-Based Kubernetes Cluster
+**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free. So, this step will not be needed if you are deploying Oracle Sharded Database using Oracle 23ai Free Database and GSM Images.
 
-Deploy Oracle Database Sharding Topology with `System Sharding` on your Cloud based Kubernetes cluster. 
+## Oracle Database 23ai Free
+
+Please refer to [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) documentation for more details. 
+
+If you want to use Oracle Database 23ai Free Image for Database and GSM for deployment of the Sharded Database using Sharding Controller in Oracle Database Kubernetes Operator, you need to consider the below points:
+
+* To deploy using the FREE Database and GSM Image, you will need to add the additional parameter `dbEdition: "free"` to the .yaml file.
+* Refer to [Sample Sharded Database Deployment using Oracle 23ai FREE Database and GSM Images](./provisioning/free/sharding_provisioning_with_free_images.md) for an example.
+* For Oracle Database 23ai Free, you can control the `CPU` and `Memory` allocation of the PODs using tags `cpu` and `memory` respectively but tags `INIT_SGA_SIZE` and `INIT_PGA_SIZE` to control the SGA and PGA allocation at the database level are `not` supported.
+* Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
+* Total number of chunks for FREE Database defaults to `12` if `CATALOG_CHUNKS` parameter is not specified. This default value is determined considering limitation of 12 GB of user data on disk for oracle free database.
+
+
+## Provisioning Sharding Topology with System-Managed Sharding in a Cloud-Based Kubernetes Cluster
+
+Deploy Oracle Database Sharding Topology with `System-Managed Sharding` on your Cloud based Kubernetes cluster. 
 
 In this example, the deployment uses the YAML file based on `OCI OKE` cluster. There are multiple use case possible for deploying the Oracle Database Sharding Topology covered by below examples:
 
-[1. Provisioning Oracle Sharded Database with System Sharding without Database Gold Image](./provisioning/system_sharding/ssharding_provisioning_without_db_gold_image.md)  
-[2. Provisioning Oracle Sharded Database with System Sharding with additional control on resources like Memory and CPU allocated to Pods](./provisioning/system_sharding/ssharding_provisioning_with_control_on_resources.md)  
-[3. Provisioning Oracle Sharded Database with System Sharding by cloning database from your own Database Gold Image in the same Availability Domain(AD)](./provisioning/system_sharding/ssharding_provisioning_by_cloning_db_gold_image_in_same_ad.md)  
-[4. Provisioning Oracle Sharded Database with System Sharding by cloning database from your own Database Gold Image across Availability Domains(ADs)](./provisioning/system_sharding/ssharding_provisioning_by_cloning_db_from_gold_image_across_ads.md)  
-[5. Provisioning Oracle Sharded Database with System Sharding and send Notification using OCI Notification Service](./provisioning/system_sharding/ssharding_provisioning_with_notification_using_oci_notification.md)  
-[6. Scale Out - Add Shards to an existing Oracle Sharded Database provisioned earlier with System Sharding](./provisioning/system_sharding/ssharding_scale_out_add_shards.md)  
-[7. Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with System Sharding](./provisioning/system_sharding/ssharding_scale_in_delete_an_existing_shard.md)
+[1. Provisioning Oracle Sharded Database with System-Managed Sharding without Database Gold Image](./provisioning/system_sharding/ssharding_provisioning_without_db_gold_image.md)  
+[2. Provisioning Oracle Sharded Database with System-Managed Sharding with number of chunks specified](./provisioning/system_sharding/ssharding_provisioning_with_chunks_specified.md)  
+[3. Provisioning Oracle Sharded Database with System-Managed Sharding with additional control on resources like Memory and CPU allocated to Pods](./provisioning/system_sharding/ssharding_provisioning_with_control_on_resources.md)  
+[4. Provisioning Oracle Sharded Database with System-Managed Sharding by cloning database from your own Database Gold Image in the same Availability Domain(AD)](./provisioning/system_sharding/ssharding_provisioning_by_cloning_db_gold_image_in_same_ad.md)  
+[5. Provisioning Oracle Sharded Database with System-Managed Sharding by cloning database from your own Database Gold Image across Availability Domains(ADs)](./provisioning/system_sharding/ssharding_provisioning_by_cloning_db_from_gold_image_across_ads.md)  
+[6. Provisioning Oracle Sharded Database with System-Managed Sharding and send Notification using OCI Notification Service](./provisioning/system_sharding/ssharding_provisioning_with_notification_using_oci_notification.md)  
+[7. Scale Out - Add Shards to an existing Oracle Sharded Database provisioned earlier with System-Managed Sharding](./provisioning/system_sharding/ssharding_scale_out_add_shards.md)  
+[8. Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with System-Managed Sharding](./provisioning/system_sharding/ssharding_scale_in_delete_an_existing_shard.md)
 
 
 ## Provisioning Sharding Topology with User Defined Sharding in a Cloud-Based Kubernetes Cluster
@@ -139,6 +160,24 @@ In this example, the deployment uses the YAML file based on `OCI OKE` cluster. T
 [5. Provisioning Oracle Sharded Database with User Defined Sharding and send Notification using OCI Notification Service](./provisioning/user-defined-sharding/udsharding_provisioning_with_notification_using_oci_notification.md)  
 [6. Scale Out - Add Shards to an existing Oracle Sharded Database provisioned earlier with User Defined Sharding](./provisioning/user-defined-sharding/udsharding_scale_out_add_shards.md)  
 [7. Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with User Defined Sharding](./provisioning/user-defined-sharding/udsharding_scale_in_delete_an_existing_shard.md)
+
+
+## Provisioning System-Managed Sharding Topology with Raft replication enabled in a Cloud-Based Kubernetes Cluster
+
+Deploy Oracle Database Sharding Topology with `System-Managed Sharding with SNR RAFT enabled` on your Cloud based Kubernetes cluster. 
+
+**NOTE: SNR RAFT Feature is available only for Oracle 23ai RDBMS and Oracle 23ai GSM version.**
+
+In this example, the deployment uses the YAML file based on `OCI OKE` cluster. There are multiple use case possible for deploying the Oracle Database Sharding Topology covered by below examples:
+
+[1. Provisioning System-Managed Sharding Topology with Raft replication enabled without Database Gold Image](./provisioning/snr_system_sharding/snr_ssharding_provisioning_without_db_gold_image.md)  
+[2. Provisioning System-Managed Sharding Topology with Raft replication enabled with number of chunks specified](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_chunks_specified.md)  
+[3. Provisioning System-Managed Sharding Topology with Raft replication enabled with additional control on resources like Memory and CPU allocated to Pods](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_control_on_resources.md)  
+[4. Provisioning System-Managed Sharding Topology with Raft replication enabled by cloning database from your own Database Gold Image in the same Availability Domain(AD)](./provisioning/snr_system_sharding/snr_ssharding_provisioning_by_cloning_db_gold_image_in_same_ad.md)  
+[5. Provisioning System-Managed Sharding Topology with Raft replication enabled by cloning database from your own Database Gold Image across Availability Domains(ADs)](./provisioning/snr_system_sharding/snr_ssharding_provisioning_by_cloning_db_from_gold_image_across_ads.md)  
+[6. Provisioning System-Managed Sharding Topology with Raft replication enabled and send Notification using OCI Notification Service](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_notification_using_oci_notification.md)  
+[7. Scale Out - Add Shards to an existing Oracle Sharded Database provisioned earlier with System-Managed Sharding with RAFT replication enabled](./provisioning/snr_system_sharding/snr_ssharding_scale_out_add_shards.md)  
+[8. Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with System-Managed Sharding with RAFT reolication enabled](./provisioning/snr_system_sharding/snr_ssharding_scale_in_delete_an_existing_shard.md)
 
 ## Connecting to Shard Databases
 

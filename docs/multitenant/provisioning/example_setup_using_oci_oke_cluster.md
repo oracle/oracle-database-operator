@@ -18,7 +18,7 @@ Below are the main steps that will be involved in this setup:
 
 Check the [Oracle Documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengnetworkconfigexample.htm#example-privatek8sapi-privateworkers-publiclb) for the OKE rules settings.
 
-Create OKE cluster with CUSTOM option to use same VCN where ExaCS is provisioned. 
+Create OKE cluster with CUSTOM option to use same VCN where ExaCS is provisioned.
 
 **NOTE:** Make sure you choose same VCN exaphxvcn where ExaCS is provisioned.
 
@@ -35,3 +35,4 @@ NAME              STATUS   ROLES   AGE     VERSION   INTERNAL-IP       EXTERNAL-
 ```
 
 Once this setup is ready, you can proceed with the installation of [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) to use the Oracle On-prem controller to manage PDBs in this CDB.
+
