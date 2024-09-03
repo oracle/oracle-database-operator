@@ -138,10 +138,6 @@ var assertivePdbDeletion bool = false /* Global variable for assertive pdb delet
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups='',resources=statefulsets/finalizers,verbs=get;list;watch;create;update;patch;delete
 
-<<<<<<< HEAD
-
-=======
->>>>>>> gitlab-origin/master
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
