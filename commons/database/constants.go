@@ -100,6 +100,8 @@ const StandbyDatabasePrerequisitesSQL string = "ALTER SYSTEM SET db_create_file_
 	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 SIZE 200M;" +
 	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 SIZE 200M;" +
 	"\nALTER SYSTEM SET STANDBY_FILE_MANAGEMENT=AUTO;" +
+	"\nALTER SYSTEM SET dg_broker_config_file1='/opt/oracle/oradata/dbconfig/dr1${ORACLE_SID}.dat' scope=both;" +
+	"\nALTER SYSTEM SET dg_broker_config_file2='/opt/oracle/oradata/dbconfig/dr2${ORACLE_SID}.dat';" +
 	"\nALTER SYSTEM SET dg_broker_start=TRUE;"
 
 const GetDBOpenMode string = "select open_mode from v\\$database;"
@@ -520,6 +522,9 @@ const DisableTcpsCMD string = "$ORACLE_BASE/$CONFIG_TCPS_FILE disable"
 
 // Location of tls certs
 const TlsCertsLocation string = "/run/secrets/tls_secret"
+
+// Check Mount in pods
+const PodMountsCmd string = "awk '$2 == \"%s\" {print}' /proc/mounts"
 
 // TCPS clientWallet update command
 const ClientWalletUpdate string = "sed -i -e 's/HOST.*$/HOST=%s)/g' -e 's/PORT.*$/PORT=%d)/g' ${ORACLE_BASE}/oradata/clientWallet/${ORACLE_SID}/tnsnames.ora"

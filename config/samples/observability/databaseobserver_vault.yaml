@@ -1,0 +1,25 @@
+# example
+apiVersion: observability.oracle.com/v1alpha1
+kind: DatabaseObserver
+metadata:
+  name: obs-sample
+spec:
+  database:
+    dbUser:
+      key: "username"
+      secret: db-secret
+
+    dbPassword:
+      vaultSecretName: sample_secret
+      vaultOCID: ocid1.vault.oc1.<region>.<vault-ocid>
+
+    dbConnectionString:
+      key: "connection"
+      secret: db-secret
+
+    dbWallet:
+      secret: instance-wallet
+
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey

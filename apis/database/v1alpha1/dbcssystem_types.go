@@ -156,8 +156,9 @@ type VmNetworkDetails struct {
 	NetworkSG    string  `json:"networkSG,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=DbcsSystem,scope=Namespaced
 
 // DbcsSystem is the Schema for the dbcssystems API
 type DbcsSystem struct {

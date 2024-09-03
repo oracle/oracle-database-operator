@@ -52,6 +52,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
@@ -128,14 +129,9 @@ func (r *SingleInstanceDatabase) Default() {
 	}
 
 	if r.Spec.Edition == "express" || r.Spec.Edition == "free" {
-		if r.Status.Replicas == 1 {
-			// default the replicas for XE
-			r.Spec.Replicas = 1
-		}
-	}
-
-	if r.Spec.PrimaryDatabaseRef != "" && r.Spec.CreateAs == "standby" {
-		if r.Spec.Replicas == 0 {
+		// Allow zero replicas as a means to bounce the DB
+		if r.Status.Replicas == 1 && r.Spec.Replicas > 1 {
+			// If not zero, default the replicas to 1
 			r.Spec.Replicas = 1
 		}
 	}
@@ -147,13 +143,22 @@ func (r *SingleInstanceDatabase) Default() {
 var _ webhook.Validator = &SingleInstanceDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateCreate() error {
+func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, containsNamespace := namespaces[r.Namespace]
+	// Check if the allowed namespaces maps contains the required namespace
+	if len(namespaces) != 0 && !containsNamespace {
+		allErrs = append(allErrs,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+				"Oracle database operator doesn't watch over this namespace"))
+	}
+
 	// Persistence spec validation
 	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" ||
-		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.VolumeName != "") {
+		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.DatafilesVolumeName != "") {
 		allErrs = append(allErrs,
 			field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), r.Spec.Persistence,
 				"invalid persistence specification, specify required size"))
@@ -193,6 +198,17 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 				field.Invalid(field.NewPath("spec").Child("initParams"),
 					r.Spec.InitParams, "initParams cannot be specified for standby databases"))
 		}
+		if r.Spec.Persistence.ScriptsVolumeName != "" {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("persistence").Child("scriptsVolumeName"),
+					r.Spec.Persistence.ScriptsVolumeName, "scriptsVolumeName cannot be specified for standby databases"))
+		}
+		if r.Spec.EnableTCPS {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("enableTCPS"),
+					r.Spec.EnableTCPS, "enableTCPS cannot be specified for standby databases"))
+		}
+
 	}
 
 	// Replica validation
@@ -246,25 +262,10 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 				field.Invalid(field.NewPath("spec").Child("pdbName"), r.Spec.Pdbname,
 					"Free edition PDB must be FREEPDB1"))
 		}
-		if r.Spec.InitParams.CpuCount != 0 {
+		if r.Spec.InitParams != nil {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("cpuCount"), r.Spec.InitParams.CpuCount,
-					r.Spec.Edition+" edition does not support changing init parameter cpuCount."))
-		}
-		if r.Spec.InitParams.Processes != 0 {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("processes"), r.Spec.InitParams.Processes,
-					r.Spec.Edition+" edition does not support changing init parameter process."))
-		}
-		if r.Spec.InitParams.SgaTarget != 0 {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("sgaTarget"), r.Spec.InitParams.SgaTarget,
-					r.Spec.Edition+" edition does not support changing init parameter sgaTarget."))
-		}
-		if r.Spec.InitParams.PgaAggregateTarget != 0 {
-			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("initParams").Child("pgaAggregateTarget"), r.Spec.InitParams.PgaAggregateTarget,
-					r.Spec.Edition+" edition does not support changing init parameter pgaAggregateTarget."))
+				field.Invalid(field.NewPath("spec").Child("initParams"), *r.Spec.InitParams,
+					r.Spec.Edition+" edition does not support changing init parameters"))
 		}
 	} else {
 		if r.Spec.Sid == "XE" {
@@ -279,7 +280,7 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 		}
 	}
 
-	if r.Spec.CreateAs != "clone" {
+	if r.Spec.CreateAs == "clone" {
 		if r.Spec.Image.PrebuiltDB {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("createAs"), r.Spec.CreateAs,
@@ -383,37 +384,37 @@ func (r *SingleInstanceDatabase) ValidateCreate() error {
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object) error {
+func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object) (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate update", "name", r.Name)
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	err := r.ValidateCreate()
+	warnings, err := r.ValidateCreate()
 	if err != nil {
-		return err
+		return warnings, err
 	}
 
 	// Validate Deletion
 	if r.GetDeletionTimestamp() != nil {
-		err := r.ValidateDelete()
+		warnings, err := r.ValidateDelete()
 		if err != nil {
-			return err
+			return warnings, err
 		}
 	}
 
 	// Now check for updation errors
 	old, ok := oldRuntimeObject.(*SingleInstanceDatabase)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	if old.Status.CreatedAs == "clone" {
@@ -467,10 +468,15 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		}
 	}
 
-	// if Db is in a dataguard configuration. Restrict enabling Tcps on the Primary DB
-	if old.Status.DgBrokerConfigured && r.Spec.EnableTCPS {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is in a dataguard configuration"))
+	// if Db is in a dataguard configuration or referred by Standby databases then Restrict enabling Tcps on the Primary DB
+	if r.Spec.EnableTCPS {
+		if old.Status.DgBrokerConfigured {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is in a dataguard configuration"))
+		} else if len(old.Status.StandbyDatabases) != 0 {
+			allErrs = append(allErrs,
+				field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is referred by one or more standby databases"))
+		}
 	}
 
 	if old.Status.DatafilesCreated == "true" && (old.Status.PrebuiltDB != r.Spec.Image.PrebuiltDB) {
@@ -504,16 +510,16 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 			field.Forbidden(field.NewPath("spec").Child("persistence"), "uninstall ORDS to change Persistence"))
 	}
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateDelete() error {
+func (r *SingleInstanceDatabase) ValidateDelete() (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate delete", "name", r.Name)
 	var allErrs field.ErrorList
 	if r.Status.OrdsReference != "" {
@@ -521,9 +527,9 @@ func (r *SingleInstanceDatabase) ValidateDelete() error {
 			field.Forbidden(field.NewPath("status").Child("ordsReference"), "delete "+r.Status.OrdsReference+" to cleanup this SIDB"))
 	}
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "SingleInstanceDatabase"},
 		r.Name, allErrs)
 }

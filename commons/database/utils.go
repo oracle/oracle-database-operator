@@ -45,6 +45,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -70,6 +71,8 @@ import (
 // To requeue after 15 secs allowing graceful state changes
 var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
+
+var ErrNoReadyPod = errors.New("SingleInstanceDatabase has no ready pod currently")
 
 // Filter events that trigger reconcilation
 func ResourceEventHandler() predicate.Predicate {
@@ -682,9 +685,9 @@ func GetSidPdbEdition(r client.Reader, config *rest.Config, ctx context.Context,
 		splitstr := strings.Split((strings.TrimSpace(out)), ",")
 		return splitstr[0], splitstr[1], splitstr[2], nil
 	}
-	err = errors.New("ready pod name is nil")
-	log.Error(err, err.Error())
-	return "", "", "", err
+	// err = errors.New("ready pod name is nil")
+	log.Error(err, ErrNoReadyPod.Error())
+	return "", "", "", ErrNoReadyPod
 }
 
 // Get Datapatch Status
@@ -784,4 +787,21 @@ func PatchService(config *rest.Config, namespace string, ctx context.Context, re
 	log.Info("Patching the service", "Service", svcName)
 	_, err = client.CoreV1().Services(namespace).Patch(ctx, svcName, types.MergePatchType, []byte(payload), metav1.PatchOptions{})
 	return err
+}
+
+func GetWatchNamespaces() map[string]bool {
+	// Fetching the allowed namespaces from env variables
+	var watchNamespaceEnvVar = "WATCH_NAMESPACE"
+	ns, _ := os.LookupEnv(watchNamespaceEnvVar)
+	ns = strings.TrimSpace(ns)
+	namespaces := make(map[string]bool)
+	if len(ns) == 0 {
+		return namespaces
+	}
+	namespacesArr := strings.Split(ns, ",")
+	// put slice values into map
+	for _, s := range namespacesArr {
+		namespaces[s] = true
+	}
+	return namespaces
 }

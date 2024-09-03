@@ -1,6 +1,7 @@
-*   Trying 127.0.0.1...
+kubectl exec -it `kubectl get pods -n oracle-database-operator-system|grep ords|cut -d ' ' -f 1` -n oracle-database-operator-system -i -t -- /usr/bin/curl -sSkv -k -X GET https://localhost:8888/ords/_/db-api/stable/metadata-catalog/
+*   Trying ::1...
 * TCP_NODELAY set
-* Connected to localhost (127.0.0.1) port 8888 (#0)
+* Connected to localhost (::1) port 8888 (#0)
 * ALPN, offering h2
 * ALPN, offering http/1.1
 * successfully set certificate verify locations:
@@ -19,10 +20,10 @@
 * SSL connection using TLSv1.3 / TLS_AES_256_GCM_SHA384
 * ALPN, server accepted to use h2
 * Server certificate:
-*  subject: C=CN; ST=GD; L=SZ; O=oracle, Inc.; CN=cdb-dev-ords
-*  start date: Oct 11 07:44:38 2022 GMT
-*  expire date: Oct 11 07:44:38 2023 GMT
-*  issuer: C=CN; ST=GD; L=SZ; O=oracle, Inc.; CN=oracle Root CA
+*  subject: C=US; ST=California; L=SanFrancisco; O=oracle ; CN=cdb-dev-ords.oracle-database-operator-system ; CN=localhost
+*  start date: Aug 20 07:14:04 2024 GMT
+*  expire date: Aug 20 07:14:04 2025 GMT
+*  issuer: C=US; ST=California; L=SanFrancisco; O=oracle ; CN=cdb-dev-ords.oracle-database-operator-system ; CN=localhost  Root CA
 *  SSL certificate verify result: unable to get local issuer certificate (20), continuing anyway.
 * Using HTTP2, server supports multi-use
 * Connection state changed (HTTP/2 confirmed)
@@ -30,7 +31,7 @@
 * TLSv1.3 (OUT), TLS app data, [no content] (0):
 * TLSv1.3 (OUT), TLS app data, [no content] (0):
 * TLSv1.3 (OUT), TLS app data, [no content] (0):
-* Using Stream ID: 1 (easy handle 0x564be7b0b970)
+* Using Stream ID: 1 (easy handle 0x55d14a7dea90)
 * TLSv1.3 (OUT), TLS app data, [no content] (0):
 > GET /ords/_/db-api/stable/metadata-catalog/ HTTP/2
 > Host: localhost:8888
@@ -46,4 +47,16 @@
 * TLSv1.3 (OUT), TLS app data, [no content] (0):
 * TLSv1.3 (IN), TLS app data, [no content] (0):
 * TLSv1.3 (IN), TLS app data, [no content] (0):
-
+< HTTP/2 200
+< content-type: application/json
+<
+* TLSv1.3 (IN), TLS handshake, [no content] (0):
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+* TLSv1.3 (IN), TLS app data, [no content] (0):
+* TLSv1.3 (IN), TLS app data, [no content] (0):
+* TLSv1.3 (IN), TLS app data, [no content] (0):
+* TLSv1.3 (IN), TLS app data, [no content] (0):
+* TLSv1.3 (IN), TLS app data, [no content] (0):
+* TLSv1.3 (IN), TLS app data, [no content] (0):
+* Connection #0 to host localhost left intact
+{"items":[{"name":"default","links":[{"rel":"canonical","href":"https://localhost:8888/ords/_/db-api/stable/metadata-catalog/openapi.json","mediaType":"application/vnd.oai.openapi+json;version=3.0"}]}],"links":[{"rel":"self","href":"https://localhost:8888/ords/_/db-api/stable/metadata-catalog/"},{"rel":"describes","href":"https://localhost:8888/ords/_/db-api/stable/"}]}

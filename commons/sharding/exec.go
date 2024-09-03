@@ -40,27 +40,56 @@ package commons
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
+	"time"
 
 	databasealphav1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/kubectl/pkg/cmd/cp"
+	"k8s.io/kubectl/pkg/cmd/util"
 )
 
 // ExecCMDInContainer execute command in first container of a pod
 func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasealphav1.ShardingDatabase, logger logr.Logger) (string, string, error) {
 
+	var err1  error = nil
 	var msg string
 	var (
 		execOut bytes.Buffer
 		execErr bytes.Buffer
 	)
 
+	for i := 0; i < 5; i++ {
+           if scheme.Scheme == nil {
+              time.Sleep(time.Second * 40)
+           } else {
+              break
+           }
+        }
+
+	if kubeClient == nil {
+	      msg = "ExecCommand() : kubeClient is nil"
+	      err1 = fmt.Errorf(msg)
+	      return "Error:","kubeClient is nil",err1
+        }
+	if kubeConfig == nil {
+	      msg = "ExecCommand() : kubeConfig is nil"
+	      err1 = fmt.Errorf(msg)
+	      return "Error:","kubeConfig is nil",err1
+	}
+
+	msg = ""
 	req := kubeClient.CoreV1().RESTClient().
 		Post().
 		Namespace(instance.Spec.Namespace).
@@ -105,4 +134,69 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 	}
 
 	return execOut.String(), execErr.String(), nil
+}
+
+func GetPodCopyConfig(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasealphav1.ShardingDatabase, logger logr.Logger) (*rest.Config, *kubernetes.Clientset, error) {
+
+	var clientSet *kubernetes.Clientset
+	config, err := kubeConfig.ClientConfig()
+	if err != nil {
+		return config, clientSet, err
+	}
+	clientSet, err = kubernetes.NewForConfig(config)
+	config.APIPath = "/api"
+	config.GroupVersion = &schema.GroupVersion{Version: "v1"}
+	config.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: scheme.Codecs}
+
+	return config, clientSet, err
+
+}
+
+func KctlCopyFile(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasealphav1.ShardingDatabase, restConfig *rest.Config, kclientset *kubernetes.Clientset, logger logr.Logger, src string, dst string, containername string) (*bytes.Buffer, *bytes.Buffer, *bytes.Buffer, error) {
+
+	var in, out, errOut *bytes.Buffer
+	var ioStreams genericclioptions.IOStreams
+	for count := 0; ; count++ {
+		ioStreams, in, out, errOut = genericclioptions.NewTestIOStreams()
+		copyOptions := cp.NewCopyOptions(ioStreams)
+		copyOptions.ClientConfig = restConfig
+		if len(containername) != 0 {
+			copyOptions.Container = containername
+		}
+		configFlags := genericclioptions.NewConfigFlags(false)
+		f := util.NewFactory(configFlags)
+		cmd := cp.NewCmdCp(f, ioStreams)
+		err := copyOptions.Complete(f, cmd, []string{src, dst})
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		c := rest.CopyConfig(restConfig)
+		cs, err := kubernetes.NewForConfig(c)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		copyOptions.ClientConfig = c
+		copyOptions.Clientset = cs
+
+		err = copyOptions.Run()
+		if err != nil {
+			if !shouldRetry(count, err) {
+				return nil, nil, nil, fmt.Errorf("could not run copy operation: %v. Stdout: %v, Stderr: %v", err, out.String(), errOut.String())
+			}
+			time.Sleep(10 * time.Second)
+			continue
+		}
+		break
+	}
+	return in, out, errOut, nil
+
+}
+
+func shouldRetry(count int, err error) bool {
+	if count < connectFailureMaxTries {
+		return err.Error() == errorDialingBackendEOF
+	}
+	return false
 }

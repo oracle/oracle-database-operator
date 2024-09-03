@@ -3,20 +3,23 @@
 
 # STEP BY STEP USE CASE 
 
-- [INTRODUCTION](#introduction)
-- [OPERATION STEPS ](#operation-steps)
-- [Download latest version from github ](#download-latest-version-from-orahub-a-namedownloada)
-- [Upload webhook certificates](#upload-webhook-certificates-a-namewebhooka)
-- [Create the dboperator](#create-the-dboperator-a-namedboperatora)
-- [Create Secret for container registry](#create-secret-for-container-registry)
-- [Build ords immage ](#build-ords-immage-a-nameordsimagea)
-- [Database Configuration](#database-configuration)
-- [Create CDB secret ](#create-cdb-secret)
-- [Create Certificates](#create-certificates)
-- [Apply cdb.yaml](#apply-cdbyaml)
-- [Logs and throuble shutting](#cdb---logs-and-throuble-shutting)
-- [Create PDB secret](#create-pdb-secret)
-- [Other action ](#other-actions)
+- [STEP BY STEP USE CASE](#step-by-step-use-case)
+        - [INTRODUCTION](#introduction)
+    - [OPERATIONAL STEPS](#operational-steps)
+      - [Download latest version from github ](#download-latest-version-from-github-)
+      - [Upload webhook certificates ](#upload-webhook-certificates-)
+      - [Create the dboperator ](#create-the-dboperator-)
+      - [Create secret for container registry](#create-secret-for-container-registry)
+      - [Build ords immage ](#build-ords-immage-)
+      - [Database Configuration](#database-configuration)
+      - [Create CDB secret](#create-cdb-secret)
+      - [Create Certificates](#create-certificates)
+      - [Apply cdb.yaml](#apply-cdbyaml)
+      - [CDB - Logs and throuble shutting](#cdb---logs-and-throuble-shutting)
+      - [Create PDB secret](#create-pdb-secret)
+      - [Apply pdb yaml file to create pdb](#apply-pdb-yaml-file-to-create-pdb)
+      - [Other actions](#other-actions)
+      - [Imperative approach on pdb deletion - will be avilable in 1.2.0 ](#imperative-approach-on-pdb-deletion)
 
 
 
@@ -47,6 +50,7 @@ The following table reports the parameters required to configure and use oracle 
 | pdbTlsKey     | <keyfile\>                  | [standalone.https.cert.key][key]                |
 | pdbTlsCrt     | <certfile\>                 | [standalone.https.cert][cr]                     |
 | pdbTlsCat     | <certauth\>                 | certificate authority                           |
+|  assertivePdbDeletion | boolean             | [turn on imperative approach on crd deleteion][imperative]     |
 
 > A [makfile](./makefile) is available to sped up the command execution for the multitenant setup and test. See the comments in the header of file  
 
@@ -78,6 +82,7 @@ make operator-yaml IMG=<public_container_registry>operator:latest
 
 > <span style="color:red"> **NOTE:** If you are using oracle-container-registry make sure to accept the license agreement otherwise the operator image pull fails. </span>
 ----
+
 #### Upload webhook certificates <a name="webhook"></a>
 
 ```bash
@@ -101,6 +106,7 @@ oracle-database-operator-controller-manager-557ff6c659-xpswv   1/1     Running  
 
 ```
 ----
+
 #### Create secret for container registry
 
 + Make sure to login to your container registry and then create the secret for you container registry.  
@@ -119,6 +125,7 @@ container-registry-secret   kubernetes.io/dockerconfigjson   1      19s
 webhook-server-cert         kubernetes.io/tls 
 ```
 ----
+
 #### Build ords immage <a name="ordsimage"></a>
 
 + Build the ords image, downloading ords software is no longer needed; just build the image and push it to your repository
@@ -128,16 +135,17 @@ cd oracle-database-operator/ords
 docker build -t oracle/ords-dboper:latest .
 ```
 
-[example of execution](./BuildImage.log)
+[Example of execution](./logfiles/BuildImage.log)
 + Login to your container registry and push the ords image. 
 
 ```bash 
 docker tag <public-container-registry>/ords-dboper:latest
 docker push <public-container-registry>/ords-dboper:latest
 ```
-[example of execution](./ImagePush.log)
+[Example of execution](./logfiles/tagandpush.log)
 
 ----
+
 #### Database Configuration
 
 + Configure Database
@@ -153,6 +161,7 @@ GRANT SYSDBA TO <CDB_ADMIN_USER> CONTAINER = ALL;
 GRANT CREATE SESSION TO <CDB_ADMIN_USER> CONTAINER = ALL;
 ```
 ----
+
 #### Create CDB secret 
 
 + Create secret for CDB connection 
@@ -208,6 +217,7 @@ webhook-server-cert         kubernetes.io/tls                3      4m55s
 
 >**TIPS:** Use the following commands to analyze contents of an existing secret  ```bash kubectl   get secret <secret name> -o yaml -n <namespace_name>```
 ----
+
 #### Create Certificates
 
 + Create certificates: At this stage we need to create certificates on our local machine and upload into kubernetes cluster by creating new secrets.
@@ -258,65 +268,69 @@ kubectl create secret generic db-ca --from-file=<certfile> -n oracle-database-op
 
 ```
 
-[example of execution:](./openssl_execution.log)
+[Example of execution:](./logfiles/openssl_execution.log)
 
 
 ----
+
 #### Apply cdb.yaml
+
+
+**note:** <span style="color:red">
+ Before creating the CDB pod make sure that all the pluggable databases in the container DB are open.  
+</span>
 
 + Create ords container 
 
 ```bash
-/usr/bin/kubectl apply -f cdb.yaml  -n oracle-database-operator-system
+/usr/bin/kubectl apply -f cdb_create.yaml  -n oracle-database-operator-system
 ```
-Example: **cdb.yaml**
+Example: **cdb_create.yaml**
 
 ```yaml
 apiVersion: database.oracle.com/v1alpha1
-kind: CDB
-metadata:
-  name: <cdb-dev>
+kind: CDB 
+metadata: 
+  name: cdb-dev
   namespace: oracle-database-operator-system
 spec:
-  cdbName: "<cdbname>"
-  dbServer: "<host_name>" or <scan_name> 
-  dbPort: <oracle_port>
-  ordsImage: "<public_container_registry>/ords-dboper:.latest"
+  cdbName: "DB12"
+  ordsImage: ".............your registry............./ords-dboper:latest"
   ordsImagePullPolicy: "Always"
-  serviceName: <service_name>
+  dbTnsurl : "...Container tns alias....."
   replicas: 1
-  sysAdminPwd:
-    secret:
+  sysAdminPwd: 
+    secret: 
       secretName: "cdb1-secret"
       key: "sysadmin_pwd"
   ordsPwd:
-    secret:
+    secret: 
       secretName: "cdb1-secret"
-      key: "ords_pwd"
-  cdbAdminUser:
-    secret:
+      key: "ords_pwd"  
+  cdbAdminUser: 
+    secret: 
       secretName: "cdb1-secret"
       key: "cdbadmin_user"
-  cdbAdminPwd:
-    secret:
+  cdbAdminPwd: 
+    secret: 
       secretName: "cdb1-secret"
       key: "cdbadmin_pwd"
-  webServerUser:
-    secret:
+  webServerUser: 
+    secret: 
       secretName: "cdb1-secret"
       key: "webserver_user"
-  webServerPwd:
-    secret:
+  webServerPwd: 
+    secret: 
       secretName: "cdb1-secret"
-      key: "webserver_pwd"
+      key: "webserver_pwd"      
   cdbTlsKey:
     secret:
       secretName: "db-tls"
-      key: "<keyfile>"
+      key: "tls.key"
   cdbTlsCrt:
     secret:
       secretName: "db-tls"
-      key: "<certfile>:"
+      key: "tls.crt"
 
 ```
 > **Note** if you are working in dataguard environment with multiple sites (AC/DR) specifying the host name (dbServer/dbPort/serviceName) may not be the suitable solution for this kind of configuration, use **dbTnsurl** instead. Specify the whole tns string which includes the hosts/scan list. 
@@ -337,9 +351,11 @@ spec:
    dbtnsurl:((DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(TRANS......
 ```
      
-[example of cdb.yaml](./cdb.yaml)
+[Example of cdb.yaml](./cdb_create.yaml)
+
 
 ----
+
 #### CDB - Logs and throuble shutting 
 
 + Check the status of ords container 
@@ -374,14 +390,14 @@ NAME      CDB NAME   DB SERVER              DB PORT   REPLICAS   STATUS   MESSAG
 ```bash
 /usr/bin/kubectl logs `/usr/bin/kubectl get pods -n oracle-database-operator-system|grep ords|cut -d ' ' -f 1` -n oracle-database-operator-system
 ```
-[example of execution](./cdb.log)
+[Example of cdb creation log](./logfiles/cdb_creation.log)
 
 + Test REST API from the pod. By querying the metadata catalog you can verify the status of https setting 
 
 ```bash
  /usr/bin/kubectl exec -it  `/usr/bin/kubectl get pods -n oracle-database-operator-system|grep ords|cut -d ' ' -f 1` -n oracle-database-operator-system -i -t --  /usr/bin/curl -sSkv -k -X GET https://localhost:8888/ords/_/db-api/stable/metadata-catalog/
 ```
-[example of execution](./testapi.log)
+[Example of execution](./logfiles/testapi.log)
 
 + Verify the pod environment varaibles
  ```bash 
@@ -398,9 +414,10 @@ NAME      CDB NAME   DB SERVER              DB PORT   REPLICAS   STATUS   MESSAG
 ```bash
 /usr/bin/kubectl exec -it  `/usr/bin/kubectl get pods -n oracle-database-operator-system|grep ords|cut -d ' ' -f 1` -n oracle-database-operator-system -i -t --  /usr/local/bin/ords --config /etc/ords/config config list
 ```
-[Example of executions](./ordsconfig.log)
+[Example of executions](./logfiles/ordsconfig.log)
 
 -----
+
 #### Create PDB secret
 
 
@@ -434,30 +451,32 @@ pdb1-secret                 Opaque                           2      79m <---
 webhook-server-cert         kubernetes.io/tls                3      79m
 ```
 ---
+
 #### Apply pdb yaml file to create pdb 
 
 ```bash
 /usr/bin/kubectl apply -f pdb.yaml  -n oracle-database-operator-system
 ```
 
-Example: **pdb.yaml**
+Example: **pdb_create.yaml**
 
 ```yaml
 apiVersion: database.oracle.com/v1alpha1
 kind: PDB
 metadata:
-  name: <pdb>
+  name: pdb1
   namespace: oracle-database-operator-system
   labels:
-    cdb: <cdb-dev>
+    cdb: cdb-dev
 spec:
-  cdbResName: "<cdb-dev>"
-  cdbName: "<cdb>"
-  pdbName: <pdbname>
+  cdbResName: "cdb-dev"
+  cdbNamespace: "oracle-database-operator-system"
+  cdbName: "DB12"
+  pdbName: "pdbdev"
   adminName:
     secret:
       secretName: "pdb1-secret"
-      key: "sysadmin_user"
+      key: "sysadmin_user" 
   adminPwd:
     secret:
       secretName: "pdb1-secret"
@@ -465,19 +484,29 @@ spec:
   pdbTlsKey:
     secret:
       secretName: "db-tls"
-      key: "<keyfile>"
+      key: "tls.key"
   pdbTlsCrt:
     secret:
       secretName: "db-tls"
-      key: "<certfile>"
+      key: "tls.crt"
   pdbTlsCat:
     secret:
       secretName: "db-ca"
-      key: "<certauth>"
+      key: "ca.crt"
+  webServerUser:
+    secret:
+      secretName: "pdb1-secret"
+      key: "webserver_user"
+  webServerPwd:
+    secret:
+      secretName: "pdb1-secret"
+      key: "webserver_pwd"
   fileNameConversions: "NONE"
+  tdeImport: false
   totalSize: "1G"
   tempSize: "100M"
   action: "Create"
+  assertivePdbDeletion: true
 ```
 
 + Monitor the pdb creation status until message is success
@@ -524,13 +553,17 @@ kubectl logs -f $(kubectl get pods -n oracle-database-operator-system|grep oracl
 ```
 
 ---
+
 #### Other actions
 
-Configure and use other yaml files to perform pluggable database life cycle managment action **modify_pdb_open.yaml**  **modify_pdb_close.yaml**
+Configure and use other yaml files to perform pluggable database life cycle managment action **pdb_open.yaml**  **pdb_close.yaml**
 
-> **Note** sql command *"alter pluggable database <pdbname> open instances=all;"* acts  only on closed databases, so you want get any oracle error in case of execution against an pluggable database already opened
+> **Note** sql command *"alter pluggable database <pdbname> open instances=all;"* acts  only on closed databases, so you don't get any oracle error in case of execution against an pluggable database already opened
 
+#### Imperative approach on pdb deletion 
 
+If **assertivePdbDeletion** is true then the command execution **kubectl delete pdbs crd_pdb_name** automatically deletes the pluggable database on the container database. By default this option is disabled. You can use this option during **create**,**map**,**plug** and **clone** operation. If  the option is disabled then **kubectl delete** only deletes the crd but not the pluggable on the container db. Database deletion uses the option **including datafiles**.
+If you drop the CRD without dropping the pluggable database and you need to recreate the CRD then you can use the [pdb_map.yaml](./pdb_map.yaml)
 
 
 [1]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-E9625FAB-9BC8-468B-9FF9-443C88D76FA1:~:text=Table%202%2D2%20Command%20Options%20for%20Command%2DLine%20Interface%20Installation
@@ -554,3 +587,7 @@ Configure and use other yaml files to perform pluggable database life cycle mana
 [http]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-BEECC057-A8F5-4EAB-B88E-9828C2809CD8:~:text=Example%3A%20delete%20%5B%2D%2Dglobal%5D-,user%20add,-Add%20a%20user
 
 [dbtnsurl]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-A9AED253-4EEC-4E13-A0C4-B7CE82EC1C22
+
+[imperative]:https://kubernetes.io/docs/concepts/overview/working-with-objects/object-management/
+
+</span>

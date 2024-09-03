@@ -10,7 +10,7 @@ metadata:
   namespace: default
 spec:
   
-  ## Primary DB ref. This can be of kind SingleInstanceDatabase or CloneDB
+  ## Primary DB ref. This is of kind SingleInstanceDatabase
   primaryDatabaseRef: "sidb-sample"
 
   ## Standby DB pod CRD Metadata Name to add this DB to DG config

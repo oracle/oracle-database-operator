@@ -86,6 +86,17 @@ type SingleInstanceDatabaseSpec struct {
 	Image         SingleInstanceDatabaseImage         `json:"image"`
 	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
 	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
+	Resources     SingleInstanceDatabaseResources     `json:"resources,omitempty"`
+}
+
+type SingleInstanceDatabaseResource struct {
+	Cpu    string `json:"cpu,omitempty"`
+	Memory string `json:"memory,omitempty"`
+}
+
+type SingleInstanceDatabaseResources struct {
+	Requests *SingleInstanceDatabaseResource `json:"requests,omitempty"`
+	Limits   *SingleInstanceDatabaseResource `json:"limits,omitempty"`
 }
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC
@@ -94,8 +105,10 @@ type SingleInstanceDatabasePersistence struct {
 	StorageClass string `json:"storageClass,omitempty"`
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
 	AccessMode            string `json:"accessMode,omitempty"`
-	VolumeName            string `json:"volumeName,omitempty"`
+	DatafilesVolumeName   string `json:"datafilesVolumeName,omitempty"`
+	ScriptsVolumeName     string `json:"scriptsVolumeName,omitempty"`
 	VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
+	SetWritePermissions   *bool  `json:"setWritePermissions,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters
