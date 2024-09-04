@@ -126,8 +126,8 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   ```sh
     kubectl apply -f rbac/node-rbac.yaml
   ```
-# Installation
-## Install Oracle DB Operator
+## Installation
+### Install Oracle DB Operator
 
    After you have completed the preceding prerequisite changes, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
 
