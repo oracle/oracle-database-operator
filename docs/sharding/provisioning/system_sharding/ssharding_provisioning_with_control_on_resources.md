@@ -1,4 +1,4 @@
-# Provisioning Oracle Sharded Database with System-Managed Sharding with additional control on resources like Memory and CPU allocated to Pods
+# Provisioning Oracle Globally Distributed Database with System-Managed Sharding with additional control on resources like Memory and CPU allocated to Pods
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
@@ -7,7 +7,7 @@ In this use case, there are additional tags used to control resources such as CP
 This example uses `ssharding_shard_prov_memory_cpu.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
+* Three Shard Database Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * Tags `memory` and `cpu`  to control the Memory and CPU of the PODs

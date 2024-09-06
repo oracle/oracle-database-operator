@@ -1,15 +1,15 @@
-# Provisioning System-Managed Sharding Topology with Raft replication enabled with additional control on resources like Memory and CPU allocated to Pods
+# Provisioning Oracle Globally Distributed Database Topology with System-managed sharding and Raft replication enabled with additional control on resources like Memory and CPU allocated to Pods
 
 **NOTE: RAFT Replication Feature is available only for Oracle 23c RDBMS and Oracle 23c GSM version.**
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-In this use case, there are additional tags used to control resources such as CPU and Memory used by the different Pods when the Oracle Sharding topology with System-Managed with RAFT Replication is deployed using Oracle Sharding controller.
+In this use case, there are additional tags used to control resources such as CPU and Memory used by the different Pods when the Oracle Globally Distributed Database Topology with System-managed sharding and RAFT Replication is deployed using Oracle Sharding controller.
 
 This example uses `snr_ssharding_shard_prov_memory_cpu.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
+* Three Shard Database Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * Tags `memory` and `cpu`  to control the Memory and CPU of the PODs

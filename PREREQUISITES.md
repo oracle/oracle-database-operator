@@ -6,7 +6,7 @@ Oracle Database Operator for Kubernetes (OraOperator) manages all Cloud deployme
 
 * Oracle Autonomous Database (ADB)
 * Containerized Oracle Database Single Instance (SIDB)
-* Containerized Sharded Oracle Database (SHARDING)
+* Containerized Oracle Globally Distributed Database (GDD)
 
 ### Setting Up a Kubernetes Cluster and Volumes
 Review and complete each step as needed.
@@ -29,6 +29,6 @@ If you intent to use `OraOperator` to handle Oracle Autonomous Database lifecycl
 
 If you intent to use `OraOperator` to handle Oracle Database Single Instance lifecycles, then read [Single Instance Database Prerequisites](./docs/sidb/PREREQUISITES.md)
 
-### Prerequites for Sharded Databases (SHARDING)  
+### Prerequites for Oracle Globally Distributed Databases(GDD)
 
- If you intent to use OraOperator to handle the lifecycle of Oracle Database deployed with Oracle Sharding, then read [Sharded Database Prerequisites](./docs/sharding/README.md#prerequsites-for-running-oracle-sharding-database-controller)
+ If you intent to use OraOperator to handle the lifecycle of Oracle Globally Distributed Database(GDD), then read [Oracle Globally Distributed Database Prerequisites](./docs/sharding/README.md#prerequsites-for-running-oracle-sharding-database-controller)

@@ -1,19 +1,19 @@
-# Provisioning Oracle Sharded Database with User Defined Sharding and send Notification using OCI Notification Service
+# Provisioning Oracle Globally Distributed Database with User-Defined Sharding and send Notification using OCI Notification Service
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-This use case demonstrates how to use a notification service like OCI Notification service to send an email notification when a particular operation is completed on an Oracle Database sharding topology provisioned using the Oracle Database sharding controller. 
+This use case demonstrates how to use a notification service like OCI Notification service to send an email notification when a particular operation is completed on an Oracle Globally Distributed Database topology provisioned using the Oracle Database sharding controller. 
 
-This example uses `udsharding_shard_prov_send_notification.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
+This example uses `udsharding_shard_prov_send_notification.yaml` to provision an Oracle Globally Distributed Database topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
+* Three Shard Database Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * Database Cloning from the `BLOCK VOLUME FULL BACKUP` of the Persistent Volume that has the Database Gold Image created earlier.
 * OCID of the Block Volume Backup: `ocid1.volumebackup.oc1.phx.abyhqljrxtv7tu5swqb3lzc7vpzwbwzdktd2y4k2vjjy2srmgu2w7bqdftjq`
 * Configmap to send notification email when a particular operation is completed. For example: When a shard is added.
-* User Defined Sharding is specified using `shardingType: USER`
+* User-Defined Sharding is specified using `shardingType: USER`
 
 **NOTE:**
 
@@ -68,7 +68,7 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
   * In case you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you will need to add the additional parameter `dbEdition: "free"` to the below .yaml file.
 
-**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
+**NOTE:** Provisioning the Oracle Globally Distributed Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
 
 Use the file: [udsharding_shard_prov_send_notification.yaml](./udsharding_shard_prov_send_notification.yaml) for this use case as below:
 

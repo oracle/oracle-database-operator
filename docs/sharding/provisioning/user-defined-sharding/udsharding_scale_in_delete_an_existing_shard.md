@@ -1,16 +1,16 @@
-# Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with User Defined Sharding
+# Scale In - Delete an existing Shard from a working Oracle Globally Distributed Database provisioned earlier with User-Defined Sharding
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-This use case demonstrates how to delete an existing Shard from an existing Oracle Database sharding topology with User Defined Sharding provisioned using Oracle Database Sharding controller.
+This use case demonstrates how to delete an existing Shard from an existing Oracle Globally Distributed Database topology with User-Defined Sharding provisioned using Oracle Database Sharding controller.
 
 In this use case, the existing database Sharding is having:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Five sharding Pods: `shard1`,`shard2`,`shard3`,`shard4` and `shard5`
+* Five Shard Database Pods: `shard1`,`shard2`,`shard3`,`shard4` and `shard5`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
-* User Defined Sharding is specified using `shardingType: USER`
+* User-Defined Sharding is specified using `shardingType: USER`
 
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
@@ -20,7 +20,7 @@ In this example, we are using pre-built Oracle Database and Global Data Services
 
 **NOTE:** Use tag `isDelete: enable` to delete the shard you want.
 
-This use case deletes the shard `shard4` from the above Sharding Topology.
+This use case deletes the shard `shard4` from the above Oracle Globally Distributed Database Topology.
 
 Use the file: [udsharding_shard_prov_delshard.yaml](./udsharding_shard_prov_delshard.yaml) for this use case as below:
 

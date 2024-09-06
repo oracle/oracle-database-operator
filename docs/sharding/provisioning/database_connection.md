@@ -1,10 +1,10 @@
 # Database Connectivity
 
-The Oracle Database Sharding Topology deployed by Sharding Controller in Oracle Database Operator has an external IP available for each of the container.
+The Oracle Globally Distributed Database Topology deployed by Sharding Controller in Oracle Database Operator has an external IP available for each of the container.
 
 ## Below is an example setup with connection details
 
-Check the details of the Sharding Topology provisioned using Sharding Controller:
+Check the details of the Oracle Globally Distributed Database Topology provisioned using Sharding Controller:
 
 ```sh
 $ kubectl get all  -n shns
@@ -40,5 +40,5 @@ After you have the external IP address, you can use the services shown below to 
 1. **Direct connection to the CATALOG Database**: Connect to the service `catalogpdb` on catalog container external IP `xx.xx.xx.116` on port `1521`
 2. **Direct connection to the shard Database SHARD1**: Connect to the service `shard1pdb` on catalog container external IP `xx.xx.xx.187` on port `1521`
 3. **Direct connection to the shard Database SHARD2**: Connect to the service `shard2pdb` on catalog container external IP `xx.xx.xx.197` on port `1521`
-4. **Connection to SHARDED Database for DML activity (INSERT/UPDATE/DELETE)**: Connect to the service `oltp_rw_svc.catalog.oradbcloud` either on primary gsm GSM1 container external IP `xx.xx.xx.38` on port `1522` **or** on standby gsm GSM2 container external IP `xx.xx.xx.66` on port `1522`
+4. **Connection to Oracle Globally Distributed Database for DML activity (INSERT/UPDATE/DELETE)**: Connect to the service `oltp_rw_svc.catalog.oradbcloud` either on primary gsm GSM1 container external IP `xx.xx.xx.38` on port `1522` **or** on standby gsm GSM2 container external IP `xx.xx.xx.66` on port `1522`
 5. **Connection to the catalog database for DDL activity**: Connect to the service `GDS$CATALOG.oradbcloud` on catalog container external IP `xx.xx.xx.116` on port `1521`

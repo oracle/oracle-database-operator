@@ -1,17 +1,17 @@
-# Provisioning System-Managed Sharding Topology with Raft replication enabled without Database Gold Image
+# Provisioning Oracle Globally Distributed Database Topology with System-managed sharding and Raft replication enabled without Database Gold Image
 
 **NOTE: RAFT Replication Feature is available only for Oracle 23c RDBMS and Oracle 23c GSM version.**
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database when the Oracle Sharding topology with System-Managed with RAFT Replication enabled is deployed using Oracle Sharding controller.
+In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database when the Oracle Globally Distributed Database topology with System-Managed sharding and RAFT Replication enabled is deployed using Oracle Sharding controller.
 
 **NOTE** In this use case, because DBCA creates the database automatically during the deployment, the time required to create the database is greater than the time it takes when the database is created by cloning from a Database Gold Image.
 
-This example uses `snr_ssharding_shard_prov.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
+This example uses `snr_ssharding_shard_prov.yaml` to provision an Oracle Globally Distributed Database topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
+* Three Shard Database Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * `RAFT Replication` enabled
