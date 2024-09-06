@@ -1,19 +1,19 @@
-# Provisioning System-Managed Sharding Topology with Raft replication enabled with number of chunks specified
+# Provisioning Oracle Globally Distributed Database Topology with System-managed sharding and Raft replication enabled with number of chunks specified
 
 **NOTE: RAFT Replication Feature is available only for Oracle 23c RDBMS and Oracle 23c GSM version.**
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database when the Oracle Sharding topology with System-Managed with RAFT Replication enabled is deployed using Oracle Sharding controller.
+In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database when the Oracle Globally Distributed Database topology with System-Managed sharding and RAFT Replication enabled is deployed using Oracle Sharding controller.
 
 **NOTE** In this use case, because DBCA creates the database automatically during the deployment, the time required to create the database is greater than the time it takes when the database is created by cloning from a Database Gold Image.
 
-By default, the System-Managed with RAFT Replication deploys the Sharded Database with 360 chunks per Shard Database (because there are 3 chunks created for each replication unit). In this example, the Sharded Database will be deployed with non-default number of chunks specified using parameter `CATALOG_CHUNKS`.
+By default, the System-Managed with RAFT Replication deploys the Oracle Globally Distributed Database with 360 chunks per Shard Database (because there are 3 chunks created for each replication unit). In this example, the Oracle Globally Distributed Database will be deployed with non-default number of chunks specified using parameter `CATALOG_CHUNKS`.
 
-This example uses `snr_ssharding_shard_prov_chunks.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
+This example uses `snr_ssharding_shard_prov_chunks.yaml` to provision an Oracle Globally Distributed Database topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
+* Three Shard Database Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Total number of chunks as `120` specified by variable `CATALOG_CHUNKS` (it will be 120 chunks per shard)
 * Namespace: `shns`
