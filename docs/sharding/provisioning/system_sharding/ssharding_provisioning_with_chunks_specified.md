@@ -1,4 +1,4 @@
-# Provisioning Oracle Sharded Database with System-Managed Sharding with number of chunks specified
+# Provisioning Oracle Globally Distributed Database with System-Managed Sharding with number of chunks specified
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
@@ -6,12 +6,12 @@ In this use case, the database is created automatically using DBCA during the pr
 
 **NOTE:** In this use case, because DBCA creates the database automatically during the deployment, the time required to create the database is greater than the time it takes when the database is created by cloning from a Database Gold Image.
 
-By default, the System-Managed Sharding deploys the Sharded Database with 120 chunks per Shard Database. If, for example, we have three shards in the Sharded Database, it will be total of 360 chunks. In this example, the Sharded Database will be deployed with non-default number of chunks specified using parameter `CATALOG_CHUNKS`.
+By default, the System-Managed Sharding deploys the Oracle Globally Distributed Database with 120 chunks per Shard Database. For example, if we have three shards in the Oracle Globally Distributed Database, it will be total of 360 chunks. In this example, the Oracle Globally Distributed Database will be deployed with non-default number of chunks specified using parameter `CATALOG_CHUNKS`.
 
 This example uses `ssharding_shard_prov_chunks.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
+* Three Shard Database Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Total number of chunks as `120` specified by variable `CATALOG_CHUNKS` (it will be 40 chunks per shard)
 * Namespace: `shns`

@@ -1,6 +1,6 @@
 # Debugging and Troubleshooting
 
-When the Oracle Database Sharding Topology is provisioned using the Oracle Database Kubernetes Operator, the debugging of an issue with the deployment depends on at which stage the issue has been seen.
+When the Oracle Globally Distributed Database Topology is provisioned using the Oracle Database Kubernetes Operator, the debugging of an issue with the deployment depends on at which stage the issue has been seen.
 
 Below are the possible cases and the steps to debug such an issue:
 
@@ -24,7 +24,7 @@ kubectl describe pod/catalog-0 -n shns
 
 In case the failure is related to the Cloud Infrastructure, you will need to troubleshooting that using the documentation from the cloud provider.
 
-## Failure in the provisioning of the Sharded Database
+## Failure in the provisioning of the Oracle Globally Distributed Database
 
 In case the failure occures after the Kubernetes Pods are created but during the execution of the scripts to create the shard databases, catalog database or the GSM, you will need to trobleshoot that at the individual Pod level.
 
@@ -40,11 +40,11 @@ To check the logs at the GSM or at the Database level or at the host level, swit
 kubectl exec -it catalog-0 -n shns /bin/bash
 ```
 
-Now, you can troubleshooting the corresponding component using the alert log or the trace files etc just like a normal Sharding Database Deployment. Please refer to [Oracle Database Sharding Documentation](https://docs.oracle.com/en/database/oracle/oracle-database/19/shard/sharding-troubleshooting.html#GUID-629262E5-7910-4690-A726-A565C59BA73E) for this purpose.
+Now, you can troubleshooting the corresponding component using the alert log or the trace files etc just like a normal Oracle Globally Distributed Database Deployment. Please refer to [Oracle Globally Distributed Database Documentation](https://docs.oracle.com/en/database/oracle/oracle-database/19/shard/sharding-troubleshooting.html#GUID-629262E5-7910-4690-A726-A565C59BA73E) for this purpose.
 
 
 ## Debugging using Database Events 
 
-* You can enable database events as part of the Sharded Database Deployment
+* You can enable database events as part of the Oracle Globally Distributed Database Deployment
 * This can be enabled using the `envVars` 
 * One example of enabling Database Events is [sharding_provisioning_with_db_events.md](./debugging/sharding_provisioning_with_db_events.md)

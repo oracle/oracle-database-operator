@@ -1,4 +1,4 @@
-# Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with System-Managed Sharding with RAFT reolication enabled
+# Scale In - Delete an existing Shard from a working Oracle Globally Distributed Database provisioned earlier with System-Managed Sharding and RAFT reolication enabled
 
 **NOTE: RAFT Replication Feature is available only for Oracle 23c RDBMS and Oracle 23c GSM version.**
 
@@ -8,10 +8,10 @@ This use case demonstrates how to delete an existing Shard from an existing Orac
 
 **NOTE** The deletion of a shard is done after verifying the Chunks have been moved out of that shard.
 
-In this use case, the existing database Sharding is having:
+In this use case, the existing Oracle Globally Distributed Database is having:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Five sharding Pods: `shard1`,`shard2`,`shard3`,`shard4` and `shard5`
+* Five Shard Database Pods: `shard1`,`shard2`,`shard3`,`shard4` and `shard5`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * `RAFT Replication` enabled

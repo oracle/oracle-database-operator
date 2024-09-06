@@ -11,7 +11,7 @@ In this v1.1.0 production release, `OraOperator` supports the following database
   * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
   * Oracle Autonomous Container Database (ACD) (infrastructure) is the infrastructure for provisioning Autonomous Databases.
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
-* Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
+* Containerized Oracle Globally Distributed Databases(GDD) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Base Database Cloud Service (BDBCS)
 * Oracle Data Guard (Preview status)
@@ -23,7 +23,7 @@ Oracle will continue to extend `OraOperator` to support additional Oracle Databa
 * Namespace scope deployment option
 * Enhanced security with namespace scope deployment option
 * Support for Oracle Database 23ai Free (with SIDB)
-* Automatic Storage Expansion for SIDB and Sharded DB
+* Automatic Storage Expansion for SIDB and Oracle Globally Distributed Database
 * User-Defined Sharding
 * TCPS support customer provided certs
 * Execute custom scripts during DB setup/startup
@@ -41,7 +41,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * ADB-S/ADB-D: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore
 * ACD: provision, bind, restart, terminate (soft/hard)
 * SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, and Application Express (Apex)
-* SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
+* GDD: Provision/deploy Oracle Globally Distributed Databases and the GDD topology, Add a new shard, Delete an existing shard
 * Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
 * Oracle Base Database Cloud Service (BDBCS): provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License
 * Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
@@ -162,7 +162,7 @@ The following quickstarts are designed for specific database configurations:
 * [Oracle Autonomous Database](./docs/adb/README.md)
 * [Oracle Autonomous Container Database](./docs/adb/ACD.md)
 * [Containerized Oracle Single Instance Database and Data Guard](./docs/sidb/README.md)
-* [Containerized Oracle Sharded Database](./docs/sharding/README.md)
+* [Containerized Oracle Globally Distributed Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Cloud Service (BDBCS)](./docs/dbcs/README.md)
 
@@ -217,7 +217,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 * [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
 * [Components of Dedicated Autonomous Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/components.html)
 * [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
-* [Oracle Database Sharding](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
+* [Oracle Globally Distributed Database](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
 * [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
 
 ## Contributing
