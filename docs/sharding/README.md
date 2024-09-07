@@ -33,6 +33,7 @@ Following sections provide the details for deploying Oracle Globally Distributed
 * [Provisioning Oracle Globally Distributed Database System-Managed Sharding with Raft replication enabled in a Cloud-Based Kubernetes Cluster](#provisioning-oracle-globally-distributed-database-topology-with-system-managed-sharding-and-raft-replication-enabled-in-a-cloud-based-kubernetes-cluster)
 * [Connecting to Shard Databases](#connecting-to-shard-databases)
 * [Debugging and Troubleshooting](#debugging-and-troubleshooting)
+* [Known Issues](#known-issues)
 
 **Note** Before proceeding to the next section, you must complete the instructions given in each section, based on your enviornment, before proceeding to next section.
 
@@ -187,3 +188,10 @@ After the Oracle Globally Distributed Database Topology has been provisioned usi
 ## Debugging and Troubleshooting
 
 To debug the Oracle Globally Distributed Database Topology provisioned using the Sharding Controller of Oracle Database Kubernetes Operator, follow this document: [Debugging and troubleshooting](./provisioning/debugging.md)
+
+## Known Issues
+
+* Issue 1: For both ENTERPRISE and FREE Images, if the GSM POD is stopped using "crictl stopp" at the worker node level, it leaves GSM in failed state with the "gdsctl" commands failing with error GSM-45034: Connection to GDS catalog is not established". It is beacause with change, the network namespace is lost if we check from the GSM Pod.
+* Issue 2: For both ENTERPRISE and FREE Images, reboot of node running CATALOG using "/sbin/reboot -f" results in "GSM-45076: GSM IS NOT RUNNING". Once you hit this issue, after waiting for a certain time, the "gdsctl" commands start working as the DB connection start working. Once the stack comes up fine after the node reboot, after some time, unexpected restart of GSM Pod is also observed.
+* Issue 3: For both ENTERPRISE and FREE Images, reboot of node running the SHARD Pod using "/sbin/reboot -f" or stopping the Shard Database Pod from worker node using "crictl stopp" command leaves the shard in error state.
+* Issue 4: For both ENTERPRISE and FREE Images, GSM pod restarts multiple times after force rebooting the node running GSM Pod. Its because when the worker node comes up, the GSM pod was recreated but it does not get DB connection to Catalog and meanwhile, the Liveness Probe fails which restart the Pod.
