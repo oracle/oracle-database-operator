@@ -376,15 +376,15 @@ func volumeClaimTemplatesForCatalog(instance *databasev1alpha1.ShardingDatabase,
 	}
 
 	if len(OraCatalogSpex.PvAnnotations) > 0 {
-		claims[0].ObjectMeta.Annotations = make(map[string]string)
-		for key, value := range OraCatalogSpex.PvAnnotations {
-			claims[0].ObjectMeta.Annotations[key] = value
-		}
-	}
+    claims[0].ObjectMeta.Annotations = make(map[string]string)
+    for key, value := range OraCatalogSpex.PvAnnotations {
+      claims[0].ObjectMeta.Annotations[key] = value
+    }
+  }
 
-	if len(OraCatalogSpex.PvMatchLabels) > 0 {
-		claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraCatalogSpex.PvMatchLabels}
-	}
+  if len(OraCatalogSpex.PvMatchLabels) > 0 {
+    claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraCatalogSpex.PvMatchLabels}
+  }
 
 	if checkTdeWalletFlag(instance) {
 		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
@@ -526,3 +526,4 @@ func UpdateProvForCatalog(instance *databasev1alpha1.ShardingDatabase,
 
 	return ctrl.Result{}, nil
 }
+
