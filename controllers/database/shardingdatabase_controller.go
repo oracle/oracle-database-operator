@@ -133,6 +133,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	resultNq := ctrl.Result{Requeue: false}
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}
 	var nilErr error = nil
+	var msg string
 
 	// On every reconcile, we will call setCrdLifeCycleState
 	// To understand this, please refer https://sdk.operatorframework.io/docs/building-operators/golang/advanced-topics/
@@ -239,6 +240,12 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if len(instance.Spec.Catalog) > 0 {
 		for i = 0; i < int32(len(instance.Spec.Catalog)); i++ {
 			OraCatalogSpex = instance.Spec.Catalog[i]
+	    if len(OraCatalogSpex.Name) > 9 {
+				 msg = "Catalog Name cannot be greater than 9 characters."
+				 err = fmt.Errorf(msg)
+				 result = resultNq
+				 return result, err
+	    }
 			// See if StatefulSets already exists and create if it doesn't
 			result, err = r.deployStatefulSet(instance, shardingv1.BuildStatefulSetForCatalog(instance, OraCatalogSpex), "CATALOG")
 			if err != nil {
@@ -290,6 +297,12 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// if user set replicasize greater than 1 but also set instance.Spec.OraDbPvcName then only one service will be created and one pod
 	for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
 		OraShardSpex = instance.Spec.Shard[i]
+    if len(OraShardSpex.Name) > 9 {
+			 msg = "Shard Name cannot be greater than 9 characters."
+			 err = fmt.Errorf(msg)
+			 result = resultNq
+			 return result, err
+    }
 		if !shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
 			result, err = r.createService(instance, shardingv1.BuildServiceDefForShard(instance, 0, OraShardSpex, "local"))
 			if err != nil {
@@ -2016,34 +2029,29 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev1alpha1.
 		for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
 			OraShardSpex = instance.Spec.Shard[i]
 			currState = shardingv1.GetGsmShardStatus(instance, OraShardSpex.Name)
-			if currState == string(databasev1alpha1.AddingShardState) {
-				eventMsg = "Shard Addition in progress. Requeuing"
+			if OraShardSpex.IsDelete == "failed" {
+				eventMsg = "Shard Deletion  failed for [" + OraShardSpex.Name + "]. Retry shard deletion after manually moving the chunks. Requeuing"
 				err = fmt.Errorf(eventMsg)
-				break
+      } else if currState == string(databasev1alpha1.AddingShardState) {
+				eventMsg = "Shard Addition in progress for [" + OraShardSpex.Name + "]. Requeuing"
+				err = fmt.Errorf(eventMsg)
 			} else if currState == string(databasev1alpha1.DeletingState) {
-				eventMsg = "Shard Deletion in progress. Requeuing"
-				err = fmt.Errorf(eventMsg)
+		    eventMsg = "Shard Deletion in progress for ["  + OraShardSpex.Name + "]. Requeuing"
+        err = fmt.Errorf(eventMsg)
 				err = nil
-				break
-			} else if OraShardSpex.IsDelete == "failed" {
-				eventMsg = "Shard Deletion  failed. Manual intervention required. Requeuing"
-				err = fmt.Errorf(eventMsg)
-				break
 			} else if currState == string(databasev1alpha1.DeleteErrorState) {
-				eventMsg = "Shard Deletion  Error. Manual intervention required. Requeuing"
+				eventMsg = "Shard Deletion  Error for ["  + OraShardSpex.Name + "]. Manual intervention required. Requeuing"
 				err = fmt.Errorf(eventMsg)
-				break
 			} else if currState == string(databasev1alpha1.ShardRemoveError) {
-				eventMsg = "Shard Deletion  Error. Manual intervention required. Requeuing"
+				eventMsg = "Shard Deletion  Error for [" + OraShardSpex.Name + "]. Manual intervention required. Requeuing"
 				err = fmt.Errorf(eventMsg)
-				break
 			} else {
-				eventMsg = "checkShardState() : Shard State=[" + currState + "]"
-				shardingv1.LogMessages("INFO", eventMsg, nil, instance, r.Log)
+				eventMsg = "checkShardState() : Shard State[" + OraShardSpex.Name + "]=[" + currState + "]"
+        shardingv1.LogMessages("INFO", eventMsg, nil, instance, r.Log)
 				err = nil
 			}
+	    r.publishEvents(instance, eventMsg, currState)
 		}
-		r.publishEvents(instance, eventMsg, currState)
 	}
 	return err
 }
