@@ -295,7 +295,7 @@ func buildEnvVarsSpec(instance *databasealphav1.ShardingDatabase, variables []da
 		}
 
 		if instance.Spec.InvitedNodeSubnetFlag == "" {
-			 instance.Spec.InvitedNodeSubnetFlag = "TRUE"
+			instance.Spec.InvitedNodeSubnetFlag = "FALSE"
 
 		}
 		if strings.ToUpper(instance.Spec.InvitedNodeSubnetFlag) != "FALSE" {
