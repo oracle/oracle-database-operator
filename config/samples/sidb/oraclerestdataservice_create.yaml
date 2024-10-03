@@ -24,7 +24,10 @@ spec:
 
   ## ORDS image details
   image:
-    pullFrom: container-registry.oracle.com/database/ords:21.4.2-gh
+    pullFrom: container-registry.oracle.com/database/ords-developer:latest
+
+  ## Set this to true to enable MongoDB API
+  mongoDbApi: true
 
   ## PDB Schemas to be ORDS Enabled.
   ## Schema will be created (if not exists) with password as .spec.ordsPassword.

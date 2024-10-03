@@ -1772,7 +1772,6 @@ func (in *OracleRestDataServiceSpec) DeepCopyInto(out *OracleRestDataServiceSpec
 	}
 	out.Image = in.Image
 	in.OrdsPassword.DeepCopyInto(&out.OrdsPassword)
-	in.ApexPassword.DeepCopyInto(&out.ApexPassword)
 	in.AdminPassword.DeepCopyInto(&out.AdminPassword)
 	if in.RestEnableSchemas != nil {
 		in, out := &in.RestEnableSchemas, &out.RestEnableSchemas

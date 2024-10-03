@@ -56,13 +56,13 @@ type OracleRestDataServiceSpec struct {
 	NodeSelector       map[string]string                        `json:"nodeSelector,omitempty"`
 	Image              OracleRestDataServiceImage               `json:"image,omitempty"`
 	OrdsPassword       OracleRestDataServicePassword            `json:"ordsPassword"`
-	ApexPassword       OracleRestDataServicePassword            `json:"apexPassword,omitempty"`
 	AdminPassword      OracleRestDataServicePassword            `json:"adminPassword"`
 	OrdsUser           string                                   `json:"ordsUser,omitempty"`
 	RestEnableSchemas  []OracleRestDataServiceRestEnableSchemas `json:"restEnableSchemas,omitempty"`
 	OracleService      string                                   `json:"oracleService,omitempty"`
 	ServiceAccountName string                                   `json:"serviceAccountName,omitempty"`
 	Persistence        OracleRestDataServicePersistence         `json:"persistence,omitempty"`
+	MongoDbApi         bool                                     `json:"mongoDbApi,omitempty"`
 
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Minimum=1
@@ -106,17 +106,19 @@ type OracleRestDataServiceRestEnableSchemas struct {
 type OracleRestDataServiceStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Status             string `json:"status,omitempty"`
-	DatabaseApiUrl     string `json:"databaseApiUrl,omitempty"`
-	LoadBalancer       string `json:"loadBalancer,omitempty"`
-	DatabaseRef        string `json:"databaseRef,omitempty"`
-	ServiceIP          string `json:"serviceIP,omitempty"`
-	DatabaseActionsUrl string `json:"databaseActionsUrl,omitempty"`
-	OrdsInstalled      bool   `json:"ordsInstalled,omitempty"`
-	ApexConfigured     bool   `json:"apexConfigured,omitempty"`
-	ApxeUrl            string `json:"apexUrl,omitempty"`
-	CommonUsersCreated bool   `json:"commonUsersCreated,omitempty"`
-	Replicas           int    `json:"replicas,omitempty"`
+	Status               string `json:"status,omitempty"`
+	DatabaseApiUrl       string `json:"databaseApiUrl,omitempty"`
+	LoadBalancer         string `json:"loadBalancer,omitempty"`
+	DatabaseRef          string `json:"databaseRef,omitempty"`
+	ServiceIP            string `json:"serviceIP,omitempty"`
+	DatabaseActionsUrl   string `json:"databaseActionsUrl,omitempty"`
+	MongoDbApiAccessUrl  string `json:"mongoDbApiAccessUrl,omitempty"`
+	OrdsInstalled        bool   `json:"ordsInstalled,omitempty"`
+	ApexConfigured       bool   `json:"apexConfigured,omitempty"`
+	ApxeUrl              string `json:"apexUrl,omitempty"`
+	MongoDbApi           bool   `json:"mongoDbApi,omitempty"`
+	CommonUsersCreated   bool   `json:"commonUsersCreated,omitempty"`
+	Replicas             int    `json:"replicas,omitempty"`
 
 	Image OracleRestDataServiceImage `json:"image,omitempty"`
 }
@@ -128,6 +130,7 @@ type OracleRestDataServiceStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.databaseApiUrl",name="Database API URL",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.databaseActionsUrl",name="Database Actions URL",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.apexUrl",name="Apex URL",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.mongoDbApiAccessUrl",name="MongoDbApi Access URL",type="string"
 
 // OracleRestDataService is the Schema for the oraclerestdataservices API
 type OracleRestDataService struct {
