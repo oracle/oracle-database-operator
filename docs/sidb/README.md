@@ -40,6 +40,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
     * [REST Enable a Database](#rest-enable-a-database)
       * [Provision ORDS](#provision-ords)
       * [Database API](#database-api)
+      * [MongoDB API](#mongodb-api)
       * [Advanced Usages](#advanced-usages)
         * [Oracle Data Pump](#oracle-data-pump)
         * [REST Enabled SQL](#rest-enabled-sql)
@@ -950,7 +951,7 @@ To obtain a quick status check of the ORDS service, use the following command:
 $ kubectl get oraclerestdataservice ords-sample
 
 NAME          STATUS      DATABASE         DATABASE API URL                                           DATABASE ACTIONS URL                           APEX URL
-ords-sample   Healthy     sidb-sample      https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/     https://10.0.25.54:8443/ords/sql-developer     https://10.0.25.54:8443/ords/ORCLPDB1/apex
+ords-sample   Healthy     sidb-sample      http://10.0.25.54:8181/ords/schema1/_/db-api/stable/     http://10.0.25.54:8181/ords/sql-developer     http://10.0.25.54:8181/ords/apex
 
 ```
 
@@ -969,10 +970,10 @@ $ kubectl describe oraclerestdataservice ords-sample
   Metadata: ...
   Spec: ...
   Status:
-    Cluster Db API URL:    https://ords21c-1.default:8443/ords/ORCLPDB1/_/db-api/stable/
-    Database Actions URL:  https://10.0.25.54:8443/ords/sql-developer
-    Database API URL:      https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/
-    Apex URL:              https://10.0.25.54:8443/ords/ORCLPDB1/apex
+    Cluster Db API URL:    http://ords21c-1.default:8181/ords/schema1/_/db-api/stable/
+    Database Actions URL:  http://10.0.25.54:8181/ords/sql-developer
+    Database API URL:      http://10.0.25.54:8181/ords/schema1/_/db-api/stable/
+    Apex URL:              http://10.0.25.54:8181/ords/apex
     Database Ref:          sidb21c-1
     Image:
       Pull From:     ...
@@ -994,8 +995,7 @@ The template `.yaml` file for Oracle Rest Data Services (`OracleRestDataService`
 
 **Note:**  
 - The `adminPassword` and `ordsPassword` fields in the `oraclerestdataservice.yaml` file contains secrets for authenticating the Single Instance Database and the ORDS user with the following roles: `SQL Administrator, System Administrator, SQL Developer, oracle.dbtools.autorest.any.schema`.  
-- To build the ORDS image, use the following instructions: [Building Oracle REST Data Services Install Images](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices#building-oracle-rest-data-services-install-images).
-- By default, ORDS uses self-signed certificates. To use certificates from the Certificate Authority, the ORDS image needs to be rebuilt after specifying the values of `ssl.cert` and `ssl.cert.key` in the [standalone.properties](https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/standalone.properties.tmpl) file. After you rebuild the ORDS image, use the rebuilt image in the **[config/samples/sidb/oraclerestdataservice.yaml](../../config/samples/sidb/oraclerestdataservice.yaml)** file.
+
 - If you want to install ORDS in a [prebuilt database](#provision-a-pre-built-database), make sure to attach the **database persistence** by uncommenting the `persistence` section in the **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file, while provisioning the prebuilt database.
 
 ### REST Enable a Database
@@ -1018,12 +1018,11 @@ You are required to specify the ORDS secret in the [oraclerestdataservice_create
 kubectl create secret generic ords-secret --from-literal=oracle_pwd=<specify password here>
 ```
 
-Alternatively, you can create this secret and the APEX secret by filling the passwords in the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file and applying it using the command below:
+Alternatively, you can create this secret by filling the passwords in the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file and applying it using the command below:
 
 ```bash
 kubectl apply -f singleinstancedatabase_secrets.yaml
 ```
-The APEX secret created above, will be used while [installing APEX](#apex-installation).
 
 #### Creation Status
   
@@ -1043,7 +1042,7 @@ Clients can access the REST Endpoints using `.status.databaseApiUrl` as shown in
 ```sh
 $ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.databaseApiUrl}"
 
-  https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/
+  http://10.0.25.54:8181/ords/schema1/_/db-api/stable/
 ```
 
 All the REST Endpoints can be found in [_REST APIs for Oracle Database_](https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/rest-endpoints.html).
@@ -1052,37 +1051,51 @@ There are two basic approaches for authentication to the REST Endpoints. Certain
 
 #### Database API
 
-To call certain REST endpoints, you must use the ORDS_PUBLIC_USER with role `SQL Administrator`, and `.spec.ordsPassword` credentials.
+To call certain REST endpoints, you must use the Schema User which is Rest Enabled with role `SQL Administrator`, and `.spec.ordsPassword` credentials.
 
-The ORDS user also has the following additional roles: `System Administrator, SQL Developer, oracle.dbtools.autorest.any.schema`.
+The Schema user also has the following additional roles: `System Administrator, SQL Developer`.
 
-Use this ORDS user to authenticate the following: 
+Use this Schema user to authenticate the following: 
 * Database APIs
 * Any Protected AutoRest Enabled Object APIs
 * Database Actions of any REST Enabled Schema
   
 ##### Examples
-Some examples for the Database API usage are as follows:
+Some examples for the Database API usage for REST Enabled schema1 are as follows:
 - **Get all Database Components**
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/components/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/components/ | python -m json.tool
     ```
 - **Get all Database Users** 
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/security/users/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/security/users/ | python -m json.tool
     ```
 - **Get all Tablespaces**
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/storage/tablespaces/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/storage/tablespaces/ | python -m json.tool
     ```
 - **Get all Database Parameters**
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/parameters/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/parameters/ | python -m json.tool
     ```
 - **Get all Feature Usage Statistics**
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/feature_usage/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/feature_usage/ | python -m json.tool
     ```
+
+#### MongoDB API
+
+To enable the Database API for MongoDB set `.spec.mongoDbApi` to `true`. Thus MongoDB applications would now be able to connect to Oracle Database using the MongoDB API Access URL.
+
+```sh
+$ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.mongoDbApiAccessUrl}"
+
+  mongodb://[{user}:{password}@]10.0.25.54:27017/{user}?authMechanism=PLAIN&authSource=$external&ssl=true&retryWrites=false&loadBalanced=true
+```
+
+* Change [{user}:{password}@] to database username and password. Retain the @ symbol but remove all the brackets.
+* Change the {user} later in the URL to database username as well.
+
 #### Advanced Usages
 
 ##### Oracle Data Pump
@@ -1119,7 +1132,7 @@ Create a file called "/tmp/table.sql" with the following contents.
 Run the following API to run the script created in the previous example:
 
 ```sh
-  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdbName>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+  curl -s -k -X "POST" "http://10.0.25.54:8181/ords/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
   -H "Content-Type: application/sql" \
   -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' \
   -d @/tmp/table.sql
@@ -1130,7 +1143,7 @@ Run the following API to run the script created in the previous example:
 Fetch all entries from 'DEPT' table by calling the following API
 
 ```sh
-  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdbName>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+  curl -s -k -X "POST" "http://10.0.25.54:8181/ords/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
   -H "Content-Type: application/sql" \
   -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' \
   -d $'select * from dept;' | python -m json.tool
@@ -1152,16 +1165,12 @@ Database Actions can be accessed with a browser by using `.status.databaseAction
 ```sh
 $ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.databaseActionsUrl}"
 
-  https://10.0.25.54:8443/ords/sql-developer
+  http://10.0.25.54:8181/ords/sql-developer
 ```
 
 To access Database Actions, sign in by using the following code as a database user whose schema has been REST-enabled: 
 
-* First Page: \
-PDB Name: `.spec.restEnableSchemas[].pdbName` \
-Username: `.spec.restEnableSchemas[].urlMapping`
-
-* Second Page: \
+* Login Page: \
 Username: `.spec.restEnableSchemas[].schemaName` \
 Password: `.spec.ordsPassword`
 
@@ -1175,21 +1184,9 @@ Oracle APEX is a low-code development platform that enables developers to build 
 
 Using APEX, developers can quickly develop and deploy compelling apps that solve real problems and provide immediate value. Developers won't need to be an expert in a vast array of technologies to deliver sophisticated solutions. Focus on solving the problem and let APEX take care of the rest.
 
-The `OraOperator` facilitates installation of APEX in the database and also configures ORDS for it. The following section will explain installing APEX with configured ORDS:
+The `OraOperator` facilitates installation of APEX in the database and also configures ORDS for it.
 
-* For quick provisioning, use the sample **[config/samples/sidb/oraclerestdataservice_apex.yaml](../../config/samples/sidb/oraclerestdataservice_apex.yaml)** file. For example:
-
-      kubectl apply -f oraclerestdataservice_apex.yaml
-
-* The APEX Password is used as a common password for `APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER` and Apex administrator (username: `ADMIN`) mapped to secretKey. You can create APEX secret using the following command:
-
-  ```bash
-  kubectl create secret generic apex-secret --from-literal=oracle_pwd=<specify password here>
-  ``` 
-  Please refer [this](#note) section for APEX secret creation using the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file.
-
-* The status of ORDS turns to `Updating` during APEX configuration, and changes to `Healthy` after successful configuration. You can also check status by using the following command:
-
+* Status of APEX configuration can be checked using the following command:
 
   ```sh
   $ kubectl get oraclerestdataservice ords-sample -o "jsonpath={.status.apexConfigured}"
@@ -1197,24 +1194,23 @@ The `OraOperator` facilitates installation of APEX in the database and also conf
     [true]
   ```
 
-* If you configure APEX after ORDS is installed, then ORDS pods will be deleted and recreated.
-
 Application Express can be accessed via browser using `.status.apexUrl` in the following command.
 
 ```sh
 $ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.apexUrl}"
 
-  https://10.0.25.54:8443/ords/ORCLPDB1/apex
+  http://10.0.25.54:8181/ords/apex
 ```
 
-Sign in to Administration services using
-workspace: `INTERNAL`
-username: `ADMIN`
-password: `.spec.apexPassword`
+Sign in to Administration services using \
+workspace: `INTERNAL` \
+username: `ADMIN` \
+password: `Welcome_1`
 
 ![application-express-admin-home](/images/sidb/application-express-admin-home.png)
 
 **Note:**
+- It is strongly recommend that default apex admin password is changed.
 - By default, the full development environment is initialized in APEX. After deployment, you can change it manually to the runtime environment. To change environments, run the script `apxdevrm.sql` after connecting to the primary database from the ORDS pod as the `SYS` user with `SYSDBA` privilege. For detailed instructions, see: [Converting a Full Development Environment to a Runtime Environment](https://docs.oracle.com/en/database/oracle/application-express/21.2/htmig/converting-between-runtime-and-full-development-environments.html#GUID-B0621B40-3441-44ED-9D86-29B058E26BE9).
 
 ### Delete ORDS

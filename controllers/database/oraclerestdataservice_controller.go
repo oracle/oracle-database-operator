@@ -210,6 +210,13 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 		return result, nil
 	}
 
+	// Configure MongoDB
+	result = r.enableMongoDB(oracleRestDataService, singleInstanceDatabase, sidbReadyPod, ordsReadyPod, ctx, req)
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}	
+
 	// Delete Secrets
 	r.deleteSecrets(oracleRestDataService, ctx, req)
 
@@ -261,37 +268,6 @@ func (r *OracleRestDataServiceReconciler) validate(m *dbapi.OracleRestDataServic
 	}
 	if m.Status.Image.PullFrom != "" && m.Status.Image != m.Spec.Image {
 		eventMsgs = append(eventMsgs, "image patching is not available currently")
-	}
-
-	// Validate the apex ADMIN password if it is specified
-
-	if !m.Status.ApexConfigured && m.Spec.ApexPassword.SecretName != "" {
-		apexPasswordSecret := &corev1.Secret{}
-		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				m.Status.Status = dbcommons.StatusError
-				eventReason := "Apex Password"
-				eventMsg := "password secret " + m.Spec.ApexPassword.SecretName + " not found, retrying..."
-				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-				r.Log.Info(eventMsg)
-				return requeueY, nil
-			}
-			r.Log.Error(err, err.Error())
-			return requeueY, err
-		}
-		// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
-		apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
-
-		// Validate apexPassword
-		if !dbcommons.ApexPasswordValidator(apexPassword) {
-			m.Status.Status = dbcommons.StatusError
-			eventReason := "Apex Password"
-			eventMsg := "password for Apex is invalid, it should contain at least 6 chars, at least one numeric character, at least one punctuation character (!\"#$%&()``*+,-/:;?_), at least one upper-case alphabet"
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-			r.Log.Info("APEX password does not conform to the requirements")
-			return requeueY, nil
-		}
 	}
 
 	if len(eventMsgs) > 0 {
@@ -480,13 +456,24 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 			}(),
 		},
 		Spec: corev1.ServiceSpec{
-			Ports: []corev1.ServicePort{
-				{
-					Name:     "client",
-					Port:     8443,
-					Protocol: corev1.ProtocolTCP,
-				},
-			},
+			Ports: func() []corev1.ServicePort {
+				ports := []corev1.ServicePort{
+					{
+						Name:     "client",
+						Port:     8181,
+						Protocol: corev1.ProtocolTCP,
+					},
+				}
+				// Conditionally add MongoDB port if enabled
+				if m.Spec.MongoDbApi {
+					ports = append(ports, corev1.ServicePort{
+						Name:     "mongodb",
+						Port:     27017,
+						Protocol: corev1.ProtocolTCP,
+					})
+				}
+				return ports
+			}(),
 			Selector: map[string]string{
 				"app": m.Name,
 			},
@@ -509,253 +496,179 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 //
 // #############################################################################
 func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRestDataService,
-	n *dbapi.SingleInstanceDatabase) (*corev1.Pod, *corev1.Secret) {
-
-	initSecret := &corev1.Secret{
-		TypeMeta: metav1.TypeMeta{
-			Kind: "Secret",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.Name,
-			Namespace: m.Namespace,
-			Labels: map[string]string{
-				"app": m.Name,
+	n *dbapi.SingleInstanceDatabase, req ctrl.Request) *corev1.Pod {
+	
+		pod := &corev1.Pod{
+			TypeMeta: metav1.TypeMeta{
+				Kind: "Pod",
 			},
-		},
-		Type: corev1.SecretTypeOpaque,
-		StringData: map[string]string{
-			"init-cmd": dbcommons.InitORDSCMD,
-		},
-	}
-
-	pod := &corev1.Pod{
-		TypeMeta: metav1.TypeMeta{
-			Kind: "Pod",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.Name + "-" + dbcommons.GenerateRandomString(5),
-			Namespace: m.Namespace,
-			Labels: map[string]string{
-				"app":     m.Name,
-				"version": m.Spec.Image.Version,
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      m.Name + "-" + dbcommons.GenerateRandomString(5),
+				Namespace: m.Namespace,
+				Labels: map[string]string{
+					"app":     m.Name,
+					"version": m.Spec.Image.Version,
+				},
 			},
-		},
-		Spec: corev1.PodSpec{
-			Affinity: func() *corev1.Affinity {
-				if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == "ReadWriteOnce" {
-					// Only allowing pods to be scheduled on the node where SIDB pods are running
-					return &corev1.Affinity{
-						PodAffinity: &corev1.PodAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-								LabelSelector: &metav1.LabelSelector{
-									MatchExpressions: []metav1.LabelSelectorRequirement{{
-										Key:      "app",
-										Operator: metav1.LabelSelectorOpIn,
-										Values:   []string{n.Name}, // Schedule on same host as DB Pod
-									}},
+			Spec: corev1.PodSpec{
+				Affinity: func() *corev1.Affinity {
+					if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+						// Only allowing pods to be scheduled on the node where SIDB pods are running
+						return &corev1.Affinity{
+							PodAffinity: &corev1.PodAffinity{
+								RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+									LabelSelector: &metav1.LabelSelector{
+										MatchExpressions: []metav1.LabelSelectorRequirement{{
+											Key:      "app",
+											Operator: metav1.LabelSelectorOpIn,
+											Values:   []string{n.Name}, // Schedule on same host as DB Pod
+										}},
+									},
+									TopologyKey: "kubernetes.io/hostname",
 								},
-								TopologyKey: "kubernetes.io/hostname",
+								},
 							},
-							},
-						},
+						}
 					}
-				}
-				return nil
-			}(),
-			Volumes: []corev1.Volume{
-				{
-					Name: "datamount",
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: func() string {
-								if m.Spec.Persistence.AccessMode != "" {
-									return m.Name
-								}
-								return n.Name
-							}(),
-							ReadOnly: false,
+					return nil
+				}(),
+				Volumes: []corev1.Volume{
+					{
+						Name: "datamount",
+						VolumeSource: corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: func() string {
+									if m.Spec.Persistence.AccessMode != "" {
+										return m.Name
+									}
+									return n.Name
+								}(),
+								ReadOnly: false,
+							},
+						},
+					},
+					{
+						Name: "varmount",
+						VolumeSource: corev1.VolumeSource{
+							EmptyDir: &corev1.EmptyDirVolumeSource{},
 						},
 					},
 				},
-				{
-					Name: "init-ords-vol",
-					VolumeSource: corev1.VolumeSource{
-						Secret: &corev1.SecretVolumeSource{
-							SecretName: m.Name,
-							Optional:   func() *bool { i := true; return &i }(),
-							Items: []corev1.KeyToPath{{
-								Key:  "init-cmd",
-								Path: "init-cmd",
-							}},
+				InitContainers: []corev1.Container{
+					{
+						Name:    "init-ords",
+						Image:   m.Spec.Image.PullFrom,
+						Command: []string{"/bin/sh"},
+						Args: []string{
+							"-c",
+							fmt.Sprintf("while [ ! -f /opt/oracle/variables/%s ]; do sleep 0.5; done", "conn_string.txt"),
+						},		
+						VolumeMounts: []corev1.VolumeMount{
+							{
+								MountPath: "/etc/ords/config/",
+								Name:      "datamount",
+							},
+							{
+								MountPath: "/opt/oracle/variables/",
+								Name:      "varmount",
+							},
 						},
 					},
 				},
-			},
-			InitContainers: []corev1.Container{
-				{
-					Name:    "init-permissions",
-					Image:   m.Spec.Image.PullFrom,
-					Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/ords/config/ords || true", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
-					SecurityContext: &corev1.SecurityContext{
-						// User ID 0 means, root user
-						RunAsUser: func() *int64 { i := int64(0); return &i }(),
-					},
-					VolumeMounts: []corev1.VolumeMount{{
-						MountPath: "/opt/oracle/ords/config/ords",
-						Name:      "datamount",
-						SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
-					}},
-				},
-				{
-					Name:    "init-ords",
-					Image:   m.Spec.Image.PullFrom,
-					Command: []string{"/bin/sh", "/run/secrets/init-cmd"},
-					SecurityContext: &corev1.SecurityContext{
-						RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
-						RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
-					},
+				Containers: []corev1.Container{{
+					Name:  m.Name,
+					Image: m.Spec.Image.PullFrom,
+					Ports: func() []corev1.ContainerPort {
+						ports := []corev1.ContainerPort{
+							{
+								ContainerPort: 8181, // Default application port
+							},
+						}
+						if m.Spec.MongoDbApi {
+							ports = append(ports, corev1.ContainerPort{
+								ContainerPort: 27017, // MongoDB port
+							})
+						}
+						return ports
+					}(),
 					VolumeMounts: []corev1.VolumeMount{
 						{
-							MountPath: "/opt/oracle/ords/config/ords",
+							MountPath: "/etc/ords/config/",
 							Name:      "datamount",
-							SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
 						},
 						{
-							MountPath: "/run/secrets/init-cmd",
-							ReadOnly:  true,
-							Name:      "init-ords-vol",
-							SubPath:   "init-cmd",
+							MountPath: "/opt/oracle/variables/",
+							Name:      "varmount",
 						},
-					},
-					Env: []corev1.EnvVar{
-						{
-							Name:  "ORACLE_HOST",
-							Value: n.Name,
-						},
-						{
-							Name:  "ORACLE_PORT",
-							Value: "1521",
-						},
-						{
-							Name: "ORACLE_SERVICE",
-							Value: func() string {
-								if m.Spec.OracleService != "" {
-									return m.Spec.OracleService
-								}
-								return n.Spec.Sid
-							}(),
-						},
-						{
-							Name: "ORDS_USER",
-							Value: func() string {
-								if m.Spec.OrdsUser != "" {
-									return m.Spec.OrdsUser
-								}
-								return "ORDS_PUBLIC_USER"
-							}(),
-						},
-						{
-							Name: "ORDS_PWD",
-							ValueFrom: &corev1.EnvVarSource{
-								SecretKeyRef: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: m.Spec.OrdsPassword.SecretName,
-									},
-									Key: m.Spec.OrdsPassword.SecretKey,
-								},
+					},	
+					Env: func() []corev1.EnvVar {
+						// After ORDS is Installed, we DELETE THE OLD ORDS Pod and create new ones ONLY USING BELOW ENV VARIABLES.
+						return []corev1.EnvVar{
+							{
+								Name:  "ORACLE_HOST",
+								Value: n.Name,
 							},
-						},
-						{
-							Name: "ORACLE_PWD",
-							ValueFrom: &corev1.EnvVarSource{
-								SecretKeyRef: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: m.Spec.AdminPassword.SecretName,
-									},
-									Key: m.Spec.AdminPassword.SecretKey,
-								},
+							{
+								Name:  "ORACLE_PORT",
+								Value: "1521",
 							},
-						},
-					},
-				},
-			},
-			Containers: []corev1.Container{{
-				Name:  m.Name,
-				Image: m.Spec.Image.PullFrom,
-				Ports: []corev1.ContainerPort{{ContainerPort: 8443}},
-				VolumeMounts: []corev1.VolumeMount{{
-					MountPath: "/opt/oracle/ords/config/ords/",
-					Name:      "datamount",
-					SubPath:   strings.ToUpper(n.Spec.Sid) + "_ORDS",
+							{
+								Name: "ORACLE_SERVICE",
+								Value: func() string {
+									if m.Spec.OracleService != "" {
+										return m.Spec.OracleService
+									}
+									return n.Spec.Sid
+								}(),
+							},
+							{
+								Name: "ORDS_USER",
+								Value: func() string {
+									if m.Spec.OrdsUser != "" {
+										return m.Spec.OrdsUser
+									}
+									return "ORDS_PUBLIC_USER"
+								}(),
+							},
+						}
+					}(),
 				}},
-				Env: func() []corev1.EnvVar {
-					// After ORDS is Installed, we DELETE THE OLD ORDS Pod and create new ones ONLY USING BELOW ENV VARIABLES.
-					return []corev1.EnvVar{
-						{
-							Name:  "ORACLE_HOST",
-							Value: n.Name,
-						},
-						{
-							Name:  "ORACLE_PORT",
-							Value: "1521",
-						},
-						{
-							Name: "ORACLE_SERVICE",
-							Value: func() string {
-								if m.Spec.OracleService != "" {
-									return m.Spec.OracleService
-								}
-								return n.Spec.Sid
-							}(),
-						},
-						{
-							Name: "ORDS_USER",
-							Value: func() string {
-								if m.Spec.OrdsUser != "" {
-									return m.Spec.OrdsUser
-								}
-								return "ORDS_PUBLIC_USER"
-							}(),
-						},
+	
+				TerminationGracePeriodSeconds: func() *int64 { i := int64(30); return &i }(),
+	
+				NodeSelector: func() map[string]string {
+					ns := make(map[string]string)
+					if len(m.Spec.NodeSelector) != 0 {
+						for key, value := range m.Spec.NodeSelector {
+							ns[key] = value
+						}
 					}
+					return ns
 				}(),
-			}},
-
-			TerminationGracePeriodSeconds: func() *int64 { i := int64(30); return &i }(),
-
-			NodeSelector: func() map[string]string {
-				ns := make(map[string]string)
-				if len(m.Spec.NodeSelector) != 0 {
-					for key, value := range m.Spec.NodeSelector {
-						ns[key] = value
+				ServiceAccountName: func() string {
+					if m.Spec.ServiceAccountName != "" {
+						return m.Spec.ServiceAccountName
 					}
-				}
-				return ns
-			}(),
-			ServiceAccountName: func() string {
-				if m.Spec.ServiceAccountName != "" {
-					return m.Spec.ServiceAccountName
-				}
-				return "default"
-			}(),
-			SecurityContext: &corev1.PodSecurityContext{
-				RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
-				RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
-				FSGroup:    func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
-			},
-
-			ImagePullSecrets: []corev1.LocalObjectReference{
-				{
-					Name: m.Spec.Image.PullSecrets,
+					return "default"
+				}(),
+				SecurityContext: &corev1.PodSecurityContext{
+					RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+					RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
+					FSGroup:    func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
+				},
+	
+				ImagePullSecrets: []corev1.LocalObjectReference{
+					{
+						Name: m.Spec.Image.PullSecrets,
+					},
 				},
 			},
-		},
-	}
-
-	// Set oracleRestDataService instance as the owner and controller
-	ctrl.SetControllerReference(m, initSecret, r.Scheme)
-	ctrl.SetControllerReference(m, pod, r.Scheme)
-	return pod, initSecret
+		}
+	
+		// Set oracleRestDataService instance as the owner and controller
+		// ctrl.SetControllerReference(m, initSecret, r.Scheme)
+		ctrl.SetControllerReference(m, pod, r.Scheme)
+		return pod
 }
 
 //#############################################################################
@@ -878,14 +791,21 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 			if lbAddress == "" {
 				lbAddress = svc.Status.LoadBalancer.Ingress[0].IP
 			}
-			m.Status.DatabaseApiUrl = "https://" + lbAddress + ":" +
-				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + n.Status.Pdbname + "/_/db-api/stable/"
+			m.Status.DatabaseApiUrl = "http://" + lbAddress + ":" +
+				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + "{schema-name}" + "/_/db-api/stable/"
 			m.Status.ServiceIP = lbAddress
-			m.Status.DatabaseActionsUrl = "https://" + lbAddress + ":" +
+			m.Status.DatabaseActionsUrl = "http://" + lbAddress + ":" +
 				fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/sql-developer"
 			if m.Status.ApexConfigured {
-				m.Status.ApxeUrl = "https://" + lbAddress + ":" +
-					fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/" + n.Status.Pdbname + "/apex"
+				m.Status.ApxeUrl = "http://" + lbAddress + ":" +
+					fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/apex"
+			}
+			if m.Status.MongoDbApi && len(svc.Spec.Ports) > 1 {
+				m.Status.MongoDbApiAccessUrl = "mongodb://[{user}:{password}@]"+ lbAddress + ":"+
+												fmt.Sprint(svc.Spec.Ports[1].Port)+ "/{user}?" + 
+					"authMechanism=PLAIN&authSource=$external&ssl=true&retryWrites=false&loadBalanced=true"
+			} else {
+				m.Status.MongoDbApiAccessUrl = ""
 			}
 		}
 		return requeueN
@@ -893,13 +813,19 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 	nodeip := dbcommons.GetNodeIp(r, ctx, req)
 	if nodeip != "" {
 		m.Status.ServiceIP = nodeip
-		m.Status.DatabaseApiUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
-			"/ords/" + n.Status.Pdbname + "/_/db-api/stable/"
-		m.Status.DatabaseActionsUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
+		m.Status.DatabaseApiUrl = "http://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
+			"/ords/" + "{schema-name}" + "/_/db-api/stable/"
+		m.Status.DatabaseActionsUrl = "http://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) +
 			"/ords/sql-developer"
 		if m.Status.ApexConfigured {
-			m.Status.ApxeUrl = "https://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/ords/" +
-				n.Status.Pdbname + "/apex"
+			m.Status.ApxeUrl = "http://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/ords/apex"
+		}
+		if m.Status.MongoDbApi && len(svc.Spec.Ports) > 1 {
+			m.Status.MongoDbApiAccessUrl = "mongodb://[{user}:{password}@]"+ nodeip + ":"+
+											fmt.Sprint(svc.Spec.Ports[1].NodePort)+ "/{user}?" + 
+				"authMechanism=PLAIN&authSource=$external&ssl=true&retryWrites=false&loadBalanced=true"
+		} else {
+			m.Status.MongoDbApiAccessUrl = ""
 		}
 	}
 	return requeueN
@@ -937,6 +863,98 @@ func (r *OracleRestDataServiceReconciler) createPVC(ctx context.Context, req ctr
 	} else {
 		log.Info("PVC already exists")
 	}
+
+	return requeueN, nil
+}
+
+
+// #############################################################################
+//
+//	Function for creating connection sting file
+//
+// #############################################################################
+func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.OracleRestDataService,
+	n *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+
+	// Listing all the pods
+	readyPod, _, availableFinal, _, err := dbcommons.FindPods(r, m.Spec.Image.Version,
+		m.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
+
+	if err != nil {
+		r.Log.Error(err, err.Error())
+		return requeueY, nil
+	}
+	if readyPod.Name != "" {
+		return requeueN, nil
+	}
+
+	if len(availableFinal) == 0 {
+		r.Log.Info("Pods are being created, currently no pods available")
+		return requeueY, nil
+	}
+
+	// Iterate through the availableFinal (list of pods) to find out the pod whose status is updated about the init containers
+	// If no required pod found then requeue the reconcile request
+	var pod corev1.Pod
+	var podFound bool
+	for _, pod = range availableFinal {
+		// Check if pod status container is updated about init containers
+		if len(pod.Status.InitContainerStatuses) > 0 {
+			podFound = true
+			break
+		}
+	}
+	if !podFound {
+		r.Log.Info("No pod has its status updated about init containers. Requeueing...")
+		return requeueY, nil
+	}
+
+	lastInitContIndex := len(pod.Status.InitContainerStatuses) - 1
+
+	// If InitContainerStatuses[<index_of_init_container>].Ready is true, it means that the init container is successful
+	if pod.Status.InitContainerStatuses[lastInitContIndex].Ready {
+		// Init container named "init-ords" has completed it's execution, hence return and don't requeue
+		return requeueN, nil
+	}
+
+	if pod.Status.InitContainerStatuses[lastInitContIndex].State.Running == nil {
+		// Init container named "init-ords" is not running, so waiting for it to come in running state requeueing the reconcile request
+		r.Log.Info("Waiting for init-ords to come in running state...")
+		return requeueY, nil
+	}
+
+	r.Log.Info("Creating Connection String file...")
+
+	// Querying the secret
+	r.Log.Info("Querying the database secret ...")
+	secret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			r.Log.Info("Secret not found")
+			m.Status.Status = dbcommons.StatusError
+			r.Status().Update(ctx, m)
+			return requeueY, nil
+		}
+		r.Log.Error(err, "Unable to get the secret. Requeueing..")
+		return requeueY, nil
+	}
+
+	// Execing into the pods and creating the Connection String
+	adminPassword := string(secret.Data[m.Spec.AdminPassword.SecretKey])
+
+	_, err = dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "init-ords",
+		ctx, req, true, "bash", "-c", 
+		fmt.Sprintf("mkdir -p /opt/oracle/variables && echo %[1]s > /opt/oracle/variables/%[2]s", 
+			fmt.Sprintf(dbcommons.DbConnectString, adminPassword, n.Name, n.Status.Pdbname), 
+										"conn_string.txt"))
+
+	if err != nil {
+		r.Log.Error(err, err.Error())
+		r.Log.Error(err, "Failed to create connection string in new "+m.Name+" POD", "pod.Namespace", pod.Namespace, "POD.Name", pod.Name)
+		return requeueY, nil
+	}
+	r.Log.Info("Succesfully Created connection string in new "+m.Name+" POD", "POD.NAME : ", pod.Name)
 
 	return requeueN, nil
 }
@@ -980,16 +998,24 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 	} else if replicasFound < replicasReq {
 		// Create New Pods , Name of Pods are generated Randomly
 		for i := replicasFound; i < replicasReq; i++ {
-			pod, initSecret := r.instantiatePodSpec(m, n)
-			// Check if init-secret is present
-			err := r.Get(ctx, types.NamespacedName{Name: m.Name, Namespace: m.Namespace}, &corev1.Secret{})
-			if err != nil && apierrors.IsNotFound(err) {
-				log.Info("Creating a new secret", "name", m.Name)
-				if err = r.Create(ctx, initSecret); err != nil {
-					log.Error(err, "Failed to create secret ", "Namespace", initSecret.Namespace, "Name", initSecret.Name)
+			// Obtain admin password of the referred database
+			adminPasswordSecret := &corev1.Secret{}
+			err := r.Get(ctx, types.NamespacedName{Name: n.Spec.AdminPassword.SecretName, Namespace: n.Namespace}, adminPasswordSecret)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					m.Status.Status = dbcommons.StatusError
+					eventReason := "Database Password"
+					eventMsg := "password secret " + m.Spec.AdminPassword.SecretName + " not found, retrying..."
+					r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+					r.Log.Info(eventMsg)
 					return requeueY
 				}
+				log.Error(err, err.Error())
+				return requeueY
 			}
+
+			pod := r.instantiatePodSpec(m, n, req)
+
 			log.Info("Creating a new "+m.Name+" POD", "POD.Namespace", pod.Namespace, "POD.Name", pod.Name)
 			err = r.Create(ctx, pod)
 			if err != nil {
@@ -1022,6 +1048,17 @@ func (r *OracleRestDataServiceReconciler) createPods(m *dbapi.OracleRestDataServ
 				// Don't requeue
 			}
 		}
+	}
+
+	// Creating conn string in pods
+	result, err := r.createConnectionString(m, n, ctx, req)
+
+	if err != nil {
+		return requeueY
+	}
+	if result.Requeue {
+		log.Info("Requeued at connection string creation")
+		return requeueY
 	}
 
 	m.Status.Replicas = m.Spec.Replicas
@@ -1241,97 +1278,14 @@ func (r *OracleRestDataServiceReconciler) cleanupOracleRestDataService(req ctrl.
 // #############################################################################
 func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
 	sidbReadyPod corev1.Pod, ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
-	log := r.Log.WithValues("configureApex", req.NamespacedName)
+	log := r.Log.WithValues("verifyApex", req.NamespacedName)
 
-	if m.Spec.ApexPassword.SecretName == "" {
-		m.Status.ApexConfigured = false
-		return requeueN
-	}
 	if m.Status.ApexConfigured {
 		return requeueN
 	}
 
-	apexPasswordSecret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			m.Status.Status = dbcommons.StatusError
-			eventReason := "Apex Password"
-			eventMsg := "password secret " + m.Spec.ApexPassword.SecretName + " not found, retrying..."
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
-			r.Log.Info(eventMsg)
-			return requeueY
-		}
-		log.Error(err, err.Error())
-		return requeueY
-	}
-	// APEX_LISTENER , APEX_REST_PUBLIC_USER , APEX_PUBLIC_USER passwords
-	apexPassword := string(apexPasswordSecret.Data[m.Spec.ApexPassword.SecretKey])
-
-	if !n.Status.ApexInstalled {
-		m.Status.Status = dbcommons.StatusUpdating
-		result := r.installApex(m, n, ordsReadyPod, apexPassword, ctx, req)
-		if result.Requeue {
-			log.Info("Reconcile requeued because apex installation failed")
-			return result
-		}
-	} else {
-		// Alter Apex Users
-		log.Info("Alter APEX Users")
-		_, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "",
-			ctx, req, true, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s",
-				fmt.Sprintf(dbcommons.AlterApexUsers, apexPassword, n.Spec.Pdbname), dbcommons.SQLPlusCLI))
-		if err != nil {
-			log.Error(err, err.Error())
-			return requeueY
-		}
-	}
-
-	// Set Apex users in apex_rt,apex_al,apex files
-	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf(dbcommons.SetApexUsers, apexPassword))
-	log.Info("SetApexUsers Output: \n" + out)
-	if strings.Contains(strings.ToUpper(out), "ERROR") {
-		return requeueY
-	}
-	if err != nil {
-		log.Info(err.Error())
-		if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
-			return requeueY
-		}
-	}
-
-	// ORDS needs to be restarted to configure APEX
-	r.Log.Info("Restarting ORDS Pod to complete APEX configuration: " + ordsReadyPod.Name)
-	var gracePeriodSeconds int64 = 0
-	policy := metav1.DeletePropagationForeground
-	err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{
-		GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
-	if err != nil {
-		r.Log.Error(err, err.Error())
-	}
-
-	m.Status.ApexConfigured = true
-	r.Status().Update(ctx, m)
-	eventReason := "Apex Configuration"
-	eventMsg := "configuration of Apex completed!"
-	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-	log.Info(eventMsg)
-
-	// Cannot return requeue as the secrets will be deleted if keepSecert is false, which cause problem in pod restart
-	return requeueY
-}
-
-// #############################################################################
-//
-//	Install APEX in SIDB
-//
-// #############################################################################
-func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
-	ordsReadyPod corev1.Pod, apexPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
-	log := r.Log.WithValues("installApex", req.NamespacedName)
-
 	// Obtain admin password of the referred database
+	
 	adminPasswordSecret := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
 	if err != nil {
@@ -1348,23 +1302,8 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 	}
 	sidbPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
 
-	// Status Updation
-	m.Status.Status = dbcommons.StatusUpdating
-	r.Status().Update(ctx, m)
-	eventReason := "Apex Installation"
-	eventMsg := "performing install of Apex in database " + m.Spec.DatabaseRef
-	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-
-	//Install Apex in SIDB ready pod
-	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
-		fmt.Sprintf(dbcommons.InstallApexInContainer, apexPassword, sidbPassword, n.Status.Pdbname))
-	if err != nil {
-		log.Info(err.Error())
-	}
-	log.Info("Apex installation output : \n" + out)
-
 	// Checking if Apex is installed successfully or not
-	out, err = dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+	out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf(dbcommons.IsApexInstalled, sidbPassword, n.Status.Pdbname))
 	if err != nil {
 		log.Error(err, err.Error())
@@ -1374,19 +1313,22 @@ func (r *OracleRestDataServiceReconciler) installApex(m *dbapi.OracleRestDataSer
 
 	apexInstalled := "APEXVERSION:"
 	if !strings.Contains(out, apexInstalled) {
-		eventReason = "Apex Installation"
-		eventMsg = "Unable to determine Apex version, retrying install..."
+		eventReason := "Apex Verification"
+		eventMsg := "Unable to determine Apex version, retrying..."
 		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
 		return requeueY
 	}
 
 	m.Status.Status = dbcommons.StatusReady
-	eventReason = "Apex Installation"
+	eventReason := "Apex Verification"
 	outArr := strings.Split(out, apexInstalled)
-	eventMsg = "installation of Apex " + strings.TrimSpace(outArr[len(outArr)-1]) + " completed"
+	eventMsg := "Verification of Apex " + strings.TrimSpace(outArr[len(outArr)-1]) + " completed"
 	r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 	n.Status.ApexInstalled = true
+	m.Status.ApexConfigured = true
 	r.Status().Update(ctx, n)
+	r.Status().Update(ctx, m)
+
 	return requeueN
 }
 
@@ -1423,20 +1365,72 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 			}
 		}
 	}
+}
 
-	if !*m.Spec.ApexPassword.KeepSecret {
-		// Fetch apexPassword Secret
-		apexPasswordSecret := &corev1.Secret{}
-		err := r.Get(ctx, types.NamespacedName{Name: m.Spec.ApexPassword.SecretName, Namespace: m.Namespace}, apexPasswordSecret)
-		if err == nil {
-			//Delete APEX Password Secret .
-			err := r.Delete(ctx, apexPasswordSecret, &client.DeleteOptions{})
-			if err == nil {
-				log.Info("APEX password secret deleted : " + apexPasswordSecret.Name)
+
+// #############################################################################
+//
+//	Enable MongoDB API Support
+//
+// #############################################################################
+func (r *OracleRestDataServiceReconciler) enableMongoDB(m *dbapi.OracleRestDataService, n *dbapi.SingleInstanceDatabase,
+	sidbReadyPod corev1.Pod, ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	log := r.Log.WithValues("enableMongoDB", req.NamespacedName)
+
+	if (m.Spec.MongoDbApi && !m.Status.MongoDbApi) ||	// setting MongoDbApi to true
+		(!m.Spec.MongoDbApi && m.Status.MongoDbApi) {	// setting MongoDbApi to false
+		m.Status.Status = dbcommons.StatusUpdating	
+
+		out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c", 
+		fmt.Sprintf(dbcommons.ConfigMongoDb, strconv.FormatBool(m.Spec.MongoDbApi)) )
+		log.Info("configMongoDB Output: \n" + out)
+		
+		if strings.Contains(strings.ToUpper(out), "ERROR") {
+			return requeueY
+		}
+		if err != nil {
+			log.Info(err.Error())
+			if strings.Contains(strings.ToUpper(err.Error()), "ERROR") {
+				return requeueY
 			}
 		}
+
+		m.Status.MongoDbApi = m.Spec.MongoDbApi
+		m.Status.Status = dbcommons.StatusReady
+		r.Status().Update(ctx, m)
+		eventReason := "MongoDB-API Config"
+		eventMsg := "configuration of MongoDb API completed!"
+		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+		log.Info(eventMsg)
+		
+		// ORDS service is resatrted
+		r.Log.Info("Restarting ORDS Service : " + m.Name)
+		svc := &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: m.Name, Namespace: m.Namespace,},
+		}
+		var gracePeriodSeconds int64 = 0
+		policy := metav1.DeletePropagationForeground
+		err = r.Delete(ctx, svc, &client.DeleteOptions{
+			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy,})
+		if err != nil {
+			r.Log.Error(err, "Failed to delete ORDS service", "Service Name", m.Name)
+			return requeueY
+		}
+
+		// ORDS needs to be restarted to configure MongoDB API
+		r.Log.Info("Restarting ORDS Pod after configuring MongoDb API : " + ordsReadyPod.Name)
+		err = r.Delete(ctx, &ordsReadyPod, &client.DeleteOptions{
+			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
+		if err != nil {
+			r.Log.Error(err, err.Error())
+		}
+		return requeueY
+
+	} else {
+		log.Info("MongoDB Already Configured")
 	}
 
+	return requeueN
 }
 
 // #############################################################################
