@@ -1205,39 +1205,35 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 //
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiateSVCSpec(m *dbapi.SingleInstanceDatabase,
-	svcName string, ports []corev1.ServicePort, svcType corev1.ServiceType) *corev1.Service {
-	svc := &corev1.Service{
-		TypeMeta: metav1.TypeMeta{
-			Kind: "Service",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      svcName,
-			Namespace: m.Namespace,
-			Labels: map[string]string{
+	svcName string, ports []corev1.ServicePort, svcType corev1.ServiceType, publishNotReadyAddress bool) *corev1.Service {
+	svc := dbcommons.NewRealServiceBuilder().
+		SetName(svcName).
+		SetNamespace(m.Namespace).
+		SetLabels(func() map[string]string {
+			return map[string]string{
 				"app": m.Name,
-			},
-			Annotations: func() map[string]string {
-				annotations := make(map[string]string)
-				if len(m.Spec.ServiceAnnotations) != 0 {
-					for key, value := range m.Spec.ServiceAnnotations {
-						annotations[key] = value
-					}
+			}
+		}()).
+		SetAnnotation(func() map[string]string {
+			annotations := make(map[string]string)
+			if len(m.Spec.ServiceAnnotations) != 0 {
+				for key, value := range m.Spec.ServiceAnnotations {
+					annotations[key] = value
 				}
-				return annotations
-			}(),
-		},
-		Spec: corev1.ServiceSpec{
-			Ports: []corev1.ServicePort{},
-			Selector: map[string]string{
+			}
+			return annotations
+		}()).
+		SetPorts(ports).
+		SetSelector(func() map[string]string {
+			return map[string]string{
 				"app": m.Name,
-			},
-			Type: svcType,
-		},
-	}
-	svc.Spec.Ports = ports
-	// Set SingleInstanceDatabase instance as the owner and controller
-	ctrl.SetControllerReference(m, svc, r.Scheme)
-	return svc
+			}
+		}()).
+		SetPublishNotReadyAddresses(publishNotReadyAddress).
+		SetType(svcType).
+		Build()
+	ctrl.SetControllerReference(m, &svc, r.Scheme)
+	return &svc
 }
 
 // #############################################################################
@@ -1572,7 +1568,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	if getClusterSvcErr != nil && apierrors.IsNotFound(getClusterSvcErr) {
 		// Create a new ClusterIP service
 		ports := []corev1.ServicePort{{Name: "listener", Port: dbcommons.CONTAINER_LISTENER_PORT, Protocol: corev1.ProtocolTCP}}
-		svc := r.instantiateSVCSpec(m, clusterSvcName, ports, corev1.ServiceType("ClusterIP"))
+		svc := r.instantiateSVCSpec(m, clusterSvcName, ports, corev1.ServiceType("ClusterIP"), true)
 		log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 		err := r.Create(ctx, svc)
 		if err != nil {
@@ -1774,7 +1770,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		}
 
 		// Create the service
-		svc := r.instantiateSVCSpec(m, extSvcName, ports, extSvcType)
+		svc := r.instantiateSVCSpec(m, extSvcName, ports, extSvcType, false)
 		log.Info("Creating a new service", "Service.Namespace", svc.Namespace, "Service.Name", svc.Name)
 		err := r.Create(ctx, svc)
 		if err != nil {

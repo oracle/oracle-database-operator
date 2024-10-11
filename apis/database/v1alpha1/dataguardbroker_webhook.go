@@ -89,6 +89,10 @@ func (r *DataguardBroker) Default() {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
 		}
 	}
+
+	if r.Spec.SetAsPrimaryDatabase != "" {
+		r.Spec.SetAsPrimaryDatabase = strings.ToUpper(r.Spec.SetAsPrimaryDatabase)
+	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -153,6 +157,11 @@ func (r *DataguardBroker) ValidateUpdate(old runtime.Object) (admission.Warnings
 	if oldObj.Status.PrimaryDatabaseRef != "" && !strings.EqualFold(oldObj.Status.PrimaryDatabaseRef, r.Spec.PrimaryDatabaseRef) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "cannot be changed"))
+	}
+
+	if (oldObj.Status.FastStartFailover || r.Spec.FastStartFailover) && r.Spec.SetAsPrimaryDatabase != "" {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("setAsPrimaryDatabase"), "switchover not supported when fastStartFailover is true"))
 	}
 
 	if len(allErrs) == 0 {

@@ -29,11 +29,13 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [Setup Database with LoadBalancer](#setup-database-with-loadbalancer)
       * [Enabling TCPS Connections](#enabling-tcps-connections)
       * [Specifying Custom Ports](#specifying-custom-ports)
-      * [Setup Data Guard Configuration for a Single Instance Database (Preview status)](#setup-data-guard-configuration-for-a-single-instance-database-preview-status)
+      * [Setup Data Guard Configuration for a Single Instance Database](#setup-data-guard-configuration-for-a-single-instance-database)
         * [Create a Standby Database](#create-a-standby-database)
         * [Create a Data Guard Configuration](#create-a-data-guard-configuration)
         * [Perform a Switchover](#perform-a-switchover)
-        * [Patch Primary and Standby databases in Data Guard configuration](#patch-primary-and-standby-databases-in-data-guard-configuration)
+        * [Enable Fast-Start Failover](#enable-fast-start-failover)
+        * [Static Data Guard Connect String](#static-data-guard-connect-string)
+        * [Patch Primary and Standby databases](#patch-primary-and-standby-databases)
         * [Delete the Data Guard Configuration](#delete-the-data-guard-configuration)
       * [Execute Custom Scripts](#execute-custom-scripts)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
@@ -705,7 +707,7 @@ In case of `NodePort` service, `listenerPort`, and `tcpsListenerPort` will be th
 - If TCPS connections are enabled, and `listenerPort` is commented/removed in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, only TCPS endpoint will be exposed.
 - If LoadBalancer is enabled, and either `listenerPort` or `tcpsListenerPort` is changed, then it takes some time to complete the work requests (drain existing backend sets and create new ones). In this time, the database connectivity is broken. Although, SingleInstanceDatabase and LoadBalancer remain in the healthy state, you can check the progress of the work requests by logging into the cloud provider's console and checking the corresponding LoadBalancer.
 
-### Setup Data Guard Configuration for a Single Instance Database (Preview status)
+### Setup Data Guard Configuration for a Single Instance Database
 
 ### Create a Standby Database
 
@@ -828,8 +830,7 @@ To list the DataguardBroker resources, use the following command:
         Keep Secret:  true
         Secret Key:   oracle_pwd
         Secret Name:  db-secret
-      Fast Start Fail Over:
-        Enable:                 true
+      Fast Start Failover:      false
       Primary Database Ref:     sidb-sample
       Protection Mode:          MaxAvailability
       Set As Primary Database:  
@@ -839,6 +840,7 @@ To list the DataguardBroker resources, use the following command:
     Status:
       Cluster Connect String:   dataguardbroker-sample.default:1521/DATAGUARD
       External Connect String:  10.0.25.85:31167/DATAGUARD
+      Fast Start Failover:      false
       Primary Database:         OR19E3
       Standby Databases:        OR19E3S1,OR19E3S2
       Status:                   Healthy
@@ -869,18 +871,41 @@ $ kubectl --type=merge -p '{"spec":{"setAsPrimaryDatabase":"ORCLS1"}}' patch dat
   dataguardbroker.database.oracle.com/dataguardbroker-sample patched
 ```
 
-#### Static Primary Database Connection String
+### Enable Fast-Start Failover
 
-  External and internal (running in Kubernetes pods) clients can connect to the primary database using `.status.connectString` and `.status.clusterConnectString` of the DataguardBroker resource respectively. These connection strings are fixed for the DataguardBroker resource and will not change on switchover. They can be queried using the following command
+Oracle Data Guard Fast-Start Failover (FSFO) monitors your Data Guard environments and initiates an automatic failover in the case of an outage.
+To enable FSFO, make sure the primary database is in the primary role. Then set the attribute `.spec.fastStartFailover` to true in [datguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml) and apply it.
+
+```sh
+$ kubectl apply -f dataguardbroker.yaml
+
+  dataguardbroker.database.oracle.com/dataguardbroker-sample configured
+```
+
+Or use the patch command
+
+```sh
+$ kubectl --type=merge -p '{"spec":{"fastStartFailover": true}}' patch dataguardbroker dataguardbroker-sample
+
+  dataguardbroker.database.oracle.com/dataguardbroker-sample patched
+```
+
+This results in the creation of a pod running the Observer. The Observer is a component of the DGMGRL interface which monitors the availability of the primary database.
+
+**Note:** When the attribute fastStartFailover is true, performing a switchover by specifying setAsPrimaryDatabase is not allowed.
+
+### Static Data Guard Connect String
+
+  External and internal (running in pods) applications can always connect to the database in the primary role using `.status.externalConnectString` and `.status.clusterConnectString` of the DataguardBroker resource respectively. These connect strings are fixed for the DataguardBroker resource and will not change on switchover or failover. The external connect string can be obtained using the following command
 
   ```sh
   $ kubectl get dataguardbroker dataguardbroker-sample -o "jsonpath={.status.externalConnectString}"
 
     10.0.25.87:1521/DATAGUARD
   ```
-  The above connection string will always automatically route to the Primary database not requiring clients to change the connection string after switchover
+  The above connect string will always automatically route to the database in the primary role. Client applications can be totally agnostic of the databases in the Data Guard configuration. Their number or host/IP details are not needed in the connect string.
 
-### Patch Primary and Standby databases in Data Guard configuration
+### Patch Primary and Standby databases
 
 Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched between release updates of the same major release. 
 
@@ -891,13 +916,17 @@ kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullS
 
 ```
 Follow these steps for patching databases configured with the dataguard broker:
-1. First patch all the standby databases by replacing the image with the new release update image
-2. Perform switch over of the primary to one of the standby databases
-3. Now patch the original primary database (currently standby after #2)  
+1. Ensure Fast-Start Failover is disabled by executing the following command
+```sh
+  kubectl patch dataguardbroker dataguardbroker-sample -p '{"spec":{"fastStartFailover": false}}' --type=merge
+```
+2. First patch all the standby databases by replacing the image with the new release update image
+3. Perform switch over of the primary to one of the standby databases
+4. Now patch the original primary database (currently standby after #2)  
    After #3 the software for primary and standby databases is at the same release update
-4. Now bounce the current primary database by updating the replica count to 0 and then 1  
+5. Now bounce the current primary database by updating the replica count to 0 and then 1  
    #4 will trigger a datapatch execution resulting in patching of the datafiles
-5. Finally perform switch over of the current primary back to the original primary (current standby)
+6. Finally perform switch over of the current primary back to the original primary (current standby)
 
 
 ### Delete the Data Guard Configuration

@@ -509,6 +509,12 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("persistence"), "uninstall ORDS to change Persistence"))
 	}
+
+	if old.Status.Replicas != r.Spec.Replicas && old.Status.DgBrokerConfigured {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("replicas"), "cannot be updated for a database in a Data Guard configuration"))
+	}
+
 	if len(allErrs) == 0 {
 		return nil, nil
 	}

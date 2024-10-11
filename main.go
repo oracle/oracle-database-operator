@@ -63,6 +63,7 @@ import (
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
+	dataguardcontroller "github.com/oracle/oracle-database-operator/controllers/dataguard"
 
 	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
@@ -282,9 +283,9 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "CDB")
 		os.Exit(1)
 	}
-	if err = (&databasecontroller.DataguardBrokerReconciler{
+	if err = (&dataguardcontroller.DataguardBrokerReconciler{
 		Client:   mgr.GetClient(),
-		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("DataguardBroker"),
+		Log:      ctrl.Log.WithName("controllers").WithName("dataguard").WithName("DataguardBroker"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Recorder: mgr.GetEventRecorderFor("DataguardBroker"),
