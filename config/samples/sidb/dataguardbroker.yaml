@@ -25,5 +25,9 @@ spec:
   ## Protection Mode for dg configuration . MaxAvailability or MaxPerformance
   protectionMode: MaxAvailability
 
-  ## Manual Switchover to this database to make it primary(if not already), requires target Database SID . 
+  ## Specify the database SID to switchover thereby making it the primary.
+  ## Switchover is not supported when fastStartFailover is true.
   setAsPrimaryDatabase: ""
+
+  ## Enable/disable Fast-Start Failover for the dataguard configuration.
+  fastStartFailover: false

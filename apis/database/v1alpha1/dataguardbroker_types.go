@@ -56,20 +56,10 @@ type DataguardBrokerSpec struct {
 	LoadBalancer         bool              `json:"loadBalancer,omitempty"`
 	ServiceAnnotations   map[string]string `json:"serviceAnnotations,omitempty"`
 	// +kubebuilder:validation:Enum=MaxPerformance;MaxAvailability
-	ProtectionMode    string                           `json:"protectionMode"`
-	NodeSelector      map[string]string                `json:"nodeSelector,omitempty"`
-	FastStartFailOver DataguardBrokerFastStartFailOver `json:"fastStartFailOver,omitempty"`
-}
+	ProtectionMode string            `json:"protectionMode"`
+	NodeSelector   map[string]string `json:"nodeSelector,omitempty"`
 
-type DataguardBrokerFastStartFailOver struct {
-	Enable   bool                      `json:"enable,omitempty"`
-	Strategy []DataguardBrokerStrategy `json:"strategy,omitempty"`
-}
-
-// FSFO strategy
-type DataguardBrokerStrategy struct {
-	SourceDatabaseRef  string `json:"sourceDatabaseRef,omitempty"`
-	TargetDatabaseRefs string `json:"targetDatabaseRefs,omitempty"`
+	FastStartFailover bool `json:"fastStartFailover,omitempty"`
 }
 
 // DataguardBrokerStatus defines the observed state of DataguardBroker
@@ -84,10 +74,13 @@ type DataguardBrokerStatus struct {
 	ExternalConnectString string `json:"externalConnectString,omitempty"`
 	ClusterConnectString  string `json:"clusterConnectString,omitempty"`
 	Status                string `json:"status,omitempty"`
+
+	FastStartFailover          bool              `json:"fastStartFailover,omitempty"`
+	DatabasesInDataguardConfig map[string]string `json:"databasesInDataguardConfig,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".status.primaryDatabase",name="Primary",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.standbyDatabases",name="Standbys",type="string"
 // +kubebuilder:printcolumn:JSONPath=".spec.protectionMode",name="Protection Mode",type="string"
@@ -95,6 +88,7 @@ type DataguardBrokerStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.externalConnectString",name="Connect Str",type="string"
 // +kubebuilder:printcolumn:JSONPath=".spec.primaryDatabaseRef",name="Primary Database",type="string", priority=1
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.fastStartFailover",name="FSFO", type="string"
 
 // DataguardBroker is the Schema for the dataguardbrokers API
 type DataguardBroker struct {
@@ -103,6 +97,55 @@ type DataguardBroker struct {
 
 	Spec   DataguardBrokerSpec   `json:"spec,omitempty"`
 	Status DataguardBrokerStatus `json:"status,omitempty"`
+}
+
+// //////////////////////////////////////////////////////////////////////////////////////////////////
+// Returns the current primary database in the dataguard configuration from the resource status/spec
+// //////////////////////////////////////////////////////////////////////////////////////////////////
+func (broker *DataguardBroker) GetCurrentPrimaryDatabase() string {
+	if broker.Status.PrimaryDatabase != "" {
+		return broker.Status.DatabasesInDataguardConfig[broker.Status.PrimaryDatabase]
+	}
+	return broker.Spec.PrimaryDatabaseRef
+}
+
+// //////////////////////////////////////////////////////////////////////////////////////////////////
+// Returns databases in Dataguard configuration from the resource status/spec
+// //////////////////////////////////////////////////////////////////////////////////////////////////
+func (broker *DataguardBroker) GetDatabasesInDataGuardConfiguration() []string {
+	var databases []string
+	if len(broker.Status.DatabasesInDataguardConfig) > 0 {
+		for _, value := range broker.Status.DatabasesInDataguardConfig {
+			if value != "" {
+				databases = append(databases, value)
+			}
+		}
+
+		return databases
+	}
+
+	databases = append(databases, broker.Spec.PrimaryDatabaseRef)
+	databases = append(databases, broker.Spec.StandbyDatabaseRefs...)
+	return databases
+}
+
+// //////////////////////////////////////////////////////////////////////////////////////////////////
+// Returns standby databases in the dataguard configuration from the resource status/spec
+// //////////////////////////////////////////////////////////////////////////////////////////////////
+func (broker *DataguardBroker) GetStandbyDatabasesInDgConfig() []string {
+	var databases []string
+	if len(broker.Status.DatabasesInDataguardConfig) > 0 {
+		for _, value := range broker.Status.DatabasesInDataguardConfig {
+			if value != "" && value != broker.Status.PrimaryDatabase {
+				databases = append(databases, value)
+			}
+		}
+
+		return databases
+	}
+
+	databases = append(databases, broker.Spec.StandbyDatabaseRefs...)
+	return databases
 }
 
 //+kubebuilder:object:root=true
