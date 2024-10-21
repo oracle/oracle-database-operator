@@ -26,7 +26,7 @@ Use the file: [udsharding_shard_prov_delshard.yaml](./udsharding_shard_prov_dels
 
 1. Move out the chunks from the shard to be deleted to another shard. For example, in the current case, before deleting the `shard4`, if you want to move the chunks from `shard4` to `shard2`, then you can run the below `kubectl` command where `/u01/app/oracle/product/23ai/gsmhome_1` is the GSM HOME:
     ```sh
-    kubectl exec -it pod/gsm1-0 -n shns -- /u01/app/oracle/product/23ai/gsmhome_1/bin/gdsctl "move chunk -chunk all -source shard4_shard4pdb -target shard4_shard4pdb"
+    kubectl exec -it pod/gsm1-0 -n shns -- /u01/app/oracle/product/23ai/gsmhome_1/bin/gdsctl "move chunk -chunk all -source shard4_shard4pdb -target shard2_shard2pdb"
     ```
 2. Confirm the shard to be deleted (`shard4` in this case) is not having any chunk using below command:
     ```sh
@@ -48,7 +48,7 @@ Use the file: [udsharding_shard_prov_delshard.yaml](./udsharding_shard_prov_dels
 - After you apply `udsharding_shard_prov_delshard.yaml`, the change may not be visible immediately and it may take some time for the delete operation to complete.
 - If the shard, that you are trying to delete, is still having chunks, then the you will see message like below in the logs of the Oracle Database Operator Pod.
     ```sh
-    INFO    controllers.database.ShardingDatabase   manual intervention required
+    DEBUG     events    Shard Deletion  failed for [shard4]. Retry shard deletion after manually moving the chunks. Requeuing
     ```
   In this case, you will need to first move out the chunks from the shard to be deleted using Step 2 above and then apply the file in Step 3 to delete that shard.
 
