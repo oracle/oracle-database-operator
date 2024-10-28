@@ -12,6 +12,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [Pre-built Database](#pre-built-database)
       * [XE Database](#xe-database)
       * [Free Database](#free-database)
+      * [Free Lite Database](#free-lite-database)
     * [Connecting to Database](#connecting-to-database)
     * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
       * [Dynamic Persistence](#dynamic-persistence)
@@ -281,7 +282,7 @@ To provision new Oracle Database Express Edition (XE) database, use the sample *
 
       kubectl apply -f singleinstancedatabase_express.yaml
 
-This command pulls the XE image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/).
+This command pulls the XE image available in [Oracle Container Registry](https://container-registry.oracle.com/).
 
 **Note:**
 - Provisioning Oracle Database express edition is supported for release 21c (21.3.0) only.
@@ -289,11 +290,18 @@ This command pulls the XE image uploaded on the [Oracle Container Registry](http
 - For XE database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
 
 #### Free Database
-To provision new Oracle Database Free database, use the sample **[config/samples/sidb/singleinstancedatabase_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml)** file. For example:
+To provision new Oracle Database Free, use the sample **[config/samples/sidb/singleinstancedatabase_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml)** file. For example:
 
       kubectl apply -f singleinstancedatabase_free.yaml
 
-This command pulls the Free image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/).
+This command pulls the Free image available in [Oracle Container Registry](https://container-registry.oracle.com/).
+
+#### Free Lite Database
+To provision new Oracle Database Free Lite, use the sample **[config/samples/sidb/singleinstancedatabase_free-lite.yaml](../../config/samples/sidb/singleinstancedatabase_free-lite.yaml)** file. For example:
+
+      kubectl apply -f singleinstancedatabase_free-lite.yaml
+
+This command pulls the Free lite image available in [Oracle Container Registry](https://container-registry.oracle.com/).
 
 **Note:**
 - Provisioning Oracle Database Free is supported for release 23.3.0 and later releases.
