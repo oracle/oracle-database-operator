@@ -35,6 +35,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
         * [Create a Data Guard Configuration](#create-a-data-guard-configuration)
         * [Perform a Switchover](#perform-a-switchover)
         * [Enable Fast-Start Failover](#enable-fast-start-failover)
+        * [Convert Standby to Snapshot Standby](#convert-standby-to-snapshot-standby)
         * [Static Data Guard Connect String](#static-data-guard-connect-string)
         * [Patch Primary and Standby databases](#patch-primary-and-standby-databases)
         * [Delete the Data Guard Configuration](#delete-the-data-guard-configuration)
@@ -901,6 +902,26 @@ $ kubectl --type=merge -p '{"spec":{"fastStartFailover": true}}' patch dataguard
 This results in the creation of a pod running the Observer. The Observer is a component of the DGMGRL interface which monitors the availability of the primary database.
 
 **Note:** When the attribute fastStartFailover is true, performing a switchover by specifying setAsPrimaryDatabase is not allowed.
+
+### Convert Standby to Snapshot Standby
+
+A snapshot standby is a fully updatable standby database that can be used development and testing. It receives and archives, but does not apply, redo data from a primary database. The redo data received from the primary database is applied once a snapshot standby database is converted back into a physical standby database, after discarding all local updates to the snapshot standby database.
+
+To convert a standby database to snapshot standby, make sure Fast-Start Failover is disabled, then set the attribute `.spec.convertToSnapshotStandby` to true in [singleinstancedatabase.yaml](./../../config/samples/sidb/singleinstancedatabase.yaml) before applying it.
+
+```sh
+$ kubectl apply -f singleinstancedatabase.yaml
+
+  singleinstancedatabase.database.oracle.com/sidb-sample configured
+```
+
+Or use the patch command
+
+```sh
+$ kubectl --type=merge -p '{"spec":{"convertToSnapshotStandby":true}}' patch singleinstancedatabase sidb-sample
+
+  singleinstancedatabase.database.oracle.com/sidb-sample patched
+```
 
 ### Static Data Guard Connect String
 

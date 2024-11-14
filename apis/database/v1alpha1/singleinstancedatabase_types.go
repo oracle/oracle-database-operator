@@ -70,7 +70,6 @@ type SingleInstanceDatabaseSpec struct {
 	EnableTCPS            bool              `json:"enableTCPS,omitempty"`
 	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
 	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
-	DgBrokerConfigured    bool              `json:"dgBrokerConfigured,omitempty"`
 
 	PrimaryDatabaseRef string `json:"primaryDatabaseRef,omitempty"`
 	// +kubebuilder:validation:Enum=primary;standby;clone
@@ -87,6 +86,8 @@ type SingleInstanceDatabaseSpec struct {
 	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
 	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
 	Resources     SingleInstanceDatabaseResources     `json:"resources,omitempty"`
+
+	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
 }
 
 type SingleInstanceDatabaseResource struct {
@@ -145,6 +146,7 @@ type SingleInstanceDatabaseStatus struct {
 	Status        string   `json:"status,omitempty"`
 	Replicas      int      `json:"replicas,omitempty"`
 	ReleaseUpdate string   `json:"releaseUpdate,omitempty"`
+	DgBroker      *string  `json:"dgBroker,omitempty"`
 	// +kubebuilder:default:="false"
 	DatafilesPatched     string            `json:"datafilesPatched,omitempty"`
 	ConnectString        string            `json:"connectString,omitempty"`
@@ -175,7 +177,6 @@ type SingleInstanceDatabaseStatus struct {
 	CertRenewInterval     string `json:"certRenewInterval,omitempty"`
 	ClientWalletLoc       string `json:"clientWalletLoc,omitempty"`
 	PrimaryDatabase       string `json:"primaryDatabase,omitempty"`
-	DgBrokerConfigured    bool   `json:"dgBrokerConfigured,omitempty"`
 	// +kubebuilder:default:=""
 	TcpsTlsSecret string `json:"tcpsTlsSecret"`
 
@@ -187,6 +188,8 @@ type SingleInstanceDatabaseStatus struct {
 
 	InitParams  SingleInstanceDatabaseInitParams  `json:"initParams,omitempty"`
 	Persistence SingleInstanceDatabasePersistence `json:"persistence"`
+
+	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
 }
 
 //+kubebuilder:object:root=true

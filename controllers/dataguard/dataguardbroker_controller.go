@@ -126,6 +126,19 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if dataguardBroker.Spec.FastStartFailover != dataguardBroker.Status.FastStartFailover {
 		if dataguardBroker.Spec.FastStartFailover {
 
+			for _, DbResource := range dataguardBroker.Status.DatabasesInDataguardConfig {
+				var singleInstanceDatabase dbapi.SingleInstanceDatabase
+				if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: DbResource}, &singleInstanceDatabase); err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
+				r.Log.Info("Check the role for database", "database", singleInstanceDatabase.Name, "role", singleInstanceDatabase.Status.Role)
+				if singleInstanceDatabase.Status.Role == "SNAPSHOT_STANDBY" {
+					r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Enabling FSFO failed", "database %s is a snapshot database", singleInstanceDatabase.Name)
+					r.Log.Info("Enabling FSFO failed, one of the database is a snapshot database", "snapshot database", singleInstanceDatabase.Name)
+					return ctrl.Result{Requeue: true}, nil
+				}
+			}
+
 			// set faststartfailover targets for all the singleinstancedatabases in the dataguard configuration
 			if err := setFSFOTargets(r, &dataguardBroker, ctx, req); err != nil {
 				return ctrl.Result{Requeue: false}, err

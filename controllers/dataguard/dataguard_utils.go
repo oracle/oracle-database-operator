@@ -114,7 +114,7 @@ func cleanupDataguardBroker(r *DataguardBrokerReconciler, broker *dbapi.Dataguar
 		}
 
 		// Set DgBrokerConfigured to false
-		standbyDatabase.Status.DgBrokerConfigured = false
+		standbyDatabase.Status.DgBroker = nil
 		if err := r.Status().Update(ctx, &standbyDatabase); err != nil {
 			r.Recorder.Eventf(&standbyDatabase, corev1.EventTypeWarning, "Updating Status", "DgBrokerConfigured status updation failed")
 			log.Info(fmt.Sprintf("Status updation for sidb %s failed", standbyDatabase.Name))
@@ -236,7 +236,7 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 		}
 
 		// Check if dataguard broker is already configured for the standby database
-		if standbyDatabase.Status.DgBrokerConfigured {
+		if standbyDatabase.Status.DgBroker != nil {
 			log.Info("Dataguard broker for standbyDatabase : " + standbyDatabase.Name + " is already configured")
 			continue
 		}
@@ -393,8 +393,8 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 			log.Info(out)
 		}
 		// Set DG Configured status to true for this standbyDatabase and primary Database. so that in next reconcilation, we dont configure this again
-		n.Status.DgBrokerConfigured = true
-		standbyDatabase.Status.DgBrokerConfigured = true
+		n.Status.DgBroker = &m.Name
+		standbyDatabase.Status.DgBroker = &m.Name
 		r.Status().Update(ctx, standbyDatabase)
 		r.Status().Update(ctx, n)
 		// Remove admin pwd file
@@ -486,7 +486,7 @@ func setupDataguardBrokerConfigurationForGivenDB(r *DataguardBrokerReconciler, m
 	log.Info("DB Admin pwd file removed")
 
 	// Set DG Configured status to true for this standbyDatabase. so that in next reconcilation, we dont configure this again
-	standbyDatabase.Status.DgBrokerConfigured = true
+	standbyDatabase.Status.DgBroker = &m.Name
 	r.Status().Update(ctx, standbyDatabase)
 
 	return nil
