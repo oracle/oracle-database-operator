@@ -21,6 +21,10 @@ spec:
   ## Valid only for enterprise and standard editions
   createAs: primary
 
+  ## Specify true to convert this standby to a snapshot standby
+  ## Valid only if createAs is standby
+  convertToSnapshotStandby: false
+
   ## Reference to a source primary database.
   ## Valid only for createAs clone or standby
   ## The name of a source primary database resource from the same namespace

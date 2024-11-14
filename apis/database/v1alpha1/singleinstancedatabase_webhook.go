@@ -470,7 +470,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 
 	// if Db is in a dataguard configuration or referred by Standby databases then Restrict enabling Tcps on the Primary DB
 	if r.Spec.EnableTCPS {
-		if old.Status.DgBrokerConfigured {
+		if old.Status.DgBroker != nil {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("enableTCPS"), "cannot enable tcps as database is in a dataguard configuration"))
 		} else if len(old.Status.StandbyDatabases) != 0 {
@@ -510,7 +510,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 			field.Forbidden(field.NewPath("spec").Child("persistence"), "uninstall ORDS to change Persistence"))
 	}
 
-	if old.Status.Replicas != r.Spec.Replicas && old.Status.DgBrokerConfigured {
+	if old.Status.Replicas != r.Spec.Replicas && old.Status.DgBroker != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("replicas"), "cannot be updated for a database in a Data Guard configuration"))
 	}
