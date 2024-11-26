@@ -5,11 +5,11 @@ build-operator:
     OP_YAML: oracle-database-operator.yaml
     BUILD_INTERNAL: "true"
   script:
-    - export GOROOT=$(go1.21.7 env GOROOT)
+    - export GOROOT=$(go1.23.3 env GOROOT)
     - export PATH="${GOROOT}/bin:${PATH}"
     - make docker-build IMG="$IMAGE"
-    - docker push "$IMAGE"
-    - docker rmi "$IMAGE" && docker system prune -f
+    - docker manifest push "$IMAGE"
+    - docker manifest rm "$IMAGE" && docker system prune -f
     - make operator-yaml IMG=$IMAGE
     - if [ "$CI_COMMIT_BRANCH" != "master" ]; then sed -i "s/\(replicas.\) 3/\1 1/g" ./$OP_YAML; fi
     - curl -s --netrc-file $HOME/.netrc_gitlab $ARTIFACTORY_REPO/$CI_COMMIT_BRANCH/$OP_YAML -T ./$OP_YAML
