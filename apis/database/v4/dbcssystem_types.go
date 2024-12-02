@@ -35,7 +35,7 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
-package v1alpha1
+package v4
 
 import (
 	"encoding/json"
@@ -201,6 +201,7 @@ type DbCloneStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=DbcsSystem,scope=Namespaced
+ // +kubebuilder:storageversion
 
 // DbcsSystem is the Schema for the dbcssystems API
 type DbcsSystem struct {

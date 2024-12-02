@@ -67,14 +67,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	shardingv1 "github.com/oracle/oracle-database-operator/commons/sharding"
 )
 
 // Sharding Topology
 type ShardingTopology struct {
 	topicid         string
-	Instance        *databasev1alpha1.ShardingDatabase
+	Instance        *databasev4.ShardingDatabase
 	deltopology     bool
 	onsProvider     common.ConfigurationProvider
 	onsProviderFlag bool
@@ -120,10 +120,10 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// your logic here
 	var i int32
-	//var ShardImageLatest []databasev1alpha1.ShardSpec
-	var OraCatalogSpex databasev1alpha1.CatalogSpec
-	var OraShardSpex databasev1alpha1.ShardSpec
-	var OraGsmSpex databasev1alpha1.GsmSpec
+	//var ShardImageLatest []databasev4.ShardSpec
+	var OraCatalogSpex databasev4.CatalogSpec
+	var OraShardSpex databasev4.ShardSpec
+	var OraGsmSpex databasev4.GsmSpec
 	var result ctrl.Result
 	var isShardTopologyDeleteTrue bool = false
 	//var msg string
@@ -146,7 +146,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 	// Fetch the ProvShard instance
-	instance := &databasev1alpha1.ShardingDatabase{}
+	instance := &databasev4.ShardingDatabase{}
 	err = r.Client.Get(context.TODO(), req.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -424,7 +424,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	stateType = string(databasev1alpha1.CrdReconcileCompeleteState)
+	stateType = string(databasev4.CrdReconcileCompeleteState)
 	//	r.setCrdLifeCycleState(instance, &result, &err, stateType)
 	// Set error to ni to avoid reconcilation state reconcilation error as we are passing err to setCrdLifeCycleState
 
@@ -439,7 +439,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 // Check https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/controller#Options to under MaxConcurrentReconciles
 func (r *ShardingDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&databasev1alpha1.ShardingDatabase{}).
+		For(&databasev4.ShardingDatabase{}).
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.Pod{}).
@@ -484,7 +484,7 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 						break
 
 					}
-					if e.Object.GetLabels()[string(databasev1alpha1.ShardingDelLabelKey)] == string(databasev1alpha1.ShardingDelLabelTrueValue) {
+					if e.Object.GetLabels()[string(databasev4.ShardingDelLabelKey)] == string(databasev4.ShardingDelLabelTrueValue) {
 						break
 					}
 
@@ -515,7 +515,7 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 }
 
 // ================ Function to check secret update=============
-func (r *ShardingDatabaseReconciler) UpdateSecret(instance *databasev1alpha1.ShardingDatabase, kClient client.Client, logger logr.Logger) (ctrl.Result, error) {
+func (r *ShardingDatabaseReconciler) UpdateSecret(instance *databasev4.ShardingDatabase, kClient client.Client, logger logr.Logger) (ctrl.Result, error) {
 
 	sc := &corev1.Secret{}
 	//var err error
@@ -534,7 +534,7 @@ func (r *ShardingDatabaseReconciler) UpdateSecret(instance *databasev1alpha1.Sha
 }
 
 // ================== Function to get the Notification controller ==============
-func (r *ShardingDatabaseReconciler) getOnsConfigProvider(instance *databasev1alpha1.ShardingDatabase, idx int,
+func (r *ShardingDatabaseReconciler) getOnsConfigProvider(instance *databasev4.ShardingDatabase, idx int,
 ) {
 	var err error
 	if instance.Spec.DbSecret.NsConfigMap != "" && instance.Spec.DbSecret.NsSecret != "" && r.osh[idx].onsProviderFlag != true {
@@ -559,7 +559,7 @@ func (r *ShardingDatabaseReconciler) getOnsConfigProvider(instance *databasev1al
 }
 
 // ================== Function the Message  ==============
-func (r *ShardingDatabaseReconciler) sendMessage(instance *databasev1alpha1.ShardingDatabase, title string, body string) {
+func (r *ShardingDatabaseReconciler) sendMessage(instance *databasev4.ShardingDatabase, title string, body string) {
 	idx, instFlag := r.checkProvInstance(instance)
 	if instFlag {
 		if r.osh[idx].onsProviderFlag {
@@ -568,9 +568,9 @@ func (r *ShardingDatabaseReconciler) sendMessage(instance *databasev1alpha1.Shar
 	}
 }
 
-func (r *ShardingDatabaseReconciler) publishEvents(instance *databasev1alpha1.ShardingDatabase, eventMsg string, state string) {
+func (r *ShardingDatabaseReconciler) publishEvents(instance *databasev4.ShardingDatabase, eventMsg string, state string) {
 
-	if state == string(databasev1alpha1.AvailableState) || state == string(databasev1alpha1.AddingShardState) || state == string(databasev1alpha1.ShardOnlineState) || state == string(databasev1alpha1.ProvisionState) || state == string(databasev1alpha1.DeletingState) || state == string(databasev1alpha1.Terminated) {
+	if state == string(databasev4.AvailableState) || state == string(databasev4.AddingShardState) || state == string(databasev4.ShardOnlineState) || state == string(databasev4.ProvisionState) || state == string(databasev4.DeletingState) || state == string(databasev4.Terminated) {
 		r.Recorder.Eventf(instance, corev1.EventTypeNormal, "State Change", eventMsg)
 	} else {
 		r.Recorder.Eventf(instance, corev1.EventTypeWarning, "State Change", eventMsg)
@@ -580,7 +580,7 @@ func (r *ShardingDatabaseReconciler) publishEvents(instance *databasev1alpha1.Sh
 }
 
 // ================== Function to check insytance deletion timestamp and activate the finalizer code ========
-func (r *ShardingDatabaseReconciler) finalizerShardingDatabaseInstance(instance *databasev1alpha1.ShardingDatabase,
+func (r *ShardingDatabaseReconciler) finalizerShardingDatabaseInstance(instance *databasev4.ShardingDatabase,
 ) (error, bool) {
 
 	isProvOShardToBeDeleted := instance.GetDeletionTimestamp() != nil
@@ -619,7 +619,7 @@ func (r *ShardingDatabaseReconciler) finalizerShardingDatabaseInstance(instance 
 }
 
 // ========================== FInalizer Section ===================
-func (r *ShardingDatabaseReconciler) addFinalizer(instance *databasev1alpha1.ShardingDatabase) error {
+func (r *ShardingDatabaseReconciler) addFinalizer(instance *databasev4.ShardingDatabase) error {
 	reqLogger := r.Log.WithValues("instance.Spec.Namespace", instance.Spec.Namespace, "instance.Name", instance.Name)
 	controllerutil.AddFinalizer(instance, shardingv1.ShardingDatabaseFinalizer)
 
@@ -632,7 +632,7 @@ func (r *ShardingDatabaseReconciler) addFinalizer(instance *databasev1alpha1.Sha
 	return nil
 }
 
-func (r *ShardingDatabaseReconciler) finalizeShardingDatabase(instance *databasev1alpha1.ShardingDatabase) error {
+func (r *ShardingDatabaseReconciler) finalizeShardingDatabase(instance *databasev4.ShardingDatabase) error {
 	// TODO(user): Add the cleanup steps that the operator needs to do before the CR
 	// can be deleted. Examples of finalizers include performing backups and deleting
 	// resources that are not owned by this CR, like a PVC.
@@ -834,8 +834,8 @@ func (r *ShardingDatabaseReconciler) finalizeShardingDatabase(instance *database
 	r.osh[idx].deltopology = false
 	//r.osh[idx].addSem.Release(1)
 	//r.osh[idx].delSem.Release(1)
-	//instance1 := &shardingv1alpha1.ProvShard{}
-	r.osh[idx].Instance = &databasev1alpha1.ShardingDatabase{}
+	//instance1 := &shardingv4.ProvShard{}
+	r.osh[idx].Instance = &databasev4.ShardingDatabase{}
 
 	//r.osh[idx] = nil
 
@@ -845,7 +845,7 @@ func (r *ShardingDatabaseReconciler) finalizeShardingDatabase(instance *database
 //==============
 
 // Get the current instance
-func (r *ShardingDatabaseReconciler) checkProvInstance(instance *databasev1alpha1.ShardingDatabase,
+func (r *ShardingDatabaseReconciler) checkProvInstance(instance *databasev4.ShardingDatabase,
 ) (int, bool) {
 
 	var status bool = false
@@ -865,7 +865,7 @@ func (r *ShardingDatabaseReconciler) checkProvInstance(instance *databasev1alpha
 }
 
 // =========== validate Specs ============
-func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev1alpha1.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev4.ShardingDatabase, idx int) error {
 
 	var eventMsg string
 	var eventErr string = "Spec Error"
@@ -950,7 +950,7 @@ func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev1alpha1.Sha
 	return nil
 }
 
-func (r *ShardingDatabaseReconciler) checkShardingType(instance *databasev1alpha1.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) checkShardingType(instance *databasev4.ShardingDatabase, idx int) error {
 	var i, k int32
 	var regionFlag bool
 
@@ -973,7 +973,7 @@ func (r *ShardingDatabaseReconciler) checkShardingType(instance *databasev1alpha
 // Check the ShardGroups/ Shard Space and Shard group Name
 // checkShrdGSR is Shardgroup/ShardSpace/ShardRegion
 
-func (r *ShardingDatabaseReconciler) checkShardSpace(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) error {
+func (r *ShardingDatabaseReconciler) checkShardSpace(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) error {
 
 	if instance.Spec.ShardingType != "" {
 		// Check for the Sharding Type and if it is USER do following
@@ -992,7 +992,7 @@ func (r *ShardingDatabaseReconciler) checkShardSpace(instance *databasev1alpha1.
 // Check the ShardGroups/ Shard Space and Shard group Name
 // checkShrdGSR is Shardgroup/ShardSpace/ShardRegion
 
-func (r *ShardingDatabaseReconciler) checkShardGroup(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) error {
+func (r *ShardingDatabaseReconciler) checkShardGroup(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) error {
 
 	// We need to check Shard Region and Shard Group for ShardingType='SYSTEM' and 'NATIVE'
 	if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
@@ -1011,7 +1011,7 @@ func (r *ShardingDatabaseReconciler) checkShardGroup(instance *databasev1alpha1.
 
 // Compare GSM Env Variables
 
-func (r *ShardingDatabaseReconciler) comapreGsmEnvVariables(instance *databasev1alpha1.ShardingDatabase, lastSuccSpec *databasev1alpha1.ShardingDatabaseSpec) bool {
+func (r *ShardingDatabaseReconciler) comapreGsmEnvVariables(instance *databasev4.ShardingDatabase, lastSuccSpec *databasev4.ShardingDatabaseSpec) bool {
 	var eventMsg string
 	var eventErr string = "Spec Error"
 	var i, j int32
@@ -1036,7 +1036,7 @@ func (r *ShardingDatabaseReconciler) comapreGsmEnvVariables(instance *databasev1
 	return true
 }
 
-func (r *ShardingDatabaseReconciler) comapreCatalogEnvVariables(instance *databasev1alpha1.ShardingDatabase, lastSuccSpec *databasev1alpha1.ShardingDatabaseSpec) bool {
+func (r *ShardingDatabaseReconciler) comapreCatalogEnvVariables(instance *databasev4.ShardingDatabase, lastSuccSpec *databasev4.ShardingDatabaseSpec) bool {
 	var eventMsg string
 	var eventErr string = "Spec Error"
 	var i, j int32
@@ -1061,7 +1061,7 @@ func (r *ShardingDatabaseReconciler) comapreCatalogEnvVariables(instance *databa
 	return true
 }
 
-func (r *ShardingDatabaseReconciler) comapreShardEnvVariables(instance *databasev1alpha1.ShardingDatabase, lastSuccSpec *databasev1alpha1.ShardingDatabaseSpec) bool {
+func (r *ShardingDatabaseReconciler) comapreShardEnvVariables(instance *databasev4.ShardingDatabase, lastSuccSpec *databasev4.ShardingDatabaseSpec) bool {
 	var eventMsg string
 	var eventErr string = "Spec Error"
 	var i, j int32
@@ -1088,21 +1088,21 @@ func (r *ShardingDatabaseReconciler) comapreShardEnvVariables(instance *database
 
 //===== Set the CRD resource life cycle state ========
 
-func (r *ShardingDatabaseReconciler) setCrdLifeCycleState(instance *databasev1alpha1.ShardingDatabase, result *ctrl.Result, err *error, stateType *string) {
+func (r *ShardingDatabaseReconciler) setCrdLifeCycleState(instance *databasev4.ShardingDatabase, result *ctrl.Result, err *error, stateType *string) {
 
 	var metaCondition metav1.Condition
 	var updateFlag = false
 	if *stateType == "ReconcileWaiting" {
-		metaCondition = shardingv1.GetMetaCondition(instance, result, err, *stateType, string(databasev1alpha1.CrdReconcileWaitingReason))
+		metaCondition = shardingv1.GetMetaCondition(instance, result, err, *stateType, string(databasev4.CrdReconcileWaitingReason))
 		updateFlag = true
 	} else if *stateType == "ReconcileComplete" {
-		metaCondition = shardingv1.GetMetaCondition(instance, result, err, *stateType, string(databasev1alpha1.CrdReconcileCompleteReason))
+		metaCondition = shardingv1.GetMetaCondition(instance, result, err, *stateType, string(databasev4.CrdReconcileCompleteReason))
 		updateFlag = true
 	} else if result.Requeue {
-		metaCondition = shardingv1.GetMetaCondition(instance, result, err, string(databasev1alpha1.CrdReconcileQueuedState), string(databasev1alpha1.CrdReconcileQueuedReason))
+		metaCondition = shardingv1.GetMetaCondition(instance, result, err, string(databasev4.CrdReconcileQueuedState), string(databasev4.CrdReconcileQueuedReason))
 		updateFlag = true
 	} else if *err != nil {
-		metaCondition = shardingv1.GetMetaCondition(instance, result, err, string(databasev1alpha1.CrdReconcileErrorState), string(databasev1alpha1.CrdReconcileErrorReason))
+		metaCondition = shardingv1.GetMetaCondition(instance, result, err, string(databasev4.CrdReconcileErrorState), string(databasev4.CrdReconcileErrorReason))
 		updateFlag = true
 	} else {
 
@@ -1119,7 +1119,7 @@ func (r *ShardingDatabaseReconciler) setCrdLifeCycleState(instance *databasev1al
 
 }
 
-func (r *ShardingDatabaseReconciler) validateGsmnCatalog(instance *databasev1alpha1.ShardingDatabase) error {
+func (r *ShardingDatabaseReconciler) validateGsmnCatalog(instance *databasev4.ShardingDatabase) error {
 	var err error
 	_, _, err = r.validateCatalog(instance)
 	if err != nil {
@@ -1132,7 +1132,7 @@ func (r *ShardingDatabaseReconciler) validateGsmnCatalog(instance *databasev1alp
 	return nil
 }
 
-func (r *ShardingDatabaseReconciler) validateGsm(instance *databasev1alpha1.ShardingDatabase,
+func (r *ShardingDatabaseReconciler) validateGsm(instance *databasev4.ShardingDatabase,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 	//var err error
 	var i int32
@@ -1160,7 +1160,7 @@ func (r *ShardingDatabaseReconciler) validateGsm(instance *databasev1alpha1.Shar
 	return gsmSfSet, gsmPod, fmt.Errorf("GSM is not ready")
 }
 
-func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec, specId int,
+func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec, specId int,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 	//var err error
 	var i int32
@@ -1176,7 +1176,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev1alp
 	if err != nil {
 		msg = "Unable to find  GSM statefulset " + shardingv1.GetFmtStr(OraGsmSpex.Name) + "."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateGsmStatus(instance, int(i), string(databasev1alpha1.StatefulSetNotFound))
+		r.updateGsmStatus(instance, int(i), string(databasev4.StatefulSetNotFound))
 		return gsmSfSet, gsmPod, err
 	}
 
@@ -1184,7 +1184,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev1alp
 	if err != nil {
 		msg = "Unable to find any pod in statefulset " + shardingv1.GetFmtStr(gsmSfSet.Name) + "."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateGsmStatus(instance, int(i), string(databasev1alpha1.PodNotFound))
+		r.updateGsmStatus(instance, int(i), string(databasev4.PodNotFound))
 		return gsmSfSet, gsmPod, err
 	}
 
@@ -1192,22 +1192,22 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev1alp
 	if !isPodExist {
 		msg = "Unable to validate GSM " + shardingv1.GetFmtStr(gsmPod.Name) + " pod. GSM pod doesn't seems to be ready to accept the commands."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateGsmStatus(instance, int(i), string(databasev1alpha1.PodNotReadyState))
+		r.updateGsmStatus(instance, int(i), string(databasev4.PodNotReadyState))
 		return gsmSfSet, gsmPod, fmt.Errorf("pod doesn't exist")
 	}
 	err = shardingv1.CheckGsmStatus(gsmPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
 	if err != nil {
 		msg = "Unable to validate GSM director. GSM director doesn't seems to be ready to accept the commands."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateGsmStatus(instance, int(i), string(databasev1alpha1.ProvisionState))
+		r.updateGsmStatus(instance, int(i), string(databasev4.ProvisionState))
 		return gsmSfSet, gsmPod, err
 	}
 
-	r.updateGsmStatus(instance, specId, string(databasev1alpha1.AvailableState))
+	r.updateGsmStatus(instance, specId, string(databasev4.AvailableState))
 	return gsmSfSet, gsmPod, nil
 }
 
-func (r *ShardingDatabaseReconciler) validateCatalog(instance *databasev1alpha1.ShardingDatabase,
+func (r *ShardingDatabaseReconciler) validateCatalog(instance *databasev4.ShardingDatabase,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
 	catalogSfSet := &appsv1.StatefulSet{}
@@ -1236,7 +1236,7 @@ func (r *ShardingDatabaseReconciler) validateCatalog(instance *databasev1alpha1.
 }
 
 // === Validate Individual Catalog
-func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec, specId int,
+func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec, specId int,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
 	var err error
@@ -1249,7 +1249,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 	if err != nil {
 		msg := "Unable to find Catalog statefulset " + shardingv1.GetFmtStr(OraCatalogSpex.Name) + "."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateCatalogStatus(instance, specId, string(databasev1alpha1.StatefulSetNotFound))
+		r.updateCatalogStatus(instance, specId, string(databasev4.StatefulSetNotFound))
 		return catalogSfSet, catalogPod, err
 	}
 
@@ -1257,31 +1257,31 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 	if err != nil {
 		msg := "Unable to find any pod in statefulset " + shardingv1.GetFmtStr(catalogSfSet.Name) + "."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateCatalogStatus(instance, specId, string(databasev1alpha1.PodNotFound))
+		r.updateCatalogStatus(instance, specId, string(databasev4.PodNotFound))
 		return catalogSfSet, catalogPod, err
 	}
 	isPodExist, catalogPod = shardingv1.PodListValidation(podList, catalogSfSet.Name, instance, r.Client)
 	if !isPodExist {
 		msg := "Unable to validate Catalog " + shardingv1.GetFmtStr(catalogSfSet.Name) + " pod. Catalog pod doesn't seems to be ready to accept the commands."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateCatalogStatus(instance, specId, string(databasev1alpha1.PodNotReadyState))
+		r.updateCatalogStatus(instance, specId, string(databasev4.PodNotReadyState))
 		return catalogSfSet, catalogPod, fmt.Errorf("Pod doesn't exist")
 	}
 	err = shardingv1.ValidateDbSetup(catalogPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
 	if err != nil {
 		msg := "Unable to validate Catalog. Catalog doesn't seems to be ready to accept the commands."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateCatalogStatus(instance, specId, string(databasev1alpha1.ProvisionState))
+		r.updateCatalogStatus(instance, specId, string(databasev4.ProvisionState))
 		return catalogSfSet, catalogPod, err
 	}
 
-	r.updateCatalogStatus(instance, specId, string(databasev1alpha1.AvailableState))
+	r.updateCatalogStatus(instance, specId, string(databasev4.AvailableState))
 	return catalogSfSet, catalogPod, nil
 
 }
 
 // ======= Function to validate Shard
-func (r *ShardingDatabaseReconciler) validateShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec, specId int,
+func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec, specId int,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
 	var err error
@@ -1292,7 +1292,7 @@ func (r *ShardingDatabaseReconciler) validateShard(instance *databasev1alpha1.Sh
 	if err != nil {
 		msg := "Unable to find Shard statefulset " + shardingv1.GetFmtStr(OraShardSpex.Name) + "."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateShardStatus(instance, specId, string(databasev1alpha1.StatefulSetNotFound))
+		r.updateShardStatus(instance, specId, string(databasev4.StatefulSetNotFound))
 		return shardSfSet, shardPod, err
 	}
 
@@ -1300,30 +1300,30 @@ func (r *ShardingDatabaseReconciler) validateShard(instance *databasev1alpha1.Sh
 	if err != nil {
 		msg := "Unable to find any pod in statefulset " + shardingv1.GetFmtStr(shardSfSet.Name) + "."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateShardStatus(instance, specId, string(databasev1alpha1.PodNotFound))
+		r.updateShardStatus(instance, specId, string(databasev4.PodNotFound))
 		return shardSfSet, shardPod, err
 	}
 	isPodExist, shardPod := shardingv1.PodListValidation(podList, shardSfSet.Name, instance, r.Client)
 	if !isPodExist {
 		msg := "Unable to validate Shard " + shardingv1.GetFmtStr(shardPod.Name) + " pod. Shard pod doesn't seems to be ready to accept the commands."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateShardStatus(instance, specId, string(databasev1alpha1.PodNotReadyState))
+		r.updateShardStatus(instance, specId, string(databasev4.PodNotReadyState))
 		return shardSfSet, shardPod, err
 	}
 	err = shardingv1.ValidateDbSetup(shardPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
 	if err != nil {
 		msg := "Unable to validate shard. Shard doesn't seems to be ready to accept the commands."
 		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-		r.updateShardStatus(instance, specId, string(databasev1alpha1.ProvisionState))
+		r.updateShardStatus(instance, specId, string(databasev4.ProvisionState))
 		return shardSfSet, shardPod, err
 	}
 
-	r.updateShardStatus(instance, specId, string(databasev1alpha1.AvailableState))
+	r.updateShardStatus(instance, specId, string(databasev4.AvailableState))
 	return shardSfSet, shardPod, nil
 }
 
 // This function updates the shard topology over all
-func (r *ShardingDatabaseReconciler) updateShardTopologyStatus(instance *databasev1alpha1.ShardingDatabase) {
+func (r *ShardingDatabaseReconciler) updateShardTopologyStatus(instance *databasev4.ShardingDatabase) {
 	//shardPod := &corev1.Pod{}
 	//gsmSfSet := &appsv1.StatefulSet{}
 	gsmPod := &corev1.Pod{}
@@ -1340,7 +1340,7 @@ func (r *ShardingDatabaseReconciler) updateShardTopologyStatus(instance *databas
 
 }
 
-func (r *ShardingDatabaseReconciler) updateShardTopologyShardsInGsm(instance *databasev1alpha1.ShardingDatabase, gsmPod *corev1.Pod) {
+func (r *ShardingDatabaseReconciler) updateShardTopologyShardsInGsm(instance *databasev4.ShardingDatabase, gsmPod *corev1.Pod) {
 	shardSfSet := &appsv1.StatefulSet{}
 	//shardPod := &corev1.Pod{}
 	//gsmSfSet := &appsv1.StatefulSet{}
@@ -1366,7 +1366,7 @@ func (r *ShardingDatabaseReconciler) updateShardTopologyShardsInGsm(instance *da
 	}
 }
 
-func (r *ShardingDatabaseReconciler) updateGsmStatus(instance *databasev1alpha1.ShardingDatabase, specIdx int, state string) {
+func (r *ShardingDatabaseReconciler) updateGsmStatus(instance *databasev4.ShardingDatabase, specIdx int, state string) {
 
 	var currState string
 	var eventMsg string
@@ -1396,7 +1396,7 @@ func (r *ShardingDatabaseReconciler) updateGsmStatus(instance *databasev1alpha1.
 	}
 }
 
-func (r *ShardingDatabaseReconciler) updateCatalogStatus(instance *databasev1alpha1.ShardingDatabase, specIdx int, state string) {
+func (r *ShardingDatabaseReconciler) updateCatalogStatus(instance *databasev4.ShardingDatabase, specIdx int, state string) {
 	var eventMsg string
 	var currState string
 	var eventMsgFlag = true
@@ -1404,7 +1404,7 @@ func (r *ShardingDatabaseReconciler) updateCatalogStatus(instance *databasev1alp
 	name := instance.Spec.Catalog[specIdx].Name
 
 	if len(instance.Status.Catalog) > 0 {
-		currState = shardingv1.GetGsmCatalogStatusKey(instance, name+"_"+string(databasev1alpha1.State))
+		currState = shardingv1.GetGsmCatalogStatusKey(instance, name+"_"+string(databasev4.State))
 		if currState == state {
 			eventMsgFlag = false
 		}
@@ -1423,14 +1423,14 @@ func (r *ShardingDatabaseReconciler) updateCatalogStatus(instance *databasev1alp
 	}
 }
 
-func (r *ShardingDatabaseReconciler) updateShardStatus(instance *databasev1alpha1.ShardingDatabase, specIdx int, state string) {
+func (r *ShardingDatabaseReconciler) updateShardStatus(instance *databasev4.ShardingDatabase, specIdx int, state string) {
 	var eventMsg string
 	var currState string
 	var eventMsgFlag = true
 
 	name := instance.Spec.Shard[specIdx].Name
 	if len(instance.Status.Shard) > 0 {
-		currState = shardingv1.GetGsmShardStatusKey(instance, name+"_"+string(databasev1alpha1.State))
+		currState = shardingv1.GetGsmShardStatusKey(instance, name+"_"+string(databasev4.State))
 		if currState == state {
 			eventMsgFlag = false
 		}
@@ -1449,7 +1449,7 @@ func (r *ShardingDatabaseReconciler) updateShardStatus(instance *databasev1alpha
 	}
 }
 
-func (r *ShardingDatabaseReconciler) updateGsmShardStatus(instance *databasev1alpha1.ShardingDatabase, name string, state string) {
+func (r *ShardingDatabaseReconciler) updateGsmShardStatus(instance *databasev4.ShardingDatabase, name string, state string) {
 	var eventMsg string
 	var currState string
 	var eventMsgFlag = true
@@ -1480,7 +1480,7 @@ func (r *ShardingDatabaseReconciler) updateGsmShardStatus(instance *databasev1al
 }
 
 // This function add the Primary Shards in GSM
-func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev1alpha1.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.ShardingDatabase, idx int) error {
 	//var result ctrl.Result
 	var result ctrl.Result
 	var i int32
@@ -1509,7 +1509,7 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev1alpha1
 			if !shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
 				if setLifeCycleFlag != true {
 					setLifeCycleFlag = true
-					stateType := string(databasev1alpha1.CrdReconcileWaitingState)
+					stateType := string(databasev4.CrdReconcileWaitingState)
 					r.setCrdLifeCycleState(instance, &result, &err, &stateType)
 				}
 				// 1st Step is to check if Shard is in good state if not then just continue
@@ -1569,10 +1569,10 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev1alpha1
 				// If the shard doesn't exist in GSM then just add the shard statefulset and update GSM shard status
 				// ADD Shard in GSM
 
-				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev1alpha1.AddingShardState))
+				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardState))
 				err = shardingv1.AddShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
 				if err != nil {
-					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev1alpha1.AddingShardErrorState))
+					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
 					title = "Shard Addition Failure"
 					message = "Error occurred during shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " addition."
 					shardingv1.LogMessages("INFO", title+":"+message, nil, instance, r.Log)
@@ -1606,7 +1606,7 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev1alpha1
 }
 
 // This function Check the online shard
-func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev1alpha1.ShardingDatabase, gsmPod *corev1.Pod, shardSfSet *appsv1.StatefulSet, OraShardSpex databasev1alpha1.ShardSpec) error {
+func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev4.ShardingDatabase, gsmPod *corev1.Pod, shardSfSet *appsv1.StatefulSet, OraShardSpex databasev4.ShardSpec) error {
 	//var result ctrl.Result
 	//var i int32
 	var err error
@@ -1619,16 +1619,16 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev1alpha1.Sha
 	if err != nil {
 		// If the shard doesn't exist in GSM then just delete the shard statefulset and update GSM shard status
 		/// Terminate state means we will remove teh shard entry from GSM shard status
-		r.updateGsmShardStatus(instance, shardSfSet.Name, string(databasev1alpha1.ShardOnlineErrorState))
+		r.updateGsmShardStatus(instance, shardSfSet.Name, string(databasev4.ShardOnlineErrorState))
 		if strings.ToUpper(instance.Spec.ReplicationType) != "NATIVE" {
 			shardingv1.CancelChunksInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
 		}
 		return err
 	}
 	oldStateStr := shardingv1.GetGsmShardStatus(instance, shardSfSet.Name)
-	r.updateGsmShardStatus(instance, shardSfSet.Name, string(databasev1alpha1.ShardOnlineState))
+	r.updateGsmShardStatus(instance, shardSfSet.Name, string(databasev4.ShardOnlineState))
 	// Following logic will sent a email only once
-	if oldStateStr != string(databasev1alpha1.ShardOnlineState) {
+	if oldStateStr != string(databasev4.ShardOnlineState) {
 		title = "Shard Addition Completed"
 		message = "Shard addition completed for shard " + shardingv1.GetFmtStr(shardSfSet.Name) + " in GSM."
 		shardingv1.LogMessages("INFO", title+":"+message, nil, instance, r.Log)
@@ -1642,14 +1642,14 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev1alpha1.Sha
 	return nil
 }
 
-func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev1alpha1.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.ShardingDatabase, idx int) error {
 	//var result ctrl.Result
 
 	return nil
 }
 
 // ========== Delete Shard Section====================
-func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev1alpha1.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDatabase, idx int) error {
 	var result ctrl.Result
 	var i int32
 	var err error
@@ -1671,7 +1671,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev1alpha1.Shar
 			if shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
 				if setLifeCycleFlag != true {
 					setLifeCycleFlag = true
-					stateType := string(databasev1alpha1.CrdReconcileWaitingState)
+					stateType := string(databasev4.CrdReconcileWaitingState)
 					r.setCrdLifeCycleState(instance, &result, &err, &stateType)
 				}
 				// Step 1st to check if GSM is in good state if not then just return because you can't do anything
@@ -1699,18 +1699,18 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev1alpha1.Shar
 					// If the shard doesn't exist in GSM then just delete the shard statefulset and update GSM shard status
 					/// Terminate state means we will remove teh shard entry from GSM shard status
 					r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
-					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev1alpha1.Terminated))
-					r.updateShardStatus(instance, int(i), string(databasev1alpha1.Terminated))
+					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
+					r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
 					continue
 				}
 				// 4th step to check if shard is in GSM and shard is online if not then continue
 				// CHeck before deletion if GSM is not ready set the Shard State to Delete Error
-				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev1alpha1.DeletingState))
+				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeletingState))
 				err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
 				if err != nil {
 					// If the shard doesn't exist in GSM then just delete the shard statefulset and update GSM shard status
 					/// Terminate state means we will remove teh shard entry from GSM shard status
-					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev1alpha1.DeleteErrorState))
+					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeleteErrorState))
 					continue
 				}
 				// 5th Step
@@ -1720,7 +1720,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev1alpha1.Shar
 					if len(instance.Spec.ReplicationType) == 0 {
 						err = shardingv1.MoveChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
 						if err != nil {
-							r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev1alpha1.ChunkMoveError))
+							r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
 							title = "Chunk Movement Failure"
 							message = "Error occurred during chunk movement in shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " deletion."
 							r.sendMessage(instance, title, message)
@@ -1752,7 +1752,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev1alpha1.Shar
 								instance.Spec.Shard[i].IsDelete = "failed"
 								err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
 								if err != nil {
-									// r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev1alpha1.ChunkMoveError))
+									// r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
 									msg = "Error occurred while changing the isDelete value to failed in Spec struct"
 									shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
 									// return err
@@ -1771,7 +1771,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev1alpha1.Shar
 				if err != nil {
 					msg = "Error occurred during shard" + shardingv1.GetFmtStr(OraShardSpex.Name) + "removal from Gsm"
 					shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-					r.updateShardStatus(instance, int(i), string(databasev1alpha1.ShardRemoveError))
+					r.updateShardStatus(instance, int(i), string(databasev4.ShardRemoveError))
 					instance.Spec.Shard[i].IsDelete = "failed"
 					continue
 				}
@@ -1779,8 +1779,8 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev1alpha1.Shar
 				// 8th Step
 				// Delete the Statefulset as all the chunks has moved and Shard can be phyiscally deleted
 				r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
-				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev1alpha1.Terminated))
-				r.updateShardStatus(instance, int(i), string(databasev1alpha1.Terminated))
+				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
+				r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
 				title = "Shard Deletion Completed"
 				message = "Shard deletion completed for shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " in GSM."
 				r.sendMessage(instance, title, message)
@@ -1792,7 +1792,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev1alpha1.Shar
 }
 
 // This function delete the physical shard
-func (r *ShardingDatabaseReconciler) delShard(instance *databasev1alpha1.ShardingDatabase, sfSetName string, sfSetFound *appsv1.StatefulSet, sfsetPod *corev1.Pod, specIdx int) {
+func (r *ShardingDatabaseReconciler) delShard(instance *databasev4.ShardingDatabase, sfSetName string, sfSetFound *appsv1.StatefulSet, sfsetPod *corev1.Pod, specIdx int) {
 
 	//var status bool
 	var err error
@@ -1803,7 +1803,7 @@ func (r *ShardingDatabaseReconciler) delShard(instance *databasev1alpha1.Shardin
 	if err != nil {
 		msg := "Failed to patch the Shard StatefulSet: " + sfSetFound.Name
 		shardingv1.LogMessages("DEBUG", msg, err, instance, r.Log)
-		r.updateShardStatus(instance, specIdx, string(databasev1alpha1.LabelPatchingError))
+		r.updateShardStatus(instance, specIdx, string(databasev4.LabelPatchingError))
 		return
 	}
 
@@ -1811,7 +1811,7 @@ func (r *ShardingDatabaseReconciler) delShard(instance *databasev1alpha1.Shardin
 	if err != nil {
 		msg = "Failed to delete Shard StatefulSet: " + shardingv1.GetFmtStr(sfSetFound.Name)
 		shardingv1.LogMessages("DEBUG", msg, err, instance, r.Log)
-		r.updateShardStatus(instance, specIdx, string(databasev1alpha1.DeleteErrorState))
+		r.updateShardStatus(instance, specIdx, string(databasev4.DeleteErrorState))
 		return
 	}
 	/// Delete External Service
@@ -1842,14 +1842,14 @@ func (r *ShardingDatabaseReconciler) delShard(instance *databasev1alpha1.Shardin
 		if err != nil {
 			msg = "Failed to delete Shard pvc claim " + shardingv1.GetFmtStr(pvcName)
 			shardingv1.LogMessages("DEBUG", msg, err, instance, r.Log)
-			r.updateShardStatus(instance, specIdx, string(databasev1alpha1.DeletePVCError))
+			r.updateShardStatus(instance, specIdx, string(databasev4.DeletePVCError))
 		}
 	}
 }
 
 // ======== GSM Invited Node ==========
 // Remove and add GSM invited node
-func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev1alpha1.ShardingDatabase, objName string,
+func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev4.ShardingDatabase, objName string,
 ) {
 
 	var msg string
@@ -1892,7 +1892,7 @@ func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev1alpha1
 
 // ================================== CREATE FUNCTIONS =============================
 // This function create a service based isExtern parameter set in the yaml file
-func (r *ShardingDatabaseReconciler) createService(instance *databasev1alpha1.ShardingDatabase,
+func (r *ShardingDatabaseReconciler) createService(instance *databasev4.ShardingDatabase,
 	dep *corev1.Service,
 ) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Spec.Namespace, "Instance.Name", instance.Name)
@@ -1939,7 +1939,7 @@ func (r *ShardingDatabaseReconciler) createService(instance *databasev1alpha1.Sh
 }
 
 // This function deploy the statefulset
-func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev1alpha1.ShardingDatabase,
+func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev4.ShardingDatabase,
 	dep *appsv1.StatefulSet,
 	resType string,
 ) (ctrl.Result, error) {
@@ -1993,11 +1993,11 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev1alpha
 	return ctrl.Result{}, nil
 }
 
-func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev1alpha1.ShardingDatabase) error {
+func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev4.ShardingDatabase) error {
 
 	var i int32
 	var err error = nil
-	var OraShardSpex databasev1alpha1.ShardSpec
+	var OraShardSpex databasev4.ShardSpec
 	var currState string
 	var eventMsg string
 	var msg string
@@ -2016,11 +2016,11 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev1alpha1.
 		for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
 			OraShardSpex = instance.Spec.Shard[i]
 			currState = shardingv1.GetGsmShardStatus(instance, OraShardSpex.Name)
-			if currState == string(databasev1alpha1.AddingShardState) {
+			if currState == string(databasev4.AddingShardState) {
 				eventMsg = "Shard Addition in progress. Requeuing"
 				err = fmt.Errorf(eventMsg)
 				break
-			} else if currState == string(databasev1alpha1.DeletingState) {
+			} else if currState == string(databasev4.DeletingState) {
 				eventMsg = "Shard Deletion in progress. Requeuing"
 				err = fmt.Errorf(eventMsg)
 				err = nil
@@ -2029,11 +2029,11 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev1alpha1.
 				eventMsg = "Shard Deletion  failed. Manual intervention required. Requeuing"
 				err = fmt.Errorf(eventMsg)
 				break
-			} else if currState == string(databasev1alpha1.DeleteErrorState) {
+			} else if currState == string(databasev4.DeleteErrorState) {
 				eventMsg = "Shard Deletion  Error. Manual intervention required. Requeuing"
 				err = fmt.Errorf(eventMsg)
 				break
-			} else if currState == string(databasev1alpha1.ShardRemoveError) {
+			} else if currState == string(databasev4.ShardRemoveError) {
 				eventMsg = "Shard Deletion  Error. Manual intervention required. Requeuing"
 				err = fmt.Errorf(eventMsg)
 				break

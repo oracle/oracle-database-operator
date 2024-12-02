@@ -65,6 +65,7 @@ import (
 	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
 	dataguardcontroller "github.com/oracle/oracle-database-operator/controllers/dataguard"
 
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	// +kubebuilder:scaffold:imports
@@ -80,6 +81,7 @@ func init() {
 	utilruntime.Must(observabilityv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(monitorv1.AddToScheme(scheme))
 	utilruntime.Must(databasev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(databasev4.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -250,7 +252,7 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
 			os.Exit(1)
 		}
-		if err = (&databasev1alpha1.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+		if err = (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
 		}
 		if err = (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
@@ -305,6 +307,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs

@@ -8,76 +8,16 @@ rules:
   - ""
   resources:
   - configmaps
-  - events
-  - pods
-  - pods/exec
-  - pods/log
-  - replicasets
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - namespaces
-  - secrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - secrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
+  - containers
   - deployments
   - events
-  - pods
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - ""
-  resources:
+  - namespaces
   - persistentvolumeclaims
   - pods
   - pods/exec
   - pods/log
+  - replicasets
+  - secrets
   - services
   verbs:
   - create
@@ -119,30 +59,8 @@ rules:
   resources:
   - deployments
   - pods
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps
-  resources:
   - replicasets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - apps
-  resources:
+  - services
   - statefulsets
   verbs:
   - create
@@ -162,316 +80,15 @@ rules:
   - list
   - update
 - apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - containers
-  - events
-  - namespaces
-  - persistentvolumeclaims
-  - pods
-  - pods/exec
-  - pods/log
-  - secrets
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - containers
-  - events
-  - namespaces
-  - pods
-  - pods/exec
-  - pods/log
-  - secrets
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - namespaces
-  - pods
-  - secrets
-  - services
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - pods/exec
-  verbs:
-  - create
-- apiGroups:
   - database.oracle.com
   resources:
   - autonomouscontainerdatabases
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - autonomouscontainerdatabases/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - autonomousdatabasebackups
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - autonomousdatabasebackups/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - autonomousdatabaserestores
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - autonomousdatabaserestores/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
   - autonomousdatabases
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - autonomousdatabases/status
-  verbs:
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
   - cdbs
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - cdbs/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - cdbs/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
   - dataguardbrokers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - dataguardbrokers/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - dataguardbrokers/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - dbcssystems
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - dbcssystems/finalizers
-  verbs:
-  - create
-  - delete
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - dbcssystems/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
   - oraclerestdataservices
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - oraclerestdataservices/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - oraclerestdataservices/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
   - pdbs
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - pdbs/finalizers
-  verbs:
-  - create
-  - delete
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - pdbs/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
   - shardingdatabases
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - shardingdatabases/finalizers
-  verbs:
-  - create
-  - delete
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
-  - shardingdatabases/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - database.oracle.com
-  resources:
   - singleinstancedatabases
   verbs:
   - create
@@ -484,14 +101,55 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
+  - autonomouscontainerdatabases/status
+  - autonomousdatabasebackups/status
+  - autonomousdatabaserestores/status
+  - cdbs/status
+  - dataguardbrokers/status
+  - oraclerestdataservices/status
+  - pdbs/status
+  - shardingdatabases/status
+  - singleinstancedatabases/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabasebackups
+  - autonomousdatabaserestores
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - autonomousdatabases/status
+  verbs:
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - cdbs/finalizers
+  - dataguardbrokers/finalizers
+  - oraclerestdataservices/finalizers
   - singleinstancedatabases/finalizers
   verbs:
   - update
 - apiGroups:
   - database.oracle.com
   resources:
-  - singleinstancedatabases/status
+  - pdbs/finalizers
+  - shardingdatabases/finalizers
   verbs:
+  - create
+  - delete
   - get
   - patch
   - update
