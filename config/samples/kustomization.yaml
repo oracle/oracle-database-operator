@@ -30,4 +30,6 @@ resources:
   - adb/autonomousdatabase_backup.yaml
   - adb/autonomousdatabase_restore.yaml
   - acd/autonomouscontainerdatabase_restart_terminate.yaml
+- database_v4_shardingdatabase.yaml
+- database_v4_dbcssystem.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples

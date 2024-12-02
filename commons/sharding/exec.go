@@ -44,7 +44,7 @@ import (
 	"net/http"
 	"time"
 
-	databasealphav1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -61,7 +61,7 @@ import (
 )
 
 // ExecCMDInContainer execute command in first container of a pod
-func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasealphav1.ShardingDatabase, logger logr.Logger) (string, string, error) {
+func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasev4.ShardingDatabase, logger logr.Logger) (string, string, error) {
 
 	var err1  error = nil
 	var msg string
@@ -136,7 +136,7 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 	return execOut.String(), execErr.String(), nil
 }
 
-func GetPodCopyConfig(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasealphav1.ShardingDatabase, logger logr.Logger) (*rest.Config, *kubernetes.Clientset, error) {
+func GetPodCopyConfig(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasev4.ShardingDatabase, logger logr.Logger) (*rest.Config, *kubernetes.Clientset, error) {
 
 	var clientSet *kubernetes.Clientset
 	config, err := kubeConfig.ClientConfig()
@@ -152,7 +152,7 @@ func GetPodCopyConfig(kubeClient kubernetes.Interface, kubeConfig clientcmd.Clie
 
 }
 
-func KctlCopyFile(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasealphav1.ShardingDatabase, restConfig *rest.Config, kclientset *kubernetes.Clientset, logger logr.Logger, src string, dst string, containername string) (*bytes.Buffer, *bytes.Buffer, *bytes.Buffer, error) {
+func KctlCopyFile(kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasev4.ShardingDatabase, restConfig *rest.Config, kclientset *kubernetes.Clientset, logger logr.Logger, src string, dst string, containername string) (*bytes.Buffer, *bytes.Buffer, *bytes.Buffer, error) {
 
 	var in, out, errOut *bytes.Buffer
 	var ioStreams genericclioptions.IOStreams

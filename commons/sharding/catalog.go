@@ -44,7 +44,7 @@ import (
 	"strconv"
 
 	"github.com/go-logr/logr"
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -53,7 +53,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func buildLabelsForCatalog(instance *databasev1alpha1.ShardingDatabase, label string) map[string]string {
+func buildLabelsForCatalog(instance *databasev4.ShardingDatabase, label string) map[string]string {
 	return map[string]string{
 		"app":      "OracleSharding",
 		"type":     "Catalog",
@@ -61,7 +61,7 @@ func buildLabelsForCatalog(instance *databasev1alpha1.ShardingDatabase, label st
 	}
 }
 
-func getLabelForCatalog(instance *databasev1alpha1.ShardingDatabase) string {
+func getLabelForCatalog(instance *databasev4.ShardingDatabase) string {
 
 	//  if len(OraCatalogSpex.Label) !=0 {
 	//     return OraCatalogSpex.Label
@@ -70,7 +70,7 @@ func getLabelForCatalog(instance *databasev1alpha1.ShardingDatabase) string {
 	return instance.Name
 }
 
-func BuildStatefulSetForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) *appsv1.StatefulSet {
+func BuildStatefulSetForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) *appsv1.StatefulSet {
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForCatalog(),
 		ObjectMeta: builObjectMetaForCatalog(instance, OraCatalogSpex),
@@ -91,7 +91,7 @@ func buildTypeMetaForCatalog() metav1.TypeMeta {
 }
 
 // Function to build ObjectMeta
-func builObjectMetaForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) metav1.ObjectMeta {
+func builObjectMetaForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) metav1.ObjectMeta {
 	// building objectMeta
 	objmeta := metav1.ObjectMeta{
 		Name:            OraCatalogSpex.Name,
@@ -103,7 +103,7 @@ func builObjectMetaForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCa
 }
 
 // Function to build Stateful Specs
-func buildStatefulSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) *appsv1.StatefulSetSpec {
+func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) *appsv1.StatefulSetSpec {
 	// building Stateful set Specs
 
 	sfsetspec := &appsv1.StatefulSetSpec{
@@ -131,7 +131,7 @@ func buildStatefulSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, Or
 
 // Function to build PodSpec
 
-func buildPodSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) *corev1.PodSpec {
+func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) *corev1.PodSpec {
 
 	user := oraRunAsUser
 	group := oraFsGroup
@@ -166,7 +166,7 @@ func buildPodSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCata
 }
 
 // Function to build Volume Spec
-func buildVolumeSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) []corev1.Volume {
+func buildVolumeSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.Volume {
 	var result []corev1.Volume
 	result = []corev1.Volume{
 		{
@@ -207,7 +207,7 @@ func buildVolumeSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraC
 }
 
 // Function to build the container Specification
-func buildContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) []corev1.Container {
+func buildContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.Container {
 	// building Continer spec
 	var result []corev1.Container
 	containerSpec := corev1.Container{
@@ -284,7 +284,7 @@ func buildContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, O
 }
 
 // Function to build the init Container Spec
-func buildInitContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) []corev1.Container {
+func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
 	privFlag := true
@@ -320,7 +320,7 @@ func buildInitContainerSpecForCatalog(instance *databasev1alpha1.ShardingDatabas
 	return result
 }
 
-func buildVolumeMountSpecForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) []corev1.VolumeMount {
+func buildVolumeMountSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.VolumeMount {
 	var result []corev1.VolumeMount
 	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
@@ -345,7 +345,7 @@ func buildVolumeMountSpecForCatalog(instance *databasev1alpha1.ShardingDatabase,
 	return result
 }
 
-func volumeClaimTemplatesForCatalog(instance *databasev1alpha1.ShardingDatabase, OraCatalogSpex databasev1alpha1.CatalogSpec) []corev1.PersistentVolumeClaim {
+func volumeClaimTemplatesForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.PersistentVolumeClaim {
 
 	var claims []corev1.PersistentVolumeClaim
 
@@ -417,7 +417,7 @@ func volumeClaimTemplatesForCatalog(instance *databasev1alpha1.ShardingDatabase,
 	return claims
 }
 
-func BuildServiceDefForCatalog(instance *databasev1alpha1.ShardingDatabase, replicaCount int32, OraCatalogSpex databasev1alpha1.CatalogSpec, svctype string) *corev1.Service {
+func BuildServiceDefForCatalog(instance *databasev4.ShardingDatabase, replicaCount int32, OraCatalogSpex databasev4.CatalogSpec, svctype string) *corev1.Service {
 	//service := &corev1.Service{}
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForCatalog(instance, replicaCount, OraCatalogSpex, svctype),
@@ -441,7 +441,7 @@ func BuildServiceDefForCatalog(instance *databasev1alpha1.ShardingDatabase, repl
 }
 
 // Function to build Service ObjectMeta
-func buildSvcObjectMetaForCatalog(instance *databasev1alpha1.ShardingDatabase, replicaCount int32, OraCatalogSpex databasev1alpha1.CatalogSpec, svctype string) metav1.ObjectMeta {
+func buildSvcObjectMetaForCatalog(instance *databasev4.ShardingDatabase, replicaCount int32, OraCatalogSpex databasev4.CatalogSpec, svctype string) metav1.ObjectMeta {
 	// building objectMeta
 	var svcName string
 	if svctype == "local" {
@@ -461,7 +461,7 @@ func buildSvcObjectMetaForCatalog(instance *databasev1alpha1.ShardingDatabase, r
 	return objmeta
 }
 
-func getSvcLabelsForCatalog(replicaCount int32, OraCatalogSpex databasev1alpha1.CatalogSpec) map[string]string {
+func getSvcLabelsForCatalog(replicaCount int32, OraCatalogSpex databasev4.CatalogSpec) map[string]string {
 
 	var labelStr map[string]string = make(map[string]string)
 	if replicaCount == -1 {
@@ -475,8 +475,8 @@ func getSvcLabelsForCatalog(replicaCount int32, OraCatalogSpex databasev1alpha1.
 }
 
 // ======================== update Section ========================
-func UpdateProvForCatalog(instance *databasev1alpha1.ShardingDatabase,
-	OraCatalogSpex databasev1alpha1.CatalogSpec, kClient client.Client, sfSet *appsv1.StatefulSet, catalogPod *corev1.Pod, logger logr.Logger,
+func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
+	OraCatalogSpex databasev4.CatalogSpec, kClient client.Client, sfSet *appsv1.StatefulSet, catalogPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
 
 	var isUpdate bool = false
