@@ -105,6 +105,97 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .status.dbDisplayName
+      name: DB DisplayName
+      type: string
+    - jsonPath: .status.type
+      name: Type
+      type: string
+    - jsonPath: .status.timeStarted
+      name: Started
+      type: string
+    - jsonPath: .status.timeEnded
+      name: Ended
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              autonomousDatabaseBackupOCID:
+                type: string
+              displayName:
+                type: string
+              isLongTermBackup:
+                type: boolean
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+              retentionPeriodInDays:
+                type: integer
+              target:
+                properties:
+                  k8sADB:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  ociADB:
+                    properties:
+                      ocid:
+                        type: string
+                    type: object
+                type: object
+            type: object
+          status:
+            properties:
+              autonomousDatabaseOCID:
+                type: string
+              compartmentOCID:
+                type: string
+              dbDisplayName:
+                type: string
+              dbName:
+                type: string
+              isAutomatic:
+                type: boolean
+              lifecycleState:
+                type: string
+              timeEnded:
+                type: string
+              timeStarted:
+                type: string
+              type:
+                type: string
+            required:
+            - autonomousDatabaseOCID
+            - compartmentOCID
+            - dbDisplayName
+            - dbName
+            - isAutomatic
+            - lifecycleState
+            - type
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}

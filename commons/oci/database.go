@@ -47,33 +47,33 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/database"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	"github.com/oracle/oracle-database-operator/commons/k8s"
 )
 
 type DatabaseService interface {
-	CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDatabase) (database.CreateAutonomousDatabaseResponse, error)
+	CreateAutonomousDatabase(adb *dbv4.AutonomousDatabase) (database.CreateAutonomousDatabaseResponse, error)
 	GetAutonomousDatabase(adbOCID string) (database.GetAutonomousDatabaseResponse, error)
-	UpdateAutonomousDatabaseGeneralFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseDBWorkload(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseLicenseModel(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseAdminPassword(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseScalingFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseGeneralFields(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseDBWorkload(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseLicenseModel(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseAdminPassword(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateAutonomousDatabaseScalingFields(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	UpdateNetworkAccessMTLSRequired(adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccessMTLS(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccessPublic(lastAccessType dbv1alpha1.NetworkAccessTypeEnum, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccess(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccessMTLS(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccessPublic(lastAccessType dbv4.NetworkAccessTypeEnum, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
+	UpdateNetworkAccess(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
 	StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error)
 	StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error)
 	DeleteAutonomousDatabase(adbOCID string) (database.DeleteAutonomousDatabaseResponse, error)
-	DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (database.GenerateAutonomousDatabaseWalletResponse, error)
+	DownloadWallet(adb *dbv4.AutonomousDatabase) (database.GenerateAutonomousDatabaseWalletResponse, error)
 	RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error)
 	ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error)
-	CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error)
+	CreateAutonomousDatabaseBackup(adbBackup *dbv4.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error)
 	GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error)
-	CreateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
+	CreateAutonomousContainerDatabase(acd *dbv4.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
 	GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error)
-	UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
+	UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv4.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
 	RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error)
 	TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error)
 }
@@ -114,7 +114,7 @@ func NewDatabaseService(
 
 // ReadPassword reads the password from passwordSpec, and returns the pointer to the read password string.
 // The function returns a nil if nothing is read
-func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1.PasswordSpec) (*string, error) {
+func (d *databaseService) readPassword(namespace string, passwordSpec dbv4.PasswordSpec) (*string, error) {
 	logger := d.logger.WithName("readPassword")
 
 	if passwordSpec.K8sSecret.Name != nil {
@@ -142,13 +142,13 @@ func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1
 	return nil, nil
 }
 
-func (d *databaseService) readACD_OCID(acd *dbv1alpha1.ACDSpec, namespace string) (*string, error) {
+func (d *databaseService) readACD_OCID(acd *dbv4.ACDSpec, namespace string) (*string, error) {
 	if acd.OCIACD.OCID != nil {
 		return acd.OCIACD.OCID, nil
 	}
 
 	if acd.K8sACD.Name != nil {
-		fetchedACD := &dbv1alpha1.AutonomousContainerDatabase{}
+		fetchedACD := &dbv4.AutonomousContainerDatabase{}
 		if err := k8s.FetchResource(d.kubeClient, namespace, *acd.K8sACD.Name, fetchedACD); err != nil {
 			return nil, err
 		}
@@ -160,7 +160,7 @@ func (d *databaseService) readACD_OCID(acd *dbv1alpha1.ACDSpec, namespace string
 }
 
 // CreateAutonomousDatabase sends a request to OCI to provision a database and returns the AutonomousDatabase OCID.
-func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDatabase) (resp database.CreateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) CreateAutonomousDatabase(adb *dbv4.AutonomousDatabase) (resp database.CreateAutonomousDatabaseResponse, err error) {
 	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.AdminPassword)
 	if err != nil {
 		return resp, err
@@ -215,7 +215,7 @@ func (d *databaseService) GetAutonomousDatabase(adbOCID string) (database.GetAut
 	return d.dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseGeneralFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateAutonomousDatabaseGeneralFields(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
@@ -228,7 +228,7 @@ func (d *databaseService) UpdateAutonomousDatabaseGeneralFields(adbOCID string, 
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseDBWorkload(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateAutonomousDatabaseDBWorkload(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
@@ -238,7 +238,7 @@ func (d *databaseService) UpdateAutonomousDatabaseDBWorkload(adbOCID string, dif
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseLicenseModel(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateAutonomousDatabaseLicenseModel(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
@@ -248,7 +248,7 @@ func (d *databaseService) UpdateAutonomousDatabaseLicenseModel(adbOCID string, d
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	adminPassword, err := d.readPassword(difADB.Namespace, difADB.Spec.Details.AdminPassword)
 	if err != nil {
 		return resp, err
@@ -263,7 +263,7 @@ func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adbOCID string, 
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseScalingFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateAutonomousDatabaseScalingFields(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
@@ -285,7 +285,7 @@ func (d *databaseService) UpdateNetworkAccessMTLSRequired(adbOCID string) (resp 
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateNetworkAccessMTLS(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateNetworkAccessMTLS(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
@@ -296,14 +296,14 @@ func (d *databaseService) UpdateNetworkAccessMTLS(adbOCID string, difADB *dbv1al
 }
 
 func (d *databaseService) UpdateNetworkAccessPublic(
-	lastAccessType dbv1alpha1.NetworkAccessTypeEnum,
+	lastAccessType dbv4.NetworkAccessTypeEnum,
 	adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 
 	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
 
-	if lastAccessType == dbv1alpha1.NetworkAccessTypeRestricted {
+	if lastAccessType == dbv4.NetworkAccessTypeRestricted {
 		updateAutonomousDatabaseDetails.WhitelistedIps = []string{""}
-	} else if lastAccessType == dbv1alpha1.NetworkAccessTypePrivate {
+	} else if lastAccessType == dbv4.NetworkAccessTypePrivate {
 		updateAutonomousDatabaseDetails.PrivateEndpointLabel = common.String("")
 	}
 
@@ -315,7 +315,7 @@ func (d *databaseService) UpdateNetworkAccessPublic(
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateNetworkAccess(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+func (d *databaseService) UpdateNetworkAccess(adbOCID string, difADB *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
@@ -354,7 +354,7 @@ func (d *databaseService) DeleteAutonomousDatabase(adbOCID string) (database.Del
 	return d.dbClient.DeleteAutonomousDatabase(context.TODO(), deleteRequest)
 }
 
-func (d *databaseService) DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (resp database.GenerateAutonomousDatabaseWalletResponse, err error) {
+func (d *databaseService) DownloadWallet(adb *dbv4.AutonomousDatabase) (resp database.GenerateAutonomousDatabaseWalletResponse, err error) {
 	// Prepare wallet password
 	walletPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.Wallet.Password)
 	if err != nil {
@@ -404,7 +404,7 @@ func (d *databaseService) ListAutonomousDatabaseBackups(adbOCID string) (databas
 	return d.dbClient.ListAutonomousDatabaseBackups(context.TODO(), listBackupRequest)
 }
 
-func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error) {
+func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv4.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error) {
 	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
 		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
 			AutonomousDatabaseId:  common.String(adbOCID),

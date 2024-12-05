@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	"encoding/json"
@@ -220,6 +220,7 @@ type ConnectionStringSpec struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.details.dataStorageSizeInTBs",name="Storage (TB)",type=integer
 // +kubebuilder:printcolumn:JSONPath=".spec.details.dbWorkload",name="Workload Type",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.timeCreated",name="Created",type=string
+// +kubebuilder:storageversion
 type AutonomousDatabase struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -240,6 +241,9 @@ type AutonomousDatabaseList struct {
 func init() {
 	SchemeBuilder.Register(&AutonomousDatabase{}, &AutonomousDatabaseList{})
 }
+
+// Implement conversion.Hub interface, which means any resource version can convert into v4
+func (*AutonomousDatabase) Hub() {}
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.
 // Returns nil, nil if there is no lastSuccessfulSpec.

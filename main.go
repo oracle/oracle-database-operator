@@ -248,6 +248,22 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
 			os.Exit(1)
 		}
+		if err = (&databasev4.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
+			os.Exit(1)
+		}
 		if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
 			os.Exit(1)

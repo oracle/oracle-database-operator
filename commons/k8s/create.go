@@ -41,7 +41,7 @@ package k8s
 import (
 	"context"
 
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
@@ -78,23 +78,23 @@ func CreateSecret(kubeClient client.Client, namespace string, name string, data 
 func CreateAutonomousBackup(kubeClient client.Client,
 	backupName string,
 	backupSummary database.AutonomousDatabaseBackupSummary,
-	ownerADB *dbv1alpha1.AutonomousDatabase) error {
+	ownerADB *dbv4.AutonomousDatabase) error {
 
-	backup := &dbv1alpha1.AutonomousDatabaseBackup{
+	backup := &dbv4.AutonomousDatabaseBackup{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace:       ownerADB.GetNamespace(),
 			Name:            backupName,
 			OwnerReferences: NewOwnerReference(ownerADB),
 		},
-		Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
-			Target: dbv1alpha1.TargetSpec{
-				K8sADB: dbv1alpha1.K8sADBSpec{
+		Spec: dbv4.AutonomousDatabaseBackupSpec{
+			Target: dbv4.TargetSpec{
+				K8sADB: dbv4.K8sADBSpec{
 					Name: common.String(ownerADB.Name),
 				},
 			},
 			DisplayName:                  backupSummary.DisplayName,
 			AutonomousDatabaseBackupOCID: backupSummary.Id,
-			OCIConfig: dbv1alpha1.OCIConfigSpec{
+			OCIConfig: dbv4.OCIConfigSpec{
 				ConfigMapName: ownerADB.Spec.OCIConfig.ConfigMapName,
 				SecretName:    ownerADB.Spec.OCIConfig.SecretName,
 			},

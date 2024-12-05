@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
@@ -51,21 +51,30 @@ import (
 )
 
 // log is for logging in this package.
-var autonomousdatabaserestorelog = logf.Log.WithName("autonomousdatabaserestore-resource")
+var autonomousdatabasebackuplog = logf.Log.WithName("autonomousdatabasebackup-resource")
 
-func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func (r *AutonomousDatabaseBackup) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
 		Complete()
 }
 
-//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v1alpha1,name=vautonomousdatabaserestorev1alpha1.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-autonomousdatabasebackup,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,verbs=create;update,versions=v4,name=mautonomousdatabasebackupv4.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &AutonomousDatabaseRestore{}
+var _ webhook.Defaulter = &AutonomousDatabaseBackup{}
+
+// Default implements webhook.Defaulter so a webhook will be registered for the type
+func (r *AutonomousDatabaseBackup) Default() {
+	autonomousdatabasebackuplog.Info("default", "name", r.Name)
+}
+
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabasebackup,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,versions=v4,name=vautonomousdatabasebackupv4.kb.io,admissionReviewVersions=v1
+
+var _ webhook.Validator = &AutonomousDatabaseBackup{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error) {
-	autonomousdatabaserestorelog.Info("validate create", "name", r.Name)
+func (r *AutonomousDatabaseBackup) ValidateCreate() (admission.Warnings, error) {
+	autonomousdatabasebackuplog.Info("validate create", "name", r.Name)
 
 	var allErrs field.ErrorList
 
@@ -82,7 +91,6 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error)
 		}
 	}
 
-	// Validate the target ADB
 	if r.Spec.Target.K8sADB.Name == nil && r.Spec.Target.OCIADB.OCID == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
@@ -90,56 +98,60 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error)
 
 	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB.name or ociADB.ocid, but not both"))
-	}
-
-	// Validate the restore source
-	if r.Spec.Source.K8sADBBackup.Name == nil &&
-		r.Spec.Source.PointInTime.Timestamp == nil {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("source"), "retore source is empty"))
-	}
-
-	if r.Spec.Source.K8sADBBackup.Name != nil &&
-		r.Spec.Source.PointInTime.Timestamp != nil {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("source"), "cannot apply backupName and the PITR parameters at the same time"))
-	}
-
-	// Verify the timestamp format if it's PITR
-	if r.Spec.Source.PointInTime.Timestamp != nil {
-		_, err := parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
-		if err != nil {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime").Child("timestamp"), "invalid timestamp format"))
-		}
+			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB or ociADB, but not both"))
 	}
 
 	if len(allErrs) == 0 {
 		return nil, nil
 	}
 	return nil, apierrors.NewInvalid(
-		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseRestore"},
+		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseBackup"},
 		r.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	autonomousdatabaserestorelog.Info("validate update", "name", r.Name)
+func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+	autonomousdatabasebackuplog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
+	oldBackup := old.(*AutonomousDatabaseBackup)
+
+	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil && r.Spec.AutonomousDatabaseBackupOCID != nil &&
+		*oldBackup.Spec.AutonomousDatabaseBackupOCID != *r.Spec.AutonomousDatabaseBackupOCID {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"),
+				"cannot assign a new autonomousDatabaseBackupOCID to this backup"))
+	}
+
+	if oldBackup.Spec.Target.K8sADB.Name != nil && r.Spec.Target.K8sADB.Name != nil &&
+		*oldBackup.Spec.Target.K8sADB.Name != *r.Spec.Target.K8sADB.Name {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("target").Child("k8sADB").Child("name"), "cannot assign a new name to the target"))
+	}
+
+	if oldBackup.Spec.Target.OCIADB.OCID != nil && r.Spec.Target.OCIADB.OCID != nil &&
+		*oldBackup.Spec.Target.OCIADB.OCID != *r.Spec.Target.OCIADB.OCID {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("target").Child("ociADB").Child("ocid"), "cannot assign a new ocid to the target"))
+	}
+
+	if oldBackup.Spec.DisplayName != nil && r.Spec.DisplayName != nil &&
+		*oldBackup.Spec.DisplayName != *r.Spec.DisplayName {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("displayName"), "cannot assign a new displayName to this backup"))
+	}
 
 	if len(allErrs) == 0 {
 		return nil, nil
 	}
 	return nil, apierrors.NewInvalid(
-		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseRestore"},
+		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseBackup"},
 		r.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateDelete() (admission.Warnings, error) {
-	autonomousdatabaserestorelog.Info("validate delete", "name", r.Name)
+func (r *AutonomousDatabaseBackup) ValidateDelete() (admission.Warnings, error) {
+	autonomousdatabasebackuplog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil

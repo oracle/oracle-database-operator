@@ -247,6 +247,239 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .spec.details.displayName
+      name: Display Name
+      type: string
+    - jsonPath: .spec.details.dbName
+      name: Db Name
+      type: string
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .spec.details.isDedicated
+      name: Dedicated
+      type: string
+    - jsonPath: .spec.details.cpuCoreCount
+      name: OCPUs
+      type: integer
+    - jsonPath: .spec.details.dataStorageSizeInTBs
+      name: Storage (TB)
+      type: integer
+    - jsonPath: .spec.details.dbWorkload
+      name: Workload Type
+      type: string
+    - jsonPath: .status.timeCreated
+      name: Created
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              details:
+                properties:
+                  adminPassword:
+                    properties:
+                      k8sSecret:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociSecret:
+                        properties:
+                          ocid:
+                            type: string
+                        type: object
+                    type: object
+                  autonomousContainerDatabase:
+                    properties:
+                      k8sACD:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociACD:
+                        properties:
+                          ocid:
+                            type: string
+                        type: object
+                    type: object
+                  autonomousDatabaseOCID:
+                    type: string
+                  compartmentOCID:
+                    type: string
+                  cpuCoreCount:
+                    type: integer
+                  dataStorageSizeInTBs:
+                    type: integer
+                  dbName:
+                    type: string
+                  dbVersion:
+                    type: string
+                  dbWorkload:
+                    enum:
+                    - OLTP
+                    - DW
+                    - AJD
+                    - APEX
+                    type: string
+                  displayName:
+                    type: string
+                  freeformTags:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  isAutoScalingEnabled:
+                    type: boolean
+                  isDedicated:
+                    type: boolean
+                  licenseModel:
+                    enum:
+                    - LICENSE_INCLUDED
+                    - BRING_YOUR_OWN_LICENSE
+                    type: string
+                  lifecycleState:
+                    type: string
+                  networkAccess:
+                    properties:
+                      accessControlList:
+                        items:
+                          type: string
+                        type: array
+                      accessType:
+                        enum:
+                        - ""
+                        - PUBLIC
+                        - RESTRICTED
+                        - PRIVATE
+                        type: string
+                      isAccessControlEnabled:
+                        type: boolean
+                      isMTLSConnectionRequired:
+                        type: boolean
+                      privateEndpoint:
+                        properties:
+                          hostnamePrefix:
+                            type: string
+                          nsgOCIDs:
+                            items:
+                              type: string
+                            type: array
+                          subnetOCID:
+                            type: string
+                        type: object
+                    type: object
+                  wallet:
+                    properties:
+                      name:
+                        type: string
+                      password:
+                        properties:
+                          k8sSecret:
+                            properties:
+                              name:
+                                type: string
+                            type: object
+                          ociSecret:
+                            properties:
+                              ocid:
+                                type: string
+                            type: object
+                        type: object
+                    type: object
+                type: object
+              hardLink:
+                default: false
+                type: boolean
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+            required:
+            - details
+            type: object
+          status:
+            properties:
+              allConnectionStrings:
+                items:
+                  properties:
+                    connectionStrings:
+                      items:
+                        properties:
+                          connectionString:
+                            type: string
+                          tnsName:
+                            type: string
+                        type: object
+                      type: array
+                    tlsAuthentication:
+                      type: string
+                  required:
+                  - connectionStrings
+                  type: object
+                type: array
+              conditions:
+                items:
+                  properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                    message:
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lifecycleState:
+                type: string
+              timeCreated:
+                type: string
+              walletExpiringDate:
+                type: string
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}

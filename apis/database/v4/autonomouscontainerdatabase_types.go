@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	"encoding/json"
@@ -104,6 +104,7 @@ type AutonomousContainerDatabaseStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.displayName",name="DisplayName",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.lifecycleState",name="State",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.timeCreated",name="Created",type=string
+// +kubebuilder:storageversion
 
 // AutonomousContainerDatabase is the Schema for the autonomouscontainerdatabases API
 type AutonomousContainerDatabase struct {
@@ -126,6 +127,9 @@ type AutonomousContainerDatabaseList struct {
 func init() {
 	SchemeBuilder.Register(&AutonomousContainerDatabase{}, &AutonomousContainerDatabaseList{})
 }
+
+// Implement conversion.Hub interface, which means any resource version can convert into v4
+func (*AutonomousContainerDatabase) Hub() {}
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.
 // Returns nil, nil if there is no lastSuccessfulSpec.

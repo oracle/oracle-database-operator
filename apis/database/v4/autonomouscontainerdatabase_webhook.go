@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -58,7 +58,7 @@ func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) 
 		Complete()
 }
 
-//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomouscontainerdatabases,versions=v1alpha1,name=vautonomouscontainerdatabasev1alpha1.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomouscontainerdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomouscontainerdatabases,versions=v4,name=vautonomouscontainerdatabasev4.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &AutonomousContainerDatabase{}
 

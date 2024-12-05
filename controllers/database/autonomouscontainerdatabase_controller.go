@@ -58,7 +58,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	"github.com/oracle/oracle-database-operator/commons/annotations"
 	"github.com/oracle/oracle-database-operator/commons/k8s"
 	"github.com/oracle/oracle-database-operator/commons/oci"
@@ -77,7 +77,7 @@ type AutonomousContainerDatabaseReconciler struct {
 // SetupWithManager sets up the controller with the Manager.
 func (r *AutonomousContainerDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dbv1alpha1.AutonomousContainerDatabase{}).
+		For(&dbv4.AutonomousContainerDatabase{}).
 		WithEventFilter(r.eventFilterPredicate()).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 5}).
 		Complete(r)
@@ -86,13 +86,13 @@ func (r *AutonomousContainerDatabaseReconciler) SetupWithManager(mgr ctrl.Manage
 func (r *AutonomousContainerDatabaseReconciler) eventFilterPredicate() predicate.Predicate {
 	pred := predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			desiredACD, acdOk := e.ObjectNew.(*dbv1alpha1.AutonomousContainerDatabase)
+			desiredACD, acdOk := e.ObjectNew.(*dbv4.AutonomousContainerDatabase)
 			if acdOk {
-				oldACD := e.ObjectOld.(*dbv1alpha1.AutonomousContainerDatabase)
+				oldACD := e.ObjectOld.(*dbv4.AutonomousContainerDatabase)
 
 				if !reflect.DeepEqual(oldACD.Status, desiredACD.Status) ||
-					(controllerutil.ContainsFinalizer(oldACD, dbv1alpha1.LastSuccessfulSpec) != controllerutil.ContainsFinalizer(desiredACD, dbv1alpha1.LastSuccessfulSpec)) ||
-					(controllerutil.ContainsFinalizer(oldACD, dbv1alpha1.ACDFinalizer) != controllerutil.ContainsFinalizer(desiredACD, dbv1alpha1.ACDFinalizer)) {
+					(controllerutil.ContainsFinalizer(oldACD, dbv4.LastSuccessfulSpec) != controllerutil.ContainsFinalizer(desiredACD, dbv4.LastSuccessfulSpec)) ||
+					(controllerutil.ContainsFinalizer(oldACD, dbv4.ACDFinalizer) != controllerutil.ContainsFinalizer(desiredACD, dbv4.ACDFinalizer)) {
 					// Don't enqueue if the status, lastSucSpec, or the finalizler changes
 					return false
 				}
@@ -103,7 +103,7 @@ func (r *AutonomousContainerDatabaseReconciler) eventFilterPredicate() predicate
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			// Do not trigger reconciliation when the object is deleted from the cluster.
-			_, acdOk := e.Object.(*dbv1alpha1.AutonomousContainerDatabase)
+			_, acdOk := e.Object.(*dbv4.AutonomousContainerDatabase)
 			return !acdOk
 		},
 	}
@@ -124,10 +124,10 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	var err error
-	var ociACD *dbv1alpha1.AutonomousContainerDatabase
+	var ociACD *dbv4.AutonomousContainerDatabase
 
 	// Get the autonomousdatabase instance from the cluster
-	acd := &dbv1alpha1.AutonomousContainerDatabase{}
+	acd := &dbv4.AutonomousContainerDatabase{}
 	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, acd); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
 		// No need to change the since we don't know if we obtain the object.
@@ -159,7 +159,7 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 			return r.manageError(logger, acd, err)
 		}
 
-		ociACD = &dbv1alpha1.AutonomousContainerDatabase{}
+		ociACD = &dbv4.AutonomousContainerDatabase{}
 		ociACD.UpdateFromOCIACD(resp.AutonomousContainerDatabase)
 	}
 
@@ -218,7 +218,7 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 		return r.manageError(logger, acd, err)
 	}
 
-	if dbv1alpha1.IsACDIntermediateState(acd.Status.LifecycleState) {
+	if dbv4.IsACDIntermediateState(acd.Status.LifecycleState) {
 		logger.WithName("IsIntermediateState").Info("Current lifecycleState is " + string(acd.Status.LifecycleState) + "; reconcile queued")
 		return requeueResult, nil
 	}
@@ -232,7 +232,7 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 	return emptyResult, nil
 }
 
-func (r *AutonomousContainerDatabaseReconciler) setupOCIClients(logger logr.Logger, acd *dbv1alpha1.AutonomousContainerDatabase) error {
+func (r *AutonomousContainerDatabaseReconciler) setupOCIClients(logger logr.Logger, acd *dbv4.AutonomousContainerDatabase) error {
 	var err error
 
 	authData := oci.APIKeyAuth{
@@ -254,7 +254,7 @@ func (r *AutonomousContainerDatabaseReconciler) setupOCIClients(logger logr.Logg
 	return nil
 }
 
-func (r *AutonomousContainerDatabaseReconciler) manageError(logger logr.Logger, acd *dbv1alpha1.AutonomousContainerDatabase, issue error) (ctrl.Result, error) {
+func (r *AutonomousContainerDatabaseReconciler) manageError(logger logr.Logger, acd *dbv4.AutonomousContainerDatabase, issue error) (ctrl.Result, error) {
 	l := logger.WithName("manageError")
 
 	// Has synced at least once
@@ -290,7 +290,7 @@ func (r *AutonomousContainerDatabaseReconciler) manageError(logger logr.Logger, 
 }
 
 // validateLifecycleState gets and validates the current lifecycleState
-func (r *AutonomousContainerDatabaseReconciler) validateLifecycleState(logger logr.Logger, acd *dbv1alpha1.AutonomousContainerDatabase, ociACD *dbv1alpha1.AutonomousContainerDatabase) (needsRequeue bool, err error) {
+func (r *AutonomousContainerDatabaseReconciler) validateLifecycleState(logger logr.Logger, acd *dbv4.AutonomousContainerDatabase, ociACD *dbv4.AutonomousContainerDatabase) (needsRequeue bool, err error) {
 	if ociACD == nil {
 		return false, nil
 	}
@@ -313,7 +313,7 @@ func (r *AutonomousContainerDatabaseReconciler) validateLifecycleState(logger lo
 		return false, err
 	}
 
-	if dbv1alpha1.IsACDIntermediateState(ociACD.Status.LifecycleState) {
+	if dbv4.IsACDIntermediateState(ociACD.Status.LifecycleState) {
 		l.Info("LifecycleState is " + string(acd.Status.LifecycleState) + "; reconcile queued")
 		return true, nil
 	}
@@ -321,7 +321,7 @@ func (r *AutonomousContainerDatabaseReconciler) validateLifecycleState(logger lo
 	return false, nil
 }
 
-func (r *AutonomousContainerDatabaseReconciler) validateCleanup(logger logr.Logger, acd *dbv1alpha1.AutonomousContainerDatabase) (exitReconcile bool, err error) {
+func (r *AutonomousContainerDatabaseReconciler) validateCleanup(logger logr.Logger, acd *dbv4.AutonomousContainerDatabase) (exitReconcile bool, err error) {
 	l := logger.WithName("validateCleanup")
 
 	isACDToBeDeleted := acd.GetDeletionTimestamp() != nil
@@ -330,7 +330,7 @@ func (r *AutonomousContainerDatabaseReconciler) validateCleanup(logger logr.Logg
 		return false, nil
 	}
 
-	if controllerutil.ContainsFinalizer(acd, dbv1alpha1.ACDFinalizer) {
+	if controllerutil.ContainsFinalizer(acd, dbv4.ACDFinalizer) {
 		if acd.Status.LifecycleState == database.AutonomousContainerDatabaseLifecycleStateTerminating {
 			l.Info("Resource is already in TERMINATING state")
 			// Delete in progress, continue with the reconcile logic
@@ -341,7 +341,7 @@ func (r *AutonomousContainerDatabaseReconciler) validateCleanup(logger logr.Logg
 			// The acd has been deleted. Remove the finalizer and exit the reconcile.
 			// Once all finalizers have been removed, the object will be deleted.
 			l.Info("Resource is already in TERMINATED state; remove the finalizer")
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, acd, dbv1alpha1.ACDFinalizer); err != nil {
+			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, acd, dbv4.ACDFinalizer); err != nil {
 				return false, err
 			}
 			return true, nil
@@ -350,17 +350,17 @@ func (r *AutonomousContainerDatabaseReconciler) validateCleanup(logger logr.Logg
 		if acd.Spec.AutonomousContainerDatabaseOCID == nil {
 			l.Info("Missing AutonomousContainerDatabaseOCID to terminate Autonomous Container Database; remove the finalizer anyway", "Name", acd.Name, "Namespace", acd.Namespace)
 			// Remove finalizer anyway.
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, acd, dbv1alpha1.ACDFinalizer); err != nil {
+			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, acd, dbv4.ACDFinalizer); err != nil {
 				return false, err
 			}
 			return true, nil
 		}
 
-		if acd.Spec.Action != dbv1alpha1.AcdActionTerminate {
+		if acd.Spec.Action != dbv4.AcdActionTerminate {
 			// Run finalization logic for finalizer. If the finalization logic fails, don't remove the finalizer so
 			// that we can retry during the next reconciliation.
 			l.Info("Terminating Autonomous Container Database")
-			acd.Spec.Action = dbv1alpha1.AcdActionTerminate
+			acd.Spec.Action = dbv4.AcdActionTerminate
 			if err := r.KubeClient.Update(context.TODO(), acd); err != nil {
 				return false, err
 			}
@@ -376,15 +376,15 @@ func (r *AutonomousContainerDatabaseReconciler) validateCleanup(logger logr.Logg
 	return true, nil
 }
 
-func (r *AutonomousContainerDatabaseReconciler) validateFinalizer(acd *dbv1alpha1.AutonomousContainerDatabase) error {
+func (r *AutonomousContainerDatabaseReconciler) validateFinalizer(acd *dbv4.AutonomousContainerDatabase) error {
 	// Delete is not schduled. Update the finalizer for this CR if hardLink is present
 	if acd.Spec.HardLink != nil {
-		if *acd.Spec.HardLink && !controllerutil.ContainsFinalizer(acd, dbv1alpha1.ACDFinalizer) {
-			if err := k8s.AddFinalizerAndPatch(r.KubeClient, acd, dbv1alpha1.ACDFinalizer); err != nil {
+		if *acd.Spec.HardLink && !controllerutil.ContainsFinalizer(acd, dbv4.ACDFinalizer) {
+			if err := k8s.AddFinalizerAndPatch(r.KubeClient, acd, dbv4.ACDFinalizer); err != nil {
 				return err
 			}
-		} else if !*acd.Spec.HardLink && controllerutil.ContainsFinalizer(acd, dbv1alpha1.ACDFinalizer) {
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, acd, dbv1alpha1.ACDFinalizer); err != nil {
+		} else if !*acd.Spec.HardLink && controllerutil.ContainsFinalizer(acd, dbv4.ACDFinalizer) {
+			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, acd, dbv4.ACDFinalizer); err != nil {
 				return err
 			}
 		}
@@ -395,8 +395,8 @@ func (r *AutonomousContainerDatabaseReconciler) validateFinalizer(acd *dbv1alpha
 
 func (r *AutonomousContainerDatabaseReconciler) validateOperation(
 	logger logr.Logger,
-	acd *dbv1alpha1.AutonomousContainerDatabase,
-	ociACD *dbv1alpha1.AutonomousContainerDatabase) (exitReconcile bool, result ctrl.Result, err error) {
+	acd *dbv4.AutonomousContainerDatabase,
+	ociACD *dbv4.AutonomousContainerDatabase) (exitReconcile bool, result ctrl.Result, err error) {
 
 	l := logger.WithName("validateOperation")
 
@@ -511,7 +511,7 @@ func (r *AutonomousContainerDatabaseReconciler) validateOperation(
 	}
 }
 
-func (r *AutonomousContainerDatabaseReconciler) updateCR(acd *dbv1alpha1.AutonomousContainerDatabase) error {
+func (r *AutonomousContainerDatabaseReconciler) updateCR(acd *dbv4.AutonomousContainerDatabase) error {
 	// Update the lastSucSpec
 	if err := acd.UpdateLastSuccessfulSpec(); err != nil {
 		return err
@@ -523,14 +523,14 @@ func (r *AutonomousContainerDatabaseReconciler) updateCR(acd *dbv1alpha1.Autonom
 	return nil
 }
 
-func (r *AutonomousContainerDatabaseReconciler) patchLastSuccessfulSpec(acd *dbv1alpha1.AutonomousContainerDatabase) error {
+func (r *AutonomousContainerDatabaseReconciler) patchLastSuccessfulSpec(acd *dbv4.AutonomousContainerDatabase) error {
 	specBytes, err := json.Marshal(acd.Spec)
 	if err != nil {
 		return err
 	}
 
 	anns := map[string]string{
-		dbv1alpha1.LastSuccessfulSpec: string(specBytes),
+		dbv4.LastSuccessfulSpec: string(specBytes),
 	}
 
 	annotations.PatchAnnotations(r.KubeClient, acd, anns)
@@ -538,7 +538,7 @@ func (r *AutonomousContainerDatabaseReconciler) patchLastSuccessfulSpec(acd *dbv
 	return nil
 }
 
-func (r *AutonomousContainerDatabaseReconciler) createACD(logger logr.Logger, acd *dbv1alpha1.AutonomousContainerDatabase) error {
+func (r *AutonomousContainerDatabaseReconciler) createACD(logger logr.Logger, acd *dbv4.AutonomousContainerDatabase) error {
 	logger.WithName("createACD").Info("Sending CreateAutonomousContainerDatabase request to OCI")
 
 	resp, err := r.dbService.CreateAutonomousContainerDatabase(acd)
@@ -551,7 +551,7 @@ func (r *AutonomousContainerDatabaseReconciler) createACD(logger logr.Logger, ac
 	return nil
 }
 
-func (r *AutonomousContainerDatabaseReconciler) getACD(logger logr.Logger, acd *dbv1alpha1.AutonomousContainerDatabase) (bool, error) {
+func (r *AutonomousContainerDatabaseReconciler) getACD(logger logr.Logger, acd *dbv4.AutonomousContainerDatabase) (bool, error) {
 	if acd == nil {
 		return false, errors.New("AutonomousContainerDatabase OCID is missing")
 	}
@@ -573,10 +573,10 @@ func (r *AutonomousContainerDatabaseReconciler) getACD(logger logr.Logger, acd *
 // The AutonomousContainerDatabase is updated with the returned object from the OCI requests.
 func (r *AutonomousContainerDatabaseReconciler) updateACD(
 	logger logr.Logger,
-	acd *dbv1alpha1.AutonomousContainerDatabase,
-	difACD *dbv1alpha1.AutonomousContainerDatabase) (ociReqSent bool, specChanged bool, err error) {
+	acd *dbv4.AutonomousContainerDatabase,
+	difACD *dbv4.AutonomousContainerDatabase) (ociReqSent bool, specChanged bool, err error) {
 
-	validations := []func(logr.Logger, *dbv1alpha1.AutonomousContainerDatabase, *dbv1alpha1.AutonomousContainerDatabase) (bool, bool, error){
+	validations := []func(logr.Logger, *dbv4.AutonomousContainerDatabase, *dbv4.AutonomousContainerDatabase) (bool, bool, error){
 		r.validateGeneralFields,
 		r.validateDesiredLifecycleState,
 	}
@@ -597,8 +597,8 @@ func (r *AutonomousContainerDatabaseReconciler) updateACD(
 
 func (r *AutonomousContainerDatabaseReconciler) validateGeneralFields(
 	logger logr.Logger,
-	acd *dbv1alpha1.AutonomousContainerDatabase,
-	difACD *dbv1alpha1.AutonomousContainerDatabase) (sent bool, requeue bool, err error) {
+	acd *dbv4.AutonomousContainerDatabase,
+	difACD *dbv4.AutonomousContainerDatabase) (sent bool, requeue bool, err error) {
 
 	if difACD.Spec.DisplayName == nil &&
 		difACD.Spec.PatchModel == "" &&
@@ -620,17 +620,17 @@ func (r *AutonomousContainerDatabaseReconciler) validateGeneralFields(
 
 func (r *AutonomousContainerDatabaseReconciler) validateDesiredLifecycleState(
 	logger logr.Logger,
-	acd *dbv1alpha1.AutonomousContainerDatabase,
-	difACD *dbv1alpha1.AutonomousContainerDatabase) (sent bool, specChanged bool, err error) {
+	acd *dbv4.AutonomousContainerDatabase,
+	difACD *dbv4.AutonomousContainerDatabase) (sent bool, specChanged bool, err error) {
 
-	if difACD.Spec.Action == dbv1alpha1.AcdActionBlank {
+	if difACD.Spec.Action == dbv4.AcdActionBlank {
 		return false, false, nil
 	}
 
 	l := logger.WithName("validateDesiredLifecycleState")
 
 	switch difACD.Spec.Action {
-	case dbv1alpha1.AcdActionRestart:
+	case dbv4.AcdActionRestart:
 		l.Info("Sending RestartAutonomousContainerDatabase request to OCI")
 
 		resp, err := r.dbService.RestartAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID)
@@ -639,7 +639,7 @@ func (r *AutonomousContainerDatabaseReconciler) validateDesiredLifecycleState(
 		}
 
 		acd.Status.LifecycleState = resp.LifecycleState
-	case dbv1alpha1.AcdActionTerminate:
+	case dbv4.AcdActionTerminate:
 		l.Info("Sending TerminateAutonomousContainerDatabase request to OCI")
 
 		_, err := r.dbService.TerminateAutonomousContainerDatabase(*acd.Spec.AutonomousContainerDatabaseOCID)
@@ -652,7 +652,7 @@ func (r *AutonomousContainerDatabaseReconciler) validateDesiredLifecycleState(
 		return false, false, errors.New("unknown lifecycleState")
 	}
 
-	acd.Spec.Action = dbv1alpha1.AcdActionBlank
+	acd.Spec.Action = dbv4.AcdActionBlank
 
 	return true, true, nil
 }
