@@ -59,21 +59,16 @@ func (r *AutonomousDatabaseBackup) SetupWebhookWithManager(mgr ctrl.Manager) err
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,verbs=create;update,versions=v1alpha1,name=mautonomousdatabasebackup.kb.io,admissionReviewVersions={v1}
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,verbs=create;update,versions=v1alpha1,name=mautonomousdatabasebackupv1alpha1.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Defaulter = &AutonomousDatabaseBackup{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *AutonomousDatabaseBackup) Default() {
 	autonomousdatabasebackuplog.Info("default", "name", r.Name)
-
-	// TODO(user): fill in your defaulting logic.
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,versions=v1alpha1,name=vautonomousdatabasebackup.kb.io,admissionReviewVersions={v1}
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,versions=v1alpha1,name=vautonomousdatabasebackupv1alpha1.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &AutonomousDatabaseBackup{}
 

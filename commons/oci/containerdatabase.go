@@ -44,13 +44,13 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
 
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 )
 
 /********************************
  * Autonomous Container Database
  *******************************/
-func (d *databaseService) CreateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error) {
+func (d *databaseService) CreateAutonomousContainerDatabase(acd *dbv4.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error) {
 	createAutonomousContainerDatabaseRequest := database.CreateAutonomousContainerDatabaseRequest{
 		CreateAutonomousContainerDatabaseDetails: database.CreateAutonomousContainerDatabaseDetails{
 			CompartmentId:              acd.Spec.CompartmentOCID,
@@ -71,7 +71,7 @@ func (d *databaseService) GetAutonomousContainerDatabase(acdOCID string) (databa
 	return d.dbClient.GetAutonomousContainerDatabase(context.TODO(), getAutonomousContainerDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
+func (d *databaseService) UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv4.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
 	updateAutonomousContainerDatabaseRequest := database.UpdateAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
 		UpdateAutonomousContainerDatabaseDetails: database.UpdateAutonomousContainerDatabaseDetails{

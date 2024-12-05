@@ -84,6 +84,76 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .spec.displayName
+      name: DisplayName
+      type: string
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .status.timeCreated
+      name: Created
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              action:
+                enum:
+                - SYNC
+                - RESTART
+                - TERMINATE
+                type: string
+              autonomousContainerDatabaseOCID:
+                type: string
+              autonomousExadataVMClusterOCID:
+                type: string
+              compartmentOCID:
+                type: string
+              displayName:
+                type: string
+              freeformTags:
+                additionalProperties:
+                  type: string
+                type: object
+              hardLink:
+                default: false
+                type: boolean
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+              patchModel:
+                enum:
+                - RELEASE_UPDATES
+                - RELEASE_UPDATE_REVISIONS
+                type: string
+            type: object
+          status:
+            properties:
+              lifecycleState:
+                type: string
+              timeCreated:
+                type: string
+            required:
+            - lifecycleState
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}

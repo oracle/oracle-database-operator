@@ -39,7 +39,7 @@
 package adbfamily
 
 import (
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	"github.com/oracle/oracle-database-operator/commons/k8s"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -48,14 +48,14 @@ import (
 // The function returns two values in the following order:
 // ocid: the OCID of the target ADB. An empty string is returned if the ocid is nil.
 // ownerADB: the resource of the targetADB if it's found in the cluster
-func VerifyTargetADB(kubeClient client.Client, target dbv1alpha1.TargetSpec, namespace string) (*dbv1alpha1.AutonomousDatabase, error) {
+func VerifyTargetADB(kubeClient client.Client, target dbv4.TargetSpec, namespace string) (*dbv4.AutonomousDatabase, error) {
 	var err error
-	var ownerADB *dbv1alpha1.AutonomousDatabase
+	var ownerADB *dbv4.AutonomousDatabase
 
 	// Get the target ADB OCID
 	if target.K8sADB.Name != nil {
 		// Find the target ADB using the name of the k8s ADB
-		ownerADB = &dbv1alpha1.AutonomousDatabase{}
+		ownerADB = &dbv4.AutonomousDatabase{}
 		if err := k8s.FetchResource(kubeClient, namespace, *target.K8sADB.Name, ownerADB); err != nil {
 			return nil, err
 		}

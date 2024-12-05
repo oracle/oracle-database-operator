@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	"fmt"
@@ -63,7 +63,7 @@ func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:verbs=create;update,path=/mutate-database-oracle-com-v1alpha1-autonomousdatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v1alpha1,name=mautonomousdatabasev1alpha1.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:verbs=create;update,path=/mutate-database-oracle-com-v4-autonomousdatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v4,name=mautonomousdatabasev4.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Defaulter = &AutonomousDatabase{}
 
@@ -93,7 +93,7 @@ func (r *AutonomousDatabase) Default() {
 
 }
 
-//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v1alpha1,name=vautonomousdatabasev1alpha1.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v4,name=vautonomousdatabasev4.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &AutonomousDatabase{}
 

@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
@@ -59,7 +59,7 @@ func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) er
 		Complete()
 }
 
-//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v1alpha1,name=vautonomousdatabaserestorev1alpha1.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v4,name=vautonomousdatabaserestorev4.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &AutonomousDatabaseRestore{}
 

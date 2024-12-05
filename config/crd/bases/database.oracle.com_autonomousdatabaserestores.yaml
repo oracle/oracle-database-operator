@@ -100,6 +100,92 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.displayName
+      name: DbDisplayName
+      type: string
+    - jsonPath: .status.dbName
+      name: DbName
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+              source:
+                properties:
+                  k8sADBBackup:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  pointInTime:
+                    properties:
+                      timestamp:
+                        type: string
+                    type: object
+                type: object
+              target:
+                properties:
+                  k8sADB:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  ociADB:
+                    properties:
+                      ocid:
+                        type: string
+                    type: object
+                type: object
+            required:
+            - source
+            - target
+            type: object
+          status:
+            properties:
+              dbName:
+                type: string
+              displayName:
+                type: string
+              status:
+                type: string
+              timeAccepted:
+                type: string
+              timeEnded:
+                type: string
+              timeStarted:
+                type: string
+              workRequestOCID:
+                type: string
+            required:
+            - dbName
+            - displayName
+            - status
+            - workRequestOCID
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}
