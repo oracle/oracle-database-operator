@@ -202,6 +202,7 @@ type DbCloneStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=dbcssystems,scope=Namespaced
  // +kubebuilder:storageversion
+ // +kubebuilder:storageversion
 
 // DbcsSystem is the Schema for the dbcssystems API
 type DbcsSystem struct {

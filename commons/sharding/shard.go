@@ -54,7 +54,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func buildLabelsForShard(instance *databasev4.ShardingDatabase, label string) map[string]string {
+func buildLabelsForShard(instance *databasev4.ShardingDatabase, label string, shardName string) map[string]string {
 	return map[string]string{
 		"app":      "OracleSharding",
 		"type":     "Shard",
@@ -96,9 +96,9 @@ func builObjectMetaForShard(instance *databasev4.ShardingDatabase, OraShardSpex 
 	// building objectMeta
 	objmeta := metav1.ObjectMeta{
 		Name:            OraShardSpex.Name,
-		Namespace:       instance.Spec.Namespace,
+		Namespace:       instance.Namespace,
 		OwnerReferences: getOwnerRef(instance),
-		Labels:          buildLabelsForShard(instance, "sharding"),
+		Labels:          buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 	}
 	return objmeta
 }
@@ -110,11 +110,11 @@ func buildStatefulSpecForShard(instance *databasev4.ShardingDatabase, OraShardSp
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraShardSpex.Name,
 		Selector: &metav1.LabelSelector{
-			MatchLabels: buildLabelsForShard(instance, "sharding"),
+			MatchLabels: buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: buildLabelsForShard(instance, "sharding"),
+				Labels: buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 			},
 			Spec: *buildPodSpecForShard(instance, OraShardSpex),
 		},
@@ -363,9 +363,9 @@ func volumeClaimTemplatesForShard(instance *databasev4.ShardingDatabase, OraShar
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            OraShardSpex.Name + "-oradata-vol4",
-				Namespace:       instance.Spec.Namespace,
+				Namespace:       instance.Namespace,
 				OwnerReferences: getOwnerRef(instance),
-				Labels:          buildLabelsForShard(instance, "sharding"),
+				Labels:          buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes: []corev1.PersistentVolumeAccessMode{
@@ -410,7 +410,7 @@ func BuildServiceDefForShard(instance *databasev4.ShardingDatabase, replicaCount
 
 	if svctype == "local" {
 		service.Spec.ClusterIP = corev1.ClusterIPNone
-		service.Spec.Selector = buildLabelsForShard(instance, "sharding")
+		service.Spec.Selector = getSvcLabelsForShard(replicaCount, OraShardSpex)
 	}
 
 	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
@@ -434,8 +434,8 @@ func buildSvcObjectMetaForShard(instance *databasev4.ShardingDatabase, replicaCo
 
 	objmeta := metav1.ObjectMeta{
 		Name:            svcName,
-		Namespace:       instance.Spec.Namespace,
-		Labels:          buildLabelsForShard(instance, "sharding"),
+		Namespace:       instance.Namespace,
+		Labels:          buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 		OwnerReferences: getOwnerRef(instance),
 	}
 	return objmeta

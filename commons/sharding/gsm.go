@@ -56,7 +56,7 @@ import (
 )
 
 // Constants for hello-stateful StatefulSet & Volumes
-func buildLabelsForGsm(instance *databasev4.ShardingDatabase, label string) map[string]string {
+func buildLabelsForGsm(instance *databasev4.ShardingDatabase, label string, gsmName string) map[string]string {
 	return map[string]string{
 		"app":        "OracleGsming",
 		"shard_name": "Gsm",
@@ -97,8 +97,8 @@ func builObjectMetaForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex data
 	// building objectMeta
 	objmeta := metav1.ObjectMeta{
 		Name:            OraGsmSpex.Name,
-		Namespace:       instance.Spec.Namespace,
-		Labels:          buildLabelsForGsm(instance, "sharding"),
+		Namespace:       instance.Namespace,
+		Labels:          buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 		OwnerReferences: getOwnerRef(instance),
 	}
 	return objmeta
@@ -111,11 +111,11 @@ func buildStatefulSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex d
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraGsmSpex.Name,
 		Selector: &metav1.LabelSelector{
-			MatchLabels: buildLabelsForGsm(instance, "sharding"),
+			MatchLabels: buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: buildLabelsForGsm(instance, "sharding"),
+				Labels: buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 			},
 			Spec: *buildPodSpecForGsm(instance, OraGsmSpex),
 		},
@@ -337,8 +337,8 @@ func volumeClaimTemplatesForGsm(instance *databasev4.ShardingDatabase, OraGsmSpe
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            OraGsmSpex.Name + "-oradata-vol4",
-				Namespace:       instance.Spec.Namespace,
-				Labels:          buildLabelsForGsm(instance, "sharding"),
+				Namespace:       instance.Namespace,
+				Labels:          buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 				OwnerReferences: getOwnerRef(instance),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
@@ -354,6 +354,14 @@ func volumeClaimTemplatesForGsm(instance *databasev4.ShardingDatabase, OraGsmSpe
 			},
 		},
 	}
+
+	if len(OraGsmSpex.PvAnnotations) > 0 {
+		claims[0].ObjectMeta.Annotations = make(map[string]string)
+		for key, value := range OraGsmSpex.PvAnnotations {
+			claims[0].ObjectMeta.Annotations[key] = value
+		}
+	}
+
 	if len(OraGsmSpex.PvMatchLabels) > 0 {
 		claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraGsmSpex.PvMatchLabels}
 	}
@@ -376,7 +384,7 @@ func BuildServiceDefForGsm(instance *databasev4.ShardingDatabase, replicaCount i
 
 	if svctype == "local" {
 		service.Spec.ClusterIP = corev1.ClusterIPNone
-		service.Spec.Selector = buildLabelsForGsm(instance, "sharding")
+		service.Spec.Selector = getSvcLabelsForGsm(replicaCount, OraGsmSpex)
 	}
 
 	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
@@ -398,8 +406,8 @@ func buildSvcObjectMetaForGsm(instance *databasev4.ShardingDatabase, replicaCoun
 
 	objmeta := metav1.ObjectMeta{
 		Name:            svcName,
-		Namespace:       instance.Spec.Namespace,
-		Labels:          buildLabelsForGsm(instance, "sharding"),
+		Namespace:       instance.Namespace,
+		Labels:          buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 		OwnerReferences: getOwnerRef(instance),
 	}
 	return objmeta

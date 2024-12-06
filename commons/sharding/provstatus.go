@@ -310,10 +310,10 @@ func removeGsmKeys(instance *databasev4.ShardingDatabase, name string, key strin
 
 func getInstanceNs(instance *databasev4.ShardingDatabase) string {
 	var namespace string
-	if instance.Spec.Namespace == "" {
+	if instance.Namespace == "" {
 		namespace = "default"
 	} else {
-		namespace = instance.Spec.Namespace
+		namespace = instance.Namespace
 	}
 	return namespace
 }
@@ -354,6 +354,7 @@ func ValidateDbSetup(podName string, instance *databasev4.ShardingDatabase, kube
 
 	_, _, err := ExecCommand(podName, shardValidationCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
+
 		return fmt.Errorf("error ocurred while validating the DB Setup")
 	}
 	return nil

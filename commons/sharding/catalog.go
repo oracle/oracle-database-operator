@@ -53,7 +53,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func buildLabelsForCatalog(instance *databasev4.ShardingDatabase, label string) map[string]string {
+func buildLabelsForCatalog(instance *databasev4.ShardingDatabase, label string, catalogName string) map[string]string {
 	return map[string]string{
 		"app":      "OracleSharding",
 		"type":     "Catalog",
@@ -95,9 +95,9 @@ func builObjectMetaForCatalog(instance *databasev4.ShardingDatabase, OraCatalogS
 	// building objectMeta
 	objmeta := metav1.ObjectMeta{
 		Name:            OraCatalogSpex.Name,
-		Namespace:       instance.Spec.Namespace,
+		Namespace:       instance.Namespace,
 		OwnerReferences: getOwnerRef(instance),
-		Labels:          buildLabelsForCatalog(instance, "sharding"),
+		Labels:          buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 	}
 	return objmeta
 }
@@ -109,11 +109,11 @@ func buildStatefulSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatal
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraCatalogSpex.Name,
 		Selector: &metav1.LabelSelector{
-			MatchLabels: buildLabelsForCatalog(instance, "sharding"),
+			MatchLabels: buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: buildLabelsForCatalog(instance, "sharding"),
+				Labels: buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 			},
 			Spec: *buildPodSpecForCatalog(instance, OraCatalogSpex),
 		},
@@ -357,9 +357,9 @@ func volumeClaimTemplatesForCatalog(instance *databasev4.ShardingDatabase, OraCa
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            OraCatalogSpex.Name + "-oradata-vol4",
-				Namespace:       instance.Spec.Namespace,
+				Namespace:       instance.Namespace,
 				OwnerReferences: getOwnerRef(instance),
-				Labels:          buildLabelsForCatalog(instance, "sharding"),
+				Labels:          buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes: []corev1.PersistentVolumeAccessMode{
@@ -376,15 +376,15 @@ func volumeClaimTemplatesForCatalog(instance *databasev4.ShardingDatabase, OraCa
 	}
 
 	if len(OraCatalogSpex.PvAnnotations) > 0 {
-		claims[0].ObjectMeta.Annotations = make(map[string]string)
-		for key, value := range OraCatalogSpex.PvAnnotations {
-			claims[0].ObjectMeta.Annotations[key] = value
-		}
-	}
+    claims[0].ObjectMeta.Annotations = make(map[string]string)
+    for key, value := range OraCatalogSpex.PvAnnotations {
+      claims[0].ObjectMeta.Annotations[key] = value
+    }
+  }
 
-	if len(OraCatalogSpex.PvMatchLabels) > 0 {
-		claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraCatalogSpex.PvMatchLabels}
-	}
+  if len(OraCatalogSpex.PvMatchLabels) > 0 {
+    claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraCatalogSpex.PvMatchLabels}
+  }
 
 	if checkTdeWalletFlag(instance) {
 		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
@@ -392,9 +392,9 @@ func volumeClaimTemplatesForCatalog(instance *databasev4.ShardingDatabase, OraCa
 				pvcClaim := corev1.PersistentVolumeClaim{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:            instance.Name + "shared-storage",
-						Namespace:       instance.Spec.Namespace,
+						Namespace:       instance.Namespace,
 						OwnerReferences: getOwnerRef(instance),
-						Labels:          buildLabelsForCatalog(instance, "sharding"),
+						Labels:          buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 					},
 					Spec: corev1.PersistentVolumeClaimSpec{
 						AccessModes: []corev1.PersistentVolumeAccessMode{
@@ -432,7 +432,7 @@ func BuildServiceDefForCatalog(instance *databasev4.ShardingDatabase, replicaCou
 
 	if svctype == "local" {
 		service.Spec.ClusterIP = corev1.ClusterIPNone
-		service.Spec.Selector = buildLabelsForCatalog(instance, "sharding")
+		service.Spec.Selector = getSvcLabelsForCatalog(replicaCount, OraCatalogSpex)
 	}
 
 	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
@@ -454,9 +454,9 @@ func buildSvcObjectMetaForCatalog(instance *databasev4.ShardingDatabase, replica
 
 	objmeta := metav1.ObjectMeta{
 		Name:            svcName,
-		Namespace:       instance.Spec.Namespace,
+		Namespace:       instance.Namespace,
 		OwnerReferences: getOwnerRef(instance),
-		Labels:          buildLabelsForCatalog(instance, "sharding"),
+		Labels:          buildLabelsForCatalog(instance, "sharding", OraCatalogSpex.Name),
 	}
 	return objmeta
 }
@@ -485,7 +485,7 @@ func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 	var msg string
 
 	//msg = "Inside the updateProvForCatalog"
-	//reqLogger := r.Log.WithValues("Instance.Namespace", instance.Spec.Namespace, "Instance.Name", instance.Name)
+	//reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	LogMessages("DEBUG", msg, nil, instance, logger)
 
 	// Memory Check
@@ -526,3 +526,4 @@ func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 
 	return ctrl.Result{}, nil
 }
+

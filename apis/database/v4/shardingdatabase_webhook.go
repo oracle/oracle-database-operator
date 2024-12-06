@@ -87,7 +87,7 @@ func (r *ShardingDatabase) Default() {
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-shardingdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=shardingdatabases,versions=v4,name=vshardingdatabasev4.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-shardingdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=shardingdatabases,versions=v4,name=vshardingdatabasev4.kb.io,admissionReviewVersions={v1}
 
 var _ webhook.Validator = &ShardingDatabase{}
 
@@ -177,6 +177,16 @@ func (r *ShardingDatabase) ValidateCreate() (admission.Warnings, error) {
 		validationErr = append(validationErr, validationErrs1...)
 	}
 
+	validationErrs1 = r.validateCatalogName()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
+	validationErrs1 = r.validateShardName()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
 	// TODO(user): fill in your validation logic upon object creation.
 	if len(validationErr) == 0 {
 		return nil, nil
@@ -260,6 +270,40 @@ func (r *ShardingDatabase) validateFreeEdition() field.ErrorList {
 					}
 				}
 			}
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return validationErrs
+	}
+	return nil
+}
+
+func (r *ShardingDatabase) validateShardName() field.ErrorList {
+	var validationErrs field.ErrorList
+
+	for pindex := range r.Spec.Shard {
+		if len(r.Spec.Shard[pindex].Name) > 9 {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("shard").Child("Name"), r.Spec.Shard[pindex].Name,
+					"Shard Name cannot be greater than 9 characters."))
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return validationErrs
+	}
+	return nil
+}
+
+func (r *ShardingDatabase) validateCatalogName() field.ErrorList {
+	var validationErrs field.ErrorList
+
+	for pindex := range r.Spec.Catalog {
+		if len(r.Spec.Catalog[pindex].Name) > 9 {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("catalog").Child("Name"), r.Spec.Catalog[pindex].Name,
+					"Catalog Name cannot be greater than 9 characters."))
 		}
 	}
 

@@ -294,7 +294,7 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 		}
 
 		if instance.Spec.InvitedNodeSubnetFlag == "" {
-			instance.Spec.InvitedNodeSubnetFlag = "FALSE"
+			instance.Spec.InvitedNodeSubnetFlag = "TRUE"
 
 		}
 		if strings.ToUpper(instance.Spec.InvitedNodeSubnetFlag) != "FALSE" {
@@ -410,7 +410,9 @@ func LogMessages(msgtype string, msg string, err error, instance *databasev4.Sha
 		}
 	} else if msgtype == "INFO" {
 		logger.Info(msg)
-	}
+	} else if msgtype == "Error" {
+			logger.Error(err, msg)
+  }
 }
 
 func GetGsmPodName(gsmName string) string {
@@ -447,22 +449,22 @@ func GetPdbName(variables []databasev4.EnvironmentVariable, name string) string 
 }
 
 func getlabelsForGsm(instance *databasev4.ShardingDatabase) map[string]string {
-	return buildLabelsForGsm(instance, "sharding")
+	return buildLabelsForGsm(instance, "sharding", "gsm")
 }
 
 func getlabelsForShard(instance *databasev4.ShardingDatabase) map[string]string {
-	return buildLabelsForShard(instance, "sharding")
+	return buildLabelsForShard(instance, "sharding", "shard")
 }
 
 func getlabelsForCatalog(instance *databasev4.ShardingDatabase) map[string]string {
-	return buildLabelsForCatalog(instance, "sharding")
+	return buildLabelsForCatalog(instance, "sharding", "catalog")
 }
 
 func LabelsForProvShardKind(instance *databasev4.ShardingDatabase, sftype string,
 ) map[string]string {
 
 	if sftype == "shard" {
-		return buildLabelsForShard(instance, "sharding")
+		return buildLabelsForShard(instance, "sharding", "shard")
 	}
 
 	return nil
@@ -473,7 +475,7 @@ func CheckSfset(sfsetName string, instance *databasev4.ShardingDatabase, kClient
 	sfSetFound := &appsv1.StatefulSet{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      sfsetName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, sfSetFound)
 	if err != nil {
 		return sfSetFound, err
@@ -485,7 +487,7 @@ func checkPvc(pvcName string, instance *databasev4.ShardingDatabase, kClient cli
 	pvcFound := &corev1.PersistentVolumeClaim{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      pvcName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, pvcFound)
 	if err != nil {
 		return pvcFound, err
@@ -529,7 +531,7 @@ func CheckSvc(svcName string, instance *databasev4.ShardingDatabase, kClient cli
 	svcFound := &corev1.Service{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      svcName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, svcFound)
 	if err != nil {
 		return svcFound, err
@@ -594,7 +596,7 @@ func GetPodList(sfsetName string, resType string, instance *databasev4.ShardingD
 		return nil, err1
 	}
 
-	listOps := &client.ListOptions{Namespace: instance.Spec.Namespace, LabelSelector: labelSelector}
+	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
 
 	err := kClient.List(context.TODO(), podList, listOps)
 	if err != nil {
@@ -607,7 +609,7 @@ func checkPod(instance *databasev4.ShardingDatabase, pod *corev1.Pod, kClient cl
 ) error {
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      pod.Name,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, pod)
 
 	if err != nil {
@@ -667,11 +669,11 @@ func AddNamespace(instance *databasev4.ShardingDatabase, kClient client.Client, 
 ) error {
 	var msg string
 	ns := &corev1.Namespace{}
-	err := kClient.Get(context.TODO(), types.NamespacedName{Name: instance.Spec.Namespace}, ns)
+	err := kClient.Get(context.TODO(), types.NamespacedName{Name: instance.Namespace}, ns)
 	if err != nil {
-		//msg = "Namespace " + instance.Spec.Namespace + " doesn't exist! creating namespace"
+		//msg = "Namespace " + instance.Namespace + " doesn't exist! creating namespace"
 		if errors.IsNotFound(err) {
-			err = kClient.Create(context.TODO(), NewNamespace(instance.Spec.Namespace))
+			err = kClient.Create(context.TODO(), NewNamespace(instance.Namespace))
 			if err != nil {
 				msg = "Error in creating namespace!"
 				LogMessages("Error", msg, nil, instance, logger)
@@ -1017,7 +1019,7 @@ func labelsForShardingDatabaseKind(instance *databasev4.ShardingDatabase, sftype
 ) map[string]string {
 
 	if sftype == "shard" {
-		return buildLabelsForShard(instance, "sharding")
+		return buildLabelsForShard(instance, "sharding", "shard")
 	}
 
 	return nil
@@ -1209,7 +1211,7 @@ func ReadConfigMap(cmName string, instance *databasev4.ShardingDatabase, kClient
 	// Reding a config map
 	err = kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      cmName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, cm)
 
 	if err != nil {
@@ -1262,7 +1264,7 @@ func ReadSecret(secName string, instance *databasev4.ShardingDatabase, kClient c
 	// Reading a Secret
 	var err error = kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      secName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, sc)
 
 	if err != nil {
@@ -1284,20 +1286,17 @@ func GetK8sClientConfig(kClient client.Client) (clientcmd.ClientConfig, kubernet
 	var kubeConfig clientcmd.ClientConfig
 	var kubeClient kubernetes.Interface
 
-	databasev4.KubeConfigOnce.Do(func() {
-		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-		configOverrides := &clientcmd.ConfigOverrides{}
-		kubeConfig = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-		config, err := kubeConfig.ClientConfig()
-		if err != nil {
-			err1 = err
-		}
-		kubeClient, err = kubernetes.NewForConfig(config)
-		if err != nil {
-			err1 = err
-		}
-
-	})
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{}
+	kubeConfig = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+	config, err := kubeConfig.ClientConfig()
+	if err != nil {
+		err1 = err
+	}
+	kubeClient, err = kubernetes.NewForConfig(config)
+	if err != nil {
+		err1 = err
+	}
 	return kubeConfig, kubeClient, err1
 }
 

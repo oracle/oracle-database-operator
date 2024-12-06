@@ -63,7 +63,7 @@ import (
 // ExecCMDInContainer execute command in first container of a pod
 func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *databasev4.ShardingDatabase, logger logr.Logger) (string, string, error) {
 
-	var err1  error = nil
+	var err1 error = nil
 	var msg string
 	var (
 		execOut bytes.Buffer
@@ -71,28 +71,28 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 	)
 
 	for i := 0; i < 5; i++ {
-           if scheme.Scheme == nil {
-              time.Sleep(time.Second * 40)
-           } else {
-              break
-           }
-        }
+		if scheme.Scheme == nil {
+			time.Sleep(time.Second * 40)
+		} else {
+			break
+		}
+	}
 
 	if kubeClient == nil {
-	      msg = "ExecCommand() : kubeClient is nil"
-	      err1 = fmt.Errorf(msg)
-	      return "Error:","kubeClient is nil",err1
-        }
+		msg = "ExecCommand() : kubeClient is nil"
+		err1 = fmt.Errorf(msg)
+		return "Error:", "kubeClient is nil", err1
+	}
 	if kubeConfig == nil {
-	      msg = "ExecCommand() : kubeConfig is nil"
-	      err1 = fmt.Errorf(msg)
-	      return "Error:","kubeConfig is nil",err1
+		msg = "ExecCommand() : kubeConfig is nil"
+		err1 = fmt.Errorf(msg)
+		return "Error:", "kubeConfig is nil", err1
 	}
 
 	msg = ""
 	req := kubeClient.CoreV1().RESTClient().
 		Post().
-		Namespace(instance.Spec.Namespace).
+		Namespace(instance.Namespace).
 		Resource("pods").
 		Name(podName).
 		SubResource("exec").
@@ -105,6 +105,8 @@ func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, 
 
 	config, err := kubeConfig.ClientConfig()
 	if err != nil {
+		msg = "Error after executing kubeConfig.ClientConfig"
+		LogMessages("Error", msg, err, instance, logger)
 		return "Error Occurred", "Error Occurred", err
 	}
 

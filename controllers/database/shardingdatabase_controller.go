@@ -71,14 +71,13 @@ import (
 	shardingv1 "github.com/oracle/oracle-database-operator/commons/sharding"
 )
 
-// Sharding Topology
-type ShardingTopology struct {
-	topicid         string
-	Instance        *databasev4.ShardingDatabase
-	deltopology     bool
-	onsProvider     common.ConfigurationProvider
-	onsProviderFlag bool
-	rclient         ons.NotificationDataPlaneClient
+// Struct keeping Oracle Notification Server Info
+type OnsStatus struct {
+	Topicid         string                               `json:"topicid,omitempty"`
+  Instance        *databasev4.ShardingDatabase   `json:"instance,omitempty"`
+	OnsProvider     common.ConfigurationProvider         `json:"onsProvider,omitempty"`
+	OnsProviderFlag bool                                 `json:"onsProviderFlag,omitempty"`
+	Rclient         ons.NotificationDataPlaneClient      `json:"rclient,omitempty"`
 }
 
 // ShardingDatabaseReconciler reconciles a ShardingDatabase object
@@ -89,13 +88,14 @@ type ShardingDatabaseReconciler struct {
 	kubeClient kubernetes.Interface
 	kubeConfig clientcmd.ClientConfig
 	Recorder   record.EventRecorder
-	osh        []*ShardingTopology
-	InCluster  bool
-	Namespace  string
+	InCluster bool
+	Namespace string
 }
 
 var sentFailMsg = make(map[string]bool)
 var sentCompleteMsg = make(map[string]bool)
+
+var oshMap=make(map[string]*OnsStatus)
 
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases/status,verbs=get;update;patch
@@ -128,11 +128,11 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	var isShardTopologyDeleteTrue bool = false
 	//var msg string
 	var err error
-	var idx int
 	var stateType string
 	resultNq := ctrl.Result{Requeue: false}
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}
 	var nilErr error = nil
+	var msg string
 
 	// On every reconcile, we will call setCrdLifeCycleState
 	// To understand this, please refer https://sdk.operatorframework.io/docs/building-operators/golang/advanced-topics/
@@ -159,14 +159,10 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	_, instFlag := r.checkProvInstance(instance)
-	// assinging osh instance
+  instFlag := r.checkProvInstance(instance)
 	if !instFlag {
-		// Sharding Topolgy Struct Assignment
-		// ======================================
-		osh := &ShardingTopology{}
-		osh.Instance = instance
-		r.osh = append(r.osh, osh)
+		oshMap[instance.Name] = &OnsStatus{}
+		oshMap[instance.Name].Instance = instance
 	}
 	defer r.setCrdLifeCycleState(instance, &result, &err, &stateType)
 	defer r.updateShardTopologyStatus(instance)
@@ -187,30 +183,20 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	// ======== Setting the flag and Index to be used later in this function ========
-	idx, instFlag = r.checkProvInstance(instance)
-	if !instFlag {
-		//r.setCrdLifeCycleState(instance, &result, &err, stateType)
-		result = resultNq
-		return result, fmt.Errorf("DId not find the instance in checkProvInstance")
-	}
+	//	instFlag = r.checkProvInstance(instance)
+	//	if !instFlag {
+	//r.setCrdLifeCycleState(instance, &result, &err, stateType)
+	////		result = resultNq
+	//		return result, fmt.Errorf("DId not find the instance in checkProvInstance")
+	//	}
 
 	// ================================  OCI Notification Provider ===========
-	r.getOnsConfigProvider(instance, idx)
+	r.getOnsConfigProvider(instance)
 
 	// =============================== Checking Namespace ==============
-	if instance.Spec.Namespace == "" {
-		///err = shardingv1.AddNamespace(instance, r.Client, r.Log)
-		//if err != nil {
-		//		//r.setCrdLifeCycleState(instance, &result, &err, stateType)
-		//		result = resultNq
-		//		return result, err
-		//	}
-		//	} else {
-		instance.Spec.Namespace = "default"
-	}
 
 	// ======================== Validate Specs ==============
-	err = r.validateSpex(instance, idx)
+	err = r.validateSpex(instance)
 	if err != nil {
 		//r.setCrdLifeCycleState(instance, &result, &err, stateType)
 		result = resultNq
@@ -239,6 +225,12 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if len(instance.Spec.Catalog) > 0 {
 		for i = 0; i < int32(len(instance.Spec.Catalog)); i++ {
 			OraCatalogSpex = instance.Spec.Catalog[i]
+			if len(OraCatalogSpex.Name) > 9 {
+				msg = "Catalog Name cannot be greater than 9 characters."
+				err = fmt.Errorf(msg)
+				result = resultNq
+				return result, err
+			}
 			// See if StatefulSets already exists and create if it doesn't
 			result, err = r.deployStatefulSet(instance, shardingv1.BuildStatefulSetForCatalog(instance, OraCatalogSpex), "CATALOG")
 			if err != nil {
@@ -290,6 +282,12 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// if user set replicasize greater than 1 but also set instance.Spec.OraDbPvcName then only one service will be created and one pod
 	for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
 		OraShardSpex = instance.Spec.Shard[i]
+		if len(OraShardSpex.Name) > 9 {
+			msg = "Shard Name cannot be greater than 9 characters."
+			err = fmt.Errorf(msg)
+			result = resultNq
+			return result, err
+		}
 		if !shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
 			result, err = r.createService(instance, shardingv1.BuildServiceDefForShard(instance, 0, OraShardSpex, "local"))
 			if err != nil {
@@ -342,7 +340,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Loop will be requeued only if Shard Statefulset is not ready or not configured.
 	// Till that time Reconcilation loop will remain in blocked state
 	// if the err is return because of Shard is not ready then blocked state is rmeoved and reconcilation state is set
-	err = r.addPrimaryShards(instance, idx)
+	err = r.addPrimaryShards(instance)
 	if err != nil {
 		//	time.Sleep(30 * time.Second)
 		err = nilErr
@@ -353,7 +351,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Loop will be requeued only if Standby Shard Statefulset is not ready or not configured.
 	// Till that time Reconcilation loop will remain in blocked state
 	// if the err is return because of Shard is not ready then blocked state is rmeoved and reconcilation state is
-	err = r.addStandbyShards(instance, idx)
+	err = r.addStandbyShards(instance)
 	if err != nil {
 		//	time.Sleep(30 * time.Second)
 		err = nilErr
@@ -363,7 +361,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// we don't need to run the requeue loop but still putting this condition to address any unkown situation
 	// delShard function set the state to blocked and we do not allow any other operationn while delete is going on
-	err = r.delGsmShard(instance, idx)
+	err = r.delGsmShard(instance)
 	if err != nil {
 		//	time.Sleep(30 * time.Second)
 		err = nilErr
@@ -376,13 +374,13 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		OraCatalogSpex = instance.Spec.Catalog[i]
 		sfSet, catalogPod, err := r.validateInvidualCatalog(instance, OraCatalogSpex, int(i))
 		if err != nil {
-			shardingv1.LogMessages("INFO", "Catalog "+sfSet.Name+" is not in available state.", nil, instance, r.Log)
+			shardingv1.LogMessages("Error", "Catalog "+sfSet.Name+" is not in available state.", nil, instance, r.Log)
 			result = resultNq
 			return result, err
 		}
 		result, err = shardingv1.UpdateProvForCatalog(instance, OraCatalogSpex, r.Client, sfSet, catalogPod, r.Log)
 		if err != nil {
-			shardingv1.LogMessages("INFO", "Error Occurred during catalog update operation.", nil, instance, r.Log)
+			shardingv1.LogMessages("Error", "Error Occurred during catalog update operation.", nil, instance, r.Log)
 			result = resultNq
 			return result, err
 		}
@@ -394,13 +392,13 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if !shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
 			sfSet, shardPod, err := r.validateShard(instance, OraShardSpex, int(i))
 			if err != nil {
-				shardingv1.LogMessages("INFO", "Shard "+sfSet.Name+" is not in available state.", nil, instance, r.Log)
+				shardingv1.LogMessages("Error", "Shard "+sfSet.Name+" is not in available state.", nil, instance, r.Log)
 				result = resultNq
 				return result, err
 			}
 			result, err = shardingv1.UpdateProvForShard(instance, OraShardSpex, r.Client, sfSet, shardPod, r.Log)
 			if err != nil {
-				shardingv1.LogMessages("INFO", "Error Occurred during shard update operation..", nil, instance, r.Log)
+				shardingv1.LogMessages("Error", "Error Occurred during shard update operation..", nil, instance, r.Log)
 				result = resultNq
 				return result, err
 			}
@@ -412,13 +410,13 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		OraGsmSpex = instance.Spec.Gsm[i]
 		sfSet, gsmPod, err := r.validateInvidualGsm(instance, OraGsmSpex, int(i))
 		if err != nil {
-			shardingv1.LogMessages("INFO", "Gsm "+sfSet.Name+" is not in available state.", nil, instance, r.Log)
+			shardingv1.LogMessages("Error", "Gsm "+sfSet.Name+" is not in available state.", nil, instance, r.Log)
 			result = resultNq
 			return result, err
 		}
 		result, err = shardingv1.UpdateProvForGsm(instance, OraGsmSpex, r.Client, sfSet, gsmPod, r.Log)
 		if err != nil {
-			shardingv1.LogMessages("INFO", "Error Occurred during GSM update operation.", nil, instance, r.Log)
+			shardingv1.LogMessages("Error", "Error Occurred during GSM update operation.", nil, instance, r.Log)
 			result = resultNq
 			return result, err
 		}
@@ -457,58 +455,51 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
+			instance := &databasev4.ShardingDatabase{}
 			if old, ok := e.ObjectOld.(*corev1.Secret); ok {
 				if new, ok := e.ObjectNew.(*corev1.Secret); ok {
-					for i := 0; i < len(r.osh); i++ {
-						oshInst := r.osh[i]
-						if (new.Name == oshInst.Instance.Spec.DbSecret.Name) && (new.Name == old.Name) {
-							_, ok := old.Data[oshInst.Instance.Spec.DbSecret.PwdFileName]
-							if ok {
-								if !reflect.DeepEqual(old.Data[oshInst.Instance.Spec.DbSecret.PwdFileName], new.Data[oshInst.Instance.Spec.DbSecret.PwdFileName]) {
-									shardingv1.LogMessages("INFO", "Secret Changed", nil, oshInst.Instance, r.Log)
-								}
+					oshInst := instance
+					if (new.Name == oshInst.Spec.DbSecret.Name) && (new.Name == old.Name) {
+						_, ok := old.Data[oshInst.Spec.DbSecret.PwdFileName]
+						if ok {
+							if !reflect.DeepEqual(old.Data[oshInst.Spec.DbSecret.PwdFileName], new.Data[oshInst.Spec.DbSecret.PwdFileName]) {
+								shardingv1.LogMessages("INFO", "Secret Changed", nil, oshInst, r.Log)
 							}
-							shardingv1.LogMessages("INFO", "Secret update block", nil, oshInst.Instance, r.Log)
 						}
+						shardingv1.LogMessages("INFO", "Secret update block", nil, oshInst, r.Log)
 					}
 				}
 			}
 			return true
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
+			instance := &databasev4.ShardingDatabase{}
 			_, podOk := e.Object.GetLabels()["statefulset.kubernetes.io/pod-name"]
-			for i := 0; i < len(r.osh); i++ {
-				if r.osh[i] != nil {
-					oshInst := r.osh[i]
-					if oshInst.deltopology == true {
-						break
+      if oshMap[instance.Name] != nil {
+			   oshInst := instance
+			   if instance.DeletionTimestamp == nil {
 
-					}
-					if e.Object.GetLabels()[string(databasev4.ShardingDelLabelKey)] == string(databasev4.ShardingDelLabelTrueValue) {
-						break
-					}
+				   if e.Object.GetLabels()[string(databasev4.ShardingDelLabelKey)] == string(databasev4.ShardingDelLabelTrueValue) {
+				   }
 
-					if podOk {
-						delObj := e.Object.(*corev1.Pod)
-						if e.Object.GetLabels()["type"] == "Shard" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == oshInst.Instance.Name {
+				   if podOk {
+   					delObj := e.Object.(*corev1.Pod)
+	   				if e.Object.GetLabels()["type"] == "Shard" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == oshInst.Name {
+   
+	   					if delObj.DeletionTimestamp != nil {
+		   					go r.gsmInvitedNodeOp(oshInst, delObj.Name)
+			   			}
+				   	}
 
-							if delObj.DeletionTimestamp != nil {
-								go r.gsmInvitedNodeOp(oshInst.Instance, delObj.Name)
-							}
-						}
+					   if e.Object.GetLabels()["type"] == "Catalog" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == oshInst.Name {
 
-						if e.Object.GetLabels()["type"] == "Catalog" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == oshInst.Instance.Name {
-
-							if delObj.DeletionTimestamp != nil {
-								go r.gsmInvitedNodeOp(oshInst.Instance, delObj.Name)
-							}
-						}
-
-					}
-
-				}
-			}
-
+						   if delObj.DeletionTimestamp != nil {
+							   go r.gsmInvitedNodeOp(oshInst, delObj.Name)
+						   }
+					   }
+				   }
+   			}
+      }
 			return true
 		},
 	}
@@ -523,7 +514,7 @@ func (r *ShardingDatabaseReconciler) UpdateSecret(instance *databasev4.ShardingD
 	// Reading a Secret
 	var err error = kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      instance.Spec.DbSecret.Name,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, sc)
 
 	if err != nil {
@@ -534,38 +525,56 @@ func (r *ShardingDatabaseReconciler) UpdateSecret(instance *databasev4.ShardingD
 }
 
 // ================== Function to get the Notification controller ==============
-func (r *ShardingDatabaseReconciler) getOnsConfigProvider(instance *databasev4.ShardingDatabase, idx int,
-) {
+func (r *ShardingDatabaseReconciler) getOnsConfigProvider(instance *databasev4.ShardingDatabase) {
 	var err error
-	if instance.Spec.DbSecret.NsConfigMap != "" && instance.Spec.DbSecret.NsSecret != "" && r.osh[idx].onsProviderFlag != true {
+	if instance.Spec.DbSecret.NsConfigMap != "" && instance.Spec.DbSecret.NsSecret != "" && oshMap[instance.Name].OnsProviderFlag != true {
 		cmName := instance.Spec.DbSecret.NsConfigMap
 		secName := instance.Spec.DbSecret.NsSecret
 		shardingv1.LogMessages("DEBUG", "Received parameters are "+shardingv1.GetFmtStr(cmName)+","+shardingv1.GetFmtStr(secName), nil, instance, r.Log)
 		region, user, tenancy, passphrase, fingerprint, topicid := shardingv1.ReadConfigMap(cmName, instance, r.Client, r.Log)
 		privatekey := shardingv1.ReadSecret(secName, instance, r.Client, r.Log)
-		r.osh[idx].topicid = topicid
-		r.osh[idx].onsProvider = common.NewRawConfigurationProvider(tenancy, user, region, fingerprint, privatekey, &passphrase)
-		r.osh[idx].rclient, err = ons.NewNotificationDataPlaneClientWithConfigurationProvider(r.osh[idx].onsProvider)
-		if err != nil {
-			msg := "Error occurred in getting the OCI notification service based client."
-			r.osh[idx].onsProviderFlag = false
-			r.Log.Error(err, msg)
-			shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-		} else {
-			r.osh[idx].onsProviderFlag = true
-		}
 
+    oshMap[instance.Name].Topicid = topicid
+    oshMap[instance.Name].OnsProvider = common.NewRawConfigurationProvider(tenancy, user, region, fingerprint, privatekey, &passphrase)
+//VV    instance.Spec.TopicId = topicid
+    oshMap[instance.Name].Rclient, err = ons.NewNotificationDataPlaneClientWithConfigurationProvider(oshMap[instance.Name].OnsProvider)
+    if err != nil {
+      msg := "Error occurred in getting the OCI notification service based client."
+      oshMap[instance.Name].OnsProviderFlag = false
+      r.Log.Error(err, msg)
+      shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
+    } else {
+      oshMap[instance.Name].OnsProviderFlag = true
+    }
+  }
+}
+
+func (r ShardingDatabaseReconciler) marshalOnsInfo(instance *databasev4.ShardingDatabase) (OnsStatus, error) {
+	onsData := OnsStatus{}
+	specBytes, err := instance.GetLastSuccessfulOnsInfo()
+	if err != nil {
+		shardingv1.LogMessages("Error", "error occurred while getting the data from getLastSuccessfulOnsInfo", nil, instance, r.Log)
+		return onsData, err
+	} else {
+		shardingv1.LogMessages("Error", "error occurred while getting the data from getLastSuccessfulOnsInfo and unmarshaling the object", nil, instance, r.Log)
+		err := json.Unmarshal(specBytes, &onsData)
+		if err != nil {
+			return onsData, err
+		}
 	}
+	return onsData, nil
 }
 
 // ================== Function the Message  ==============
 func (r *ShardingDatabaseReconciler) sendMessage(instance *databasev4.ShardingDatabase, title string, body string) {
-	idx, instFlag := r.checkProvInstance(instance)
-	if instFlag {
-		if r.osh[idx].onsProviderFlag {
-			shardingv1.SendNotification(title, body, instance, r.osh[idx].topicid, r.osh[idx].rclient, r.Log)
-		}
-	}
+  instFlag := r.checkProvInstance(instance)
+  if instFlag {
+    shardingv1.LogMessages("INFO", "sendMessage():instFlag true", nil, instance, r.Log)
+    if oshMap[instance.Name].OnsProviderFlag {
+      shardingv1.LogMessages("INFO", "sendMessage():OnsProviderFlag true", nil, instance, r.Log)
+      shardingv1.SendNotification(title, body, instance, oshMap[instance.Name].Topicid, oshMap[instance.Name].Rclient, r.Log)
+    }
+  }
 }
 
 func (r *ShardingDatabaseReconciler) publishEvents(instance *databasev4.ShardingDatabase, eventMsg string, state string) {
@@ -620,7 +629,7 @@ func (r *ShardingDatabaseReconciler) finalizerShardingDatabaseInstance(instance 
 
 // ========================== FInalizer Section ===================
 func (r *ShardingDatabaseReconciler) addFinalizer(instance *databasev4.ShardingDatabase) error {
-	reqLogger := r.Log.WithValues("instance.Spec.Namespace", instance.Spec.Namespace, "instance.Name", instance.Name)
+	reqLogger := r.Log.WithValues("instance.Namespace", instance.Namespace, "instance.Name", instance.Name)
 	controllerutil.AddFinalizer(instance, shardingv1.ShardingDatabaseFinalizer)
 
 	// Update CR
@@ -641,10 +650,9 @@ func (r *ShardingDatabaseReconciler) finalizeShardingDatabase(instance *database
 	var err error
 	var pvcName string
 
-	idx, _ := r.checkProvInstance(instance)
+	r.checkProvInstance(instance)
 	sfSetFound := &appsv1.StatefulSet{}
 	svcFound := &corev1.Service{}
-	r.osh[idx].deltopology = true
 	if len(instance.Spec.Shard) > 0 {
 		for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
 			OraShardSpex := instance.Spec.Shard[i]
@@ -831,41 +839,29 @@ func (r *ShardingDatabaseReconciler) finalizeShardingDatabase(instance *database
 		}
 	}
 
-	r.osh[idx].deltopology = false
-	//r.osh[idx].addSem.Release(1)
-	//r.osh[idx].delSem.Release(1)
-	//instance1 := &shardingv4.ProvShard{}
-	r.osh[idx].Instance = &databasev4.ShardingDatabase{}
-
-	//r.osh[idx] = nil
+  oshMap[instance.Name].Instance = &databasev4.ShardingDatabase{}
 
 	return nil
 }
 
-//==============
-
 // Get the current instance
 func (r *ShardingDatabaseReconciler) checkProvInstance(instance *databasev4.ShardingDatabase,
-) (int, bool) {
+) bool {
 
 	var status bool = false
-	var idx int
-	for i := 0; i < len(r.osh); i++ {
-		idx = i
-		if r.osh[i] != nil {
-			if !r.osh[i].deltopology {
-				if r.osh[i].Instance.Name == instance.Name {
-					status = true
-					break
-				}
-			}
+	if oshMap[instance.Name] != nil {
+		title := "checkProvInstance()"
+		message := "oshMap.Instance.Name=[" + oshMap[instance.Name].Instance.Name + "]. instance.Name=[" + instance.Name + "]."
+		shardingv1.LogMessages("INFO", title+":"+message, nil, instance, r.Log)
+		if oshMap[instance.Name].Instance.Name == instance.Name {
+			status = true
 		}
 	}
-	return idx, status
+	return status
 }
 
 // =========== validate Specs ============
-func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev4.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev4.ShardingDatabase) error {
 
 	var eventMsg string
 	var eventErr string = "Spec Error"
@@ -880,7 +876,7 @@ func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev4.ShardingD
 	if lastSuccSpec == nil {
 		// Logic to check if inital Spec is good or not
 
-		err = r.checkShardingType(instance, idx)
+		err = r.checkShardingType(instance)
 		if err != nil {
 			return err
 		}
@@ -909,11 +905,6 @@ func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev4.ShardingD
 	} else {
 		// if the last sucessful spec is not nil
 		// check the parameters which cannot be changed
-		if lastSuccSpec.Namespace != instance.Spec.Namespace {
-			eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " namespace changed from " + shardingv1.GetFmtStr(lastSuccSpec.Namespace) + " to " + shardingv1.GetFmtStr(instance.Spec.Namespace) + ". This change is not allowed."
-			r.Recorder.Eventf(instance, corev1.EventTypeWarning, eventErr, eventMsg)
-			return fmt.Errorf("instance spec has changed and namespace change is not supported")
-		}
 
 		if lastSuccSpec.DbImage != instance.Spec.DbImage {
 			eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " DBImage changed from " + shardingv1.GetFmtStr(lastSuccSpec.DbImage) + " to " + shardingv1.GetFmtStr(instance.Spec.DbImage) + ". This change is not allowed."
@@ -950,7 +941,7 @@ func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev4.ShardingD
 	return nil
 }
 
-func (r *ShardingDatabaseReconciler) checkShardingType(instance *databasev4.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) checkShardingType(instance *databasev4.ShardingDatabase) error {
 	var i, k int32
 	var regionFlag bool
 
@@ -1172,10 +1163,12 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.Sh
 	podList := &corev1.PodList{}
 	var isPodExist bool
 
+	// VV : uninitialised variable 'i' being used.
+	i = int32(specId)
 	gsmSfSet, err = shardingv1.CheckSfset(OraGsmSpex.Name, instance, r.Client)
 	if err != nil {
 		msg = "Unable to find  GSM statefulset " + shardingv1.GetFmtStr(OraGsmSpex.Name) + "."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateGsmStatus(instance, int(i), string(databasev4.StatefulSetNotFound))
 		return gsmSfSet, gsmPod, err
 	}
@@ -1183,7 +1176,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.Sh
 	podList, err = shardingv1.GetPodList(gsmSfSet.Name, "GSM", instance, r.Client)
 	if err != nil {
 		msg = "Unable to find any pod in statefulset " + shardingv1.GetFmtStr(gsmSfSet.Name) + "."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateGsmStatus(instance, int(i), string(databasev4.PodNotFound))
 		return gsmSfSet, gsmPod, err
 	}
@@ -1191,14 +1184,14 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.Sh
 	isPodExist, gsmPod = shardingv1.PodListValidation(podList, gsmSfSet.Name, instance, r.Client)
 	if !isPodExist {
 		msg = "Unable to validate GSM " + shardingv1.GetFmtStr(gsmPod.Name) + " pod. GSM pod doesn't seems to be ready to accept the commands."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateGsmStatus(instance, int(i), string(databasev4.PodNotReadyState))
 		return gsmSfSet, gsmPod, fmt.Errorf("pod doesn't exist")
 	}
 	err = shardingv1.CheckGsmStatus(gsmPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
 	if err != nil {
 		msg = "Unable to validate GSM director. GSM director doesn't seems to be ready to accept the commands."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateGsmStatus(instance, int(i), string(databasev4.ProvisionState))
 		return gsmSfSet, gsmPod, err
 	}
@@ -1248,7 +1241,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 	catalogSfSet, err = shardingv1.CheckSfset(OraCatalogSpex.Name, instance, r.Client)
 	if err != nil {
 		msg := "Unable to find Catalog statefulset " + shardingv1.GetFmtStr(OraCatalogSpex.Name) + "."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateCatalogStatus(instance, specId, string(databasev4.StatefulSetNotFound))
 		return catalogSfSet, catalogPod, err
 	}
@@ -1256,21 +1249,21 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 	podList, err = shardingv1.GetPodList(catalogSfSet.Name, "CATALOG", instance, r.Client)
 	if err != nil {
 		msg := "Unable to find any pod in statefulset " + shardingv1.GetFmtStr(catalogSfSet.Name) + "."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateCatalogStatus(instance, specId, string(databasev4.PodNotFound))
 		return catalogSfSet, catalogPod, err
 	}
 	isPodExist, catalogPod = shardingv1.PodListValidation(podList, catalogSfSet.Name, instance, r.Client)
 	if !isPodExist {
 		msg := "Unable to validate Catalog " + shardingv1.GetFmtStr(catalogSfSet.Name) + " pod. Catalog pod doesn't seems to be ready to accept the commands."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateCatalogStatus(instance, specId, string(databasev4.PodNotReadyState))
 		return catalogSfSet, catalogPod, fmt.Errorf("Pod doesn't exist")
 	}
 	err = shardingv1.ValidateDbSetup(catalogPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
 	if err != nil {
 		msg := "Unable to validate Catalog. Catalog doesn't seems to be ready to accept the commands."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateCatalogStatus(instance, specId, string(databasev4.ProvisionState))
 		return catalogSfSet, catalogPod, err
 	}
@@ -1291,7 +1284,7 @@ func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.Sharding
 	shardSfSet, err = shardingv1.CheckSfset(OraShardSpex.Name, instance, r.Client)
 	if err != nil {
 		msg := "Unable to find Shard statefulset " + shardingv1.GetFmtStr(OraShardSpex.Name) + "."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateShardStatus(instance, specId, string(databasev4.StatefulSetNotFound))
 		return shardSfSet, shardPod, err
 	}
@@ -1299,21 +1292,21 @@ func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.Sharding
 	podList, err := shardingv1.GetPodList(shardSfSet.Name, "SHARD", instance, r.Client)
 	if err != nil {
 		msg := "Unable to find any pod in statefulset " + shardingv1.GetFmtStr(shardSfSet.Name) + "."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateShardStatus(instance, specId, string(databasev4.PodNotFound))
 		return shardSfSet, shardPod, err
 	}
 	isPodExist, shardPod := shardingv1.PodListValidation(podList, shardSfSet.Name, instance, r.Client)
 	if !isPodExist {
 		msg := "Unable to validate Shard " + shardingv1.GetFmtStr(shardPod.Name) + " pod. Shard pod doesn't seems to be ready to accept the commands."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateShardStatus(instance, specId, string(databasev4.PodNotReadyState))
 		return shardSfSet, shardPod, err
 	}
 	err = shardingv1.ValidateDbSetup(shardPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
 	if err != nil {
 		msg := "Unable to validate shard. Shard doesn't seems to be ready to accept the commands."
-		shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+		shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 		r.updateShardStatus(instance, specId, string(databasev4.ProvisionState))
 		return shardSfSet, shardPod, err
 	}
@@ -1480,7 +1473,7 @@ func (r *ShardingDatabaseReconciler) updateGsmShardStatus(instance *databasev4.S
 }
 
 // This function add the Primary Shards in GSM
-func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.ShardingDatabase) error {
 	//var result ctrl.Result
 	var result ctrl.Result
 	var i int32
@@ -1551,14 +1544,14 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 				last := fileName[strings.LastIndex(fileName, "/")+1:]
 				fileName1 := last
 				fsLoc := shardingv1.TmpLoc + "/" + fileName1
-				_, _, _, err = shardingv1.KctlCopyFile(r.kubeClient, r.kubeConfig, instance, configrest, kclientset, r.Log, fmt.Sprintf("%s/%s:/%s", instance.Spec.Namespace, gsmPod.Name, fileName), fsLoc, "")
+				_, _, _, err = shardingv1.KctlCopyFile(r.kubeClient, r.kubeConfig, instance, configrest, kclientset, r.Log, fmt.Sprintf("%s/%s:/%s", instance.Namespace, gsmPod.Name, fileName), fsLoc, "")
 				if err != nil {
 					fmt.Printf("failed to copy file")
 					//return err
 				}
 
 				// Copying it to Shard Pod
-				_, _, _, err = shardingv1.KctlCopyFile(r.kubeClient, r.kubeConfig, instance, configrest, kclientset, r.Log, fsLoc, fmt.Sprintf("%s/%s:/%s", instance.Spec.Namespace, OraShardSpex.Name+"-0", fsLoc), "")
+				_, _, _, err = shardingv1.KctlCopyFile(r.kubeClient, r.kubeConfig, instance, configrest, kclientset, r.Log, fsLoc, fmt.Sprintf("%s/%s:/%s", instance.Namespace, OraShardSpex.Name+"-0", fsLoc), "")
 				if err != nil {
 					fmt.Printf("failed to copy file")
 					//return err
@@ -1573,14 +1566,15 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 				err = shardingv1.AddShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
 				if err != nil {
 					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
-					title = "Shard Addition Failure"
-					message = "Error occurred during shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " addition."
-					shardingv1.LogMessages("INFO", title+":"+message, nil, instance, r.Log)
-					if sentFailMsg[OraShardSpex.Name] != true {
+					title = instance.Namespace + ":Shard Addition Failure"
+					message = "TopicId:" + oshMap[instance.Name].Topicid + ":Error occurred during shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " addition."
+					shardingv1.LogMessages("Error", title+":"+message, nil, instance, r.Log)
+					msgKey := instance.Namespace + "-" + OraShardSpex.Name
+					if sentFailMsg[msgKey] != true {
 						r.sendMessage(instance, title, message)
 					}
-					sentFailMsg[OraShardSpex.Name] = true
-					sentCompleteMsg[OraShardSpex.Name] = false
+					sentFailMsg[msgKey] = true
+					sentCompleteMsg[msgKey] = false
 					deployFlag = false
 				}
 			}
@@ -1629,27 +1623,28 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev4.ShardingD
 	r.updateGsmShardStatus(instance, shardSfSet.Name, string(databasev4.ShardOnlineState))
 	// Following logic will sent a email only once
 	if oldStateStr != string(databasev4.ShardOnlineState) {
-		title = "Shard Addition Completed"
-		message = "Shard addition completed for shard " + shardingv1.GetFmtStr(shardSfSet.Name) + " in GSM."
+		title = instance.Namespace + ":Shard Addition Completed"
+		message = "TopicId:" + oshMap[instance.Name].Topicid + ":Shard addition completed for shard " + shardingv1.GetFmtStr(shardSfSet.Name) + " in GSM."
 		shardingv1.LogMessages("INFO", title+":"+message, nil, instance, r.Log)
-		if sentCompleteMsg[shardSfSet.Name] != true {
+		msgKey := instance.Namespace + "-" + shardSfSet.Name
+		if sentCompleteMsg[msgKey] != true {
 			r.sendMessage(instance, title, message)
 		}
 
-		sentCompleteMsg[shardSfSet.Name] = true
-		sentFailMsg[shardSfSet.Name] = false
+		sentCompleteMsg[msgKey] = true
+		sentFailMsg[msgKey] = false
 	}
 	return nil
 }
 
-func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.ShardingDatabase) error {
 	//var result ctrl.Result
 
 	return nil
 }
 
 // ========== Delete Shard Section====================
-func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDatabase, idx int) error {
+func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDatabase) error {
 	var result ctrl.Result
 	var i int32
 	var err error
@@ -1728,7 +1723,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 							err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
 							if err != nil {
 								msg = "Error occurred while changing the isDelete value to failed in Spec struct"
-								shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+								shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 								return err
 							}
 							continue
@@ -1754,7 +1749,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 								if err != nil {
 									// r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
 									msg = "Error occurred while changing the isDelete value to failed in Spec struct"
-									shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+									shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 									// return err
 								}
 								return err
@@ -1895,7 +1890,7 @@ func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev4.Shard
 func (r *ShardingDatabaseReconciler) createService(instance *databasev4.ShardingDatabase,
 	dep *corev1.Service,
 ) (ctrl.Result, error) {
-	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Spec.Namespace, "Instance.Name", instance.Name)
+	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	// See if Service already exists and create if it doesn't
 	// We are getting error on nil pointer segment when r.scheme is null
 	// Error : invalid memory address or nil pointer dereference" (runtime error: invalid memory address or nil pointer dereference)
@@ -1912,7 +1907,7 @@ func (r *ShardingDatabaseReconciler) createService(instance *databasev4.Sharding
 
 	err := r.Client.Get(context.TODO(), types.NamespacedName{
 		Name:      dep.Name,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, found)
 
 	jsn, _ := json.Marshal(dep)
@@ -1944,7 +1939,7 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev4.Shar
 	resType string,
 ) (ctrl.Result, error) {
 
-	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Spec.Namespace, "Instance.Name", instance.Name)
+	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	message := "Inside the deployStatefulSet function"
 	shardingv1.LogMessages("DEBUG", message, nil, instance, r.Log)
 	// See if StatefulSets already exists and create if it doesn't
@@ -1961,7 +1956,7 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev4.Shar
 	found := &appsv1.StatefulSet{}
 	err := r.Client.Get(context.TODO(), types.NamespacedName{
 		Name:      dep.Name,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, found)
 	jsn, _ := json.Marshal(dep)
 	shardingv1.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
@@ -2016,34 +2011,29 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev4.Shardi
 		for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
 			OraShardSpex = instance.Spec.Shard[i]
 			currState = shardingv1.GetGsmShardStatus(instance, OraShardSpex.Name)
-			if currState == string(databasev4.AddingShardState) {
-				eventMsg = "Shard Addition in progress. Requeuing"
+			if OraShardSpex.IsDelete == "failed" {
+				eventMsg = "Shard Deletion  failed for [" + OraShardSpex.Name + "]. Retry shard deletion after manually moving the chunks. Requeuing"
 				err = fmt.Errorf(eventMsg)
-				break
+			} else if currState == string(databasev4.AddingShardState) {
+				eventMsg = "Shard Addition in progress for [" + OraShardSpex.Name + "]. Requeuing"
+				err = fmt.Errorf(eventMsg)
 			} else if currState == string(databasev4.DeletingState) {
-				eventMsg = "Shard Deletion in progress. Requeuing"
+				eventMsg = "Shard Deletion in progress for [" + OraShardSpex.Name + "]. Requeuing"
 				err = fmt.Errorf(eventMsg)
 				err = nil
-				break
-			} else if OraShardSpex.IsDelete == "failed" {
-				eventMsg = "Shard Deletion  failed. Manual intervention required. Requeuing"
-				err = fmt.Errorf(eventMsg)
-				break
 			} else if currState == string(databasev4.DeleteErrorState) {
-				eventMsg = "Shard Deletion  Error. Manual intervention required. Requeuing"
+				eventMsg = "Shard Deletion  Error for [" + OraShardSpex.Name + "]. Manual intervention required. Requeuing"
 				err = fmt.Errorf(eventMsg)
-				break
 			} else if currState == string(databasev4.ShardRemoveError) {
-				eventMsg = "Shard Deletion  Error. Manual intervention required. Requeuing"
+				eventMsg = "Shard Deletion  Error for [" + OraShardSpex.Name + "]. Manual intervention required. Requeuing"
 				err = fmt.Errorf(eventMsg)
-				break
 			} else {
-				eventMsg = "checkShardState() : Shard State=[" + currState + "]"
+				eventMsg = "checkShardState() : Shard State[" + OraShardSpex.Name + "]=[" + currState + "]"
 				shardingv1.LogMessages("INFO", eventMsg, nil, instance, r.Log)
 				err = nil
 			}
+			r.publishEvents(instance, eventMsg, currState)
 		}
-		r.publishEvents(instance, eventMsg, currState)
 	}
 	return err
 }
