@@ -9,9 +9,22 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
     controller-gen.kubebuilder.io/version: v0.16.5
   name: autonomouscontainerdatabases.database.oracle.com
 spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          name: oracle-database-operator-webhook-service
+          namespace: oracle-database-operator-system
+          path: /convert
+      conversionReviewVersions:
+      - v1alpha1
+      - v1
+      - v4
   group: database.oracle.com
   names:
     kind: AutonomousContainerDatabase
@@ -90,6 +103,76 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .spec.displayName
+      name: DisplayName
+      type: string
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .status.timeCreated
+      name: Created
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              action:
+                enum:
+                - SYNC
+                - RESTART
+                - TERMINATE
+                type: string
+              autonomousContainerDatabaseOCID:
+                type: string
+              autonomousExadataVMClusterOCID:
+                type: string
+              compartmentOCID:
+                type: string
+              displayName:
+                type: string
+              freeformTags:
+                additionalProperties:
+                  type: string
+                type: object
+              hardLink:
+                default: false
+                type: boolean
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+              patchModel:
+                enum:
+                - RELEASE_UPDATES
+                - RELEASE_UPDATE_REVISIONS
+                type: string
+            type: object
+          status:
+            properties:
+              lifecycleState:
+                type: string
+              timeCreated:
+                type: string
+            required:
+            - lifecycleState
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}
@@ -98,9 +181,22 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
     controller-gen.kubebuilder.io/version: v0.16.5
   name: autonomousdatabasebackups.database.oracle.com
 spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          name: oracle-database-operator-webhook-service
+          namespace: oracle-database-operator-system
+          path: /convert
+      conversionReviewVersions:
+      - v1alpha1
+      - v1
+      - v4
   group: database.oracle.com
   names:
     kind: AutonomousDatabaseBackup
@@ -200,6 +296,97 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .status.dbDisplayName
+      name: DB DisplayName
+      type: string
+    - jsonPath: .status.type
+      name: Type
+      type: string
+    - jsonPath: .status.timeStarted
+      name: Started
+      type: string
+    - jsonPath: .status.timeEnded
+      name: Ended
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              autonomousDatabaseBackupOCID:
+                type: string
+              displayName:
+                type: string
+              isLongTermBackup:
+                type: boolean
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+              retentionPeriodInDays:
+                type: integer
+              target:
+                properties:
+                  k8sADB:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  ociADB:
+                    properties:
+                      ocid:
+                        type: string
+                    type: object
+                type: object
+            type: object
+          status:
+            properties:
+              autonomousDatabaseOCID:
+                type: string
+              compartmentOCID:
+                type: string
+              dbDisplayName:
+                type: string
+              dbName:
+                type: string
+              isAutomatic:
+                type: boolean
+              lifecycleState:
+                type: string
+              timeEnded:
+                type: string
+              timeStarted:
+                type: string
+              type:
+                type: string
+            required:
+            - autonomousDatabaseOCID
+            - compartmentOCID
+            - dbDisplayName
+            - dbName
+            - isAutomatic
+            - lifecycleState
+            - type
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}
@@ -208,9 +395,22 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
     controller-gen.kubebuilder.io/version: v0.16.5
   name: autonomousdatabaserestores.database.oracle.com
 spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          name: oracle-database-operator-webhook-service
+          namespace: oracle-database-operator-system
+          path: /convert
+      conversionReviewVersions:
+      - v1alpha1
+      - v1
+      - v4
   group: database.oracle.com
   names:
     kind: AutonomousDatabaseRestore
@@ -305,6 +505,92 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.displayName
+      name: DbDisplayName
+      type: string
+    - jsonPath: .status.dbName
+      name: DbName
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+              source:
+                properties:
+                  k8sADBBackup:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  pointInTime:
+                    properties:
+                      timestamp:
+                        type: string
+                    type: object
+                type: object
+              target:
+                properties:
+                  k8sADB:
+                    properties:
+                      name:
+                        type: string
+                    type: object
+                  ociADB:
+                    properties:
+                      ocid:
+                        type: string
+                    type: object
+                type: object
+            required:
+            - source
+            - target
+            type: object
+          status:
+            properties:
+              dbName:
+                type: string
+              displayName:
+                type: string
+              status:
+                type: string
+              timeAccepted:
+                type: string
+              timeEnded:
+                type: string
+              timeStarted:
+                type: string
+              workRequestOCID:
+                type: string
+            required:
+            - dbName
+            - displayName
+            - status
+            - workRequestOCID
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}
@@ -313,9 +599,22 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
+    cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
     controller-gen.kubebuilder.io/version: v0.16.5
   name: autonomousdatabases.database.oracle.com
 spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          name: oracle-database-operator-webhook-service
+          namespace: oracle-database-operator-system
+          path: /convert
+      conversionReviewVersions:
+      - v1alpha1
+      - v1
+      - v4
   group: database.oracle.com
   names:
     kind: AutonomousDatabase
@@ -353,6 +652,239 @@ spec:
       name: Created
       type: string
     name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              details:
+                properties:
+                  adminPassword:
+                    properties:
+                      k8sSecret:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociSecret:
+                        properties:
+                          ocid:
+                            type: string
+                        type: object
+                    type: object
+                  autonomousContainerDatabase:
+                    properties:
+                      k8sACD:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociACD:
+                        properties:
+                          ocid:
+                            type: string
+                        type: object
+                    type: object
+                  autonomousDatabaseOCID:
+                    type: string
+                  compartmentOCID:
+                    type: string
+                  cpuCoreCount:
+                    type: integer
+                  dataStorageSizeInTBs:
+                    type: integer
+                  dbName:
+                    type: string
+                  dbVersion:
+                    type: string
+                  dbWorkload:
+                    enum:
+                    - OLTP
+                    - DW
+                    - AJD
+                    - APEX
+                    type: string
+                  displayName:
+                    type: string
+                  freeformTags:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  isAutoScalingEnabled:
+                    type: boolean
+                  isDedicated:
+                    type: boolean
+                  licenseModel:
+                    enum:
+                    - LICENSE_INCLUDED
+                    - BRING_YOUR_OWN_LICENSE
+                    type: string
+                  lifecycleState:
+                    type: string
+                  networkAccess:
+                    properties:
+                      accessControlList:
+                        items:
+                          type: string
+                        type: array
+                      accessType:
+                        enum:
+                        - ""
+                        - PUBLIC
+                        - RESTRICTED
+                        - PRIVATE
+                        type: string
+                      isAccessControlEnabled:
+                        type: boolean
+                      isMTLSConnectionRequired:
+                        type: boolean
+                      privateEndpoint:
+                        properties:
+                          hostnamePrefix:
+                            type: string
+                          nsgOCIDs:
+                            items:
+                              type: string
+                            type: array
+                          subnetOCID:
+                            type: string
+                        type: object
+                    type: object
+                  wallet:
+                    properties:
+                      name:
+                        type: string
+                      password:
+                        properties:
+                          k8sSecret:
+                            properties:
+                              name:
+                                type: string
+                            type: object
+                          ociSecret:
+                            properties:
+                              ocid:
+                                type: string
+                            type: object
+                        type: object
+                    type: object
+                type: object
+              hardLink:
+                default: false
+                type: boolean
+              ociConfig:
+                properties:
+                  configMapName:
+                    type: string
+                  secretName:
+                    type: string
+                type: object
+            required:
+            - details
+            type: object
+          status:
+            properties:
+              allConnectionStrings:
+                items:
+                  properties:
+                    connectionStrings:
+                      items:
+                        properties:
+                          connectionString:
+                            type: string
+                          tnsName:
+                            type: string
+                        type: object
+                      type: array
+                    tlsAuthentication:
+                      type: string
+                  required:
+                  - connectionStrings
+                  type: object
+                type: array
+              conditions:
+                items:
+                  properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                    message:
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lifecycleState:
+                type: string
+              timeCreated:
+                type: string
+              walletExpiringDate:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .spec.details.displayName
+      name: Display Name
+      type: string
+    - jsonPath: .spec.details.dbName
+      name: Db Name
+      type: string
+    - jsonPath: .status.lifecycleState
+      name: State
+      type: string
+    - jsonPath: .spec.details.isDedicated
+      name: Dedicated
+      type: string
+    - jsonPath: .spec.details.cpuCoreCount
+      name: OCPUs
+      type: integer
+    - jsonPath: .spec.details.dataStorageSizeInTBs
+      name: Storage (TB)
+      type: integer
+    - jsonPath: .spec.details.dbWorkload
+      name: Workload Type
+      type: string
+    - jsonPath: .status.timeCreated
+      name: Created
+      type: string
+    name: v4
     schema:
       openAPIV3Schema:
         properties:
@@ -2482,6 +3014,10 @@ spec:
                       additionalProperties:
                         type: string
                       type: object
+                    pvAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     pvMatchLabels:
                       additionalProperties:
                         type: string
@@ -2645,8 +3181,6 @@ spec:
                 type: string
               liveinessCheckPeriod:
                 type: integer
-              namespace:
-                type: string
               portMappings:
                 items:
                   properties:
@@ -2775,6 +3309,8 @@ spec:
               tdeWalletPvc:
                 type: string
               tdeWalletPvcMountLocation:
+                type: string
+              topicId:
                 type: string
             required:
             - catalog
@@ -3018,6 +3554,10 @@ spec:
                       additionalProperties:
                         type: string
                       type: object
+                    pvAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     pvMatchLabels:
                       additionalProperties:
                         type: string
@@ -3181,8 +3721,6 @@ spec:
                 type: string
               liveinessCheckPeriod:
                 type: integer
-              namespace:
-                type: string
               portMappings:
                 items:
                   properties:
@@ -3311,6 +3849,8 @@ spec:
               tdeWalletPvc:
                 type: string
               tdeWalletPvcMountLocation:
+                type: string
+              topicId:
                 type: string
             required:
             - catalog
@@ -4135,14 +4675,34 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v1alpha1-autonomousdatabase
+      path: /mutate-database-oracle-com-v4-autonomousdatabasebackup
   failurePolicy: Fail
-  name: mautonomousdatabase.kb.io
+  name: mautonomousdatabasebackupv4.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v1alpha1
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabasebackups
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v4-autonomousdatabase
+  failurePolicy: Fail
+  name: mautonomousdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
     operations:
     - CREATE
     - UPDATE
@@ -4155,9 +4715,49 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v4-dbcssystem
+  failurePolicy: Fail
+  name: mdbcssystemv4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dbcssystems
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v4-shardingdatabase
+  failurePolicy: Fail
+  name: mshardingdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /mutate-database-oracle-com-v1alpha1-autonomousdatabasebackup
   failurePolicy: Fail
-  name: mautonomousdatabasebackup.kb.io
+  name: mautonomousdatabasebackupv1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -4168,6 +4768,26 @@ webhooks:
     - UPDATE
     resources:
     - autonomousdatabasebackups
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-autonomousdatabase
+  failurePolicy: Fail
+  name: mautonomousdatabasev1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -4279,14 +4899,14 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v4-shardingdatabase
+      path: /mutate-database-oracle-com-v1alpha1-shardingdatabase
   failurePolicy: Fail
   name: mshardingdatabasev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v4
+    - v1alpha1
     operations:
     - CREATE
     - UPDATE
@@ -4313,46 +4933,6 @@ webhooks:
     - UPDATE
     resources:
     - singleinstancedatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v4-dbcssystem
-  failurePolicy: Fail
-  name: mdbcssystemv4.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - dbcssystems
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v4-shardingdatabase
-  failurePolicy: Fail
-  name: mshardingdatabasev4.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - shardingdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -4388,9 +4968,110 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-autonomouscontainerdatabase
+  failurePolicy: Fail
+  name: vautonomouscontainerdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomouscontainerdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-autonomousdatabasebackup
+  failurePolicy: Fail
+  name: vautonomousdatabasebackupv4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabasebackups
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-autonomousdatabaserestore
+  failurePolicy: Fail
+  name: vautonomousdatabaserestorev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabaserestores
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-autonomousdatabase
+  failurePolicy: Fail
+  name: vautonomousdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-shardingdatabase
+  failurePolicy: Fail
+  name: vshardingdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase
   failurePolicy: Fail
-  name: vautonomouscontainerdatabase.kb.io
+  name: vautonomouscontainerdatabasev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -4408,29 +5089,9 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-autonomousdatabase
-  failurePolicy: Fail
-  name: vautonomousdatabase.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v1alpha1-autonomousdatabasebackup
   failurePolicy: Fail
-  name: vautonomousdatabasebackup.kb.io
+  name: vautonomousdatabasebackupv1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -4450,7 +5111,7 @@ webhooks:
       namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v1alpha1-autonomousdatabaserestore
   failurePolicy: Fail
-  name: vautonomousdatabaserestore.kb.io
+  name: vautonomousdatabaserestorev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -4461,6 +5122,26 @@ webhooks:
     - UPDATE
     resources:
     - autonomousdatabaserestores
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-autonomousdatabase
+  failurePolicy: Fail
+  name: vautonomousdatabasev1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -4552,14 +5233,14 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v4-shardingdatabase
+      path: /validate-database-oracle-com-v1alpha1-shardingdatabase
   failurePolicy: Fail
   name: vshardingdatabasev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v4
+    - v1alpha1
     operations:
     - CREATE
     - UPDATE
@@ -4588,27 +5269,6 @@ webhooks:
     - DELETE
     resources:
     - singleinstancedatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v4-shardingdatabase
-  failurePolicy: Fail
-  name: vshardingdatabasev4.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    - DELETE
-    resources:
-    - shardingdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1

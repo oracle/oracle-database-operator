@@ -1407,6 +1407,13 @@ func (in *GsmSpec) DeepCopyInto(out *GsmSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.PvAnnotations != nil {
+		in, out := &in.PvAnnotations, &out.PvAnnotations
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
+	}
 	if in.PvMatchLabels != nil {
 		in, out := &in.PvMatchLabels, &out.PvMatchLabels
 		*out = make(map[string]string, len(*in))

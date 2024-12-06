@@ -175,6 +175,10 @@ spec:
                       additionalProperties:
                         type: string
                       type: object
+                    pvAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     pvMatchLabels:
                       additionalProperties:
                         type: string
@@ -338,8 +342,6 @@ spec:
                 type: string
               liveinessCheckPeriod:
                 type: integer
-              namespace:
-                type: string
               portMappings:
                 items:
                   properties:
@@ -468,6 +470,8 @@ spec:
               tdeWalletPvc:
                 type: string
               tdeWalletPvcMountLocation:
+                type: string
+              topicId:
                 type: string
             required:
             - catalog
@@ -711,6 +715,10 @@ spec:
                       additionalProperties:
                         type: string
                       type: object
+                    pvAnnotations:
+                      additionalProperties:
+                        type: string
+                      type: object
                     pvMatchLabels:
                       additionalProperties:
                         type: string
@@ -874,8 +882,6 @@ spec:
                 type: string
               liveinessCheckPeriod:
                 type: integer
-              namespace:
-                type: string
               portMappings:
                 items:
                   properties:
@@ -1004,6 +1010,8 @@ spec:
               tdeWalletPvc:
                 type: string
               tdeWalletPvcMountLocation:
+                type: string
+              topicId:
                 type: string
             required:
             - catalog
