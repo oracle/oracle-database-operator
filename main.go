@@ -275,6 +275,10 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
 			os.Exit(1)
 		}
+                if err = (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
+                        setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
+                        os.Exit(1)
+                }
 	}
 
 	// PDB Reconciler
@@ -323,10 +327,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
-		os.Exit(1)
-	}
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs

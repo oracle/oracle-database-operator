@@ -87,7 +87,8 @@ type DbcsSystemReconciler struct {
 // +kubebuilder:rbac:groups=database.oracle.com,resources=dbcssystems/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=database.oracle.com,resources=dbcssystems/finalizers,verbs=get;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps;secrets;namespaces,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:object:root=true
+
+
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
@@ -349,12 +350,21 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Check if cloning is needed, debugging
 	// *dbcsInst.Status.DbCloneStatus.Id = ""
 	setupCloning := false
-	if dbcsInst.Spec.SetupDBCloning && (dbcsInst.Spec.Id != nil || dbcsInst.Spec.DbBackupId != nil || dbcsInst.Spec.DatabaseId != nil) {
+	// Check if SetupDBCloning is true and ensure one of the required fields is provided
+	if dbcsInst.Spec.SetupDBCloning {
+		// If SetupDBCloning is true, at least one of Id, DbBackupId, or DatabaseId must be non-nil
+		if dbcsInst.Spec.Id == nil && dbcsInst.Spec.DbBackupId == nil && dbcsInst.Spec.DatabaseId == nil {
+			// If none of the required fields are set, log an error and exit the function
+			r.Logger.Error(err, "SetupDBCloning is defined but other necessary details (Id, DbBackupId, DatabaseId) are not present. Refer README.md file for instructions.")
+			return ctrl.Result{}, nil
+		}
+		// If the condition is met, proceed with cloning setup
 		setupCloning = true
 	} else {
-		r.Logger.Error(err, "SetupDBCloning is defined but other necessary details are not present. Refer README.md file for instructions.")
-		return ctrl.Result{}, nil
+		// If SetupDBCloning is false, continue as usual without cloning
+		setupCloning = false
 	}
+
 	var dbSystemId string
 	// Executing DB Cloning Process, if defined. Do not repeat cloning again when Status has Id present.
 	if setupCloning && dbcsInst.Status.DbCloneStatus.Id == nil {

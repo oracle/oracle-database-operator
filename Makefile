@@ -77,10 +77,11 @@ BUILDER_IMG = oraclelinux:9
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg GOLANG_VERSION=$(GOLANG_VERSION) --build-arg INSTALL_GO=true
 else
 BUILDER_IMG = golang:$(GOLANG_VERSION)
+#BUILDER_IMG = phx.ocir.io/intsanjaysingh/db-repo/oracle/golang:1.23.3 
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg INSTALL_GO="false" --build-arg GOLANG_VERSION=$(GOLANG_VERSION)
 endif
 docker-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
-	docker build --no-cache=true --platform=linux/arm64,linux/amd64 --jobs=2 --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
+	docker build --no-cache=true --platform=linux/amd64 --jobs=2 --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
                      --build-arg CI_COMMIT_SHA=$(CI_COMMIT_SHA) --build-arg CI_COMMIT_BRANCH=$(CI_COMMIT_BRANCH) \
                      $(BUILD_ARGS) --manifest $(IMG) .
  
