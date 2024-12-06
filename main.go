@@ -268,13 +268,20 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
 			os.Exit(1)
 		}
-		if err = (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+		if err = (&databasev1alpha1.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
 		}
+                if err = (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+                        setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
+                }
 		if err = (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
 			os.Exit(1)
 		}
+                if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
+                        setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
+                        os.Exit(1)
+                }
                 if err = (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
                         setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
                         os.Exit(1)
