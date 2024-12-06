@@ -4,7 +4,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.6.1
+    controller-gen.kubebuilder.io/version: v0.16.5
   creationTimestamp: null
   name: shardingdatabases.database.oracle.com
 spec:
@@ -27,7 +27,7 @@ spec:
       name: shards
       priority: 1
       type: string
-    name: v1alpha1
+    name: v4
     schema:
       openAPIV3Schema:
         description: ShardingDatabase is the Schema for the shardingdatabases API

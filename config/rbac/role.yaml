@@ -86,6 +86,7 @@ rules:
   - autonomousdatabases
   - cdbs
   - dataguardbrokers
+  - dbcssystems
   - oraclerestdataservices
   - pdbs
   - shardingdatabases
@@ -106,6 +107,7 @@ rules:
   - autonomousdatabaserestores/status
   - cdbs/status
   - dataguardbrokers/status
+  - dbcssystems/status
   - oraclerestdataservices/status
   - pdbs/status
   - shardingdatabases/status
@@ -145,6 +147,7 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
+  - dbcssystems/finalizers
   - pdbs/finalizers
   - shardingdatabases/finalizers
   verbs:
