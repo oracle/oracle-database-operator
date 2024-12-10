@@ -6,24 +6,24 @@ In this use case, we bind the Oracle DB Operator DBCS Controller to an existing 
 
 This example uses `bind_to_existing_dbcs_system.yaml` to bind to an existing DBCS VMDB using Oracle DB Operator DBCS Controller with:
 
-- OCI Configmap as `oci-cred`  
+- OCI Configmap as `oci-cred-mumbai`  
 - OCI Secret as `oci-privatekey`  
-- OCID of the existing DBCS System as `ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa`
+- OCID of the existing DBCS System as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
 
 
 Use the file: [bind_to_existing_dbcs_system.yaml](./bind_to_existing_dbcs_system.yaml) for this use case as below:
 
 1. Deploy the .yaml file:  
-```sh
-[root@docker-test-server DBCS]# kubectl apply -f bind_dbcs.yaml
+```bash
+kubectl apply -f bind_to_existing_dbcs_system.yaml
 dbcssystem.database.oracle.com/dbcssystem-existing created
 ```
 
-2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the DBCS VMDB deployment. 
+2. Monitor the Oracle DB Leader Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the DBCS VMDB deployment. 
 
 NOTE: Check the DB Operator Pod name in your environment.
 
-```
+```bash
 [root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 

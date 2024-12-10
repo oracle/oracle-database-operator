@@ -1057,7 +1057,7 @@ func GetListDatabaseRsp(logger logr.Logger, dbClient database.DatabaseClient, db
 }
 
 func UpdateDbcsSystemIdInst(log logr.Logger, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, kubeClient client.Client, nwClient core.VirtualNetworkClient, wrClient workrequests.WorkRequestClient, databaseID string) error {
-	log.Info("Existing DB System Getting Updated with new details in UpdateDbcsSystemIdInst")
+	// log.Info("Existing DB System Getting Updated with new details in UpdateDbcsSystemIdInst")
 	var err error
 	updateFlag := false
 	updateDbcsDetails := database.UpdateDbSystemDetails{}
@@ -1075,18 +1075,18 @@ func UpdateDbcsSystemIdInst(log logr.Logger, dbClient database.DatabaseClient, d
 	}
 	log.Info("Details of updateFlag -> " + fmt.Sprint(updateFlag))
 
-	if dbcs.Spec.DbSystem.CpuCoreCount > 0 && dbcs.Spec.DbSystem.CpuCoreCount != oldSpec.DbSystem.CpuCoreCount {
+	if dbcs.Spec.DbSystem.CpuCoreCount > 0 && ((dbcs.Spec.DbSystem.CpuCoreCount != oldSpec.DbSystem.CpuCoreCount) || (dbcs.Spec.DbSystem.CpuCoreCount != *&dbcs.Status.CpuCoreCount)) {
 		log.Info("DB System cpu core count is: " + fmt.Sprint(dbcs.Spec.DbSystem.CpuCoreCount) + " DB System old cpu count is: " + fmt.Sprint(oldSpec.DbSystem.CpuCoreCount))
 		updateDbcsDetails.CpuCoreCount = common.Int(dbcs.Spec.DbSystem.CpuCoreCount)
 		updateFlag = true
 	}
-	if dbcs.Spec.DbSystem.Shape != "" && dbcs.Spec.DbSystem.Shape != oldSpec.DbSystem.Shape {
+	if dbcs.Spec.DbSystem.Shape != "" && ((dbcs.Spec.DbSystem.Shape != oldSpec.DbSystem.Shape) || (dbcs.Spec.DbSystem.Shape != *dbcs.Status.Shape)) {
 		// log.Info("DB System desired shape is :" + string(dbcs.Spec.DbSystem.Shape) + "DB System old shape is " + string(oldSpec.DbSystem.Shape))
 		updateDbcsDetails.Shape = common.String(dbcs.Spec.DbSystem.Shape)
 		updateFlag = true
 	}
 
-	if dbcs.Spec.DbSystem.LicenseModel != "" && dbcs.Spec.DbSystem.LicenseModel != oldSpec.DbSystem.LicenseModel {
+	if dbcs.Spec.DbSystem.LicenseModel != "" && ((dbcs.Spec.DbSystem.LicenseModel != oldSpec.DbSystem.LicenseModel) || (dbcs.Spec.DbSystem.LicenseModel != *&dbcs.Status.LicenseModel)) {
 		licenceModel := getLicenceModel(dbcs)
 		// log.Info("DB System desired License Model is :" + string(dbcs.Spec.DbSystem.LicenseModel) + "DB Sytsem old License Model is " + string(oldSpec.DbSystem.LicenseModel))
 		updateDbcsDetails.LicenseModel = database.UpdateDbSystemDetailsLicenseModelEnum(licenceModel)
@@ -1196,11 +1196,11 @@ func UpdateDbcsSystemIdInst(log logr.Logger, dbClient database.DatabaseClient, d
 		if statusErr := SetLifecycleState(kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
 			return statusErr
 		}
-		// // Check the State
-		// _, err = CheckResourceState(log, dbClient, *dbcs.Spec.Id, "UPDATING", "AVAILABLE")
-		// if err != nil {
-		// 	return err
-		// }
+		// Check the State
+		_, err = CheckResourceState(log, dbClient, *dbcs.Spec.Id, "UPDATING", "AVAILABLE")
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

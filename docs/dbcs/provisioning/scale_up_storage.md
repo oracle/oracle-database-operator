@@ -11,17 +11,17 @@ In order to scale up storage of an existing DBCS system, the steps will be:
 
 This example uses `scale_up_storage.yaml` to scale up storage of an existing Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with:
 
-- OCID of existing VMDB as `ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa`
-- OCI Configmap as `oci-cred`  
+- OCID of existing VMDB as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
+- OCI Configmap as `oci-cred-mumbai`  
 - OCI Secret as `oci-privatekey`  
-- Availability Domain for the DBCS VMDB as `OLou:PHX-AD-1`  
-- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya`  
+- Availability Domain for the DBCS VMDB as `OLou:AP-MUMBAI-1-AD-1`  
+- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`  
 - Database Admin Credential as `admin-password`  
-- Database Hostname Prefix as `host0130`  
+- Database Hostname Prefix as `host1234`  
 - Target Data Storage Size in GBs as `512`
 - Oracle VMDB Shape as `VM.Standard2.1`  
 - SSH Public key for the DBCS system being deployed as `oci-publickey`  
-- OCID of the Subnet as `ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a`  
+- OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`  
 
 
 Use the file: [scale_up_storage.yaml](./scale_up_storage.yaml) for this use case as below:

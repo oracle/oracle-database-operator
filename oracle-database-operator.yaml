@@ -2307,10 +2307,6 @@ spec:
                             type: string
                           shouldPdbAdminAccountBeLocked:
                             type: boolean
-                        required:
-                        - freeformTags
-                        - pdbName
-                        - shouldPdbAdminAccountBeLocked
                         type: object
                       type: array
                   type: object
@@ -5316,7 +5312,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:basedb-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

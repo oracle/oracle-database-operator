@@ -8,17 +8,17 @@ This example uses `dbcs_service_with_minimal_parameters.yaml` to deploy a Single
 
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
-- Availability Domain for the DBCS VMDB as `OLou:EU-MILAN-1-AD-1`
-- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaaks5baeqlvv4kyj2jiwnrbxgzm3gsumcfy4c6ntj2ro5i3a5gzhhq`
+- Availability Domain for the DBCS VMDB as `OLou:AP-MUMBAI-1-AD-1`
+- Compartment OCID as `cid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`
 - Database Admin Credential as `admin-password`  
-- Database Name as `dbsystem0130`  
+- Database Name as `dbsystem1234`  
 - Oracle Database Software Image Version as `19c`  
 - Database Workload Type as Transaction Processing i.e. `OLTP`  
-- Database Hostname Prefix as `host1205`  
+- Database Hostname Prefix as `host1234`  
 - Oracle VMDB Shape as `VM.Standard2.1`  
 - SSH Public key for the DBCS system being deployed as `oci-publickey`  
 - domain `vcndns.oraclevcn.com`
-- OCID of the Subnet as `ocid1.subnet.oc1.eu-milan-1.aaaaaaaaeiy3tvcsnyg6upfp3ydtu7jmfnmoyifq2ax6y45b5qpdbpide5xa`
+- OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`
 
 
 **NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md). 

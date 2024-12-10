@@ -22,7 +22,7 @@ Two-node Oracle RAC DB systems require Oracle Enterprise Edition - Extreme Perfo
 
 For standard provisioning of DB systems (using Oracle Automatic Storage Management (ASM) as your storage management software), the following database releases are supported:
 
--   Oracle Database 21c
+-   Oracle Database 23ai 
 -   Oracle Database 19c
 -   Oracle Database 18c (18.0)
 -   Oracle Database 12c Release 2 (12.2)
@@ -32,7 +32,7 @@ For standard provisioning of DB systems (using Oracle Automatic Storage Manageme
 
 For fast provisioning of single-node virtual machine database systems (using Logical Volume Manager as your storage management software), the following database releases are supported:
 
-- Oracle Database 21c
+- Oracle Database 23ai
 - Oracle Database 19c
 - Oracle Database 18c
 - Oracle Database 12c Release 2 (12.2)
@@ -43,34 +43,33 @@ For fast provisioning of single-node virtual machine database systems (using Log
 To deploy OraOperator, use this [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
 
 After the Oracle Database Operator is deployed, you can see the DB operator pods running in the Kubernetes Cluster. As part of the OraOperator deployment, the DBCS Controller is deployed as a CRD (Custom Resource Definition). The following screen output is an example of such a deployment:
-```
+```bash
 [root@test-server oracle-database-operator]# kubectl get ns
 NAME                              STATUS   AGE
-cert-manager                      Active   2m5s
-default                           Active   125d
-kube-node-lease                   Active   125d
-kube-public                       Active   125d
-kube-system                       Active   125d
-oracle-database-operator-system   Active   17s    <<<< namespace to deploy the Oracle Database Operator
+cert-manager                      Active   33d
+default                           Active   118d
+kube-node-lease                   Active   118d
+kube-public                       Active   118d
+kube-system                       Active   118d
+oracle-database-operator-system   Active   10m    <<<< namespace to deploy the Oracle Database Operator
  
  
 [root@test-server oracle-database-operator]# kubectl get all -n  oracle-database-operator-system
 NAME                                                               READY   STATUS    RESTARTS   AGE
-pod/oracle-database-operator-controller-manager-665874bd57-dlhls   1/1     Running   0          28s
-pod/oracle-database-operator-controller-manager-665874bd57-g2cgw   1/1     Running   0          28s
-pod/oracle-database-operator-controller-manager-665874bd57-q42f8   1/1     Running   0          28s
- 
+pod/oracle-database-operator-controller-manager-678f96f5f4-f4rhq   1/1     Running   0          10m
+pod/oracle-database-operator-controller-manager-678f96f5f4-plxcp   1/1     Running   0          10m
+pod/oracle-database-operator-controller-manager-678f96f5f4-qgcg8   1/1     Running   0          10m
+
 NAME                                                                  TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
-service/oracle-database-operator-controller-manager-metrics-service   ClusterIP   10.96.130.124   <none>        8443/TCP   29s
-service/oracle-database-operator-webhook-service                      ClusterIP   10.96.4.104     <none>        443/TCP    29s
- 
+service/oracle-database-operator-controller-manager-metrics-service   ClusterIP   10.96.197.164   <none>        8443/TCP   11m
+service/oracle-database-operator-webhook-service                      ClusterIP   10.96.35.62     <none>        443/TCP    11m
+
 NAME                                                          READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/oracle-database-operator-controller-manager   3/3     3            3           29s
- 
+deployment.apps/oracle-database-operator-controller-manager   3/3     3            3           11m
+
 NAME                                                                     DESIRED   CURRENT   READY   AGE
-replicaset.apps/oracle-database-operator-controller-manager-665874bd57   3         3         3       29s
-[root@docker-test-server oracle-database-operator]#
- 
+replicaset.apps/oracle-database-operator-controller-manager-6657bfc664   0         0         0       11m
+replicaset.apps/oracle-database-operator-controller-manager-678f96f5f4   3         3         3       10m 
  
 [root@test-server oracle-database-operator]# kubectl get crd
 NAME                                             CREATED AT
@@ -97,19 +96,19 @@ Before you deploy a DBCS system in OCI using the Oracle DB Operator DBCS Control
 
 ## 1. Create a Kubernetes Configmap. For example: We are creating a Kubernetes Configmap named `oci-cred` using the OCI account we are using as below: 
 
-```
+```bash
 kubectl create configmap oci-cred \
---from-literal=tenancy=ocid1.tenancy.oc1..................67iypsmea \
---from-literal=user=ocid1.user.oc1..aaaaaaaaxw3i...............ce6qzdrnmq \
---from-literal=fingerprint=b2:7c:a8:d5:44:f5.....................:9a:55 \
+--from-literal=tenancy=<tenancy-ocid> \
+--from-literal=user=<user-ocid> \
+--from-literal=fingerprint=<fingerprint in xx:xx format> \
 --from-literal=region=us-phoenix-1
 ```
 
 
 ## 2. Create a Kubernetes secret `oci-privatekey` using the OCI Pem key taken from OCI console for the account you are using:
 
-```
--- assuming the OCI Pem key to be "/root/.oci/oci_api_key.pem"
+```bash
+#---assuming the OCI Pem key to be "/root/.oci/oci_api_key.pem"
 
 kubectl create secret generic oci-privatekey --from-file=privatekey=/root/.oci/oci_api_key.pem
 ```
@@ -118,8 +117,8 @@ kubectl create secret generic oci-privatekey --from-file=privatekey=/root/.oci/o
 ## 3. Create a Kubernetes secret named `admin-password`; This passward must meet the minimum passward requirements for the OCI BDBCS Service.
 For example:
 
-```
--- assuming the passward has been added to a text file named "admin-password":
+```bash
+#-- assuming the passward has been added to a text file named "admin-password":
 
 kubectl create secret generic admin-password --from-file=./admin-password -n default
 ```
@@ -128,8 +127,8 @@ kubectl create secret generic admin-password --from-file=./admin-password -n def
 ## 4. Create a Kubernetes secret named `tde-password`; this passward must meet the minimum passward requirements for the OCI BDBCS Service.
 For example:
 
-```
--- assuming the passward has been added to a text file named "tde-password":
+```bash
+# -- assuming the passward has been added to a text file named "tde-password":
 
 kubectl create secret generic tde-password --from-file=./tde-password -n default
 ```
@@ -137,7 +136,7 @@ kubectl create secret generic tde-password --from-file=./tde-password -n default
 
 ## 5. Create an ssh key pair, and use its public key to create a Kubernetes secret named `oci-publickey`; the private key for this public key can be used later to access the DBCS system's host machine using ssh:
 
-```
+```bash
 [root@test-server DBCS]# ssh-keygen -N "" -C "DBCS_System"-`date +%Y%m` -P ""
 Generating public/private rsa key pair.
 Enter file in which to save the key (/root/.ssh/id_rsa):
@@ -178,7 +177,14 @@ For more informatoin about the multiple use cases available to you to deploy and
 [7. Terminate an existing BDBCS System](./provisioning/terminate_dbcs_system.md)  
 [8. Create BDBCS with All Parameters with Storage Management as LVM](./provisioning/dbcs_service_with_all_parameters_lvm.md)  
 [9. Create BDBCS with All Parameters with Storage Management as ASM](./provisioning/dbcs_service_with_all_parameters_asm.md)  
-[10. Deploy a 2 Node RAC DB System using OCI BDBCS Service](./provisioning/dbcs_service_with_2_node_rac.md)
+[10. Deploy a 2 Node RAC DB System using OCI BDBCS Service](./provisioning/dbcs_service_with_2_node_rac.md)  
+[11. Create PDB to an existing DBCS System already deployed in OCI Base DBCS Service](./provisioning/create_pdb_to_existing_dbcs_system.md)   
+[12. Create Base DBCS with PDB in OCI](./provisioning/create_dbcs_with_pdb.md)  
+[13. Create Base DBCS with KMS Vault Encryption in OCI](./provisioning/create_dbcs_with_kms.md)    
+[14. Migrate to KMS vault from TDE Wallet password encryption of an existing DBCS System already deployed in OCI Base DBCS Service](./provisioning/migrate_to_kms.md)  
+[15. Clone DB System from Existing DB System in OCI Base DBCS Service](./provisioning/clone_from_existing_dbcs.md)  
+[16. Clone DB System from Backup of Existing DB System in OCI Base DBCS Service](./provisioning/clone_from_backup_dbcs.md)  
+[17. Clone DB System from Existing Database of DB System in OCI Base DBCS Service](./provisioning/clone_from_database.md)  
 
 ## Connecting to OCI DBCS database deployed using Oracle DB Operator DBCS Controller
 

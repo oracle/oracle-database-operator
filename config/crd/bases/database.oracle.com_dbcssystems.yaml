@@ -712,10 +712,6 @@ spec:
                             type: string
                           shouldPdbAdminAccountBeLocked:
                             type: boolean
-                        required:
-                        - freeformTags
-                        - pdbName
-                        - shouldPdbAdminAccountBeLocked
                         type: object
                       type: array
                   type: object

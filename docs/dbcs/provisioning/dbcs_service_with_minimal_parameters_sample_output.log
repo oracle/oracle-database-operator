@@ -1,135 +1,82 @@
-/usr/bin/kubectl describe dbcssystems.database.oracle.com dbcssystem-create
+kubectl describe dbcssystems/dbcssystem-create
 Name:         dbcssystem-create
 Namespace:    default
 Labels:       <none>
-Annotations:  kubectl.kubernetes.io/last-applied-configuration:
-                {"apiVersion":"database.oracle.com/v1alpha1","kind":"DbcsSystem","metadata":{"annotations":{},"name":"dbcssystem-create","namespace":"defa...
-API Version:  database.oracle.com/v1alpha1
+Annotations:  lastSuccessfulSpec:
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a","availabilityDomain":"O...
+API Version:  database.oracle.com/v4
 Kind:         DbcsSystem
 Metadata:
-  Creation Timestamp:  2023-12-12T12:59:58Z
-  Generation:          1
-  Managed Fields:
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    Fields V 1:
-      F : Metadata:
-        F : Annotations:
-          .:
-          F : Kubectl . Kubernetes . Io / Last - Applied - Configuration:
-      F : Spec:
-        .:
-        F : Db System:
-          .:
-          F : Availability Domain:
-          F : Compartment Id:
-          F : Db Admin Pasword Secret:
-          F : Db Edition:
-          F : Db Name:
-          F : Db Version:
-          F : Db Workload:
-          F : Display Name:
-          F : Domain:
-          F : Host Name:
-          F : License Model:
-          F : Shape:
-          F : Ssh Public Keys:
-          F : Subnet Id:
-        F : Oci Config Map:
-        F : Oci Secret:
-    Manager:      kubectl
-    Operation:    Update
-    Time:         2023-12-12T12:59:58Z
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    Fields V 1:
-      F : Status:
-        .:
-        F : Availability Domain:
-        F : Cpu Core Count:
-        F : Data Storage Percentage:
-        F : Data Storage Size In G Bs:
-        F : Db Edition:
-        F : Db Info:
-        F : Display Name:
-        F : Id:
-        F : License Model:
-        F : Network:
-          .:
-          F : Client Subnet:
-          F : Domain Name:
-          F : Host Name:
-          F : Listener Port:
-          F : Vcn Name:
-        F : Node Count:
-        F : Reco Storage Size In GB:
-        F : Shape:
-        F : State:
-        F : Storage Management:
-        F : Subnet Id:
-        F : Time Zone:
-        F : Work Requests:
-    Manager:         manager
-    Operation:       Update
-    Subresource:     status
-    Time:            2023-12-12T14:12:36Z
-  Resource Version:  1571919
-  UID:               e11353f3-1334-4ca8-af31-4b638442f429
+  Creation Timestamp:  2024-12-10T05:19:46Z
+  Generation:          2
+  Resource Version:    117717259
+  UID:                 3ff13686-50ec-41e3-81c8-77bb6b5a8afa
 Spec:
   Db System:
-    Availability Domain:      OLou:EU-MILAN-1-AD-1
-    Compartment Id:           ocid1.compartment.oc1..aaaaaaaaks5baeqlvv4kyj2jiwnrbxgzm3gsumcfy4c6ntj2ro5i3a5gzhhq
+    Availability Domain:      OLou:AP-MUMBAI-1-AD-1
+    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
     Db Admin Pasword Secret:  admin-password
-    Db Edition:               ENTERPRISE_EDITION_HIGH_PERFORMANCE
-    Db Name:                  testdb
-    Db Version:               19c
-    Db Workload:              OLTP
-    Display Name:             dbsystem0130
-    Domain:                   vcndns.oraclevcn.com
-    Host Name:                host1205
-    License Model:            BRING_YOUR_OWN_LICENSE
-    Shape:                    VM.Standard2.1
+    Db Backup Config:
+    Db Edition:    ENTERPRISE_EDITION_HIGH_PERFORMANCE
+    Db Name:       cdb1
+    Db Version:    19c
+    Db Workload:   OLTP
+    Display Name:  dbsystem1234
+    Domain:        subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:     host1234
+    Kms Config:
+    License Model:  BRING_YOUR_OWN_LICENSE
+    Shape:          VM.Standard2.1
     Ssh Public Keys:
       oci-publickey
-    Subnet Id:     ocid1.subnet.oc1.eu-milan-1.aaaaaaaaeiy3tvcsnyg6upfp3ydtu7jmfnmoyifq2ax6y45b5qpdbpide5xa
-  Oci Config Map:  oci-cred
+    Subnet Id:  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Id:           ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Kms Config:
+  Oci Config Map:  oci-cred-mumbai
   Oci Secret:      oci-privatekey
 Status:
-  Availability Domain:        OLou:EU-MILAN-1-AD-1
+  Availability Domain:        OLou:AP-MUMBAI-1-AD-1
   Cpu Core Count:             1
   Data Storage Percentage:    80
   Data Storage Size In G Bs:  256
-  Db Edition:                 ENTERPRISE_EDITION_HIGH_PERFORMANCE
+  Db Clone Status:
+    Db Db Unique Name:  
+    Host Name:          
+  Db Edition:           ENTERPRISE_EDITION_HIGH_PERFORMANCE
   Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.eu-milan-1.anwgsljrx2vveliazumnbyvudq3rwkbc4brtamgqzyrjuwfbtx5k7hlqwx2a
-    Db Name:         testdb
-    Db Unique Name:  testdb_fg4_lin
+    Db Home Id:      ocid1.dbhome.oc1.ap-mumbai-1.anrg6ljrqlb5nxiaoqqlaxhx4urdwmefw4il5efzekneuru4bpfv57i7iy6a
+    Db Name:         cdb1
+    Db Unique Name:  cdb1_tkf_bom
     Db Workload:     OLTP
-    Id:              ocid1.database.oc1.eu-milan-1.anwgsljrabf7htyasoe7b7mtfecc7tdfkp6w5knvvufxmk3phztxfktf6naq
-  Display Name:      dbsystem0130
-  Id:                ocid1.dbsystem.oc1.eu-milan-1.anwgsljrabf7htyat3fsgcftfilt45bgbrfgawroa2oasamavsluwqyr5aya
-  License Model:     BRING_YOUR_OWN_LICENSE
+    Id:              ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyalxin4xpiggjh4nxlta6o6iq56hjrlh4of2cq6c4qgrqa
+  Display Name:      dbsystem1234
+  Id:                ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Kms Details Status:
+  License Model:  BRING_YOUR_OWN_LICENSE
   Network:
-    Client Subnet:          vcnsbn
-    Domain Name:            vcndns.oraclevcn.com
-    Host Name:              host1205
-    Listener Port:          1521
-    Vcn Name:               vcnnet
-  Node Count:               1
-  Reco Storage Size In GB:  256
-  Shape:                    VM.Standard2.1
-  State:                    PROVISIONING
-  Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.eu-milan-1.aaaaaaaaeiy3tvcsnyg6upfp3ydtu7jmfnmoyifq2ax6y45b5qpdbpide5xa
-  Time Zone:                UTC
+    Client Subnet:  oke-nodesubnet-quick-cluster1-2bebe95db-regional
+    Domain Name:    subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:      host1234
+    Listener Port:  1521
+    Scan Dns Name:  host1234-scan.subdda0b5eaa.cluster1.oraclevcn.com
+    Vcn Name:       oke-vcn-quick-cluster1-2bebe95db
+  Node Count:       1
+  Pdb Details Status:
+    Pdb Config Status:
+      Pdb Name:               cdb1_pdb1
+      Pdb State:              AVAILABLE
+      Pluggable Database Id:  ocid1.pluggabledatabase.oc1.ap-mumbai-1.anrg6ljrabf7htyakgj4wuabus6z5kmalvob6r6b7vivkbsmmh7bjprzbuwa
+  Reco Storage Size In GB:    256
+  Shape:                      VM.Standard2.1
+  State:                      AVAILABLE
+  Storage Management:         ASM
+  Subnet Id:                  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Time Zone:                  UTC
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.eu-milan-1.abwgsljrkv6jwqtepnxyhnxgtzolw74bqfh5oqlwskq72dqgjpfs5rxu66wa
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrk2efvqjda2t7k5iaerahw7wcyz5dq2zev2k55gmq2gvsjkui7hxq
     Operation Type:    Create DB System
-    Percent Complete:  0
-    Time Accepted:     2023-12-12 13:00:03.156 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.eu-milan-1.abwgsljrxudjz2qivun6ypupqhytam4axv4wago7nuauceqyapbceysjukfq
-    Operation Type:    Create DB System
-    Percent Complete:  0
-    Time Accepted:     2023-12-12 14:12:36.047 +0000 UTC
+    Percent Complete:  100
+    Time Accepted:     2024-12-10 05:19:52.499 +0000 UTC
+    Time Finished:     2024-12-10 07:59:19.083 +0000 UTC
+    Time Started:      2024-12-10 05:19:55.747 +0000 UTC
 Events:                <none>
-
