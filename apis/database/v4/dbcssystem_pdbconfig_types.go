@@ -72,9 +72,9 @@ type PDBConfig struct {
 }
 
 type PDBConfigStatus struct {
-	PdbName                       *string           `mandatory:"true" json:"pdbName"`
-	ShouldPdbAdminAccountBeLocked *bool             `mandatory:"false" json:"shouldPdbAdminAccountBeLocked"`
-	FreeformTags                  map[string]string `mandatory:"false" json:"freeformTags"`
+	PdbName                       *string           `mandatory:"false" json:"pdbName,omitempty"`
+	ShouldPdbAdminAccountBeLocked *bool             `mandatory:"false" json:"shouldPdbAdminAccountBeLocked,omitempty"`
+	FreeformTags                  map[string]string `mandatory:"false" json:"freeformTags,omitempty"`
 	PluggableDatabaseId           *string           `mandatory:"false" json:"pluggableDatabaseId,omitempty"`
 	PdbLifecycleState             LifecycleState    `json:"pdbState,omitempty"`
 }

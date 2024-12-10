@@ -6,30 +6,29 @@ In this use case, the an OCI DBCS system is deployed using Oracle DB Operator DB
 
 This example uses `dbcs_service_with_all_parameters_asm.yaml` to deploy a Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with:
 
-- OCI Configmap as `oci-cred`  
+- OCI Configmap as `oci-cred-mumbai`  
 - OCI Secret as `oci-privatekey`  
-- Availability Domain for the DBCS VMDB as `OLou:PHX-AD-1`  
-- Cluster Name as `maa-cluster`
-- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya`  
+- Availability Domain for the DBCS VMDB as `OLou:AP-MUMBAI-1-AD-1`  
+- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`  
 - Database Admin Credential as `admin-password`  
 - Enable flag for Automatic Backup for DBCS Database as `True`
 - Auto Backup Window for DBCS Database as `SLOT_FOUR`
 - Recovery Windows for Backup retention in days as `15`
 - Oracle Database Edition as `STANDARD_EDITION`
 - Database Name as `db0130`  
-- Oracle Database Software Image Version as `21c`  
+- Oracle Database Software Image Version as `19c`  
 - Database Workload Type as Transaction Processing i.e. `OLTP`  
 - Redundancy of the ASM Disks as `EXTERNAL`
-- Display Name for the DBCS System as `dbsystem0130`
-- Database Hostname Prefix as `host0130`  
+- Display Name for the DBCS System as `dbsys123`
+- Database Hostname Prefix as `host01234`  
 - Initial Size of the DATA Storage in GB as `256`
 - License Model as `BRING_YOUR_OWN_LICENSE`
-- Name of the PDB to be created as `PDB0130`
+- Name of the PDB to be created as `PDB0123`
 - Private IP explicitly assigned to be `10.0.1.99`
-- Oracle VMDB Shape as `VM.Standard2.1` 
+- Oracle VMDB Shape as `VM.Standard2.1`  
 - SSH Public key for the DBCS system being deployed as `oci-publickey`  
 - Storage Management type as `ASM`
-- OCID of the Subnet as `ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a`  
+- OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbv`  
 - Tag the DBCS system with two key value pairs as `"TEST": "test_case_provision"` and `"CreatedBy": "MAA_TEAM"`
 - TDE Wallet Secret as `tde-password`
 - Time Zone for the DBCS System as `Europe/Berlin`

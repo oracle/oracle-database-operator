@@ -1,23 +1,22 @@
 apiVersion: database.oracle.com/v4
 kind: DbcsSystem
 metadata:
-  name: dbcssystem-create
+  name: dbcssystem-clone
+  namespace: default
 spec:
+  databaseId: "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyapxtsgw6hy3kyosmrawefq2csm4kjv4d5au7biuiaabsq"
   ociConfigMap: "oci-cred-mumbai"
   ociSecret: "oci-privatekey"
-  dbSystem:
-    availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+  setupDBCloning: true
+  dbClone:
     dbAdminPaswordSecret: "admin-password"
-    dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
-    dbName: "cdb1"
-    displayName: "dbsystem1234"
+    tdeWalletPasswordSecret: "tde-password"
+    dbName: "db1212"
+    hostName: "host1213"
+    displayName: "dbsystem01312"
     licenseModel: "BRING_YOUR_OWN_LICENSE"
-    dbVersion: "19c"
-    dbWorkload: "OLTP"
-    hostName: "host1234"
-    shape: "VM.Standard2.1"
     domain: "subdda0b5eaa.cluster1.oraclevcn.com"
     sshPublicKeys:
      - "oci-publickey"
     subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
+    initialDataStorageSizeInGB: 256

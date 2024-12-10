@@ -1,34 +1,36 @@
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: DbcsSystem
 metadata:
   name: dbcssystem-create
 spec:
-  ociConfigMap: "oci-cred"
+  ociConfigMap: "oci-cred-mumbai"
   ociSecret: "oci-privatekey"
   dbSystem:
-    availabilityDomain: "OLou:PHX-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya"
+    availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
+    clusterName: "maa-cluster"
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
     dbAdminPaswordSecret: "admin-password"
     dbBackupConfig:
       autoBackupEnabled: True
       autoBackupWindow: "SLOT_FOUR"
       recoveryWindowsInDays: 15
-    dbEdition: "STANDARD_EDITION"
-    dbName: "db0130"
-    dbVersion: "21c"
+    dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
+    dbName: "cdb12"
+    displayName: "dbsys123"
+    licenseModel: "BRING_YOUR_OWN_LICENSE"
+    dbVersion: "19c"
     dbWorkload: "OLTP"
     diskRedundancy: "EXTERNAL"
-    displayName: "dbsystem0130"
-    hostName: "host0130"
+    hostName: "host01234"
     initialDataStorageSizeInGB: 256
     licenseModel: "BRING_YOUR_OWN_LICENSE"
-    pdbName: "PDB0130"
+    pdbName: "PDB0123"
     privateIp: "10.0.1.99"
-    shape: "VM.Standard2.1"
+    shape: "VM.Standard2.2"
     sshPublicKeys:
       - "oci-publickey"
     storageManagement: "ASM"
-    subnetId: "ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a"
+    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
     tags:
       "TEST": "test_case_provision"
       "CreatedBy": "MAA_TEAM"

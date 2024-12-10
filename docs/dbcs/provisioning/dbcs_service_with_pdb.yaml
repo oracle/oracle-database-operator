@@ -1,0 +1,38 @@
+apiVersion: database.oracle.com/v4
+kind: DbcsSystem
+metadata:
+  name: dbcssystem-create-with-pdb
+  namespace: default
+spec:
+  ociConfigMap: "oci-cred"
+  ociSecret: "oci-privatekey"
+  dbSystem:
+    availabilityDomain: "OLou:US-ASHBURN-AD-1"
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+    dbAdminPaswordSecret: "admin-password"
+    dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
+    dbName: "dbsys"
+    displayName: "dbsystem24"
+    licenseModel: "BRING_YOUR_OWN_LICENSE"
+    dbVersion: "21c"
+    dbWorkload: "OLTP"
+    hostName: "host24"
+    shape: "VM.Standard3.Flex"
+    cpuCoreCount: 1
+    domain: "subd215df3e6.k8stest.oraclevcn.com"
+    sshPublicKeys: 
+     - "oci-publickey"
+    subnetId: "ocid1.subnet.oc1.iad.aaaaaaaa3lmmxwsykn2jc2vphzpq6eoyoqtte3dpwg6s5fzfkti22ibol2ua"
+  pdbConfigs:
+    - pdbName: "pdb_sauahuja_11"
+      tdeWalletPassword: "tde-password"
+      pdbAdminPassword: "pdb-password"
+      shouldPdbAdminAccountBeLocked: false
+      freeformTags:
+        Department: "Finance"
+    - pdbName: "pdb_sauahuja_12"
+      tdeWalletPassword: "tde-password"
+      pdbAdminPassword: "pdb-password"
+      shouldPdbAdminAccountBeLocked: false
+      freeformTags:
+        Department: "HR"

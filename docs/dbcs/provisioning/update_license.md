@@ -11,17 +11,17 @@ In order to update the license type an existing DBCS system, the steps will be:
 
 This example uses `update_license.yaml` to change the license type of a Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with:
 
-- OCID of existing VMDB as `ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa`
-- OCI Configmap as `oci-cred`  
+- OCID of existing VMDB as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
+- OCI Configmap as `oci-cred-mumbai`  
 - OCI Secret as `oci-privatekey`  
-- Availability Domain for the DBCS VMDB as `OLou:PHX-AD-1`  
-- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya`  
-- Database Admin Credential as `admin-password`  
-- Database Hostname Prefix as `host0130`
+- Availability Domain for the DBCS VMDB as `OLou:AP-MUMBAI-1-AD-1`  
 - Target license model as `BRING_YOUR_OWN_LICENSE`
+- Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`  
+- Database Admin Credential as `admin-password`  
+- Database Hostname Prefix as `host1234`  
 - Oracle VMDB Shape as `VM.Standard2.1`  
 - SSH Public key for the DBCS system being deployed as `oci-publickey`  
-- OCID of the Subnet as `ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a`  
+- OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`  
 
 **NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md).
 

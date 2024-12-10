@@ -88,7 +88,6 @@ type DbcsSystemReconciler struct {
 // +kubebuilder:rbac:groups=database.oracle.com,resources=dbcssystems/finalizers,verbs=get;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps;secrets;namespaces,verbs=get;list;watch;create;update;patch;delete
 
-
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
@@ -148,7 +147,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	r.Logger.Info("OCI provider configured succesfully")
 
 	/*
-	  Using Finalizer for object deletion
+	   Using Finalizer for object deletion
 	*/
 
 	if dbcsInst.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -201,7 +200,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	/*
-	  Determine whether it's a provision or bind operation
+	   Determine whether it's a provision or bind operation
 	*/
 	lastSuccessfullSpec, err := dbcsInst.GetLastSuccessfulSpec()
 	if err != nil {
@@ -407,7 +406,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	} else if !setupCloning {
 		if dbcsInst.Spec.Id == nil && lastSuccessfullSpec == nil {
-			// If no DbcsSystem ID specified, create a DB System
+			// If no DbcsSystem ID specified, create a new DB System
 			// ======================== Validate Specs ==============
 			err = dbcsv1.ValidateSpex(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.Recorder)
 			if err != nil {
@@ -451,7 +450,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 			assignDBCSID(dbcsInst, dbcsID)
 		} else {
-			if lastSuccessfullSpec == nil {
+			if lastSuccessfullSpec == nil { // first time after creation of DB
 				if err := dbcsv1.GetDbSystemId(r.Logger, r.dbClient, dbcsInst); err != nil {
 					// Change the status to Failed
 					if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
