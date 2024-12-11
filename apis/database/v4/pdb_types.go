@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -194,14 +194,15 @@ type PDBStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:JSONPath=".status.connString",name="Connect_String",type="string",description="The connect string to be used"
 // +kubebuilder:printcolumn:JSONPath=".spec.cdbName",name="CDB Name",type="string",description="Name of the CDB"
 // +kubebuilder:printcolumn:JSONPath=".spec.pdbName",name="PDB Name",type="string",description="Name of the PDB"
 // +kubebuilder:printcolumn:JSONPath=".status.openMode",name="PDB State",type="string",description="PDB Open Mode"
 // +kubebuilder:printcolumn:JSONPath=".status.totalSize",name="PDB Size",type="string",description="Total Size of the PDB"
 // +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the PDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
+// +kubebuilder:printcolumn:JSONPath=".status.connString",name="Connect_String",type="string",description="The connect string to be used"
 // +kubebuilder:resource:path=pdbs,scope=Namespaced
+// +kubebuilder:storageversion
 
 // PDB is the Schema for the pdbs API
 type PDB struct {

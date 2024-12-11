@@ -15,10 +15,6 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: The connect string to be used
-      jsonPath: .status.connString
-      name: Connect_String
-      type: string
     - description: Name of the CDB
       jsonPath: .spec.cdbName
       name: CDB Name
@@ -43,7 +39,11 @@ spec:
       jsonPath: .status.msg
       name: Message
       type: string
-    name: v1alpha1
+    - description: The connect string to be used
+      jsonPath: .status.connString
+      name: Connect_String
+      type: string
+    name: v4
     schema:
       openAPIV3Schema:
         properties:

@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	"reflect"
@@ -61,7 +61,7 @@ func (r *CDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-cdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=cdbs,verbs=create;update,versions=v1alpha1,name=mcdb.kb.io,admissionReviewVersions={v1,v1beta1}
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-cdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=cdbs,verbs=create;update,versions=v4,name=mcdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
 var _ webhook.Defaulter = &CDB{}
 
@@ -79,7 +79,7 @@ func (r *CDB) Default() {
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:path=/validate-database-oracle-com-v1alpha1-cdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=cdbs,verbs=create;update,versions=v1alpha1,name=vcdb.kb.io,admissionReviewVersions={v1,v1beta1}
+//+kubebuilder:webhook:path=/validate-database-oracle-com-v4-cdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=cdbs,verbs=create;update,versions=v4,name=vcdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
 var _ webhook.Validator = &CDB{}
 
