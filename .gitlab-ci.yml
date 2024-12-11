@@ -7,11 +7,16 @@ build-operator:
   script:
     - export GOROOT=$(go1.23.3 env GOROOT)
     - export PATH="${GOROOT}/bin:${PATH}"
-    - make docker-build IMG="$IMAGE"
-    - docker manifest push "$IMAGE"
-    - docker manifest rm "$IMAGE" && docker system prune -f
     - make operator-yaml IMG=$IMAGE
-    - if [ "$CI_COMMIT_BRANCH" != "master" ]; then sed -i "s/\(replicas.\) 3/\1 1/g" ./$OP_YAML; fi
+    - if [ "$CI_COMMIT_BRANCH" = "master" ]; then
+        make docker-build docker-push IMG="$IMAGE" BUILD_MANIFEST=true;
+        docker manifest rm "$IMAGE";
+      else
+        make docker-build docker-push IMG="$IMAGE";
+        docker rmi "$IMAGE";
+        sed -i "s/\(replicas.\) 3/\1 1/g" ./$OP_YAML;
+      fi
+    - docker system prune -f
     - curl -s --netrc-file $HOME/.netrc_gitlab $ARTIFACTORY_REPO/$CI_COMMIT_BRANCH/$OP_YAML -T ./$OP_YAML
   only:
     variables:

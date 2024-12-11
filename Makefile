@@ -77,17 +77,27 @@ BUILDER_IMG = oraclelinux:9
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg GOLANG_VERSION=$(GOLANG_VERSION) --build-arg INSTALL_GO=true
 else
 BUILDER_IMG = golang:$(GOLANG_VERSION)
-#BUILDER_IMG = phx.ocir.io/intsanjaysingh/db-repo/oracle/golang:1.23.3 
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg INSTALL_GO="false" --build-arg GOLANG_VERSION=$(GOLANG_VERSION)
 endif
+ifeq ($(BUILD_MANIFEST), true)
+BUILD_ARGS := $(BUILD_ARGS) --platform=linux/arm64,linux/amd64 --jobs=2 --manifest
+PUSH_ARGS := manifest
+else
+BUILD_ARGS := $(BUILD_ARGS) --tag
+endif
 docker-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
-	docker build --no-cache=true --platform=linux/arm64,linux/amd64 --jobs=2 --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
+	docker build --no-cache=true --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
                      --build-arg CI_COMMIT_SHA=$(CI_COMMIT_SHA) --build-arg CI_COMMIT_BRANCH=$(CI_COMMIT_BRANCH) \
-                     $(BUILD_ARGS) --manifest $(IMG) .
+                     $(BUILD_ARGS) $(IMG) .
  
 docker-push: ## Push docker image with the manager.
-	docker push $(IMG)
- 
+	docker $(PUSH_ARGS) push $(IMG)
+
+# Push to minikube's local registry enabled by registry add-on
+minikube-push:
+	docker tag $(IMG) $$(minikube ip):5000/$(IMG)
+	docker push --tls-verify=false $$(minikube ip):5000/$(IMG)
+
 ##@ Deployment
  
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
@@ -100,6 +110,9 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
  
+minikube-deploy: minikube-operator-yaml minikube-push
+	kubectl apply -f $(OPERATOR_YAML)
+
 # Bug:34265574
 # Used sed to reposition the controller-manager Deployment after the certificate creation in the OPERATOR_YAML 
 operator-yaml: manifests kustomize
@@ -109,6 +122,11 @@ operator-yaml: manifests kustomize
 	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_YAML).bak")  >>  "$(OPERATOR_YAML)"
 	rm "$(OPERATOR_YAML).bak"
  
+minikube-operator-yaml: IMG:=localhost:5000/$(IMG)
+minikube-operator-yaml: operator-yaml
+	sed -i.bak 's/\(replicas.\) 3/\1 1/g' "$(OPERATOR_YAML)"
+	rm "$(OPERATOR_YAML).bak"
+
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/default | kubectl delete -f -
  
