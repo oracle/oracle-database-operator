@@ -40,7 +40,7 @@
 **    rcitton     07/14/22 - 33822886
  */
 
-package v1alpha1
+package v4
 
 import (
 	"reflect"
@@ -66,7 +66,7 @@ func (r *PDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-pdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update,versions=v1alpha1,name=mpdb.kb.io,admissionReviewVersions={v1,v1beta1}
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-pdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update,versions=v4,name=mpdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
 var _ webhook.Defaulter = &PDB{}
 
@@ -107,6 +107,7 @@ func (r *PDB) Default() {
 			*r.Spec.AsClone = false
 			pdblog.Info(" - asClone : " + strconv.FormatBool(*(r.Spec.AsClone)))
 		}
+
 	}
 
 	if r.Spec.GetScript == nil {
@@ -117,7 +118,7 @@ func (r *PDB) Default() {
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:path=/validate-database-oracle-com-v1alpha1-pdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update,versions=v1alpha1,name=vpdb.kb.io,admissionReviewVersions={v1,v1beta1}
+//+kubebuilder:webhook:path=/validate-database-oracle-com-v4-pdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update,versions=v4,name=vpdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
 var _ webhook.Validator = &PDB{}
 
@@ -164,6 +165,13 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 	}
 
 	switch action {
+	case "DELETE":
+		/* BUG 36752336 - LREST OPERATOR - DELETE NON-EXISTENT PDB SHOWS LRPDB CREATED MESSAGE */
+		if r.Status.OpenMode == "READ WRITE" {
+			pdblog.Info("Cannot delete: pdb is open ")
+			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+r.Spec.PDBName+" "+r.Status.OpenMode))
+		}
+		r.CheckObjExistence("DELETE", allErrs, r)
 	case "CREATE":
 		if reflect.ValueOf(r.Spec.AdminName).IsZero() {
 			*allErrs = append(*allErrs,
@@ -211,6 +219,13 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
 		}
+		/* We don't need this check as ords open the pdb before cloninig */
+		/*
+			if r.Status.OpenMode == "MOUNTED" {
+				pdblog.Info("Cannot clone: pdb is mount ")
+				*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+r.Spec.PDBName+" "+r.Status.OpenMode))
+			}
+		*/
 	case "PLUG":
 		if r.Spec.XMLFileName == "" {
 			*allErrs = append(*allErrs,
@@ -239,6 +254,11 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 		if *(r.Spec.TDEExport) {
 			r.validateTDEInfo(allErrs)
 		}
+		if r.Status.OpenMode == "READ WRITE" {
+			pdblog.Info("Cannot unplug: pdb is open ")
+			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+r.Spec.PDBName+" "+r.Status.OpenMode))
+		}
+		r.CheckObjExistence("UNPLUG", allErrs, r)
 	case "MODIFY":
 		if r.Spec.PDBState == "" {
 			*allErrs = append(*allErrs,
@@ -248,6 +268,7 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("modifyOption"), "Please specify an option for opening/closing a PDB"))
 		}
+		r.CheckObjExistence("MODIY", allErrs, r)
 	}
 }
 
@@ -332,4 +353,13 @@ func (r *PDB) validateTDEInfo(allErrs *field.ErrorList) {
 			field.Required(field.NewPath("spec").Child("tdeSecret"), "Please specify a value for tdeSecret."))
 	}
 
+}
+
+func (r *PDB) CheckObjExistence(action string, allErrs *field.ErrorList, pdb *PDB) {
+	/* BUG 36752465 - lrest operator - open non-existent pdb creates a lrpdb with status failed */
+	pdblog.Info("Action [" + action + "] checkin " + pdb.Spec.PDBName + " existence")
+	if pdb.Status.OpenMode == "" {
+		*allErrs = append(*allErrs, field.NotFound(field.NewPath("Spec").Child("PDBName"), " "+pdb.Spec.PDBName+" does not exist : action "+action+" failure"))
+
+	}
 }

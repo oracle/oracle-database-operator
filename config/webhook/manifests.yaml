@@ -46,6 +46,27 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-cdb
+  failurePolicy: Fail
+  name: mcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   clientConfig:
     service:
       name: webhook-service
@@ -63,6 +84,27 @@ webhooks:
     - UPDATE
     resources:
     - dbcssystems
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-pdb
+  failurePolicy: Fail
+  name: mpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -131,27 +173,6 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-cdb
-  failurePolicy: Fail
-  name: mcdb.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - cdbs
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
       path: /mutate-database-oracle-com-v1alpha1-dataguardbroker
   failurePolicy: Fail
   name: mdataguardbroker.kb.io
@@ -206,27 +227,6 @@ webhooks:
     - UPDATE
     resources:
     - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-pdb
-  failurePolicy: Fail
-  name: mpdb.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - pdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -377,6 +377,48 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-cdb
+  failurePolicy: Fail
+  name: vcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-pdb
+  failurePolicy: Fail
+  name: vpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   clientConfig:
     service:
       name: webhook-service
@@ -483,27 +525,6 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-database-oracle-com-v1alpha1-cdb
-  failurePolicy: Fail
-  name: vcdb.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - cdbs
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
       path: /validate-database-oracle-com-v1alpha1-dataguardbroker
   failurePolicy: Fail
   name: vdataguardbroker.kb.io
@@ -538,27 +559,6 @@ webhooks:
     - UPDATE
     resources:
     - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-database-oracle-com-v1alpha1-pdb
-  failurePolicy: Fail
-  name: vpdb.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - pdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1

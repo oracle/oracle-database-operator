@@ -1122,10 +1122,6 @@ spec:
       jsonPath: .spec.dbPort
       name: DB Port
       type: integer
-    - description: ' string of the tnsalias'
-      jsonPath: .spec.dbTnsurl
-      name: TNS STRING
-      type: string
     - description: Replicas
       jsonPath: .spec.replicas
       name: Replicas
@@ -1138,7 +1134,11 @@ spec:
       jsonPath: .status.msg
       name: Message
       type: string
-    name: v1alpha1
+    - description: ' string of the tnsalias'
+      jsonPath: .spec.dbTnsurl
+      name: TNS STRING
+      type: string
+    name: v4
     schema:
       openAPIV3Schema:
         properties:
@@ -1218,6 +1218,8 @@ spec:
                 type: string
               dbTnsurl:
                 type: string
+              deletePdbCascade:
+                type: boolean
               nodeSelector:
                 additionalProperties:
                   type: string
@@ -2554,10 +2556,6 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: The connect string to be used
-      jsonPath: .status.connString
-      name: Connect_String
-      type: string
     - description: Name of the CDB
       jsonPath: .spec.cdbName
       name: CDB Name
@@ -2582,7 +2580,11 @@ spec:
       jsonPath: .status.msg
       name: Message
       type: string
-    name: v1alpha1
+    - description: The connect string to be used
+      jsonPath: .status.connString
+      name: Connect_String
+      type: string
+    name: v4
     schema:
       openAPIV3Schema:
         properties:
@@ -4707,6 +4709,27 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v4-cdb
+  failurePolicy: Fail
+  name: mcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
@@ -4724,6 +4747,27 @@ webhooks:
     - UPDATE
     resources:
     - dbcssystems
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v4-pdb
+  failurePolicy: Fail
+  name: mpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -4792,27 +4836,6 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v1alpha1-cdb
-  failurePolicy: Fail
-  name: mcdb.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - cdbs
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
       path: /mutate-database-oracle-com-v1alpha1-dataguardbroker
   failurePolicy: Fail
   name: mdataguardbroker.kb.io
@@ -4867,27 +4890,6 @@ webhooks:
     - UPDATE
     resources:
     - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v1alpha1-pdb
-  failurePolicy: Fail
-  name: mpdb.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - pdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -5040,6 +5042,48 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-cdb
+  failurePolicy: Fail
+  name: vcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-pdb
+  failurePolicy: Fail
+  name: vpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
@@ -5146,27 +5190,6 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-cdb
-  failurePolicy: Fail
-  name: vcdb.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - cdbs
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v1alpha1-dataguardbroker
   failurePolicy: Fail
   name: vdataguardbroker.kb.io
@@ -5201,27 +5224,6 @@ webhooks:
     - UPDATE
     resources:
     - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-pdb
-  failurePolicy: Fail
-  name: vpdb.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - pdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1

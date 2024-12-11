@@ -27,10 +27,6 @@ spec:
       jsonPath: .spec.dbPort
       name: DB Port
       type: integer
-    - description: ' string of the tnsalias'
-      jsonPath: .spec.dbTnsurl
-      name: TNS STRING
-      type: string
     - description: Replicas
       jsonPath: .spec.replicas
       name: Replicas
@@ -43,7 +39,11 @@ spec:
       jsonPath: .status.msg
       name: Message
       type: string
-    name: v1alpha1
+    - description: ' string of the tnsalias'
+      jsonPath: .spec.dbTnsurl
+      name: TNS STRING
+      type: string
+    name: v4
     schema:
       openAPIV3Schema:
         properties:
@@ -123,6 +123,8 @@ spec:
                 type: string
               dbTnsurl:
                 type: string
+              deletePdbCascade:
+                type: boolean
               nodeSelector:
                 additionalProperties:
                   type: string

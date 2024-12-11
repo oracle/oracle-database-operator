@@ -224,11 +224,11 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
 			os.Exit(1)
 		}
-		if err = (&databasev1alpha1.PDB{}).SetupWebhookWithManager(mgr); err != nil {
+		if err = (&databasev4.PDB{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "PDB")
 			os.Exit(1)
 		}
-		if err = (&databasev1alpha1.CDB{}).SetupWebhookWithManager(mgr); err != nil {
+		if err = (&databasev4.CDB{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "CDB")
 			os.Exit(1)
 		}
@@ -343,9 +343,9 @@ func main() {
 
 	// Add index for PDB CR to enable mgr to cache PDBs
 	indexFunc := func(obj client.Object) []string {
-		return []string{obj.(*databasev1alpha1.PDB).Spec.PDBName}
+		return []string{obj.(*databasev4.PDB).Spec.PDBName}
 	}
-	if err = cache.IndexField(context.TODO(), &databasev1alpha1.PDB{}, "spec.pdbName", indexFunc); err != nil {
+	if err = cache.IndexField(context.TODO(), &databasev4.PDB{}, "spec.pdbName", indexFunc); err != nil {
 		setupLog.Error(err, "unable to create index function for ", "controller", "PDB")
 		os.Exit(1)
 	}
