@@ -2359,6 +2359,629 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.5
+  name: lrests.database.oracle.com
+spec:
+  group: database.oracle.com
+  names:
+    kind: LREST
+    listKind: LRESTList
+    plural: lrests
+    singular: lrest
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Name of the LREST
+      jsonPath: .spec.cdbName
+      name: CDB NAME
+      type: string
+    - description: ' Name of the DB Server'
+      jsonPath: .spec.dbServer
+      name: DB Server
+      type: string
+    - description: DB server port
+      jsonPath: .spec.dbPort
+      name: DB Port
+      type: integer
+    - description: Replicas
+      jsonPath: .spec.replicas
+      name: Replicas
+      type: integer
+    - description: Status of the LREST Resource
+      jsonPath: .status.phase
+      name: Status
+      type: string
+    - description: Error message if any
+      jsonPath: .status.msg
+      name: Message
+      type: string
+    - description: string of the tnsalias
+      jsonPath: .spec.dbTnsurl
+      name: TNS STRING
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              cdbAdminPwd:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbAdminUser:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbName:
+                type: string
+              cdbPrvKey:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbPubKey:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbTlsCrt:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbTlsKey:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              dbPort:
+                type: integer
+              dbServer:
+                type: string
+              dbTnsurl:
+                type: string
+              deletePdbCascade:
+                type: boolean
+              lrestImage:
+                type: string
+              lrestImagePullPolicy:
+                enum:
+                - Always
+                - Never
+                type: string
+              lrestImagePullSecret:
+                type: string
+              lrestPort:
+                type: integer
+              lrestPwd:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                type: object
+              replicas:
+                type: integer
+              serviceName:
+                type: string
+              sysAdminPwd:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              webServerPwd:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              webServerUser:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+            type: object
+          status:
+            properties:
+              msg:
+                type: string
+              phase:
+                type: string
+              status:
+                type: boolean
+            required:
+            - phase
+            - status
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
+  name: lrpdbs.database.oracle.com
+spec:
+  group: database.oracle.com
+  names:
+    kind: LRPDB
+    listKind: LRPDBList
+    plural: lrpdbs
+    singular: lrpdb
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Name of the CDB
+      jsonPath: .spec.cdbName
+      name: CDB Name
+      type: string
+    - description: Name of the PDB
+      jsonPath: .spec.pdbName
+      name: PDB Name
+      type: string
+    - description: PDB Open Mode
+      jsonPath: .status.openMode
+      name: PDB State
+      type: string
+    - description: Total Size of the PDB
+      jsonPath: .status.totalSize
+      name: PDB Size
+      type: string
+    - description: Status of the LRPDB Resource
+      jsonPath: .status.phase
+      name: Status
+      type: string
+    - description: Error message, if any
+      jsonPath: .status.msg
+      name: Message
+      type: string
+    - description: last sqlcode
+      jsonPath: .status.sqlCode
+      name: last sqlcode
+      type: integer
+    - description: The connect string to be used
+      jsonPath: .status.connString
+      name: Connect_String
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              action:
+                enum:
+                - Create
+                - Clone
+                - Plug
+                - Unplug
+                - Delete
+                - Modify
+                - Status
+                - Map
+                - Alter
+                - Noaction
+                type: string
+              adminName:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              adminPwd:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              adminpdbPass:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              adminpdbUser:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              alterSystem:
+                type: string
+              alterSystemParameter:
+                type: string
+              alterSystemValue:
+                type: string
+              asClone:
+                type: boolean
+              assertiveLrpdbDeletion:
+                type: boolean
+              cdbName:
+                type: string
+              cdbNamespace:
+                type: string
+              cdbPrvKey:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbResName:
+                type: string
+              copyAction:
+                enum:
+                - COPY
+                - NOCOPY
+                - MOVE
+                type: string
+              dropAction:
+                enum:
+                - INCLUDING
+                - KEEP
+                type: string
+              fileNameConversions:
+                type: string
+              getScript:
+                type: boolean
+              lrpdbTlsCat:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              lrpdbTlsCrt:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              lrpdbTlsKey:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              modifyOption:
+                enum:
+                - IMMEDIATE
+                - NORMAL
+                - READ ONLY
+                - READ WRITE
+                - RESTRICTED
+                type: string
+              parameterScope:
+                type: string
+              pdbName:
+                type: string
+              pdbState:
+                enum:
+                - OPEN
+                - CLOSE
+                - ALTER
+                type: string
+              pdbconfigmap:
+                type: string
+              reuseTempFile:
+                type: boolean
+              sourceFileNameConversions:
+                type: string
+              sparseClonePath:
+                type: string
+              srcPdbName:
+                type: string
+              tdeExport:
+                type: boolean
+              tdeImport:
+                type: boolean
+              tdeKeystorePath:
+                type: string
+              tdePassword:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              tdeSecret:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              tempSize:
+                type: string
+              totalSize:
+                type: string
+              unlimitedStorage:
+                type: boolean
+              webServerPwd:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              webServerUser:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              xmlFileName:
+                type: string
+            required:
+            - action
+            - alterSystemParameter
+            - alterSystemValue
+            - webServerPwd
+            type: object
+          status:
+            properties:
+              action:
+                type: string
+              alterSystem:
+                type: string
+              bitstat:
+                type: integer
+              bitstatstr:
+                type: string
+              connString:
+                type: string
+              modifyOption:
+                type: string
+              msg:
+                type: string
+              openMode:
+                type: string
+              phase:
+                type: string
+              sqlCode:
+                type: integer
+              status:
+                type: boolean
+              totalSize:
+                type: string
+            required:
+            - phase
+            - sqlCode
+            - status
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.5
   name: oraclerestdataservices.database.oracle.com
 spec:
   group: database.oracle.com
@@ -4425,6 +5048,9 @@ rules:
   - cdbs
   - dataguardbrokers
   - dbcssystems
+  - events
+  - lrests
+  - lrpdbs
   - oraclerestdataservices
   - pdbs
   - shardingdatabases
@@ -4446,6 +5072,8 @@ rules:
   - cdbs/status
   - dataguardbrokers/status
   - dbcssystems/status
+  - lrests/status
+  - lrpdbs/status
   - oraclerestdataservices/status
   - pdbs/status
   - shardingdatabases/status
@@ -4478,6 +5106,7 @@ rules:
   resources:
   - cdbs/finalizers
   - dataguardbrokers/finalizers
+  - lrests/finalizers
   - oraclerestdataservices/finalizers
   - singleinstancedatabases/finalizers
   verbs:
@@ -4486,6 +5115,7 @@ rules:
   - database.oracle.com
   resources:
   - dbcssystems/finalizers
+  - lrpdbs/finalizers
   - pdbs/finalizers
   - shardingdatabases/finalizers
   verbs:
@@ -4747,6 +5377,48 @@ webhooks:
     - UPDATE
     resources:
     - dbcssystems
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v4-lrest
+  failurePolicy: Fail
+  name: mlrest.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrests
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v4-lrpdb
+  failurePolicy: Fail
+  name: mlrpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrpdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -5062,6 +5734,48 @@ webhooks:
     - cdbs
   sideEffects: None
 - admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-lrest
+  failurePolicy: Fail
+  name: vlrest.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrests
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-lrpdb
+  failurePolicy: Fail
+  name: vlrpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrpdbs
+  sideEffects: None
+- admissionReviewVersions:
   - v1
   - v1beta1
   clientConfig:
@@ -5314,7 +6028,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: container-registry.oracle.com/database/operator:latest
+        image: lin.ocir.io/intsanjaysingh/mmalvezz/testppr/operatormntnns:latest
         imagePullPolicy: Always
         name: manager
         ports:

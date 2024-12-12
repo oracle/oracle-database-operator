@@ -180,4 +180,20 @@ resources:
   kind: DbcsSystem
   path: github.com/oracle/oracle-database-operator/apis/database/v4
   version: v4
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  domain: oracle.com
+  group: database
+  kind: LREST
+  path: github.com/oracle/oracle-database-operator/apis/database/v4
+  version: v4
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  domain: oracle.com
+  group: database
+  kind: LRPDB
+  path: github.com/oracle/oracle-database-operator/apis/database/v4
+  version: v4
 version: "3"

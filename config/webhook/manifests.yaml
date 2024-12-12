@@ -86,6 +86,48 @@ webhooks:
     - dbcssystems
   sideEffects: None
 - admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-lrest
+  failurePolicy: Fail
+  name: mlrest.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrests
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-lrpdb
+  failurePolicy: Fail
+  name: mlrpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrpdbs
+  sideEffects: None
+- admissionReviewVersions:
   - v1
   - v1beta1
   clientConfig:
@@ -395,6 +437,48 @@ webhooks:
     - UPDATE
     resources:
     - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-lrest
+  failurePolicy: Fail
+  name: vlrest.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrests
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-lrpdb
+  failurePolicy: Fail
+  name: vlrpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrpdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1
