@@ -32,4 +32,6 @@ resources:
   - acd/autonomouscontainerdatabase_restart_terminate.yaml
   - database_v4_shardingdatabase.yaml
   - database_v4_dbcssystem.yaml
+- database_v4_lrest.yaml
+- database_v4_lrpdb.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples

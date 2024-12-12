@@ -87,6 +87,9 @@ rules:
   - cdbs
   - dataguardbrokers
   - dbcssystems
+  - events
+  - lrests
+  - lrpdbs
   - oraclerestdataservices
   - pdbs
   - shardingdatabases
@@ -108,6 +111,8 @@ rules:
   - cdbs/status
   - dataguardbrokers/status
   - dbcssystems/status
+  - lrests/status
+  - lrpdbs/status
   - oraclerestdataservices/status
   - pdbs/status
   - shardingdatabases/status
@@ -140,6 +145,7 @@ rules:
   resources:
   - cdbs/finalizers
   - dataguardbrokers/finalizers
+  - lrests/finalizers
   - oraclerestdataservices/finalizers
   - singleinstancedatabases/finalizers
   verbs:
@@ -148,6 +154,7 @@ rules:
   - database.oracle.com
   resources:
   - dbcssystems/finalizers
+  - lrpdbs/finalizers
   - pdbs/finalizers
   - shardingdatabases/finalizers
   verbs:
