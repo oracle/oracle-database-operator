@@ -403,7 +403,7 @@ func (r *LRESTReconciler) createPodSpec(lrest *dbapi.LREST) corev1.PodSpec {
 			Image:           lrest.Spec.LRESTImage,
 			Name:            lrest.Name + "-init",
 			ImagePullPolicy: corev1.PullIfNotPresent,
-			SecurityContext: securityContextDefine(),
+			SecurityContext: securityContextDefineLrest(),
 			Command:         []string{"echo test > /opt/oracle/lrest/certificates/tests"},
 			Env: func() []corev1.EnvVar {
 				return []corev1.EnvVar{
@@ -423,7 +423,7 @@ func (r *LRESTReconciler) createPodSpec(lrest *dbapi.LREST) corev1.PodSpec {
 			Image:           lrest.Spec.LRESTImage,
 			Name:            lrest.Name + "-lrest",
 			ImagePullPolicy: corev1.PullIfNotPresent,
-			SecurityContext: securityContextDefine(),
+			SecurityContext: securityContextDefineLrest(),
 			VolumeMounts: []corev1.VolumeMount{
 				{
 					MountPath: "/opt/oracle/lrest/certificates",
@@ -991,7 +991,7 @@ func (r *LRESTReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func securityContextDefine() *corev1.SecurityContext {
+func securityContextDefineLrest() *corev1.SecurityContext {
 	return &corev1.SecurityContext{
 		RunAsNonRoot:             &[]bool{true}[0],
 		RunAsUser:                &[]int64{54321}[0],

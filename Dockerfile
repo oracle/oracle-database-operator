@@ -46,6 +46,7 @@ ENV COMMIT_SHA=${CI_COMMIT_SHA} \
     COMMIT_BRANCH=${CI_COMMIT_BRANCH}
 WORKDIR /
 COPY --from=builder /workspace/manager .
+COPY ords/ords_init.sh .
 RUN useradd -u 1002 nonroot
 USER nonroot
 
