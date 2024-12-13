@@ -30,11 +30,29 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps/status
+  - daemonsets/status
+  - deployments/status
+  - services/status
+  - statefulsets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumes
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets/status
+  verbs:
+  - get
 - apiGroups:
   - ''''''
   resources:
@@ -57,6 +75,7 @@ rules:
 - apiGroups:
   - apps
   resources:
+  - daemonsets
   - deployments
   - pods
   - replicasets
@@ -91,6 +110,7 @@ rules:
   - lrests
   - lrpdbs
   - oraclerestdataservices
+  - ordssrvs
   - pdbs
   - shardingdatabases
   - singleinstancedatabases
@@ -114,6 +134,7 @@ rules:
   - lrests/status
   - lrpdbs/status
   - oraclerestdataservices/status
+  - ordssrvs/status
   - pdbs/status
   - shardingdatabases/status
   - singleinstancedatabases/status
@@ -147,6 +168,7 @@ rules:
   - dataguardbrokers/finalizers
   - lrests/finalizers
   - oraclerestdataservices/finalizers
+  - ordssrvs/finalizers
   - singleinstancedatabases/finalizers
   verbs:
   - update
