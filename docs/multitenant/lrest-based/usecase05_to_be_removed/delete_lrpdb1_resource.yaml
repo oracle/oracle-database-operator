@@ -1,0 +1,41 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v4
+kind: LRPDB
+metadata:
+  name: lrpdb1
+  namespace: pdbnamespace
+  labels:
+    cdb: cdb-dev
+spec:
+  cdbResName: "cdb-dev"
+  cdbNamespace: "cdbnamespace"
+  pdbName: "pdbdev"
+  action: "Delete"
+  dropAction: "INCLUDING"
+  lrpdbTlsKey:
+    secret:
+      secretName: "db-tls"
+      key: "tls.key"
+  lrpdbTlsCrt:
+    secret:
+      secretName: "db-tls"
+      key: "tls.crt"
+  lrpdbTlsCat:
+    secret:
+      secretName: "db-ca"
+      key: "ca.crt"
+  webServerUser:
+    secret:
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
+  webServerPwd:
+    secret:
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
+  cdbPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"

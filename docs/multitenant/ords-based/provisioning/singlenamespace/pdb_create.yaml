@@ -1,0 +1,47 @@
+apiVersion: database.oracle.com/v4
+kind: PDB
+metadata:
+  name: pdb1
+  namespace: oracle-database-operator-system
+  labels:
+    cdb: cdb-dev
+spec:
+  cdbResName: "cdb-dev"
+  cdbNamespace: "oracle-database-operator-system"
+  cdbName: "DB12"
+  pdbName: "pdbdev"
+  adminName:
+    secret:
+      secretName: "pdb1-secret"
+      key: "sysadmin_user" 
+  adminPwd:
+    secret:
+      secretName: "pdb1-secret"
+      key: "sysadmin_pwd"
+  pdbTlsKey:
+    secret:
+      secretName: "db-tls"
+      key: "tls.key"
+  pdbTlsCrt:
+    secret:
+      secretName: "db-tls"
+      key: "tls.crt"
+  pdbTlsCat:
+    secret:
+      secretName: "db-ca"
+      key: "ca.crt"
+  webServerUser:
+    secret:
+      secretName: "pdb1-secret"
+      key: "webserver_user"
+  webServerPwd:
+    secret:
+      secretName: "pdb1-secret"
+      key: "webserver_pwd"
+  fileNameConversions: "NONE"
+  tdeImport: false
+  totalSize: "1G"
+  tempSize: "100M"
+  action: "Create"
+  assertivePdbDeletion: true
+

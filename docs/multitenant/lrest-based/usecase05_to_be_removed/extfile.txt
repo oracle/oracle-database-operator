@@ -1,0 +1,1 @@
+subjectAltName=DNS:cdb-dev-lrest.cdbnamespace,DNS:www.example.com

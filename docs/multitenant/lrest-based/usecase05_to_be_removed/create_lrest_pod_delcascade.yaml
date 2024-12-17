@@ -1,0 +1,48 @@
+apiVersion: database.oracle.com/v4
+kind: LREST
+metadata: 
+  name: cdb-dev
+  namespace: cdbnamespace
+spec:
+  cdbName: "DB12"
+  lrestImage: "lin.ocir.io/intsanjaysingh/mmalvezz/testppr/lrest-dboper:latest"
+  lrestImagePullPolicy: "Always"
+  dbTnsurl : "(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
+  replicas: 1
+  deletePdbCascade: true
+  cdbAdminUser: 
+    secret: 
+      secretName: "dbuser"
+      key: "e_dbuser.txt"
+  cdbAdminPwd: 
+    secret: 
+      secretName: "dbpass"
+      key: "e_dbpass.txt"
+  webServerUser: 
+    secret: 
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
+  webServerPwd: 
+    secret: 
+      secretName: "wbpass"
+      key: "e_wbpass.txt"      
+  cdbTlsKey:
+    secret:
+      secretName: "db-tls"
+      key: "tls.key"
+  cdbTlsCrt:
+    secret:
+      secretName: "db-tls"
+      key: "tls.crt"
+  cdbPubKey:
+    secret:
+      secretName: "pubkey"
+      key: "publicKey"
+  cdbPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"
+
+
+
+
