@@ -1,0 +1,61 @@
+
+########################
+## REST SERVER IMAGE ###
+########################
+
+ORDSIMG:lin.ocir.io/intsanjaysingh/mmalvezz/testppr/ords-dboper:latest
+
+##############################
+## TNS URL FOR CDB CREATION ##
+##############################
+TNSALIAS:"(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
+
+###########################################
+##           ORDS PUBLIC USER            ##
+###########################################
+ORDPWD:Mascetti
+
+###########################################
+##           SYSPASSWORD                 ##
+###########################################
+SYSPWD:WElcome_12##
+
+#######################
+## HTTPS CREDENTIAL ###
+#######################
+
+WBUSER:welcome
+WBPASS:welcome1
+
+#####################
+## PDB ADMIN USER ###
+##################### 
+
+PDBUSR:Citizenkane
+PDBPWD:Rosebud
+
+#####################
+## CDB ADMIN USER ###
+##################### 
+
+CDBUSR:C##DBAPI_CDB_ADMIN
+CDBPWD:WElcome_12##
+
+###################
+### NAMESPACES ####
+###################
+
+PDBNAMESPACE:pdbnamespace
+CDBNAMESPACE:cdbnamespace
+
+####################
+### COMPANY NAME ### 
+####################
+
+COMPANY:oracle
+
+####################
+### APIVERSION   ### 
+####################
+
+APIVERSION:v4

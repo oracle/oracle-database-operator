@@ -1,0 +1,30 @@
+2024-11-04T11:19:59Z	INFO	controller-runtime.builder	Registering a validating webhook	{"GVK": "database.oracle.com/v1alpha1, Kind=DataguardBroker", "path": "/validate-database-oracle-com-v1alpha1-dataguardbroker"}
+2024-11-04T11:19:59Z	INFO	controller-runtime.webhook	Registering webhook	{"path": "/validate-database-oracle-com-v1alpha1-dataguardbroker"}
+2024-11-04T11:19:59Z	INFO	setup	starting manager
+2024-11-04T11:19:59Z	INFO	controller-runtime.metrics	Starting metrics server
+2024-11-04T11:19:59Z	INFO	controller-runtime.metrics	Serving metrics server	{"bindAddress": ":8080", "secure": false}
+2024-11-04T11:19:59Z	INFO	controller-runtime.webhook	Starting webhook server
+2024-11-04T11:19:59Z	INFO	controller-runtime.certwatcher	Updated current TLS certificate
+2024-11-04T11:19:59Z	INFO	controller-runtime.webhook	Serving webhook server	{"host": "", "port": 9443}
+2024-11-04T11:19:59Z	INFO	controller-runtime.certwatcher	Starting certificate watcher
+I1104 11:19:59.901034       1 leaderelection.go:250] attempting to acquire leader lease oracle-database-operator-system/a9d608ea.oracle.com...
+2024-11-04T11:19:37Z	INFO	controller-runtime.webhook	Serving webhook server	{"host": "", "port": 9443}
+2024-11-04T11:19:37Z	INFO	controller-runtime.certwatcher	Starting certificate watcher
+I1104 11:19:37.669237       1 leaderelection.go:250] attempting to acquire leader lease oracle-database-operator-system/a9d608ea.oracle.com...
+2024-11-04T11:20:49Z	INFO	lrpdb-webhook	Setting default values in LRPDB spec for : lrpdb4
+2024-11-04T11:20:49Z	INFO	lrpdb-webhook	 - reuseTempFile : true
+2024-11-04T11:20:49Z	INFO	lrpdb-webhook	 - unlimitedStorage : true
+2024-11-04T11:20:49Z	INFO	lrpdb-webhook	 - tdeImport : false
+2024-11-04T11:20:49Z	INFO	lrpdb-webhook	 - tdeExport : false
+2024-11-04T11:20:49Z	INFO	lrpdb-webhook	 - asClone : false
+2024-11-04T11:20:49Z	INFO	lrpdb-webhook	 - getScript : false
+===> controllers.restSQLCollection{Env:struct { DefaultTimeZone string "json:\"defaultTimeZone,omitempty\"" }{DefaultTimeZone:""}, Items:[]controllers.SQL_Item(nil)}
+===> {Env:{DefaultTimeZone:} Items:[]}
+2024-11-04T11:22:24Z	DEBUG	events	cdb-dev	{"type": "Warning", "object": {"kind":"LRPDB","namespace":"pdbnamespace","name":"lrpdb1","uid":"cfbd1d27-5571-444c-b175-4838b1f68d5a","apiVersion":"database.oracle.com/v4","resourceVersion":"62119140"}, "reason": "Done"}
+2024-11-04T11:22:24Z	INFO	controllers.LRPDB	Begin respData	{"getLRPDBState": {"name":"lrpdb1","namespace":"pdbnamespace"}}
+2024-11-04T11:22:24Z	INFO	controllers.LRPDB	{"inst_id":1,"con_id":3,"open_mode":"MOUNTED","restristced":"NONE","total_size":855638016,"sqlcode":0}
+	{"getLRPDBState": {"name":"lrpdb1","namespace":"pdbnamespace"}}
+2024-11-04T11:22:24Z	INFO	controllers.LRPDB	End respData	{"getLRPDBState": {"name":"lrpdb1","namespace":"pdbnamespace"}}
+2024-11-04T11:22:24Z	INFO	controllers.LRPDB	Successfully obtained LRPDB state	{"getLRPDBState": {"name":"lrpdb1","namespace":"pdbnamespace"}, "LRPDB Name": "pdbdev", "State": "MOUNTED"}
+2024-11-04T11:22:24Z	INFO	controllers.LRPDB	Frame:	{"ManageConfigMapForCloningAndPlugin": {"name":"lrpdb1","namespace":"pdbnamespace"}}
+2024-11-04T11:22:24Z	INFO	controllers.LRPDB	Reconcile completed	{"multitenantoperator": {"name":"lrpdb1","namespace":"pdbnamespace"}}

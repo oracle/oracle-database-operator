@@ -1,0 +1,44 @@
+apiVersion: database.oracle.com/v4
+kind: CDB 
+metadata: 
+  name: cdb-dev
+  namespace: oracle-database-operator-system
+spec:
+  cdbName: "DB12"
+  ordsImage: ".............your registry............./ords-dboper:latest"
+  ordsImagePullPolicy: "Always"
+  dbTnsurl : "...Container tns alias....."
+  replicas: 1
+  sysAdminPwd: 
+    secret: 
+      secretName: "cdb1-secret"
+      key: "sysadmin_pwd"
+  ordsPwd:
+    secret: 
+      secretName: "cdb1-secret"
+      key: "ords_pwd"  
+  cdbAdminUser: 
+    secret: 
+      secretName: "cdb1-secret"
+      key: "cdbadmin_user"
+  cdbAdminPwd: 
+    secret: 
+      secretName: "cdb1-secret"
+      key: "cdbadmin_pwd"
+  webServerUser: 
+    secret: 
+      secretName: "cdb1-secret"
+      key: "webserver_user"
+  webServerPwd: 
+    secret: 
+      secretName: "cdb1-secret"
+      key: "webserver_pwd"      
+  cdbTlsKey:
+    secret:
+      secretName: "db-tls"
+      key: "tls.key"
+  cdbTlsCrt:
+    secret:
+      secretName: "db-tls"
+      key: "tls.crt"
+
