@@ -3,20 +3,20 @@ module github.com/oracle/oracle-database-operator
 go 1.23.3
 
 require (
-	github.com/go-logr/logr v1.4.1
-	github.com/onsi/ginkgo/v2 v2.14.0
-	github.com/onsi/gomega v1.30.0
-	github.com/oracle/oci-go-sdk/v65 v65.49.3
-	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.62.0
+	github.com/go-logr/logr v1.4.2
+	github.com/onsi/ginkgo/v2 v2.20.2
+	github.com/onsi/gomega v1.34.2
+	github.com/oracle/oci-go-sdk/v65 v65.77.1
+	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.78.2
 	go.uber.org/zap v1.26.0
-	golang.org/x/text v0.14.0
+	golang.org/x/text v0.19.0
 	gopkg.in/yaml.v3 v3.0.1
-	k8s.io/api v0.29.2
-	k8s.io/apimachinery v0.29.2
-	k8s.io/cli-runtime v0.29.2
-	k8s.io/client-go v0.29.2
-	k8s.io/kubectl v0.29.2
-	sigs.k8s.io/controller-runtime v0.17.3
+	k8s.io/api v0.31.3
+	k8s.io/apimachinery v0.31.3
+	k8s.io/cli-runtime v0.31.3
+	k8s.io/client-go v0.31.3
+	k8s.io/kubectl v0.31.3
+	sigs.k8s.io/controller-runtime v0.19.3
 	sigs.k8s.io/yaml v1.4.0
 )
 
