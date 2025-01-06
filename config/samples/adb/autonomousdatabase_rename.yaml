@@ -7,6 +7,7 @@ kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
 spec:
+  action: Update
   details:
     autonomousDatabaseOCID: ocid1.autonomousdatabase...
     # The database name

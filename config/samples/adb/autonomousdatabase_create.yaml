@@ -7,6 +7,7 @@ kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
 spec:
+  action: Create
   details:
     # Update compartmentOCID with your compartment OCID.
     compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
