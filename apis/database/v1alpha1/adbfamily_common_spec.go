@@ -36,38 +36,32 @@
 ** SOFTWARE.
  */
 
-package adbfamily
+package v1alpha1
 
-import (
-	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	"github.com/oracle/oracle-database-operator/commons/k8s"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-)
+// LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
+const LastSuccessfulSpec string = "lastSuccessfulSpec"
 
-// VerifyTargetAdb searches if the target ADB is in the cluster.
-// The function returns two values in the following order:
-// ocid: the OCID of the target ADB. An empty string is returned if the ocid is nil.
-// ownerADB: the resource of the targetADB if it's found in the cluster
-func VerifyTargetAdb(kubeClient client.Client, target dbv4.TargetSpec, namespace string) (*dbv4.AutonomousDatabase, error) {
-	var err error
-	var ownerAdb *dbv4.AutonomousDatabase
+/************************
+*	OCI config
+************************/
+type OciConfigSpec struct {
+	ConfigMapName *string `json:"configMapName,omitempty"`
+	SecretName    *string `json:"secretName,omitempty"`
+}
 
-	// Get the target ADB OCID
-	if target.K8sAdb.Name != nil {
-		// Find the target ADB using the name of the k8s ADB
-		ownerAdb = &dbv4.AutonomousDatabase{}
-		if err := k8s.FetchResource(kubeClient, namespace, *target.K8sAdb.Name, ownerAdb); err != nil {
-			return nil, err
-		}
+/************************
+*	ADB spec
+************************/
+type K8sAdbSpec struct {
+	Name *string `json:"name,omitempty"`
+}
 
-	} else {
-		// Find the target ADB using the ADB OCID
-		ownerAdb, err = k8s.FetchAutonomousDatabaseWithOCID(kubeClient, namespace, *target.OciAdb.OCID)
-		if err != nil {
-			return nil, err
-		}
+type OciAdbSpec struct {
+	Ocid *string `json:"ocid,omitempty"`
+}
 
-	}
-
-	return ownerAdb, nil
+// TargetSpec defines the spec of the target for backup/restore runs.
+type TargetSpec struct {
+	K8sAdb K8sAdbSpec `json:"k8sADB,omitempty"`
+	OciAdb OciAdbSpec `json:"ociADB,omitempty"`
 }

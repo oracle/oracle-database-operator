@@ -18,9 +18,10 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
-# Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
-# API version has to be v1 to use defaulting (https://github.com/kubernetes-sigs/controller-tools/issues/478)
-CRD_OPTIONS ?= "crd:maxDescLen=0"
+# Enable allowDangerousTypes to use float type in CRD
+# Remove the Desc to avoid YAML getting too long. See the discussion:
+# https://github.com/kubernetes-sigs/kubebuilder/issues/1140 
+CRD_OPTIONS ?= "crd:maxDescLen=0,allowDangerousTypes=true"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.29.0
 # Operator YAML file

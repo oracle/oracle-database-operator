@@ -26,26 +26,6 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-database-oracle-com-v4-autonomousdatabase
-  failurePolicy: Fail
-  name: mautonomousdatabasev4.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
   - v1beta1
   clientConfig:
     service:
@@ -187,26 +167,6 @@ webhooks:
     - UPDATE
     resources:
     - autonomousdatabasebackups
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-autonomousdatabase
-  failurePolicy: Fail
-  name: mautonomousdatabasev1alpha1.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -396,26 +356,6 @@ webhooks:
     - UPDATE
     resources:
     - autonomousdatabaserestores
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-database-oracle-com-v4-autonomousdatabase
-  failurePolicy: Fail
-  name: vautonomousdatabasev4.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1

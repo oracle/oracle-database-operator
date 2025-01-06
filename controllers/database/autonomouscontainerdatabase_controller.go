@@ -235,13 +235,13 @@ func (r *AutonomousContainerDatabaseReconciler) Reconcile(ctx context.Context, r
 func (r *AutonomousContainerDatabaseReconciler) setupOCIClients(logger logr.Logger, acd *dbv4.AutonomousContainerDatabase) error {
 	var err error
 
-	authData := oci.APIKeyAuth{
+	authData := oci.ApiKeyAuth{
 		ConfigMapName: acd.Spec.OCIConfig.ConfigMapName,
 		SecretName:    acd.Spec.OCIConfig.SecretName,
 		Namespace:     acd.GetNamespace(),
 	}
 
-	provider, err := oci.GetOCIProvider(r.KubeClient, authData)
+	provider, err := oci.GetOciProvider(r.KubeClient, authData)
 	if err != nil {
 		return err
 	}

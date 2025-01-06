@@ -42,6 +42,8 @@ import (
 	"encoding/json"
 	"reflect"
 
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+
 	"github.com/oracle/oci-go-sdk/v65/database"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -85,7 +87,7 @@ type AutonomousContainerDatabaseSpec struct {
 	Action       AcdActionEnum     `json:"action,omitempty"`
 	FreeformTags map[string]string `json:"freeformTags,omitempty"`
 
-	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
+	OCIConfig OciConfigSpec `json:"ociConfig,omitempty"`
 	// +kubebuilder:default:=false
 	HardLink *bool `json:"hardLink,omitempty"`
 }
@@ -168,13 +170,13 @@ func (acd *AutonomousContainerDatabase) UpdateLastSuccessfulSpec() error {
 }
 
 // UpdateStatusFromOCIACD updates the status subresource
-func (acd *AutonomousContainerDatabase) UpdateStatusFromOCIACD(ociObj database.AutonomousContainerDatabase) {
+func (acd *AutonomousContainerDatabase) UpdateStatusFromOciAcd(ociObj database.AutonomousContainerDatabase) {
 	acd.Status.LifecycleState = ociObj.LifecycleState
-	acd.Status.TimeCreated = FormatSDKTime(ociObj.TimeCreated)
+	acd.Status.TimeCreated = dbv4.FormatSDKTime(ociObj.TimeCreated)
 }
 
 // UpdateFromOCIADB updates the attributes using database.AutonomousContainerDatabase object
-func (acd *AutonomousContainerDatabase) UpdateFromOCIACD(ociObj database.AutonomousContainerDatabase) (specChanged bool) {
+func (acd *AutonomousContainerDatabase) UpdateFromOciAcd(ociObj database.AutonomousContainerDatabase) (specChanged bool) {
 	oldACD := acd.DeepCopy()
 
 	/***********************************
@@ -197,14 +199,14 @@ func (acd *AutonomousContainerDatabase) UpdateFromOCIACD(ociObj database.Autonom
 	/***********************************
 	* update the status subresource
 	***********************************/
-	acd.UpdateStatusFromOCIACD(ociObj)
+	acd.UpdateStatusFromOciAcd(ociObj)
 
 	return !reflect.DeepEqual(oldACD.Spec, acd.Spec)
 }
 
 // RemoveUnchangedSpec removes the unchanged fields in spec, and returns if the spec has been changed.
 func (acd *AutonomousContainerDatabase) RemoveUnchangedSpec(prevSpec AutonomousContainerDatabaseSpec) (bool, error) {
-	changed, err := removeUnchangedFields(prevSpec, &acd.Spec)
+	changed, err := dbv4.RemoveUnchangedFields(prevSpec, &acd.Spec)
 	if err != nil {
 		return changed, err
 	}

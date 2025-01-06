@@ -102,7 +102,7 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 		if apiErrors.IsNotFound(err) {
 			return emptyResult, nil
 		}
-		// Failed to get ADBRestore, so we don't need to update the status
+		// Failed to get the resource
 		return emptyResult, err
 	}
 
@@ -110,7 +110,7 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 	* Look up the owner AutonomousDatabase and set the ownerReference
 	* if the owner hasn't been set yet.
 	******************************************************************/
-	adbOCID, err := r.verifyTargetADB(restore)
+	adbOCID, err := r.verifyTargetAdb(restore)
 	if err != nil {
 		return r.manageError(restore, err)
 	}
@@ -183,9 +183,9 @@ func (r *AutonomousDatabaseRestoreReconciler) Reconcile(ctx context.Context, req
 }
 
 func (r *AutonomousDatabaseRestoreReconciler) getRestoreSDKTime(restore *dbv4.AutonomousDatabaseRestore) (*common.SDKTime, error) {
-	if restore.Spec.Source.K8sADBBackup.Name != nil { // restore using backupName
+	if restore.Spec.Source.K8sAdbBackup.Name != nil { // restore using backupName
 		backup := &dbv4.AutonomousDatabaseBackup{}
-		if err := k8s.FetchResource(r.KubeClient, restore.Namespace, *restore.Spec.Source.K8sADBBackup.Name, backup); err != nil {
+		if err := k8s.FetchResource(r.KubeClient, restore.Namespace, *restore.Spec.Source.K8sAdbBackup.Name, backup); err != nil {
 			return nil, err
 		}
 
@@ -219,43 +219,43 @@ func (r *AutonomousDatabaseRestoreReconciler) setOwnerAutonomousDatabase(restore
 	return nil
 }
 
-// verifyTargetADB searches if the target ADB is in the cluster, and set the owner reference to the ADB if it exists.
+// verifyTargetAdb searches if the target ADB is in the cluster, and set the owner reference to the ADB if it exists.
 // The function returns the OCID of the target ADB.
-func (r *AutonomousDatabaseRestoreReconciler) verifyTargetADB(restore *dbv4.AutonomousDatabaseRestore) (string, error) {
+func (r *AutonomousDatabaseRestoreReconciler) verifyTargetAdb(restore *dbv4.AutonomousDatabaseRestore) (string, error) {
 	// Get the target ADB OCID and the ADB resource
-	ownerADB, err := adbfamily.VerifyTargetADB(r.KubeClient, restore.Spec.Target, restore.Namespace)
+	ownerAdb, err := adbfamily.VerifyTargetAdb(r.KubeClient, restore.Spec.Target, restore.Namespace)
 
 	if err != nil {
 		return "", err
 	}
 
 	// Set the owner reference if needed
-	if len(restore.GetOwnerReferences()) == 0 && ownerADB != nil {
-		if err := r.setOwnerAutonomousDatabase(restore, ownerADB); err != nil {
+	if len(restore.GetOwnerReferences()) == 0 && ownerAdb != nil {
+		if err := r.setOwnerAutonomousDatabase(restore, ownerAdb); err != nil {
 			return "", err
 		}
 	}
 
-	if restore.Spec.Target.OCIADB.OCID != nil {
-		return *restore.Spec.Target.OCIADB.OCID, nil
+	if restore.Spec.Target.OciAdb.OCID != nil {
+		return *restore.Spec.Target.OciAdb.OCID, nil
 	}
-	if ownerADB != nil && ownerADB.Spec.Details.AutonomousDatabaseOCID != nil {
-		return *ownerADB.Spec.Details.AutonomousDatabaseOCID, nil
+	if ownerAdb != nil && ownerAdb.Spec.Details.Id != nil {
+		return *ownerAdb.Spec.Details.Id, nil
 	}
 
-	return "", errors.New("cannot get the OCID of the targetADB")
+	return "", errors.New("cannot get the OCID of the target Autonomous Database")
 }
 
 func (r *AutonomousDatabaseRestoreReconciler) setupOCIClients(restore *dbv4.AutonomousDatabaseRestore) error {
 	var err error
 
-	authData := oci.APIKeyAuth{
+	authData := oci.ApiKeyAuth{
 		ConfigMapName: restore.Spec.OCIConfig.ConfigMapName,
 		SecretName:    restore.Spec.OCIConfig.SecretName,
 		Namespace:     restore.GetNamespace(),
 	}
 
-	provider, err := oci.GetOCIProvider(r.KubeClient, authData)
+	provider, err := oci.GetOciProvider(r.KubeClient, authData)
 	if err != nil {
 		return err
 	}

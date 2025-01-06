@@ -64,7 +64,7 @@ func FetchResource(kubeClient client.Client, namespace string, name string, obje
 
 // Returns the first AutonomousDatabase resource that matches the AutonomousDatabaseOCID of the backup
 // Sometimes the AutonomousDatabase doesn't exist. It could happen if a user simply want to restore or
-// backup the ADB without creating an ADB rersource in the cluster.
+// backup the AutonomousDatabase without creating an AutonomousDatabase rersource in the cluster.
 // If there isn't an AutonomousDatabase with the same OCID, a nil is returned.
 func FetchAutonomousDatabaseWithOCID(kubeClient client.Client, namespace string, ocid string) (*dbv4.AutonomousDatabase, error) {
 	adbList, err := fetchAutonomousDatabases(kubeClient, namespace)
@@ -73,7 +73,7 @@ func FetchAutonomousDatabaseWithOCID(kubeClient client.Client, namespace string,
 	}
 
 	for _, adb := range adbList.Items {
-		if adb.Spec.Details.AutonomousDatabaseOCID != nil && *adb.Spec.Details.AutonomousDatabaseOCID == ocid {
+		if adb.Spec.Details.Id != nil && *adb.Spec.Details.Id == ocid {
 			return &adb, nil
 		}
 	}

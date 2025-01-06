@@ -55,7 +55,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	"github.com/oracle/oracle-database-operator/commons/adb_family"
+	adbfamily "github.com/oracle/oracle-database-operator/commons/adb_family"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
 
@@ -92,7 +92,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 		if apiErrors.IsNotFound(err) {
 			return emptyResult, nil
 		}
-		// Failed to get ADBBackup, so we don't need to update the status
+		// Failed to get AutonomousDatabaseBackup, so we don't need to update the status
 		return emptyResult, err
 	}
 
@@ -100,7 +100,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 	* Look up the owner AutonomousDatabase and set the ownerReference
 	* if the owner hasn't been set yet.
 	******************************************************************/
-	adbOCID, err := r.verifyTargetADB(backup)
+	adbOCID, err := r.verifyTargetAdb(backup)
 	if err != nil {
 		return r.manageError(backup, err)
 	}
@@ -133,7 +133,7 @@ func (r *AutonomousDatabaseBackupReconciler) Reconcile(ctx context.Context, req 
 
 	/******************************************************************
 	* Requeue if the Backup is in an intermediate state
-	* No-op if the ADB OCID is nil
+	* No-op if the Autonomous Database OCID is nil
 	* To get the latest status, execute before all the reconcile logic
 	******************************************************************/
 	if dbv4.IsBackupIntermediateState(backup.Status.LifecycleState) {
@@ -210,43 +210,43 @@ func (r *AutonomousDatabaseBackupReconciler) setOwnerAutonomousDatabase(backup *
 	return nil
 }
 
-// verifyTargetADB searches if the target ADB is in the cluster, and set the owner reference to the ADB if it exists.
-// The function returns the OCID of the target ADB.
-func (r *AutonomousDatabaseBackupReconciler) verifyTargetADB(backup *dbv4.AutonomousDatabaseBackup) (string, error) {
+// verifyTargetAdb searches if the target AutonomousDatabase is in the cluster, and set the owner reference to that AutonomousDatabase if it exists.
+// The function returns the OCID of the target AutonomousDatabase.
+func (r *AutonomousDatabaseBackupReconciler) verifyTargetAdb(backup *dbv4.AutonomousDatabaseBackup) (string, error) {
 	// Get the target ADB OCID and the ADB resource
-	ownerADB, err := adbfamily.VerifyTargetADB(r.KubeClient, backup.Spec.Target, backup.Namespace)
+	ownerAdb, err := adbfamily.VerifyTargetAdb(r.KubeClient, backup.Spec.Target, backup.Namespace)
 
 	if err != nil {
 		return "", err
 	}
 
 	// Set the owner reference if needed
-	if len(backup.GetOwnerReferences()) == 0 && ownerADB != nil {
-		if err := r.setOwnerAutonomousDatabase(backup, ownerADB); err != nil {
+	if len(backup.GetOwnerReferences()) == 0 && ownerAdb != nil {
+		if err := r.setOwnerAutonomousDatabase(backup, ownerAdb); err != nil {
 			return "", err
 		}
 	}
 
-	if backup.Spec.Target.OCIADB.OCID != nil {
-		return *backup.Spec.Target.OCIADB.OCID, nil
+	if backup.Spec.Target.OciAdb.OCID != nil {
+		return *backup.Spec.Target.OciAdb.OCID, nil
 	}
-	if ownerADB != nil && ownerADB.Spec.Details.AutonomousDatabaseOCID != nil {
-		return *ownerADB.Spec.Details.AutonomousDatabaseOCID, nil
+	if ownerAdb != nil && ownerAdb.Spec.Details.Id != nil {
+		return *ownerAdb.Spec.Details.Id, nil
 	}
 
-	return "", errors.New("cannot get the OCID of the targetADB")
+	return "", errors.New("cannot get the OCID of the target AutonomousDatabase")
 }
 
 func (r *AutonomousDatabaseBackupReconciler) setupOCIClients(backup *dbv4.AutonomousDatabaseBackup) error {
 	var err error
 
-	authData := oci.APIKeyAuth{
+	authData := oci.ApiKeyAuth{
 		ConfigMapName: backup.Spec.OCIConfig.ConfigMapName,
 		SecretName:    backup.Spec.OCIConfig.SecretName,
 		Namespace:     backup.GetNamespace(),
 	}
 
-	provider, err := oci.GetOCIProvider(r.KubeClient, authData)
+	provider, err := oci.GetOciProvider(r.KubeClient, authData)
 	if err != nil {
 		return err
 	}

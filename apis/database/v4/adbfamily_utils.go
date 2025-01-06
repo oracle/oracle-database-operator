@@ -36,23 +36,23 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	"errors"
 	"reflect"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
 	"github.com/oracle/oci-go-sdk/v65/workrequests"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// LastSuccessfulSpec is an annotation key which maps to the value of last successful spec
-const LastSuccessfulSpec string = "lastSuccessfulSpec"
+// This file contains the util functions that are shared by specs in both
+// apis/database/v1alpha1 and apis/database/v4.
 
 // File the meta condition and return the meta view
 func CreateMetaCondition(obj client.Object, err error, lifecycleState string, stateMsg string) metav1.Condition {
@@ -67,31 +67,6 @@ func CreateMetaCondition(obj client.Object, err error, lifecycleState string, st
 	}
 }
 
-/************************
-*	OCI config
-************************/
-type OCIConfigSpec struct {
-	ConfigMapName *string `json:"configMapName,omitempty"`
-	SecretName    *string `json:"secretName,omitempty"`
-}
-
-/************************
-*	ADB spec
-************************/
-type K8sADBSpec struct {
-	Name *string `json:"name,omitempty"`
-}
-
-type OCIADBSpec struct {
-	OCID *string `json:"ocid,omitempty"`
-}
-
-// TargetSpec defines the spec of the target for backup/restore runs.
-type TargetSpec struct {
-	K8sADB K8sADBSpec `json:"k8sADB,omitempty"`
-	OCIADB OCIADBSpec `json:"ociADB,omitempty"`
-}
-
 /**************************
 *	Remove Unchanged Fields
 **************************/
@@ -99,7 +74,7 @@ type TargetSpec struct {
 // removeUnchangedFields removes the unchanged fields in the struct and returns if the struct is changed.
 // lastSpec should be a derefereced struct that is the last successful spec, e.g. AutonomousDatabaseSpec.
 // curSpec should be a pointer pointing to the struct that is being proccessed, e.g., *AutonomousDatabaseSpec.
-func removeUnchangedFields(lastSpec interface{}, curSpec interface{}) (bool, error) {
+func RemoveUnchangedFields(lastSpec interface{}, curSpec interface{}) (bool, error) {
 	if reflect.ValueOf(lastSpec).Kind() != reflect.Struct {
 		return false, errors.New("lastSpec should be a struct")
 	}
@@ -217,7 +192,7 @@ func FormatSDKTime(sdkTime *common.SDKTime) string {
 	return time.Format(displayFormat)
 }
 
-func parseDisplayTime(val string) (*common.SDKTime, error) {
+func ParseDisplayTime(val string) (*common.SDKTime, error) {
 	parsedTime, err := time.Parse(displayFormat, val)
 	if err != nil {
 		return nil, err
@@ -229,7 +204,7 @@ func parseDisplayTime(val string) (*common.SDKTime, error) {
 /************************
 *	LifecycleState check
 ************************/
-func IsADBIntermediateState(state database.AutonomousDatabaseLifecycleStateEnum) bool {
+func IsAdbIntermediateState(state database.AutonomousDatabaseLifecycleStateEnum) bool {
 	if state == database.AutonomousDatabaseLifecycleStateProvisioning ||
 		state == database.AutonomousDatabaseLifecycleStateUpdating ||
 		state == database.AutonomousDatabaseLifecycleStateScaleInProgress ||
@@ -248,7 +223,7 @@ func IsADBIntermediateState(state database.AutonomousDatabaseLifecycleStateEnum)
 	return false
 }
 
-func ValidADBTerminateState(state database.AutonomousDatabaseLifecycleStateEnum) bool {
+func CanBeTerminated(state database.AutonomousDatabaseLifecycleStateEnum) bool {
 	if state == database.AutonomousDatabaseLifecycleStateProvisioning ||
 		state == database.AutonomousDatabaseLifecycleStateAvailable ||
 		state == database.AutonomousDatabaseLifecycleStateStopped ||

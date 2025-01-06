@@ -78,25 +78,25 @@ func CreateSecret(kubeClient client.Client, namespace string, name string, data 
 func CreateAutonomousBackup(kubeClient client.Client,
 	backupName string,
 	backupSummary database.AutonomousDatabaseBackupSummary,
-	ownerADB *dbv4.AutonomousDatabase) error {
+	ownerAdb *dbv4.AutonomousDatabase) error {
 
 	backup := &dbv4.AutonomousDatabaseBackup{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace:       ownerADB.GetNamespace(),
+			Namespace:       ownerAdb.GetNamespace(),
 			Name:            backupName,
-			OwnerReferences: NewOwnerReference(ownerADB),
+			OwnerReferences: NewOwnerReference(ownerAdb),
 		},
 		Spec: dbv4.AutonomousDatabaseBackupSpec{
 			Target: dbv4.TargetSpec{
-				K8sADB: dbv4.K8sADBSpec{
-					Name: common.String(ownerADB.Name),
+				K8sAdb: dbv4.K8sAdbSpec{
+					Name: common.String(ownerAdb.Name),
 				},
 			},
 			DisplayName:                  backupSummary.DisplayName,
 			AutonomousDatabaseBackupOCID: backupSummary.Id,
-			OCIConfig: dbv4.OCIConfigSpec{
-				ConfigMapName: ownerADB.Spec.OCIConfig.ConfigMapName,
-				SecretName:    ownerADB.Spec.OCIConfig.SecretName,
+			OCIConfig: dbv4.OciConfigSpec{
+				ConfigMapName: ownerAdb.Spec.OciConfig.ConfigMapName,
+				SecretName:    ownerAdb.Spec.OciConfig.SecretName,
 			},
 		},
 	}

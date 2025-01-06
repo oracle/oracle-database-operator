@@ -115,12 +115,12 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// Create oci-go-sdk client
-	authData := oci.APIKeyAuth{
+	authData := oci.ApiKeyAuth{
 		ConfigMapName: dbcsInst.Spec.OCIConfigMap,
 		SecretName:    dbcsInst.Spec.OCISecret,
 		Namespace:     dbcsInst.GetNamespace(),
 	}
-	provider, err := oci.GetOCIProvider(r.KubeClient, authData)
+	provider, err := oci.GetOciProvider(r.KubeClient, authData)
 	if err != nil {
 		result := resultNq
 		return result, err
