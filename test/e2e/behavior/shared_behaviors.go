@@ -55,11 +55,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	"github.com/oracle/oracle-database-operator/test/e2e/util"
 	"os"
 	"os/exec"
 	"strings"
+
+	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	e2eutil "github.com/oracle/oracle-database-operator/test/e2e/util"
 )
 
 /**************************************************************
@@ -110,11 +111,11 @@ func AssertProvision(k8sClient *client.Client, adbLookupKey *types.NamespacedNam
 				return nil, err
 			}
 
-			return createdADB.Spec.Details.AutonomousDatabaseOCID, nil
+			return createdADB.Spec.Details.Id, nil
 		}, provisionTimeout, intervalTime).ShouldNot(BeNil())
 
 		fmt.Fprintf(GinkgoWriter, "AutonomousDatabase DbName = %s, and AutonomousDatabaseOCID = %s\n",
-			*createdADB.Spec.Details.DbName, *createdADB.Spec.Details.AutonomousDatabaseOCID)
+			*createdADB.Spec.Details.DbName, *createdADB.Spec.Details.Id)
 	}
 }
 
@@ -138,13 +139,13 @@ func AssertBind(k8sClient *client.Client, adbLookupKey *types.NamespacedName) fu
 			if err != nil {
 				return false
 			}
-			return (boundADB.Spec.Details.CompartmentOCID != nil &&
+			return (boundADB.Spec.Details.CompartmentId != nil &&
 				boundADB.Spec.Details.DbWorkload != "" &&
 				boundADB.Spec.Details.DbName != nil)
 		}, bindTimeout).Should(Equal(true), "Attributes in the resource should not be empty")
 
 		fmt.Fprintf(GinkgoWriter, "AutonomousDatabase DbName = %s, and AutonomousDatabaseOCID = %s\n",
-			*boundADB.Spec.Details.DbName, *boundADB.Spec.Details.AutonomousDatabaseOCID)
+			*boundADB.Spec.Details.DbName, *boundADB.Spec.Details.Id)
 	}
 }
 
@@ -163,10 +164,10 @@ func AssertWallet(k8sClient *client.Client, adbLookupKey *types.NamespacedName) 
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 
 		// The default name is xxx-instance-wallet
-		if adb.Spec.Details.Wallet.Name == nil {
+		if adb.Spec.Wallet.Name == nil {
 			walletName = adb.Name + "-instance-wallet"
 		} else {
-			walletName = *adb.Spec.Details.Wallet.Name
+			walletName = *adb.Spec.Wallet.Name
 		}
 
 		By("Checking the wallet secret " + walletName + " is created and is not empty")
@@ -249,7 +250,7 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 		// , the List request returns PROVISIONING state. In this case the update request will fail with
 		// conflict state error.
 		Eventually(func() (database.AutonomousDatabaseLifecycleStateEnum, error) {
-			listResp, err := e2eutil.ListAutonomousDatabases(derefDBClient, expectedADB.Spec.Details.CompartmentOCID, expectedADB.Spec.Details.DisplayName)
+			listResp, err := e2eutil.ListAutonomousDatabases(derefDBClient, expectedADB.Spec.Details.CompartmentId, expectedADB.Spec.Details.DisplayName)
 			if err != nil {
 				return "", err
 			}
@@ -265,7 +266,7 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 		var newDisplayName = *expectedADB.Spec.Details.DisplayName + "_new"
 
 		var newCPUCoreCount int
-		if *expectedADB.Spec.Details.CPUCoreCount == 1 {
+		if *expectedADB.Spec.Details.CpuCoreCount == 1 {
 			newCPUCoreCount = 2
 		} else {
 			newCPUCoreCount = 1
@@ -278,7 +279,7 @@ func UpdateDetails(k8sClient *client.Client, dbClient *database.DatabaseClient, 
 			newDisplayName, newCPUCoreCount, newKey, newVal))
 
 		expectedADB.Spec.Details.DisplayName = common.String(newDisplayName)
-		expectedADB.Spec.Details.CPUCoreCount = common.Int(newCPUCoreCount)
+		expectedADB.Spec.Details.CpuCoreCount = common.Int(newCPUCoreCount)
 		expectedADB.Spec.Details.FreeformTags = map[string]string{newKey: newVal}
 		expectedADB.Spec.Details.AdminPassword.K8sSecret.Name = common.String(newSecretName)
 
@@ -307,18 +308,18 @@ func AssertADBDetails(k8sClient *client.Client,
 		Eventually(func() (bool, error) {
 			// Fetch the ADB from OCI when it's in AVAILABLE state, and retry if its attributes doesn't match the new ADB's attributes
 			retryPolicy := e2eutil.NewLifecycleStateRetryPolicyADB(database.AutonomousDatabaseLifecycleStateAvailable)
-			resp, err := e2eutil.GetAutonomousDatabase(derefDBClient, expectedADB.Spec.Details.AutonomousDatabaseOCID, &retryPolicy)
+			resp, err := e2eutil.GetAutonomousDatabase(derefDBClient, expectedADB.Spec.Details.Id, &retryPolicy)
 			if err != nil {
 				return false, err
 			}
 
 			debug := false
 			if debug {
-				if !compareString(expectedADBDetails.AutonomousDatabaseOCID, resp.AutonomousDatabase.Id) {
-					fmt.Fprintf(GinkgoWriter, "Expected OCID: %v\nGot: %v\n", expectedADBDetails.AutonomousDatabaseOCID, resp.AutonomousDatabase.Id)
+				if !compareString(expectedADBDetails.Id, resp.AutonomousDatabase.Id) {
+					fmt.Fprintf(GinkgoWriter, "Expected OCID: %v\nGot: %v\n", expectedADBDetails.Id, resp.AutonomousDatabase.Id)
 				}
-				if !compareString(expectedADBDetails.CompartmentOCID, resp.AutonomousDatabase.CompartmentId) {
-					fmt.Fprintf(GinkgoWriter, "Expected CompartmentOCID: %v\nGot: %v\n", expectedADBDetails.CompartmentOCID, resp.CompartmentId)
+				if !compareString(expectedADBDetails.CompartmentId, resp.AutonomousDatabase.CompartmentId) {
+					fmt.Fprintf(GinkgoWriter, "Expected CompartmentOCID: %v\nGot: %v\n", expectedADBDetails.CompartmentId, resp.CompartmentId)
 				}
 				if !compareString(expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName) {
 					fmt.Fprintf(GinkgoWriter, "Expected DisplayName: %v\nGot: %v\n", expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName)
@@ -338,8 +339,8 @@ func AssertADBDetails(k8sClient *client.Client,
 				if !compareInt(expectedADBDetails.DataStorageSizeInTBs, resp.AutonomousDatabase.DataStorageSizeInTBs) {
 					fmt.Fprintf(GinkgoWriter, "Expected DataStorageSize: %v\nGot: %v\n", expectedADBDetails.DataStorageSizeInTBs, resp.AutonomousDatabase.DataStorageSizeInTBs)
 				}
-				if !compareInt(expectedADBDetails.CPUCoreCount, resp.AutonomousDatabase.CpuCoreCount) {
-					fmt.Fprintf(GinkgoWriter, "Expected CPUCoreCount: %v\nGot: %v\n", expectedADBDetails.CPUCoreCount, resp.AutonomousDatabase.CpuCoreCount)
+				if !compareInt(expectedADBDetails.CpuCoreCount, resp.AutonomousDatabase.CpuCoreCount) {
+					fmt.Fprintf(GinkgoWriter, "Expected CPUCoreCount: %v\nGot: %v\n", expectedADBDetails.CpuCoreCount, resp.AutonomousDatabase.CpuCoreCount)
 				}
 				if !compareBool(expectedADBDetails.IsAutoScalingEnabled, resp.AutonomousDatabase.IsAutoScalingEnabled) {
 					fmt.Fprintf(GinkgoWriter, "Expected IsAutoScalingEnabled: %v\nGot: %v\n", expectedADBDetails.IsAutoScalingEnabled, resp.AutonomousDatabase.IsAutoScalingEnabled)
@@ -347,23 +348,23 @@ func AssertADBDetails(k8sClient *client.Client,
 				if !compareStringMap(expectedADBDetails.FreeformTags, resp.AutonomousDatabase.FreeformTags) {
 					fmt.Fprintf(GinkgoWriter, "Expected FreeformTags: %v\nGot: %v\n", expectedADBDetails.FreeformTags, resp.AutonomousDatabase.FreeformTags)
 				}
-				if !compareBool(expectedADBDetails.NetworkAccess.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled) {
-					fmt.Fprintf(GinkgoWriter, "Expected IsAccessControlEnabled: %v\nGot: %v\n", expectedADBDetails.NetworkAccess.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled)
+				if !compareBool(expectedADBDetails.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled) {
+					fmt.Fprintf(GinkgoWriter, "Expected IsAccessControlEnabled: %v\nGot: %v\n", expectedADBDetails.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled)
 				}
-				if !reflect.DeepEqual(expectedADBDetails.NetworkAccess.AccessControlList, resp.AutonomousDatabase.WhitelistedIps) {
-					fmt.Fprintf(GinkgoWriter, "Expected AccessControlList: %v\nGot: %v\n", expectedADBDetails.NetworkAccess.AccessControlList, resp.AutonomousDatabase.WhitelistedIps)
+				if !reflect.DeepEqual(expectedADBDetails.WhitelistedIps, resp.AutonomousDatabase.WhitelistedIps) {
+					fmt.Fprintf(GinkgoWriter, "Expected AccessControlList: %v\nGot: %v\n", expectedADBDetails.WhitelistedIps, resp.AutonomousDatabase.WhitelistedIps)
 				}
-				if !compareBool(expectedADBDetails.NetworkAccess.IsMTLSConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) {
-					fmt.Fprintf(GinkgoWriter, "Expected IsMTLSConnectionRequired: %v\nGot: %v\n", expectedADBDetails.NetworkAccess.IsMTLSConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired)
+				if !compareBool(expectedADBDetails.IsMtlsConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) {
+					fmt.Fprintf(GinkgoWriter, "Expected IsMTLSConnectionRequired: %v\nGot: %v\n", expectedADBDetails.IsMtlsConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired)
 				}
-				if !compareString(expectedADBDetails.NetworkAccess.PrivateEndpoint.SubnetOCID, resp.AutonomousDatabase.SubnetId) {
-					fmt.Fprintf(GinkgoWriter, "Expected SubnetOCID: %v\nGot: %v\n", expectedADBDetails.NetworkAccess.PrivateEndpoint.SubnetOCID, resp.AutonomousDatabase.SubnetId)
+				if !compareString(expectedADBDetails.SubnetId, resp.AutonomousDatabase.SubnetId) {
+					fmt.Fprintf(GinkgoWriter, "Expected SubnetOCID: %v\nGot: %v\n", expectedADBDetails.SubnetId, resp.AutonomousDatabase.SubnetId)
 				}
-				if !reflect.DeepEqual(expectedADBDetails.NetworkAccess.PrivateEndpoint.NsgOCIDs, resp.AutonomousDatabase.NsgIds) {
-					fmt.Fprintf(GinkgoWriter, "Expected NsgOCIDs: %v\nGot: %v\n", expectedADBDetails.NetworkAccess.PrivateEndpoint.NsgOCIDs, resp.AutonomousDatabase.NsgIds)
+				if !reflect.DeepEqual(expectedADBDetails.NsgIds, resp.AutonomousDatabase.NsgIds) {
+					fmt.Fprintf(GinkgoWriter, "Expected NsgOCIDs: %v\nGot: %v\n", expectedADBDetails.NsgIds, resp.AutonomousDatabase.NsgIds)
 				}
-				if !compareString(expectedADBDetails.NetworkAccess.PrivateEndpoint.HostnamePrefix, resp.AutonomousDatabase.PrivateEndpointLabel) {
-					fmt.Fprintf(GinkgoWriter, "Expected HostnamePrefix: %v\nGot: %v\n", expectedADBDetails.NetworkAccess.PrivateEndpoint.HostnamePrefix, resp.AutonomousDatabase.PrivateEndpointLabel)
+				if !compareString(expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel) {
+					fmt.Fprintf(GinkgoWriter, "Expected PrivateEndpointLabel: %v\nGot: %v\n", expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel)
 				}
 			}
 
@@ -371,23 +372,23 @@ func AssertADBDetails(k8sClient *client.Client,
 			// (e.g. adminPassword, wallet) are missing from e2eutil.GetAutonomousDatabase().
 			// We don't compare LifecycleState in this case. We only make sure that the ADB is in AVAIABLE state before
 			// proceeding to the next test.
-			same := compareString(expectedADBDetails.AutonomousDatabaseOCID, resp.AutonomousDatabase.Id) &&
-				compareString(expectedADBDetails.CompartmentOCID, resp.AutonomousDatabase.CompartmentId) &&
+			same := compareString(expectedADBDetails.Id, resp.AutonomousDatabase.Id) &&
+				compareString(expectedADBDetails.CompartmentId, resp.AutonomousDatabase.CompartmentId) &&
 				compareString(expectedADBDetails.DisplayName, resp.AutonomousDatabase.DisplayName) &&
 				compareString(expectedADBDetails.DbName, resp.AutonomousDatabase.DbName) &&
 				expectedADBDetails.DbWorkload == resp.AutonomousDatabase.DbWorkload &&
 				compareBool(expectedADBDetails.IsDedicated, resp.AutonomousDatabase.IsDedicated) &&
 				compareString(expectedADBDetails.DbVersion, resp.AutonomousDatabase.DbVersion) &&
 				compareInt(expectedADBDetails.DataStorageSizeInTBs, resp.AutonomousDatabase.DataStorageSizeInTBs) &&
-				compareInt(expectedADBDetails.CPUCoreCount, resp.AutonomousDatabase.CpuCoreCount) &&
+				compareInt(expectedADBDetails.CpuCoreCount, resp.AutonomousDatabase.CpuCoreCount) &&
 				compareBool(expectedADBDetails.IsAutoScalingEnabled, resp.AutonomousDatabase.IsAutoScalingEnabled) &&
 				compareStringMap(expectedADBDetails.FreeformTags, resp.AutonomousDatabase.FreeformTags) &&
-				compareBool(expectedADBDetails.NetworkAccess.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled) &&
-				reflect.DeepEqual(expectedADBDetails.NetworkAccess.AccessControlList, resp.AutonomousDatabase.WhitelistedIps) &&
-				compareBool(expectedADBDetails.NetworkAccess.IsMTLSConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) &&
-				compareString(expectedADBDetails.NetworkAccess.PrivateEndpoint.SubnetOCID, resp.AutonomousDatabase.SubnetId) &&
-				reflect.DeepEqual(expectedADBDetails.NetworkAccess.PrivateEndpoint.NsgOCIDs, resp.AutonomousDatabase.NsgIds) &&
-				compareString(expectedADBDetails.NetworkAccess.PrivateEndpoint.HostnamePrefix, resp.AutonomousDatabase.PrivateEndpointLabel)
+				compareBool(expectedADBDetails.IsAccessControlEnabled, resp.AutonomousDatabase.IsAccessControlEnabled) &&
+				reflect.DeepEqual(expectedADBDetails.WhitelistedIps, resp.AutonomousDatabase.WhitelistedIps) &&
+				compareBool(expectedADBDetails.IsMtlsConnectionRequired, resp.AutonomousDatabase.IsMtlsConnectionRequired) &&
+				compareString(expectedADBDetails.SubnetId, resp.AutonomousDatabase.SubnetId) &&
+				reflect.DeepEqual(expectedADBDetails.NsgIds, resp.AutonomousDatabase.NsgIds) &&
+				compareString(expectedADBDetails.PrivateEndpointLabel, resp.AutonomousDatabase.PrivateEndpointLabel)
 
 			return same, nil
 		}, updateADBTimeout, intervalTime).Should(BeTrue())
@@ -398,15 +399,9 @@ func AssertADBDetails(k8sClient *client.Client,
 	}
 }
 
-func TestNetworkAccessRestricted(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, isMTLSConnectionRequired bool) func() {
+func TestNetworkAccessRestricted(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, acl []string, isMTLSConnectionRequired bool) func() {
 	return func() {
-		networkRestrictedSpec := dbv1alpha1.NetworkAccessSpec{
-			AccessType:               dbv1alpha1.NetworkAccessTypeRestricted,
-			IsMTLSConnectionRequired: common.Bool(isMTLSConnectionRequired),
-			AccessControlList:        []string{"192.168.0.1"},
-		}
-
-		TestNetworkAccess(k8sClient, dbClient, adbLookupKey, networkRestrictedSpec)()
+		TestNetworkAccess(k8sClient, dbClient, adbLookupKey, nil, nil, acl, isMTLSConnectionRequired)()
 	}
 }
 
@@ -450,33 +445,17 @@ func TestNetworkAccessPrivate(k8sClient *client.Client, dbClient *database.Datab
 		derefK8sClient := *k8sClient
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).Should(Succeed())
 
-		networkPrivateSpec := dbv1alpha1.NetworkAccessSpec{
-			AccessType:               dbv1alpha1.NetworkAccessTypePrivate,
-			AccessControlList:        []string{},
-			IsMTLSConnectionRequired: common.Bool(isMTLSConnectionRequired),
-			PrivateEndpoint: dbv1alpha1.PrivateEndpointSpec{
-				HostnamePrefix: adb.Spec.Details.DbName,
-				NsgOCIDs:       []string{*nsgOCIDs},
-				SubnetOCID:     common.String(*subnetOCID),
-			},
-		}
-
-		TestNetworkAccess(k8sClient, dbClient, adbLookupKey, networkPrivateSpec)()
+		TestNetworkAccess(k8sClient, dbClient, adbLookupKey, subnetOCID, nsgOCIDs, nil, isMTLSConnectionRequired)()
 	}
 }
 
 func TestNetworkAccessPublic(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName) func() {
 	return func() {
-		networkPublicSpec := dbv1alpha1.NetworkAccessSpec{
-			AccessType:               dbv1alpha1.NetworkAccessTypePublic,
-			IsMTLSConnectionRequired: common.Bool(true),
-		}
-
-		TestNetworkAccess(k8sClient, dbClient, adbLookupKey, networkPublicSpec)()
+		TestNetworkAccess(k8sClient, dbClient, adbLookupKey, nil, nil, nil, true)()
 	}
 }
 
-func TestNetworkAccess(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, networkSpec dbv1alpha1.NetworkAccessSpec) func() {
+func TestNetworkAccess(k8sClient *client.Client, dbClient *database.DatabaseClient, adbLookupKey *types.NamespacedName, subnetOCID *string, nsgOCIDs *string, acl []string, isMTLSConnectionRequired bool) func() {
 	return func() {
 		Expect(k8sClient).NotTo(BeNil())
 		Expect(dbClient).NotTo(BeNil())
@@ -488,7 +467,10 @@ func TestNetworkAccess(k8sClient *client.Client, dbClient *database.DatabaseClie
 		AssertADBState(k8sClient, dbClient, adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable)()
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 
-		adb.Spec.Details.NetworkAccess = networkSpec
+		adb.Spec.Details.SubnetId = subnetOCID
+		adb.Spec.Details.NsgIds = []string{*nsgOCIDs}
+		adb.Spec.Details.WhitelistedIps = acl
+		adb.Spec.Details.IsMtlsConnectionRequired = common.Bool(isMTLSConnectionRequired)
 		Expect(derefK8sClient.Update(context.TODO(), adb)).To(Succeed())
 		AssertADBDetails(k8sClient, dbClient, adbLookupKey, adb)()
 	}
@@ -503,7 +485,7 @@ func UpdateAndAssertDetails(k8sClient *client.Client, dbClient *database.Databas
 		expectedADB := UpdateDetails(k8sClient, dbClient, adbLookupKey, newSecretName, newAdminPassword)()
 		AssertADBDetails(k8sClient, dbClient, adbLookupKey, expectedADB)()
 
-		ocid := expectedADB.Spec.Details.AutonomousDatabaseOCID
+		ocid := expectedADB.Spec.Details.Id
 		tnsEntry := *expectedADB.Spec.Details.DbName + "_high"
 		err := AssertAdminPassword(dbClient, ocid, &tnsEntry, newAdminPassword, walletPassword)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -547,7 +529,7 @@ func AssertHardLinkDelete(k8sClient *client.Client, dbClient *database.DatabaseC
 		// Check every 10 secs for total 60 secs
 		Eventually(func() (database.AutonomousDatabaseLifecycleStateEnum, error) {
 			retryPolicy := e2eutil.NewLifecycleStateRetryPolicyADB(database.AutonomousDatabaseLifecycleStateTerminating)
-			return returnADBRemoteState(derefK8sClient, derefDBClient, adb.Spec.Details.AutonomousDatabaseOCID, &retryPolicy)
+			return returnADBRemoteState(derefK8sClient, derefDBClient, adb.Spec.Details.Id, &retryPolicy)
 		}, changeTimeout).Should(Equal(database.AutonomousDatabaseLifecycleStateTerminating))
 
 		AssertSoftLinkDelete(k8sClient, adbLookupKey)()
@@ -606,7 +588,7 @@ func AssertADBRemoteState(k8sClient *client.Client, dbClient *database.DatabaseC
 		adb := &dbv1alpha1.AutonomousDatabase{}
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 		By("Checking if the lifecycleState of remote resource is " + string(state))
-		AssertADBRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.AutonomousDatabaseOCID, state, changeTimeout)()
+		AssertADBRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.Id, state, changeTimeout)()
 	}
 }
 
@@ -622,7 +604,7 @@ func AssertADBRemoteStateForBackupRestore(k8sClient *client.Client, dbClient *da
 		adb := &dbv1alpha1.AutonomousDatabase{}
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 		By("Checking if the lifecycleState of remote resource is " + string(state))
-		AssertADBRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.AutonomousDatabaseOCID, state, backupTimeout)()
+		AssertADBRemoteStateOCID(k8sClient, dbClient, adb.Spec.Details.Id, state, backupTimeout)()
 	}
 }
 
@@ -655,8 +637,15 @@ func UpdateState(k8sClient *client.Client, adbLookupKey *types.NamespacedName, s
 		adb := &dbv1alpha1.AutonomousDatabase{}
 		Expect(derefK8sClient.Get(context.TODO(), *adbLookupKey, adb)).To(Succeed())
 
-		adb.Spec.Details.LifecycleState = state
 		By("Updating adb state to " + string(state))
+		switch state {
+		case database.AutonomousDatabaseLifecycleStateAvailable:
+			adb.Spec.Action = "Start"
+		case database.AutonomousDatabaseLifecycleStateStopped:
+			adb.Spec.Action = "Stop"
+		case database.AutonomousDatabaseLifecycleStateTerminated:
+			adb.Spec.Action = "Terminate"
+		}
 		Expect(derefK8sClient.Update(context.TODO(), adb)).To(Succeed())
 	}
 }

@@ -82,7 +82,7 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) (admiss
 
 	// cannot update when the old state is in intermediate state, except for the terminate operatrion
 	var copiedSpec *AutonomousContainerDatabaseSpec = r.Spec.DeepCopy()
-	changed, err := removeUnchangedFields(oldACD.Spec, copiedSpec)
+	changed, err := RemoveUnchangedFields(oldACD.Spec, copiedSpec)
 	if err != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec"), err.Error()))

@@ -91,12 +91,12 @@ func (r *AutonomousDatabaseBackup) ValidateCreate() (admission.Warnings, error) 
 		}
 	}
 
-	if r.Spec.Target.K8sADB.Name == nil && r.Spec.Target.OCIADB.OCID == nil {
+	if r.Spec.Target.K8sAdb.Name == nil && r.Spec.Target.OciAdb.OCID == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
 	}
 
-	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
+	if r.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.OciAdb.OCID != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB or ociADB, but not both"))
 	}
@@ -123,14 +123,14 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) (admission
 				"cannot assign a new autonomousDatabaseBackupOCID to this backup"))
 	}
 
-	if oldBackup.Spec.Target.K8sADB.Name != nil && r.Spec.Target.K8sADB.Name != nil &&
-		*oldBackup.Spec.Target.K8sADB.Name != *r.Spec.Target.K8sADB.Name {
+	if oldBackup.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.K8sAdb.Name != nil &&
+		*oldBackup.Spec.Target.K8sAdb.Name != *r.Spec.Target.K8sAdb.Name {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target").Child("k8sADB").Child("name"), "cannot assign a new name to the target"))
 	}
 
-	if oldBackup.Spec.Target.OCIADB.OCID != nil && r.Spec.Target.OCIADB.OCID != nil &&
-		*oldBackup.Spec.Target.OCIADB.OCID != *r.Spec.Target.OCIADB.OCID {
+	if oldBackup.Spec.Target.OciAdb.OCID != nil && r.Spec.Target.OciAdb.OCID != nil &&
+		*oldBackup.Spec.Target.OciAdb.OCID != *r.Spec.Target.OciAdb.OCID {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target").Child("ociADB").Child("ocid"), "cannot assign a new ocid to the target"))
 	}

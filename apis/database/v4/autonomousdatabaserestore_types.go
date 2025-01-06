@@ -60,7 +60,7 @@ type PITSpec struct {
 }
 
 type SourceSpec struct {
-	K8sADBBackup K8sADBBackupSpec `json:"k8sADBBackup,omitempty"`
+	K8sAdbBackup K8sADBBackupSpec `json:"k8sADBBackup,omitempty"`
 	PointInTime  PITSpec          `json:"pointInTime,omitempty"`
 }
 
@@ -70,7 +70,7 @@ type AutonomousDatabaseRestoreSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	Target    TargetSpec    `json:"target"`
 	Source    SourceSpec    `json:"source"`
-	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
+	OCIConfig OciConfigSpec `json:"ociConfig,omitempty"`
 }
 
 // AutonomousDatabaseRestoreStatus defines the observed state of AutonomousDatabaseRestore
@@ -124,7 +124,7 @@ func (r *AutonomousDatabaseRestore) GetPIT() (*common.SDKTime, error) {
 	if r.Spec.Source.PointInTime.Timestamp == nil {
 		return nil, errors.New("the timestamp is empty")
 	}
-	return parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
+	return ParseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 }
 
 func (r *AutonomousDatabaseRestore) UpdateStatus(

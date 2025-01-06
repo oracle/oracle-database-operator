@@ -39,10 +39,6 @@
 package v4
 
 import (
-	"fmt"
-
-	"github.com/oracle/oci-go-sdk/v65/common"
-	"github.com/oracle/oci-go-sdk/v65/database"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -63,38 +59,7 @@ func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:verbs=create;update,path=/mutate-database-oracle-com-v4-autonomousdatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v4,name=mautonomousdatabasev4.kb.io,admissionReviewVersions=v1
-
-var _ webhook.Defaulter = &AutonomousDatabase{}
-
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *AutonomousDatabase) Default() {
-	autonomousdatabaselog.Info("default", "name", r.Name)
-
-	if !isDedicated(r) { // Shared database
-		// AccessType is PUBLIC by default
-		if r.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypePublic {
-			r.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = common.Bool(true)
-			r.Spec.Details.NetworkAccess.AccessControlList = nil
-			r.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = nil
-			r.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = nil
-			r.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = nil
-		} else if r.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypeRestricted {
-			r.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = nil
-			r.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = nil
-			r.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = nil
-		} else if r.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypePrivate {
-			r.Spec.Details.NetworkAccess.AccessControlList = nil
-		}
-	} else { // Dedicated database
-		// AccessType can only be PRIVATE for a dedicated database
-		r.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
-	}
-
-}
-
-//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v4,name=vautonomousdatabasev4.kb.io,admissionReviewVersions=v1
-
+// +kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v4,name=vautonomousdatabasev4.kb.io,admissionReviewVersions=v1
 var _ webhook.Validator = &AutonomousDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
@@ -117,17 +82,6 @@ func (r *AutonomousDatabase) ValidateCreate() (admission.Warnings, error) {
 		}
 	}
 
-	if r.Spec.Details.AutonomousDatabaseOCID == nil { // provisioning operation
-		allErrs = validateCommon(r, allErrs)
-		allErrs = validateNetworkAccess(r, allErrs)
-
-		if r.Spec.Details.LifecycleState != "" {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("details").Child("lifecycleState"),
-					"cannot apply lifecycleState to a provision operation"))
-		}
-	}
-
 	if len(allErrs) == 0 {
 		return nil, nil
 	}
@@ -143,62 +97,39 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) (admission.Warni
 
 	autonomousdatabaselog.Info("validate update", "name", r.Name)
 
-	// skip the update of adding ADB OCID or binding
-	if oldADB.Status.LifecycleState == "" {
-		return nil, nil
-	}
+	// skip the verification of adding ADB OCID or binding
+	// if oldADB.Status.LifecycleState == "" {
+	// 	return nil, nil
+	// }
 
 	// cannot update when the old state is in intermediate, except for the change to the hardLink or the terminate operatrion during valid lifecycleState
-	var copySpec *AutonomousDatabaseSpec = r.Spec.DeepCopy()
-	specChanged, err := removeUnchangedFields(oldADB.Spec, copySpec)
-	if err != nil {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec"), err.Error()))
-	}
+	// var copySpec *AutonomousDatabaseSpec = r.Spec.DeepCopy()
+	// specChanged, err := RemoveUnchangedFields(oldADB.Spec, copySpec)
+	// if err != nil {
+	// 	allErrs = append(allErrs,
+	// 		field.Forbidden(field.NewPath("spec"), err.Error()))
+	// }
 
-	hardLinkChanged := copySpec.HardLink != nil
+	// hardLinkChanged := copySpec.HardLink != nil
 
-	terminateOp := ValidADBTerminateState(oldADB.Status.LifecycleState) && copySpec.Details.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated
+	// isTerminateOp := CanBeTerminated(oldADB.Status.LifecycleState) && copySpec.Action == "Terminate"
 
-	if specChanged && IsADBIntermediateState(oldADB.Status.LifecycleState) && !terminateOp && !hardLinkChanged {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec"),
-				"cannot change the spec when the lifecycleState is in an intermdeiate state"))
-	}
+	// if specChanged && IsAdbIntermediateState(oldADB.Status.LifecycleState) && !isTerminateOp && !hardLinkChanged {
+	// 	allErrs = append(allErrs,
+	// 		field.Forbidden(field.NewPath("spec"),
+	// 			"cannot change the spec when the lifecycleState is in an intermdeiate state"))
+	// }
 
 	// cannot modify autonomousDatabaseOCID
-	if r.Spec.Details.AutonomousDatabaseOCID != nil &&
-		oldADB.Spec.Details.AutonomousDatabaseOCID != nil &&
-		*r.Spec.Details.AutonomousDatabaseOCID != *oldADB.Spec.Details.AutonomousDatabaseOCID {
+	if r.Spec.Details.Id != nil &&
+		oldADB.Spec.Details.Id != nil &&
+		*r.Spec.Details.Id != *oldADB.Spec.Details.Id {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("details").Child("autonomousDatabaseOCID"),
 				"autonomousDatabaseOCID cannot be modified"))
 	}
 
-	// cannot change lifecycleState with other fields together (except the oci config)
-	var lifecycleChanged, otherFieldsChanged bool
-
-	lifecycleChanged = oldADB.Spec.Details.LifecycleState != "" &&
-		r.Spec.Details.LifecycleState != "" &&
-		oldADB.Spec.Details.LifecycleState != r.Spec.Details.LifecycleState
-	var copiedADB *AutonomousDatabaseSpec = r.Spec.DeepCopy()
-	copiedADB.Details.LifecycleState = oldADB.Spec.Details.LifecycleState
-	copiedADB.OCIConfig = oldADB.Spec.OCIConfig
-
-	otherFieldsChanged, err = removeUnchangedFields(oldADB.Spec, copiedADB)
-	if err != nil {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec"), err.Error()))
-	}
-
-	if lifecycleChanged && otherFieldsChanged {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("details").Child("LifecycleState"),
-				"cannot change lifecycleState with other spec attributes at the same time"))
-	}
-
 	allErrs = validateCommon(r, allErrs)
-	allErrs = validateNetworkAccess(r, allErrs)
 
 	if len(allErrs) == 0 {
 		return nil, nil
@@ -210,68 +141,16 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) (admission.Warni
 
 func validateCommon(adb *AutonomousDatabase, allErrs field.ErrorList) field.ErrorList {
 	// password
-	if adb.Spec.Details.AdminPassword.K8sSecret.Name != nil && adb.Spec.Details.AdminPassword.OCISecret.OCID != nil {
+	if adb.Spec.Details.AdminPassword.K8sSecret.Name != nil && adb.Spec.Details.AdminPassword.OciSecret.Id != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("details").Child("adminPassword"),
 				"cannot apply k8sSecret.name and ociSecret.ocid at the same time"))
 	}
 
-	if adb.Spec.Details.Wallet.Password.K8sSecret.Name != nil && adb.Spec.Details.Wallet.Password.OCISecret.OCID != nil {
+	if adb.Spec.Wallet.Password.K8sSecret.Name != nil && adb.Spec.Wallet.Password.OciSecret.Id != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("details").Child("wallet").Child("password"),
 				"cannot apply k8sSecret.name and ociSecret.ocid at the same time"))
-	}
-
-	return allErrs
-}
-
-func validateNetworkAccess(adb *AutonomousDatabase, allErrs field.ErrorList) field.ErrorList {
-	if !isDedicated(adb) {
-		// Shared database
-		if adb.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypeRestricted {
-			if adb.Spec.Details.NetworkAccess.AccessControlList == nil {
-				allErrs = append(allErrs,
-					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("accessControlList"),
-						fmt.Sprintf("accessControlList cannot be empty when the network access type is %s", NetworkAccessTypeRestricted)))
-			}
-		} else if adb.Spec.Details.NetworkAccess.AccessType == NetworkAccessTypePrivate { // the accessType is PRIVATE
-			if adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID == nil {
-				allErrs = append(allErrs,
-					field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("privateEndpoint").Child("subnetOCID"),
-						fmt.Sprintf("subnetOCID cannot be empty when the network access type is %s", NetworkAccessTypePrivate)))
-			}
-		}
-
-		// NsgOCIDs only applies to PRIVATE accessType
-		if adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs != nil && adb.Spec.Details.NetworkAccess.AccessType != NetworkAccessTypePrivate {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("privateEndpoint").Child("nsgOCIDs"),
-					fmt.Sprintf("NsgOCIDs cannot only be applied when network access type is %s.", NetworkAccessTypePrivate)))
-		}
-
-		// IsAccessControlEnabled is not applicable to a shared database
-		if adb.Spec.Details.NetworkAccess.IsAccessControlEnabled != nil {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("IsAccessControlEnabled"),
-					"isAccessControlEnabled is not applicable on a shared Autonomous Database"))
-		}
-	} else {
-		// Dedicated database
-
-		// accessControlList cannot be provided when Autonomous Database's access control is disabled
-		if adb.Spec.Details.NetworkAccess.AccessControlList != nil &&
-			(adb.Spec.Details.NetworkAccess.IsAccessControlEnabled == nil || !*adb.Spec.Details.NetworkAccess.IsAccessControlEnabled) {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("accessControlList"),
-					"access control list cannot be provided when Autonomous Database's access control is disabled"))
-		}
-
-		// IsMTLSConnectionRequired is not supported by dedicated database
-		if adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired != nil {
-			allErrs = append(allErrs,
-				field.Forbidden(field.NewPath("spec").Child("details").Child("networkAccess").Child("isMTLSConnectionRequired"),
-					"isMTLSConnectionRequired is not supported on a dedicated database"))
-		}
 	}
 
 	return allErrs
@@ -286,6 +165,6 @@ func (r *AutonomousDatabase) ValidateDelete() (admission.Warnings, error) {
 // Returns true if AutonomousContainerDatabaseOCID has value.
 // We don't use Details.IsDedicated because the parameter might be null when it's a provision operation.
 func isDedicated(adb *AutonomousDatabase) bool {
-	return adb.Spec.Details.AutonomousContainerDatabase.K8sACD.Name != nil ||
-		adb.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID != nil
+	return adb.Spec.Details.AutonomousContainerDatabase.K8sAcd.Name != nil ||
+		adb.Spec.Details.AutonomousContainerDatabase.OciAcd.Id != nil
 }

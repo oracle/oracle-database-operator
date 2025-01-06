@@ -85,7 +85,7 @@ type AutonomousContainerDatabaseSpec struct {
 	Action       AcdActionEnum     `json:"action,omitempty"`
 	FreeformTags map[string]string `json:"freeformTags,omitempty"`
 
-	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
+	OCIConfig OciConfigSpec `json:"ociConfig,omitempty"`
 	// +kubebuilder:default:=false
 	HardLink *bool `json:"hardLink,omitempty"`
 }
@@ -208,7 +208,7 @@ func (acd *AutonomousContainerDatabase) UpdateFromOCIACD(ociObj database.Autonom
 
 // RemoveUnchangedSpec removes the unchanged fields in spec, and returns if the spec has been changed.
 func (acd *AutonomousContainerDatabase) RemoveUnchangedSpec(prevSpec AutonomousContainerDatabaseSpec) (bool, error) {
-	changed, err := removeUnchangedFields(prevSpec, &acd.Spec)
+	changed, err := RemoveUnchangedFields(prevSpec, &acd.Spec)
 	if err != nil {
 		return changed, err
 	}

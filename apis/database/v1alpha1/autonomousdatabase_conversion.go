@@ -11,42 +11,71 @@ import (
 func (src *AutonomousDatabase) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v4.AutonomousDatabase)
 	// Convert the Spec
-	dst.Spec.Details.AutonomousDatabaseOCID = src.Spec.Details.AutonomousDatabaseOCID
-	dst.Spec.Details.CompartmentOCID = src.Spec.Details.CompartmentOCID
-	dst.Spec.Details.AutonomousContainerDatabase.K8sACD.Name = src.Spec.Details.AutonomousContainerDatabase.K8sACD.Name
-	dst.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID = src.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID
+	dst.Spec.Action = src.Spec.Action
+
+	// Details
+	dst.Spec.Details.Id = src.Spec.Details.Id
+	dst.Spec.Details.CompartmentId = src.Spec.Details.CompartmentId
+	dst.Spec.Details.AutonomousContainerDatabase.K8sAcd.Name = src.Spec.Details.AutonomousContainerDatabase.K8sAcd.Name
+	dst.Spec.Details.AutonomousContainerDatabase.OciAcd.Id = src.Spec.Details.AutonomousContainerDatabase.OciAcd.Id
 	dst.Spec.Details.DisplayName = src.Spec.Details.DisplayName
 	dst.Spec.Details.DbName = src.Spec.Details.DbName
 	dst.Spec.Details.DbWorkload = src.Spec.Details.DbWorkload
 	dst.Spec.Details.LicenseModel = src.Spec.Details.LicenseModel
 	dst.Spec.Details.DbVersion = src.Spec.Details.DbVersion
 	dst.Spec.Details.DataStorageSizeInTBs = src.Spec.Details.DataStorageSizeInTBs
-	dst.Spec.Details.CPUCoreCount = src.Spec.Details.CPUCoreCount
+	dst.Spec.Details.CpuCoreCount = src.Spec.Details.CpuCoreCount
+	dst.Spec.Details.ComputeModel = src.Spec.Details.ComputeModel
+	dst.Spec.Details.ComputeCount = src.Spec.Details.ComputeCount
+	dst.Spec.Details.OcpuCount = src.Spec.Details.OcpuCount
 	dst.Spec.Details.AdminPassword.K8sSecret.Name = src.Spec.Details.AdminPassword.K8sSecret.Name
-	dst.Spec.Details.AdminPassword.OCISecret.OCID = src.Spec.Details.AdminPassword.OCISecret.OCID
+	dst.Spec.Details.AdminPassword.OciSecret.Id = src.Spec.Details.AdminPassword.OciSecret.Id
 	dst.Spec.Details.IsAutoScalingEnabled = src.Spec.Details.IsAutoScalingEnabled
 	dst.Spec.Details.IsDedicated = src.Spec.Details.IsDedicated
-	dst.Spec.Details.LifecycleState = src.Spec.Details.LifecycleState
-
-	if val, ok := v4.GetNetworkAccessTypeFromString(string(src.Spec.Details.NetworkAccess.AccessType)); !ok {
-		return errors.New("Unable to convert to NetworkAccessTypeEnum: " + string(src.Spec.Details.NetworkAccess.AccessType))
-	} else {
-		dst.Spec.Details.NetworkAccess.AccessType = val
-	}
-	dst.Spec.Details.NetworkAccess.IsAccessControlEnabled = src.Spec.Details.NetworkAccess.IsAccessControlEnabled
-	dst.Spec.Details.NetworkAccess.AccessControlList = src.Spec.Details.NetworkAccess.AccessControlList
-	dst.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = src.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID
-	dst.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = src.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs
-	dst.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = src.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix
-	dst.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = src.Spec.Details.NetworkAccess.IsMTLSConnectionRequired
-
+	dst.Spec.Details.IsFreeTier = src.Spec.Details.IsFreeTier
+	dst.Spec.Details.IsAccessControlEnabled = src.Spec.Details.IsAccessControlEnabled
+	dst.Spec.Details.WhitelistedIps = src.Spec.Details.WhitelistedIps
+	dst.Spec.Details.SubnetId = src.Spec.Details.SubnetId
+	dst.Spec.Details.NsgIds = src.Spec.Details.NsgIds
+	dst.Spec.Details.PrivateEndpointLabel = src.Spec.Details.PrivateEndpointLabel
+	dst.Spec.Details.IsMtlsConnectionRequired = src.Spec.Details.IsMtlsConnectionRequired
 	dst.Spec.Details.FreeformTags = src.Spec.Details.FreeformTags
-	dst.Spec.Details.Wallet.Name = src.Spec.Details.Wallet.Name
-	dst.Spec.Details.Wallet.Password.K8sSecret.Name = src.Spec.Details.Wallet.Password.K8sSecret.Name
-	dst.Spec.Details.Wallet.Password.OCISecret.OCID = src.Spec.Details.Wallet.Password.OCISecret.OCID
 
-	dst.Spec.OCIConfig.ConfigMapName = src.Spec.OCIConfig.ConfigMapName
-	dst.Spec.OCIConfig.SecretName = src.Spec.OCIConfig.SecretName
+	// Clone
+	dst.Spec.Clone.CompartmentId = src.Spec.Clone.CompartmentId
+	dst.Spec.Clone.AutonomousContainerDatabase.K8sAcd.Name = src.Spec.Clone.AutonomousContainerDatabase.K8sAcd.Name
+	dst.Spec.Clone.AutonomousContainerDatabase.OciAcd.Id = src.Spec.Clone.AutonomousContainerDatabase.OciAcd.Id
+	dst.Spec.Clone.DisplayName = src.Spec.Clone.DisplayName
+	dst.Spec.Clone.DbName = src.Spec.Clone.DbName
+	dst.Spec.Clone.DbWorkload = src.Spec.Clone.DbWorkload
+	dst.Spec.Clone.LicenseModel = src.Spec.Clone.LicenseModel
+	dst.Spec.Clone.DbVersion = src.Spec.Clone.DbVersion
+	dst.Spec.Clone.DataStorageSizeInTBs = src.Spec.Clone.DataStorageSizeInTBs
+	dst.Spec.Clone.CpuCoreCount = src.Spec.Clone.CpuCoreCount
+	dst.Spec.Clone.ComputeModel = src.Spec.Clone.ComputeModel
+	dst.Spec.Clone.ComputeCount = src.Spec.Clone.ComputeCount
+	dst.Spec.Clone.OcpuCount = src.Spec.Clone.OcpuCount
+	dst.Spec.Clone.AdminPassword.K8sSecret.Name = src.Spec.Clone.AdminPassword.K8sSecret.Name
+	dst.Spec.Clone.AdminPassword.OciSecret.Id = src.Spec.Clone.AdminPassword.OciSecret.Id
+	dst.Spec.Clone.IsAutoScalingEnabled = src.Spec.Clone.IsAutoScalingEnabled
+	dst.Spec.Clone.IsDedicated = src.Spec.Clone.IsDedicated
+	dst.Spec.Clone.IsFreeTier = src.Spec.Clone.IsFreeTier
+	dst.Spec.Clone.IsAccessControlEnabled = src.Spec.Clone.IsAccessControlEnabled
+	dst.Spec.Clone.WhitelistedIps = src.Spec.Clone.WhitelistedIps
+	dst.Spec.Clone.SubnetId = src.Spec.Clone.SubnetId
+	dst.Spec.Clone.NsgIds = src.Spec.Clone.NsgIds
+	dst.Spec.Clone.PrivateEndpointLabel = src.Spec.Clone.PrivateEndpointLabel
+	dst.Spec.Clone.IsMtlsConnectionRequired = src.Spec.Clone.IsMtlsConnectionRequired
+	dst.Spec.Clone.FreeformTags = src.Spec.Clone.FreeformTags
+	dst.Spec.Clone.CloneType = src.Spec.Clone.CloneType
+
+	// Wallet
+	dst.Spec.Wallet.Name = src.Spec.Wallet.Name
+	dst.Spec.Wallet.Password.K8sSecret.Name = src.Spec.Wallet.Password.K8sSecret.Name
+	dst.Spec.Wallet.Password.OciSecret.Id = src.Spec.Wallet.Password.OciSecret.Id
+
+	dst.Spec.OciConfig.ConfigMapName = src.Spec.OciConfig.ConfigMapName
+	dst.Spec.OciConfig.SecretName = src.Spec.OciConfig.SecretName
 
 	dst.Spec.HardLink = src.Spec.HardLink
 
@@ -54,6 +83,7 @@ func (src *AutonomousDatabase) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Status.LifecycleState = src.Status.LifecycleState
 	dst.Status.TimeCreated = src.Status.TimeCreated
 	dst.Status.WalletExpiringDate = src.Status.WalletExpiringDate
+	dst.Status.Action = src.Status.Action
 
 	// convert status.allConnectionStrings
 	if src.Status.AllConnectionStrings != nil {
@@ -89,42 +119,71 @@ func (dst *AutonomousDatabase) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v4.AutonomousDatabase)
 
 	// Convert the Spec
-	dst.Spec.Details.AutonomousDatabaseOCID = src.Spec.Details.AutonomousDatabaseOCID
-	dst.Spec.Details.CompartmentOCID = src.Spec.Details.CompartmentOCID
-	dst.Spec.Details.AutonomousContainerDatabase.K8sACD.Name = src.Spec.Details.AutonomousContainerDatabase.K8sACD.Name
-	dst.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID = src.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID
+	dst.Spec.Action = src.Spec.Action
+
+	// Details
+	dst.Spec.Details.Id = src.Spec.Details.Id
+	dst.Spec.Details.CompartmentId = src.Spec.Details.CompartmentId
+	dst.Spec.Details.AutonomousContainerDatabase.K8sAcd.Name = src.Spec.Details.AutonomousContainerDatabase.K8sAcd.Name
+	dst.Spec.Details.AutonomousContainerDatabase.OciAcd.Id = src.Spec.Details.AutonomousContainerDatabase.OciAcd.Id
 	dst.Spec.Details.DisplayName = src.Spec.Details.DisplayName
 	dst.Spec.Details.DbName = src.Spec.Details.DbName
 	dst.Spec.Details.DbWorkload = src.Spec.Details.DbWorkload
 	dst.Spec.Details.LicenseModel = src.Spec.Details.LicenseModel
 	dst.Spec.Details.DbVersion = src.Spec.Details.DbVersion
 	dst.Spec.Details.DataStorageSizeInTBs = src.Spec.Details.DataStorageSizeInTBs
-	dst.Spec.Details.CPUCoreCount = src.Spec.Details.CPUCoreCount
+	dst.Spec.Details.CpuCoreCount = src.Spec.Details.CpuCoreCount
+	dst.Spec.Details.ComputeModel = src.Spec.Details.ComputeModel
+	dst.Spec.Details.ComputeCount = src.Spec.Details.ComputeCount
+	dst.Spec.Details.OcpuCount = src.Spec.Details.OcpuCount
 	dst.Spec.Details.AdminPassword.K8sSecret.Name = src.Spec.Details.AdminPassword.K8sSecret.Name
-	dst.Spec.Details.AdminPassword.OCISecret.OCID = src.Spec.Details.AdminPassword.OCISecret.OCID
+	dst.Spec.Details.AdminPassword.OciSecret.Id = src.Spec.Details.AdminPassword.OciSecret.Id
 	dst.Spec.Details.IsAutoScalingEnabled = src.Spec.Details.IsAutoScalingEnabled
 	dst.Spec.Details.IsDedicated = src.Spec.Details.IsDedicated
-	dst.Spec.Details.LifecycleState = src.Spec.Details.LifecycleState
-
-	if val, ok := GetNetworkAccessTypeFromString(string(src.Spec.Details.NetworkAccess.AccessType)); !ok {
-		return errors.New("Unable to convert to NetworkAccessTypeEnum: " + string(src.Spec.Details.NetworkAccess.AccessType))
-	} else {
-		dst.Spec.Details.NetworkAccess.AccessType = val
-	}
-	dst.Spec.Details.NetworkAccess.IsAccessControlEnabled = src.Spec.Details.NetworkAccess.IsAccessControlEnabled
-	dst.Spec.Details.NetworkAccess.AccessControlList = src.Spec.Details.NetworkAccess.AccessControlList
-	dst.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = src.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID
-	dst.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = src.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs
-	dst.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = src.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix
-	dst.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = src.Spec.Details.NetworkAccess.IsMTLSConnectionRequired
-
+	dst.Spec.Details.IsFreeTier = src.Spec.Details.IsFreeTier
+	dst.Spec.Details.IsAccessControlEnabled = src.Spec.Details.IsAccessControlEnabled
+	dst.Spec.Details.WhitelistedIps = src.Spec.Details.WhitelistedIps
+	dst.Spec.Details.SubnetId = src.Spec.Details.SubnetId
+	dst.Spec.Details.NsgIds = src.Spec.Details.NsgIds
+	dst.Spec.Details.PrivateEndpointLabel = src.Spec.Details.PrivateEndpointLabel
+	dst.Spec.Details.IsMtlsConnectionRequired = src.Spec.Details.IsMtlsConnectionRequired
 	dst.Spec.Details.FreeformTags = src.Spec.Details.FreeformTags
-	dst.Spec.Details.Wallet.Name = src.Spec.Details.Wallet.Name
-	dst.Spec.Details.Wallet.Password.K8sSecret.Name = src.Spec.Details.Wallet.Password.K8sSecret.Name
-	dst.Spec.Details.Wallet.Password.OCISecret.OCID = src.Spec.Details.Wallet.Password.OCISecret.OCID
 
-	dst.Spec.OCIConfig.ConfigMapName = src.Spec.OCIConfig.ConfigMapName
-	dst.Spec.OCIConfig.SecretName = src.Spec.OCIConfig.SecretName
+	// Clone
+	dst.Spec.Clone.CompartmentId = src.Spec.Clone.CompartmentId
+	dst.Spec.Clone.AutonomousContainerDatabase.K8sAcd.Name = src.Spec.Clone.AutonomousContainerDatabase.K8sAcd.Name
+	dst.Spec.Clone.AutonomousContainerDatabase.OciAcd.Id = src.Spec.Clone.AutonomousContainerDatabase.OciAcd.Id
+	dst.Spec.Clone.DisplayName = src.Spec.Clone.DisplayName
+	dst.Spec.Clone.DbName = src.Spec.Clone.DbName
+	dst.Spec.Clone.DbWorkload = src.Spec.Clone.DbWorkload
+	dst.Spec.Clone.LicenseModel = src.Spec.Clone.LicenseModel
+	dst.Spec.Clone.DbVersion = src.Spec.Clone.DbVersion
+	dst.Spec.Clone.DataStorageSizeInTBs = src.Spec.Clone.DataStorageSizeInTBs
+	dst.Spec.Clone.CpuCoreCount = src.Spec.Clone.CpuCoreCount
+	dst.Spec.Clone.ComputeModel = src.Spec.Clone.ComputeModel
+	dst.Spec.Clone.ComputeCount = src.Spec.Clone.ComputeCount
+	dst.Spec.Clone.OcpuCount = src.Spec.Clone.OcpuCount
+	dst.Spec.Clone.AdminPassword.K8sSecret.Name = src.Spec.Clone.AdminPassword.K8sSecret.Name
+	dst.Spec.Clone.AdminPassword.OciSecret.Id = src.Spec.Clone.AdminPassword.OciSecret.Id
+	dst.Spec.Clone.IsAutoScalingEnabled = src.Spec.Clone.IsAutoScalingEnabled
+	dst.Spec.Clone.IsDedicated = src.Spec.Clone.IsDedicated
+	dst.Spec.Clone.IsFreeTier = src.Spec.Clone.IsFreeTier
+	dst.Spec.Clone.IsAccessControlEnabled = src.Spec.Clone.IsAccessControlEnabled
+	dst.Spec.Clone.WhitelistedIps = src.Spec.Clone.WhitelistedIps
+	dst.Spec.Clone.SubnetId = src.Spec.Clone.SubnetId
+	dst.Spec.Clone.NsgIds = src.Spec.Clone.NsgIds
+	dst.Spec.Clone.PrivateEndpointLabel = src.Spec.Clone.PrivateEndpointLabel
+	dst.Spec.Clone.IsMtlsConnectionRequired = src.Spec.Clone.IsMtlsConnectionRequired
+	dst.Spec.Clone.FreeformTags = src.Spec.Clone.FreeformTags
+	dst.Spec.Clone.CloneType = src.Spec.Clone.CloneType
+
+	// Wallet
+	dst.Spec.Wallet.Name = src.Spec.Wallet.Name
+	dst.Spec.Wallet.Password.K8sSecret.Name = src.Spec.Wallet.Password.K8sSecret.Name
+	dst.Spec.Wallet.Password.OciSecret.Id = src.Spec.Wallet.Password.OciSecret.Id
+
+	dst.Spec.OciConfig.ConfigMapName = src.Spec.OciConfig.ConfigMapName
+	dst.Spec.OciConfig.SecretName = src.Spec.OciConfig.SecretName
 
 	dst.Spec.HardLink = src.Spec.HardLink
 
@@ -132,6 +191,7 @@ func (dst *AutonomousDatabase) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Status.LifecycleState = src.Status.LifecycleState
 	dst.Status.TimeCreated = src.Status.TimeCreated
 	dst.Status.WalletExpiringDate = src.Status.WalletExpiringDate
+	dst.Status.Action = src.Status.Action
 
 	// convert status.allConnectionStrings
 	if src.Status.AllConnectionStrings != nil {
@@ -165,8 +225,8 @@ func (dst *AutonomousDatabase) ConvertFrom(srcRaw conversion.Hub) error {
 func (src *AutonomousDatabaseBackup) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v4.AutonomousDatabaseBackup)
 
-	dst.Spec.Target.K8sADB.Name = src.Spec.Target.K8sADB.Name
-	dst.Spec.Target.OCIADB.OCID = src.Spec.Target.OCIADB.OCID
+	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
+	dst.Spec.Target.OciAdb.OCID = src.Spec.Target.OciAdb.Ocid
 	dst.Spec.DisplayName = src.Spec.DisplayName
 	dst.Spec.AutonomousDatabaseBackupOCID = src.Spec.AutonomousDatabaseBackupOCID
 	dst.Spec.IsLongTermBackup = src.Spec.IsLongTermBackup
@@ -191,8 +251,8 @@ func (src *AutonomousDatabaseBackup) ConvertTo(dstRaw conversion.Hub) error {
 func (dst *AutonomousDatabaseBackup) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v4.AutonomousDatabaseBackup)
 
-	dst.Spec.Target.K8sADB.Name = src.Spec.Target.K8sADB.Name
-	dst.Spec.Target.OCIADB.OCID = src.Spec.Target.OCIADB.OCID
+	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
+	dst.Spec.Target.OciAdb.Ocid = src.Spec.Target.OciAdb.OCID
 	dst.Spec.DisplayName = src.Spec.DisplayName
 	dst.Spec.AutonomousDatabaseBackupOCID = src.Spec.AutonomousDatabaseBackupOCID
 	dst.Spec.IsLongTermBackup = src.Spec.IsLongTermBackup
@@ -217,9 +277,9 @@ func (dst *AutonomousDatabaseBackup) ConvertFrom(srcRaw conversion.Hub) error {
 func (src *AutonomousDatabaseRestore) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v4.AutonomousDatabaseRestore)
 
-	dst.Spec.Target.K8sADB.Name = src.Spec.Target.K8sADB.Name
-	dst.Spec.Target.OCIADB.OCID = src.Spec.Target.OCIADB.OCID
-	dst.Spec.Source.K8sADBBackup.Name = src.Spec.Source.K8sADBBackup.Name
+	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
+	dst.Spec.Target.OciAdb.OCID = src.Spec.Target.OciAdb.Ocid
+	dst.Spec.Source.K8sAdbBackup.Name = src.Spec.Source.K8sAdbBackup.Name
 	dst.Spec.Source.PointInTime.Timestamp = src.Spec.Source.PointInTime.Timestamp
 	dst.Spec.OCIConfig.ConfigMapName = src.Spec.OCIConfig.ConfigMapName
 	dst.Spec.OCIConfig.SecretName = src.Spec.OCIConfig.SecretName
@@ -239,9 +299,9 @@ func (src *AutonomousDatabaseRestore) ConvertTo(dstRaw conversion.Hub) error {
 func (dst *AutonomousDatabaseRestore) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v4.AutonomousDatabaseRestore)
 
-	dst.Spec.Target.K8sADB.Name = src.Spec.Target.K8sADB.Name
-	dst.Spec.Target.OCIADB.OCID = src.Spec.Target.OCIADB.OCID
-	dst.Spec.Source.K8sADBBackup.Name = src.Spec.Source.K8sADBBackup.Name
+	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
+	dst.Spec.Target.OciAdb.Ocid = src.Spec.Target.OciAdb.OCID
+	dst.Spec.Source.K8sAdbBackup.Name = src.Spec.Source.K8sAdbBackup.Name
 	dst.Spec.Source.PointInTime.Timestamp = src.Spec.Source.PointInTime.Timestamp
 	dst.Spec.OCIConfig.ConfigMapName = src.Spec.OCIConfig.ConfigMapName
 	dst.Spec.OCIConfig.SecretName = src.Spec.OCIConfig.SecretName

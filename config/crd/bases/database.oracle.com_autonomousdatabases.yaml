@@ -54,7 +54,18 @@ spec:
             type: object
           spec:
             properties:
-              details:
+              action:
+                enum:
+                - ""
+                - Create
+                - Sync
+                - Update
+                - Stop
+                - Start
+                - Terminate
+                - Clone
+                type: string
+              clone:
                 properties:
                   adminPassword:
                     properties:
@@ -65,26 +76,36 @@ spec:
                         type: object
                       ociSecret:
                         properties:
-                          ocid:
+                          id:
                             type: string
                         type: object
                     type: object
                   autonomousContainerDatabase:
                     properties:
-                      k8sACD:
+                      k8sAcd:
                         properties:
                           name:
                             type: string
                         type: object
-                      ociACD:
+                      ociAcd:
                         properties:
-                          ocid:
+                          id:
                             type: string
                         type: object
                     type: object
-                  autonomousDatabaseOCID:
+                  cloneType:
+                    enum:
+                    - FULL
+                    - METADATA
                     type: string
-                  compartmentOCID:
+                  compartmentId:
+                    type: string
+                  computeCount:
+                    type: number
+                  computeModel:
+                    enum:
+                    - ECPU
+                    - OCPU
                     type: string
                   cpuCoreCount:
                     type: integer
@@ -107,64 +128,125 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  isAccessControlEnabled:
+                    type: boolean
                   isAutoScalingEnabled:
                     type: boolean
                   isDedicated:
+                    type: boolean
+                  isFreeTier:
+                    type: boolean
+                  isMtlsConnectionRequired:
                     type: boolean
                   licenseModel:
                     enum:
                     - LICENSE_INCLUDED
                     - BRING_YOUR_OWN_LICENSE
                     type: string
-                  lifecycleState:
+                  nsgIds:
+                    items:
+                      type: string
+                    type: array
+                  ocpuCount:
+                    type: number
+                  privateEndpointLabel:
                     type: string
-                  networkAccess:
+                  subnetId:
+                    type: string
+                  whitelistedIps:
+                    items:
+                      type: string
+                    type: array
+                type: object
+              details:
+                properties:
+                  adminPassword:
                     properties:
-                      accessControlList:
-                        items:
-                          type: string
-                        type: array
-                      accessType:
-                        enum:
-                        - ""
-                        - PUBLIC
-                        - RESTRICTED
-                        - PRIVATE
-                        type: string
-                      isAccessControlEnabled:
-                        type: boolean
-                      isMTLSConnectionRequired:
-                        type: boolean
-                      privateEndpoint:
+                      k8sSecret:
                         properties:
-                          hostnamePrefix:
+                          name:
                             type: string
-                          nsgOCIDs:
-                            items:
-                              type: string
-                            type: array
-                          subnetOCID:
+                        type: object
+                      ociSecret:
+                        properties:
+                          id:
                             type: string
                         type: object
                     type: object
-                  wallet:
+                  autonomousContainerDatabase:
                     properties:
-                      name:
-                        type: string
-                      password:
+                      k8sAcd:
                         properties:
-                          k8sSecret:
-                            properties:
-                              name:
-                                type: string
-                            type: object
-                          ociSecret:
-                            properties:
-                              ocid:
-                                type: string
-                            type: object
+                          name:
+                            type: string
+                        type: object
+                      ociAcd:
+                        properties:
+                          id:
+                            type: string
                         type: object
                     type: object
+                  compartmentId:
+                    type: string
+                  computeCount:
+                    type: number
+                  computeModel:
+                    enum:
+                    - ECPU
+                    - OCPU
+                    type: string
+                  cpuCoreCount:
+                    type: integer
+                  dataStorageSizeInTBs:
+                    type: integer
+                  dbName:
+                    type: string
+                  dbVersion:
+                    type: string
+                  dbWorkload:
+                    enum:
+                    - OLTP
+                    - DW
+                    - AJD
+                    - APEX
+                    type: string
+                  displayName:
+                    type: string
+                  freeformTags:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  id:
+                    type: string
+                  isAccessControlEnabled:
+                    type: boolean
+                  isAutoScalingEnabled:
+                    type: boolean
+                  isDedicated:
+                    type: boolean
+                  isFreeTier:
+                    type: boolean
+                  isMtlsConnectionRequired:
+                    type: boolean
+                  licenseModel:
+                    enum:
+                    - LICENSE_INCLUDED
+                    - BRING_YOUR_OWN_LICENSE
+                    type: string
+                  nsgIds:
+                    items:
+                      type: string
+                    type: array
+                  ocpuCount:
+                    type: number
+                  privateEndpointLabel:
+                    type: string
+                  subnetId:
+                    type: string
+                  whitelistedIps:
+                    items:
+                      type: string
+                    type: array
                 type: object
               hardLink:
                 default: false
@@ -176,11 +258,33 @@ spec:
                   secretName:
                     type: string
                 type: object
+              wallet:
+                properties:
+                  name:
+                    type: string
+                  password:
+                    properties:
+                      k8sSecret:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociSecret:
+                        properties:
+                          id:
+                            type: string
+                        type: object
+                    type: object
+                type: object
             required:
+            - action
+            - clone
             - details
             type: object
           status:
             properties:
+              action:
+                type: string
               allConnectionStrings:
                 items:
                   properties:
@@ -287,7 +391,18 @@ spec:
             type: object
           spec:
             properties:
-              details:
+              action:
+                enum:
+                - ""
+                - Create
+                - Sync
+                - Update
+                - Stop
+                - Start
+                - Terminate
+                - Clone
+                type: string
+              clone:
                 properties:
                   adminPassword:
                     properties:
@@ -298,26 +413,31 @@ spec:
                         type: object
                       ociSecret:
                         properties:
-                          ocid:
+                          id:
                             type: string
                         type: object
                     type: object
                   autonomousContainerDatabase:
                     properties:
-                      k8sACD:
+                      k8sAcd:
                         properties:
                           name:
                             type: string
                         type: object
-                      ociACD:
+                      ociAcd:
                         properties:
-                          ocid:
+                          id:
                             type: string
                         type: object
                     type: object
-                  autonomousDatabaseOCID:
+                  compartmentId:
                     type: string
-                  compartmentOCID:
+                  computeCount:
+                    type: number
+                  computeModel:
+                    enum:
+                    - ECPU
+                    - OCPU
                     type: string
                   cpuCoreCount:
                     type: integer
@@ -340,64 +460,129 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
+                  id:
+                    type: string
+                  isAccessControlEnabled:
+                    type: boolean
                   isAutoScalingEnabled:
                     type: boolean
                   isDedicated:
+                    type: boolean
+                  isFreeTier:
+                    type: boolean
+                  isMtlsConnectionRequired:
                     type: boolean
                   licenseModel:
                     enum:
                     - LICENSE_INCLUDED
                     - BRING_YOUR_OWN_LICENSE
                     type: string
-                  lifecycleState:
+                  nsgIds:
+                    items:
+                      type: string
+                    type: array
+                  ocpuCount:
+                    type: number
+                  privateEndpointLabel:
                     type: string
-                  networkAccess:
+                  subnetId:
+                    type: string
+                  whitelistedIps:
+                    items:
+                      type: string
+                    type: array
+                required:
+                - id
+                type: object
+              details:
+                properties:
+                  adminPassword:
                     properties:
-                      accessControlList:
-                        items:
-                          type: string
-                        type: array
-                      accessType:
-                        enum:
-                        - ""
-                        - PUBLIC
-                        - RESTRICTED
-                        - PRIVATE
-                        type: string
-                      isAccessControlEnabled:
-                        type: boolean
-                      isMTLSConnectionRequired:
-                        type: boolean
-                      privateEndpoint:
+                      k8sSecret:
                         properties:
-                          hostnamePrefix:
+                          name:
                             type: string
-                          nsgOCIDs:
-                            items:
-                              type: string
-                            type: array
-                          subnetOCID:
+                        type: object
+                      ociSecret:
+                        properties:
+                          id:
                             type: string
                         type: object
                     type: object
-                  wallet:
+                  autonomousContainerDatabase:
                     properties:
-                      name:
-                        type: string
-                      password:
+                      k8sAcd:
                         properties:
-                          k8sSecret:
-                            properties:
-                              name:
-                                type: string
-                            type: object
-                          ociSecret:
-                            properties:
-                              ocid:
-                                type: string
-                            type: object
+                          name:
+                            type: string
+                        type: object
+                      ociAcd:
+                        properties:
+                          id:
+                            type: string
                         type: object
                     type: object
+                  compartmentId:
+                    type: string
+                  computeCount:
+                    type: number
+                  computeModel:
+                    enum:
+                    - ECPU
+                    - OCPU
+                    type: string
+                  cpuCoreCount:
+                    type: integer
+                  dataStorageSizeInTBs:
+                    type: integer
+                  dbName:
+                    type: string
+                  dbVersion:
+                    type: string
+                  dbWorkload:
+                    enum:
+                    - OLTP
+                    - DW
+                    - AJD
+                    - APEX
+                    type: string
+                  displayName:
+                    type: string
+                  freeformTags:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  id:
+                    type: string
+                  isAccessControlEnabled:
+                    type: boolean
+                  isAutoScalingEnabled:
+                    type: boolean
+                  isDedicated:
+                    type: boolean
+                  isFreeTier:
+                    type: boolean
+                  isMtlsConnectionRequired:
+                    type: boolean
+                  licenseModel:
+                    enum:
+                    - LICENSE_INCLUDED
+                    - BRING_YOUR_OWN_LICENSE
+                    type: string
+                  nsgIds:
+                    items:
+                      type: string
+                    type: array
+                  ocpuCount:
+                    type: number
+                  privateEndpointLabel:
+                    type: string
+                  subnetId:
+                    type: string
+                  whitelistedIps:
+                    items:
+                      type: string
+                    type: array
                 type: object
               hardLink:
                 default: false
@@ -409,11 +594,33 @@ spec:
                   secretName:
                     type: string
                 type: object
+              wallet:
+                properties:
+                  name:
+                    type: string
+                  password:
+                    properties:
+                      k8sSecret:
+                        properties:
+                          name:
+                            type: string
+                        type: object
+                      ociSecret:
+                        properties:
+                          id:
+                            type: string
+                        type: object
+                    type: object
+                type: object
             required:
+            - action
+            - clone
             - details
             type: object
           status:
             properties:
+              action:
+                type: string
               allConnectionStrings:
                 items:
                   properties:

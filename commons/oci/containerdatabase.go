@@ -50,7 +50,7 @@ import (
 /********************************
  * Autonomous Container Database
  *******************************/
-func (d *databaseService) CreateAutonomousContainerDatabase(acd *dbv4.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error) {
+func (d *DatabaseService) CreateAutonomousContainerDatabase(acd *dbv4.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error) {
 	createAutonomousContainerDatabaseRequest := database.CreateAutonomousContainerDatabaseRequest{
 		CreateAutonomousContainerDatabaseDetails: database.CreateAutonomousContainerDatabaseDetails{
 			CompartmentId:              acd.Spec.CompartmentOCID,
@@ -63,7 +63,7 @@ func (d *databaseService) CreateAutonomousContainerDatabase(acd *dbv4.Autonomous
 	return d.dbClient.CreateAutonomousContainerDatabase(context.TODO(), createAutonomousContainerDatabaseRequest)
 }
 
-func (d *databaseService) GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error) {
+func (d *DatabaseService) GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error) {
 	getAutonomousContainerDatabaseRequest := database.GetAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
 	}
@@ -71,7 +71,7 @@ func (d *databaseService) GetAutonomousContainerDatabase(acdOCID string) (databa
 	return d.dbClient.GetAutonomousContainerDatabase(context.TODO(), getAutonomousContainerDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv4.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
+func (d *DatabaseService) UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv4.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error) {
 	updateAutonomousContainerDatabaseRequest := database.UpdateAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
 		UpdateAutonomousContainerDatabaseDetails: database.UpdateAutonomousContainerDatabaseDetails{
@@ -84,7 +84,7 @@ func (d *databaseService) UpdateAutonomousContainerDatabase(acdOCID string, difA
 	return d.dbClient.UpdateAutonomousContainerDatabase(context.TODO(), updateAutonomousContainerDatabaseRequest)
 }
 
-func (d *databaseService) RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error) {
+func (d *DatabaseService) RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error) {
 	restartRequest := database.RestartAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
 	}
@@ -92,7 +92,7 @@ func (d *databaseService) RestartAutonomousContainerDatabase(acdOCID string) (da
 	return d.dbClient.RestartAutonomousContainerDatabase(context.TODO(), restartRequest)
 }
 
-func (d *databaseService) TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error) {
+func (d *DatabaseService) TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error) {
 	terminateRequest := database.TerminateAutonomousContainerDatabaseRequest{
 		AutonomousContainerDatabaseId: common.String(acdOCID),
 	}

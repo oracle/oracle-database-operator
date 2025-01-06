@@ -62,7 +62,7 @@ import (
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	controllers "github.com/oracle/oracle-database-operator/controllers/database"
-	"github.com/oracle/oracle-database-operator/test/e2e/util"
+	e2eutil "github.com/oracle/oracle-database-operator/test/e2e/util"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -309,9 +309,9 @@ var _ = AfterSuite(func() {
 	By(fmt.Sprintf("Found %d AutonomousDatabase(s)", len(adbList.Items)))
 
 	for _, adb := range adbList.Items {
-		if adb.Spec.Details.AutonomousDatabaseOCID != nil {
+		if adb.Spec.Details.Id != nil {
 			By("Terminating database " + *adb.Spec.Details.DbName)
-			Expect(e2eutil.DeleteAutonomousDatabase(dbClient, adb.Spec.Details.AutonomousDatabaseOCID)).Should(Succeed())
+			Expect(e2eutil.DeleteAutonomousDatabase(dbClient, adb.Spec.Details.Id)).Should(Succeed())
 		}
 	}
 

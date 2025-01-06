@@ -40,7 +40,6 @@ package controllers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -49,7 +48,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
 
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -69,10 +67,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	"github.com/oracle/oracle-database-operator/commons/annotations"
 	"github.com/oracle/oracle-database-operator/commons/k8s"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 )
+
+// name of our custom finalizer
+const ADB_FINALIZER = "database.oracle.com/adb-finalizer"
 
 var requeueResult ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var emptyResult ctrl.Result = ctrl.Result{}
@@ -150,21 +150,17 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 	return predicate.Funcs{
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			// source object can be AutonomousDatabase, AutonomousDatabaseBackup, or AutonomousDatabaseRestore
-			desiredADB, adbOk := e.ObjectNew.(*dbv4.AutonomousDatabase)
+			desiredAdb, adbOk := e.ObjectNew.(*dbv4.AutonomousDatabase)
 			if adbOk {
-				oldADB := e.ObjectOld.(*dbv4.AutonomousDatabase)
+				oldAdb := e.ObjectOld.(*dbv4.AutonomousDatabase)
 
-				specChanged := !reflect.DeepEqual(oldADB.Spec, desiredADB.Spec)
-				statusChanged := !reflect.DeepEqual(oldADB.Status, desiredADB.Status)
+				specChanged := !reflect.DeepEqual(oldAdb.Spec, desiredAdb.Spec)
+				statusChanged := !reflect.DeepEqual(oldAdb.Status, desiredAdb.Status)
 
-				oldLastSucSpec := oldADB.GetAnnotations()[dbv4.LastSuccessfulSpec]
-				desiredLastSucSpec := desiredADB.GetAnnotations()[dbv4.LastSuccessfulSpec]
-				lastSucSpecChanged := oldLastSucSpec != desiredLastSucSpec
-
-				if (!specChanged && statusChanged) || lastSucSpecChanged ||
-					(controllerutil.ContainsFinalizer(oldADB, dbv4.ADB_FINALIZER) != controllerutil.ContainsFinalizer(desiredADB, dbv4.ADB_FINALIZER)) {
+				if (!specChanged && statusChanged) ||
+					(controllerutil.ContainsFinalizer(oldAdb, ADB_FINALIZER) != controllerutil.ContainsFinalizer(desiredAdb, ADB_FINALIZER)) {
 					// Don't enqueue in the folowing condition:
-					// 1. only status changes 2. lastSucSpec changes 3. ADB_FINALIZER changes
+					// 1. only status changes 2. ADB_FINALIZER changes
 					return false
 				}
 
@@ -189,142 +185,168 @@ func (r *AutonomousDatabaseReconciler) eventFilterPredicate() predicate.Predicat
 // +kubebuilder:rbac:groups="",resources=configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
-// Reconcile is the funtion that the operator calls every time when the reconciliation loop is triggered.
-// It go to the beggining of the reconcile if an error is returned. We won't return a error if it is related
-// to OCI, because the issues cannot be solved by re-run the reconcile.
 func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := r.Log.WithValues("Namespace/Name", req.NamespacedName)
 
 	var err error
-	var ociADB *dbv4.AutonomousDatabase
+	// Indicates whether spec has been changed at the end of the reconcile.
+	var specChanged bool = false
 
 	// Get the autonomousdatabase instance from the cluster
-	desiredADB := &dbv4.AutonomousDatabase{}
-	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, desiredADB); err != nil {
+	desiredAdb := &dbv4.AutonomousDatabase{}
+	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, desiredAdb); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
-		// No need to change the since we don't know if we obtain the object.
 		if apiErrors.IsNotFound(err) {
 			return emptyResult, nil
 		}
-		// Failed to get ADB, so we don't need to update the status
 		return emptyResult, err
 	}
 
 	/******************************************************************
 	* Get OCI database client
 	******************************************************************/
-	if err := r.setupOCIClients(logger, desiredADB); err != nil {
-		logger.Error(err, "Fail to setup OCI clients")
-
-		return r.manageError(logger.WithName("setupOCIClients"), desiredADB, err)
+	if err := r.setupOCIClients(logger, desiredAdb); err != nil {
+		return r.manageError(
+			logger.WithName("setupOCIClients"),
+			desiredAdb,
+			fmt.Errorf("Failed to get OCI Database Client: %w", err))
 	}
 
 	logger.Info("OCI clients configured succesfully")
 
 	/******************************************************************
-	* Cleanup the resource if the resource is to be deleted.
-	* Deletion timestamp will be added to a object before it is deleted.
-	* Kubernetes server calls the clean up function if a finalizer exitsts, and won't delete the real object until
-	* all the finalizers are removed from the object metadata.
-	* Refer to this page for more details of using finalizers: https://kubernetes.io/blog/2022/05/14/using-finalizers-to-control-deletion/
+	* Fill the empty fields in the local resource at the beginning of
+	* the reconciliation.
 	******************************************************************/
-	exitReconcile, err := r.validateCleanup(logger, desiredADB)
-	if err != nil {
-		return r.manageError(logger.WithName("validateCleanup"), desiredADB, err)
-	}
-
-	if exitReconcile {
-		return emptyResult, nil
+	// Fill the empty fields in the AutonomousDatabase resource by syncing up
+	// with the Autonomous Database in OCI. Only the fields that have nil
+	// values will be overwritten.
+	// This operation will be skipped if the AutonomousDatabaseOCID is nil.
+	// var specChangedAfterFirstSync bool
+	if _, err = r.syncAutonomousDatabase(logger, desiredAdb, false); err != nil {
+		return r.manageError(
+			logger.WithName("syncAutonomousDatabase"),
+			desiredAdb,
+			fmt.Errorf("Failed to sync AutonomousDatabase: %w", err))
 	}
 
 	/******************************************************************
-	* Register/unregister the finalizer
+	* Determine if the external resource needs to be cleaned up.
+	* If yes, delete the Autonomous Database in OCI and exits the
+	* reconcile function immediately.
+	*
+	* There is no need to check the other fields if the resource is
+	* under deletion. This method should be executed soon after the OCI
+	* database client is obtained and the local resource is synced in
+	* the above two steps.
+	*
+	* Kubernetes server calls the clean up function if a finalizer exitsts,
+	* and won't delete the object until all the finalizers are removed
+	* from the object metadata.
 	******************************************************************/
-	exit, err := r.validateFinalizer(logger, desiredADB)
-	if err != nil {
-		return r.manageError(logger.WithName("validateFinalizer"), desiredADB, err)
-	}
+	if desiredAdb.GetDeletionTimestamp().IsZero() {
+		// The Autonomous Database is not being deleted. Update the finalizer.
+		if desiredAdb.Spec.HardLink != nil &&
+			*desiredAdb.Spec.HardLink &&
+			!controllerutil.ContainsFinalizer(desiredAdb, ADB_FINALIZER) {
 
-	if exit {
-		return emptyResult, nil
-	}
+			if err := k8s.AddFinalizerAndPatch(r.KubeClient, desiredAdb, ADB_FINALIZER); err != nil {
+				return emptyResult, fmt.Errorf("Failed to add finalizer to Autonomous Database "+desiredAdb.Name+": %w", err)
+			}
+		} else if desiredAdb.Spec.HardLink != nil &&
+			!*desiredAdb.Spec.HardLink &&
+			controllerutil.ContainsFinalizer(desiredAdb, ADB_FINALIZER) {
 
-	/******************************************************************
-	* Validate operations
-	******************************************************************/
-	modifiedADB := desiredADB.DeepCopy() // the ADB which stores the changes
-	exitReconcile, result, err := r.validateOperation(logger, modifiedADB, ociADB)
-	if err != nil {
-		return r.manageError(logger.WithName("validateOperation"), modifiedADB, err)
-	}
-	if exitReconcile {
-		return result, nil
-	}
-
-	/*****************************************************
-	*	Sync AutonomousDatabase Backups from OCI
-	*****************************************************/
-	if err := r.syncBackupResources(logger, modifiedADB); err != nil {
-		return r.manageError(logger.WithName("syncBackupResources"), modifiedADB, err)
-	}
-
-	/*****************************************************
-	*	Validate Wallet
-	*****************************************************/
-	if err := r.validateWallet(logger, modifiedADB); err != nil {
-		return r.manageError(logger.WithName("validateWallet"), modifiedADB, err)
-	}
-
-	/******************************************************************
-	* Update the resource if the spec has been changed.
-	*	This will trigger another reconcile, so returns with an empty
-	* result.
-	******************************************************************/
-	if !reflect.DeepEqual(modifiedADB.Spec, desiredADB.Spec) {
-		if err := r.KubeClient.Update(context.TODO(), modifiedADB); err != nil {
-			return r.manageError(logger.WithName("updateSpec"), modifiedADB, err)
+			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, desiredAdb, ADB_FINALIZER); err != nil {
+				return emptyResult, fmt.Errorf("Failed to remove finalizer to Autonomous Database "+desiredAdb.Name+": %w", err)
+			}
 		}
+	} else {
+		// The Autonomous Database is being deleted
+		if controllerutil.ContainsFinalizer(desiredAdb, ADB_FINALIZER) {
+			if dbv4.IsAdbIntermediateState(desiredAdb.Status.LifecycleState) {
+				// No-op
+			} else if desiredAdb.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated {
+				// The Autonomous Database in OCI has been deleted. Remove the finalizer.
+				if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, desiredAdb, ADB_FINALIZER); err != nil {
+					return emptyResult, fmt.Errorf("Failed to remove finalizer to Autonomous Database "+desiredAdb.Name+": %w", err)
+				}
+			} else {
+				// Remove the Autonomous Database in OCI.
+				// Change the action to Terminate and proceed with the rest of the reconcile logic
+				desiredAdb.Spec.Action = "Terminate"
+			}
+		}
+	}
+
+	if !dbv4.IsAdbIntermediateState(desiredAdb.Status.LifecycleState) {
+		/******************************************************************
+		* Perform operations
+		******************************************************************/
+		var specChangedAfterOperation bool
+		specChangedAfterOperation, err = r.performOperation(logger, desiredAdb)
+		if err != nil {
+			return r.manageError(
+				logger.WithName("performOperation"),
+				desiredAdb,
+				fmt.Errorf("Failed to operate database action: %w", err))
+		}
+
+		if specChangedAfterOperation {
+			specChanged = true
+		}
+
+		/*****************************************************
+		*	Sync AutonomousDatabase Backups from OCI
+		*****************************************************/
+		if err := r.syncBackupResources(logger, desiredAdb); err != nil {
+			return r.manageError(logger.WithName("syncBackupResources"), desiredAdb, err)
+		}
+
+		/*****************************************************
+		*	Validate Wallet
+		*****************************************************/
+		if err := r.validateWallet(logger, desiredAdb); err != nil {
+			return r.manageError(
+				logger.WithName("validateWallet"),
+				desiredAdb,
+				fmt.Errorf("Failed to validate Wallet: %w", err))
+		}
+	}
+
+	/******************************************************************
+	* Update the Autonomous Database at the end of every reconcile.
+	******************************************************************/
+	if specChanged {
+		if err := r.KubeClient.Update(context.TODO(), desiredAdb); err != nil {
+			return r.manageError(
+				logger.WithName("updateSpec"),
+				desiredAdb,
+				fmt.Errorf("Failed to update AutonomousDatabase spec: %w", err))
+		}
+		// Immediately exit the reconcile loop if the resource is updated, and let
+		// the next run continue.
 		return emptyResult, nil
 	}
 
-	/******************************************************************
-	* Update the status at the end of every reconcile.
-	******************************************************************/
-	copiedADB := modifiedADB.DeepCopy()
-
-	updateCondition(modifiedADB, nil)
-	if err := r.KubeClient.Status().Update(context.TODO(), modifiedADB); err != nil {
-		return r.manageError(logger.WithName("Status().Update"), modifiedADB, err)
-	}
-	modifiedADB.Spec = copiedADB.Spec
-
-	if dbv4.IsADBIntermediateState(modifiedADB.Status.LifecycleState) {
-		logger.WithName("IsADBIntermediateState").Info("LifecycleState is " + string(modifiedADB.Status.LifecycleState) + "; reconcile queued")
-		return requeueResult, nil
+	updateCondition(desiredAdb, nil)
+	if err := r.KubeClient.Status().Update(context.TODO(), desiredAdb); err != nil {
+		return r.manageError(
+			logger,
+			desiredAdb,
+			fmt.Errorf("Failed to update AutonomousDatabase status: %w", err))
 	}
 
 	/******************************************************************
-	* Update the lastSucSpec, and then finish the reconcile.
-	*	Requeue if the ADB is terminated, but the finalizer is not yet
-	* removed.
+	*	Requeue the request in the following cases:
+	* 1. the ADB is in intermediate state
+	* 2. the ADB is terminated, but the finalizer is not yet removed.
 	******************************************************************/
-
-	var requeue bool = false
-	if modifiedADB.GetDeletionTimestamp() != nil &&
-		controllerutil.ContainsFinalizer(modifiedADB, dbv4.ADB_FINALIZER) &&
-		modifiedADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated {
-		logger.Info("The ADB is TERMINATED. The CR is to be deleted but finalizer is not yet removed; reconcile queued")
-		requeue = true
-	}
-
-	if err := r.patchLastSuccessfulSpec(modifiedADB); err != nil {
-		return r.manageError(logger.WithName("patchLastSuccessfulSpec"), modifiedADB, err)
-	}
-
-	if requeue {
-		logger.Info("Reconcile queued")
+	if dbv4.IsAdbIntermediateState(desiredAdb.Status.LifecycleState) {
+		logger.
+			WithName("IsAdbIntermediateState").
+			Info("LifecycleState is " + string(desiredAdb.Status.LifecycleState) + "; reconciliation queued")
 		return requeueResult, nil
-
 	} else {
 		logger.Info("AutonomousDatabase reconciles successfully")
 		return emptyResult, nil
@@ -334,13 +356,13 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 func (r *AutonomousDatabaseReconciler) setupOCIClients(logger logr.Logger, adb *dbv4.AutonomousDatabase) error {
 	var err error
 
-	authData := oci.APIKeyAuth{
-		ConfigMapName: adb.Spec.OCIConfig.ConfigMapName,
-		SecretName:    adb.Spec.OCIConfig.SecretName,
+	authData := oci.ApiKeyAuth{
+		ConfigMapName: adb.Spec.OciConfig.ConfigMapName,
+		SecretName:    adb.Spec.OciConfig.SecretName,
 		Namespace:     adb.GetNamespace(),
 	}
 
-	provider, err := oci.GetOCIProvider(r.KubeClient, authData)
+	provider, err := oci.GetOciProvider(r.KubeClient, authData)
 	if err != nil {
 		return err
 	}
@@ -353,47 +375,17 @@ func (r *AutonomousDatabaseReconciler) setupOCIClients(logger logr.Logger, adb *
 	return nil
 }
 
+// Upates the status with the error and returns an empty result
 func (r *AutonomousDatabaseReconciler) manageError(logger logr.Logger, adb *dbv4.AutonomousDatabase, err error) (ctrl.Result, error) {
 	l := logger.WithName("manageError")
-	if adb.Status.LifecycleState == "" {
-		// First time entering reconcile
-		updateCondition(adb, err)
 
-		l.Error(err, "CreateFailed")
+	l.Error(err, "Error occured")
 
-		return emptyResult, nil
-	} else {
-		// Has synced at least once
-		var finalError = err
-
-		// Roll back
-		ociADB := adb.DeepCopy()
-		specChanged, err := r.getADB(l, ociADB)
-		if err != nil {
-			finalError = k8s.CombineErrors(finalError, err)
-		}
-
-		// Will exit the Reconcile anyway after the manageError is called.
-		if specChanged {
-			// Clear the lifecycleState first to avoid the webhook error when update during an intermediate state
-			adb.Status.LifecycleState = ""
-			if err := r.KubeClient.Status().Update(context.TODO(), adb); err != nil {
-				finalError = k8s.CombineErrors(finalError, err)
-			}
-
-			adb.Spec = ociADB.Spec
-
-			if err := r.KubeClient.Update(context.TODO(), adb); err != nil {
-				finalError = k8s.CombineErrors(finalError, err)
-			}
-		}
-
-		updateCondition(adb, err)
-
-		l.Error(finalError, "UpdateFailed")
-
-		return emptyResult, nil
+	updateCondition(adb, err)
+	if err := r.KubeClient.Status().Update(context.TODO(), adb); err != nil {
+		return emptyResult, fmt.Errorf("Failed to update status: %w", err)
 	}
+	return emptyResult, nil
 }
 
 const CONDITION_TYPE_COMPLETE = "Complete"
@@ -420,7 +412,7 @@ func updateCondition(adb *dbv4.AutonomousDatabase, err error) {
 			Message:            errMsg,
 			Status:             metav1.ConditionTrue,
 		}
-	} else if dbv4.IsADBIntermediateState(adb.Status.LifecycleState) {
+	} else if dbv4.IsAdbIntermediateState(adb.Status.LifecycleState) {
 		condition = metav1.Condition{
 			Type:               CONDITION_TYPE_COMPLETE,
 			LastTransitionTime: metav1.Now(),
@@ -446,361 +438,229 @@ func updateCondition(adb *dbv4.AutonomousDatabase, err error) {
 	meta.SetStatusCondition(&adb.Status.Conditions, condition)
 }
 
-func (r *AutonomousDatabaseReconciler) validateOperation(
+func (r *AutonomousDatabaseReconciler) performOperation(
 	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (exit bool, result ctrl.Result, err error) {
-
-	lastSucSpec, err := adb.GetLastSuccessfulSpec()
-	if err != nil {
-		return false, emptyResult, err
-	}
+	adb *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	l := logger.WithName("validateOperation")
 
-	// If lastSucSpec is nil, then it's CREATE or BIND opertaion
-	if lastSucSpec == nil {
-		if adb.Spec.Details.AutonomousDatabaseOCID == nil {
-			l.Info("Create operation")
-			err := r.createADB(logger, adb)
-			if err != nil {
-				return false, emptyResult, err
-			}
-
-			// Update the ADB OCID
-			if err := r.updateCR(adb); err != nil {
-				return false, emptyResult, err
-			}
-
-			l.Info("AutonomousDatabaseOCID updated; exit reconcile")
-			return true, emptyResult, nil
-		} else {
-			l.Info("Bind operation")
-			_, err := r.getADB(logger, adb)
-			if err != nil {
-				return false, emptyResult, err
-			}
-
-			if err := r.updateCR(adb); err != nil {
-				return false, emptyResult, err
-			}
-
-			l.Info("spec updated; exit reconcile")
-			return true, emptyResult, nil
-		}
-	}
-
-	// If it's not CREATE or BIND opertaion, then it's UPDATE or SYNC operation.
-	// In most of the case the user changes the spec, and we update the oci ADB, but when the user updates on
-	// the Cloud Console, the controller cannot tell the direction and how to update the resource.
-	// Thus we compare the current spec with the lastSucSpec. If the details are different, it means that
-	// the user updates the spec (UPDATE operation), otherwise it's a SYNC operation.
-	lastDifADB := adb.DeepCopy()
-
-	lastDetailsChanged, err := lastDifADB.RemoveUnchangedDetails(*lastSucSpec)
-	if err != nil {
-		return false, emptyResult, err
-	}
-
-	if lastDetailsChanged {
-		// Double check if the user input spec is actually different from the spec in OCI. If so, then update the resource.
-		// When the update completes and the status changes from UPDATING to AVAILABLE, the lastSucSpec is not updated yet,
-		// so we compare with the oci ADB again to make sure that the updates are completed.
-
-		l.Info("Update operation")
-
-		exit, err := r.updateADB(logger, adb)
+	switch adb.Spec.Action {
+	case "Create":
+		l.Info("Create operation")
+		err := r.createAutonomousDatabase(logger, adb)
 		if err != nil {
-			return false, emptyResult, err
+			return false, err
 		}
-
-		return exit, emptyResult, nil
-
-	} else {
-		l.Info("No operation specified; sync the resource")
-
-		// The user doesn't change the spec and the controller should pull the spec from the OCI.
-		specChanged, err := r.getADB(logger, adb)
-		if err != nil {
-			return false, emptyResult, err
-		}
-
-		if specChanged {
-			l.Info("The local spec doesn't match the oci's spec; update the CR")
-
-			// Erase the status.lifecycleState temporarily to avoid the webhook error.
-			tmpADB := adb.DeepCopy()
-			adb.Status.LifecycleState = ""
-			if err := r.KubeClient.Status().Update(context.TODO(), adb); err != nil {
-				return false, emptyResult, err
-			}
-			adb.Spec = tmpADB.Spec
-
-			if err := r.updateCR(adb); err != nil {
-				return false, emptyResult, err
-			}
-
-			return true, emptyResult, nil
-		}
-		return false, emptyResult, nil
-	}
-}
-
-func (r *AutonomousDatabaseReconciler) validateCleanup(logger logr.Logger, adb *dbv4.AutonomousDatabase) (exitReconcile bool, err error) {
-	l := logger.WithName("validateCleanup")
-
-	isADBToBeDeleted := adb.GetDeletionTimestamp() != nil
-
-	if !isADBToBeDeleted {
-		return false, nil
-	}
-
-	if controllerutil.ContainsFinalizer(adb, dbv4.ADB_FINALIZER) {
-		if adb.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminating {
-			// Delete in progress, continue with the reconcile logic
-			return false, nil
-		}
-
-		if adb.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated {
-			// The adb has been deleted. Remove the finalizer and exit the reconcile.
-			// Once all finalizers have been removed, the object will be deleted.
-			l.Info("Resource is in TERMINATED state; remove the finalizer")
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, adb, dbv4.ADB_FINALIZER); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-
-		if adb.Spec.Details.AutonomousDatabaseOCID == nil {
-			l.Info("Missing AutonomousDatabaseOCID to terminate Autonomous Database; remove the finalizer anyway", "Name", adb.Name, "Namespace", adb.Namespace)
-			// Remove finalizer anyway.
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, adb, dbv4.ADB_FINALIZER); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-
-		if adb.Spec.Details.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminated {
-			// Run finalization logic for finalizer. If the finalization logic fails, don't remove the finalizer so
-			// that we can retry during the next reconciliation.
-			l.Info("Terminating Autonomous Database")
-			adb.Spec.Details.LifecycleState = database.AutonomousDatabaseLifecycleStateTerminated
-			if err := r.KubeClient.Update(context.TODO(), adb); err != nil {
-				return false, err
-			}
-			// Exit the reconcile since we have updated the spec
-			return true, nil
-		}
-
-		// Continue with the reconcile logic
-		return false, nil
-	}
-
-	// Exit the Reconcile since the to-be-deleted resource doesn't has a finalizer
-	return true, nil
-}
-
-func (r *AutonomousDatabaseReconciler) validateFinalizer(logger logr.Logger, adb *dbv4.AutonomousDatabase) (exit bool, err error) {
-	l := logger.WithName("validateFinalizer")
-
-	// Delete is not schduled. Update the finalizer for this CR if hardLink is present
-	var finalizerChanged = false
-	if adb.Spec.HardLink != nil {
-		if *adb.Spec.HardLink && !controllerutil.ContainsFinalizer(adb, dbv4.ADB_FINALIZER) {
-			l.Info("Finalizer added")
-			if err := k8s.AddFinalizerAndPatch(r.KubeClient, adb, dbv4.ADB_FINALIZER); err != nil {
-				return false, err
-			}
-
-			finalizerChanged = true
-
-		} else if !*adb.Spec.HardLink && controllerutil.ContainsFinalizer(adb, dbv4.ADB_FINALIZER) {
-			l.Info("Finalizer removed")
-
-			if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, adb, dbv4.ADB_FINALIZER); err != nil {
-				return false, err
-			}
-
-			finalizerChanged = true
-		}
-	}
-
-	// If the finalizer is changed during an intermediate state, e.g. set hardLink to true and
-	// delete the resource, then there must be another ongoing reconcile. In this case we should
-	// exit the reconcile.
-	if finalizerChanged && dbv4.IsADBIntermediateState(adb.Status.LifecycleState) {
-		l.Info("Finalizer changed during an intermediate state, exit the reconcile")
+		adb.Spec.Action = ""
 		return true, nil
-	}
 
-	return false, nil
+	case "Sync":
+		l.Info("Sync operation")
+		_, err = r.syncAutonomousDatabase(logger, adb, true)
+		if err != nil {
+			return false, err
+		}
+		adb.Spec.Action = ""
+		return true, nil
+
+	case "Update":
+		l.Info("Update operation")
+		_, err = r.updateAutonomousDatabase(logger, adb)
+		if err != nil {
+			return false, err
+		}
+		adb.Spec.Action = ""
+		return true, nil
+
+	case "Stop":
+		l.Info("Sending StopAutonomousDatabase request to OCI")
+
+		resp, err := r.dbService.StopAutonomousDatabase(*adb.Spec.Details.Id)
+		if err != nil {
+			return false, err
+		}
+		adb.Spec.Action = ""
+		adb.Status.LifecycleState = resp.LifecycleState
+		return true, nil
+
+	case "Start":
+		l.Info("Sending StartAutonomousDatabase request to OCI")
+
+		resp, err := r.dbService.StartAutonomousDatabase(*adb.Spec.Details.Id)
+		if err != nil {
+			return false, err
+		}
+
+		adb.Spec.Action = ""
+		adb.Status.LifecycleState = resp.LifecycleState
+		return true, nil
+
+	case "Terminate":
+		// OCI only allows terminate operation when the ADB is in an valid state, otherwise requeue the reconcile.
+		if dbv4.CanBeTerminated(adb.Status.LifecycleState) {
+			l.Info("Sending DeleteAutonomousDatabase request to OCI")
+
+			_, err := r.dbService.DeleteAutonomousDatabase(*adb.Spec.Details.Id)
+			if err != nil {
+				return false, err
+			}
+
+			adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateTerminating
+		} else if dbv4.IsAdbIntermediateState(adb.Status.LifecycleState) {
+			l.Info("Can not terminate an ADB in an intermediate state; exit reconcile")
+		}
+
+		adb.Spec.Action = ""
+		return true, nil
+	case "Clone":
+		resp, err := r.dbService.CreateAutonomousDatabaseClone(adb)
+		if err != nil {
+			return false, err
+		}
+		adb.Status.LifecycleState = resp.LifecycleState
+
+		adb.Spec.Action = ""
+
+		// Create cloned Autonomous Database resource
+		clonedAdb := &dbv4.AutonomousDatabase{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      *adb.Spec.Clone.DisplayName,
+				Namespace: adb.Namespace,
+			},
+			Spec: dbv4.AutonomousDatabaseSpec{
+				OciConfig: *adb.Spec.OciConfig.DeepCopy(),
+			},
+		}
+		clonedAdb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
+		if err := r.KubeClient.Create(context.TODO(), clonedAdb); err != nil {
+			return false, err
+		}
+
+		return true, nil
+	case "":
+		// No-op
+		return false, nil
+	default:
+		adb.Spec.Action = ""
+		return true, errors.New("Unknown action: " + adb.Spec.Action)
+	}
 }
 
-// updateCR updates the lastSucSpec and the CR
-func (r *AutonomousDatabaseReconciler) updateCR(adb *dbv4.AutonomousDatabase) error {
-	// Update the lastSucSpec
-	// Should patch the lastSuccessfulSpec first, otherwise, the update event will be
-	// filtered out by predicate since the lastSuccessfulSpec is changed.
-	if err := r.patchLastSuccessfulSpec(adb); err != nil {
-		return err
-	}
-
-	if err := r.KubeClient.Update(context.TODO(), adb); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r *AutonomousDatabaseReconciler) patchLastSuccessfulSpec(adb *dbv4.AutonomousDatabase) error {
-	copyADB := adb.DeepCopy()
-
-	specBytes, err := json.Marshal(adb.Spec)
-	if err != nil {
-		return err
-	}
-
-	specBytesString := string(specBytes)
-
-	anns := map[string]string{
-		dbv4.LastSuccessfulSpec: specBytesString,
-	}
-
-	annotations.PatchAnnotations(r.KubeClient, adb, anns)
-
-	adb.Spec = copyADB.Spec
-	adb.Status = copyADB.Status
-
-	return nil
-}
-
-func (r *AutonomousDatabaseReconciler) createADB(logger logr.Logger, adb *dbv4.AutonomousDatabase) error {
+func (r *AutonomousDatabaseReconciler) createAutonomousDatabase(logger logr.Logger, adb *dbv4.AutonomousDatabase) error {
 	logger.WithName("createADB").Info("Sending CreateAutonomousDatabase request to OCI")
 	resp, err := r.dbService.CreateAutonomousDatabase(adb)
 	if err != nil {
 		return err
 	}
 
-	// Restore the admin password after updating from OCI ADB
-	adminPass := adb.Spec.Details.AdminPassword
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
-	adb.Spec.Details.AdminPassword = adminPass
+	adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
 
 	return nil
 }
 
-// getADB gets the information from OCI and overwrites the spec and the status, but not update the CR in the cluster
-func (r *AutonomousDatabaseReconciler) getADB(logger logr.Logger, adb *dbv4.AutonomousDatabase) (bool, error) {
-	if adb == nil {
-		return false, errors.New("AutonomousDatabase OCID is missing")
+// syncAutonomousDatabase retrieve the information of AutonomousDatabase from
+// OCI and "overwrite" decides whether the spec and the status of "adb" will
+// be overwritten.
+// It will be a no-op if "Spec.Details.AutonomousDatabaseOCID" of the provided
+// AutonomousDatabase is nil.
+// This method does not update the actual resource in the cluster.
+//
+// The returned values are:
+// 1. bool: indicates whether the spec is changed after the sync
+// 2. error: not nil if an error occurs during the sync
+func (r *AutonomousDatabaseReconciler) syncAutonomousDatabase(
+	logger logr.Logger,
+	adb *dbv4.AutonomousDatabase, overwrite bool) (specChanged bool, err error) {
+	if adb.Spec.Details.Id == nil {
+		return false, nil
 	}
 
-	l := logger.WithName("getADB")
+	l := logger.WithName("syncAutonomousDatabase")
 
 	// Get the information from OCI
 	l.Info("Sending GetAutonomousDatabase request to OCI")
-	resp, err := r.dbService.GetAutonomousDatabase(*adb.Spec.Details.AutonomousDatabaseOCID)
+	resp, err := r.dbService.GetAutonomousDatabase(*adb.Spec.Details.Id)
 	if err != nil {
 		return false, err
 	}
 
-	specChanged := adb.UpdateFromOCIADB(resp.AutonomousDatabase)
-
+	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, overwrite)
 	return specChanged, nil
 }
 
-// updateADB returns true if an OCI request is sent.
+// updateAutonomousDatabase returns true if an OCI request is sent.
 // The AutonomousDatabase is updated with the returned object from the OCI requests.
-func (r *AutonomousDatabaseReconciler) updateADB(
+func (r *AutonomousDatabaseReconciler) updateAutonomousDatabase(
 	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase) (exit bool, err error) {
-
-	l := logger.WithName("updateADB")
+	adb *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	// Get OCI AutonomousDatabase and update the lifecycleState of the CR,
 	// so that the validatexx functions know when the state changes back to AVAILABLE
-	ociADB := adb.DeepCopy()
-	_, err = r.getADB(logger, ociADB)
+	ociAdb := adb.DeepCopy()
+	_, err = r.syncAutonomousDatabase(logger, ociAdb, true)
 	if err != nil {
 		return false, err
 	}
 
-	adb.Status.LifecycleState = ociADB.Status.LifecycleState
-
 	// Start update
-	difADB := adb.DeepCopy()
+	// difAdb is used to store ONLY the values of Autonomous Database that are
+	// difference from the one in OCI
+	difAdb := adb.DeepCopy()
 
-	ociDetailsChanged, err := difADB.RemoveUnchangedDetails(ociADB.Spec)
+	detailsAreChanged, err := difAdb.RemoveUnchangedDetails(ociAdb.Spec)
 	if err != nil {
 		return false, err
 	}
 
 	// Do the update request only if the current ADB is actually different from the OCI ADB
-	if ociDetailsChanged {
-		// Special case: if the oci ADB is terminating, then update the spec and exit the reconcile.
-		// This happens when the lifecycleState changes to TERMINATED during an intermediate state,
-		// whatever is in progress should be abandonded and the desired spec should the same as oci ADB.
-		if ociADB.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminating {
-			l.Info("OCI ADB is in TERMINATING state; update the spec and exit the reconcile")
-
-			adb.Status.LifecycleState = ""
-			if err := r.KubeClient.Status().Update(context.TODO(), adb); err != nil {
-				return false, err
-			}
-
-			adb.Spec = ociADB.Spec
-			if err := r.KubeClient.Update(context.TODO(), adb); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-
-		// Special case: if the lifecycleState is changed, it might have to exit the reconcile in some cases.
-		sent, exit, err := r.validateDesiredLifecycleState(logger, adb, difADB, ociADB)
+	if detailsAreChanged {
+		logger.Info("Sending UpdateAutonomousDatabase request to OCI")
+		resp, err := r.dbService.UpdateAutonomousDatabase(*adb.Spec.Details.Id, difAdb)
 		if err != nil {
 			return false, err
 		}
-		if sent {
-			return exit, nil
-		}
 
-		validations := []func(logr.Logger, *dbv4.AutonomousDatabase, *dbv4.AutonomousDatabase, *dbv4.AutonomousDatabase) (bool, error){
-			r.validateGeneralFields,
-			r.validateAdminPassword,
-			r.validateDbWorkload,
-			r.validateLicenseModel,
-			r.validateScalingFields,
-			r.validateGeneralNetworkAccess,
-		}
+		specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
+		return specChanged, nil
 
-		for _, op := range validations {
-			sent, err := op(logger, adb, difADB, ociADB)
-			if err != nil {
-				return false, err
-			}
+		// validations := []func(
+		// 	logr.Logger,
+		// 	*dbv4.AutonomousDatabase,
+		// 	*dbv4.AutonomousDatabase,
+		// 	*dbv4.AutonomousDatabase) (specChanged bool, err error){
+		// 	r.validateGeneralFields,
+		// 	r.validateAdminPassword,
+		// 	r.validateDbWorkload,
+		// 	r.validateLicenseModel,
+		// 	r.validateScalingFields,
+		// 	r.validateGeneralNetworkAccess,
+		// }
 
-			if sent {
-				return false, nil
-			}
-		}
+		// for _, op := range validations {
+		// 	sent, err := op(logger, adb, difAdb, ociAdb)
+		// 	if err != nil {
+		// 		return false, err
+		// 	}
+
+		// 	if sent {
+		// 		return false, nil
+		// 	}
+		// }
 	}
 
 	return false, nil
 }
 
+/*
 func (r *AutonomousDatabaseReconciler) validateGeneralFields(
 	logger logr.Logger,
 	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (sent bool, err error) {
+	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	if difADB.Spec.Details.DisplayName == nil &&
 		difADB.Spec.Details.DbName == nil &&
 		difADB.Spec.Details.DbVersion == nil &&
 		difADB.Spec.Details.FreeformTags == nil {
-		return false, nil
-	}
-
-	if ociADB.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateAvailable {
 		return false, nil
 	}
 
@@ -812,24 +672,18 @@ func (r *AutonomousDatabaseReconciler) validateGeneralFields(
 		return false, err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
 
-	return true, nil
+	return specChanged, nil
 }
 
-// Special case: compare with lastSpec but not ociSpec
 func (r *AutonomousDatabaseReconciler) validateAdminPassword(
 	logger logr.Logger,
 	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (sent bool, err error) {
+	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	if difADB.Spec.Details.AdminPassword.K8sSecret.Name == nil &&
 		difADB.Spec.Details.AdminPassword.OCISecret.OCID == nil {
-		return false, nil
-	}
-
-	if ociADB.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateAvailable {
 		return false, nil
 	}
 
@@ -841,24 +695,17 @@ func (r *AutonomousDatabaseReconciler) validateAdminPassword(
 		return false, err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
-	// Update the admin password fields because they are missing in the ociADB
-	adb.Spec.Details.AdminPassword = difADB.Spec.Details.AdminPassword
+	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
 
-	return true, nil
+	return specChanged, nil
 }
 
 func (r *AutonomousDatabaseReconciler) validateDbWorkload(
 	logger logr.Logger,
 	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (sent bool, err error) {
+	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	if difADB.Spec.Details.DbWorkload == "" {
-		return false, nil
-	}
-
-	if ociADB.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateAvailable {
 		return false, nil
 	}
 
@@ -870,22 +717,17 @@ func (r *AutonomousDatabaseReconciler) validateDbWorkload(
 		return false, err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
 
-	return true, nil
+	return specChanged, nil
 }
 
 func (r *AutonomousDatabaseReconciler) validateLicenseModel(
 	logger logr.Logger,
 	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (sent bool, err error) {
+	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	if difADB.Spec.Details.LicenseModel == "" {
-		return false, nil
-	}
-
-	if ociADB.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateAvailable {
 		return false, nil
 	}
 
@@ -897,24 +739,19 @@ func (r *AutonomousDatabaseReconciler) validateLicenseModel(
 		return false, err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
 
-	return true, nil
+	return specChanged, nil
 }
 
 func (r *AutonomousDatabaseReconciler) validateScalingFields(
 	logger logr.Logger,
 	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (sent bool, err error) {
+	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	if difADB.Spec.Details.DataStorageSizeInTBs == nil &&
 		difADB.Spec.Details.CPUCoreCount == nil &&
 		difADB.Spec.Details.IsAutoScalingEnabled == nil {
-		return false, nil
-	}
-
-	if ociADB.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateAvailable {
 		return false, nil
 	}
 
@@ -926,73 +763,9 @@ func (r *AutonomousDatabaseReconciler) validateScalingFields(
 		return false, err
 	}
 
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
+	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
 
-	return true, nil
-}
-
-func (r *AutonomousDatabaseReconciler) validateDesiredLifecycleState(
-	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (sent bool, exit bool, err error) {
-
-	if difADB.Spec.Details.LifecycleState == "" {
-		return false, false, nil
-	}
-
-	if difADB.Spec.Details.LifecycleState == database.AutonomousDatabaseLifecycleStateTerminated {
-		// OCI only allows terminate operation when the ADB is in an valid state, otherwise requeue the reconcile.
-		if !dbv4.ValidADBTerminateState(adb.Status.LifecycleState) {
-			return false, false, nil
-		}
-	} else if dbv4.IsADBIntermediateState(ociADB.Status.LifecycleState) {
-		// Other lifecycle management operation; requeue the reconcile if it's in an intermediate state
-		return false, false, nil
-	}
-
-	l := logger.WithName("validateDesiredLifecycleState")
-
-	switch difADB.Spec.Details.LifecycleState {
-	case database.AutonomousDatabaseLifecycleStateAvailable:
-		l.Info("Sending StartAutonomousDatabase request to OCI")
-
-		resp, err := r.dbService.StartAutonomousDatabase(*adb.Spec.Details.AutonomousDatabaseOCID)
-		if err != nil {
-			return false, false, err
-		}
-
-		adb.Status.LifecycleState = resp.LifecycleState
-	case database.AutonomousDatabaseLifecycleStateStopped:
-		l.Info("Sending StopAutonomousDatabase request to OCI")
-
-		resp, err := r.dbService.StopAutonomousDatabase(*adb.Spec.Details.AutonomousDatabaseOCID)
-		if err != nil {
-			return false, false, err
-		}
-
-		adb.Status.LifecycleState = resp.LifecycleState
-	case database.AutonomousDatabaseLifecycleStateTerminated:
-		l.Info("Sending DeleteAutonomousDatabase request to OCI")
-
-		_, err := r.dbService.DeleteAutonomousDatabase(*adb.Spec.Details.AutonomousDatabaseOCID)
-		if err != nil {
-			return false, false, err
-		}
-
-		adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateTerminating
-
-		// The controller allows terminate during some intermediate states.
-		// Exit the reconcile because there is already another ongoing reconcile.
-		if dbv4.IsADBIntermediateState(ociADB.Status.LifecycleState) {
-			l.Info("Terminating an ADB which is in an intermediate state; exit reconcile")
-			return true, true, nil
-		}
-	default:
-		return false, false, errors.New("unknown lifecycleState")
-	}
-
-	return true, false, nil
+	return specChanged, nil
 }
 
 // The logic of updating the network access configurations is as follows:
@@ -1017,8 +790,7 @@ func (r *AutonomousDatabaseReconciler) validateDesiredLifecycleState(
 func (r *AutonomousDatabaseReconciler) validateGeneralNetworkAccess(
 	logger logr.Logger,
 	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (sent bool, err error) {
+	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	if difADB.Spec.Details.NetworkAccess.AccessType == "" &&
 		difADB.Spec.Details.NetworkAccess.IsAccessControlEnabled == nil &&
@@ -1030,14 +802,10 @@ func (r *AutonomousDatabaseReconciler) validateGeneralNetworkAccess(
 		return false, nil
 	}
 
-	if ociADB.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateAvailable {
-		return false, nil
-	}
-
 	l := logger.WithName("validateGeneralNetworkAccess")
 
 	if !*adb.Spec.Details.IsDedicated {
-		var lastAccessType = ociADB.Spec.Details.NetworkAccess.AccessType
+		var lastAccessType = adb.Spec.Details.NetworkAccess.AccessType
 		var difAccessType = difADB.Spec.Details.NetworkAccess.AccessType
 
 		if difAccessType != "" {
@@ -1045,14 +813,14 @@ func (r *AutonomousDatabaseReconciler) validateGeneralNetworkAccess(
 			case dbv4.NetworkAccessTypePublic:
 				l.Info("Configuring network access type to PUBLIC")
 				// OCI validation requires IsMTLSConnectionRequired to be enabled before changing the network access type to PUBLIC
-				if !*ociADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired {
+				if !*adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired {
 					if err := r.setMTLSRequired(logger, adb); err != nil {
 						return false, err
 					}
 					return true, nil
 				}
 
-				if err := r.setNetworkAccessPublic(logger, ociADB.Spec.Details.NetworkAccess.AccessType, adb); err != nil {
+				if err := r.setNetworkAccessPublic(logger, adb.Spec.Details.NetworkAccess.AccessType, adb); err != nil {
 					return false, err
 				}
 				return true, nil
@@ -1075,7 +843,7 @@ func (r *AutonomousDatabaseReconciler) validateGeneralNetworkAccess(
 					return true, nil
 				}
 
-				sent, err := r.validateNetworkAccess(logger, adb, difADB, ociADB)
+				sent, err := r.validateNetworkAccess(logger, adb, difADB)
 				if err != nil {
 					return false, err
 				}
@@ -1093,7 +861,7 @@ func (r *AutonomousDatabaseReconciler) validateGeneralNetworkAccess(
 			case dbv4.NetworkAccessTypePrivate:
 				l.Info("Configuring network access type to PRIVATE")
 
-				sent, err := r.validateNetworkAccess(logger, adb, difADB, ociADB)
+				sent, err := r.validateNetworkAccess(logger, adb, difADB)
 				if err != nil {
 					return false, err
 				}
@@ -1111,7 +879,7 @@ func (r *AutonomousDatabaseReconciler) validateGeneralNetworkAccess(
 			}
 		} else {
 			// Access type doesn't change
-			sent, err := r.validateNetworkAccess(logger, adb, difADB, ociADB)
+			sent, err := r.validateNetworkAccess(logger, adb, difADB)
 			if err != nil {
 				return false, err
 			}
@@ -1129,7 +897,7 @@ func (r *AutonomousDatabaseReconciler) validateGeneralNetworkAccess(
 		}
 	} else {
 		// Dedicated database
-		sent, err := r.validateNetworkAccess(logger, adb, difADB, ociADB)
+		sent, err := r.validateNetworkAccess(logger, adb, difADB)
 		if err != nil {
 			return false, err
 		}
@@ -1163,7 +931,7 @@ func (r *AutonomousDatabaseReconciler) validateMTLS(
 	logger logr.Logger,
 	adb *dbv4.AutonomousDatabase,
 	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (sent bool, err error) {
+	ociADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	if difADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired == nil {
 		return false, nil
@@ -1207,8 +975,7 @@ func (r *AutonomousDatabaseReconciler) setNetworkAccessPublic(logger logr.Logger
 func (r *AutonomousDatabaseReconciler) validateNetworkAccess(
 	logger logr.Logger,
 	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (sent bool, err error) {
+	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
 
 	if difADB.Spec.Details.NetworkAccess.AccessType == "" &&
 		difADB.Spec.Details.NetworkAccess.IsAccessControlEnabled == nil &&
@@ -1238,11 +1005,12 @@ func (r *AutonomousDatabaseReconciler) validateNetworkAccess(
 
 	return true, nil
 }
+*/
 
 func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *dbv4.AutonomousDatabase) error {
-	if adb.Spec.Details.Wallet.Name == nil &&
-		adb.Spec.Details.Wallet.Password.K8sSecret.Name == nil &&
-		adb.Spec.Details.Wallet.Password.OCISecret.OCID == nil {
+	if adb.Spec.Wallet.Name == nil &&
+		adb.Spec.Wallet.Password.K8sSecret.Name == nil &&
+		adb.Spec.Wallet.Password.OciSecret.Id == nil {
 		return nil
 	}
 
@@ -1255,10 +1023,10 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 	// lastSucSpec may be nil if this is the first time entering the reconciliation loop
 	var walletName string
 
-	if adb.Spec.Details.Wallet.Name == nil {
+	if adb.Spec.Wallet.Name == nil {
 		walletName = adb.GetName() + "-instance-wallet"
 	} else {
-		walletName = *adb.Spec.Details.Wallet.Name
+		walletName = *adb.Spec.Wallet.Name
 	}
 
 	secret, err := k8s.FetchSecret(r.KubeClient, adb.GetNamespace(), walletName)
@@ -1321,7 +1089,7 @@ func (r *AutonomousDatabaseReconciler) syncBackupResources(logger logr.Logger, a
 		}
 	}
 
-	resp, err := r.dbService.ListAutonomousDatabaseBackups(*adb.Spec.Details.AutonomousDatabaseOCID)
+	resp, err := r.dbService.ListAutonomousDatabaseBackups(*adb.Spec.Details.Id)
 	if err != nil {
 		return err
 	}

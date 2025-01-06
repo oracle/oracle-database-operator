@@ -43,6 +43,7 @@ import (
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -57,7 +58,7 @@ type AutonomousDatabaseBackupSpec struct {
 	AutonomousDatabaseBackupOCID *string       `json:"autonomousDatabaseBackupOCID,omitempty"`
 	IsLongTermBackup             *bool         `json:"isLongTermBackup,omitempty"`
 	RetentionPeriodInDays        *int          `json:"retentionPeriodInDays,omitempty"`
-	OCIConfig                    OCIConfigSpec `json:"ociConfig,omitempty"`
+	OCIConfig                    OciConfigSpec `json:"ociConfig,omitempty"`
 }
 
 // AutonomousDatabaseBackupStatus defines the observed state of AutonomousDatabaseBackup
@@ -104,7 +105,7 @@ func init() {
 	SchemeBuilder.Register(&AutonomousDatabaseBackup{}, &AutonomousDatabaseBackupList{})
 }
 
-func (b *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociADB database.AutonomousDatabase) {
+func (b *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.AutonomousDatabaseBackup, ociAdb database.AutonomousDatabase) {
 	b.Status.AutonomousDatabaseOCID = *ociBackup.AutonomousDatabaseId
 	b.Status.CompartmentOCID = *ociBackup.CompartmentId
 	b.Status.Type = ociBackup.Type
@@ -112,14 +113,14 @@ func (b *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.
 
 	b.Status.LifecycleState = ociBackup.LifecycleState
 
-	b.Status.TimeStarted = FormatSDKTime(ociBackup.TimeStarted)
-	b.Status.TimeEnded = FormatSDKTime(ociBackup.TimeEnded)
+	b.Status.TimeStarted = dbv4.FormatSDKTime(ociBackup.TimeStarted)
+	b.Status.TimeEnded = dbv4.FormatSDKTime(ociBackup.TimeEnded)
 
-	b.Status.DBDisplayName = *ociADB.DisplayName
-	b.Status.DBName = *ociADB.DbName
+	b.Status.DBDisplayName = *ociAdb.DisplayName
+	b.Status.DBName = *ociAdb.DbName
 }
 
 // GetTimeEnded returns the status.timeEnded in SDKTime format
 func (b *AutonomousDatabaseBackup) GetTimeEnded() (*common.SDKTime, error) {
-	return parseDisplayTime(b.Status.TimeEnded)
+	return dbv4.ParseDisplayTime(b.Status.TimeEnded)
 }
