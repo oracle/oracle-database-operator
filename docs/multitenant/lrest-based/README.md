@@ -171,6 +171,16 @@ rm  dbuser.txt dbpass.txt wbuser.txt wbpass.txt pdbusr.txt pdbpwd.txt \
 
 Use yaml file [create_lrest_pod.yaml](./usecase/create_lrest_pod.yaml) to create the rest pod and monitor the execution.
 
+Be sure to update the **lrestImage** with latest version available on the [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:4:104288359787984:::4:P4_REPOSITORY,AI_REPOSITORY,AI_REPOSITORY_NAME,P4_REPOSITORY_NAME,P4_EULA_ID,P4_BUSINESS_AREA_ID:1283,1283,This%20image%20is%20part%20of%20and%20for%20use%20with%20the%20Oracle%20Database%20Operator%20for%20Kubernetes,This%20image%20is%20part%20of%20and%20for%20use%20with%20the%20Oracle%20Database%20Operator%20for%20Kubernetes,1,0&cs=3076h-hg1qX3eJANBcUHBNBCmYWjMvxLkZyTAhDn2e8VR8Gxb_a-I8jZLhf9j6gmnimHwlP_a0OQjX6vjBfSAqQ) 
+
+```bash
+--> for amd64
+lrestImage: container-registry.oracle.com/database/operator:lrest-241210-amd64
+
+--> for arm64
+lrestImage: container-registry.oracle.com/database/operator:lrest-241210-arm64
+```
+
 ```bash 
 kubectl apply -f create_lrest_pod.yaml
 ```
