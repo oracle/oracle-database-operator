@@ -3,7 +3,6 @@ apiVersion: observability.oracle.com/v1alpha1
 kind: DatabaseObserver
 metadata:
   name: obs-sample
-  namespace: observer
 spec:
   database:
     dbUser:
@@ -11,8 +10,8 @@ spec:
       secret: db-secret
 
     dbPassword:
-      key: "password"
-      secret: db-secret
+      vaultSecretName: sample_secret
+      vaultOCID: ocid1.vault.oc1.<region>.<vault-ocid>
 
     dbConnectionString:
       key: "connection"
@@ -21,8 +20,11 @@ spec:
     dbWallet:
       secret: instance-wallet
 
-  exporter:
-   configuration:
-     configmap:
-       key: "config.toml"
-       configmapName: "devcm-oradevdb-config"
+  prometheus:
+    serviceMonitor:
+      labels:
+        release: prometheus
+
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey

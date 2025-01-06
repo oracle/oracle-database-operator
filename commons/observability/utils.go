@@ -1,87 +1,213 @@
 package observability
 
 import (
-	apiv1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
-	appsv1 "k8s.io/api/apps/v1"
+	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
+	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"path/filepath"
+	"strings"
 )
 
-// GetExporterLabels function retrieves exporter labels from api or provides default
-func GetExporterLabels(api *apiv1.DatabaseObserver) map[string]string {
+func AddSidecarContainers(a *api.DatabaseObserver, listing *[]corev1.Container) {
+
+	if containers := a.Spec.ExporterSidecars; len(containers) > 0 {
+		for _, container := range containers {
+			*listing = append(*listing, container)
+		}
+
+	}
+}
+
+func AddSidecarVolumes(a *api.DatabaseObserver, listing *[]corev1.Volume) {
+
+	if volumes := a.Spec.SideCarVolumes; len(volumes) > 0 {
+		for _, v := range volumes {
+			*listing = append(*listing, v)
+		}
+
+	}
+}
+
+// GetLabels retrieves labels from the spec
+func GetLabels(a *api.DatabaseObserver, customResourceLabels map[string]string) map[string]string {
+
 	var l = make(map[string]string)
 
-	if labels := api.Spec.Prometheus.Labels; labels != nil && len(labels) > 0 {
-		for k, v := range labels {
-			l[k] = v
+	// get inherited labels
+	if iLabels := a.Spec.InheritLabels; iLabels != nil {
+		for _, v := range iLabels {
+			if v != DefaultSelectorLabelKey {
+				l[v] = a.Labels[v]
+			}
 		}
-		l["release"] = "stable"
-		return l
 	}
-	return map[string]string{
-		DefaultLabelKey: DefaultLabelPrefix + api.Name,
-		"release":       "stable",
+
+	if customResourceLabels != nil {
+		for k, v := range customResourceLabels {
+			if k != DefaultSelectorLabelKey {
+				l[k] = v
+			}
+		}
+	}
+
+	// add app label
+	l[DefaultSelectorLabelKey] = a.Name
+	return l
+}
+
+// GetSelectorLabel adds selector label
+func GetSelectorLabel(a *api.DatabaseObserver) map[string]string {
+	selectors := make(map[string]string)
+	selectors[DefaultSelectorLabelKey] = a.Name
+	return selectors
+}
+
+// GetExporterVersion retrieves version of exporter used
+func GetExporterVersion(a *api.DatabaseObserver) string {
+	appVersion := "latest"
+	whichImage := DefaultExporterImage
+	if img := a.Spec.Exporter.Deployment.ExporterImage; img != "" {
+		whichImage = img
+	}
+
+	// return tag in image:tag
+	if str := strings.Split(whichImage, ":"); len(str) == 2 {
+		appVersion = str[1]
+	}
+	return appVersion
+}
+
+// GetExporterArgs retrieves args
+func GetExporterArgs(a *api.DatabaseObserver) []string {
+	if args := a.Spec.Exporter.Deployment.ExporterArgs; args != nil || len(args) > 0 {
+		return args
+	}
+	return nil
+}
+
+// GetExporterCommands retrieves commands
+func GetExporterCommands(a *api.DatabaseObserver) []string {
+	if c := a.Spec.Exporter.Deployment.ExporterCommands; c != nil || len(c) > 0 {
+		return c
+	}
+	return nil
+}
+
+// GetExporterServicePort function retrieves exporter service port from a or provides default
+func GetExporterServicePort(a *api.DatabaseObserver) []corev1.ServicePort {
+
+	servicePorts := make([]corev1.ServicePort, 0)
+
+	// get service ports
+	if ports := a.Spec.Exporter.Service.Ports; len(ports) > 0 {
+		for _, port := range ports {
+			servicePorts = append(servicePorts, port)
+		}
+
+	} else {
+		// if not, provide default service port
+		servicePorts = append(servicePorts, corev1.ServicePort{
+			Name:       DefaultPrometheusPort,
+			Port:       DefaultServicePort,
+			TargetPort: intstr.FromInt32(DefaultServiceTargetPort),
+		})
+	}
+
+	return servicePorts
+
+}
+
+// GetEndpoints function
+func GetEndpoints(a *api.DatabaseObserver) []monitorv1.Endpoint {
+
+	endpoints := make([]monitorv1.Endpoint, 0)
+
+	// get endpoints
+	if es := a.Spec.Prometheus.ServiceMonitor.Endpoints; len(es) > 0 {
+		for _, e := range es {
+			endpoints = append(endpoints, e)
+		}
+	}
+
+	// if not, provide default endpoint
+	endpoints = append(endpoints, monitorv1.Endpoint{
+		Port:     DefaultPrometheusPort,
+		Interval: "20s",
+	})
+
+	return endpoints
+}
+
+func AddNamespaceSelector(a *api.DatabaseObserver, spec *monitorv1.ServiceMonitorSpec) {
+
+	if ns := a.Spec.Prometheus.ServiceMonitor.NamespaceSelector; ns != nil {
+		a.Spec.Prometheus.ServiceMonitor.NamespaceSelector.DeepCopyInto(&spec.NamespaceSelector)
 	}
 
 }
 
-// GetExporterServicePort function retrieves exporter service port from api or provides default
-func GetExporterServicePort(api *apiv1.DatabaseObserver) int32 {
-	if rPort := api.Spec.Exporter.Service.Port; rPort != 0 {
-		return rPort
-	}
-	return int32(DefaultServicePort)
-}
-
-// GetExporterServiceMonitorPort function retrieves exporter service monitor port from api or provides default
-func GetExporterServiceMonitorPort(api *apiv1.DatabaseObserver) string {
-	if rPort := api.Spec.Prometheus.Port; rPort != "" {
-		return rPort
-	}
-	return DefaultPrometheusPort
-
-}
-
-// GetExporterDeploymentVolumeMounts function retrieves volume mounts from api or provides default
-func GetExporterDeploymentVolumeMounts(api *apiv1.DatabaseObserver) []corev1.VolumeMount {
+// GetExporterDeploymentVolumeMounts function retrieves volume mounts from a or provides default
+func GetExporterDeploymentVolumeMounts(a *api.DatabaseObserver) []corev1.VolumeMount {
 
 	volM := make([]corev1.VolumeMount, 0)
 
-	if cVolumeSourceName := api.Spec.Exporter.ExporterConfig.Configmap.Name; cVolumeSourceName != "" {
+	if cVolumeSourceName := a.Spec.ExporterConfig.Configmap.Name; cVolumeSourceName != "" {
 		volM = append(volM, corev1.VolumeMount{
 			Name:      DefaultConfigVolumeString,
 			MountPath: DefaultExporterConfigMountRootPath,
 		})
 	}
 
-	// api.Spec.Database.DBWallet.SecretName optional
+	// a.Spec.Database.DBWallet.SecretName optional
 	// if null, consider the database NON-ADB and connect as such
-	if secretName := api.Spec.Database.DBWallet.SecretName; secretName != "" {
+	if secretName := a.Spec.Database.DBWallet.SecretName; secretName != "" {
+
+		p := DefaultOracleTNSAdmin
+
+		// Determine what the value of TNS_ADMIN
+		// if custom TNS_ADMIN environment variable is set and found, use that instead as the path
+		if rCustomEnvs := a.Spec.Exporter.Deployment.ExporterEnvs; rCustomEnvs != nil {
+			if v, f := rCustomEnvs[EnvVarTNSAdmin]; f {
+				p = v
+			}
+		}
+
 		volM = append(volM, corev1.VolumeMount{
 			Name:      DefaultWalletVolumeString,
-			MountPath: DefaultOracleTNSAdmin,
+			MountPath: p,
 		})
 	}
 
-	// api.Spec.OCIConfig.SecretName required if vault is used
-	if secretName := api.Spec.OCIConfig.SecretName; secretName != "" {
+	// a.Spec.OCIConfig.SecretName required if vault is used
+	if secretName := a.Spec.OCIConfig.SecretName; secretName != "" {
 		volM = append(volM, corev1.VolumeMount{
 			Name:      DefaultOCIPrivateKeyVolumeString,
 			MountPath: DefaultVaultPrivateKeyRootPath,
 		})
 	}
+
+	// a.Spec.Log.Path path to mount for a custom log path, a volume is required
+	if rLogPath := a.Spec.Log.Path; rLogPath != "" {
+		volM = append(volM, corev1.VolumeMount{
+			Name:      DefaultLogVolumeString,
+			MountPath: rLogPath,
+		})
+	}
+
 	return volM
 }
 
-// GetExporterDeploymentVolumes function retrieves volumes from api or provides default
-func GetExporterDeploymentVolumes(api *apiv1.DatabaseObserver) []corev1.Volume {
+// GetExporterDeploymentVolumes function retrieves volumes from a or provides default
+func GetExporterDeploymentVolumes(a *api.DatabaseObserver) []corev1.Volume {
 
 	vol := make([]corev1.Volume, 0)
 
 	// config-volume Volume
 	// if null, the exporter uses the default built-in config
-	if cVolumeSourceName := api.Spec.Exporter.ExporterConfig.Configmap.Name; cVolumeSourceName != "" {
+	if cVolumeSourceName := a.Spec.ExporterConfig.Configmap.Name; cVolumeSourceName != "" {
 
-		cVolumeSourceKey := api.Spec.Exporter.ExporterConfig.Configmap.Key
+		cVolumeSourceKey := a.Spec.ExporterConfig.Configmap.Key
 		cMSource := &corev1.ConfigMapVolumeSource{
 			LocalObjectReference: corev1.LocalObjectReference{
 				Name: cVolumeSourceName,
@@ -96,9 +222,9 @@ func GetExporterDeploymentVolumes(api *apiv1.DatabaseObserver) []corev1.Volume {
 	}
 
 	// creds Volume
-	// api.Spec.Database.DBWallet.SecretName optional
+	// a.Spec.Database.DBWallet.SecretName optional
 	// if null, consider the database NON-ADB and connect as such
-	if secretName := api.Spec.Database.DBWallet.SecretName; secretName != "" {
+	if secretName := a.Spec.Database.DBWallet.SecretName; secretName != "" {
 
 		vol = append(vol, corev1.Volume{
 			Name: DefaultWalletVolumeString,
@@ -111,8 +237,8 @@ func GetExporterDeploymentVolumes(api *apiv1.DatabaseObserver) []corev1.Volume {
 	}
 
 	// ocikey Volume
-	// api.Spec.Database.DBWallet.SecretName optional
-	if secretName := api.Spec.OCIConfig.SecretName; secretName != "" {
+	// a.Spec.Database.DBWallet.SecretName optional
+	if secretName := a.Spec.OCIConfig.SecretName; secretName != "" {
 
 		OCIConfigSource := &corev1.SecretVolumeSource{
 			SecretName: secretName,
@@ -127,38 +253,103 @@ func GetExporterDeploymentVolumes(api *apiv1.DatabaseObserver) []corev1.Volume {
 			VolumeSource: corev1.VolumeSource{Secret: OCIConfigSource},
 		})
 	}
+
+	// log-volume Volume
+	if rLogPath := a.Spec.Log.Path; rLogPath != "" {
+		vs := GetLogVolumeSource(a)
+		vName := GetLogName(a)
+
+		vol = append(vol, corev1.Volume{
+			Name:         vName,
+			VolumeSource: vs,
+		})
+	}
+
 	return vol
 }
 
-// GetExporterSelector function retrieves labels from api or provides default
-func GetExporterSelector(api *apiv1.DatabaseObserver) map[string]string {
-	var s = make(map[string]string)
-	if labels := api.Spec.Prometheus.Labels; labels != nil && len(labels) > 0 {
-		for k, v := range labels {
-			s[k] = v
-		}
-		return s
+// GetExporterConfig function retrieves config name for status
+func GetExporterConfig(a *api.DatabaseObserver) string {
 
+	configName := DefaultValue
+	if cmName := a.Spec.ExporterConfig.Configmap.Name; cmName != "" {
+		configName = cmName
 	}
-	return map[string]string{DefaultLabelKey: DefaultLabelPrefix + api.Name}
 
+	return configName
 }
 
-// GetExporterEnvs function retrieves env from api or provides default
-func GetExporterEnvs(api *apiv1.DatabaseObserver) []corev1.EnvVar {
+func GetLogName(a *api.DatabaseObserver) string {
+	if name := a.Spec.Log.Volume.Name; name != "" {
+		return name
+	}
+	return DefaultLogVolumeString
+}
+
+// GetLogVolumeSource function retrieves the source to help GetExporterDeploymentVolumes
+func GetLogVolumeSource(a *api.DatabaseObserver) corev1.VolumeSource {
+
+	vs := corev1.VolumeSource{}
+	rLogVolumeClaimName := a.Spec.Log.Volume.PersistentVolumeClaim.ClaimName
+
+	// volume claims take precedence
+	if rLogVolumeClaimName != "" {
+		vs.PersistentVolumeClaim = &corev1.PersistentVolumeClaimVolumeSource{
+			ClaimName: rLogVolumeClaimName,
+		}
+		return vs
+
+	} else {
+		vs.EmptyDir = &corev1.EmptyDirVolumeSource{}
+		return vs
+	}
+}
+
+// AddEnv is a helper method that appends an Env Var value
+func AddEnv(env []corev1.EnvVar, existing map[string]string, name string, v string) []corev1.EnvVar {
+
+	// Evaluate if env already exists
+	if _, f := existing[name]; !f {
+		env = append(env, corev1.EnvVar{Name: name, Value: v})
+	}
+	return env
+}
+
+// AddEnvFrom is a helper method that appends an Env Var value source
+func AddEnvFrom(env []corev1.EnvVar, existing map[string]string, name string, v *corev1.EnvVarSource) []corev1.EnvVar {
+
+	// Evaluate if env already exists
+	if _, f := existing[name]; !f {
+		env = append(env, corev1.EnvVar{Name: name, ValueFrom: v})
+	}
+	return env
+}
+
+// GetExporterEnvs function retrieves env from a or provides default
+func GetExporterEnvs(a *api.DatabaseObserver) []corev1.EnvVar {
 
 	optional := true
-	rDBPasswordKey := api.Spec.Database.DBPassword.Key
-	rDBPasswordName := api.Spec.Database.DBPassword.SecretName
-	rDBConnectStrKey := api.Spec.Database.DBConnectionString.Key
-	rDBConnectStrName := api.Spec.Database.DBConnectionString.SecretName
-	rDBVaultSecretName := api.Spec.Database.DBPassword.VaultSecretName
-	rDBVaultOCID := api.Spec.Database.DBPassword.VaultOCID
-	rDBUserSKey := api.Spec.Database.DBUser.Key
-	rDBUserSName := api.Spec.Database.DBUser.SecretName
-	rOCIConfigCMName := api.Spec.OCIConfig.ConfigMapName
+	rDBPasswordKey := a.Spec.Database.DBPassword.Key
+	rDBPasswordName := a.Spec.Database.DBPassword.SecretName
+	rDBConnectStrKey := a.Spec.Database.DBConnectionString.Key
+	rDBConnectStrName := a.Spec.Database.DBConnectionString.SecretName
+	rDBVaultSecretName := a.Spec.Database.DBPassword.VaultSecretName
+	rDBVaultOCID := a.Spec.Database.DBPassword.VaultOCID
+	rDBUserSKey := a.Spec.Database.DBUser.Key
+	rDBUserSName := a.Spec.Database.DBUser.SecretName
+	rOCIConfigCMName := a.Spec.OCIConfig.ConfigMapName
+	rLogPath := a.Spec.Log.Path
+	rLogFilename := a.Spec.Log.Filename
+	rCustomEnvs := a.Spec.Exporter.Deployment.ExporterEnvs
 
 	var env = make([]corev1.EnvVar, 0)
+
+	// add CustomEnvs
+	if rCustomEnvs != nil {
+		for k, v := range rCustomEnvs {
+			env = append(env, corev1.EnvVar{Name: k, Value: v})
+		}
+	}
 
 	// DB_USERNAME environment variable
 	if rDBUserSKey == "" { // overwrite
@@ -170,7 +361,7 @@ func GetExporterEnvs(api *apiv1.DatabaseObserver) []corev1.EnvVar {
 			LocalObjectReference: corev1.LocalObjectReference{Name: rDBUserSName},
 			Optional:             &optional,
 		}}
-	env = append(env, corev1.EnvVar{Name: EnvVarDataSourceUser, ValueFrom: envUser})
+	env = AddEnvFrom(env, rCustomEnvs, EnvVarDataSourceUser, envUser)
 
 	// DB_CONNECT_STRING environment variable
 	if rDBConnectStrKey == "" {
@@ -182,15 +373,15 @@ func GetExporterEnvs(api *apiv1.DatabaseObserver) []corev1.EnvVar {
 			LocalObjectReference: corev1.LocalObjectReference{Name: rDBConnectStrName},
 			Optional:             &optional,
 		}}
-	env = append(env, corev1.EnvVar{Name: EnvVarDataSourceConnectString, ValueFrom: envConnectStr})
+	env = AddEnvFrom(env, rCustomEnvs, EnvVarDataSourceConnectString, envConnectStr)
 
 	// DB_PASSWORD environment variable
 	// if useVault, add environment variables for Vault ID and Vault Secret Name
 	useVault := rDBVaultSecretName != "" && rDBVaultOCID != ""
 	if useVault {
 
-		env = append(env, corev1.EnvVar{Name: EnvVarDataSourcePwdVaultSecretName, Value: rDBVaultSecretName})
-		env = append(env, corev1.EnvVar{Name: EnvVarDataSourcePwdVaultId, Value: rDBVaultOCID})
+		env = AddEnv(env, rCustomEnvs, EnvVarDataSourcePwdVaultSecretName, rDBVaultSecretName)
+		env = AddEnv(env, rCustomEnvs, EnvVarDataSourcePwdVaultId, rDBVaultOCID)
 
 		// Configuring the configProvider prefixed with vault_
 		// https://github.com/oracle/oracle-db-appdev-monitoring/blob/main/vault/vault.go
@@ -222,12 +413,11 @@ func GetExporterEnvs(api *apiv1.DatabaseObserver) []corev1.EnvVar {
 				Optional:             &optional,
 			},
 		}
-
-		env = append(env, corev1.EnvVar{Name: EnvVarVaultFingerprint, ValueFrom: configSourceFingerprintValue})
-		env = append(env, corev1.EnvVar{Name: EnvVarVaultUserOCID, ValueFrom: configSourceUserValue})
-		env = append(env, corev1.EnvVar{Name: EnvVarVaultTenancyOCID, ValueFrom: configSourceTenancyValue})
-		env = append(env, corev1.EnvVar{Name: EnvVarVaultRegion, ValueFrom: configSourceRegionValue})
-		env = append(env, corev1.EnvVar{Name: EnvVarVaultPrivateKeyPath, Value: DefaultVaultPrivateKeyAbsolutePath})
+		env = AddEnvFrom(env, rCustomEnvs, EnvVarVaultFingerprint, configSourceFingerprintValue)
+		env = AddEnvFrom(env, rCustomEnvs, EnvVarVaultUserOCID, configSourceUserValue)
+		env = AddEnvFrom(env, rCustomEnvs, EnvVarVaultTenancyOCID, configSourceTenancyValue)
+		env = AddEnvFrom(env, rCustomEnvs, EnvVarVaultRegion, configSourceRegionValue)
+		env = AddEnv(env, rCustomEnvs, EnvVarVaultPrivateKeyPath, DefaultVaultPrivateKeyAbsolutePath)
 
 	} else {
 
@@ -241,162 +431,46 @@ func GetExporterEnvs(api *apiv1.DatabaseObserver) []corev1.EnvVar {
 				Optional:             &optional,
 			}}
 
-		env = append(env, corev1.EnvVar{Name: EnvVarDataSourcePassword, ValueFrom: dbPassword})
+		env = AddEnvFrom(env, rCustomEnvs, EnvVarDataSourcePassword, dbPassword)
 
 	}
 
 	// CUSTOM_METRICS environment variable
-	if customMetricsName := api.Spec.Exporter.ExporterConfig.Configmap.Name; customMetricsName != "" {
+	if customMetricsName := a.Spec.ExporterConfig.Configmap.Name; customMetricsName != "" {
 		customMetrics := DefaultExporterConfigmapAbsolutePath
-		env = append(env, corev1.EnvVar{Name: EnvVarCustomConfigmap, Value: customMetrics})
+
+		env = AddEnv(env, rCustomEnvs, EnvVarCustomConfigmap, customMetrics)
 	}
 
-	env = append(env, corev1.EnvVar{Name: EnvVarOracleHome, Value: DefaultOracleHome})
-	env = append(env, corev1.EnvVar{Name: EnvVarTNSAdmin, Value: DefaultOracleTNSAdmin})
+	env = AddEnv(env, rCustomEnvs, EnvVarOracleHome, DefaultOracleHome)
+	env = AddEnv(env, rCustomEnvs, EnvVarTNSAdmin, DefaultOracleTNSAdmin)
+
+	// LOG_DESTINATION environment variable
+	if rLogPath != "" {
+		if rLogFilename == "" {
+			rLogFilename = DefaultLogFilename
+		}
+		d := filepath.Join(rLogPath, rLogFilename)
+		env = AddEnv(env, rCustomEnvs, EnvVarDataSourceLogDestination, d)
+	}
+
 	return env
 }
 
-// GetExporterReplicas function retrieves replicaCount from api or provides default
-func GetExporterReplicas(api *apiv1.DatabaseObserver) int32 {
-	if rc := api.Spec.Replicas; rc != 0 {
+// GetExporterReplicas function retrieves replicaCount from a or provides default
+func GetExporterReplicas(a *api.DatabaseObserver) int32 {
+	if rc := a.Spec.Replicas; rc != 0 {
 		return rc
 	}
 	return int32(DefaultReplicaCount)
 }
 
-// GetExporterImage function retrieves image from api or provides default
-func GetExporterImage(api *apiv1.DatabaseObserver) string {
-	if img := api.Spec.Exporter.ExporterImage; img != "" {
+// GetExporterImage function retrieves image from a or provides default
+func GetExporterImage(a *api.DatabaseObserver) string {
+	if img := a.Spec.Exporter.Deployment.ExporterImage; img != "" {
 		return img
 	}
+
 	return DefaultExporterImage
 
-}
-
-func IsUpdateRequiredForContainerImage(desired *appsv1.Deployment, found *appsv1.Deployment) bool {
-	foundImage := found.Spec.Template.Spec.Containers[0].Image
-	desiredImage := desired.Spec.Template.Spec.Containers[0].Image
-
-	return foundImage != desiredImage
-}
-
-func IsUpdateRequiredForEnvironmentVars(desired *appsv1.Deployment, found *appsv1.Deployment) bool {
-	var updateEnvsRequired bool
-	desiredEnvValues := make(map[string]string)
-
-	foundEnvs := found.Spec.Template.Spec.Containers[0].Env
-	desiredEnvs := desired.Spec.Template.Spec.Containers[0].Env
-	if len(foundEnvs) != len(desiredEnvs) {
-		updateEnvsRequired = true
-	} else {
-		for _, v := range desiredEnvs {
-
-			if v.Name == EnvVarDataSourceUser ||
-				v.Name == EnvVarDataSourceConnectString ||
-				v.Name == EnvVarDataSourcePassword {
-
-				ref := *(*v.ValueFrom).SecretKeyRef
-				desiredEnvValues[v.Name] = ref.Key + "-" + ref.Name
-
-			} else if v.Name == EnvVarVaultFingerprint ||
-				v.Name == EnvVarVaultRegion ||
-				v.Name == EnvVarVaultTenancyOCID ||
-				v.Name == EnvVarVaultUserOCID {
-
-				ref := *(*v.ValueFrom).ConfigMapKeyRef
-				desiredEnvValues[v.Name] = ref.Key + "-" + ref.Name
-
-			} else if v.Name == EnvVarDataSourcePwdVaultId ||
-				v.Name == EnvVarDataSourcePwdVaultSecretName ||
-				v.Name == EnvVarCustomConfigmap {
-
-				desiredEnvValues[v.Name] = v.Value
-			}
-		}
-
-		for _, v := range foundEnvs {
-			var foundValue string
-
-			if v.Name == EnvVarDataSourceUser ||
-				v.Name == EnvVarDataSourceConnectString ||
-				v.Name == EnvVarDataSourcePassword {
-
-				ref := *(*v.ValueFrom).SecretKeyRef
-				foundValue = ref.Key + "-" + ref.Name
-
-			} else if v.Name == EnvVarVaultFingerprint ||
-				v.Name == EnvVarVaultRegion ||
-				v.Name == EnvVarVaultTenancyOCID ||
-				v.Name == EnvVarVaultUserOCID {
-
-				ref := *(*v.ValueFrom).ConfigMapKeyRef
-				foundValue = ref.Key + "-" + ref.Name
-
-			} else if v.Name == EnvVarDataSourcePwdVaultId ||
-				v.Name == EnvVarDataSourcePwdVaultSecretName ||
-				v.Name == EnvVarCustomConfigmap {
-
-				foundValue = v.Value
-			}
-
-			if desiredEnvValues[v.Name] != foundValue {
-				updateEnvsRequired = true
-			}
-		}
-	}
-	return updateEnvsRequired
-}
-
-func IsUpdateRequiredForVolumes(desired *appsv1.Deployment, found *appsv1.Deployment) bool {
-	var updateVolumesRequired bool
-	var foundConfigmap, desiredConfigmap string
-	var foundWalletSecret, desiredWalletSecret string
-	var foundOCIConfig, desiredOCIConfig string
-
-	desiredVolumes := desired.Spec.Template.Spec.Volumes
-	foundVolumes := found.Spec.Template.Spec.Volumes
-
-	if len(desiredVolumes) != len(foundVolumes) {
-		updateVolumesRequired = true
-	} else {
-		for _, v := range desiredVolumes {
-			if v.Name == DefaultConfigVolumeString {
-				desiredConfigmap = v.ConfigMap.Name
-				for _, key := range v.ConfigMap.Items {
-					desiredConfigmap += key.Key
-				}
-			} else if v.Name == DefaultWalletVolumeString {
-				desiredWalletSecret = v.VolumeSource.Secret.SecretName
-
-			} else if v.Name == DefaultOCIPrivateKeyVolumeString {
-				desiredOCIConfig = v.VolumeSource.Secret.SecretName
-			}
-		}
-
-		for _, v := range foundVolumes {
-			if v.Name == DefaultConfigVolumeString {
-				foundConfigmap = v.ConfigMap.Name
-				for _, key := range v.ConfigMap.Items {
-					foundConfigmap += key.Key
-				}
-			} else if v.Name == DefaultWalletVolumeString {
-				foundWalletSecret = v.VolumeSource.Secret.SecretName
-
-			} else if v.Name == DefaultOCIPrivateKeyVolumeString {
-				foundOCIConfig = v.VolumeSource.Secret.SecretName
-			}
-		}
-	}
-
-	return updateVolumesRequired ||
-		desiredConfigmap != foundConfigmap ||
-		desiredWalletSecret != foundWalletSecret ||
-		desiredOCIConfig != foundOCIConfig
-}
-
-func IsUpdateRequiredForReplicas(desired *appsv1.Deployment, found *appsv1.Deployment) bool {
-	foundReplicas := *found.Spec.Replicas
-	desiredReplicas := *desired.Spec.Replicas
-
-	return desiredReplicas != foundReplicas
 }

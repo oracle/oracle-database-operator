@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v1
 
 import (
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
@@ -72,7 +72,7 @@ func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-//+kubebuilder:webhook:path=/mutate-observability-oracle-com-v1alpha1-databaseobserver,mutating=true,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,verbs=create;update,versions=v1alpha1,name=mdatabaseobserver.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:path=/mutate-observability-oracle-com-v1-databaseobserver,mutating=true,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,verbs=create;update,versions=v1,name=mdatabaseobserver.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Defaulter = &DatabaseObserver{}
 
@@ -84,7 +84,7 @@ func (r *DatabaseObserver) Default() {
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:verbs=create;update,path=/validate-observability-oracle-com-v1alpha1-databaseobserver,mutating=false,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,versions=v1alpha1,name=vdatabaseobserver.kb.io,admissionReviewVersions=v1
+//+kubebuilder:webhook:verbs=create;update,path=/validate-observability-oracle-com-v1-databaseobserver,mutating=false,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,versions=v1,name=vdatabaseobserver.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &DatabaseObserver{}
 

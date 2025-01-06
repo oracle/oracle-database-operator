@@ -1,0 +1,26 @@
+# example
+apiVersion: observability.oracle.com/v4
+kind: DatabaseObserver
+metadata:
+  name: obs-sample
+spec:
+  database:
+    dbUser:
+      key: "username"
+      secret: db-secret
+
+    dbPassword:
+      key: "password"
+      secret: db-secret
+
+    dbConnectionString:
+      key: "connection"
+      secret: db-secret
+
+    dbWallet:
+      secret: instance-wallets
+
+  prometheus:
+    serviceMonitor:
+      labels:
+        release: prometheus

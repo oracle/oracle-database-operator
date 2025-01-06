@@ -1,0 +1,79 @@
+# example
+apiVersion: observability.oracle.com/v4
+kind: DatabaseObserver
+metadata:
+  name: obs-sample
+  labels:
+    app.kubernetes.io/name: observability-exporter
+    app.kubernetes.io/instance: obs-sample
+    app.kubernetes.io/version: latest
+spec:
+  database:
+    dbUser:
+      key: "username"
+      secret: db-secret
+
+    dbPassword:
+      key: "password"
+      secret: db-secret
+
+    dbConnectionString:
+      key: "connection"
+      secret: db-secret
+
+    dbWallet:
+      secret: instance-wallet
+
+  inheritLabels:
+    - app.kubernetes.io/name
+    - app.kubernetes.io/instance
+    - app.kubernetes.io/version
+
+  sidecars: [ ]
+  sidecarVolumes: [ ]
+
+  exporter:
+    deployment:
+      image: "container-registry.oracle.com/database/observability-exporter:1.5.1"
+      args: [ "--log.level=info" ]
+      commands: [ "/oracledb_exporter" ]
+      env:
+        TNS_ADMIN: /some/custom/path
+        ORACLE_HOME: /some/custom/path
+      labels:
+        environment: dev
+      podTemplate:
+        labels:
+          environment: dev
+
+    service:
+      labels:
+        environment: dev
+
+
+  configuration:
+    configMap:
+      key: "config.toml"
+      name: "devcm-oradevdb-config"
+
+  prometheus:
+    serviceMonitor:
+      labels:
+        release: prometheus
+
+  log:
+    filename: "alert.log"
+    path: "/log"
+
+    volume:
+      name: volume
+      persistentVolumeClaim:
+        claimName: "my-pvc"
+
+  replicas: 1
+
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey
+
+

@@ -36,7 +36,7 @@
 ** SOFTWARE.
  */
 
-package v1alpha1
+package v4
 
 import (
 	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -171,6 +171,7 @@ type DatabaseObserverStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.exporterConfig",name="ExporterConfig",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.version",name="Version",type=string
+// +kubebuilder:storageversion
 type DatabaseObserver struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

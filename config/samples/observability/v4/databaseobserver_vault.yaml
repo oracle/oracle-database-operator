@@ -1,8 +1,12 @@
 # example
-apiVersion: observability.oracle.com/v1alpha1
+apiVersion: observability.oracle.com/v4
 kind: DatabaseObserver
 metadata:
   name: obs-sample
+  labels:
+    app.kubernetes.io/name: observability-exporter
+    app.kubernetes.io/instance: obs-sample
+    app.kubernetes.io/version: latest
 spec:
   database:
     dbUser:
@@ -19,6 +23,16 @@ spec:
 
     dbWallet:
       secret: instance-wallet
+
+  inherit_labels:
+    - app.kubernetes.io/name
+    - app.kubernetes.io/instance
+    - app.kubernetes.io/version
+
+  prometheus:
+    serviceMonitor:
+      labels:
+        release: prometheus
 
   ociConfig:
     configMapName: oci-cred
