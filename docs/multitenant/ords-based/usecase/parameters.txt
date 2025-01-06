@@ -3,43 +3,45 @@
 ## REST SERVER IMAGE ###
 ########################
 
-ORDSIMG:lin.ocir.io/intsanjaysingh/mmalvezz/testppr/ords-dboper:latest
+ORDSIMG:[Enter the image build using oracle-database-operator/ords/Dockerfile]
 
 ##############################
 ## TNS URL FOR CDB CREATION ##
 ##############################
-TNSALIAS:"(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
+TNSALIAS:"[cdb tns descriptor]"
+
+#e.g. TNSALIAS:"(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
 
 ###########################################
 ##           ORDS PUBLIC USER            ##
 ###########################################
-ORDPWD:Mascetti
+ORDPWD:[enter ords public user passwrod]
 
 ###########################################
 ##           SYSPASSWORD                 ##
 ###########################################
-SYSPWD:WElcome_12##
+SYSPWD:[enter database sys password]
 
 #######################
 ## HTTPS CREDENTIAL ###
 #######################
 
-WBUSER:welcome
-WBPASS:welcome1
+WBUSER:[webuser credential:username]
+WBPASS:[webuser credential:password]
 
 #####################
 ## PDB ADMIN USER ###
 ##################### 
 
-PDBUSR:Citizenkane
-PDBPWD:Rosebud
+PDBUSR:[Pdb admin credential: username]
+PDBPWD:[Pdb admin credential: password]
 
 #####################
 ## CDB ADMIN USER ###
 ##################### 
 
 CDBUSR:C##DBAPI_CDB_ADMIN
-CDBPWD:WElcome_12##
+CDBPWD:[cdb admin password]
 
 ###################
 ### NAMESPACES ####
