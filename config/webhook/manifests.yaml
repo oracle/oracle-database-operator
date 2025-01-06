@@ -277,6 +277,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /mutate-observability-oracle-com-v1-databaseobserver
+  failurePolicy: Fail
+  name: mdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /mutate-observability-oracle-com-v1alpha1-databaseobserver
   failurePolicy: Fail
   name: mdatabaseobserver.kb.io
@@ -291,6 +311,27 @@ webhooks:
     resources:
     - databaseobservers
   sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-observability-oracle-com-v4-databaseobserver
+  failurePolicy: Fail
+  name: mdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
+
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -633,6 +674,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-observability-oracle-com-v1-databaseobserver
+  failurePolicy: Fail
+  name: vdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-observability-oracle-com-v1alpha1-databaseobserver
   failurePolicy: Fail
   name: vdatabaseobserver.kb.io
@@ -641,6 +702,26 @@ webhooks:
     - observability.oracle.com
     apiVersions:
     - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-observability-oracle-com-v4-databaseobserver
+  failurePolicy: Fail
+  name: vdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v4
     operations:
     - CREATE
     - UPDATE

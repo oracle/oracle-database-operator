@@ -3,7 +3,6 @@ apiVersion: observability.oracle.com/v1alpha1
 kind: DatabaseObserver
 metadata:
   name: obs-sample
-  namespace: observer
 spec:
   database:
     dbUser:
@@ -20,3 +19,8 @@ spec:
 
     dbWallet:
       secret: instance-wallets
+
+  prometheus:
+    serviceMonitor:
+      labels:
+        release: prometheus

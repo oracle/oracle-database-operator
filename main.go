@@ -67,6 +67,8 @@ import (
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
+	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
+	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	// +kubebuilder:scaffold:imports
 )
@@ -82,6 +84,8 @@ func init() {
 	utilruntime.Must(monitorv1.AddToScheme(scheme))
 	utilruntime.Must(databasev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(databasev4.AddToScheme(scheme))
+	utilruntime.Must(observabilityv1.AddToScheme(scheme))
+	utilruntime.Must(observabilityv4.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -297,6 +301,15 @@ func main() {
 		}
 		if err = (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
+			os.Exit(1)
+		}
+		if err = (&observabilityv1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
+			os.Exit(1)
+		}
+
+		if err = (&observabilityv4.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
 			os.Exit(1)
 		}
 	}
