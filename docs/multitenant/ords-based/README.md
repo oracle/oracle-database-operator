@@ -150,7 +150,7 @@ In this setup example [provisioning example setup](./provisioning/example_setup_
   echo -n "<password to be encoded using base64>" | base64
   ```
 
-  **Note:** <span style="color:red">  After successful creation of the CDB Resource, the CDB secrets ca be deleted from the Kubernetes system </span> .
+  **Note:** <span style="color:red">  After successful creation of the CDB Resource, the CDB secrets can be deleted from the Kubernetes system </span> .
 
 ### Secrets for PDB CRD
 

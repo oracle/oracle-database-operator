@@ -18,7 +18,7 @@
     - [Create secrets with encrypted password](#create-secrets-with-encrypted-password)
     - [Create lrest pod](#create-lrest-pod)
     - [Create PDB](#create-pdb)
-      - [pdb config map 🆕](#pdb-config-map)
+      - [pdb config map ](#pdb-config-map)
     - [Open PDB](#open-pdb)
     - [Close PDB](#close-pdb)
     - [Clone PDB](#clone-pdb)
@@ -41,7 +41,7 @@ Image to run lrest controller is available on OCR. The container database can be
 ### Multiple namespace setup
 
 Before proceeding with controllers setup make sure that the operator is configured to work with multiple namespaces as specified in the [README](../../../README.md).
-In this document each controller is running in a dedicated namespace lrest controller is running in **cdbnamespace** , lrpdb controller is running in **pdbnamespace**. The [usecase directory](./usecase/README.md) contains all the files reported in this document.
+In this document each controller is running in a dedicated namespace: lrest controller is running in **cdbnamespace** , lrpdb controller is running in **pdbnamespace**. The [usecase directory](./usecase/README.md) contains all the files reported in this document.
 
 Configure the **WACTH_NAMESPACE** list of the operator yaml file 
 
