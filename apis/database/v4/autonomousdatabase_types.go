@@ -69,12 +69,12 @@ type AutonomousDatabaseDetails struct {
 
 type AutonomousDatabaseClone struct {
 	AutonomousDatabaseBase `json:",inline"`
-	CloneType              database.CreateAutonomousDatabaseCloneDetailsCloneTypeEnum `json:"id,cloneType"`
+	// +kubebuilder:validation:Enum:="FULL";"METADATA"
+	CloneType database.CreateAutonomousDatabaseCloneDetailsCloneTypeEnum `json:"cloneType,omitempty"`
 }
 
 // AutonomousDatabaseBase defines the detail information of AutonomousDatabase, corresponding to oci-go-sdk/database/AutonomousDatabase
 type AutonomousDatabaseBase struct {
-	Id                          *string `json:"id,omitempty"`
 	CompartmentId               *string `json:"compartmentId,omitempty"`
 	AutonomousContainerDatabase AcdSpec `json:"autonomousContainerDatabase,omitempty"`
 	DisplayName                 *string `json:"displayName,omitempty"`
@@ -113,7 +113,7 @@ type K8sAcdSpec struct {
 	Name *string `json:"name,omitempty"`
 }
 
-type OCIAcdSpec struct {
+type OciAcdSpec struct {
 	Id *string `json:"id,omitempty"`
 }
 
@@ -121,7 +121,7 @@ type OCIAcdSpec struct {
 // The name could be the name of an AutonomousDatabase or an AutonomousDatabaseBackup
 type AcdSpec struct {
 	K8sAcd K8sAcdSpec `json:"k8sAcd,omitempty"`
-	OciAcd OCIAcdSpec `json:"ociAcd,omitempty"`
+	OciAcd OciAcdSpec `json:"ociAcd,omitempty"`
 }
 
 /************************
@@ -274,7 +274,7 @@ func (adb *AutonomousDatabase) UpdateStatusFromOciAdb(ociObj database.Autonomous
 	}
 }
 
-// UpdateFromOCIADB updates the attributes using database.AutonomousDatabase object
+// UpdateFromOciAdb updates the attributes using database.AutonomousDatabase object
 func (adb *AutonomousDatabase) UpdateFromOciAdb(ociObj database.AutonomousDatabase, overwrite bool) (specChanged bool) {
 	oldADB := adb.DeepCopy()
 

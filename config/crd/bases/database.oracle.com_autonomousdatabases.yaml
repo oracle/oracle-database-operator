@@ -430,6 +430,11 @@ spec:
                             type: string
                         type: object
                     type: object
+                  cloneType:
+                    enum:
+                    - FULL
+                    - METADATA
+                    type: string
                   compartmentId:
                     type: string
                   computeCount:
@@ -460,8 +465,6 @@ spec:
                     additionalProperties:
                       type: string
                     type: object
-                  id:
-                    type: string
                   isAccessControlEnabled:
                     type: boolean
                   isAutoScalingEnabled:
@@ -491,8 +494,6 @@ spec:
                     items:
                       type: string
                     type: array
-                required:
-                - id
                 type: object
               details:
                 properties:
