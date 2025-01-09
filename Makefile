@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2025, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
  
@@ -83,7 +83,7 @@ ifeq ($(BUILD_MANIFEST), true)
 BUILD_ARGS := $(BUILD_ARGS) --platform=linux/arm64,linux/amd64 --jobs=2 --manifest
 PUSH_ARGS := manifest
 else
-BUILD_ARGS := $(BUILD_ARGS) --tag
+BUILD_ARGS := $(BUILD_ARGS) --platform=linux/amd64 --tag
 endif
 docker-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
 	docker build --no-cache=true --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
