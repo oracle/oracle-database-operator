@@ -1,8 +1,8 @@
 #
-# Copyright (c) 2022, Oracle and/or its affiliates.
+# Copyright (c) 2025, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
- 
+
 # Current Operator version
 VERSION ?= 0.0.1
 # Default bundle image tag
@@ -18,9 +18,10 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 # Image URL to use all building/pushing image targets
 IMG ?= controller:latest
-# Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
-# API version has to be v1 to use defaulting (https://github.com/kubernetes-sigs/controller-tools/issues/478)
-CRD_OPTIONS ?= "crd:maxDescLen=0"
+# Enable allowDangerousTypes to use float type in CRD
+# Remove the Desc to avoid YAML getting too long. See the discussion:
+# https://github.com/kubernetes-sigs/kubebuilder/issues/1140 
+CRD_OPTIONS ?= "crd:maxDescLen=0,allowDangerousTypes=true"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.29.0
 # Operator YAML file
@@ -31,16 +32,16 @@ GOBIN=$(shell go env GOPATH)/bin
 else
 GOBIN=$(shell go env GOBIN)
 endif
- 
+
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # This is a requirement for 'setup-envtest.sh' in the test target.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
- 
+
 all: build
 ##@ Development
- 
+
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
  
@@ -83,7 +84,7 @@ ifeq ($(BUILD_MANIFEST), true)
 BUILD_ARGS := $(BUILD_ARGS) --platform=linux/arm64,linux/amd64 --jobs=2 --manifest
 PUSH_ARGS := manifest
 else
-BUILD_ARGS := $(BUILD_ARGS) --tag
+BUILD_ARGS := $(BUILD_ARGS) --platform=linux/amd64 --tag
 endif
 docker-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
 	docker build --no-cache=true --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
@@ -109,7 +110,7 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
- 
+
 minikube-deploy: minikube-operator-yaml minikube-push
 	kubectl apply -f $(OPERATOR_YAML)
 
@@ -121,7 +122,7 @@ operator-yaml: manifests kustomize
 	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "$(OPERATOR_YAML)"
 	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_YAML).bak")  >>  "$(OPERATOR_YAML)"
 	rm "$(OPERATOR_YAML).bak"
- 
+
 minikube-operator-yaml: IMG:=localhost:5000/$(IMG)
 minikube-operator-yaml: operator-yaml
 	sed -i.bak 's/\(replicas.\) 3/\1 1/g' "$(OPERATOR_YAML)"

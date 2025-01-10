@@ -1,0 +1,20 @@
+# permissions for end users to view ordssrvs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ordssrvs-viewer-role
+rules:
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - ordssrvs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - ordssrvs/status
+  verbs:
+  - get

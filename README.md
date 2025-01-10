@@ -73,7 +73,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   Install the certificate manager with the following command:
 
   ```sh
-  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
   ```
 
 * ### Create Role Bindings for Access Management

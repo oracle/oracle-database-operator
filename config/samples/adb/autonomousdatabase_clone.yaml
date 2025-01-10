@@ -1,0 +1,35 @@
+#
+# Copyright (c) 2022, 2024, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabase
+metadata:
+  name: autonomousdatabase-sample
+spec:
+  action: Clone
+  details:
+    autonomousDatabaseOCID: ocid1.autonomousdatabase...
+  clone:
+    # Update compartmentOCID with your compartment OCID.
+    compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
+    # The dbName must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy.
+    dbName: ClonedADB
+    displayName: ClonedADB
+    cpuCoreCount: 1
+    adminPassword:
+      # Comment out k8sSecret and uncomment ociSecret if you pass the admin password using OCI Secret.
+      k8sSecret:
+        # The Name of the K8s secret where you want to hold the password of the ADMIN account.
+        name: admin-password
+      # ociSecret:
+      #   # The OCID of the OCI Secret that holds the password of the ADMIN account. It should start with ocid1.vaultsecret... .
+      #   ocid: ocid1.vaultsecret...
+    dataStorageSizeInTBs: 1
+    dbWorkload: OLTP
+    cloneType: METADATA
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred
+    # Comment out secretName if using OKE workload identity
+    secretName: oci-privatekey

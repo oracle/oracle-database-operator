@@ -1,0 +1,6 @@
+apiVersion: database.oracle.com/v4
+kind: OrdsSrvs
+metadata:
+  name: ordssrvs-sample
+spec:
+  # TODO(user): Add fields here

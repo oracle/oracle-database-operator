@@ -1,0 +1,32 @@
+  sysAdminPwd:
+    secret:
+      secretName: "cdb-secret"
+      key: "sysadmin_pwd"
+  ordsPwd:
+    secret:
+      secretName: "cdb-secret"
+      key: "ords_pwd"
+  cdbAdminUser:
+    secret:
+      secretName: "cdb-secret"
+      key: "cdbadmin_user"
+  cdbAdminPwd:
+    secret:
+      secretName: "cdb-secret"
+      key: "cdbadmin_pwd"
+  webServerUser:
+    secret:
+      secretName: "cdb-secret"
+      key: "webserver_user"
+  webServerPwd:
+    secret:
+      secretName: "cdb-secret"
+      key: "webserver_pwd"
+  cdbTlsKey:
+    secret:
+      secretName: "db-tls"
+      key: "tls.key"
+  cdbTlsCrt:
+    secret:
+      secretName: "db-tls"
+      key: "tls.crt"

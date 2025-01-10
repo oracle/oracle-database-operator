@@ -7,10 +7,10 @@ kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
 spec:
+  
+  action: Stop # Use the value "Start" to start the database
   details:
     autonomousDatabaseOCID: ocid1.autonomousdatabase...
-    # Change the lifecycleState to "AVAILABLE" to start the database
-    lifecycleState: STOPPED
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:
     configMapName: oci-cred

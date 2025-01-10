@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -82,12 +83,12 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) (admiss
 
 	// cannot update when the old state is in intermediate state, except for the terminate operatrion
 	var copiedSpec *AutonomousContainerDatabaseSpec = r.Spec.DeepCopy()
-	changed, err := removeUnchangedFields(oldACD.Spec, copiedSpec)
+	changed, err := dbv4.RemoveUnchangedFields(oldACD.Spec, copiedSpec)
 	if err != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec"), err.Error()))
 	}
-	if IsACDIntermediateState(oldACD.Status.LifecycleState) && changed {
+	if dbv4.IsACDIntermediateState(oldACD.Status.LifecycleState) && changed {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec"),
 				"cannot change the spec when the lifecycleState is in an intermdeiate state"))

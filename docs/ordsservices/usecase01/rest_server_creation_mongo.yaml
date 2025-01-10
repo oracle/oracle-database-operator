@@ -1,0 +1,29 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: OrdsSrvs
+metadata:
+  name: ords-sidb-mongo
+  namespace: ordsnamespace
+spec:
+  image: container-registry.oracle.com/database/ords:24.1.1
+  forceRestart: true
+  globalSettings:
+    database.api.enabled: true
+    mongo.enabled: true
+  poolSettings:
+    - poolName: default
+      autoUpgradeORDS: true
+      restEnabledSql.active: true
+      plsql.gateway.mode: direct
+      jdbc.MaxConnectionReuseCount: 5000
+      jdbc.MaxConnectionReuseTime: 900
+      jdbc.SecondsToTrustIdleConnection: 1
+      jdbc.InitialLimit: 100
+      jdbc.MaxLimit: 100
+      db.connectionType: customurl
+      db.customURL: jdbc:oracle:thin:@//158.180.233.248:30001/FREEPDB1
+      db.username: ORDS_PUBLIC_USER
+      db.secret:
+        secretName:  ords-db-auth
+      db.adminUser: SYS
+      db.adminUser.secret:
+        secretName:  ords-db-auth

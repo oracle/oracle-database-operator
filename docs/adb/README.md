@@ -25,6 +25,7 @@ After you create the resource, you can use the operator to perform the following
 * [Download instance credentials (wallets)](#download-wallets) of an Autonomous Database
 * [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
 * [Delete the resource](#delete-the-resource) from the cluster
+* [Clone](#clone-an-existing-autonomous-database) an existing Autonomous Database
 
 To debug the Oracle Autonomous Databases with Oracle Database operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
 
@@ -155,6 +156,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
       name: autonomousdatabase-sample
     spec:
       details:
+        action: Sync
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
       ociConfig:
         configMapName: oci-cred
@@ -183,6 +185,7 @@ You can scale up or scale down the Oracle Autonomous Database OCPU core count or
     metadata:
       name: autonomousdatabase-sample
     spec:
+      action: Update
       details:
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
         cpuCoreCount: 2
@@ -215,6 +218,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
     metadata:
       name: autonomousdatabase-sample
     spec:
+      action: Update
       details:
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
         dbName: RenamedADB
@@ -257,6 +261,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
     metadata:
       name: autonomousdatabase-sample
     spec:
+      action: Update
       details:
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
         adminPassword:
@@ -301,6 +306,7 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
     metadata:
       name: autonomousdatabase-sample
     spec:
+      action: Update
       details:
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
         wallet:
@@ -339,12 +345,12 @@ To use the secret in a deployment, refer to [Using Secrets](https://kubernetes.i
 
 > Note: this operation requires an `AutonomousDatabase` object to be in your cluster. This example assumes the provision operation or the bind operation has been done by the users and the operator is authorized with API Key Authentication.
 
-To start, stop, or terminate a database, use the `lifecycleState` attribute.
-Here's a list of the values you can set for `lifecycleState`:
+To start, stop, or terminate a database, use the `action` attribute.
+Here's a list of the values you can set for `action`:
 
-* `AVAILABLE`: to start the database
-* `STOPPED`: to stop the database
-* `TERMINATED`: to terminate the database
+* `START`: to start the database
+* `STOP`: to stop the database
+* `TERMINATE`: to terminate the database
 
 1. An example .yaml file is available here: [config/samples/adb/autonomousdatabase_stop_start_terminate.yaml](./../../config/samples/adb/autonomousdatabase_stop_start_terminate.yaml)
 
@@ -355,9 +361,9 @@ Here's a list of the values you can set for `lifecycleState`:
     metadata:
       name: autonomousdatabase-sample
     spec:
+      action: STOP
       details:
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
-        lifecycleState: STOPPED
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
@@ -387,6 +393,7 @@ To delete the resource and terminate the Autonomous Database, complete these ste
     metadata:
       name: autonomousdatabase-sample
     spec:
+      action: Update
       details:
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
       hardLink: true
@@ -410,6 +417,49 @@ To delete the resource and terminate the Autonomous Database, complete these ste
     ```
 
 Now, you can verify that the database is in TERMINATING state on the Cloud Console.
+
+## Clone an existing Autonomous Database
+
+> Note: this operation requires an `AutonomousDatabase` object to be in your cluster. This example assumes the provision operation or the bind operation has been done by the users and the operator is authorized with API Key Authentication.
+
+To clone an existing Autonomous Database, complete these steps:
+
+1. An example YAML file is available here: [config/samples/adb/autonomousdatabase_clone.yaml](./../../config/samples/adb/autonomousdatabase_clone.yaml)
+
+    ```yaml
+    ---
+    apiVersion: database.oracle.com/v1alpha1
+    kind: AutonomousDatabase
+    metadata:
+      name: autonomousdatabase-sample
+    spec:
+      action: Clone
+      details:
+        autonomousDatabaseOCID: ocid1.autonomousdatabase...
+      clone:
+        compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
+        dbName: ClonedADB
+        displayName: ClonedADB
+        cpuCoreCount: 1
+        adminPassword:
+          k8sSecret:
+            name: admin-password
+        dataStorageSizeInTBs: 1
+        dbWorkload: OLTP
+        cloneType: METADATA
+      ociConfig:
+        configMapName: oci-cred
+        secretName: oci-privatekey
+    ```
+
+2. Apply the yaml
+
+    ```sh
+    kubectl apply -f config/samples/adb/autonomousdatabase_clone.yaml
+    autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
+    ```
+
+Now, you can verify that a cloned database with name "ClonedADB" is being provisioned on the Cloud Console.
 
 ## Roles and Privileges requirements for Oracle Autonomous Database Controller
 

@@ -29,7 +29,20 @@ resources:
   - adb/autonomousdatabase_bind.yaml
   - adb/autonomousdatabase_backup.yaml
   - adb/autonomousdatabase_restore.yaml
+  - acd/autonomouscontainerdatabase_create.yaml
+  - sidb/singleinstancedatabase.yaml
+  - sharding/shardingdatabase.yaml
+  - sharding/sharding_v1alpha1_provshard.yaml
+  - dbcs/database_v1alpha1_dbcssystem.yaml
+  - database_v1alpha1_dataguardbroker.yaml
+  - database_v1alpha1_shardingdatabase.yaml
+  - observability/v1alpha1/databaseobserver.yaml
+  - observability/v1/databaseobserver.yaml
+  - observability/v4/databaseobserver.yaml
   - acd/autonomouscontainerdatabase_restart_terminate.yaml
   - database_v4_shardingdatabase.yaml
   - database_v4_dbcssystem.yaml
+- database_v4_lrest.yaml
+- database_v4_lrpdb.yaml
+- database_v4_ordssrvs.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples

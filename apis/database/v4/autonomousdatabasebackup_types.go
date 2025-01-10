@@ -57,7 +57,7 @@ type AutonomousDatabaseBackupSpec struct {
 	AutonomousDatabaseBackupOCID *string       `json:"autonomousDatabaseBackupOCID,omitempty"`
 	IsLongTermBackup             *bool         `json:"isLongTermBackup,omitempty"`
 	RetentionPeriodInDays        *int          `json:"retentionPeriodInDays,omitempty"`
-	OCIConfig                    OCIConfigSpec `json:"ociConfig,omitempty"`
+	OCIConfig                    OciConfigSpec `json:"ociConfig,omitempty"`
 }
 
 // AutonomousDatabaseBackupStatus defines the observed state of AutonomousDatabaseBackup
@@ -125,5 +125,5 @@ func (b *AutonomousDatabaseBackup) UpdateStatusFromOCIBackup(ociBackup database.
 
 // GetTimeEnded returns the status.timeEnded in SDKTime format
 func (b *AutonomousDatabaseBackup) GetTimeEnded() (*common.SDKTime, error) {
-	return parseDisplayTime(b.Status.TimeEnded)
+	return ParseDisplayTime(b.Status.TimeEnded)
 }
