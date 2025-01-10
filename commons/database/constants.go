@@ -368,7 +368,9 @@ const UninstallORDSCMD string = "\numask 177" +
 	"\nrm -rf /opt/oracle/ords/config/ords/standalone" +
 	"\nrm -rf /opt/oracle/ords/config/ords/apex"
 
-const GetORDSStatus string = "curl -sSkv -k -X GET http://localhost:8181/ords/_/db-api/stable/metadata-catalog/"
+const GetORDSStatus string = "curl -sSkvf -k -X GET http://localhost:8181/ords/_/db-api/stable/metadata-catalog/"
+
+const ORDSReadinessProbe string = "curl -sSkvf -k -X GET http://localhost:8181/ords/_/landing"
 
 const ValidateAdminPassword string = "conn sys/\\\"%s\\\"@${ORACLE_SID} as sysdba\nshow user"
 

@@ -382,7 +382,7 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 		return requeueY, readyPod
 	}
 	if readyPod.Name == "" {
-		m.Status.Status = dbcommons.StatusNotReady
+		m.Status.Status = dbcommons.StatusPending
 		return requeueY, readyPod
 	}
 
@@ -401,7 +401,7 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 		}
 	}
 
-	m.Status.Status = dbcommons.StatusNotReady
+	m.Status.Status = dbcommons.StatusUpdating
 	if strings.Contains(out, "HTTP/1.1 200 OK") || strings.Contains(strings.ToUpper(err.Error()), "HTTP/1.1 200 OK") {
 		if n.Status.Status == dbcommons.StatusReady || n.Status.Status == dbcommons.StatusUpdating || n.Status.Status == dbcommons.StatusPatching {
 			m.Status.Status = dbcommons.StatusReady
@@ -423,7 +423,7 @@ func (r *OracleRestDataServiceReconciler) checkHealthStatus(m *dbapi.OracleRestD
 			}
 		}
 	}
-	if m.Status.Status == dbcommons.StatusNotReady {
+	if m.Status.Status == dbcommons.StatusUpdating {
 		return requeueY, readyPod
 	}
 	return requeueN, readyPod
@@ -554,8 +554,25 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 						},
 					},
 				},
-				InitContainers: []corev1.Container{
-					{
+				InitContainers: func() []corev1.Container{
+					initContainers := []corev1.Container{}
+					if m.Spec.Persistence.Size != "" && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
+						initContainers = append(initContainers, corev1.Container{
+							Name:    "init-permissions",
+							Image:   m.Spec.Image.PullFrom,
+							Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /etc/ords/config/ || true", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
+							SecurityContext: &corev1.SecurityContext{
+								// User ID 0 means, root user
+								RunAsUser: func() *int64 { i := int64(0); return &i }(),
+							},
+							VolumeMounts: []corev1.VolumeMount{{
+								MountPath: "/etc/ords/config/",
+								Name:      "datamount",
+							}},
+						})
+					}
+
+					initContainers = append(initContainers, corev1.Container{
 						Name:    "init-ords",
 						Image:   m.Spec.Image.PullFrom,
 						Command: []string{"/bin/sh"},
@@ -573,8 +590,9 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 								Name:      "varmount",
 							},
 						},
-					},
-				},
+					})
+					return initContainers
+				}(),
 				Containers: []corev1.Container{{
 					Name:  m.Name,
 					Image: m.Spec.Image.PullFrom,
@@ -591,6 +609,21 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 						}
 						return ports
 					}(),
+					ReadinessProbe: &corev1.Probe{
+						ProbeHandler: corev1.ProbeHandler{
+							Exec: &corev1.ExecAction{
+								Command: []string{"/bin/sh", "-c", dbcommons.ORDSReadinessProbe},
+							},
+						},
+						InitialDelaySeconds: 20,
+						TimeoutSeconds:      20,
+						PeriodSeconds: func() int32 {
+							if m.Spec.ReadinessCheckPeriod > 0 {
+								return int32(m.Spec.ReadinessCheckPeriod)
+							}
+							return 60
+						}(),
+					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							MountPath: "/etc/ords/config/",

@@ -66,7 +66,8 @@ type OracleRestDataServiceSpec struct {
 
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Minimum=1
-	Replicas int `json:"replicas,omitempty"`
+	Replicas             int `json:"replicas,omitempty"`
+	ReadinessCheckPeriod int `json:"readinessCheckPeriod,omitempty"`
 }
 
 // OracleRestDataServicePersistence defines the storage releated params
@@ -75,8 +76,9 @@ type OracleRestDataServicePersistence struct {
 	StorageClass string `json:"storageClass,omitempty"`
 
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
-	AccessMode string `json:"accessMode,omitempty"`
-	VolumeName string `json:"volumeName,omitempty"`
+	AccessMode            string `json:"accessMode,omitempty"`
+	VolumeName            string `json:"volumeName,omitempty"`
+	SetWritePermissions   *bool  `json:"setWritePermissions,omitempty"`
 }
 
 // OracleRestDataServiceImage defines the Image source and pullSecrets for POD
