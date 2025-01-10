@@ -6,7 +6,7 @@ onpremtest/*
 ords/*zip
 .gitattributes
 .vscode
-
+.DS_Store
 # development
 .idea
 .local
