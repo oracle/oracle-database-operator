@@ -72,10 +72,11 @@ type SingleInstanceDatabaseSpec struct {
 	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
 
 	PrimaryDatabaseRef string `json:"primaryDatabaseRef,omitempty"`
-	// +kubebuilder:validation:Enum=primary;standby;clone
-	CreateAs             string `json:"createAs,omitempty"`
-	ReadinessCheckPeriod int    `json:"readinessCheckPeriod,omitempty"`
-	ServiceAccountName   string `json:"serviceAccountName,omitempty"`
+	// +kubebuilder:validation:Enum=primary;standby;clone;truecache
+	CreateAs             string   `json:"createAs,omitempty"`
+	ReadinessCheckPeriod int      `json:"readinessCheckPeriod,omitempty"`
+	ServiceAccountName   string   `json:"serviceAccountName,omitempty"`
+	TrueCacheServices    []string `json:"trueCacheServices,omitempty"`
 
 	// +k8s:openapi-gen=true
 	Replicas int `json:"replicas,omitempty"`

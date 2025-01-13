@@ -135,6 +135,10 @@ func (r *SingleInstanceDatabase) Default() {
 			r.Spec.Replicas = 1
 		}
 	}
+
+	if r.Spec.TrueCacheServices == nil {
+		r.Spec.TrueCacheServices = make([]string, 0)
+	}
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -290,6 +294,14 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("edition"), r.Spec.CreateAs,
 					"Edition must be passed when cloning from a source database other than same k8s cluster"))
+		}
+	}
+
+	if r.Spec.CreateAs != "truecache" {
+		if len(r.Spec.TrueCacheServices) > 0 {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("spec").Child("trueCacheServices"), r.Spec.TrueCacheServices,
+					"Creation of trueCacheServices only supported with True Cache instances"))
 		}
 	}
 
