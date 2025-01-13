@@ -13,6 +13,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [XE Database](#xe-database)
       * [Free Database](#free-database)
       * [Free Lite Database](#free-lite-database)
+      * [Oracle True Cache](#oracle-true-cache)
     * [Connecting to Database](#connecting-to-database)
     * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
       * [Dynamic Persistence](#dynamic-persistence)
@@ -309,6 +310,12 @@ This command pulls the Free lite image available in [Oracle Container Registry](
 - For Free database, only single replica mode (i.e. `replicas: 1`) is supported.
 - For Free database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
 - Oracle Enterprise Manager Express (OEM Express) is not supported from release 23.3.0 and later releases. 
+
+#### Oracle True Cache
+Oracle True Cache is an in-memory, consistent, and automatically managed cache for Oracle Database.  
+To provision a True Cache instance for the Oracle Free Database in Kubernetes, use the sample **[config/samples/sidb/singleinstancedatabase_free-truecache.yaml](../../config/samples/sidb/singleinstancedatabase_free-truecache.yaml)** file. For example
+
+      kubectl apply -f singleinstancedatabase_free-truecache.yaml
 
 #### Additional Information
 You are required to specify the database admin password secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml), [singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml), [singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) and [singleinstancedatabse_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, `xedb-admin-secret` and `free-admin-secret` respectively. You can create these secrets manually by using the sample command mentioned in the [Template YAML](#template-yaml) section. Alternatively, you can create these secrets by filling the passwords in the **[singleinstancedatabase_secrets.yaml](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying it using the command below:
