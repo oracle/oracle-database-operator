@@ -4,12 +4,12 @@ metadata:
   name: dbcssystem-clone
   namespace: default
 spec:
-  ociConfigMap: "oci-cred-mumbai"
+  ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   setupDBCloning: true
   dbBackupId: "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyaae3fmnpacavkuwt2zqaj5q3gol2g6m6tirriveytoarq"
   dbClone:
-    dbAdminPaswordSecret: "admin-password"
+    dbAdminPasswordSecret: "admin-password"
     tdeWalletPasswordSecret: "tde-password"
     dbName: "db1212"
     hostName: "host1213"

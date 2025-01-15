@@ -85,7 +85,7 @@ type DbSystemDetails struct {
 	Domain                     string            `json:"domain,omitempty"`
 	InitialDataStorageSizeInGB int               `json:"initialDataStorageSizeInGB,omitempty"`
 	ClusterName                string            `json:"clusterName,omitempty"`
-	DbAdminPaswordSecret       string            `json:"dbAdminPaswordSecret"`
+	DbAdminPasswordSecret      string            `json:"dbAdminPasswordSecret"`
 	DbName                     string            `json:"dbName,omitempty"`
 	PdbName                    string            `json:"pdbName,omitempty"`
 	DbDomain                   string            `json:"dbDomain,omitempty"`
@@ -167,7 +167,7 @@ type VmNetworkDetails struct {
 
 // DbCloneConfig defines the configuration for the database clone
 type DbCloneConfig struct {
-	DbAdminPaswordSecret       string   `json:"dbAdminPaswordSecret,omitempty"`
+	DbAdminPasswordSecret      string   `json:"dbAdminPasswordSecret,omitempty"`
 	TdeWalletPasswordSecret    string   `json:"tdeWalletPasswordSecret,omitempty"`
 	DbName                     string   `json:"dbName"`
 	HostName                   string   `json:"hostName"`
@@ -201,8 +201,8 @@ type DbCloneStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=dbcssystems,scope=Namespaced
- // +kubebuilder:storageversion
- // +kubebuilder:storageversion
+// +kubebuilder:storageversion
+// +kubebuilder:storageversion
 
 // DbcsSystem is the Schema for the dbcssystems API
 type DbcsSystem struct {

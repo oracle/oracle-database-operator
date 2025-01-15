@@ -6,7 +6,7 @@ In this use case, a 2 Node RAC OCI DBCS system is deployed using Oracle DB Opera
 
 This example uses `dbcs_service_with_2_node_rac.yaml` to deploy a 2 Node RAC VMDB using Oracle DB Operator DBCS Controller with:
 
-- OCI Configmap as `oci-cred-mumbai`  
+- OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
 - Cluster Name as `maa-cluster`
 - Availability Domain for the DBCS VMDB as `OLou:AP-MUMBAI-1-AD-1`  

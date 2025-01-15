@@ -5,11 +5,11 @@ metadata:
   namespace: default
 spec:
   databaseId: "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyapxtsgw6hy3kyosmrawefq2csm4kjv4d5au7biuiaabsq"
-  ociConfigMap: "oci-cred-mumbai"
+  ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   setupDBCloning: true
   dbClone:
-    dbAdminPaswordSecret: "admin-password"
+    dbAdminPasswordSecret: "admin-password"
     tdeWalletPasswordSecret: "tde-password"
     dbName: "db1212"
     hostName: "host1213"

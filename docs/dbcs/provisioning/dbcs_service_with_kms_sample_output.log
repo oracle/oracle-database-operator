@@ -1,1 +1,91 @@
-# To be Added
+kubectl describe dbcssystems.database.oracle.com/dbcssystem-create
+Name:         dbcssystem-create
+Namespace:    default
+Labels:       <none>
+Annotations:  lastSuccessfulSpec:
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a","availabilityDomain":"O...
+API Version:  database.oracle.com/v4
+Kind:         DbcsSystem
+Metadata:
+  Creation Timestamp:  2025-01-09T18:10:30Z
+  Generation:          2
+  Resource Version:    130640272
+  UID:                 85e39113-0a02-4cf6-84d8-2270c543b0bf
+Spec:
+  Db System:
+    Availability Domain:       OLou:AP-MUMBAI-1-AD-1
+    Compartment Id:            ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
+    Db Admin Password Secret:  admin-password
+    Db Backup Config:
+    Db Edition:    ENTERPRISE_EDITION_HIGH_PERFORMANCE
+    Db Name:       kmsdb
+    Db Version:    19c
+    Db Workload:   OLTP
+    Display Name:  kmsdbsystem
+    Domain:        subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:     kmshost
+    Kms Config:
+    License Model:  BRING_YOUR_OWN_LICENSE
+    Shape:          VM.Standard2.2
+    Ssh Public Keys:
+      oci-publickey
+    Subnet Id:  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Id:           ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyai52ll4ifn52jcwdwpvv2exqqfa2wptypvi46wibx5sea
+  Kms Config:
+    Compartment Id:  ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
+    Key Name:        dbkey
+    Vault Name:      dbvault
+  Oci Config Map:    oci-cred-mumbai
+  Oci Secret:        oci-privatekey
+Status:
+  Availability Domain:        OLou:AP-MUMBAI-1-AD-1
+  Cpu Core Count:             2
+  Data Storage Percentage:    80
+  Data Storage Size In G Bs:  256
+  Db Clone Status:
+    Db Db Unique Name:  
+    Host Name:          
+  Db Edition:           ENTERPRISE_EDITION_HIGH_PERFORMANCE
+  Db Info:
+    Db Home Id:      ocid1.dbhome.oc1.ap-mumbai-1.anrg6ljrqlb5nxiasjpqkykdchfksgas4k62cqsf6p5gkvubsj53fdokovnq
+    Db Name:         kmsdb
+    Db Unique Name:  kmsdb_7cb_bom
+    Db Workload:     OLTP
+    Id:              ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyarhrmiqzf4pari5sshhdglj6bpuijy3fupxvveblr2l6q
+  Display Name:      kmsdbsystem
+  Id:                ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyai52ll4ifn52jcwdwpvv2exqqfa2wptypvi46wibx5sea
+  Kms Details Status:
+    Compartment Id:       ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
+    Key Id:               ocid1.key.oc1.ap-mumbai-1.fbtxxaolaaavw.abrg6ljr63rcu5h6lmaeux752pzmp334zihovh3n2acags6zt37emab34yba
+    Key Name:             dbkey
+    Management Endpoint:  https://fbtxxaolaaavw-management.kms.ap-mumbai-1.oraclecloud.com
+    Vault Id:             ocid1.vault.oc1.ap-mumbai-1.fbtxxaolaaavw.abrg6ljrbjokn2fwhh36tqzyog4yjrth3mj2emxea4fxmzw6z35zlmh65p2a
+    Vault Name:           dbvault
+  License Model:          BRING_YOUR_OWN_LICENSE
+  Network:
+    Client Subnet:  oke-nodesubnet-quick-cluster1-2bebe95db-regional
+    Domain Name:    subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:      kmshost
+    Listener Port:  1521
+    Scan Dns Name:  kmshost-scan.subdda0b5eaa.cluster1.oraclevcn.com
+    Vcn Name:       oke-vcn-quick-cluster1-2bebe95db
+  Node Count:       1
+  Pdb Details Status:
+    Pdb Config Status:
+      Pdb Name:               kmsdb_pdb1
+      Pdb State:              AVAILABLE
+      Pluggable Database Id:  ocid1.pluggabledatabase.oc1.ap-mumbai-1.anrg6ljrabf7htyaqbjqveoqzvn5dklbuc575xdrclsrkjt5juzzcelmuqla
+  Reco Storage Size In GB:    256
+  Shape:                      VM.Standard2.2
+  State:                      AVAILABLE
+  Storage Management:         ASM
+  Subnet Id:                  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Time Zone:                  UTC
+  Work Requests:
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrcik5rtyygbv7qzzxqsmv6dvdwlfb7i2k3pitfqr2zomspcnkx7oa
+    Operation Type:    Create DB System
+    Percent Complete:  100
+    Time Accepted:     2025-01-09 18:10:41.171 +0000 UTC
+    Time Finished:     2025-01-09 19:31:17.126 +0000 UTC
+    Time Started:      2025-01-09 18:10:49.668 +0000 UTC
+Events:                <none>

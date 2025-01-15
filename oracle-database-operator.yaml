@@ -2002,7 +2002,7 @@ spec:
                 type: string
               dbClone:
                 properties:
-                  dbAdminPaswordSecret:
+                  dbAdminPasswordSecret:
                     type: string
                   dbDbUniqueName:
                     type: string
@@ -2053,7 +2053,7 @@ spec:
                     type: string
                   cpuCoreCount:
                     type: integer
-                  dbAdminPaswordSecret:
+                  dbAdminPasswordSecret:
                     type: string
                   dbBackupConfig:
                     properties:
@@ -2134,7 +2134,7 @@ spec:
                 required:
                 - availabilityDomain
                 - compartmentId
-                - dbAdminPaswordSecret
+                - dbAdminPasswordSecret
                 - hostName
                 - shape
                 - subnetId

@@ -4,7 +4,7 @@ metadata:
   name: dbcssystem-existing
 spec:
   id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa"
-  ociConfigMap: "oci-cred-mumbai"
+  ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   pdbConfigs:
     - pdbName: "pdb_sauahuja_sdk_13"

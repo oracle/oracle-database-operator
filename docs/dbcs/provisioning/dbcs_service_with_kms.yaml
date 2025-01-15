@@ -2,27 +2,26 @@ apiVersion: database.oracle.com/v4
 kind: DbcsSystem
 metadata:
   name: dbcssystem-create
-  namespace: default
 spec:
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dbSystem:
-    availabilityDomain: "OLou:US-ASHBURN-AD-1"
+    availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
-    dbAdminPaswordSecret: "admin-password"
+    dbAdminPasswordSecret: "admin-password"
     dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
-    dbName: "testdb"
-    displayName: "dbsystem0130"
+    dbName: "kmsdb"
+    displayName: "kmsdbsystem"
     licenseModel: "BRING_YOUR_OWN_LICENSE"
-    dbVersion: "21c"
+    dbVersion: "19c"
     dbWorkload: "OLTP"
-    hostName: "host1205"
+    hostName: "kmshost"
     shape: "VM.Standard2.2"
-    domain: "subd215df3e6.k8stest.oraclevcn.com"
-    sshPublicKeys: 
+    domain: "subdda0b5eaa.cluster1.oraclevcn.com"
+    sshPublicKeys:
      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.iad.aaaaaaaa3lmmxwsykn2jc2vphzpq6eoyoqtte3dpwg6s5fzfkti22ibol2ua"
+    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
   kmsConfig:
-    vaultName: "basdbvault"
+    vaultName: "dbvault"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
-    keyName: "dbvaultkey"
+    keyName: "dbkey"

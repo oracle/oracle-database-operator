@@ -201,7 +201,7 @@ func CloneAndGetDbcsId(logger logr.Logger, kubeClient client.Client, dbClient da
 	// tdePassword := ""
 	logger.Info("Starting the clone process for DBCS", "dbcs", dbcs)
 	// Get the admin password from Kubernetes secret
-	if dbcs.Spec.DbClone.DbAdminPaswordSecret != "" {
+	if dbcs.Spec.DbClone.DbAdminPasswordSecret != "" {
 		dbAdminPassword, err = GetCloningAdminPassword(kubeClient, dbcs)
 		if err != nil {
 			logger.Error(err, "Failed to get DB Admin password")
@@ -352,7 +352,7 @@ func CloneFromBackupAndGetDbcsId(logger logr.Logger, kubeClient client.Client, d
 		return "", err
 	}
 	// Get the admin password from Kubernetes secret
-	if dbcs.Spec.DbClone.DbAdminPaswordSecret != "" {
+	if dbcs.Spec.DbClone.DbAdminPasswordSecret != "" {
 		dbAdminPassword, err = GetCloningAdminPassword(kubeClient, dbcs)
 		if err != nil {
 			logger.Error(err, "Failed to get DB Admin password")
@@ -455,7 +455,7 @@ func CloneFromDatabaseAndGetDbcsId(logger logr.Logger, kubeClient client.Client,
 	logger.Info("Starting the clone process for Database", "dbcs", dbcs)
 
 	// Get the admin password from Kubernetes secret
-	if dbcs.Spec.DbClone.DbAdminPaswordSecret != "" {
+	if dbcs.Spec.DbClone.DbAdminPasswordSecret != "" {
 		dbAdminPassword, err = GetCloningAdminPassword(kubeClient, dbcs)
 		if err != nil {
 			logger.Error(err, "Failed to get DB Admin password")
@@ -579,12 +579,12 @@ func CloneFromDatabaseAndGetDbcsId(logger logr.Logger, kubeClient client.Client,
 
 // Get admin password from Secret then OCI valut secret
 func GetCloningAdminPassword(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (string, error) {
-	if dbcs.Spec.DbClone.DbAdminPaswordSecret != "" {
+	if dbcs.Spec.DbClone.DbAdminPasswordSecret != "" {
 		// Get the Admin Secret
 		adminSecret := &corev1.Secret{}
 		err := kubeClient.Get(context.TODO(), types.NamespacedName{
 			Namespace: dbcs.GetNamespace(),
-			Name:      dbcs.Spec.DbClone.DbAdminPaswordSecret,
+			Name:      dbcs.Spec.DbClone.DbAdminPasswordSecret,
 		}, adminSecret)
 
 		if err != nil {
@@ -605,12 +605,12 @@ func GetCloningAdminPassword(kubeClient client.Client, dbcs *databasev4.DbcsSyst
 
 // Get admin password from Secret then OCI valut secret
 func GetAdminPassword(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (string, error) {
-	if dbcs.Spec.DbSystem.DbAdminPaswordSecret != "" {
+	if dbcs.Spec.DbSystem.DbAdminPasswordSecret != "" {
 		// Get the Admin Secret
 		adminSecret := &corev1.Secret{}
 		err := kubeClient.Get(context.TODO(), types.NamespacedName{
 			Namespace: dbcs.GetNamespace(),
-			Name:      dbcs.Spec.DbSystem.DbAdminPaswordSecret,
+			Name:      dbcs.Spec.DbSystem.DbAdminPasswordSecret,
 		}, adminSecret)
 
 		if err != nil {
@@ -1117,7 +1117,7 @@ func UpdateDbcsSystemIdInst(log logr.Logger, dbClient database.DatabaseClient, d
 				return nil
 			}
 			dbAdminPassword := ""
-			if dbcs.Spec.DbSystem.DbAdminPaswordSecret != "" {
+			if dbcs.Spec.DbSystem.DbAdminPasswordSecret != "" {
 				dbAdminPassword, err = GetAdminPassword(kubeClient, dbcs)
 				if err != nil {
 					log.Error(err, "Failed to get DB Admin password")
@@ -1147,13 +1147,10 @@ func UpdateDbcsSystemIdInst(log logr.Logger, dbClient database.DatabaseClient, d
 			if dbAdminPassword != "" {
 				migrateRequest.AdminPassword = common.String(dbAdminPassword)
 			}
-			// // Wait for the database to reach the desired state after migration
-			// err = WaitForDatabaseState(log, dbClient, databaseID, "AVAILABLE")
-			// if err != nil {
-			// 	log.Error(err, "Database did not reach the desired state after migration")
-			// 	return err
-			// }
-
+			// Change the phase to "Updating"
+			if statusErr := SetLifecycleState(kubeClient, dbClient, dbcs, databasev4.Update, nwClient, wrClient); statusErr != nil {
+				return statusErr
+			}
 			// Send the request
 			migrateResponse, err := dbClient.MigrateVaultKey(context.TODO(), migrateRequest)
 			if err != nil {
@@ -1169,15 +1166,22 @@ func UpdateDbcsSystemIdInst(log logr.Logger, dbClient database.DatabaseClient, d
 
 			log.Info("MigrateVaultKey request succeeded, waiting for database to reach the desired state")
 
-			// // Wait for the database to reach the desired state after migration
-			// err = WaitForDatabaseState(log, dbClient, databaseID, "AVAILABLE")
-			// if err != nil {
-			// 	log.Error(err, "Database did not reach the desired state after migration")
-			// 	return err
-			// }
+			// // Wait for the database to reach the desired state after migration, timeout for 2 hours
+			// Define timeout and check interval
+			timeout := 2 * time.Hour
+			checkInterval := 1 * time.Minute
+
+			err = WaitForDatabaseState(log, dbClient, databaseID, "AVAILABLE", timeout, checkInterval)
+			if err != nil {
+				log.Error(err, "Database did not reach the desired state within the timeout period")
+				return err
+			}
+			// Change the phase to "Available"
+			if statusErr := SetLifecycleState(kubeClient, dbClient, dbcs, databasev4.Available, nwClient, wrClient); statusErr != nil {
+				return statusErr
+			}
 
 			log.Info("KMS migration process completed successfully")
-			updateFlag = true
 		}
 	}
 
@@ -1206,36 +1210,50 @@ func UpdateDbcsSystemIdInst(log logr.Logger, dbClient database.DatabaseClient, d
 	return nil
 }
 
-func WaitForDatabaseState(log logr.Logger, dbClient database.DatabaseClient, dbHomeID string, desiredState database.DbHomeLifecycleStateEnum) error {
+func WaitForDatabaseState(
+	log logr.Logger,
+	dbClient database.DatabaseClient,
+	databaseId string,
+	desiredState database.DbHomeLifecycleStateEnum,
+	timeout time.Duration,
+	checkInterval time.Duration,
+) error {
+	// Set a deadline for the timeout
 	deadline := time.Now().Add(timeout)
-	client, err := database.NewDatabaseClientWithConfigurationProvider(common.DefaultConfigProvider())
-	if err != nil {
-		log.Error(err, "Failed to get DBHome")
-		return err
-	}
+
+	log.Info("Starting to wait for the database to reach the desired state", "DatabaseID", databaseId, "DesiredState", desiredState, "Timeout", timeout)
+
 	for time.Now().Before(deadline) {
-		dbHomeReq := database.GetDbHomeRequest{
-			DbHomeId: common.String(dbHomeID),
+		// Prepare the request to fetch database details
+		getDatabaseReq := database.GetDatabaseRequest{
+			DatabaseId: &databaseId,
 		}
 
-		log.Info("Sending GetDbHome request", "dbHomeID", dbHomeID)
-
-		dbHomeResp, err := client.GetDbHome(context.TODO(), dbHomeReq)
+		// Fetch database details
+		databaseResp, err := dbClient.GetDatabase(context.TODO(), getDatabaseReq)
 		if err != nil {
-			log.Error(err, "Failed to get DBHome")
+			log.Error(err, "Failed to get database details", "DatabaseID", databaseId)
 			return err
 		}
 
-		if dbHomeResp.DbHome.LifecycleState == desiredState {
-			log.Info("DBHome reached desired state", "DBHomeID", dbHomeID, "State", desiredState)
+		// Log the current database state
+		log.Info("Database State", "DatabaseID", databaseId, "CurrentState", databaseResp.LifecycleState)
+
+		// Check if the database has reached the desired state
+		if databaseResp.LifecycleState == database.DatabaseLifecycleStateEnum(desiredState) {
+			log.Info("Database reached the desired state", "DatabaseID", databaseId, "State", desiredState)
 			return nil
 		}
 
-		log.Info("Waiting for DBHome to reach desired state", "DBHomeID", dbHomeID, "CurrentState", dbHomeResp.DbHome.LifecycleState, "DesiredState", desiredState)
+		// Wait for the specified interval before checking again
+		log.Info("Database not in the desired state yet, waiting...", "DatabaseID", databaseId, "CurrentState", databaseResp.LifecycleState, "DesiredState", desiredState, "NextCheckIn", checkInterval)
 		time.Sleep(checkInterval)
 	}
-	return fmt.Errorf("timed out waiting for DBHome to reach desired state: %s", desiredState)
 
+	// Return an error if the timeout is reached
+	err := fmt.Errorf("timed out waiting for database to reach the desired state: %s", desiredState)
+	log.Error(err, "Timeout reached while waiting for the database to reach the desired state", "DatabaseID", databaseId)
+	return err
 }
 
 func UpdateDbcsSystemId(kubeClient client.Client, dbcs *databasev4.DbcsSystem) error {

@@ -12,7 +12,7 @@ This example uses `clone_dbcs_system_from_backup.yaml` to clone a Single Instanc
 - OCI Secret as `oci-privatekey`
 - setupDBCloning: as `true` 
 - OCID of Backup DB as `dbBackupId` of existing DBCS system.
-- Specification for DB Cloning as `dbClone`-> `dbAdminPaswordSecret`,`tdeWalletPasswordSecret`, `dbName`,`hostName`,`displayName`,`licenseModel`,`domain`,`sshPublicKeys`,`subnetId`, `initialDataStorageSizeInGB`
+- Specification for DB Cloning as `dbClone`-> `dbAdminPasswordSecret`,`tdeWalletPasswordSecret`, `dbName`,`hostName`,`displayName`,`licenseModel`,`domain`,`sshPublicKeys`,`subnetId`, `initialDataStorageSizeInGB`
 **NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md).
 
 Use the file: [clone_dbcs_system_from_backup.yaml](./clone_dbcs_system_from_backup.yaml) for this use case as below:
