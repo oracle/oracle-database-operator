@@ -3,27 +3,14 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-existing
 spec:
-  id: "ocid1.dbsystem.oc1.iad.anuwcljsabf7htyaoja4v2kx5rcfe5w2onndjfpqjhjoakxgwxo2sbgei5iq"
+  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyafdoaarkuhhxjfgjrzjtxpbcaycib3woadfmcz545mwua"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dbSystem:
-    availabilityDomain: "OLou:US-ASHBURN-AD-1"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
-    dbAdminPaswordSecret: "admin-password"
-    dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
-    dbName: "testdb1"
-    displayName: "dbsystem0131"
-    licenseModel: "BRING_YOUR_OWN_LICENSE"
-    dbVersion: "21c"
-    dbWorkload: "OLTP"
-    hostName: "host1206"
-    shape: "VM.Standard2.2"
-    domain: "subd215df3e6.k8stest.oraclevcn.com"
-    sshPublicKeys: 
-     - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.iad.aaaaaaaa3lmmxwsykn2jc2vphzpq6eoyoqtte3dpwg6s5fzfkti22ibol2ua"
+    dbAdminPasswordSecret: "admin-password"
     tdeWalletPasswordSecret: "tde-password"
   kmsConfig:
-    vaultName: "basdbvault"
+    vaultName: "dbvault"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
-    keyName: "dbvaultkey"
+    keyName: "dbkey"

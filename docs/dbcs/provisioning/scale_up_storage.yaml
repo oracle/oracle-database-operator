@@ -4,12 +4,12 @@ metadata:
   name: dbcssystem-existing
 spec:
   id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa"
-  ociConfigMap: "oci-cred-mumbai"
+  ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dbSystem:
     availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
-    dbAdminPaswordSecret: "admin-password"
+    dbAdminPasswordSecret: "admin-password"
     hostName: "host1234"
     shape: "VM.Standard2.1"
     domain: "subdda0b5eaa.cluster1.oraclevcn.com"

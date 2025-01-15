@@ -9,7 +9,7 @@ spec:
   dbSystem:
     availabilityDomain: "OLou:US-ASHBURN-AD-1"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
-    dbAdminPaswordSecret: "admin-password"
+    dbAdminPasswordSecret: "admin-password"
     dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
     dbName: "dbsys"
     displayName: "dbsystem24"

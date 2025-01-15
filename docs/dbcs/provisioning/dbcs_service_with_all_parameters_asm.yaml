@@ -3,13 +3,13 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-create
 spec:
-  ociConfigMap: "oci-cred-mumbai"
+  ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dbSystem:
     availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
     clusterName: "maa-cluster"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
-    dbAdminPaswordSecret: "admin-password"
+    dbAdminPasswordSecret: "admin-password"
     dbBackupConfig:
       autoBackupEnabled: True
       autoBackupWindow: "SLOT_FOUR"

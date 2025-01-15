@@ -268,7 +268,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				r.Logger.Info("Created vault Id", existingVaultId)
 			} else {
 				// Optionally, perform additional checks or operations if needed
-				r.Logger.Info("Found existing active vault with displayName to migrate existing database", "DisplayName", displayName, "VaultId", *existingVaultId)
+				r.Logger.Info("Found existing active vault with displayName", "DisplayName", displayName, "VaultId", *existingVaultId)
 				dbcsInst.Status.KMSDetailsStatus.VaultId = *existingVaultId
 				dbcsInst.Status.KMSDetailsStatus.ManagementEndpoint = *existingVaultManagementEndpoint
 			}

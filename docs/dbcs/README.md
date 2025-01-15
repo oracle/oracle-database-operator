@@ -161,9 +161,6 @@ The key's randomart image is:
 [root@test-server DBCS]# kubectl create secret generic oci-publickey --from-file=publickey=/root/DBCS/id_rsa.pub
 ```
 
-
-
-
 # Use Cases to manage the lifecycle of an OCI DBCS System with Oracle DB Operator DBCS Controller
 
 For more informatoin about the multiple use cases available to you to deploy and manage the OCI BDBCS Service-based database using the Oracle DB Operator DBCS Controller, review this list:

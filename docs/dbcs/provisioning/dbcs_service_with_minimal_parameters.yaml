@@ -3,12 +3,12 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-create
 spec:
-  ociConfigMap: "oci-cred-mumbai"
+  ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dbSystem:
     availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
-    dbAdminPaswordSecret: "admin-password"
+    dbAdminPasswordSecret: "admin-password"
     dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
     dbName: "cdb1"
     displayName: "dbsystem1234"

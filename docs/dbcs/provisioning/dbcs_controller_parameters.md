@@ -8,7 +8,7 @@ This page has the details of the parameters to define the specs related to an op
 | ociSecret | Kubernetes Secret created using PEM Key for OCI account in the prerequisites steps. | Y | String | | |
 | availabilityDomain | Availability Domain of the OCI region where you want to provision the DBCS System. | Y | String | | Please refer to this link: https://docs.oracle.com/en-us/iaas/Content/General/Concepts/regions.htm |
 | compartmentId | OCID of the OCI Compartment. | Y | String | | |
-| dbAdminPaswordSecret | Kubernetes Secret created for DB Admin Account in prerequisites steps. | Y | String | | A strong password for SYS, SYSTEM, and PDB Admin. The password must be at least nine characters and contain at least two uppercase, two lowercase, two numbers, and two special characters. The special characters must be _, #, or -.|
+| dbAdminPasswordSecret | Kubernetes Secret created for DB Admin Account in prerequisites steps. | Y | String | | A strong password for SYS, SYSTEM, and PDB Admin. The password must be at least nine characters and contain at least two uppercase, two lowercase, two numbers, and two special characters. The special characters must be _, #, or -.|
 | autoBackupEnabled | Whether to enable automatic backup or not. | N | Boolean | | True or False |
 | autoBackupWindow | Time window selected for initiating automatic backup for the database system. There are twelve available two-hour time windows. | N | String | | Please refer to this link: https://docs.oracle.com/en-us/iaas/api/#/en/database/20160918/datatypes/DbBackupConfig |
 | recoveryWindowsInDays | Number of days between the current and the earliest point of recoverability covered by automatic backups.  | N | Integer | | Minimum: 1 and Maximum: 60 |

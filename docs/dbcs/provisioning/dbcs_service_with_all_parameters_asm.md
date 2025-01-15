@@ -6,7 +6,7 @@ In this use case, the an OCI DBCS system is deployed using Oracle DB Operator DB
 
 This example uses `dbcs_service_with_all_parameters_asm.yaml` to deploy a Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with:
 
-- OCI Configmap as `oci-cred-mumbai`  
+- OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
 - Availability Domain for the DBCS VMDB as `OLou:AP-MUMBAI-1-AD-1`  
 - Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`  

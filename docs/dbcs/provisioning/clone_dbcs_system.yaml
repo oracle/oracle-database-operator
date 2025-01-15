@@ -5,11 +5,11 @@ metadata:
   namespace: default
 spec:
   id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyaqui4hoqdyzmzl65jwkncyp3bnohengniqienetsdzw2q"
-  ociConfigMap: "oci-cred-mumbai"
+  ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   setupDBCloning: true
   dbClone:
-    dbAdminPaswordSecret: "admin-password"
+    dbAdminPasswordSecret: "admin-password"
     dbName: "db1212"
     hostName: "host1213"
     displayName: "dbsystem01312"

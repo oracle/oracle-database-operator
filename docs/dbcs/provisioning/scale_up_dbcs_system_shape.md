@@ -12,7 +12,7 @@ In order to scale up an existing DBCS system, the steps will be:
 This example uses `scale_up_dbcs_system_shape.yaml` to scale up a Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with:
 
 - OCID of existing VMDB as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
-- OCI Configmap as `oci-cred-mumbai`  
+- OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
 - Availability Domain for the DBCS VMDB as `OLou:AP-MUMBAI-1-AD-1`  
 - Compartment OCID as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72`  
