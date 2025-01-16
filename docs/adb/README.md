@@ -70,18 +70,18 @@ Follow these steps to provision an Autonomous Database that will map objects in 
 4. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
-    | `spec.details.compartmentOCID` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the compartment of the Autonomous Database. | Yes |
+    | `spec.details.compartmentId` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the compartment of the Autonomous Database. | Yes |
     | `spec.details.dbName` | string | The database name. The name must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy. | Yes |
     | `spec.details.displayName` | string | The user-friendly name for the Autonomous Database. The name does not have to be unique. | Yes |
     | `spec.details.cpuCoreCount` | int | The number of OCPU cores to be made available to the database. | Yes |
-    | `spec.details.adminPassword` | dictionary | The password for the ADMIN user. The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.<br><br> Either `k8sSecret.name` or `ociSecret.ocid` must be provided. If both `k8sSecret.name` and `ociSecret.ocid` appear, the Operator reads the password from the K8s secret that `k8sSecret.name` refers to. | Yes |
+    | `spec.details.adminPassword` | dictionary | The password for the ADMIN user. The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.<br><br> Either `k8sSecret.name` or `ociSecret.id` must be provided. If both `k8sSecret.name` and `ociSecret.id` appear, the Operator reads the password from the K8s secret that `k8sSecret.name` refers to. | Yes |
     | `spec.details.adminPassword.k8sSecret.name` | string | The **name** of the K8s Secret where you want to hold the password for the ADMIN user. | Conditional |
-    |`spec.details.adminPassword.ociSecret.ocid` | string | The **[OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm)** of the [OCI Secret](https://docs.oracle.com/en-us/iaas/Content/KeyManagement/Tasks/managingsecrets.htm) where you want to hold the password for the ADMIN user. | Conditional |
+    |`spec.details.adminPassword.ociSecret.id` | string | The **[OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm)** of the [OCI Secret](https://docs.oracle.com/en-us/iaas/Content/KeyManagement/Tasks/managingsecrets.htm) where you want to hold the password for the ADMIN user. | Conditional |
     | `spec.details.dataStorageSizeInTBs`  | int | The size, in terabytes, of the data volume that will be created and attached to the database. This storage can later be scaled up if needed. | Yes |
     | `spec.details.isAutoScalingEnabled`  | boolean | Indicates if auto scaling is enabled for the Autonomous Database OCPU core count. The default value is `FALSE` | No |
-    | `spec.details.isDedicated` | boolean | True if the database is on dedicated [Exadata infrastructure](https://docs.cloud.oracle.com/Content/Database/Concepts/adbddoverview.htm). `spec.details.autonomousContainerDatabase.k8sACD.name` or `spec.details.autonomousContainerDatabase.ociACD.ocid` has to be provided if the value is true. | No |
+    | `spec.details.isDedicated` | boolean | True if the database is on dedicated [Exadata infrastructure](https://docs.cloud.oracle.com/Content/Database/Concepts/adbddoverview.htm). `spec.details.autonomousContainerDatabase.k8sACD.name` or `spec.details.autonomousContainerDatabase.ociACD.id` has to be provided if the value is true. | No |
     | `spec.details.autonomousContainerDatabase.k8sACD.name` | string | The **name** of the K8s Autonomous Container Database resource | No |
-    | `spec.details.autonomousContainerDatabase.ociACD.ocid` | string | The Autonomous Container Database [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm). | No |
+    | `spec.details.autonomousContainerDatabase.ociACD.id` | string | The Autonomous Container Database [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm). | No |
     | `spec.details.freeformTags` | dictionary | Free-form tags for this resource. Each tag is a simple key-value pair with no predefined name, type, or namespace. For more information, see [Resource Tag](https://docs.cloud.oracle.com/Content/General/Concepts/resourcetags.htm).<br><br> Example:<br> `freeformTags:`<br> &nbsp;&nbsp;&nbsp;&nbsp;`key1: value1`<br> &nbsp;&nbsp;&nbsp;&nbsp;`key2: value2`| No |
     | `spec.details.dbWorkload` | string | The Oracle Autonomous Database workload type. The following values are valid:<br> - OLTP - indicates an Autonomous Transaction Processing database<br> - DW - indicates an Autonomous Data Warehouse database<br> - AJD - indicates an Autonomous JSON Database<br> - APEX - indicates an Autonomous Database with the Oracle APEX Application Development workload type. | No |
     | `spec.details.dbVersion` | string | A valid Oracle Database release for Oracle Autonomous Database. | No |
@@ -97,7 +97,7 @@ Follow these steps to provision an Autonomous Database that will map objects in 
       name: autonomousdatabase-sample
     spec:
       details:
-        compartmentOCID: ocid1.compartment...
+        compartmentId: ocid1.compartment...
         dbName: NewADB
         displayName: NewADB
         cpuCoreCount: 1
@@ -143,7 +143,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 3. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_bind.yaml`](./../../config/samples/adb/autonomousdatabase_bind.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
-    | `spec.details.autonomousDatabaseOCID` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the Autonomous Database you want to bind (create a reference) in your cluster. | Yes |
+    | `spec.details.id` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the Autonomous Database you want to bind (create a reference) in your cluster. | Yes |
     | `spec.ociConfig` | dictionary | Not required when the Operator is authorized with [Instance Principal](./ADB_PREREQUISITES.md#authorized-with-instance-principal). Otherwise, you will need the values from the [Authorized with API Key Authentication](./ADB_PREREQUISITES.md#authorized-with-api-key-authentication) section. | Conditional |
     | `spec.ociConfig.configMapName` | string | Name of the ConfigMap that holds the local OCI configuration | Conditional |
     | `spec.ociConfig.secretName`| string | Name of the K8s Secret that holds the private key value | Conditional |
@@ -157,7 +157,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
     spec:
       details:
         action: Sync
-        autonomousDatabaseOCID: ocid1.autonomousdatabase...
+        id: ocid1.autonomousdatabase...
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
@@ -187,7 +187,7 @@ You can scale up or scale down the Oracle Autonomous Database OCPU core count or
     spec:
       action: Update
       details:
-        autonomousDatabaseOCID: ocid1.autonomousdatabase...
+        id: ocid1.autonomousdatabase...
         cpuCoreCount: 2
         dataStorageSizeInTBs: 2
         isAutoScalingEnabled: false
@@ -220,7 +220,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
     spec:
       action: Update
       details:
-        autonomousDatabaseOCID: ocid1.autonomousdatabase...
+        id: ocid1.autonomousdatabase...
         dbName: RenamedADB
         displayName: RenamedADB
       ociConfig:
@@ -263,7 +263,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
     spec:
       action: Update
       details:
-        autonomousDatabaseOCID: ocid1.autonomousdatabase...
+        id: ocid1.autonomousdatabase...
         adminPassword:
           k8sSecret:
             name: new-admin-password
@@ -308,12 +308,12 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
     spec:
       action: Update
       details:
-        autonomousDatabaseOCID: ocid1.autonomousdatabase...
-        wallet:
-          name: instance-wallet
-          password:
-            k8sSecret:
-              name: instance-wallet-password
+        id: ocid1.autonomousdatabase...
+      wallet:
+        name: instance-wallet
+        password:
+          k8sSecret:
+            name: instance-wallet-password
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
@@ -363,7 +363,7 @@ Here's a list of the values you can set for `action`:
     spec:
       action: STOP
       details:
-        autonomousDatabaseOCID: ocid1.autonomousdatabase...
+        id: ocid1.autonomousdatabase...
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
@@ -395,7 +395,7 @@ To delete the resource and terminate the Autonomous Database, complete these ste
     spec:
       action: Update
       details:
-        autonomousDatabaseOCID: ocid1.autonomousdatabase...
+        id: ocid1.autonomousdatabase...
       hardLink: true
       ociConfig:
         configMapName: oci-cred
@@ -435,9 +435,9 @@ To clone an existing Autonomous Database, complete these steps:
     spec:
       action: Clone
       details:
-        autonomousDatabaseOCID: ocid1.autonomousdatabase...
+        id: ocid1.autonomousdatabase...
       clone:
-        compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
+        compartmentId: ocid1.compartment... OR ocid1.tenancy...
         dbName: ClonedADB
         displayName: ClonedADB
         cpuCoreCount: 1

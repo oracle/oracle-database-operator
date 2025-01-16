@@ -9,7 +9,7 @@ metadata:
 spec:
   action: Update
   details:
-    autonomousDatabaseOCID: ocid1.autonomousdatabase...
+    id: ocid1.autonomousdatabase...
     networkAccess:
       # Set the patameter to false to allow both TLS and mutual TLS (mTLS) authentication.
       # Avaiable when the networkAccessType is RESTRICTED or PRIVATE on shared Autnomous Database.

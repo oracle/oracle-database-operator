@@ -55,7 +55,7 @@ type AutonomousDatabaseSpec struct {
 	// +kubebuilder:validation:Enum:="";Create;Sync;Update;Stop;Start;Terminate;Clone
 	Action    string                    `json:"action"`
 	Details   AutonomousDatabaseDetails `json:"details"`
-	Clone     AutonomousDatabaseClone   `json:"clone"`
+	Clone     AutonomousDatabaseClone   `json:"clone,omitempty"`
 	Wallet    WalletSpec                `json:"wallet,omitempty"`
 	OciConfig OciConfigSpec             `json:"ociConfig,omitempty"`
 	// +kubebuilder:default:=false
@@ -155,8 +155,6 @@ type AutonomousDatabaseStatus struct {
 	WalletExpiringDate string `json:"walletExpiringDate,omitempty"`
 	// Connection Strings of the ADB
 	AllConnectionStrings []ConnectionStringProfile `json:"allConnectionStrings,omitempty"`
-	// Last Completed Action
-	Action string `json:"action,omitempty"`
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map

@@ -92,10 +92,6 @@ func (r *AutonomousDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbv4.AutonomousDatabase{}).
 		Watches(
-			&dbv4.AutonomousDatabaseBackup{},
-			handler.EnqueueRequestsFromMapFunc(r.enqueueMapFn),
-		).
-		Watches(
 			&dbv4.AutonomousDatabaseRestore{},
 			handler.EnqueueRequestsFromMapFunc(r.enqueueMapFn),
 		).
@@ -121,19 +117,12 @@ func (r *AutonomousDatabaseReconciler) enqueueMapFn(ctx context.Context, o clien
 func (r *AutonomousDatabaseReconciler) watchPredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
-			_, backupOk := e.Object.(*dbv4.AutonomousDatabaseBackup)
 			_, restoreOk := e.Object.(*dbv4.AutonomousDatabaseRestore)
 			// Don't enqueue if the event is from Backup or Restore
-			return !(backupOk || restoreOk)
+			return !restoreOk
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			// Enqueue the update event only when the status changes the first time
-			desiredBackup, backupOk := e.ObjectNew.(*dbv4.AutonomousDatabaseBackup)
-			if backupOk {
-				oldBackup := e.ObjectOld.(*dbv4.AutonomousDatabaseBackup)
-				return oldBackup.Status.LifecycleState == "" && desiredBackup.Status.LifecycleState != ""
-			}
-
 			desiredRestore, restoreOk := e.ObjectNew.(*dbv4.AutonomousDatabaseRestore)
 			if restoreOk {
 				oldRestore := e.ObjectOld.(*dbv4.AutonomousDatabaseRestore)
@@ -218,16 +207,32 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	* Fill the empty fields in the local resource at the beginning of
 	* the reconciliation.
 	******************************************************************/
-	// Fill the empty fields in the AutonomousDatabase resource by syncing up
-	// with the Autonomous Database in OCI. Only the fields that have nil
-	// values will be overwritten.
-	// This operation will be skipped if the AutonomousDatabaseOCID is nil.
-	// var specChangedAfterFirstSync bool
+	// Fill the empty fields in the AutonomousDatabase resource by
+	// syncing up with the Autonomous Database in OCI. Only the fields
+	// that have nil values will be overwritten.
+	var stateBeforeFirstSync = desiredAdb.Status.LifecycleState
 	if _, err = r.syncAutonomousDatabase(logger, desiredAdb, false); err != nil {
 		return r.manageError(
 			logger.WithName("syncAutonomousDatabase"),
 			desiredAdb,
 			fmt.Errorf("Failed to sync AutonomousDatabase: %w", err))
+	}
+
+	// If the lifecycle state changes from any other states to
+	// AVAILABLE and spec.action is an empty string, it means that
+	// the resource in OCI just finished the work, and the spec
+	// of the Autonomous Database in OCI might also change.
+	// This is because OCI won't update the spec until the work
+	// completes. In this case, we need to update the spec of
+	// the resource in local cluster.
+	if stateBeforeFirstSync != database.AutonomousDatabaseLifecycleStateAvailable &&
+		desiredAdb.Status.LifecycleState == database.AutonomousDatabaseLifecycleStateAvailable {
+		if specChanged, err = r.syncAutonomousDatabase(logger, desiredAdb, true); err != nil {
+			return r.manageError(
+				logger.WithName("syncAutonomousDatabase"),
+				desiredAdb,
+				fmt.Errorf("Failed to sync AutonomousDatabase: %w", err))
+		}
 	}
 
 	/******************************************************************
@@ -451,6 +456,7 @@ func (r *AutonomousDatabaseReconciler) performOperation(
 		if err != nil {
 			return false, err
 		}
+
 		adb.Spec.Action = ""
 		return true, nil
 
@@ -460,15 +466,17 @@ func (r *AutonomousDatabaseReconciler) performOperation(
 		if err != nil {
 			return false, err
 		}
+
 		adb.Spec.Action = ""
 		return true, nil
 
 	case "Update":
 		l.Info("Update operation")
-		_, err = r.updateAutonomousDatabase(logger, adb)
+		err = r.updateAutonomousDatabase(logger, adb)
 		if err != nil {
 			return false, err
 		}
+
 		adb.Spec.Action = ""
 		return true, nil
 
@@ -479,6 +487,7 @@ func (r *AutonomousDatabaseReconciler) performOperation(
 		if err != nil {
 			return false, err
 		}
+
 		adb.Spec.Action = ""
 		adb.Status.LifecycleState = resp.LifecycleState
 		return true, nil
@@ -512,6 +521,7 @@ func (r *AutonomousDatabaseReconciler) performOperation(
 
 		adb.Spec.Action = ""
 		return true, nil
+
 	case "Clone":
 		resp, err := r.dbService.CreateAutonomousDatabaseClone(adb)
 		if err != nil {
@@ -535,8 +545,8 @@ func (r *AutonomousDatabaseReconciler) performOperation(
 		if err := r.KubeClient.Create(context.TODO(), clonedAdb); err != nil {
 			return false, err
 		}
-
 		return true, nil
+
 	case "":
 		// No-op
 		return false, nil
@@ -592,14 +602,14 @@ func (r *AutonomousDatabaseReconciler) syncAutonomousDatabase(
 // The AutonomousDatabase is updated with the returned object from the OCI requests.
 func (r *AutonomousDatabaseReconciler) updateAutonomousDatabase(
 	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase) (specChanged bool, err error) {
+	adb *dbv4.AutonomousDatabase) (err error) {
 
 	// Get OCI AutonomousDatabase and update the lifecycleState of the CR,
 	// so that the validatexx functions know when the state changes back to AVAILABLE
 	ociAdb := adb.DeepCopy()
 	_, err = r.syncAutonomousDatabase(logger, ociAdb, true)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	// Start update
@@ -609,403 +619,22 @@ func (r *AutonomousDatabaseReconciler) updateAutonomousDatabase(
 
 	detailsAreChanged, err := difAdb.RemoveUnchangedDetails(ociAdb.Spec)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	// Do the update request only if the current ADB is actually different from the OCI ADB
 	if detailsAreChanged {
 		logger.Info("Sending UpdateAutonomousDatabase request to OCI")
+
 		resp, err := r.dbService.UpdateAutonomousDatabase(*adb.Spec.Details.Id, difAdb)
 		if err != nil {
-			return false, err
+			return err
 		}
-
-		specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
-		return specChanged, nil
-
-		// validations := []func(
-		// 	logr.Logger,
-		// 	*dbv4.AutonomousDatabase,
-		// 	*dbv4.AutonomousDatabase,
-		// 	*dbv4.AutonomousDatabase) (specChanged bool, err error){
-		// 	r.validateGeneralFields,
-		// 	r.validateAdminPassword,
-		// 	r.validateDbWorkload,
-		// 	r.validateLicenseModel,
-		// 	r.validateScalingFields,
-		// 	r.validateGeneralNetworkAccess,
-		// }
-
-		// for _, op := range validations {
-		// 	sent, err := op(logger, adb, difAdb, ociAdb)
-		// 	if err != nil {
-		// 		return false, err
-		// 	}
-
-		// 	if sent {
-		// 		return false, nil
-		// 	}
-		// }
+		_ = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
 	}
-
-	return false, nil
-}
-
-/*
-func (r *AutonomousDatabaseReconciler) validateGeneralFields(
-	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
-
-	if difADB.Spec.Details.DisplayName == nil &&
-		difADB.Spec.Details.DbName == nil &&
-		difADB.Spec.Details.DbVersion == nil &&
-		difADB.Spec.Details.FreeformTags == nil {
-		return false, nil
-	}
-
-	l := logger.WithName("validateGeneralFields")
-
-	l.Info("Sending UpdateAutonomousDatabase request to OCI")
-	resp, err := r.dbService.UpdateAutonomousDatabaseGeneralFields(*adb.Spec.Details.AutonomousDatabaseOCID, difADB)
-	if err != nil {
-		return false, err
-	}
-
-	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
-
-	return specChanged, nil
-}
-
-func (r *AutonomousDatabaseReconciler) validateAdminPassword(
-	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
-
-	if difADB.Spec.Details.AdminPassword.K8sSecret.Name == nil &&
-		difADB.Spec.Details.AdminPassword.OCISecret.OCID == nil {
-		return false, nil
-	}
-
-	l := logger.WithName("validateAdminPassword")
-
-	l.Info("Sending UpdateAutonomousDatabase request to OCI")
-	resp, err := r.dbService.UpdateAutonomousDatabaseAdminPassword(*adb.Spec.Details.AutonomousDatabaseOCID, difADB)
-	if err != nil {
-		return false, err
-	}
-
-	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
-
-	return specChanged, nil
-}
-
-func (r *AutonomousDatabaseReconciler) validateDbWorkload(
-	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
-
-	if difADB.Spec.Details.DbWorkload == "" {
-		return false, nil
-	}
-
-	l := logger.WithName("validateDbWorkload")
-
-	l.Info("Sending UpdateAutonomousDatabase request to OCI")
-	resp, err := r.dbService.UpdateAutonomousDatabaseDBWorkload(*adb.Spec.Details.AutonomousDatabaseOCID, difADB)
-	if err != nil {
-		return false, err
-	}
-
-	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
-
-	return specChanged, nil
-}
-
-func (r *AutonomousDatabaseReconciler) validateLicenseModel(
-	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
-
-	if difADB.Spec.Details.LicenseModel == "" {
-		return false, nil
-	}
-
-	l := logger.WithName("validateLicenseModel")
-
-	l.Info("Sending UpdateAutonomousDatabase request to OCI")
-	resp, err := r.dbService.UpdateAutonomousDatabaseLicenseModel(*adb.Spec.Details.AutonomousDatabaseOCID, difADB)
-	if err != nil {
-		return false, err
-	}
-
-	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
-
-	return specChanged, nil
-}
-
-func (r *AutonomousDatabaseReconciler) validateScalingFields(
-	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
-
-	if difADB.Spec.Details.DataStorageSizeInTBs == nil &&
-		difADB.Spec.Details.CPUCoreCount == nil &&
-		difADB.Spec.Details.IsAutoScalingEnabled == nil {
-		return false, nil
-	}
-
-	l := logger.WithName("validateScalingFields")
-
-	l.Info("Sending UpdateAutonomousDatabase request to OCI")
-	resp, err := r.dbService.UpdateAutonomousDatabaseScalingFields(*adb.Spec.Details.AutonomousDatabaseOCID, difADB)
-	if err != nil {
-		return false, err
-	}
-
-	specChanged = adb.UpdateFromOciAdb(resp.AutonomousDatabase, true)
-
-	return specChanged, nil
-}
-
-// The logic of updating the network access configurations is as follows:
-//
-//  1. Shared databases:
-//     If the network access type changes
-//     a. to PUBLIC:
-//     was RESTRICTED: re-enable IsMTLSConnectionRequired if its not. Then set WhitelistedIps to an array with a single empty string entry.
-//     was PRIVATE: re-enable IsMTLSConnectionRequired if its not. Then set PrivateEndpointLabel to an emtpy string.
-//     b. to RESTRICTED:
-//     was PUBLIC: set WhitelistedIps to desired IPs/CIDR blocks/VCN OCID. Configure the IsMTLSConnectionRequired settings if it is set to disabled.
-//     was PRIVATE: re-enable IsMTLSConnectionRequired if its not. Set the type to PUBLIC first, and then configure the WhitelistedIps. Finally resume the IsMTLSConnectionRequired settings if it was, or is configured as disabled.
-//     c. to PRIVATE:
-//     was PUBLIC: set subnetOCID and nsgOCIDs. Configure the IsMTLSConnectionRequired settings if it is set.
-//     was RESTRICTED: set subnetOCID and nsgOCIDs. Configure the IsMTLSConnectionRequired settings if it is set.
-//     *Note: OCI requires nsgOCIDs to be an empty string rather than nil when we don't want the adb to be included in any network security group.
-//
-//     Otherwise, if the network access type remains the same, apply the network configuration, and then set the IsMTLSConnectionRequired.
-//
-//  2. Dedicated databases:
-//     Apply the configs directly
-func (r *AutonomousDatabaseReconciler) validateGeneralNetworkAccess(
-	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
-
-	if difADB.Spec.Details.NetworkAccess.AccessType == "" &&
-		difADB.Spec.Details.NetworkAccess.IsAccessControlEnabled == nil &&
-		difADB.Spec.Details.NetworkAccess.AccessControlList == nil &&
-		difADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired == nil &&
-		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID == nil &&
-		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs == nil &&
-		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix == nil {
-		return false, nil
-	}
-
-	l := logger.WithName("validateGeneralNetworkAccess")
-
-	if !*adb.Spec.Details.IsDedicated {
-		var lastAccessType = adb.Spec.Details.NetworkAccess.AccessType
-		var difAccessType = difADB.Spec.Details.NetworkAccess.AccessType
-
-		if difAccessType != "" {
-			switch difAccessType {
-			case dbv4.NetworkAccessTypePublic:
-				l.Info("Configuring network access type to PUBLIC")
-				// OCI validation requires IsMTLSConnectionRequired to be enabled before changing the network access type to PUBLIC
-				if !*adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired {
-					if err := r.setMTLSRequired(logger, adb); err != nil {
-						return false, err
-					}
-					return true, nil
-				}
-
-				if err := r.setNetworkAccessPublic(logger, adb.Spec.Details.NetworkAccess.AccessType, adb); err != nil {
-					return false, err
-				}
-				return true, nil
-			case dbv4.NetworkAccessTypeRestricted:
-				l.Info("Configuring network access type to RESTRICTED")
-				// If the access type was PRIVATE, then OCI validation requires IsMTLSConnectionRequired
-				// to be enabled before setting ACL. Also, we can only change the network access type from
-				// PRIVATE to PUBLIC, so the steps are PRIVATE->(requeue)->PUBLIC->(requeue)->RESTRICTED.
-				if lastAccessType == dbv4.NetworkAccessTypePrivate {
-					if !*ociADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired {
-						if err := r.setMTLSRequired(logger, adb); err != nil {
-							return false, err
-						}
-						return true, nil
-					}
-
-					if err := r.setNetworkAccessPublic(logger, ociADB.Spec.Details.NetworkAccess.AccessType, adb); err != nil {
-						return false, err
-					}
-					return true, nil
-				}
-
-				sent, err := r.validateNetworkAccess(logger, adb, difADB)
-				if err != nil {
-					return false, err
-				}
-				if sent {
-					return true, nil
-				}
-
-				sent, err = r.validateMTLS(logger, adb, difADB, ociADB)
-				if err != nil {
-					return false, err
-				}
-				if sent {
-					return true, nil
-				}
-			case dbv4.NetworkAccessTypePrivate:
-				l.Info("Configuring network access type to PRIVATE")
-
-				sent, err := r.validateNetworkAccess(logger, adb, difADB)
-				if err != nil {
-					return false, err
-				}
-				if sent {
-					return true, nil
-				}
-
-				sent, err = r.validateMTLS(logger, adb, difADB, ociADB)
-				if err != nil {
-					return false, err
-				}
-				if sent {
-					return true, nil
-				}
-			}
-		} else {
-			// Access type doesn't change
-			sent, err := r.validateNetworkAccess(logger, adb, difADB)
-			if err != nil {
-				return false, err
-			}
-			if sent {
-				return true, nil
-			}
-
-			sent, err = r.validateMTLS(logger, adb, difADB, ociADB)
-			if err != nil {
-				return false, err
-			}
-			if sent {
-				return true, nil
-			}
-		}
-	} else {
-		// Dedicated database
-		sent, err := r.validateNetworkAccess(logger, adb, difADB)
-		if err != nil {
-			return false, err
-		}
-		if sent {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-// Set the mTLS to true but not changing the spec
-func (r *AutonomousDatabaseReconciler) setMTLSRequired(logger logr.Logger, adb *dbv4.AutonomousDatabase) error {
-	l := logger.WithName("setMTLSRequired")
-
-	l.Info("Sending request to OCI to set IsMtlsConnectionRequired to true")
-
-	adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = common.Bool(true)
-
-	resp, err := r.dbService.UpdateNetworkAccessMTLSRequired(*adb.Spec.Details.AutonomousDatabaseOCID)
-	if err != nil {
-		return err
-	}
-
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
 
 	return nil
 }
-
-func (r *AutonomousDatabaseReconciler) validateMTLS(
-	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase,
-	ociADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
-
-	if difADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired == nil {
-		return false, nil
-	}
-
-	l := logger.WithName("validateMTLS")
-
-	l.Info("Sending request to OCI to configure IsMtlsConnectionRequired")
-
-	resp, err := r.dbService.UpdateNetworkAccessMTLS(*adb.Spec.Details.AutonomousDatabaseOCID, difADB)
-	if err != nil {
-		return false, err
-	}
-
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
-
-	return true, nil
-}
-
-func (r *AutonomousDatabaseReconciler) setNetworkAccessPublic(logger logr.Logger, lastAcessType dbv4.NetworkAccessTypeEnum, adb *dbv4.AutonomousDatabase) error {
-	adb.Spec.Details.NetworkAccess.AccessType = dbv4.NetworkAccessTypePublic
-	adb.Spec.Details.NetworkAccess.AccessControlList = nil
-	adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix = common.String("")
-	adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = nil
-	adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = nil
-
-	l := logger.WithName("setNetworkAccessPublic")
-
-	l.Info("Sending request to OCI to configure network access options to PUBLIC")
-
-	resp, err := r.dbService.UpdateNetworkAccessPublic(lastAcessType, *adb.Spec.Details.AutonomousDatabaseOCID)
-	if err != nil {
-		return err
-	}
-
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
-
-	return nil
-}
-
-func (r *AutonomousDatabaseReconciler) validateNetworkAccess(
-	logger logr.Logger,
-	adb *dbv4.AutonomousDatabase,
-	difADB *dbv4.AutonomousDatabase) (specChanged bool, err error) {
-
-	if difADB.Spec.Details.NetworkAccess.AccessType == "" &&
-		difADB.Spec.Details.NetworkAccess.IsAccessControlEnabled == nil &&
-		difADB.Spec.Details.NetworkAccess.AccessControlList == nil &&
-		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID == nil &&
-		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs == nil &&
-		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix == nil {
-		return false, nil
-	}
-
-	l := logger.WithName("validateNetworkAccess")
-
-	l.Info("Sending request to OCI to configure network access options")
-
-	// When the network access type is set to PRIVATE, any nil type of nsgOCIDs needs to be set to an empty string, otherwise, OCI SDK returns a 400 error
-	if difADB.Spec.Details.NetworkAccess.AccessType == dbv4.NetworkAccessTypePrivate &&
-		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs == nil {
-		difADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = []string{}
-	}
-
-	resp, err := r.dbService.UpdateNetworkAccess(*adb.Spec.Details.AutonomousDatabaseOCID, difADB)
-	if err != nil {
-		return false, err
-	}
-
-	adb.UpdateFromOCIADB(resp.AutonomousDatabase)
-
-	return true, nil
-}
-*/
 
 func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *dbv4.AutonomousDatabase) error {
 	if adb.Spec.Wallet.Name == nil &&
