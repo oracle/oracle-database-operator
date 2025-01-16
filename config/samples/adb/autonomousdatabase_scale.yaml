@@ -9,7 +9,7 @@ metadata:
 spec:
   action: Update
   details:
-    autonomousDatabaseOCID: ocid1.autonomousdatabase...
+    id: ocid1.autonomousdatabase...
     # Your database's OPCU core count
     cpuCoreCount: 2
     # Your database's storage size in TB

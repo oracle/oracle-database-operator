@@ -83,7 +83,6 @@ func (src *AutonomousDatabase) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Status.LifecycleState = src.Status.LifecycleState
 	dst.Status.TimeCreated = src.Status.TimeCreated
 	dst.Status.WalletExpiringDate = src.Status.WalletExpiringDate
-	dst.Status.Action = src.Status.Action
 
 	// convert status.allConnectionStrings
 	if src.Status.AllConnectionStrings != nil {
@@ -191,7 +190,6 @@ func (dst *AutonomousDatabase) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Status.LifecycleState = src.Status.LifecycleState
 	dst.Status.TimeCreated = src.Status.TimeCreated
 	dst.Status.WalletExpiringDate = src.Status.WalletExpiringDate
-	dst.Status.Action = src.Status.Action
 
 	// convert status.allConnectionStrings
 	if src.Status.AllConnectionStrings != nil {

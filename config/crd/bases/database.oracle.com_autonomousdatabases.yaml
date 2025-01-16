@@ -278,13 +278,10 @@ spec:
                 type: object
             required:
             - action
-            - clone
             - details
             type: object
           status:
             properties:
-              action:
-                type: string
               allConnectionStrings:
                 items:
                   properties:
@@ -615,13 +612,10 @@ spec:
                 type: object
             required:
             - action
-            - clone
             - details
             type: object
           status:
             properties:
-              action:
-                type: string
               allConnectionStrings:
                 items:
                   properties:

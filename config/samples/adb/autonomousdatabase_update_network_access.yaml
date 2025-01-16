@@ -9,7 +9,7 @@ metadata:
 spec:
   action: Update
   details:
-    autonomousDatabaseOCID: ocid1.autonomousdatabase...
+    id: ocid1.autonomousdatabase...
     networkAccess:
       # Allow secure access from everywhere.
       accessType: PUBLIC

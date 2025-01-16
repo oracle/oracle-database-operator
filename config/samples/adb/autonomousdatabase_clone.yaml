@@ -9,10 +9,10 @@ metadata:
 spec:
   action: Clone
   details:
-    autonomousDatabaseOCID: ocid1.autonomousdatabase...
+    id: ocid1.autonomousdatabase...
   clone:
     # Update compartmentOCID with your compartment OCID.
-    compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
+    compartmentId: ocid1.compartment... OR ocid1.tenancy...
     # The dbName must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy.
     dbName: ClonedADB
     displayName: ClonedADB
@@ -24,7 +24,7 @@ spec:
         name: admin-password
       # ociSecret:
       #   # The OCID of the OCI Secret that holds the password of the ADMIN account. It should start with ocid1.vaultsecret... .
-      #   ocid: ocid1.vaultsecret...
+      #   id: ocid1.vaultsecret...
     dataStorageSizeInTBs: 1
     dbWorkload: OLTP
     cloneType: METADATA
