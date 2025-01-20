@@ -66,8 +66,8 @@ import (
 	dataguardcontroller "github.com/oracle/oracle-database-operator/controllers/dataguard"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
+	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	// +kubebuilder:scaffold:imports
@@ -395,6 +395,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
+		os.Exit(1)
+	}
+	if err = (&databasev4.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
+		os.Exit(1)
+	}
+	if err = (&databasev4.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs

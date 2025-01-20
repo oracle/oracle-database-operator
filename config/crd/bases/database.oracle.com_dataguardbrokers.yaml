@@ -108,6 +108,103 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.primaryDatabase
+      name: Primary
+      type: string
+    - jsonPath: .status.standbyDatabases
+      name: Standbys
+      type: string
+    - jsonPath: .spec.protectionMode
+      name: Protection Mode
+      type: string
+    - jsonPath: .status.clusterConnectString
+      name: Cluster Connect Str
+      priority: 1
+      type: string
+    - jsonPath: .status.externalConnectString
+      name: Connect Str
+      type: string
+    - jsonPath: .spec.primaryDatabaseRef
+      name: Primary Database
+      priority: 1
+      type: string
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.fastStartFailover
+      name: FSFO
+      type: string
+    name: v4
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              fastStartFailover:
+                type: boolean
+              loadBalancer:
+                type: boolean
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                type: object
+              primaryDatabaseRef:
+                type: string
+              protectionMode:
+                enum:
+                - MaxPerformance
+                - MaxAvailability
+                type: string
+              serviceAnnotations:
+                additionalProperties:
+                  type: string
+                type: object
+              setAsPrimaryDatabase:
+                type: string
+              standbyDatabaseRefs:
+                items:
+                  type: string
+                type: array
+            required:
+            - primaryDatabaseRef
+            - protectionMode
+            - standbyDatabaseRefs
+            type: object
+          status:
+            properties:
+              clusterConnectString:
+                type: string
+              databasesInDataguardConfig:
+                additionalProperties:
+                  type: string
+                type: object
+              externalConnectString:
+                type: string
+              fastStartFailover:
+                type: boolean
+              primaryDatabase:
+                type: string
+              primaryDatabaseRef:
+                type: string
+              protectionMode:
+                type: string
+              standbyDatabases:
+                type: string
+              status:
+                type: string
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}

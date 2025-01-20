@@ -45,7 +45,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	dbapi "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
