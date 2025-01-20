@@ -226,4 +226,37 @@ resources:
   webhooks:
     conversion: true
     webhookVersion: v1beta1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  domain: oracle.com
+  group: database
+  kind: SingleInstanceDatabase
+  path: github.com/oracle/oracle-database-operator/apis/database/v4
+  version: v4
+  webhooks:
+    conversion: true
+    webhookVersion: v1beta1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  domain: oracle.com
+  group: database
+  kind: DataguardBroker
+  path: github.com/oracle/oracle-database-operator/apis/database/v4
+  version: v4
+  webhooks:
+    conversion: true
+    webhookVersion: v1beta1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  domain: oracle.com
+  group: database
+  kind: OracleRestDataService
+  path: github.com/oracle/oracle-database-operator/apis/database/v4
+  version: v4
+  webhooks:
+    conversion: true
+    webhookVersion: v1beta1
 version: "3"

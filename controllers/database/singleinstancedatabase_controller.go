@@ -46,7 +46,7 @@ import (
 	"strings"
 	"time"
 
-	dbapi "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"

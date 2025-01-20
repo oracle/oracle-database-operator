@@ -45,4 +45,7 @@ resources:
 - database_v4_lrest.yaml
 - database_v4_lrpdb.yaml
 - database_v4_ordssrvs.yaml
+- database_v4_singleinstancedatabase.yaml
+- database_v4_dataguardbroker.yaml
+- database_v4_oraclerestdataservice.yaml
   # +kubebuilder:scaffold:manifestskustomizesamples

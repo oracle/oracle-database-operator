@@ -3,15 +3,12 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: SingleInstanceDatabase
 metadata:
   name: freedb-lite-sample
   namespace: default
 spec:
-  
-  ## Use only alphanumeric characters for sid
-  sid: FREE
   
   ## DB edition
   edition: free

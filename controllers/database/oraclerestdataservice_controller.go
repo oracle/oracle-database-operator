@@ -60,7 +60,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	dbapi "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
 	"github.com/go-logr/logr"
@@ -215,7 +215,7 @@ func (r *OracleRestDataServiceReconciler) Reconcile(ctx context.Context, req ctr
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
-	}	
+	}
 
 	// Delete Secrets
 	r.deleteSecrets(oracleRestDataService, ctx, req)
@@ -497,132 +497,88 @@ func (r *OracleRestDataServiceReconciler) instantiateSVCSpec(m *dbapi.OracleRest
 // #############################################################################
 func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRestDataService,
 	n *dbapi.SingleInstanceDatabase, req ctrl.Request) *corev1.Pod {
-	
-		pod := &corev1.Pod{
-			TypeMeta: metav1.TypeMeta{
-				Kind: "Pod",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      m.Name + "-" + dbcommons.GenerateRandomString(5),
-				Namespace: m.Namespace,
-				Labels: map[string]string{
-					"app":     m.Name,
-					"version": m.Spec.Image.Version,
-				},
-			},
-			Spec: corev1.PodSpec{
-				Affinity: func() *corev1.Affinity {
-					if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == "ReadWriteOnce" {
-						// Only allowing pods to be scheduled on the node where SIDB pods are running
-						return &corev1.Affinity{
-							PodAffinity: &corev1.PodAffinity{
-								RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-									LabelSelector: &metav1.LabelSelector{
-										MatchExpressions: []metav1.LabelSelectorRequirement{{
-											Key:      "app",
-											Operator: metav1.LabelSelectorOpIn,
-											Values:   []string{n.Name}, // Schedule on same host as DB Pod
-										}},
-									},
-									TopologyKey: "kubernetes.io/hostname",
-								},
-								},
-							},
-						}
-					}
-					return nil
-				}(),
-				Volumes: []corev1.Volume{
-					{
-						Name: "datamount",
-						VolumeSource: corev1.VolumeSource{
-							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: func() string {
-									if m.Spec.Persistence.AccessMode != "" {
-										return m.Name
-									}
-									return n.Name
-								}(),
-								ReadOnly: false,
-							},
-						},
-					},
-					{
-						Name: "varmount",
-						VolumeSource: corev1.VolumeSource{
-							EmptyDir: &corev1.EmptyDirVolumeSource{},
-						},
-					},
-				},
-				InitContainers: func() []corev1.Container{
-					initContainers := []corev1.Container{}
-					if m.Spec.Persistence.Size != "" && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
-						initContainers = append(initContainers, corev1.Container{
-							Name:    "init-permissions",
-							Image:   m.Spec.Image.PullFrom,
-							Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /etc/ords/config/ || true", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
-							SecurityContext: &corev1.SecurityContext{
-								// User ID 0 means, root user
-								RunAsUser: func() *int64 { i := int64(0); return &i }(),
-							},
-							VolumeMounts: []corev1.VolumeMount{{
-								MountPath: "/etc/ords/config/",
-								Name:      "datamount",
-							}},
-						})
-					}
 
+	pod := &corev1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "Pod",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.Name + "-" + dbcommons.GenerateRandomString(5),
+			Namespace: m.Namespace,
+			Labels: map[string]string{
+				"app":     m.Name,
+				"version": m.Spec.Image.Version,
+			},
+		},
+		Spec: corev1.PodSpec{
+			Affinity: func() *corev1.Affinity {
+				if m.Spec.Persistence.Size == "" && n.Spec.Persistence.AccessMode == "ReadWriteOnce" {
+					// Only allowing pods to be scheduled on the node where SIDB pods are running
+					return &corev1.Affinity{
+						PodAffinity: &corev1.PodAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+								LabelSelector: &metav1.LabelSelector{
+									MatchExpressions: []metav1.LabelSelectorRequirement{{
+										Key:      "app",
+										Operator: metav1.LabelSelectorOpIn,
+										Values:   []string{n.Name}, // Schedule on same host as DB Pod
+									}},
+								},
+								TopologyKey: "kubernetes.io/hostname",
+							},
+							},
+						},
+					}
+				}
+				return nil
+			}(),
+			Volumes: []corev1.Volume{
+				{
+					Name: "datamount",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: func() string {
+								if m.Spec.Persistence.AccessMode != "" {
+									return m.Name
+								}
+								return n.Name
+							}(),
+							ReadOnly: false,
+						},
+					},
+				},
+				{
+					Name: "varmount",
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
+					},
+				},
+			},
+			InitContainers: func() []corev1.Container {
+				initContainers := []corev1.Container{}
+				if m.Spec.Persistence.Size != "" && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
 					initContainers = append(initContainers, corev1.Container{
-						Name:    "init-ords",
+						Name:    "init-permissions",
 						Image:   m.Spec.Image.PullFrom,
-						Command: []string{"/bin/sh"},
-						Args: []string{
-							"-c",
-							fmt.Sprintf("while [ ! -f /opt/oracle/variables/%s ]; do sleep 0.5; done", "conn_string.txt"),
-						},		
-						VolumeMounts: []corev1.VolumeMount{
-							{
-								MountPath: "/etc/ords/config/",
-								Name:      "datamount",
-							},
-							{
-								MountPath: "/opt/oracle/variables/",
-								Name:      "varmount",
-							},
+						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /etc/ords/config/ || true", int(dbcommons.ORACLE_UID), int(dbcommons.DBA_GUID))},
+						SecurityContext: &corev1.SecurityContext{
+							// User ID 0 means, root user
+							RunAsUser: func() *int64 { i := int64(0); return &i }(),
 						},
+						VolumeMounts: []corev1.VolumeMount{{
+							MountPath: "/etc/ords/config/",
+							Name:      "datamount",
+						}},
 					})
-					return initContainers
-				}(),
-				Containers: []corev1.Container{{
-					Name:  m.Name,
-					Image: m.Spec.Image.PullFrom,
-					Ports: func() []corev1.ContainerPort {
-						ports := []corev1.ContainerPort{
-							{
-								ContainerPort: 8181, // Default application port
-							},
-						}
-						if m.Spec.MongoDbApi {
-							ports = append(ports, corev1.ContainerPort{
-								ContainerPort: 27017, // MongoDB port
-							})
-						}
-						return ports
-					}(),
-					ReadinessProbe: &corev1.Probe{
-						ProbeHandler: corev1.ProbeHandler{
-							Exec: &corev1.ExecAction{
-								Command: []string{"/bin/sh", "-c", dbcommons.ORDSReadinessProbe},
-							},
-						},
-						InitialDelaySeconds: 20,
-						TimeoutSeconds:      20,
-						PeriodSeconds: func() int32 {
-							if m.Spec.ReadinessCheckPeriod > 0 {
-								return int32(m.Spec.ReadinessCheckPeriod)
-							}
-							return 60
-						}(),
+				}
+
+				initContainers = append(initContainers, corev1.Container{
+					Name:    "init-ords",
+					Image:   m.Spec.Image.PullFrom,
+					Command: []string{"/bin/sh"},
+					Args: []string{
+						"-c",
+						fmt.Sprintf("while [ ! -f /opt/oracle/variables/%s ]; do sleep 0.5; done", "conn_string.txt"),
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
@@ -633,75 +589,119 @@ func (r *OracleRestDataServiceReconciler) instantiatePodSpec(m *dbapi.OracleRest
 							MountPath: "/opt/oracle/variables/",
 							Name:      "varmount",
 						},
-					},	
-					Env: func() []corev1.EnvVar {
-						// After ORDS is Installed, we DELETE THE OLD ORDS Pod and create new ones ONLY USING BELOW ENV VARIABLES.
-						return []corev1.EnvVar{
-							{
-								Name:  "ORACLE_HOST",
-								Value: n.Name,
-							},
-							{
-								Name:  "ORACLE_PORT",
-								Value: "1521",
-							},
-							{
-								Name: "ORACLE_SERVICE",
-								Value: func() string {
-									if m.Spec.OracleService != "" {
-										return m.Spec.OracleService
-									}
-									return n.Spec.Sid
-								}(),
-							},
-							{
-								Name: "ORDS_USER",
-								Value: func() string {
-									if m.Spec.OrdsUser != "" {
-										return m.Spec.OrdsUser
-									}
-									return "ORDS_PUBLIC_USER"
-								}(),
-							},
+					},
+				})
+				return initContainers
+			}(),
+			Containers: []corev1.Container{{
+				Name:  m.Name,
+				Image: m.Spec.Image.PullFrom,
+				Ports: func() []corev1.ContainerPort {
+					ports := []corev1.ContainerPort{
+						{
+							ContainerPort: 8181, // Default application port
+						},
+					}
+					if m.Spec.MongoDbApi {
+						ports = append(ports, corev1.ContainerPort{
+							ContainerPort: 27017, // MongoDB port
+						})
+					}
+					return ports
+				}(),
+				ReadinessProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						Exec: &corev1.ExecAction{
+							Command: []string{"/bin/sh", "-c", dbcommons.ORDSReadinessProbe},
+						},
+					},
+					InitialDelaySeconds: 20,
+					TimeoutSeconds:      20,
+					PeriodSeconds: func() int32 {
+						if m.Spec.ReadinessCheckPeriod > 0 {
+							return int32(m.Spec.ReadinessCheckPeriod)
 						}
+						return 60
 					}(),
-				}},
-	
-				TerminationGracePeriodSeconds: func() *int64 { i := int64(30); return &i }(),
-	
-				NodeSelector: func() map[string]string {
-					ns := make(map[string]string)
-					if len(m.Spec.NodeSelector) != 0 {
-						for key, value := range m.Spec.NodeSelector {
-							ns[key] = value
-						}
-					}
-					return ns
-				}(),
-				ServiceAccountName: func() string {
-					if m.Spec.ServiceAccountName != "" {
-						return m.Spec.ServiceAccountName
-					}
-					return "default"
-				}(),
-				SecurityContext: &corev1.PodSecurityContext{
-					RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
-					RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
-					FSGroup:    func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
 				},
-	
-				ImagePullSecrets: []corev1.LocalObjectReference{
+				VolumeMounts: []corev1.VolumeMount{
 					{
-						Name: m.Spec.Image.PullSecrets,
+						MountPath: "/etc/ords/config/",
+						Name:      "datamount",
+					},
+					{
+						MountPath: "/opt/oracle/variables/",
+						Name:      "varmount",
 					},
 				},
+				Env: func() []corev1.EnvVar {
+					// After ORDS is Installed, we DELETE THE OLD ORDS Pod and create new ones ONLY USING BELOW ENV VARIABLES.
+					return []corev1.EnvVar{
+						{
+							Name:  "ORACLE_HOST",
+							Value: n.Name,
+						},
+						{
+							Name:  "ORACLE_PORT",
+							Value: "1521",
+						},
+						{
+							Name: "ORACLE_SERVICE",
+							Value: func() string {
+								if m.Spec.OracleService != "" {
+									return m.Spec.OracleService
+								}
+								return n.Spec.Sid
+							}(),
+						},
+						{
+							Name: "ORDS_USER",
+							Value: func() string {
+								if m.Spec.OrdsUser != "" {
+									return m.Spec.OrdsUser
+								}
+								return "ORDS_PUBLIC_USER"
+							}(),
+						},
+					}
+				}(),
+			}},
+
+			TerminationGracePeriodSeconds: func() *int64 { i := int64(30); return &i }(),
+
+			NodeSelector: func() map[string]string {
+				ns := make(map[string]string)
+				if len(m.Spec.NodeSelector) != 0 {
+					for key, value := range m.Spec.NodeSelector {
+						ns[key] = value
+					}
+				}
+				return ns
+			}(),
+			ServiceAccountName: func() string {
+				if m.Spec.ServiceAccountName != "" {
+					return m.Spec.ServiceAccountName
+				}
+				return "default"
+			}(),
+			SecurityContext: &corev1.PodSecurityContext{
+				RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+				RunAsGroup: func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
+				FSGroup:    func() *int64 { i := int64(dbcommons.DBA_GUID); return &i }(),
 			},
-		}
-	
-		// Set oracleRestDataService instance as the owner and controller
-		// ctrl.SetControllerReference(m, initSecret, r.Scheme)
-		ctrl.SetControllerReference(m, pod, r.Scheme)
-		return pod
+
+			ImagePullSecrets: []corev1.LocalObjectReference{
+				{
+					Name: m.Spec.Image.PullSecrets,
+				},
+			},
+		},
+	}
+
+	// Set oracleRestDataService instance as the owner and controller
+	// ctrl.SetControllerReference(m, initSecret, r.Scheme)
+	ctrl.SetControllerReference(m, pod, r.Scheme)
+	return pod
 }
 
 //#############################################################################
@@ -834,8 +834,8 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 					fmt.Sprint(svc.Spec.Ports[0].Port) + "/ords/apex"
 			}
 			if m.Status.MongoDbApi && len(svc.Spec.Ports) > 1 {
-				m.Status.MongoDbApiAccessUrl = "mongodb://[{user}:{password}@]"+ lbAddress + ":"+
-												fmt.Sprint(svc.Spec.Ports[1].Port)+ "/{user}?" + 
+				m.Status.MongoDbApiAccessUrl = "mongodb://[{user}:{password}@]" + lbAddress + ":" +
+					fmt.Sprint(svc.Spec.Ports[1].Port) + "/{user}?" +
 					"authMechanism=PLAIN&authSource=$external&ssl=true&retryWrites=false&loadBalanced=true"
 			} else {
 				m.Status.MongoDbApiAccessUrl = ""
@@ -854,8 +854,8 @@ func (r *OracleRestDataServiceReconciler) createSVC(ctx context.Context, req ctr
 			m.Status.ApxeUrl = "http://" + nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/ords/apex"
 		}
 		if m.Status.MongoDbApi && len(svc.Spec.Ports) > 1 {
-			m.Status.MongoDbApiAccessUrl = "mongodb://[{user}:{password}@]"+ nodeip + ":"+
-											fmt.Sprint(svc.Spec.Ports[1].NodePort)+ "/{user}?" + 
+			m.Status.MongoDbApiAccessUrl = "mongodb://[{user}:{password}@]" + nodeip + ":" +
+				fmt.Sprint(svc.Spec.Ports[1].NodePort) + "/{user}?" +
 				"authMechanism=PLAIN&authSource=$external&ssl=true&retryWrites=false&loadBalanced=true"
 		} else {
 			m.Status.MongoDbApiAccessUrl = ""
@@ -899,7 +899,6 @@ func (r *OracleRestDataServiceReconciler) createPVC(ctx context.Context, req ctr
 
 	return requeueN, nil
 }
-
 
 // #############################################################################
 //
@@ -977,10 +976,10 @@ func (r *OracleRestDataServiceReconciler) createConnectionString(m *dbapi.Oracle
 	adminPassword := string(secret.Data[m.Spec.AdminPassword.SecretKey])
 
 	_, err = dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "init-ords",
-		ctx, req, true, "bash", "-c", 
-		fmt.Sprintf("mkdir -p /opt/oracle/variables && echo %[1]s > /opt/oracle/variables/%[2]s", 
-			fmt.Sprintf(dbcommons.DbConnectString, adminPassword, n.Name, n.Status.Pdbname), 
-										"conn_string.txt"))
+		ctx, req, true, "bash", "-c",
+		fmt.Sprintf("mkdir -p /opt/oracle/variables && echo %[1]s > /opt/oracle/variables/%[2]s",
+			fmt.Sprintf(dbcommons.DbConnectString, adminPassword, n.Name, n.Status.Pdbname),
+			"conn_string.txt"))
 
 	if err != nil {
 		r.Log.Error(err, err.Error())
@@ -1318,7 +1317,7 @@ func (r *OracleRestDataServiceReconciler) configureApex(m *dbapi.OracleRestDataS
 	}
 
 	// Obtain admin password of the referred database
-	
+
 	adminPasswordSecret := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
 	if err != nil {
@@ -1400,7 +1399,6 @@ func (r *OracleRestDataServiceReconciler) deleteSecrets(m *dbapi.OracleRestDataS
 	}
 }
 
-
 // #############################################################################
 //
 //	Enable MongoDB API Support
@@ -1410,14 +1408,14 @@ func (r *OracleRestDataServiceReconciler) enableMongoDB(m *dbapi.OracleRestDataS
 	sidbReadyPod corev1.Pod, ordsReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("enableMongoDB", req.NamespacedName)
 
-	if (m.Spec.MongoDbApi && !m.Status.MongoDbApi) ||	// setting MongoDbApi to true
-		(!m.Spec.MongoDbApi && m.Status.MongoDbApi) {	// setting MongoDbApi to false
-		m.Status.Status = dbcommons.StatusUpdating	
+	if (m.Spec.MongoDbApi && !m.Status.MongoDbApi) || // setting MongoDbApi to true
+		(!m.Spec.MongoDbApi && m.Status.MongoDbApi) { // setting MongoDbApi to false
+		m.Status.Status = dbcommons.StatusUpdating
 
-		out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c", 
-		fmt.Sprintf(dbcommons.ConfigMongoDb, strconv.FormatBool(m.Spec.MongoDbApi)) )
+		out, err := dbcommons.ExecCommand(r, r.Config, ordsReadyPod.Name, ordsReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+			fmt.Sprintf(dbcommons.ConfigMongoDb, strconv.FormatBool(m.Spec.MongoDbApi)))
 		log.Info("configMongoDB Output: \n" + out)
-		
+
 		if strings.Contains(strings.ToUpper(out), "ERROR") {
 			return requeueY
 		}
@@ -1435,16 +1433,16 @@ func (r *OracleRestDataServiceReconciler) enableMongoDB(m *dbapi.OracleRestDataS
 		eventMsg := "configuration of MongoDb API completed!"
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 		log.Info(eventMsg)
-		
+
 		// ORDS service is resatrted
 		r.Log.Info("Restarting ORDS Service : " + m.Name)
 		svc := &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: m.Name, Namespace: m.Namespace,},
+			ObjectMeta: metav1.ObjectMeta{Name: m.Name, Namespace: m.Namespace},
 		}
 		var gracePeriodSeconds int64 = 0
 		policy := metav1.DeletePropagationForeground
 		err = r.Delete(ctx, svc, &client.DeleteOptions{
-			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy,})
+			GracePeriodSeconds: &gracePeriodSeconds, PropagationPolicy: &policy})
 		if err != nil {
 			r.Log.Error(err, "Failed to delete ORDS service", "Service Name", m.Name)
 			return requeueY
