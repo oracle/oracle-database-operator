@@ -39,7 +39,7 @@ const (
 	DefaultOCIConfigTenancyKey       = "tenancy"
 	DefaultOCIConfigUserKey          = "user"
 
-	DefaultExporterImage                 = "container-registry.oracle.com/database/observability-exporter:1.5.1"
+	DefaultExporterImage                 = "container-registry.oracle.com/database/observability-exporter:1.5.2"
 	DefaultServicePort                   = 9161
 	DefaultServiceTargetPort             = 9161
 	DefaultAppPort                       = 8080
@@ -47,7 +47,7 @@ const (
 	DefaultServiceType                   = "ClusterIP"
 	DefaultReplicaCount                  = 1
 	DefaultExporterConfigMountRootPath   = "/oracle/observability"
-	DefaultOracleHome                    = "/lib/oracle/23/client64/lib"
+	DefaultOracleHome                    = "/lib/oracle/21/client64/lib"
 	DefaultOracleTNSAdmin                = DefaultOracleHome + "/network/admin"
 	DefaultExporterConfigmapFilename     = "config.toml"
 	DefaultVaultPrivateKeyRootPath       = "/oracle/config"

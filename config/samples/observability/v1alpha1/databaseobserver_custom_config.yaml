@@ -35,9 +35,6 @@ spec:
       args: [ "--log.level=info" ]
       commands: [ "/oracledb_exporter" ]
 
-    service:
-      port: 9161
-
   prometheus:
     serviceMonitor:
       labels:

@@ -50,9 +50,6 @@ spec:
       args: [ "--log.level=info" ]
       commands: [ "/oracledb_exporter" ]
 
-    service:
-      port: 9161
-
   configuration:
     configMap:
       key: "config.toml"
