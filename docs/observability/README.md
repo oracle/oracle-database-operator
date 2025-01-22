@@ -57,7 +57,6 @@ the databaseObserver custom resource offers the following properties to be confi
 
 | Attribute                                          | Type   | Default                                                             | Required?   | Example                                                               |
 |----------------------------------------------------|--------|---------------------------------------------------------------------|:------------|-----------------------------------------------------------------------|
-| `spec.database.dbRole`                             | string | -                                                                   | Optional    | _SYSDBA_                                                              |
 | `spec.database.dbUser.key`                         | string | user                                                                | Optional    | _username_                                                            |
 | `spec.database.dbUser.secret`                      | string | -                                                                   | Yes         | _db-secret_                                                           |
 | `spec.database.dbPassword.key`                     | string | password                                                            | Optional    | _admin-password_                                                      |
