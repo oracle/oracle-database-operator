@@ -225,7 +225,6 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	sidbRole, err := dbcommons.GetDatabaseRole(readyPod, r, r.Config, ctx, req)
 
 	if sidbRole == "PRIMARY" {
-
 		// Update DB config
 		result, err = r.updateDBConfig(singleInstanceDatabase, readyPod, ctx, req)
 		if result.Requeue {
@@ -248,7 +247,6 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 
 	} else {
-		// Database is in role of standby
 		if singleInstanceDatabase.Status.DgBroker == nil {
 			err = SetupStandbyDatabase(r, singleInstanceDatabase, referredPrimaryDatabase, ctx, req)
 			if err != nil {
@@ -309,7 +307,7 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
-	// If LoadBalancer = true , ensure Connect String is updated
+	// This is to ensure that in case of LoadBalancer services the, the Load Balancer is ready to serve the requests
 	if singleInstanceDatabase.Status.ConnectString == dbcommons.ValueUnavailable {
 		r.Log.Info("Connect string not available for the database " + singleInstanceDatabase.Name)
 		return requeueY, nil
@@ -1872,34 +1870,32 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 	if pdbName == "" {
 		pdbName = strings.ToUpper(m.Spec.Pdbname)
 	}
-	if m.Spec.CreateAs != "truecache" {
-		if m.Spec.LoadBalancer {
-			m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
-			if len(extSvc.Status.LoadBalancer.Ingress) > 0 {
-				// 'lbAddress' will contain the Fully Qualified Hostname of the LB. If the hostname is not available it will contain the IP address of the LB
-				lbAddress := extSvc.Status.LoadBalancer.Ingress[0].Hostname
-				if lbAddress == "" {
-					lbAddress = extSvc.Status.LoadBalancer.Ingress[0].IP
-				}
-				m.Status.ConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
-				m.Status.PdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(pdbName)
-				oemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[0].Port) + "/em"
-				if m.Spec.EnableTCPS {
-					m.Status.TcpsConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(sid)
-					m.Status.TcpsPdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(pdbName)
-				}
+	if m.Spec.LoadBalancer {
+		m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
+		if len(extSvc.Status.LoadBalancer.Ingress) > 0 {
+			// 'lbAddress' will contain the Fully Qualified Hostname of the LB. If the hostname is not available it will contain the IP address of the LB
+			lbAddress := extSvc.Status.LoadBalancer.Ingress[0].Hostname
+			if lbAddress == "" {
+				lbAddress = extSvc.Status.LoadBalancer.Ingress[0].IP
 			}
-		} else {
-			m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
-			nodeip := dbcommons.GetNodeIp(r, ctx, req)
-			if nodeip != "" {
-				m.Status.ConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(sid)
-				m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(pdbName)
-				oemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[0].NodePort) + "/em"
-				if m.Spec.EnableTCPS {
-					m.Status.TcpsConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(sid)
-					m.Status.TcpsPdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(pdbName)
-				}
+			m.Status.ConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
+			m.Status.PdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(pdbName)
+			oemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[0].Port) + "/em"
+			if m.Spec.EnableTCPS {
+				m.Status.TcpsConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(sid)
+				m.Status.TcpsPdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(pdbName)
+			}
+		}
+	} else {
+		m.Status.ClusterConnectString = extSvc.Name + "." + extSvc.Namespace + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
+		nodeip := dbcommons.GetNodeIp(r, ctx, req)
+		if nodeip != "" {
+			m.Status.ConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(sid)
+			m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(pdbName)
+			oemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[0].NodePort) + "/em"
+			if m.Spec.EnableTCPS {
+				m.Status.TcpsConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(sid)
+				m.Status.TcpsPdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(pdbName)
 			}
 		}
 	}
