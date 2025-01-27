@@ -81,7 +81,7 @@ BUILDER_IMG = golang:$(GOLANG_VERSION)
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg INSTALL_GO="false" --build-arg GOLANG_VERSION=$(GOLANG_VERSION)
 endif
 ifeq ($(BUILD_MANIFEST), true)
-BUILD_ARGS := $(BUILD_ARGS) --platform=linux/arm64,linux/amd64 --jobs=2 --manifest
+BUILD_ARGS := $(BUILD_ARGS) --platform=linux/arm64,linux/amd64 --manifest
 PUSH_ARGS := manifest
 else
 BUILD_ARGS := $(BUILD_ARGS) --platform=linux/amd64 --tag
