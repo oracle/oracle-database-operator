@@ -27,6 +27,8 @@
 #            It configure the required secrets necessary to operate
 #            with pdbs multitenant controllers
 #
+#         4) make runall01
+#            Start a series of operation create open close delete and so on 
 #            
 #            LIST OF GENERAED YAML FILE
 #
@@ -34,8 +36,6 @@
 # 		oracle-database-operator.yaml     : oracle database operator
 # 		cdbnamespace_binding.yaml         : role binding for cdbnamespace
 # 		pdbnamespace_binding.yaml         : role binding for pdbnamespace
-# 		create_cdb_secret.yaml            : create secrets for ords server pod
-# 		create_pdb_secret.yaml            : create secrets for pluggable database
 # 		create_ords_pod.yaml             : create rest server pod
 # 		create_pdb1_resource.yaml       : create first pluggable database
 # 		create_pdb2_resource.yaml       : create second pluggable database
@@ -76,6 +76,8 @@ export APIVERSION=$(shell cat $(PARAMETERS)|grep -v ^\#|grep APIVERSION|cut -d :
 export OPRNAMESPACE=oracle-database-operator-system
 export ORACLE_OPERATOR_YAML=../../../../oracle-database-operator.yaml
 export TEST_EXEC_TIMEOUT=3m
+export IMAGE=oracle/ords-dboper:latest
+export ORDSIMGDIR=../../../../ords
 
 REST_SERVER=ords
 SKEY=tls.key
@@ -84,6 +86,7 @@ CART=ca.crt
 PRVKEY=ca.key
 PUBKEY=public.pem
 COMPANY=oracle
+RUNTIME=/usr/bin/podman
 
 #################
 ### FILE LIST ###
@@ -132,6 +135,7 @@ RM=/usr/bin/rm
 CP=/usr/bin/cp
 TAR=/usr/bin/tar
 MKDIR=/usr/bin/mkdir
+SED=/usr/bin/sed
 
 define msg
 @printf "\033[31;7m%s\033[0m\r" "......................................]"
@@ -167,23 +171,12 @@ tlscrt:
 	$(OPENSSL) x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey $(PRVKEY) -CAcreateserial -out $(SCRT)
 	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
 
-#- $(KUBECTL) delete secret db-tls  -n $(CDBNAMESPACE) 2>/dev/null
-#- $(KUBECTL) delete secret db-ca -n $(CDBNAMESPACE)   2>/dev/null
-#- $(KUBECTL) delete secret db-tls  -n $(PDBNAMESPACE) 2>/dev/null
-#- $(KUBECTL) delete secret db-ca -n $(PDBNAMESPACE)   2>/dev/null
-
 tlssec:
 	$(call msg,"GENERATE TLS SECRET")
 	$(KUBECTL) create secret tls db-tls --key="$(SKEY)" --cert="$(SCRT)"  -n $(CDBNAMESPACE)
 	$(KUBECTL) create secret generic db-ca --from-file="$(CART)" -n $(CDBNAMESPACE)
 	$(KUBECTL) create secret tls db-tls --key="$(SKEY)" --cert="$(SCRT)"  -n $(PDBNAMESPACE)
 	$(KUBECTL) create secret generic db-ca --from-file="$(CART)"  -n $(PDBNAMESPACE)
-
-secrets: delsec tlscrt tlssec 
-	$(call msg,"GENERATE CDB SECRET")
-	$(KUBECTL) apply -f $(CDB_SECRETS)
-	$(call msg,"GENERATE PDB SECRET")
-	$(KUBECTL) apply -f $(PDB_SECRETS)
 
 
 delsec:
@@ -199,49 +192,89 @@ delsec:
 	        ($(KUBECTL) delete secret  $(SECRETSL) -n $(CDBNAMESPACE))\
 	        || ( echo "No screts in namespace $(PDBNAMESPACE)")
 
-		
+
+###### ENCRYPTED SECRETS ######
+export PRVKEY=ca.key
+export PUBKEY=public.pem
+WBUSERFILE=wbuser.txt
+WBPASSFILE=wbpass.txt
+CDBUSRFILE=cdbusr.txt
+CDBPWDFILE=cdbpwd.txt
+SYSPWDFILE=syspwd.txt
+ORDPWDFILE=ordpwd.txt
+PDBUSRFILE=pdbusr.txt
+PDBPWDFILE=pdbpwd.txt
+
+
+
+secrets: delsec tlscrt tlssec
+	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
+	$(KUBECTL) create secret generic pubkey --from-file=publicKey=$(PUBKEY) -n $(CDBNAMESPACE)
+	$(KUBECTL) create secret generic prvkey --from-file=privateKey=$(PRVKEY)  -n $(CDBNAMESPACE)
+	$(KUBECTL) create secret generic prvkey --from-file=privateKey="$(PRVKEY)" -n $(PDBNAMESPACE)
+	@$(ECHO) $(WBUSER) > $(WBUSERFILE)
+	@$(ECHO) $(WBPASS) > $(WBPASSFILE)
+	@$(ECHO) $(CDBPWD) > $(CDBPWDFILE)
+	@$(ECHO) $(CDBUSR) > $(CDBUSRFILE)
+	@$(ECHO) $(SYSPWD) > $(SYSPWDFILE)
+	@$(ECHO) $(ORDPWD) > $(ORDPWDFILE)
+	@$(ECHO) $(PDBUSR) > $(PDBUSRFILE)
+	@$(ECHO) $(PDBPWD) > $(PDBPWDFILE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(WBUSERFILE) |base64 > e_$(WBUSERFILE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(WBPASSFILE) |base64 > e_$(WBPASSFILE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(CDBPWDFILE) |base64 > e_$(CDBPWDFILE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(CDBUSRFILE) |base64 > e_$(CDBUSRFILE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(SYSPWDFILE) |base64 > e_$(SYSPWDFILE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(ORDPWDFILE) |base64 > e_$(ORDPWDFILE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(PDBUSRFILE) |base64 > e_$(PDBUSRFILE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(PDBPWDFILE) |base64 > e_$(PDBPWDFILE)
+	$(KUBECTL) create secret generic wbuser --from-file=e_$(WBUSERFILE) -n  $(CDBNAMESPACE)
+	$(KUBECTL) create secret generic wbpass --from-file=e_$(WBPASSFILE) -n  $(CDBNAMESPACE)
+	$(KUBECTL) create secret generic wbuser --from-file=e_$(WBUSERFILE) -n  $(PDBNAMESPACE)
+	$(KUBECTL) create secret generic wbpass --from-file=e_$(WBPASSFILE) -n  $(PDBNAMESPACE)
+	$(KUBECTL) create secret generic cdbpwd --from-file=e_$(CDBPWDFILE) -n  $(CDBNAMESPACE)
+	$(KUBECTL) create secret generic cdbusr --from-file=e_$(CDBUSRFILE) -n  $(CDBNAMESPACE)
+	$(KUBECTL) create secret generic syspwd --from-file=e_$(SYSPWDFILE) -n  $(CDBNAMESPACE)
+	$(KUBECTL) create secret generic ordpwd --from-file=e_$(ORDPWDFILE) -n  $(CDBNAMESPACE)
+	$(KUBECTL) create secret generic pdbusr --from-file=e_$(PDBUSRFILE) -n  $(PDBNAMESPACE)
+	$(KUBECTL) create secret generic pdbpwd --from-file=e_$(PDBPWDFILE) -n  $(PDBNAMESPACE)
+	$(RM)  $(WBUSERFILE)  $(WBPASSFILE) $(CDBPWDFILE) $(CDBUSRFILE)  $(SYSPWDFILE)  $(ORDPWDFILE)  $(PDBUSRFILE) $(PDBPWDFILE) 
+	$(RM)  e_$(WBUSERFILE)  e_$(WBPASSFILE) e_$(CDBPWDFILE) e_$(CDBUSRFILE)  e_$(SYSPWDFILE)  e_$(ORDPWDFILE)  e_$(PDBUSRFILE) e_$(PDBPWDFILE) 
+
 
 ### YAML FILE SECTION ###
-define _opr
-cp ${ORACLE_OPERATOR_YAML} .
-export OPBASENAME=`basename ${ORACLE_OPERATOR_YAML}`
-cp ${OPBASENAME} ${OPBASENAME}.ORIGNINAL
-printf "\n\t\xF0\x9F\x91\x89 ${OPBASENAME}\n\n"
-sed -i  's/value: ""/value: "${OPRNAMESPACE},${PDBNAMESPACE},${CDBNAMESPACE}"/g'   ${OPBASENAME} 
-endef
-
-export opr = $(value _opr)
-
 operator:
-	@ eval "$$opr"	
+	$(CP) ${ORACLE_OPERATOR_YAML} .
+	${CP} `basename ${ORACLE_OPERATOR_YAML}` `basename ${ORACLE_OPERATOR_YAML}`.ORG
+	$(SED) -i  's/value: ""/value: $(OPRNAMESPACE),$(PDBNAMESPACE),$(CDBNAMESPACE)/g'   `basename ${ORACLE_OPERATOR_YAML}`
 
 
 define _script00
 cat <<EOF > authsection01.yaml
   sysAdminPwd:
     secret:
-      secretName: "cdb-secret"
-      key: "sysadmin_pwd"
+      secretName: "syspwd"
+      key: "e_syspwd.txt"
   ordsPwd:
     secret:
-      secretName: "cdb-secret"
-      key: "ords_pwd"
+      secretName: "ordpwd"
+      key: "e_ordpwd.txt"
   cdbAdminUser:
     secret:
-      secretName: "cdb-secret"
-      key: "cdbadmin_user"
+      secretName: "cdbusr"
+      key: "e_cdbusr.txt"
   cdbAdminPwd:
     secret:
-      secretName: "cdb-secret"
-      key: "cdbadmin_pwd"
+      secretName: "cdbpwd"
+      key: "e_cdbpwd.txt"
   webServerUser:
     secret:
-      secretName: "cdb-secret"
-      key: "webserver_user"
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
   webServerPwd:
     secret:
-      secretName: "cdb-secret"
-      key: "webserver_pwd"
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
   cdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -250,17 +283,21 @@ cat <<EOF > authsection01.yaml
     secret:
       secretName: "db-tls"
       key: "tls.crt"
+  cdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"
 EOF
 
 cat<<EOF > authsection02.yaml
   adminName:
     secret:
-      secretName: "pdb-secret"
-      key: "sysadmin_user"
+      secretName: "pdbusr"
+      key: "e_pdbusr.txt"
   adminPwd:
     secret:
-      secretName: "pdb-secret"
-      key: "sysadmin_pwd"
+      secretName: "pdbpwd"
+      key: "e_pdbpwd.txt"
   pdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -275,12 +312,16 @@ cat<<EOF > authsection02.yaml
       key: "ca.crt"
   webServerUser:
     secret:
-      secretName: "pdb-secret"
-      key: "webserver_user"
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
   webServerPwd:
     secret:
-      secretName: "pdb-secret"
-      key: "webserver_pwd"
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
+  pdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"
 EOF
 
 
@@ -321,53 +362,6 @@ export script00 = $(value _script00)
 secyaml:
 	@ eval "$$script00"
 
-define _script_secrets
-ORDS=`echo ${ORDPWD}|base64`
-SYSA=`echo ${SYSPWD}|base64`
-CDBU=`echo ${CDBUSR}|base64`
-CDBP=`echo ${CDBPWD}|base64`
-WEBU=`echo ${WBUSER}|base64`
-WEBP=`echo ${WBPASS}|base64`
-PDBU=`echo ${PDBUSR}|base64`
-PDBP=`echo ${PDBPWD}|base64`
-cat <<EOF > ${CDB_SECRETS}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: cdb-secret
-  namespace: ${CDBNAMESPACE}
-type: Opaque
-data:
-  ords_pwd: "${ORDS}"
-  sysadmin_pwd: "${SYSA}"
-  cdbadmin_user: "${CDBU}"
-  cdbadmin_pwd: "${CDBP}" 
-  webserver_user: "${WEBU}"
-  webserver_pwd: "${WEBP}"
-EOF
-
-cat <<EOF > ${PDB_SECRETS}
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pdb-secret
-  namespace: ${PDBNAMESPACE}
-type: Opaque
-data:
-  sysadmin_user: "${PDBU}"
-  sysadmin_pwd: "${PDBP}"
-  webserver_user: "${WEBU}"
-  webserver_pwd: "${WEBP}"
-EOF
-
-endef
-
-
-export script_secrets=$(value _script_secrets)
-
-dbsecr:
-	@ eval "$$script_secrets"
-
 #echo ords pod creation
 define _script01
 cat <<EOF > ${ORDS_POD}
@@ -375,7 +369,7 @@ apiVersion: database.oracle.com/${APIVERSION}
 kind: CDB
 metadata: 
   name: cdb-dev
-  namespace: cdbnamespace
+  namespace: ${CDBNAMESPACE}
 spec:
   cdbName: "DB12"
   ordsImage: ${ORDSIMG}
@@ -735,7 +729,7 @@ endef
 
 export script02 = $(value _script02)
 
-genyaml:dbsecr  secyaml
+genyaml:  secyaml
 	@ eval "$$script01"
 	@ eval "$$script02"
 
@@ -902,5 +896,20 @@ run99.1:
 	
 runall01:  run00 run01.1 run01.2 run03.1 run03.2 run04.1 run05.1 run06.1 run02.1  run07.1
 
+
+###### BUILD ORDS IMAGE ######
+
+createimage:
+	$(RUNTIME) build -t $(IMAGE) $(ORDSIMGDIR)
+
+createimageproxy:
+	$(RUNTIME) build -t $(IMAGE) $(ORDSIMGDIR) --build-arg  https_proxy=$(HTTPS_PROXY)  --build-arg http_proxy=$(HTTP_PROXY)
+
+tagimage:
+	@echo "TAG IMAGE"
+	$(RUNTIME) tag $(IMAGE) $(ORDSIMG)
+
+push:
+	 $(RUNTIME) push $(ORDSIMG)
 
 

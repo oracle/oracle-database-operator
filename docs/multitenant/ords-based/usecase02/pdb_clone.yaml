@@ -1,32 +1,29 @@
-#
-# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
-# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
-#
 apiVersion: database.oracle.com/v4
 kind: PDB
 metadata:
-  name: pdb2
-  namespace: oracle-database-operator-system
+  name: pdb3
+  namespace: pdbnamespace
   labels:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
-  cdbNamespace: "oracle-database-operator-system"
+  cdbNamespace: "cdbnamespace"
   cdbName: "DB12"
-  pdbName: "pdb2_clone"
+  pdbName: "new_clone"
   srcPdbName: "pdbdev"
   fileNameConversions: "NONE"
   totalSize: "UNLIMITED"
   tempSize: "UNLIMITED"
   assertivePdbDeletion: true
+  action: "Clone"
   adminName:
     secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_user"
+      secretName: "pdbusr"
+      key: "e_pdbusr.txt"
   adminPwd:
     secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_pwd"
+      secretName: "pdbpwd"
+      key: "e_pdbpwd.txt"
   pdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -41,10 +38,13 @@ spec:
       key: "ca.crt"
   webServerUser:
     secret:
-      secretName: "pdb1-secret"
-      key: "webserver_user"
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
   webServerPwd:
     secret:
-      secretName: "pdb1-secret"
-      key: "webserver_pwd"
-  action: "Clone"
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
+  pdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"

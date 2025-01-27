@@ -87,6 +87,36 @@ spec:
                 type: object
               cdbName:
                 type: string
+              cdbOrdsPrvKey:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
+              cdbOrdsPubKey:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
               cdbTlsCrt:
                 properties:
                   secret:

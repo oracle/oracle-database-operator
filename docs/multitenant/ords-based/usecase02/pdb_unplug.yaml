@@ -1,21 +1,25 @@
-#
-# Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
-# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
-#
 apiVersion: database.oracle.com/v4
 kind: PDB
 metadata:
   name: pdb1
-  namespace: oracle-database-operator-system
+  namespace: pdbnamespace
   labels:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
-  cdbNamespace: "oracle-database-operator-system"
+  cdbNamespace: "cdbnamespace"
   cdbName: "DB12"
   pdbName: "pdbdev"
   xmlFileName: "/tmp/pdb.xml"
   action: "Unplug"
+  adminName:
+    secret:
+      secretName: "pdbusr"
+      key: "e_pdbusr.txt"
+  adminPwd:
+    secret:
+      secretName: "pdbpwd"
+      key: "e_pdbpwd.txt"
   pdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -30,10 +34,13 @@ spec:
       key: "ca.crt"
   webServerUser:
     secret:
-      secretName: "pdb1-secret"
-      key: "webserver_user"
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
   webServerPwd:
     secret:
-      secretName: "pdb1-secret"
-      key: "webserver_pwd"
-
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
+  pdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"

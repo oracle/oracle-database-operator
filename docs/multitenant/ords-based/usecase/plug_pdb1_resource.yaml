@@ -21,12 +21,12 @@ spec:
   action: "Plug"
   adminName:
     secret:
-      secretName: "pdb-secret"
-      key: "sysadmin_user"
+      secretName: "pdbusr"
+      key: "e_pdbusr.txt"
   adminPwd:
     secret:
-      secretName: "pdb-secret"
-      key: "sysadmin_pwd"
+      secretName: "pdbpwd"
+      key: "e_pdbpwd.txt"
   pdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -41,9 +41,13 @@ spec:
       key: "ca.crt"
   webServerUser:
     secret:
-      secretName: "pdb-secret"
-      key: "webserver_user"
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
   webServerPwd:
     secret:
-      secretName: "pdb-secret"
-      key: "webserver_pwd"
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
+  pdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"

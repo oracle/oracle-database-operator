@@ -50,7 +50,9 @@ The following table reports the parameters required to configure and use oracle 
 | pdbTlsKey     | <keyfile\>                  | [standalone.https.cert.key][key]                |
 | pdbTlsCrt     | <certfile\>                 | [standalone.https.cert][cr]                     |
 | pdbTlsCat     | <certauth\>                 | certificate authority                           |
-|  assertivePdbDeletion | boolean             | [turn on imperative approach on crd deleteion][imperative]     |
+| cdbOrdsPrvKey | <keyfile\>                  | private key (cdb crd)                           |
+| pdbOrdsPrvKey | <keyfile\>                  | private key (pdb crd)                           |
+| assertivePdbDeletion | boolean             | [turn on imperative approach on crd deleteion][imperative]     |
 
 > A [makfile](./makefile) is available to sped up the command execution for the multitenant setup and test. See the comments in the header of file  
 
@@ -162,62 +164,6 @@ GRANT CREATE SESSION TO <CDB_ADMIN_USER> CONTAINER = ALL;
 ```
 ----
 
-#### Create CDB secret 
-
-+ Create secret for CDB connection 
-
-```bash
-kubectl apply -f cdb_secret.yaml -n oracle-database-operator-system
-
-```
-Exmaple: **cdb_secret.yaml**
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: cdb1-secret
-  namespace: oracle-database-operator-system
-type: Opaque
-data:
-  ords_pwd: "encoded value"
-  sysadmin_pwd: "encoded value"
-  cdbadmin_user: "encoded value"
-  cdbadmin_pwd: "encoded value"
-  webserver_user: "encoded value"
-  webserver_pwd: "encoded value"
-
-```
-Use **base64** command to encode/decode username and password in the secret file as shown in the following example 
-
-- encode
-```bash
-echo  "ThisIsMyPassword" |base64 -i
-VGhpc0lzTXlQYXNzd29yZAo=
-```
-- decode 
-```bash
- echo "VGhpc0lzTXlQYXNzd29yZAo=" | base64 --decode
-ThisIsMyPassword
-
-```
-
-
->Note that we do not have to create webuser on the database. 
-
-+ Check secret:
-
-```bash
-kubectl get secret -n oracle-database-operator-system
-NAME                        TYPE                             DATA   AGE
-cdb1-secret                 Opaque                           6      7s <---
-container-registry-secret   kubernetes.io/dockerconfigjson   1      2m17s
-webhook-server-cert         kubernetes.io/tls                3      4m55s
-```
-
->**TIPS:** Use the following commands to analyze contents of an existing secret  ```bash kubectl   get secret <secret name> -o yaml -n <namespace_name>```
-----
-
 #### Create Certificates
 
 + Create certificates: At this stage we need to create certificates on our local machine and upload into kubernetes cluster by creating new secrets.
@@ -257,7 +203,7 @@ webhook-server-cert         kubernetes.io/tls                3      4m55s
 
 ```bash
 
-genrsa -out <certauth> 2048
+openssl genrsa -out <certauth> 2048
 openssl req -new -x509 -days 365 -key <certauth> -subj "/C=CN/ST=GD/L=SZ/O=oracle, Inc./CN=oracle Root CA" -out <certfile>
 openssl req -newkey rsa:2048 -nodes -keyout <keyfile> -subj "/C=CN/ST=GD/L=SZ/O=oracle, Inc./CN=<cdb-dev>-ords" -out server.csr
 /usr/bin/echo "subjectAltName=DNS:<cdb-dev>-ords,DNS:www.example.com" > extfile.txt
@@ -270,6 +216,9 @@ kubectl create secret generic db-ca --from-file=<certfile> -n oracle-database-op
 
 [Example of execution:](./logfiles/openssl_execution.log)
 
+#### CDB and PDB credential 
+
+Refer to the [landing page](../README.md) to implement openssl encrpted secrets. 
 
 ----
 
@@ -283,9 +232,9 @@ kubectl create secret generic db-ca --from-file=<certfile> -n oracle-database-op
 + Create ords container 
 
 ```bash
-/usr/bin/kubectl apply -f cdb_create.yaml  -n oracle-database-operator-system
+/usr/bin/kubectl apply -f create_ords_pod.yaml  -n oracle-database-operator-system
 ```
-Example: **cdb_create.yaml**
+Example: **create_ords_pod.yaml**
 
 ```yaml
 apiVersion: database.oracle.com/v1alpha1
@@ -299,30 +248,30 @@ spec:
   ordsImagePullPolicy: "Always"
   dbTnsurl : "...Container tns alias....."
   replicas: 1
-  sysAdminPwd: 
-    secret: 
-      secretName: "cdb1-secret"
-      key: "sysadmin_pwd"
+  sysAdminPwd:
+    secret:
+      secretName: "syspwd"
+      key: "e_syspwd.txt"
   ordsPwd:
-    secret: 
-      secretName: "cdb1-secret"
-      key: "ords_pwd"  
-  cdbAdminUser: 
-    secret: 
-      secretName: "cdb1-secret"
-      key: "cdbadmin_user"
-  cdbAdminPwd: 
-    secret: 
-      secretName: "cdb1-secret"
-      key: "cdbadmin_pwd"
-  webServerUser: 
-    secret: 
-      secretName: "cdb1-secret"
-      key: "webserver_user"
-  webServerPwd: 
-    secret: 
-      secretName: "cdb1-secret"
-      key: "webserver_pwd"      
+    secret:
+      secretName: "ordpwd"
+      key: "e_ordpwd.txt"
+  cdbAdminUser:
+    secret:
+      secretName: "cdbusr"
+      key: "e_cdbusr.txt"
+  cdbAdminPwd:
+    secret:
+      secretName: "cdbpwd"
+      key: "e_cdbpwd.txt"
+  webServerUser:
+    secret:
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
+  webServerPwd:
+    secret:
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
   cdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -331,6 +280,11 @@ spec:
     secret:
       secretName: "db-tls"
       key: "tls.crt"
+  cdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"
+
 
 ```
 > **Note** if you are working in dataguard environment with multiple sites (AC/DR) specifying the host name (dbServer/dbPort/serviceName) may not be the suitable solution for this kind of configuration, use **dbTnsurl** instead. Specify the whole tns string which includes the hosts/scan list. 
@@ -351,7 +305,7 @@ spec:
    dbtnsurl:((DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(TRANS......
 ```
      
-[Example of cdb.yaml](./cdb_create.yaml)
+[create_ords_pod.yaml example](./create_ords_pod.yaml)
 
 
 ----
@@ -418,50 +372,16 @@ NAME      CDB NAME   DB SERVER              DB PORT   REPLICAS   STATUS   MESSAG
 
 -----
 
-#### Create PDB secret
-
-
-```bash
-/usr/bin/kubectl apply -f pdb.yaml  -n oracle-database-operator-system
-```
-Exmaple: **pdb_secret.yaml**
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pdb1-secret
-  namespace: oracle-database-operator-system
-type: Opaque
-data:
-  sysadmin_user: "encoded value"
-  sysadmin_pwd: "encoded value"
-```
-
-+ Check secret creation 
-
-```bash
-kubectl get secret -n oracle-database-operator-system
-NAME                        TYPE                             DATA   AGE
-cdb1-secret                 Opaque                           6      79m
-container-registry-secret   kubernetes.io/dockerconfigjson   1      79m
-db-ca                       Opaque                           1      78m
-db-tls                      kubernetes.io/tls                2      78m
-pdb1-secret                 Opaque                           2      79m <---
-webhook-server-cert         kubernetes.io/tls                3      79m
-```
----
-
 #### Apply pdb yaml file to create pdb 
 
 ```bash
-/usr/bin/kubectl apply -f pdb.yaml  -n oracle-database-operator-system
+/usr/bin/kubectl apply -f  create_pdb1_resource.yaml -n oracle-database-operator-system
 ```
 
-Example: **pdb_create.yaml**
+Example: **create_pdb1_resource.yaml**
 
 ```yaml
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: PDB
 metadata:
   name: pdb1
@@ -470,17 +390,24 @@ metadata:
     cdb: cdb-dev
 spec:
   cdbResName: "cdb-dev"
-  cdbNamespace: "oracle-database-operator-system"
+  cdbNamespace: "cdbnamespace"
   cdbName: "DB12"
   pdbName: "pdbdev"
+  assertivePdbDeletion: true
+  fileNameConversions: "NONE"
+  unlimitedStorage: false
+  tdeImport: false
+  totalSize: "2G"
+  tempSize: "800M"
+  action: "Create"
   adminName:
     secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_user" 
+      secretName: "pdbusr"
+      key: "e_pdbusr.txt"
   adminPwd:
     secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_pwd"
+      secretName: "pdbpwd"
+      key: "e_pdbpwd.txt"
   pdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -495,18 +422,16 @@ spec:
       key: "ca.crt"
   webServerUser:
     secret:
-      secretName: "pdb1-secret"
-      key: "webserver_user"
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
   webServerPwd:
     secret:
-      secretName: "pdb1-secret"
-      key: "webserver_pwd"
-  fileNameConversions: "NONE"
-  tdeImport: false
-  totalSize: "1G"
-  tempSize: "100M"
-  action: "Create"
-  assertivePdbDeletion: true
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
+  pdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"
 ```
 
 + Monitor the pdb creation status until message is success

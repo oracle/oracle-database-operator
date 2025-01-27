@@ -56,6 +56,7 @@ import (
 	"time"
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
+	lrcommons "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -637,15 +638,52 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		return err
 	}
 
-	pdbAdminName, err := r.getSecret(ctx, req, pdb, pdb.Spec.AdminName.Secret.SecretName, pdb.Spec.AdminName.Secret.Key)
-	if err != nil {
-		return err
-	}
-	pdbAdminPwd, err := r.getSecret(ctx, req, pdb, pdb.Spec.AdminPwd.Secret.SecretName, pdb.Spec.AdminPwd.Secret.Key)
-	if err != nil {
-		return err
-	}
+	/*** BEGIN GET ENCPASS ***/
+	secret := &corev1.Secret{}
 
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.AdminName.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.AdminName.Secret.SecretName)
+			return err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return err
+	}
+	pdbAdminNameEnc := string(secret.Data[pdb.Spec.AdminName.Secret.Key])
+	pdbAdminNameEnc = strings.TrimSpace(pdbAdminNameEnc)
+
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBPriKey.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBPriKey.Secret.SecretName)
+			return err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return err
+	}
+	privKey := string(secret.Data[pdb.Spec.PDBPriKey.Secret.Key])
+	pdbAdminName, err := lrcommons.CommonDecryptWithPrivKey(privKey, pdbAdminNameEnc, req)
+
+	// Get Web Server User Password
+	secret = &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.AdminPwd.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.AdminPwd.Secret.SecretName)
+			return err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return err
+	}
+	pdbAdminPwdEnc := string(secret.Data[pdb.Spec.AdminPwd.Secret.Key])
+	pdbAdminPwdEnc = strings.TrimSpace(pdbAdminPwdEnc)
+	pdbAdminPwd, err := lrcommons.CommonDecryptWithPrivKey(privKey, pdbAdminPwdEnc, req)
+	pdbAdminName = strings.TrimSuffix(pdbAdminName, "\n")
+	pdbAdminPwd = strings.TrimSuffix(pdbAdminPwd, "\n")
+	/*** END GET ENCPASS ***/
+
+	log.Info("====================> " + pdbAdminName + ":" + pdbAdminPwd)
 	/* Prevent creating an existing pdb */
 	err = r.getPDBState(ctx, req, pdb)
 	if err != nil {
@@ -657,9 +695,6 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		log.Info("Database already exists ", "PDB Name", pdb.Spec.PDBName)
 		return nil
 	}
-
-	pdbAdminName = strings.TrimSuffix(pdbAdminName, "\n")
-	pdbAdminPwd = strings.TrimSuffix(pdbAdminPwd, "\n")
 
 	values := map[string]string{
 		"method":              "CREATE",
@@ -1475,10 +1510,22 @@ func NewCallApi(intr interface{}, ctx context.Context, req ctrl.Request, pdb *db
 		log.Error(err, "Unable to get the secret.")
 		return "", err
 	}
+	webUserEnc := string(secret.Data[pdb.Spec.WebServerUsr.Secret.Key])
+	webUserEnc = strings.TrimSpace(webUserEnc)
 
-	webUser := string(secret.Data[pdb.Spec.WebServerUsr.Secret.Key])
-	webUser = strings.TrimSpace(webUser)
+	err = c.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBPriKey.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBPriKey.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+	privKey := string(secret.Data[pdb.Spec.PDBPriKey.Secret.Key])
+	webUser, err := lrcommons.CommonDecryptWithPrivKey(privKey, webUserEnc, req)
 
+	// Get Web Server User Password
 	secret = &corev1.Secret{}
 	err = c.Get(ctx, types.NamespacedName{Name: pdb.Spec.WebServerPwd.Secret.SecretName, Namespace: pdb.Namespace}, secret)
 	if err != nil {
@@ -1489,8 +1536,10 @@ func NewCallApi(intr interface{}, ctx context.Context, req ctrl.Request, pdb *db
 		log.Error(err, "Unable to get the secret.")
 		return "", err
 	}
-	webUserPwd := string(secret.Data[pdb.Spec.WebServerPwd.Secret.Key])
-	webUserPwd = strings.TrimSpace(webUserPwd)
+	webUserPwdEnc := string(secret.Data[pdb.Spec.WebServerPwd.Secret.Key])
+	webUserPwdEnc = strings.TrimSpace(webUserPwdEnc)
+	webUserPwd, err := lrcommons.CommonDecryptWithPrivKey(privKey, webUserPwdEnc, req)
+	///////////////////////////////////////////////////////////////////////////////////
 
 	var httpreq *http.Request
 	if action == "GET" {

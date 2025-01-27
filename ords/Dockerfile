@@ -40,7 +40,9 @@ FROM  container-registry.oracle.com/java/jdk:latest
 # -------------------------------------------------------------
 ENV ORDS_HOME=/opt/oracle/ords/ \
     RUN_FILE="runOrdsSSL.sh" \
-    ORDSVERSION=23.4.0-8
+    ORDSVERSION=23.4.0-8 \
+    JAVA=17
+#see https://www.oracle.com/tools/ords/ords-relnotes-23.4.0.html
 
 # Copy binaries
 # -------------
@@ -48,7 +50,7 @@ COPY   $RUN_FILE $ORDS_HOME
 
 RUN yum -y install yum-utils bind-utils tree hostname openssl net-tools zip unzip tar wget vim-minimal which sudo expect procps curl lsof && \
     yum-config-manager --add-repo=http://yum.oracle.com/repo/OracleLinux/OL8/oracle/software/x86_64 && \
-    yum -y install java-11-openjdk-devel && \
+    yum -y install java-$JAVA-openjdk-devel && \
     yum -y install iproute && \
     yum clean all
 
@@ -64,17 +66,22 @@ RUN mkdir -p  $ORDS_HOME/doc_root                                  && \
     chmod ug+x $ORDS_HOME/*.sh                                     && \
     groupadd -g 54322 dba                                          && \
     usermod -u 54321 -d /home/oracle -g dba -m -s /bin/bash oracle && \
-    chown -R oracle:dba $ORDS_HOME                                 && \
-    echo "oracle  ALL=(ALL)       NOPASSWD: ALL" >> /etc/sudoers
+    chown -R oracle:dba $ORDS_HOME                                 
+#    echo "oracle  ALL=(ALL)       NOPASSWD: ALL" >> /etc/sudoers
+
+RUN echo "unset R1" >> /home/oracle/.bashrc && \
+    chown root:root /home/oracle/.bashrc && chmod +r /home/oracle/.bashrc
 
 # Finalize setup
 # -------------------
 USER oracle
 WORKDIR /home/oracle
 
+
 VOLUME ["$ORDS_HOME/config/ords"]
 EXPOSE 8888
 
 # Define default command to start Ords Services
 CMD $ORDS_HOME/$RUN_FILE
+
 

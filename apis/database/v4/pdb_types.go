@@ -117,7 +117,9 @@ type PDBSpec struct {
 	// turn on the assertive approach to delete pdb resource
 	// kubectl delete pdb ..... automatically triggers the pluggable database
 	// deletion
-	AssertivePdbDeletion bool `json:"assertivePdbDeletion,omitempty"`
+	AssertivePdbDeletion bool       `json:"assertivePdbDeletion,omitempty"`
+	PDBPubKey            PDBPUBKEY  `json:"pdbOrdsPubKey,omitempty"`
+	PDBPriKey            PDBPRIVKEY `json:"pdbOrdsPrvKey,omitempty"`
 }
 
 // PDBAdminName defines the secret containing Sys Admin User mapped to key 'adminName' for PDB
@@ -220,6 +222,14 @@ type PDBList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []PDB `json:"items"`
+}
+
+type PDBPUBKEY struct {
+	Secret PDBSecret `json:"secret"`
+}
+
+type PDBPRIVKEY struct {
+	Secret PDBSecret `json:"secret"`
 }
 
 func init() {
