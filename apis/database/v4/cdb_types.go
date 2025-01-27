@@ -87,6 +87,8 @@ type CDBSpec struct {
 	NodeSelector     map[string]string `json:"nodeSelector,omitempty"`
 	DeletePDBCascade bool              `json:"deletePdbCascade,omitempty"`
 	DBTnsurl         string            `json:"dbTnsurl,omitempty"`
+	CDBPubKey        CDBPUBKEY         `json:"cdbOrdsPubKey,omitempty"`
+	CDBPriKey        CDBPRIVKEY        `json:"cdbOrdsPrvKey,omitempty"`
 }
 
 // CDBSecret defines the secretName
@@ -130,6 +132,14 @@ type CDBTLSKEY struct {
 }
 
 type CDBTLSCRT struct {
+	Secret CDBSecret `json:"secret"`
+}
+
+type CDBPUBKEY struct {
+	Secret CDBSecret `json:"secret"`
+}
+
+type CDBPRIVKEY struct {
 	Secret CDBSecret `json:"secret"`
 }
 

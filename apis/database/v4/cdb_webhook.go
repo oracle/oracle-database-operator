@@ -104,6 +104,11 @@ func (r *CDB) ValidateCreate() (admission.Warnings, error) {
 			field.Required(field.NewPath("spec").Child("cdbTlsCrt"), "Please specify CDB Tls Certificate(secret)"))
 	}
 
+	if reflect.ValueOf(r.Spec.CDBPriKey).IsZero() {
+		allErrs = append(allErrs,
+			field.Required(field.NewPath("spec").Child("CDBPriKey"), "Please specify CDB CDBPriKey(secret)"))
+	}
+
 	/*if r.Spec.SCANName == "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("scanName"), "Please specify SCAN Name for CDB"))

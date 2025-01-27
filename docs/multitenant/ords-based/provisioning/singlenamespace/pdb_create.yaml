@@ -12,12 +12,12 @@ spec:
   pdbName: "pdbdev"
   adminName:
     secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_user" 
+      secretName: "[...]"
+      key: "[...]" 
   adminPwd:
     secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_pwd"
+      secretName: "[...]"
+      key: "[...]"
   pdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -32,12 +32,16 @@ spec:
       key: "ca.crt"
   webServerUser:
     secret:
-      secretName: "pdb1-secret"
-      key: "webserver_user"
+      secretName: "[...]"
+      key: "[...]"
   webServerPwd:
     secret:
-      secretName: "pdb1-secret"
-      key: "webserver_pwd"
+      secretName: "[...]"
+      key: "[...]"
+  pdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"
   fileNameConversions: "NONE"
   tdeImport: false
   totalSize: "1G"

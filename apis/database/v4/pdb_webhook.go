@@ -163,6 +163,10 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 		*allErrs = append(*allErrs,
 			field.Required(field.NewPath("spec").Child("pdbTlsCat"), "Please specify PDB Tls Certificate Authority(secret)"))
 	}
+	if reflect.ValueOf(r.Spec.PDBPriKey).IsZero() {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("pdbOrdsPrvKey"), "Please specify PDB Tls Certificate Authority(secret)"))
+	}
 
 	switch action {
 	case "DELETE":

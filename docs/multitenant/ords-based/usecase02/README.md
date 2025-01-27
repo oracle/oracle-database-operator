@@ -13,37 +13,7 @@
 
 > &#9758; The examples of this folder are based on single namespace   **oracle-database-operator-system**
 
-This page explains how to plug and unplug database a pdb; it assumes that you have already configured a pluggable database (see [usecase01](../usecase01/README.md)) 
-The following table reports the parameters required to configure and use oracle multi tenant controller for pluggable database lifecycle management.
-
-| yaml file parameters            	| value  	| description /ords parameter                     |
-|--------------	|---------------------------	|-------------------------------------------------|
-| dbserver     	| <db_host\> or <scan_name>   | [--db-hostname][1]                              |
-| dbTnsurl      | <tns connect descriptor\>   | [--db-custom-url/db.customURL][dbtnsurl]        |
-| port         	| <oracle_port\>        	    | [--db-port][2]                                	|
-| cdbName       | <dbname\>                   | Container Name                                  |
-| name          | <cdb-dev\>                  | Ords podname prefix in cdb.yaml                 |
-| name          | <pdb\>                      | pdb resource in pdb.yaml                        | 
-| ordsImage     | <public_container_registry\>/ords-dboper:latest|My public container registry  |
-| pdbName       | <pdbname\>                  | Pluggable database name                         |
-| servicename  	| <service_name\>           	| [--db-servicename][3]                           |
-| sysadmin_user | <SYS_SYSDBA\>               | [--admin-user][adminuser]                       |
-| sysadmin_pwd  | <sys_password\>             | [--password-stdin][pwdstdin]                    |
-| cdbadmin_user | <CDB_ADMIN_USER\>           | [db.cdb.adminUser][1]                           |
-| cdbadmin_pwd  | <CDB_ADMIN_PASS\>           | [db.cdb.adminUser.password][cdbadminpwd]        |
-| webserver_user| <web_user\>                 | [https user][http] <span style="color:red"> NOT A DB USER </span> |
-| webserver_pwd | <web_user_passwoed\>        | [http user password][http]                      |
-| ords_pwd      | <ords_password\>            | [ORDS_PUBLIC_USER password][public_user]        |
-| pdbTlsKey     | <keyfile\>                  | [standalone.https.cert.key][key]                |
-| pdbTlsCrt     | <certfile\>                 | [standalone.https.cert][cr]                     |
-| pdbTlsCat     | <certauth\>                 | certificate authority                           |
-| xmlFileName   | <xml file path\>            | path for the unplug and plug operation          |
-| srcPdbName    | <source db\>                | name of the database to be cloned               |
-| fileNameConversions | <file name conversion\> | used for database cloning                     |
-| tdeKeystorePath     | <TDE keystore path is required if the tdeExport flag is set to true\>   |  [tdeKeystorePath][tdeKeystorePath] |
-| tdeExport           | <BOOLEAN\>              | [tdeExport] |
-| tdeSecret           | <TDE secret is required if the tdeExport flag is set to true\>  | [tdeSecret][tdeSecret] |
-| tdePassword         | <TDE password for unplug operations only\>  | [tdeSecret][tdeSecret] | 
+This page explains how to plug and unplug database a pdb; it assumes that you have already configured a pluggable database (see [usecase01](../usecase01/README.md)).  Check yaml parameters in the CRD tables in the main [README](../README.md) file.
 
 ```text
 
@@ -127,27 +97,7 @@ spec:
   pdbName: "pdbdev"
   xmlFileName: "/tmp/pdbunplug.xml"
   action: "Unplug"
-  pdbTlsKey:
-    secret:
-      secretName: "db-tls"
-      key: "tls.key"
-  pdbTlsCrt:
-    secret:
-      secretName: "db-tls"
-      key: "tls.crt"
-  pdbTlsCat:
-    secret:
-      secretName: "db-ca"
-      key: "ca.crt"
-  webServerUser:
-    secret:
-      secretName: "pdb1-secret"
-      key: "webserver_user"
-  webServerPwd:
-    secret:
-      secretName: "pdb1-secret"
-      key: "webserver_pwd"
-
+  [ secret sections ]
 ```
 
 Close the pluggable database by applying the following yaml file **pdb_close.yaml** 
@@ -169,29 +119,10 @@ spec:
   cdbNamespace: "oracle-database-operator-system"
   cdbName: "DB12"
   pdbName: "pdbdev"
-  adminName:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_user"
-  adminPwd:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_pwd"
-  pdbTlsKey:
-    secret:
-      secretName: "db-tls"
-      key: "tls.key"
-  pdbTlsCrt:
-    secret:
-      secretName: "db-tls"
-      key: "tls.crt"
-  pdbTlsCat:
-    secret:
-      secretName: "db-ca"
-      key: "ca.crt"
   pdbState: "CLOSE"
   modifyOption: "IMMEDIATE"
   action: "Modify"
+  [secret section]
 ```
 
 ```bash
@@ -294,19 +225,7 @@ spec:
   totalSize: "1G"
   tempSize: "100M"
   action: "Plug"
-  pdbTlsKey:
-    secret:
-      secretName: "db-tls"
-      key: "tls.key"
-  pdbTlsCrt:
-    secret:
-      secretName: "db-tls"
-      key: "tls.crt"
-  pdbTlsCat:
-    secret:
-      secretName: "db-ca"
-      key: "ca.crt"
-
+  [secrets section]
 ```
 Apply **pdb_plug.yaml** 
 
@@ -390,27 +309,8 @@ spec:
   fileNameConversions: "NONE"
   totalSize: "UNLIMITED"
   tempSize: "UNLIMITED"
-  adminName:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_user"
-  adminPwd:
-    secret:
-      secretName: "pdb1-secret"
-      key: "sysadmin_pwd"
-  pdbTlsKey:
-    secret:
-      secretName: "db-tls"
-      key: "tls.key"
-  pdbTlsCrt:
-    secret:
-      secretName: "db-tls"
-      key: "tls.crt"
-  pdbTlsCat:
-    secret:
-      secretName: "db-ca"
-      key: "ca.crt"
   action: "Clone"
+  [secret section]
 
 ```
 ```bash
@@ -487,7 +387,7 @@ PDBDEV(3):Buffer Cache flush finished: 3
 
 </span>
 
-You can use unplug and plug database with TDE; in order to do that you have to specify a key store path and create new kubernets secret for TDE using the following yaml file. **tde_secrete.yaml**. The procedure to unplug and plug database does not change apply the same file. 
+You can use unplug and plug database with TDE; in order to do that you have to specify a key store path and create new kubernets secret for TDE using the following yaml file. **tde_secrete.yaml**. 
 
 ```yaml
 #tde_secret
@@ -498,8 +398,8 @@ metadata:
   namespace: oracle-database-operator-system
 type: Opaque
 data:
-  tdepassword: "d2VsY29tZTEK"
-  tdesecret:   "bW1hbHZlenoK"
+  tdepassword: "...."
+  tdesecret:   "...."
 ```
 
 ```bash 
@@ -525,7 +425,7 @@ spec:
   pdbName: "pdbdev"
   adminName:
     secret:
-      secretName: pdb1-secret
+      secretName: 
       key: "sysadmin_user"
   adminPwd:
     secret:
@@ -621,29 +521,3 @@ spec:
 
 
 
-[1]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-E9625FAB-9BC8-468B-9FF9-443C88D76FA1:~:text=Table%202%2D2%20Command%20Options%20for%20Command%2DLine%20Interface%20Installation
-
-[2]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-E9625FAB-9BC8-468B-9FF9-443C88D76FA1:~:text=Table%202%2D2%20Command%20Options%20for%20Command%2DLine%20Interface%20Installation
-
-[3]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-DAA027FA-A4A6-43E1-B8DD-C92B330C2341:~:text=%2D%2Ddb%2Dservicename%20%3Cstring%3E
-
-[adminuser]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-A9AED253-4EEC-4E13-A0C4-B7CE82EC1C22:~:text=Table%202%2D6%20Command%20Options%20for%20Uninstall%20CLI
-
-[public_user]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/using-multitenant-architecture-oracle-rest-data-services.html#GUID-E64A141A-A71F-4979-8D33-C5F8496D3C19:~:text=Preinstallation%20Tasks%20for%20Oracle%20REST%20Data%20Services%20CDB%20Installation
-
-[key]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/about-REST-configuration-files.html#GUID-006F916B-8594-4A78-B500-BB85F35C12A0:~:text=standalone.https.cert.key
-
-[cr]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/about-REST-configuration-files.html#GUID-006F916B-8594-4A78-B500-BB85F35C12A0
-
-[cdbadminpwd]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/about-REST-configuration-files.html#GUID-006F916B-8594-4A78-B500-BB85F35C12A0:~:text=Table%20C%2D1%20Oracle%20REST%20Data%20Services%20Configuration%20Settings
-
-
-[pwdstdin]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-88479C84-CAC1-4133-A33E-7995A645EC05:~:text=default%20database%20pool.-,2.1.4.1%20Understanding%20Command%20Options%20for%20Command%2DLine%20Interface%20Installation,-Table%202%2D2
-
-[http]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-BEECC057-A8F5-4EAB-B88E-9828C2809CD8:~:text=Example%3A%20delete%20%5B%2D%2Dglobal%5D-,user%20add,-Add%20a%20user
-
-[dbtnsurl]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-A9AED253-4EEC-4E13-A0C4-B7CE82EC1C22
-                                                   
-[tdeKeystorePath]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/21.4/orrst/op-database-pdbs-pdb_name-post.html
-
-[tdeSecret]:https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/ADMINISTER-KEY-MANAGEMENT.html#GUID-E5B2746F-19DC-4E94-83EC-A6A5C84A3EA9

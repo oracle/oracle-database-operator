@@ -5,35 +5,35 @@ metadata:
   namespace: cdbnamespace
 spec:
   cdbName: "DB12"
-  ordsImage: ".............your registry............./ords-dboper:latest"
+  ordsImage: _your_container_registry/ords-dboper:latest
   ordsImagePullPolicy: "Always"
-  dbTnsurl : "(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
+  dbTnsurl : "T H I S   I S  J U S T   A N  E X A M P L E (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
   replicas: 1
   deletePdbCascade: true
   sysAdminPwd:
     secret:
-      secretName: "cdb-secret"
-      key: "sysadmin_pwd"
+      secretName: "syspwd"
+      key: "e_syspwd.txt"
   ordsPwd:
     secret:
-      secretName: "cdb-secret"
-      key: "ords_pwd"
+      secretName: "ordpwd"
+      key: "e_ordpwd.txt"
   cdbAdminUser:
     secret:
-      secretName: "cdb-secret"
-      key: "cdbadmin_user"
+      secretName: "cdbusr"
+      key: "e_cdbusr.txt"
   cdbAdminPwd:
     secret:
-      secretName: "cdb-secret"
-      key: "cdbadmin_pwd"
+      secretName: "cdbpwd"
+      key: "e_cdbpwd.txt"
   webServerUser:
     secret:
-      secretName: "cdb-secret"
-      key: "webserver_user"
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
   webServerPwd:
     secret:
-      secretName: "cdb-secret"
-      key: "webserver_pwd"
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
   cdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -42,3 +42,7 @@ spec:
     secret:
       secretName: "db-tls"
       key: "tls.crt"
+  cdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"

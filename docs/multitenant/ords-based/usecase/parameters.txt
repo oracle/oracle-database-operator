@@ -3,45 +3,43 @@
 ## REST SERVER IMAGE ###
 ########################
 
-ORDSIMG:[Enter the image build using oracle-database-operator/ords/Dockerfile]
+ORDSIMG:_your_container_registry/ords-dboper:latest
 
 ##############################
 ## TNS URL FOR CDB CREATION ##
 ##############################
-TNSALIAS:"[cdb tns descriptor]"
-
-#e.g. TNSALIAS:"(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
+TNSALIAS:"T H I S   I S  J U S T   A N  E X A M P L E (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
 
 ###########################################
 ##           ORDS PUBLIC USER            ##
 ###########################################
-ORDPWD:[enter ords public user passwrod]
+ORDPWD:change_me_please
 
 ###########################################
 ##           SYSPASSWORD                 ##
 ###########################################
-SYSPWD:[enter database sys password]
+SYSPWD:change_me_please
 
 #######################
 ## HTTPS CREDENTIAL ###
 #######################
 
-WBUSER:[webuser credential:username]
-WBPASS:[webuser credential:password]
+WBUSER:change_me_please
+WBPASS:change_me_please
 
 #####################
 ## PDB ADMIN USER ###
 ##################### 
 
-PDBUSR:[Pdb admin credential: username]
-PDBPWD:[Pdb admin credential: password]
+PDBUSR:change_me_please
+PDBPWD:change_me_please
 
 #####################
 ## CDB ADMIN USER ###
 ##################### 
 
 CDBUSR:C##DBAPI_CDB_ADMIN
-CDBPWD:[cdb admin password]
+CDBPWD:change_me_please
 
 ###################
 ### NAMESPACES ####

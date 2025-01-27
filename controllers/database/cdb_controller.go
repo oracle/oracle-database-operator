@@ -508,6 +508,17 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 						Name:  "WEBSERVER_PASSWORD_KEY",
 						Value: cdb.Spec.WebServerPwd.Secret.Key,
 					},
+					{
+						Name: "R1",
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.CDBPriKey.Secret.SecretName,
+								},
+								Key: cdb.Spec.CDBPriKey.Secret.Key,
+							},
+						},
+					},
 				}
 			}(),
 		}},
@@ -751,55 +762,9 @@ func (r *CDBReconciler) createSvcSpec(cdb *dbapi.CDB) *corev1.Service {
 /*
 ************************************************
   - Check CDB deletion
-    /***********************************************
+
+/***********************************************
 */
-
-/*
-func (r *CDBReconciler) manageCDBDeletion(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
-	log := r.Log.WithValues("manageCDBDeletion", req.NamespacedName)
-
-	isCDBMarkedToBeDeleted := cdb.GetDeletionTimestamp() != nil
-	if isCDBMarkedToBeDeleted {
-		log.Info("Marked to be deleted")
-		cdb.Status.Phase = cdbPhaseDelete
-		cdb.Status.Status = true
-		r.Status().Update(ctx, cdb)
-		if controllerutil.ContainsFinalizer(cdb, CDBFinalizer) {
-			err := r.deleteCDBInstance(ctx, req, cdb)
-			if err != nil {
-				log.Info("Could not delete CDB Resource", "CDB Name", cdb.Spec.CDBName, "err", err.Error())
-				return err
-			}
-
-			log.Info("Removing finalizer")
-			controllerutil.RemoveFinalizer(cdb, CDBFinalizer)
-			err = r.Update(ctx, cdb)
-			if err != nil {
-				log.Info("Could not remove finalizer", "err", err.Error())
-				return err
-			}
-
-			log.Info("Successfully removed CDB Resource")
-			return nil
-		}
-	}
-
-	if !controllerutil.ContainsFinalizer(cdb, CDBFinalizer) {
-		log.Info("Adding finalizer")
-
-		cdb.Status.Phase = cdbPhaseInit
-		cdb.Status.Status = false
-		controllerutil.AddFinalizer(cdb, CDBFinalizer)
-		err := r.Update(ctx, cdb)
-		if err != nil {
-			log.Info("Could not add finalizer", "err", err.Error())
-			return err
-		}
-	}
-	return nil
-}
-*/
-
 func (r *CDBReconciler) manageCDBDeletion(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 	log := r.Log.WithValues("manageCDBDeletion", req.NamespacedName)
 
@@ -890,7 +855,8 @@ func (r *CDBReconciler) deleteCDBInstance(ctx context.Context, req ctrl.Request,
 /*
 ************************************************
   - Get Secret Key for a Secret Name
-    /***********************************************
+
+/***********************************************
 */
 func (r *CDBReconciler) verifySecrets(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
@@ -914,6 +880,9 @@ func (r *CDBReconciler) verifySecrets(ctx context.Context, req ctrl.Request, cdb
 	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.WebServerPwd.Secret.SecretName); err != nil {
 		return err
 	}
+	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.CDBPriKey.Secret.SecretName); err != nil {
+		return err
+	}
 
 	cdb.Status.Msg = ""
 	log.Info("Verified secrets successfully")
@@ -923,7 +892,8 @@ func (r *CDBReconciler) verifySecrets(ctx context.Context, req ctrl.Request, cdb
 /*
 ************************************************
   - Get Secret Key for a Secret Name
-    /***********************************************
+
+/***********************************************
 */
 func (r *CDBReconciler) checkSecret(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB, secretName string) error {
 
@@ -947,7 +917,8 @@ func (r *CDBReconciler) checkSecret(ctx context.Context, req ctrl.Request, cdb *
 /*
 ************************************************
   - Delete Secrets
-    /***********************************************
+
+/***********************************************
 */
 func (r *CDBReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) {
 
@@ -1009,7 +980,7 @@ func (r *CDBReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, cdb
 /*
 *************************************************************
   - SetupWithManager sets up the controller with the Manager.
-    /************************************************************
+/************************************************************
 */
 
 func (r *CDBReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {

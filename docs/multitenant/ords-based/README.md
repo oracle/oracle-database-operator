@@ -11,12 +11,14 @@ By usigng CDB/PDB controllers you can perform the following actions **CREATE**,*
 
 Examples are located under the following directories:
 
-- [Usecase](./usecase/) This directory contains an init files where you can specify all the details of your environment and a makefile which reads the initfile and generates the all the yaml files. No need to edit yaml files one by one with your system information. 
-- [Singlenamespace provisioning](./provisioning/singlenamespace/) You will find base sample files to manage pdb and cdb within a single namespace. File editing is required. 
+- [Usecase](./usecase/) and [usecase01] directories contain a [configuration file](./usecase/parameters.txt)  where you can specify all the details of your environment. A [makefile](./usecase/makefile) takes this file in input to generate the all the yaml files. There is no need to edit yaml files one by one.
+- [Singlenamespace provisioning](./provisioning/singlenamespace/) You will find base sample files to manage pdb and cdb within a single namespace 
 - [Multinamespace provisioning](./provisioning/multinamespace/) You will find base sample files to manage pdb and cdb in different namespaces.
-- [Usecase01](./usecase01/README.md) [Usecase02](./usecase02/README.md) and [Usecase03](./usecase03/README.md) contain other step by step examples. File editing is required.
+- [Usecase01](./usecase01/README.md) [Usecase02](./usecase02/README.md)  contain other step by step examples; 
 
-**NOTE** that the cdb controller is not intended to manage the container database. The cdb controller just provied a pod with a rest server connected to the container database. 
+Authomatic yaml generation is not available for directory usecase02 and provisioning directories 
+
+**NOTE** that the cdb controller is not intended to manage the container database. The cdb controller is meant to provied a pod with a rest server connected to the container database. 
 
 
 ## Macro steps for setup
@@ -87,8 +89,8 @@ singleinstancedatabases.database.oracle.com        2022-06-22T01:21:40Z
 * [Prepare the container database for PDB Lifecycle Management or PDB-LM](#prepare-cdb-for-pdb-lifecycle-management-pdb-lm)
 * [Oracle REST Data Service or ORDS Image](#oracle-rest-data-service-ords-image)
 * [Kubernetes Secrets](#kubernetes-secrets)
-* [Kubernetes CRD for CDB](#kubernetes-crd-for-cdb)
-* [Kubernetes CRD for PDB](#kubernetes-crd-for-pdb)
+* [Kubernetes CRD for CDB](#cdb-crd)
+* [Kubernetes CRD for PDB](#pdb-crd)
 
 ## Prepare the container database for PDB Lifecycle Management (PDB-LM)
 
@@ -132,36 +134,10 @@ In this setup example [provisioning example setup](./provisioning/example_setup_
 
 ## Kubernetes Secrets
 
-  Multitenant Controllers use Kubernetes Secrets to store the required credential. The https certificates are stored in Kubernetes Secrets as well. 
+  Multitenant Controllers use Kubernetes secrets to store the required credential and https certificates.
 
   **Note** <span style="color:red"> In multi namespace enviroment you have to create specific secrets for each namespaces </span>
 
-### Secrets for CDB CRD
-
-  Create a secret file as shown here: [config/samples/multitenant/cdb_secret.yaml](./provisioning/singlenamespace/cdb_secret.yaml). Modify this file with the `base64` encoded values of the required passwords for CDB, and use this file to create the required secrets.
-
-  ```bash
-  kubectl apply -f cdb_secret.yaml
-  ```
-  
-  **Note:** To obtain the `base64` encoded value for a password, use the following command:
-
-  ```bash
-  echo -n "<password to be encoded using base64>" | base64
-  ```
-
-  **Note:** <span style="color:red">  After successful creation of the CDB Resource, the CDB secrets can be deleted from the Kubernetes system </span> .
-
-### Secrets for PDB CRD
-
-  Create a secret file as shown here: [pdb_secret.yaml](./provisioning/singlenamespace/pdb_secret.yaml). Edit the file using your base64 credential and apply it. 
-
-  ```bash
-  kubectl apply -f pdb_secret.yaml
-  ```
-  
-  **NOTE:** <span style="color:red"> Don't leave plaintext files containing sensitive data on disk. After loading the Secret, remove the plaintext file or move it to secure storage. </span>
-  
 ### Secrets for CERTIFICATES
 
 Create the certificates and key on your local host, and use them to create the Kubernetes secret.
@@ -183,11 +159,111 @@ kubectl create secret generic db-ca --from-file=ca.crt -n oracle-database-operat
 
 **Note:** <span style="color:red">  On successful creation of the certificates secret creation remove files or move to secure storage </span> .
 
-## Kubernetes CRD for CDB
+### Secrets for CDB CRD
+
+  **Note:** <span style="color:red">  base64 encoded secrets are no longer supported ; use openssl secrets as documented in the following section.  After successful creation of the CDB Resource, the CDB and PDB secrets can be deleted from the Kubernetes system. Don't leave plaintext files containing sensitive data on disk. After loading the secret, remove the plaintext file or move it to secure storage. </span>
+
+  ```bash
+
+export PRVKEY=ca.key
+export PUBKEY=public.pem
+WBUSERFILE=wbuser.txt
+WBPASSFILE=wbpass.txt
+CDBUSRFILE=cdbusr.txt
+CDBPWDFILE=cdbpwd.txt
+SYSPWDFILE=syspwd.txt
+ORDPWDFILE=ordpwd.txt
+PDBUSRFILE=pdbusr.txt
+PDBPWDFILE=pdbpwd.txt
+
+# Webuser credential 
+echo [WBUSER] > ${WBUSERFILE}
+echo [WBPASS] > ${WBPASSFILE}
+
+# CDB admin user credentioan 
+echo [CDBPWD] > ${CDBPWDFILE}
+echo [CDBUSR] > ${CDBUSRFILE}
+
+# SYS Password
+echo [SYSPWD] > ${SYSPWDFILE}
+
+# Ords Password
+echo [ORDPWD] > ${ORDPWDFILE}
+
+## PDB admin credential 
+echo [PDBUSR] > ${PDBUSRFILE}
+echo [PDBPWD] > ${PDBPWDFILE}
+
+#Secrets creation for pub and priv keys
+openssl rsa -in ${PRVKEY} -outform PEM  -pubout -out ${PUBKEY}
+kubectl create secret generic pubkey --from-file=publicKey=${PUBKEY} -n ${CDBNAMESPACE}
+kubectl create secret generic prvkey --from-file=privateKey=${PRVKEY}  -n ${CDBNAMESPACE}
+kubectl create secret generic prvkey --from-file=privateKey="${PRVKEY}" -n ${PDBNAMESPACE}
+
+#Password encryption 
+openssl rsautl -encrypt -pubin -inkey ${PUBKEY} -in ${WBUSERFILE} |base64 > e_${WBUSERFILE}
+openssl rsautl -encrypt -pubin -inkey ${PUBKEY} -in ${WBPASSFILE} |base64 > e_${WBPASSFILE}
+openssl rsautl -encrypt -pubin -inkey ${PUBKEY} -in ${CDBPWDFILE} |base64 > e_${CDBPWDFILE}
+openssl rsautl -encrypt -pubin -inkey ${PUBKEY} -in ${CDBUSRFILE} |base64 > e_${CDBUSRFILE}
+openssl rsautl -encrypt -pubin -inkey ${PUBKEY} -in ${SYSPWDFILE} |base64 > e_${SYSPWDFILE}
+openssl rsautl -encrypt -pubin -inkey ${PUBKEY} -in ${ORDPWDFILE} |base64 > e_${ORDPWDFILE}
+openssl rsautl -encrypt -pubin -inkey ${PUBKEY} -in ${PDBUSRFILE} |base64 > e_${PDBUSRFILE}
+openssl rsautl -encrypt -pubin -inkey ${PUBKEY} -in ${PDBPWDFILE} |base64 > e_${PDBPWDFILE}
+
+#Ecrypted secrets creation 
+kubectl create secret generic wbuser --from-file=e_${WBUSERFILE} -n  ${CDBNAMESPACE}
+kubectl create secret generic wbpass --from-file=e_${WBPASSFILE} -n  ${CDBNAMESPACE}
+kubectl create secret generic wbuser --from-file=e_${WBUSERFILE} -n  ${PDBNAMESPACE}
+kubectl create secret generic wbpass --from-file=e_${WBPASSFILE} -n  ${PDBNAMESPACE}
+kubectl create secret generic cdbpwd --from-file=e_${CDBPWDFILE} -n  ${CDBNAMESPACE}
+kubectl create secret generic cdbusr --from-file=e_${CDBUSRFILE} -n  ${CDBNAMESPACE}
+kubectl create secret generic syspwd --from-file=e_${SYSPWDFILE} -n  ${CDBNAMESPACE}
+kubectl create secret generic ordpwd --from-file=e_${ORDPWDFILE} -n  ${CDBNAMESPACE}
+kubectl create secret generic pdbusr --from-file=e_${PDBUSRFILE} -n  ${PDBNAMESPACE}
+kubectl create secret generic pdbpwd --from-file=e_${PDBPWDFILE} -n  ${PDBNAMESPACE}
+
+#Get rid of the swap files
+rm  ${WBUSERFILE}  ${WBPASSFILE} ${CDBPWDFILE} ${CDBUSRFILE}  \
+     ${SYSPWDFILE}  ${ORDPWDFILE}  ${PDBUSRFILE} ${PDBPWDFILE}  \
+     e_${WBUSERFILE}  e_${WBPASSFILE} e_${CDBPWDFILE} e_${CDBUSRFILE} \
+     e_${SYSPWDFILE}  e_${ORDPWDFILE}  e_${PDBUSRFILE} e_${PDBPWDFILE}
+```
+
+Check secrets details 
+
+```bash 
+kubectl describe secrets syspwd -n cdbnamespace
+Name:         syspwd
+Namespace:    cdbnamespace
+Labels:       <none>
+Annotations:  <none>
+
+Type:  Opaque
+
+Data
+====
+e_syspwd.txt:  349 bytes
+```
+Example of yaml file secret section:
+
+```yaml 
+[...]
+ sysAdminPwd:
+    secret:
+      secretName: "syspwd"
+      key: "e_syspwd.txt"
+  ordsPwd:
+    secret:
+      secretName: "ordpwd"
+      key: "e_ordpwd.txt"
+[...]
+```
+
+## CDB CRD
 
 The Oracle Database Operator Multitenant Controller creates the CDB kind as a custom resource that models a target CDB as a native Kubernetes object. This kind is used only to create Pods to connect to the target CDB to perform PDB-LM operations.  Each CDB resource follows the CDB CRD as defined here: [config/crd/bases/database.oracle.com_cdbs.yaml](../../../config/crd/bases/database.oracle.com_cdbs.yaml)
 
-To create a CDB CRD, see this example`.yaml` file: [cdb_create.yaml](../multitenant/provisioning/singlenamespace/cdb_create.yaml)
+To create a CDB CRD, use this example`.yaml` file: [cdb_create.yaml](../multitenant/provisioning/singlenamespace/cdb_create.yaml)
 
 **Note:** The password and username fields in this *cdb.yaml* Yaml are the Kubernetes Secrets created earlier in this procedure. For more information, see the section [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/). To understand more about creating secrets for pulling images from a Docker private registry, see [Kubernetes Private Registry Documenation]( https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/).
 
@@ -197,17 +273,64 @@ Create a CDB CRD Resource example
 kubectl apply -f cdb_create.yaml 
 ```
 
-see [usecase01][uc01] and usecase03[uc03] for more information about file configuration
+see [usecase01][uc01] and usecase02[uc02] for more information about file configuration
 
-## Kubernetes CRD for PDB
+## PDB CRD
 
 The Oracle Database Operator Multitenant Controller creates the PDB kind as a custom resource that models a PDB as a native Kubernetes object. There is a one-to-one mapping between the actual PDB and the Kubernetes PDB Custom Resource. You cannot have more than one Kubernetes resource for a target PDB. This PDB resource can be used to perform PDB-LM operations by specifying the action attribute in the PDB Specs. Each PDB resource follows the PDB CRD as defined here: [config/crd/bases/database.oracle.com_pdbs.yaml](../../../config/crd/bases/database.oracle.com_pdbs.yaml)
 
 Yaml file [pdb_create.yaml](../multitenant/provisioning/singlenamespace/pdb_create.yaml) to create a pdb
 
 ```bash 
-kubectl apply -f cdb_create.yaml 
+kubectl apply -f pdb_create.yaml 
 ```
+
+## CRD TABLE PARAMETERS 
+
+| yaml file parameters  | value                         | description /ords parameter                                                   |   CRD     |
+|------------------     |---------------------------    |-------------------------------------------------------------------------------|-----------|
+| dbserver              | <db_host\> or <scan_name>     | [--db-hostname][1]                                                            | CDB       |
+| dbTnsurl              | <tns connect descriptor\>     | [--db-custom-url/db.customURL][dbtnsurl]                                      | CDB       |
+| port                  | <oracle_port\>                | [--db-port][2]                                                                | CDB       |
+| cdbName               | <dbname\>                     | Container Name                                                                | CDB       |
+| name                  | <cdb-dev\>                    | Ords podname prefix in cdb.yaml                                               | CDB       |
+| name                  | <pdb\>                        | pdb resource in pdb.yaml                                                      | PDB       |
+| ordsImage             | ords-dboper:latest            | ords pod public container registry                                            | CDB       |
+| pdbName               | <pdbname\>                    | Pluggable database name                                                       | CDB       |
+| servicename           | <service_name\>               | [--db-servicename][3]                                                         | CDB       |
+| sysadmin_user         | <SYS_SYSDBA\>                 | [--admin-user][adminuser]                                                     | CDB       |
+| sysadmin_pwd          | <sys_password\>               | [--password-stdin][pwdstdin]                                                  | CDB       |
+| cdbadmin_user         | <CDB_ADMIN_USER\>             | [db.cdb.adminUser][1]                                                         | CDB       |
+| cdbadmin_pwd          | <CDB_ADMIN_PASS\>             | [db.cdb.adminUser.password][cdbadminpwd]                                      | CDB       |
+| webserver_user        | <web_user\>                   | [https user][http] <span style="color:red"> NOT A DB USER </span>             | CDB PDB   |
+| webserver_pwd         | <web_user_passwoed\>          | [http user password][http]                                                    | CDB PDB   |
+| ords_pwd              | <ords_password\>              | [ORDS_PUBLIC_USER password][public_user]                                      | CDB       |
+| pdbTlsKey             | <keyfile\>                    | [standalone.https.cert.key][key]                                              | PDB       |
+| pdbTlsCrt             | <certfile\>                   | [standalone.https.cert][cr]                                                   | PDB       |
+| pdbTlsCat             | <certauth\>                   | certificate authority                                                         | PDB       |
+| cdbTlsKey             | <keyfile\>                    | [standalone.https.cert.key][key]                                              | CDB       |
+| cdbTlsCrt             | <certfile\>                   | [standalone.https.cert][cr]                                                   | CDB       |
+| cdbTlsCat             | <certauth\>                   | certificate authority                                                         | CDB       |
+| cdbOrdsPrvKey         | <pvriv key secrets>           | private key                                                                   | CDB       |
+| pdbOrdsPrvKey         | <pvriv key secrets>           | private key                                                                   | PDB       |
+| xmlFileName           | <xml file path\>              | path for the unplug and plug operation                                        | PDB       |
+| srcPdbName            | <source db\>                  | name of the database to be cloned                                             | PDB       |
+| action                | <action>                      | create open close delete clone plug  unplug and map                           | PDB       |
+| deletePdbCascade      | boolean                       | delete pdbs cascade during cdb deletion                                       | CDB       |
+| assertivePdbDeletion  | boolean                       | Deleting pdb crd means deleteing pdb as well                                  | PDB       |
+| fileNameConversions   | <file name conversion\>       | used for database cloning                                                     | PDB       |
+| totalSize             | <value>                       | dbsize                                                                        | PDB       |
+| pdbState              | <OPEN|CLOSE>                  | change pdb state                                                              | PDB       |
+| modifyOption          | <READ WRITE|IMMEDIATE>        | to be used along with pdbState                                                | PDB       |
+| dropAction            | <INCLUDING>                   | delete datafiles during pdb deletion                                          | PDB       |
+| sourceFileNameConversions | <string>                  | [sourceFileNameConversions(optional): string][4]                              | PDB       |
+| tdeKeystorePath       | <TDE keystore path is required if the tdeExport flag is set to true\>   |  [tdeKeystorePath][tdeKeystorePath] | N/A       |
+| tdeExport             | <BOOLEAN\>              | [tdeExport] | N/A ]
+| tdeSecret             | <TDE secret is required if the tdeExport flag is set to true\>  | [tdeSecret][tdeSecret] | N/A  |
+| tdePassword           | <TDE password for unplug operations only\>  | [tdeSecret][tdeSecret] | N/A |
+
+
+
 
 ## Usecases files list 
 
@@ -243,10 +366,46 @@ kubectl apply -f cdb_create.yaml
  - Nothing happens after cdb yaml file applying: Make sure to have properly configure the WHATCH_NAMESPACE list in the operator yaml file 
 
  [okelink]:https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengoverview.htm
+
  [ordsdoc]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/23.1/index.html
+
  [uc01]:../multitenant/usecase01/README.md
+
  [uc02]:../multitenant/usecase02/README.md
- [uc03]:../multitenant/usecase03/README.md
+
  [oradocpdb]:https://docs.oracle.com/en/database/oracle/oracle-database/21/multi/introduction-to-the-multitenant-architecture.html#GUID-AB84D6C9-4BBE-4D36-992F-2BB85739329F
+
+ [1]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-E9625FAB-9BC8-468B-9FF9-443C88D76FA1:~:text=Table%202%2D2%20Command%20Options%20for%20Command%2DLine%20Interface%20Installation
+
+ [2]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-E9625FAB-9BC8-468B-9FF9-443C88D76FA1:~:text=Table%202%2D2%20Command%20Options%20for%20Command%2DLine%20Interface%20Installation
+
+ [3]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-DAA027FA-A4A6-43E1-B8DD-C92B330C2341:~:text=%2D%2Ddb%2Dservicename%20%3Cstring%3E
+
+ [4]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.3/orrst/op-database-pdbs-post.html
+
+[adminuser]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-A9AED253-4EEC-4E13-A0C4-B7CE82EC1C22:~:text=Table%202%2D6%20Command%20Options%20for%20Uninstall%20CLI
+
+[public_user]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/using-multitenant-architecture-oracle-rest-data-services.html#GUID-E64A141A-A71F-4979-8D33-C5F8496D3C19:~:text=Preinstallation%20Tasks%20for%20Oracle%20REST%20Data%20Services%20CDB%20Installation
+
+[key]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/about-REST-configuration-files.html#GUID-006F916B-8594-4A78-B500-BB85F35C12A0:~:text=standalone.https.cert.key
+
+[cr]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/about-REST-configuration-files.html#GUID-006F916B-8594-4A78-B500-BB85F35C12A0
+
+[cdbadminpwd]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/about-REST-configuration-files.html#GUID-006F916B-8594-4A78-B500-BB85F35C12A0:~:text=Table%20C%2D1%20Oracle%20REST%20Data%20Services%20Configuration%20Settings
+
+
+[pwdstdin]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-88479C84-CAC1-4133-A33E-7995A645EC05:~:text=default%20database%20pool.-,2.1.4.1%20Understanding%20Command%20Options%20for%20Command%2DLine%20Interface%20Installation,-Table%202%2D2
+
+[http]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-BEECC057-A8F5-4EAB-B88E-9828C2809CD8:~:text=Example%3A%20delete%20%5B%2D%2Dglobal%5D-,user%20add,-Add%20a%20user
+
+[dbtnsurl]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/22.2/ordig/installing-and-configuring-oracle-rest-data-services.html#GUID-A9AED253-4EEC-4E13-A0C4-B7CE82EC1C22
+
+[tdeKeystorePath]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/21.4/orrst/op-database-pdbs-pdb_name-post.html
+
+[tdeSecret]:https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/ADMINISTER-KEY-MANAGEMENT.html#GUID-E5B2746F-19DC-4E94-83EC-A6A5C84A3EA9
+~
+
+
+
 
  </span>

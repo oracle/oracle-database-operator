@@ -1,0 +1,48 @@
+apiVersion: database.oracle.com/v4
+kind: CDB
+metadata: 
+  name: cdb-dev
+  namespace: oracle-database-operator-system
+spec:
+  cdbName: "DB12"
+  ordsImage: _your_container_registry/ords-dboper:latest
+  ordsImagePullPolicy: "Always"
+  dbTnsurl : "T H I S   I S  J U S T   A N  E X A M P L E ....(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
+  replicas: 1
+  deletePdbCascade: true
+  sysAdminPwd:
+    secret:
+      secretName: "syspwd"
+      key: "e_syspwd.txt"
+  ordsPwd:
+    secret:
+      secretName: "ordpwd"
+      key: "e_ordpwd.txt"
+  cdbAdminUser:
+    secret:
+      secretName: "cdbusr"
+      key: "e_cdbusr.txt"
+  cdbAdminPwd:
+    secret:
+      secretName: "cdbpwd"
+      key: "e_cdbpwd.txt"
+  webServerUser:
+    secret:
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
+  webServerPwd:
+    secret:
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
+  cdbTlsKey:
+    secret:
+      secretName: "db-tls"
+      key: "tls.key"
+  cdbTlsCrt:
+    secret:
+      secretName: "db-tls"
+      key: "tls.crt"
+  cdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"

@@ -11,28 +11,28 @@ spec:
   replicas: 1
   sysAdminPwd: 
     secret: 
-      secretName: "cdb1-secret"
-      key: "sysadmin_pwd"
+      secretName: "[...]"
+      key: "[...]"
   ordsPwd:
     secret: 
-      secretName: "cdb1-secret"
-      key: "ords_pwd"  
+      secretName: "[...]"
+      key: "[...]"  
   cdbAdminUser: 
     secret: 
-      secretName: "cdb1-secret"
-      key: "cdbadmin_user"
+      secretName: "[...]"
+      key: "[...]"
   cdbAdminPwd: 
     secret: 
-      secretName: "cdb1-secret"
-      key: "cdbadmin_pwd"
+      secretName: "[...]"
+      key: "[...]"
   webServerUser: 
     secret: 
-      secretName: "cdb1-secret"
-      key: "webserver_user"
+      secretName: "[...]"
+      key: "[...]"
   webServerPwd: 
     secret: 
-      secretName: "cdb1-secret"
-      key: "webserver_pwd"      
+      secretName: "[...]"
+      key: "[...]"      
   cdbTlsKey:
     secret:
       secretName: "db-tls"
@@ -41,4 +41,8 @@ spec:
     secret:
       secretName: "db-tls"
       key: "tls.crt"
+  cdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"
 
