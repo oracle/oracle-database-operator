@@ -16,7 +16,8 @@ build-operator:
         docker rmi "$IMAGE";
         sed -i "s/\(replicas.\) 3/\1 1/g" ./$OP_YAML;
       fi
-    - docker system prune -f
+    - buildah containers -q | xargs -n1 buildah rm
+    - podman system prune -f
     - curl -s --netrc-file $HOME/.netrc_gitlab $ARTIFACTORY_REPO/$CI_COMMIT_BRANCH/$OP_YAML -T ./$OP_YAML
   only:
     variables:
