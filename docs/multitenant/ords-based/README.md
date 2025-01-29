@@ -2,28 +2,28 @@
 
 # Oracle Multitenant Database Controllers 
 
-The Oracle Database Operator for kubernetes uses two controllers to manage [Pluggable Database life cycle][oradocpdb]
+The Oracle Database Operator for Kubernetes uses two controllers to manage [Pluggable Database life cycle][oradocpdb]
 
 - CDB controller
 - PDB controller
 
-By usigng CDB/PDB controllers you can perform the following actions **CREATE**,**MODIFY(OPEN/COSE)**,**DELETE**,**CLONE**,**PLUG** and **UNPLUG** against pluggable database
+By using CDB/PDB controllers you can perform the following actions **CREATE**, **MODIFY(OPEN/COSE)**, **DELETE**, **CLONE**, **PLUG** and **UNPLUG** against pluggable database
 
 Examples are located under the following directories:
 
-- [Usecase](./usecase/) and [usecase01] directories contain a [configuration file](./usecase/parameters.txt)  where you can specify all the details of your environment. A [makefile](./usecase/makefile) takes this file in input to generate the all the yaml files. There is no need to edit yaml files one by one.
+- [Usecase](./usecase/) and [usecase01](./usecase01/) directories contain a [configuration file](./usecase/parameters.txt)  where you can specify all the details of your environment. A [makefile](./usecase/makefile) takes this file in input to generate the all the yaml files. There is no need to edit yaml files one by one.
 - [Singlenamespace provisioning](./provisioning/singlenamespace/) You will find base sample files to manage pdb and cdb within a single namespace 
 - [Multinamespace provisioning](./provisioning/multinamespace/) You will find base sample files to manage pdb and cdb in different namespaces.
 - [Usecase01](./usecase01/README.md) [Usecase02](./usecase02/README.md)  contain other step by step examples; 
 
-Authomatic yaml generation is not available for directory usecase02 and provisioning directories 
+Automatic yaml generation is not available for directory usecase02 and provisioning directories 
 
-**NOTE** that the cdb controller is not intended to manage the container database. The cdb controller is meant to provied a pod with a rest server connected to the container database. 
+**NOTE** cdb controller is not intended to manage the container database. The CDB controller is meant to provide a pod with a rest server connected to the container database to manage PDBs. 
 
 
 ## Macro steps for setup
 
-- Deply the Oracle Database Operator 
+- Deploy the Oracle Database Operator 
 - [Create Ords based image for CDB pod](./provisioning/ords_image.md)
 - [Container RDBMB user creation](#prepare-the-container-database-for-pdb-lifecycle-management-pdb-lm)
 - Create certificates for https connection 
@@ -84,7 +84,7 @@ singleinstancedatabases.database.oracle.com        2022-06-22T01:21:40Z
 ```
 
 
-## Prerequsites to manage PDB Life Cycle using Oracle DB Operator Multitenant Database Controller
+## Prerequisites to manage PDB Life Cycle using Oracle DB Operator Multitenant Database Controller
 
 * [Prepare the container database for PDB Lifecycle Management or PDB-LM](#prepare-cdb-for-pdb-lifecycle-management-pdb-lm)
 * [Oracle REST Data Service or ORDS Image](#oracle-rest-data-service-ords-image)
@@ -96,9 +96,9 @@ singleinstancedatabases.database.oracle.com        2022-06-22T01:21:40Z
 
 Pluggable Database (PDB) management operations are performed in the Container Database (CDB). These operations include create, clone, plug, unplug, delete, modify and map pdb.
 
-You cannot have an ORDS-enabled schema in the container database. To perform the PDB lifecycle management operations, you must first use the following steps to define the default CDB administrator credentials on target CDBs:
+To perform PDB lifecycle management operations, you must first use the following steps to define the default CDB administrator credentials on target CDBs:
 
-Create the CDB administrator user, and grant the required privileges. In this example, the user is `C##DBAPI_CDB_ADMIN`. However, any suitable common user name can be used.
+Create the CDB administrator user and grant the required privileges. In this example, the user is `C##DBAPI_CDB_ADMIN`. However, any suitable common username can be used.
 
 ```SQL
 SQL> conn /as sysdba
@@ -120,7 +120,7 @@ col account_status  for a30
 select username, account_status from dba_users where username in ('ORDS_PUBLIC_USER','C##DBAPI_CDB_ADMIN','APEX_PUBLIC_USER','APEX_REST_PUBLIC_USER');
 ```
 
-## OCI OKE(Kubernetes Cluster) 
+## OCI OKE (Kubernetes Cluster) 
 
 You can use an [OKE in Oracle Cloud Infrastructure][okelink] to configure the controllers for PDB lifecycle management. **Note that there is no restriction about container database location; it can be anywhere (on cloud or on-premises).** 
 To quickly create an OKE cluster in your OCI cloud environment you can use the following [link](./provisioning/quickOKEcreation.md).
@@ -136,11 +136,11 @@ In this setup example [provisioning example setup](./provisioning/example_setup_
 
   Multitenant Controllers use Kubernetes secrets to store the required credential and https certificates.
 
-  **Note** <span style="color:red"> In multi namespace enviroment you have to create specific secrets for each namespaces </span>
+  **Note** <span style="color:red"> In multi namespace environment you have to create specific secrets for each namespaces </span>
 
 ### Secrets for CERTIFICATES
 
-Create the certificates and key on your local host, and use them to create the Kubernetes secret.
+Create the certificates and key on your local host and use them to create the Kubernetes secret.
 
 ```bash 
 openssl genrsa -out ca.key 2048
@@ -157,11 +157,11 @@ kubectl create secret generic db-ca --from-file=ca.crt -n oracle-database-operat
 
 <img src="openssl_schema.jpg" alt="image_not_found" width="900"/>
 
-**Note:** <span style="color:red">  On successful creation of the certificates secret creation remove files or move to secure storage </span> .
+**Note:** <span style="color:red">  Remove temporary files after successfful secret creation. </span> 
 
 ### Secrets for CDB CRD
 
-  **Note:** <span style="color:red">  base64 encoded secrets are no longer supported ; use openssl secrets as documented in the following section.  After successful creation of the CDB Resource, the CDB and PDB secrets can be deleted from the Kubernetes system. Don't leave plaintext files containing sensitive data on disk. After loading the secret, remove the plaintext file or move it to secure storage. </span>
+  **Note:** <span style="color:red">  base64 encoded secrets are no longer supported; use openssl secrets as documented in the following section.  After successful creation of the CDB Resource, the CDB and PDB secrets can be deleted from the Kubernetes system. Don't leave plaintext files containing sensitive data on disk. After loading the secret, remove the plaintext file or move it to secure storage. </span>
 
   ```bash
 
@@ -357,13 +357,13 @@ kubectl apply -f pdb_create.yaml
 
 ## Known issues
 
- - Ords installatian failure if pluaggable databases in the container db are not opened
+ - Ords installation failure if pluaggable databases in the container db are not opened
 
- - Version 1.1.0: encoded password for https authentication may include carriege return as consequence the https request fails with http 404 error. W/A generate encoded password using **printf** instead of **echo**.  
+ - Version 1.1.0: encoded password for https authentication may include carriage return as consequence the https request fails with http 404 error. W/A generate encoded password using **printf** instead of **echo**.  
 
- - pdb controller authentication suddenly failes without any system change. Check the certificate expiration date **openssl .... -days 365**
+ - pdb controller authentication suddenly fails without any system change. Check the certificate expiration date **openssl .... -days 365**
 
- - Nothing happens after cdb yaml file applying: Make sure to have properly configure the WHATCH_NAMESPACE list in the operator yaml file 
+ - Nothing happens after applying cdb yaml files: Make sure to have properly configured the WHATCH_NAMESPACE list in the operator yaml file 
 
  [okelink]:https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengoverview.htm
 
