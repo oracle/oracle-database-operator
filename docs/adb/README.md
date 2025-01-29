@@ -96,6 +96,7 @@ Follow these steps to provision an Autonomous Database that will map objects in 
     metadata:
       name: autonomousdatabase-sample
     spec:
+      action: Create
       details:
         compartmentId: ocid1.compartment...
         dbName: NewADB
@@ -155,8 +156,8 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
     metadata:
       name: autonomousdatabase-sample
     spec:
+      action: Sync
       details:
-        action: Sync
         id: ocid1.autonomousdatabase...
       ociConfig:
         configMapName: oci-cred
@@ -348,9 +349,9 @@ To use the secret in a deployment, refer to [Using Secrets](https://kubernetes.i
 To start, stop, or terminate a database, use the `action` attribute.
 Here's a list of the values you can set for `action`:
 
-* `START`: to start the database
-* `STOP`: to stop the database
-* `TERMINATE`: to terminate the database
+* `Start`: to start the database
+* `Stop`: to stop the database
+* `Terminate`: to terminate the database
 
 1. An example .yaml file is available here: [config/samples/adb/autonomousdatabase_stop_start_terminate.yaml](./../../config/samples/adb/autonomousdatabase_stop_start_terminate.yaml)
 
@@ -361,7 +362,7 @@ Here's a list of the values you can set for `action`:
     metadata:
       name: autonomousdatabase-sample
     spec:
-      action: STOP
+      action: Stop
       details:
         id: ocid1.autonomousdatabase...
       ociConfig:
