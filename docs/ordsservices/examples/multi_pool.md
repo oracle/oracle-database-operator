@@ -1,16 +1,12 @@
 # Example: Multipool, Multidatabase using a TNS Names file
 
-This example walks through using the **ORDS Operator** with multiple databases using a TNS Names file.  
+This example walks through using the **ORDSSRVS Operator** with multiple databases using a TNS Names file.  
 Keep in mind that all pools are running in the same Pod, therefore, changing the configuration of one pool will require
 a recycle of all pools.
 
-### Install ORDS Operator
+### Cert-Manager and  Oracle Database Operator installation
 
-Install the Oracle ORDS Operator:
-
-```bash
-kubectl apply -f https://github.com/gotsysdba/oracle-ords-operator/releases/latest/download/oracle-ords-operator.yaml
-```
+Install the [Cert Manager](https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml) and the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator) using the instractions in the Operator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) file.
 
 ### TNS_ADMIN Secret
 
@@ -40,27 +36,47 @@ PDB3=(DESCRIPTION=(ADDRESS_LIST=(LOAD_BALANCE=on)(ADDRESS=(PROTOCOL=TCP)(HOST=10
 PDB4=(DESCRIPTION=(ADDRESS_LIST=(LOAD_BALANCE=on)(ADDRESS=(PROTOCOL=TCP)(HOST=10.10.0.4)(PORT=1521)))(CONNECT_DATA=(SERVICE_NAME=PDB4)))
 ```
 
+### PRIVATE KEY SECRET
+
+Secrets are encrypted using openssl rsa algorithm. Create public and private key. 
+Use private key to create a secret.
+
+```bash
+openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
+openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
+kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace 
+```
+
 ### ORDS_PUBLIC_USER Secret
 
 Create a Secret for each of the databases `ORDS_PUBLIC_USER` user.  
 If multiple databases use the same password, the same secret can be re-used.
 
 The following secret will be used for PDB1:
+
 ```bash
-kubectl create secret generic pdb1-ords-auth \
-  --from-literal=password=pdb1-battery-staple
+echo "THIS_IS_A_PASSWORD"     > ordspwdfile
+openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_ordspwdfile
+kubectl create secret generic pdb1-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
+rm ordspwdfile e_ordspwdfile
 ```
 
 The following secret will be used for PDB2:
+
 ```bash
-kubectl create secret generic pdb2-ords-auth \
-  --from-literal=password=pdb2-battery-staple
+echo "THIS_IS_A_PASSWORD"     > ordspwdfile
+openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_ordspwdfile
+kubectl create secret generic pdb2-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
+rm ordspwdfile e_ordspwdfile
 ```
 
 The following secret will be used for PDB3 and PDB4:
+
 ```bash
-kubectl create secret generic multi-ords-auth \
-  --from-literal=password=multiple-battery-staple
+echo "THIS_IS_A_PASSWORD"     > ordspwdfile
+openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_ordspwdfile
+kubectl create secret generic multi-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
+rm ordspwdfile e_ordspwdfile
 ```
 
 ### Privileged Secret (*Optional)
@@ -70,23 +86,35 @@ If taking advantage of the [AutoUpgrade](../autoupgrade.md) functionality, creat
 In this example, only PDB1 will be set for [AutoUpgrade](../autoupgrade.md), the other PDBs already have APEX and ORDS installed.
 
 ```bash
+
+
+
+echo "THIS_IS_A_PASSWORD"     > syspwdfile
+openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_syspwdfile
+kubectl create secret generic pdb1-priv-auth-enc --from-file=password=e_syspwdfile -n  ordsnamespace
+rm syspwdfile e_syspwdfile
+
 kubectl create secret generic pdb1-priv-auth \
   --from-literal=password=pdb1-battery-staple
 ```
 
-### Create RestDataServices Resource
+### Create OrdsSrvs Resource
 
 1. Create a manifest for ORDS.
 
     ```bash
     echo "
     apiVersion: database.oracle.com/v1
-    kind: RestDataServices
+    kind: OrdsSrvs
     metadata:
       name: ords-multi-pool
+      namespace: ordsnamespace
     spec:
       image: container-registry.oracle.com/database/ords:24.1.1
       forceRestart: true
+      encPrivKey:
+        secretName: prvkey
+        passwordKey: privateKey
       globalSettings:
         database.api.enabled: true
       poolSettings:
@@ -102,10 +130,10 @@ kubectl create secret generic pdb1-priv-auth \
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName: pdb1-ords-auth
+            secretName: pdb1-ords-auth-enc
           db.adminUser: SYS
           db.adminUser.secret:
-            secretName: pdb1-priv-auth
+            secretName: pdb1-priv-auth-enc
         - poolName: pdb2
           db.connectionType: tns
           db.tnsAliasName: PDB2
@@ -116,7 +144,7 @@ kubectl create secret generic pdb1-priv-auth \
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName: pdb2-ords-auth
+            secretName: pdb2-ords-auth-enc
         - poolName: pdb3
           db.connectionType: tns
           db.tnsAliasName: PDB3
@@ -127,7 +155,7 @@ kubectl create secret generic pdb1-priv-auth \
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName: multi-ords-auth
+            secretName: multi-ords-auth-enc
         - poolName: pdb4
           db.connectionType: tns
           db.tnsAliasName: PDB4
@@ -138,13 +166,13 @@ kubectl create secret generic pdb1-priv-auth \
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName: multi-ords-auth" | kubectl apply -f -
+            secretName: multi-ords-auth-enc" | kubectl apply -f -
     ```
     <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
     
-1. Watch the restdataservices resource until the status is **Healthy**:
+1. Watch the ordssrvs resource until the status is **Healthy**:
     ```bash
-    kubectl get restdataservices ords-multi-pool -w
+    kubectl get OrdsSrvs ords-multi-pool -n ordsnamespace -w
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  As APEX
@@ -156,7 +184,7 @@ kubectl create secret generic pdb1-priv-auth \
 Open a port-forward to the ORDS service, for example:
 
 ```bash
-kubectl port-forward service/ords-multi-pool 8443:8443
+kubectl port-forward service/ords-multi-pool -n ordsnamespace 8443:8443
 ```
 
 1. For PDB1, direct your browser to: `https://localhost:8443/ords/pdb1`

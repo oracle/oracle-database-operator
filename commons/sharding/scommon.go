@@ -411,8 +411,8 @@ func LogMessages(msgtype string, msg string, err error, instance *databasev4.Sha
 	} else if msgtype == "INFO" {
 		logger.Info(msg)
 	} else if msgtype == "Error" {
-			logger.Error(err, msg)
-  }
+		logger.Error(err, msg)
+	}
 }
 
 func GetGsmPodName(gsmName string) string {

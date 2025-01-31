@@ -1,41 +1,11 @@
 # Example: Containerised Single Instance Database using the OraOperator
 
-This example walks through using the **ORDS Operator** with a Containerised Oracle Database created by the **OraOperator** in the same Kubernetes Cluster.
+This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database created by the **SIDB Controller** in the same Kubernetes Cluster.
 
-### Install Cert-Manager
+### Cert-Manager and  Oracle Database Operator installation
 
-The OraOperator uses webhooks for validating user input before persisting it in etcd. 
-Webhooks require TLS certificates that are generated and managed by a certificate manager.
+Install the [Cert Manager](https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml) and the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator) using the instractions in the Operator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) file.
 
-Install [cert-manager](https://cert-manager.io/) with the following command:
-
-```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml
-```
-<sup>latest cert-manager version, **v1.14.5**, valid as of **2-May-2024**</sup>
-
-Check that all pods have a STATUS of **Running** before proceeding to the next step:
-```bash
-kubectl -n cert-manager get pods
-```
-
-Review [cert-managers installation documentation](https://cert-manager.io/docs/installation/kubectl/) for more information.
-
-### Install OraOperator
-
-Install the [Oracle Operator for Kubernetes](https://github.com/oracle/oracle-database-operator):
-
-```bash
-kubectl apply -f https://raw.githubusercontent.com/oracle/oracle-database-operator/main/oracle-database-operator.yaml
-```
-
-### Install ORDS Operator
-
-Install the Oracle ORDS Operator:
-
-```bash
-kubectl apply -f https://github.com/gotsysdba/oracle-ords-operator/releases/latest/download/oracle-ords-operator.yaml
-```
 
 ### Deploy a Containerised Oracle Database
 
@@ -79,6 +49,23 @@ kubectl apply -f https://github.com/gotsysdba/oracle-ords-operator/releases/late
 
     **NOTE**: If this is the first time pulling the free database image, it may take up to 15 minutes for the database to become available.
 
+### Create encryped secret 
+
+```bash
+
+openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
+openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
+kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
+
+echo "${DB_PWD}"     > sidb-db-auth
+openssl rsautl -encrypt -pubin -inkey public.pem -in sidb-db-auth |base64 > e_sidb-db-auth
+kubectl create secret generic sidb-db-auth-enc --from-file=password=e_sidb-db-auth -n  ordsnamespace
+rm sidb-db-auth e_sidb-db-auth
+
+
+```
+
+
 ### Create RestDataServices Resource
 
 1. Retrieve the Connection String from the containerised SIDB.
@@ -103,9 +90,10 @@ kubectl apply -f https://github.com/gotsysdba/oracle-ords-operator/releases/late
     ```bash
     echo "
     apiVersion: database.oracle.com/v1
-    kind: RestDataServices
+    kind: OrdsSrvs
     metadata:
       name: ords-sidb
+      namespace: ordsnamespace
     spec:
       image: container-registry.oracle.com/database/ords:24.1.1
       forceRestart: true
@@ -121,16 +109,16 @@ kubectl apply -f https://github.com/gotsysdba/oracle-ords-operator/releases/late
           db.customURL: jdbc:oracle:thin:@//${CONN_STRING}
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName:  sidb-db-auth
+            secretName:  sidb-db-auth-enc
           db.adminUser: SYS
           db.adminUser.secret:
-            secretName:  sidb-db-auth" | kubectl apply -f -
+            secretName:  sidb-db-auth-enc" | kubectl apply -f -
     ```
     <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
 
-1. Watch the restdataservices resource until the status is **Healthy**:
+1. Watch the ordssrvs resource until the status is **Healthy**:
     ```bash
-    kubectl get restdataservices ords-sidb -w
+    kubectl get ordssrvs ords-sidb -n ordsnamespace -w
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
@@ -140,9 +128,9 @@ kubectl apply -f https://github.com/gotsysdba/oracle-ords-operator/releases/late
     You can watch the APEX/ORDS Installation progress by running:
 
     ```bash
-    POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-sidb" -o custom-columns=NAME:.metadata.name --no-headers)
+    POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-sidb" -n ordsnamespace -o custom-columns=NAME:.metadata.name --no-headers)
 
-    kubectl logs ${POD_NAME} -c ords-sidb-init -f
+    kubectl logs ${POD_NAME} -c ords-sidb-init -n ordsnamespace -f
     ```
 
 ### Test
@@ -150,7 +138,7 @@ kubectl apply -f https://github.com/gotsysdba/oracle-ords-operator/releases/late
 Open a port-forward to the ORDS service, for example:
 
 ```bash
-kubectl port-forward service/ords-sidb 8443:8443
+kubectl port-forward service/ords-sidb -n ordsnamespace 8443:8443
 ```
 
 Direct your browser to: `https://localhost:8443/ords`

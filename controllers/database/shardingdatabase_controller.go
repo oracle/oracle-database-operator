@@ -73,11 +73,11 @@ import (
 
 // Struct keeping Oracle Notification Server Info
 type OnsStatus struct {
-	Topicid         string                               `json:"topicid,omitempty"`
-  Instance        *databasev4.ShardingDatabase   `json:"instance,omitempty"`
-	OnsProvider     common.ConfigurationProvider         `json:"onsProvider,omitempty"`
-	OnsProviderFlag bool                                 `json:"onsProviderFlag,omitempty"`
-	Rclient         ons.NotificationDataPlaneClient      `json:"rclient,omitempty"`
+	Topicid         string                          `json:"topicid,omitempty"`
+	Instance        *databasev4.ShardingDatabase    `json:"instance,omitempty"`
+	OnsProvider     common.ConfigurationProvider    `json:"onsProvider,omitempty"`
+	OnsProviderFlag bool                            `json:"onsProviderFlag,omitempty"`
+	Rclient         ons.NotificationDataPlaneClient `json:"rclient,omitempty"`
 }
 
 // ShardingDatabaseReconciler reconciles a ShardingDatabase object
@@ -88,14 +88,14 @@ type ShardingDatabaseReconciler struct {
 	kubeClient kubernetes.Interface
 	kubeConfig clientcmd.ClientConfig
 	Recorder   record.EventRecorder
-	InCluster bool
-	Namespace string
+	InCluster  bool
+	Namespace  string
 }
 
 var sentFailMsg = make(map[string]bool)
 var sentCompleteMsg = make(map[string]bool)
 
-var oshMap=make(map[string]*OnsStatus)
+var oshMap = make(map[string]*OnsStatus)
 
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases/status,verbs=get;update;patch
@@ -159,7 +159,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-  instFlag := r.checkProvInstance(instance)
+	instFlag := r.checkProvInstance(instance)
 	if !instFlag {
 		oshMap[instance.Name] = &OnsStatus{}
 		oshMap[instance.Name].Instance = instance
@@ -475,31 +475,31 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			instance := &databasev4.ShardingDatabase{}
 			_, podOk := e.Object.GetLabels()["statefulset.kubernetes.io/pod-name"]
-      if oshMap[instance.Name] != nil {
-			   oshInst := instance
-			   if instance.DeletionTimestamp == nil {
+			if oshMap[instance.Name] != nil {
+				oshInst := instance
+				if instance.DeletionTimestamp == nil {
 
-				   if e.Object.GetLabels()[string(databasev4.ShardingDelLabelKey)] == string(databasev4.ShardingDelLabelTrueValue) {
-				   }
+					if e.Object.GetLabels()[string(databasev4.ShardingDelLabelKey)] == string(databasev4.ShardingDelLabelTrueValue) {
+					}
 
-				   if podOk {
-   					delObj := e.Object.(*corev1.Pod)
-	   				if e.Object.GetLabels()["type"] == "Shard" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == oshInst.Name {
-   
-	   					if delObj.DeletionTimestamp != nil {
-		   					go r.gsmInvitedNodeOp(oshInst, delObj.Name)
-			   			}
-				   	}
+					if podOk {
+						delObj := e.Object.(*corev1.Pod)
+						if e.Object.GetLabels()["type"] == "Shard" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == oshInst.Name {
 
-					   if e.Object.GetLabels()["type"] == "Catalog" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == oshInst.Name {
+							if delObj.DeletionTimestamp != nil {
+								go r.gsmInvitedNodeOp(oshInst, delObj.Name)
+							}
+						}
 
-						   if delObj.DeletionTimestamp != nil {
-							   go r.gsmInvitedNodeOp(oshInst, delObj.Name)
-						   }
-					   }
-				   }
-   			}
-      }
+						if e.Object.GetLabels()["type"] == "Catalog" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == oshInst.Name {
+
+							if delObj.DeletionTimestamp != nil {
+								go r.gsmInvitedNodeOp(oshInst, delObj.Name)
+							}
+						}
+					}
+				}
+			}
 			return true
 		},
 	}
@@ -534,19 +534,19 @@ func (r *ShardingDatabaseReconciler) getOnsConfigProvider(instance *databasev4.S
 		region, user, tenancy, passphrase, fingerprint, topicid := shardingv1.ReadConfigMap(cmName, instance, r.Client, r.Log)
 		privatekey := shardingv1.ReadSecret(secName, instance, r.Client, r.Log)
 
-    oshMap[instance.Name].Topicid = topicid
-    oshMap[instance.Name].OnsProvider = common.NewRawConfigurationProvider(tenancy, user, region, fingerprint, privatekey, &passphrase)
-//VV    instance.Spec.TopicId = topicid
-    oshMap[instance.Name].Rclient, err = ons.NewNotificationDataPlaneClientWithConfigurationProvider(oshMap[instance.Name].OnsProvider)
-    if err != nil {
-      msg := "Error occurred in getting the OCI notification service based client."
-      oshMap[instance.Name].OnsProviderFlag = false
-      r.Log.Error(err, msg)
-      shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-    } else {
-      oshMap[instance.Name].OnsProviderFlag = true
-    }
-  }
+		oshMap[instance.Name].Topicid = topicid
+		oshMap[instance.Name].OnsProvider = common.NewRawConfigurationProvider(tenancy, user, region, fingerprint, privatekey, &passphrase)
+		//VV    instance.Spec.TopicId = topicid
+		oshMap[instance.Name].Rclient, err = ons.NewNotificationDataPlaneClientWithConfigurationProvider(oshMap[instance.Name].OnsProvider)
+		if err != nil {
+			msg := "Error occurred in getting the OCI notification service based client."
+			oshMap[instance.Name].OnsProviderFlag = false
+			r.Log.Error(err, msg)
+			shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
+		} else {
+			oshMap[instance.Name].OnsProviderFlag = true
+		}
+	}
 }
 
 func (r ShardingDatabaseReconciler) marshalOnsInfo(instance *databasev4.ShardingDatabase) (OnsStatus, error) {
@@ -567,14 +567,14 @@ func (r ShardingDatabaseReconciler) marshalOnsInfo(instance *databasev4.Sharding
 
 // ================== Function the Message  ==============
 func (r *ShardingDatabaseReconciler) sendMessage(instance *databasev4.ShardingDatabase, title string, body string) {
-  instFlag := r.checkProvInstance(instance)
-  if instFlag {
-    shardingv1.LogMessages("INFO", "sendMessage():instFlag true", nil, instance, r.Log)
-    if oshMap[instance.Name].OnsProviderFlag {
-      shardingv1.LogMessages("INFO", "sendMessage():OnsProviderFlag true", nil, instance, r.Log)
-      shardingv1.SendNotification(title, body, instance, oshMap[instance.Name].Topicid, oshMap[instance.Name].Rclient, r.Log)
-    }
-  }
+	instFlag := r.checkProvInstance(instance)
+	if instFlag {
+		shardingv1.LogMessages("INFO", "sendMessage():instFlag true", nil, instance, r.Log)
+		if oshMap[instance.Name].OnsProviderFlag {
+			shardingv1.LogMessages("INFO", "sendMessage():OnsProviderFlag true", nil, instance, r.Log)
+			shardingv1.SendNotification(title, body, instance, oshMap[instance.Name].Topicid, oshMap[instance.Name].Rclient, r.Log)
+		}
+	}
 }
 
 func (r *ShardingDatabaseReconciler) publishEvents(instance *databasev4.ShardingDatabase, eventMsg string, state string) {
@@ -839,7 +839,7 @@ func (r *ShardingDatabaseReconciler) finalizeShardingDatabase(instance *database
 		}
 	}
 
-  oshMap[instance.Name].Instance = &databasev4.ShardingDatabase{}
+	oshMap[instance.Name].Instance = &databasev4.ShardingDatabase{}
 
 	return nil
 }

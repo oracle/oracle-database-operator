@@ -148,7 +148,7 @@ type GsmStatusDetails struct {
 
 // ShardingDatabase is the Schema for the shardingdatabases API
 // +kubebuilder:resource:path=shardingdatabases,scope=Namespaced
- // +kubebuilder:storageversion
+// +kubebuilder:storageversion
 type ShardingDatabase struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
