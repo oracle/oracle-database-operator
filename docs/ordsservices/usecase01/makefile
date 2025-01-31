@@ -3,12 +3,25 @@
 #
 #
 #   NAME
-#     makefile: automation exectution of the follwing configuration 
-#               in a multi namespace environment (orcle-database-operator-system,
-#               ordsnamespace)
-#
-#     	         - SingleInstanceDatabase
-#     	         - Mongo API
+#     makefile: 
+#     	This makefile helps to set up multipool and sidb cases 
+#     	edit the following variables with your system information 
+#       and execute make help to list the list of avilable targets
+#               
+
+export PDB1=pdb1
+export PDB2=pdb2
+export TNS1=(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=$(PDB1))))
+export TNS2=(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=$(PDB2))))
+export SIDB_PASSWORD=....write password here ....
+export PDB1_PWD=.....write password here....
+export PDB2_PWD=.....write password....
+export ORDS_MULTI_POOL_PWD=....write password here....
+export USER_CONTAINER_REGISTRY=username@oracle.com <--Your OCR account
+export OPRNAMESPACE=oracle-database-operator-system
+export ORDSNAMESPACE=ordsnamespace
+
+
 #
 #   DESCRIPTION
 #       Main makefile - see target table 
@@ -56,31 +69,31 @@
 #       
 
 
-export OPRNAMESPACE=oracle-database-operator-system
-export RSTNAMESPACE=ordsnamespace
-export WATCHLIST=$(OPRNAMESPACE),$(RSTNAMESPACE)
+
+export WATCHLIST=$(OPRNAMESPACE),$(ORDSNAMESPACE)
 export CREATE_SINGLEINSTANCE=create_singleinstance_db.yaml
 export CERTMANAGER=https://github.com/jetstack/cert-manager/releases/latest/download/cert-manager.yaml
 export SIDB_SECRET=sidb-db-auth
 export ORDS_SECRET=ords-db-auth
+export MULTI_ORDS_AUTH_SECRET=multi-ords-auth-enc
+export PDB1_PRIV_AUTH_SECRET=pdb1-priv-auth-enc
+export PDB2_PRIV_AUTH_SECRET=pdb2-priv-auth-enc
+
+
 export SIDB_IMAGE=container-registry.oracle.com/database/free:23.4.0.0
 export ORDS_IMAGE=container-registry.oracle.com/database/ords:24.1.0
 export ORDS_IMAGE.1=container-registry.oracle.com/database/ords:24.1.1
-export SIDB_PASSWORD=RSTpoc_061319
 export SECRET_CONTAINER_REGISTRY=oracle-container-registry-secret
 export ORACLE_CONTAINER_REGISTRY=container-registry.oracle.com
-export USER_CONTAINER_REGISTRY=matteo.malvezzi@oracle.com
 export REST_SERVER_NAME=ords-sidb
 export REST_SERVER_NAME_MONGO=ords-sidb-mongo
 export MONGOSH=mongosh-2.3.1-linux-x64
 export KIND=OrdsSrvs
 
-export PDB1=pdb1
-export PDB2=pdb2
-export TNS1=(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=$(PDB1))))
-export TNS2=(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=$(PDB2))))
 export TNSNAMES=./tnsnames.ora
 export TNSADMIN=`pwd`/tnsadmin
+export PRVKEY=ca.key
+export PUBKEY=public.pem
 
 ## CMD SECTION##
 export KUBECTL=/usr/local/go/bin/kubectl
@@ -88,9 +101,10 @@ export DIFF=/usr/bin/diff
 export MAKE=/usr/bin/make
 export CURL=/usr/bin/curl
 export TAR=/usr/bin/tar
+export OPENSSL=/usr/bin/openssl
 
 ## YAML AND OTHER FILES ##
-CREATE_RSTNAMESPACE=create_$(RSTNAMESPACE).yaml
+export CREATE_ORDSNAMESPACE=create_$(ORDSNAMESPACE).yaml
 export DEFAULT_NAMESPACE_SCOPE=default-ns-role-binding.yaml
 export RST_NAMESPACE_SCOPE=ords-ns-role-binding.yaml
 export ORACLE_OPERATOR_YAML=../../../oracle-database-operator.yaml
@@ -112,7 +126,7 @@ define manpage
 @printf "\n"
 @printf "\033[7m%s\033[0m \033[7m%s\033[0m \033[7m%s\033[0m\n" "TARGET   " "DESCRIPTION                                        " "YAML FILE                             "
 @printf "%s %s %s\n" "---------" " --------------------------------------------------" "--------------------------------------"
-@printf "%-40s %+20s \033[1m %s\033[0m\n" "step0/a/d    setup new namespace" " " "$(CREATE_RSTNAMESPACE)"
+@printf "%-40s %+20s \033[1m %s\033[0m\n" "step0/a/d    setup new namespace" " " "$(CREATE_ORDSNAMESPACE)"
 @printf "%-40s %+20s \033[1m %s\033[0m\n" "step1/a/d    setup certmaneger " " " "$(CERTMANAGER)"
 @printf "%-40s %+20s \033[1m %s\033[0m\n" "step2/a/d    setup operator" " " "$(shell basename $(ORACLE_OPERATOR_YAML))"
 @printf "%-40s %+20s \033[1m %s\033[0m\n" "step3/a/d    default scoped deployment" " " "$(DEFAULT_NAMESPACE_SCOPE)"
@@ -148,7 +162,7 @@ man:
 	$(call manpage)
 
 define namespace
-cat<<EOF|sed 's/^#//g' > $(CREATE_RSTNAMESPACE)
+cat<<EOF|sed 's/^#//g' > $(CREATE_ORDSNAMESPACE)
 #apiVersion: v1
 #kind: Namespace
 #metadata:
@@ -156,12 +170,12 @@ cat<<EOF|sed 's/^#//g' > $(CREATE_RSTNAMESPACE)
 #    control-plane: controller-manager
 #  name: $(2)
 EOF
-$(KUBECTL) $(1) -f $(CREATE_RSTNAMESPACE)
+$(KUBECTL) $(1) -f $(CREATE_ORDSNAMESPACE)
 $(KUBECTL) get namespace 
 endef
 
 step0:
-	$(call namespace,$(ACTION),$(RSTNAMESPACE))
+	$(call namespace,$(ACTION),$(ORDSNAMESPACE))
 step0a:
 	$(MAKE) -f $(MAKEFILE) step0 ACTION=apply 
 step0d:
@@ -197,8 +211,8 @@ cat<<EOF|sed 's/^#//g' >$(RST_NAMESPACE_SCOPE)
 #apiVersion: rbac.authorization.k8s.io/v1
 #kind: RoleBinding
 #metadata:
-#  name: $(RSTNAMESPACE)-rolebinding
-#  namespace: $(RSTNAMESPACE)
+#  name: $(ORDSNAMESPACE)-rolebinding
+#  namespace: $(ORDSNAMESPACE)
 #roleRef:
 #  apiGroup: rbac.authorization.k8s.io
 #  kind: ClusterRole
@@ -227,7 +241,7 @@ EOF
 
 $(KUBECTL) $(1) -f $(RST_NAMESPACE_SCOPE)
 $(KUBECTL) $(1) -f $(DEFAULT_NAMESPACE_SCOPE)
-$(KUBECTL) get RoleBinding -n $(RSTNAMESPACE)
+$(KUBECTL) get RoleBinding -n $(ORDSNAMESPACE)
 
 endef
 
@@ -353,19 +367,43 @@ step4a:
 step4d:
 	$(MAKE) -f $(MAKEFILE) ACTION=delete step4
 
+
+export SYSPWDFILE1=syspwdfile
+export ORDPWDFILE=ordspwdfile
+export SIDB_PASSWORD_FILE=sidbpasswordfile
+
+export PRVKEY=ca.key
+export PUBKEY=public.pem
+export OPENSSL=/usr/bin/openssl
+
 step5a:
-	$(KUBECTL) create secret generic $(SIDB_SECRET)  --from-literal=password=$(SIDB_PASSWORD) -n $(OPRNAMESPACE)
-	$(KUBECTL) create secret generic $(ORDS_SECRET)  --from-literal=password=$(SIDB_PASSWORD) -n $(RSTNAMESPACE)
+	echo $(SIDB_PASSWORD) > $(SIDB_PASSWORD_FILE) 
+	- $(KUBECTL) delete secret pubkey -n ${ORDSNAMESPACE}
+	- $(KUBECTL) delete secret prvkey -n ${ORDSNAMESPACE}
+	- $(KUBECTL) delete secret $(SIDB_SECRET)  -n ${ORDSNAMESPACE}
+	- $(KUBECTL) delete secret $(ORDS_SECRET) -n ${ORDSNAMESPACE}
+	$(OPENSSL) genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ${PRVKEY}
+	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
+	$(KUBECTL) create secret generic pubkey --from-file=publicKey=$(PUBKEY)   -n $(ORDSNAMESPACE)
+	$(KUBECTL) create secret generic prvkey --from-file=privateKey=$(PRVKEY)  -n $(ORDSNAMESPACE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(SIDB_PASSWORD_FILE) |base64 > e_$(SIDB_PASSWORD_FILE)
+	$(KUBECTL) create secret generic $(SIDB_SECRET) --from-literal=password=$(SIDB_PASSWORD) -n $(OPRNAMESPACE)
+	$(KUBECTL) create secret generic $(ORDS_SECRET) --from-file=password=e_$(SIDB_PASSWORD_FILE) -n  $(ORDSNAMESPACE)
+	$(RM) e_$(SIDB_PASSWORD_FILE) $(SIDB_PASSWORD_FILE) 
+
 step5d:
-	$(KUBECTL) delete secret $(SIDB_SECRET)  -n $(OPRNAMESPACE)
-	$(KUBECTL) delete secret $(ORDS_SECRET)  -n $(RSTNAMESPACE)
+	- $(KUBECTL) delete secret pubkey                    -n ${ORDSNAMESPACE}
+	- $(KUBECTL) delete secret prvkey                    -n ${ORDSNAMESPACE}
+	- $(KUBECTL) delete secret $(SIDB_SECRET)  -n ${ORDSNAMESPACE}
+	- $(KUBECTL) delete secret $(ORDS_SECRET) -n ${ORDSNAMESPACE}
+
 
 define registry_secret
 printf "#!/bin/bash \n" >$(SECRET_CONTAINER_REGISTRY_SCRIPT)
 printf "echo enter password for $(USER_CONTAINER_REGISTRY)@$(ORACLE_CONTAINER_REGISTRY) \n" >$(SECRET_CONTAINER_REGISTRY_SCRIPT)
 printf "read -s scpwd \n" >>$(SECRET_CONTAINER_REGISTRY_SCRIPT)
 printf "$(KUBECTL) create secret docker-registry $(SECRET_CONTAINER_REGISTRY) --docker-server=$(ORACLE_CONTAINER_REGISTRY) --docker-username=$(USER_CONTAINER_REGISTRY) --docker-password=\u0024scpwd --docker-email=$(USER_CONTAINER_REGISTRY) -n $(OPRNAMESPACE) \n" >>$(SECRET_CONTAINER_REGISTRY_SCRIPT)
-printf "$(KUBECTL) create secret docker-registry $(SECRET_CONTAINER_REGISTRY) --docker-server=$(ORACLE_CONTAINER_REGISTRY) --docker-username=$(USER_CONTAINER_REGISTRY) --docker-password=\u0024scpwd --docker-email=$(USER_CONTAINER_REGISTRY) -n $(RSTNAMESPACE) \n" >>$(SECRET_CONTAINER_REGISTRY_SCRIPT)
+printf "$(KUBECTL) create secret docker-registry $(SECRET_CONTAINER_REGISTRY) --docker-server=$(ORACLE_CONTAINER_REGISTRY) --docker-username=$(USER_CONTAINER_REGISTRY) --docker-password=\u0024scpwd --docker-email=$(USER_CONTAINER_REGISTRY) -n $(ORDSNAMESPACE) \n" >>$(SECRET_CONTAINER_REGISTRY_SCRIPT)
 
 bash $(SECRET_CONTAINER_REGISTRY_SCRIPT)
 endef 
@@ -380,7 +418,7 @@ step6d:
 define sidb
 
 cat<<EOF|sed 's/^#//g' >$(SIDB_CREATION)
-#apiVersion: database.oracle.com/v1alpha1
+#apiVersion: database.oracle.com/v4
 #kind: SingleInstanceDatabase
 #metadata:
 #  name: oraoper-sidb
@@ -413,14 +451,17 @@ step7d:
 
 define restservice 
 cat<<EOF|sed 's/^#//g' >$(REST_SERVER_CREATION)
-#apiVersion: database.oracle.com/v1alpha1
+#apiVersion: database.oracle.com/v4
 #kind: $(KIND) 
 #metadata:
 #  name: $(REST_SERVER_NAME)
-#  namespace: $(RSTNAMESPACE)
+#  namespace: $(ORDSNAMESPACE)
 #spec:
 #  image: $(ORDS_IMAGE)
 #  forceRestart: true
+#  encPrivKey:
+#    secretName: prvkey
+#    passwordKey: privateKey
 #  globalSettings:
 #    database.api.enabled: true
 #  poolSettings:
@@ -470,9 +511,9 @@ reloadop:
 	$(KUBECTL) get pod $(OP3) -n $(OPRNAMESPACE) -o yaml | kubectl replace --force -f -
 
 loginords:
-	@$(eval RESTPOD := $(shell $(KUBECTL) get pods --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}' -n $(RSTNAMESPACE)))
-	$(KUBECTL) logs $(RESTPOD) -n $(RSTNAMESPACE)
-	$(KUBECTL) exec  $(RESTPOD) -n $(RSTNAMESPACE) -it -- /bin/bash 
+	@$(eval RESTPOD := $(shell $(KUBECTL) get pods --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}' -n $(ORDSNAMESPACE)))
+	$(KUBECTL) logs $(RESTPOD) -n $(ORDSNAMESPACE)
+	$(KUBECTL) exec  $(RESTPOD) -n $(ORDSNAMESPACE) -it -- /bin/bash 
 
 logindb:
 	$(eval PODPDB := $(shell $(KUBECTL) get pods  --template '{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}' -n $(OPRNAMESPACE)|grep -v oracle-database-operator))
@@ -483,8 +524,8 @@ logindb:
 report:
 	$(KUBECTL) get pods -n $(OPRNAMESPACE)
 	$(KUBECTL) get SingleInstanceDatabase -n $(OPRNAMESPACE)
-	$(KUBECTL) get pods -n $(RSTNAMESPACE)
-	$(KUBECTL) get $(KIND) -n $(RSTNAMESPACE)
+	$(KUBECTL) get pods -n $(ORDSNAMESPACE)
+	$(KUBECTL) get $(KIND) -n $(ORDSNAMESPACE)
 	
 
 someattributes:
@@ -546,11 +587,11 @@ sqlplus:
 
 define restservicemongo
 cat <<EOF |sed 's/^#//g' >$(REST_SERVER_CREATION_MONGO)
-#apiVersion: database.oracle.com/v1alpha1
+#apiVersion: database.oracle.com/v4
 #kind: $(KIND)
 #metadata:
 #  name: $(REST_SERVER_NAME_MONGO)
-#  namespace: $(RSTNAMESPACE)
+#  namespace: $(ORDSNAMESPACE)
 #spec:
 #  image: $(ORDS_IMAGE.1)
 #  forceRestart: true
@@ -593,7 +634,7 @@ step10d:
 
 step11:
 	echo "Open a port-forward to the MongoAPI service"
-	@nohup $(KUBECTL) port-forward service/$(REST_SERVER_NAME_MONGO) 27017:27017 -n $(RSTNAMESPACE) 1>portfwd.log 2>&1 &
+	@nohup $(KUBECTL) port-forward service/$(REST_SERVER_NAME_MONGO) 27017:27017 -n $(ORDSNAMESPACE) 1>portfwd.log 2>&1 &
 	@echo "DOWNLOADING MONGOSH"
 	@$(CURL) https://downloads.mongodb.com/compass/$(MONGOSH).tgz --output mongosh-2.3.1-linux-x64.tgz
 	@echo "UNTAR FILE"
@@ -612,42 +653,62 @@ $(PDB1)=$(TNS1)
 
 $(PDB2)=$(TNS2)
 EOF
-$(KUBECTL) create secret generic multi-tns-admin -n  $(RSTNAMESPACE) --from-file=$(TNSADMIN)/
+$(KUBECTL) create secret generic multi-tns-admin -n  $(ORDSNAMESPACE) --from-file=$(TNSADMIN)/
 endef
 
 step12a:
 	$(call buildtns)
 
 step12d:
-	$(KUBECTL) delete secret multi-tns-admin  -n  $(RSTNAMESPACE) 
+	$(KUBECTL) delete secret multi-tns-admin  -n  $(ORDSNAMESPACE) 
+
+export SYSPWDFILE1=syspwdfile1
+export SYSPWDFILE2=syspwdfile2
+export ORDPWDFILE=ordspwdfile
 
 
 step13a:
-	$(KUBECTL) create secret generic multi-ords-auth -n $(RSTNAMESPACE) --from-literal=password=chageme
-	$(KUBECTL) create secret generic pdb1-priv-auth -n $(RSTNAMESPACE)  --from-literal=password=WElcome_12##
-	$(KUBECTL) create secret generic pdb2-priv-auth -n $(RSTNAMESPACE)  --from-literal=password=WElcome_12##
+	echo $(PDB1_PWD) > $(SYSPWDFILE1)
+	echo $(PDB2_PWD) > $(SYSPWDFILE2)
+	echo $(ORDS_MULTI_POOL_PWD) > $(ORDPWDFILE)
+	$(OPENSSL)  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ${PRVKEY}
+	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
+	#$(KUBECTL) create secret generic pubkey --from-file=publicKey=$(PUBKEY) -n $(ORDSNAMESPACE)
+	$(KUBECTL) create secret generic prvkey --from-file=privateKey=$(PRVKEY)  -n $(ORDSNAMESPACE)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(SYSPWDFILE1) |base64 > e_$(SYSPWDFILE1)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(SYSPWDFILE2) |base64 > e_$(SYSPWDFILE2)
+	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(ORDPWDFILE) |base64 > e_$(ORDPWDFILE)
+	$(KUBECTL) create secret generic $(PDB1_PRIV_AUTH_SECRET) --from-file=password=e_$(SYSPWDFILE1) -n  $(ORDSNAMESPACE)
+	$(KUBECTL) create secret generic $(PDB2_PRIV_AUTH_SECRET) --from-file=password=e_$(SYSPWDFILE2) -n  $(ORDSNAMESPACE)
+	$(KUBECTL) create secret generic $(MULTI_ORDS_AUTH_SECRET) --from-file=password=e_$(ORDPWDFILE) -n  $(ORDSNAMESPACE)
+	$(RM) $(SYSPWDFILE1) $(SYSPWDFILE2) $(ORDPWDFILE) e_$(SYSPWDFILE1) e_$(SYSPWDFILE2) e_$(ORDPWDFILE)
 
 step13d:
-	$(KUBECTL) delete secret multi-ords-auth -n $(RSTNAMESPACE) 
-	$(KUBECTL) delete secret pdb1-priv-auth -n $(RSTNAMESPACE) 
-	$(KUBECTL) delete secret pdb2-priv-auth -n $(RSTNAMESPACE) 
-
+	- $(KUBECTL) delete secret pubkey                     -n $(ORDSNAMESPACE)
+	- $(KUBECTL) delete secret prvkey                     -n $(ORDSNAMESPACE)
+	- $(KUBECTL) delete secret $(PDB1_PRIV_AUTH_SECRET)   -n $(ORDSNAMESPACE)
+	- $(KUBECTL) delete secret $(PDB2_PRIV_AUTH_SECRET)   -n $(ORDSNAMESPACE)
+	- $(KUBECTL) delete secret $(MULTI_ORDS_AUTH_SECRET)  -n $(ORDSNAMESPACE)
 
 define multisrv
 cat <<EOF |sed 's/^#//g' >$(MULTISRV_MANIFEST)
-#apiVersion: database.oracle.com/v1alpha1
+#apiVersion: database.oracle.com/v4
 #kind: $(KIND)
 #metadata:
 #  name: ords-multi-pool
-#  namespace: $(RSTNAMESPACE)
+#  namespace: $(ORDSNAMESPACE)
 #spec:
 #  image: container-registry.oracle.com/database/ords:24.1.1
 #  forceRestart: true
+#  encPrivKey:
+#    secretName: prvkey
+#    passwordKey: privateKey
 #  globalSettings:
 #    database.api.enabled: true
 #  poolSettings:
 #    - poolName: pdb1
-#      autoUpgradeORDS: true
+#      autoUpgradeAPEX: false
+#      autoUpgradeORDS: false
 #      db.connectionType: tns
 #      db.tnsAliasName: pdb1
 #      tnsAdminSecret:
@@ -657,11 +718,13 @@ cat <<EOF |sed 's/^#//g' >$(MULTISRV_MANIFEST)
 #      plsql.gateway.mode: proxied
 #      db.username: ORDS_PUBLIC_USER
 #      db.secret:
-#        secretName: multi-ords-auth
+#        secretName: $(MULTI_ORDS_AUTH_SECRET)
 #      db.adminUser: SYS
 #      db.adminUser.secret:
-#        secretName: pdb1-priv-auth
+#        secretName: $(PDB1_PRIV_AUTH_SECRET)
 #    - poolName: pdb2
+#      autoUpgradeAPEX: false
+#      autoUpgradeORDS: false
 #      db.connectionType: tns
 #      db.tnsAliasName: PDB2
 #      tnsAdminSecret:
@@ -671,10 +734,10 @@ cat <<EOF |sed 's/^#//g' >$(MULTISRV_MANIFEST)
 #      plsql.gateway.mode: proxied
 #      db.username: ORDS_PUBLIC_USER
 #      db.secret:
-#        secretName: multi-ords-auth
+#        secretName: $(MULTI_ORDS_AUTH_SECRET)
 #      db.adminUser: SYS
 #      db.adminUser.secret:
-#        secretName: pdb2-priv-auth
+#        secretName: $(PDB1_PRIV_AUTH_SECRET)
 
 #
 EOF
@@ -711,5 +774,5 @@ done
 endef
 
 diagordsinit:
-	$(call dumpinit ,$(RSTNAMESPACE))
+	$(call dumpinit ,$(ORDSNAMESPACE))
 

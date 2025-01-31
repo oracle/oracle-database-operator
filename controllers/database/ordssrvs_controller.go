@@ -40,9 +40,13 @@ package controllers
 
 import (
 	"context"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"reflect"
@@ -387,7 +391,7 @@ func (r *OrdsSrvsReconciler) WorkloadReconcile(ctx context.Context, req ctrl.Req
 	logr := log.FromContext(ctx).WithName("WorkloadReconcile")
 	objectMeta := objectMetaDefine(ords, ords.Name)
 	selector := selectorDefine(ords)
-	template := podTemplateSpecDefine(ords)
+	template := r.podTemplateSpecDefine(ords, ctx, req)
 
 	var desiredWorkload client.Object
 	var desiredSpecHash string
@@ -584,7 +588,7 @@ func selectorDefine(ords *dbapi.OrdsSrvs) metav1.LabelSelector {
 	}
 }
 
-func podTemplateSpecDefine(ords *dbapi.OrdsSrvs) corev1.PodTemplateSpec {
+func (r *OrdsSrvsReconciler) podTemplateSpecDefine(ords *dbapi.OrdsSrvs, ctx context.Context, req ctrl.Request) corev1.PodTemplateSpec {
 	labels := getLabels(ords.Name)
 	specVolumes, specVolumeMounts := VolumesDefine(ords)
 
@@ -627,10 +631,9 @@ func podTemplateSpecDefine(ords *dbapi.OrdsSrvs) corev1.PodTemplateSpec {
 					Name:            ords.Name + "-init",
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					SecurityContext: securityContextDefine(),
-					//Command:         []string{"ls", "-ltr"},
-					Command:      []string{"sh", "-c", ordsSABase + "/bin/init_script.sh"},
-					Env:          envDefine(ords, true),
-					VolumeMounts: specVolumeMounts,
+					Command:         []string{"sh", "-c", ordsSABase + "/bin/init_script.sh"},
+					Env:             r.envDefine(ords, true, ctx),
+					VolumeMounts:    specVolumeMounts,
 				}},
 				Containers: []corev1.Container{{
 					Image:           ords.Spec.Image,
@@ -638,12 +641,9 @@ func podTemplateSpecDefine(ords *dbapi.OrdsSrvs) corev1.PodTemplateSpec {
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					SecurityContext: securityContextDefine(),
 					Ports:           envPorts,
-					//Command: []string{"sh", "-c", "tail -f /dev/null"},
-					//Command: []string{"/usr/sbin/init"},
-					Command: []string{"/bin/bash", "-c", "ords --config $ORDS_CONFIG serve --apex-images /opt/oracle/apex/$APEX_VER/images --debug"},
-					Env:     envDefine(ords, false),
-					//Env:          envDefine(ords, true),
-					VolumeMounts: specVolumeMounts,
+					Command:         []string{"/bin/bash", "-c", "ords --config $ORDS_CONFIG serve --apex-images /opt/oracle/apex/$APEX_VER/images --debug"},
+					Env:             r.envDefine(ords, false, ctx),
+					VolumeMounts:    specVolumeMounts,
 				}}},
 		}
 
@@ -839,7 +839,7 @@ func securityContextDefine() *corev1.SecurityContext {
 	}
 }
 
-func envDefine(ords *dbapi.OrdsSrvs, initContainer bool) []corev1.EnvVar {
+func (r *OrdsSrvsReconciler) envDefine(ords *dbapi.OrdsSrvs, initContainer bool, ctx context.Context) []corev1.EnvVar {
 	envVarSecrets := []corev1.EnvVar{
 		{
 			Name:  "ORDS_CONFIG",
@@ -850,6 +850,7 @@ func envDefine(ords *dbapi.OrdsSrvs, initContainer bool) []corev1.EnvVar {
 			Value: "-Doracle.ml.version_check=false",
 		},
 	}
+
 	// Limitation case for ADB/mTLS/OraOper edge
 	if len(ords.Spec.PoolSettings) == 1 {
 		poolName := strings.ToLower(ords.Spec.PoolSettings[0].PoolName)
@@ -862,18 +863,14 @@ func envDefine(ords *dbapi.OrdsSrvs, initContainer bool) []corev1.EnvVar {
 	if initContainer {
 		for i := 0; i < len(ords.Spec.PoolSettings); i++ {
 			poolName := strings.ReplaceAll(strings.ToLower(ords.Spec.PoolSettings[i].PoolName), "-", "_")
+
 			dbSecret := corev1.EnvVar{
-				Name: poolName + "_dbsecret",
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: ords.Spec.PoolSettings[i].DBSecret.SecretName,
-						},
-						Key: ords.Spec.PoolSettings[i].DBSecret.PasswordKey,
-					},
-				},
+				Name:  poolName + "_dbsecret",
+				Value: r.CommonDecryptWithPrivKey3(ords, ords.Spec.PoolSettings[i].DBSecret.SecretName, ords.Spec.PoolSettings[i].DBSecret.PasswordKey, ctx),
 			}
+
 			envVarSecrets = append(envVarSecrets, dbSecret)
+
 			if ords.Spec.PoolSettings[i].DBAdminUserSecret.SecretName != "" {
 				autoUpgradeORDSEnv := corev1.EnvVar{
 					Name:  poolName + "_autoupgrade_ords",
@@ -883,35 +880,26 @@ func envDefine(ords *dbapi.OrdsSrvs, initContainer bool) []corev1.EnvVar {
 					Name:  poolName + "_autoupgrade_apex",
 					Value: strconv.FormatBool(ords.Spec.PoolSettings[i].AutoUpgradeAPEX),
 				}
+
 				dbAdminUserSecret := corev1.EnvVar{
-					Name: poolName + "_dbadminusersecret",
-					ValueFrom: &corev1.EnvVarSource{
-						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: ords.Spec.PoolSettings[i].DBAdminUserSecret.SecretName,
-							},
-							Key: ords.Spec.PoolSettings[i].DBAdminUserSecret.PasswordKey,
-						},
-					},
+					Name:  poolName + "_dbadminusersecret",
+					Value: r.CommonDecryptWithPrivKey3(ords, ords.Spec.PoolSettings[i].DBAdminUserSecret.SecretName, ords.Spec.PoolSettings[i].DBAdminUserSecret.PasswordKey, ctx),
 				}
 				envVarSecrets = append(envVarSecrets, dbAdminUserSecret, autoUpgradeORDSEnv, autoUpgradeAPEXEnv)
 			}
+
 			if ords.Spec.PoolSettings[i].DBCDBAdminUserSecret.SecretName != "" {
+
 				dbCDBAdminUserSecret := corev1.EnvVar{
-					Name: poolName + "_dbcdbadminusersecret",
-					ValueFrom: &corev1.EnvVarSource{
-						SecretKeyRef: &corev1.SecretKeySelector{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: ords.Spec.PoolSettings[i].DBCDBAdminUserSecret.SecretName,
-							},
-							Key: ords.Spec.PoolSettings[i].DBCDBAdminUserSecret.PasswordKey,
-						},
-					},
+					Name:  poolName + "_dbcdbadminusersecret",
+					Value: r.CommonDecryptWithPrivKey3(ords, ords.Spec.PoolSettings[i].DBCDBAdminUserSecret.SecretName, ords.Spec.PoolSettings[i].DBCDBAdminUserSecret.PasswordKey, ctx),
 				}
+
 				envVarSecrets = append(envVarSecrets, dbCDBAdminUserSecret)
 			}
 		}
 	}
+
 	return envVarSecrets
 }
 
@@ -1052,4 +1040,77 @@ func generateSpecHash(spec interface{}) string {
 	hashString := hex.EncodeToString(hashBytes[:8])
 
 	return hashString
+}
+
+func CommonDecryptWithPrivKey(Key string, Buffer string) (string, error) {
+
+	Debug := 0
+	block, _ := pem.Decode([]byte(Key))
+	pkcs8PrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		fmt.Printf("Failed to parse private key %s \n", err.Error())
+		return "", err
+	}
+	if Debug == 1 {
+		fmt.Printf("======================================\n")
+		fmt.Printf("%s\n", Key)
+		fmt.Printf("======================================\n")
+	}
+
+	encString64, err := base64.StdEncoding.DecodeString(string(Buffer))
+	if err != nil {
+		fmt.Printf("Failed to decode encrypted string to base64: %s\n", err.Error())
+		return "", err
+	}
+
+	if Debug == 1 {
+		fmt.Printf("======================================\n")
+		fmt.Printf("%s\n", encString64)
+		fmt.Printf("======================================\n")
+	}
+
+	decryptedB, err := rsa.DecryptPKCS1v15(nil, pkcs8PrivateKey.(*rsa.PrivateKey), encString64)
+	if err != nil {
+		fmt.Printf("Failed to decrypt string %s\n", err.Error())
+		return "", err
+	}
+	if Debug == 1 {
+		fmt.Printf("[%s]\n", string(decryptedB))
+	}
+	return strings.TrimSpace(string(decryptedB)), err
+
+}
+
+func (r *OrdsSrvsReconciler) CommonDecryptWithPrivKey3(ords *dbapi.OrdsSrvs, sname string, skey string, ctx context.Context) string {
+	logr := log.FromContext(ctx).WithName("CommonDecryptWithPrivKey2")
+	secret_par := &corev1.Secret{}
+	fmt.Printf("sname: %s\n", sname)
+	fmt.Printf("skey: %s\n", skey)
+	err := r.Get(ctx, types.NamespacedName{Name: sname, Namespace: ords.Namespace}, secret_par)
+	if err != nil {
+		logr.Error(err, "Cannot read secret"+sname)
+		return ""
+	}
+	encVal := string(secret_par.Data[skey])
+	encVal = strings.TrimSpace(encVal)
+
+	secret_key := &corev1.Secret{}
+	/* get private key */
+	if err := r.Get(ctx, types.NamespacedName{Name: ords.Spec.EncPrivKey.SecretName,
+		Namespace: ords.Namespace}, secret_key); err != nil {
+		logr.Error(err, "Cannot get privte key")
+		return ""
+	}
+	PrvKeyVal := string(secret_key.Data[ords.Spec.EncPrivKey.PasswordKey])
+	PrvKeyVal = strings.TrimSpace(PrvKeyVal)
+
+	decVal, err := CommonDecryptWithPrivKey(PrvKeyVal, encVal)
+	if err != nil {
+		logr.Error(err, "Fail to decrypt secret")
+		return ""
+	}
+
+	logr.Info("Password decryption completed")
+
+	return decVal
 }

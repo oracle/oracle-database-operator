@@ -10100,6 +10100,16 @@ spec:
             type: object
           spec:
             properties:
+              encPrivKey:
+                properties:
+                  passwordKey:
+                    default: password
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - secretName
+                type: object
               forceRestart:
                 type: boolean
               globalSettings:

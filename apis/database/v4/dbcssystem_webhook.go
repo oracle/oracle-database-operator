@@ -70,7 +70,7 @@ func (r *DbcsSystem) Default() {
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 
-//+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-dbcssystem,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dbcssystems,versions=v4,name=vdbcssystemv4.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-dbcssystem,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dbcssystems,versions=v4,name=vdbcssystemv4.kb.io,admissionReviewVersions=v1
 var _ webhook.Validator = &DbcsSystem{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type

@@ -1,6 +1,12 @@
 # Example: Oracle API for MongoDB Support
 
-This example walks through using the **ORDS Operator** with a Containerised Oracle Database to enable MongoDB API Support.
+This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database to enable MongoDB API Support.
+
+
+### Cert-Manager and  Oracle Database Operator installation
+
+Install the [Cert Manager](https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml) and the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator) using the instractions in the Operator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) file.
+
 
 ### Database Access
 
@@ -12,11 +18,11 @@ the [Containerised Single Instance Database using the OraOperator](sidb_containe
 In the database, create an ORDS-enabled user.  As this example uses the [Containerised Single Instance Database using the OraOperator](sidb_container.md), the following was performed:
 
 
-1. Connect to the database:
+1. Connect to the database: 
+
     ```bash
     DB_PWD=$(kubectl get secrets sidb-db-auth --template='{{.data.password | base64decode}}')
     POD_NAME=$(kubectl get pod -l "app=oraoper-sidb" -o custom-columns=NAME:.metadata.name --no-headers)
-    
     kubectl exec -it ${POD_NAME} -- sqlplus SYSTEM/${DB_PWD}@FREEPDB1
     ```
     
@@ -26,11 +32,23 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
     grant soda_app, create session, create table, create view, create sequence, create procedure, create job, 
     unlimited tablespace to MONGO;
     -- Connect as new user
-    conn MONGO/My_Password1!@FREEDB1;
+    conn MONGO/My_Password1!@FREEPDB1;
     exec ords.enable_schema;
     ```
 
-### Create RestDataServices Resource
+### Create encrypted secrets 
+
+```bash
+openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.k
+openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
+kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
+openssl rsautl -encrypt -pubin -inkey public.pem -in sidb-db-auth-enc |base64 > e_sidb-db-auth-enc
+kubectl create secret generic sidb-db-auth-enc --from-file=password=e_sidb-db-auth-enc -n  ordsnamespace
+rm sidb-db-auth-enc e_sidb-db-auth-enc
+
+```
+
+### Create ordssrvs Resource
 
 1. Retrieve the Connection String from the containerised SIDB.
 
@@ -52,13 +70,17 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
 
     ```bash
     echo "
-    apiVersion: database.oracle.com/v1
-    kind: RestDataServices
+    apiVersion: database.oracle.com/v4
+    kind: ordssrvs
     metadata:
       name: ords-sidb
+      namespace: ordsnamespace
     spec:
       image: container-registry.oracle.com/database/ords:24.1.1
       forceRestart: true
+      encPrivKey:
+        secretName: prvkey
+        passwordKey: privateKey
       globalSettings:
         database.api.enabled: true
         mongo.enabled: true
@@ -76,16 +98,16 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
           db.customURL: jdbc:oracle:thin:@//${CONN_STRING}
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName:  sidb-db-auth
+            secretName:  sidb-db-auth-enc
           db.adminUser: SYS
           db.adminUser.secret:
-            secretName:  sidb-db-auth" | kubectl apply -f -
+            secretName:  sidb-db-auth-enc" | kubectl apply -f -
     ```
     <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
     
 1. Watch the restdataservices resource until the status is **Healthy**:
     ```bash
-    kubectl get restdataservices ords-sidb -w
+    kubectl get ordssrvs ords-sidb -w
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
@@ -95,21 +117,21 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
     You can watch the APEX/ORDS Installation progress by running:
 
     ```bash
-    POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-sidb" -o custom-columns=NAME:.metadata.name --no-headers)
+    POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-sidb" -o custom-columns=NAME:.metadata.name -n ordsnamespace --no-headers)
 
-    kubectl logs ${POD_NAME} -c ords-sidb-init -f
+    kubectl logs ${POD_NAME} -c ords-sidb-init -n ordsnamespace -f
     ```
 
 ### Test
 
 1. Open a port-forward to the MongoAPI service, for example:
     ```bash
-    kubectl port-forward service/ords-sidb 27017:27017
+    kubectl port-forward service/ords-sidb 27017:27017 -n ordsnamespace
     ```
 
 1. Connect to ORDS using the MongoDB shell:
     ```bash
-    mongosh  --tlsAllowInvalidCertificates 'mongodb://MONGO:My_Password1!@localhost:27017/MONGO?authMechanism=PLAIN&authSource=$external&tls=true&retryWrites=false&loadBalanced=true'
+    mongosh  --tlsAllowInvalidCertificates 'mongodb://MONGO:My_Password1!@localhost:27017/MONGO?authMechanism=PLAIN&authSource=$external&tls=true&retryWrites=false&loadBalanced=true' 
     ```
 
 1. Insert some data:
