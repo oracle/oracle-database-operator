@@ -31,8 +31,8 @@
 
 
 
-**Lrpdb** and **lrest** are two controllers for the pdb life cycle management (**PDBLCM**), they relye on a dedicated rest server (Lite Rest Server). 
-Image to run lrest controller is available on OCR. The container database can be anywhere (on prem and in cloud) 
+**Lrpdb** and **lrest** are two controllers for the PDBs life cycle management (**PDBLCM**), they relie on a dedicated rest server (Lite Rest Server). 
+Container image to run lrest controller is available on OCR. The container database can be anywhere (on prem and in cloud). 
 
 ![generaleschema](./images/Generalschema2.jpg)
 
@@ -185,7 +185,7 @@ lrestImage: container-registry.oracle.com/database/operator:lrest-241210-arm64
 kubectl apply -f create_lrest_pod.yaml
 ```
 
-monitor the execution 
+monitor the execution:
 
 ```bash 
 kubectl get pods -n cdbnamespace --watch
@@ -200,7 +200,7 @@ NAME CDB NAME   DB SERVER   DB PORT   TNS STRING  REPLICAS   STATUS   MESSAGE
 cdb-dev   DB12                             (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))   1          Ready
 ```
 
-Check pod logs 
+Check pod logs: 
 
 ```bash 
 /usr/local/go/bin/kubectl logs -f `/usr/local/go/bin/kubectl get pods -n cdbnamespace|grep lrest|cut -d ' ' -f 1` -n cdbnamespace
@@ -271,7 +271,7 @@ Parsing sqltext=select count(*) from pdb_plug_in_violations where name =:b1
 |cdbName                  | Name of the container db                                                      |
 |lrestImage (DO NOT EDIT) | **container-registry.oracle.com/database/lrest-dboper:latest**                |
 |dbTnsurl                 | Tns alias of the container db                                                 |
-|deletePdbCascade         | Delete all the pdbs associated to cdb resource when cdb resource it's dropped using [imperative approach](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/imperative-command/)  |
+|deletePdbCascade         | Delete all the pdbs associated to cdb resource when cdb resource it is dropped using [imperative approach](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/imperative-command/)  |
 |cdbAdminUser             | Secret: the admin user                                                     |
 |cdbAdminPwd              | Secret: the admin user password                                            |
 |webServerUser            | Secret: the https user                                                     |
@@ -333,12 +333,12 @@ Note that after creation the pdb is not open you need to explicitly open it usin
 
 🔥 **assertiveLrpdbDeletion** drops pluggable database using **INCLUDE DATAFILES** option
 
-All these parameters **adminpdbUser** **adminpdbPass** **lrpdbTlsKey** **lrpdbTlsCrt** **lrpdbTlsCat** **webServerUser** **webServerPwd** **cdbPrvKey** **cdbPubKey** need to be specified in all pdb life cycle management yaml files; for the sake of simplicity they won't be exposed in the subsequent tables.
+All these parameters **adminpdbUser** **adminpdbPass** **lrpdbTlsKey** **lrpdbTlsCrt** **lrpdbTlsCat** **webServerUser** **webServerPwd** **cdbPrvKey** **cdbPubKey** need to be specified in all pdb life cycle management yaml files; for the sake of simplicity, they won't be exposed in the subsequent tables.
 
 
 #### pdb config map 
 
-Using **pdbconfigmap** it's possible to specify a kubernetes configmap for the pdb init parameters. The config map payload has the following scaffold:
+Using **pdbconfigmap** it's possible to specify a kubernetes configmap with  init pdb parameters. The config map payload has the following scaffold:
 
 
 ```
@@ -377,8 +377,8 @@ db_file_multiblock_read_count;16;spfile
 test_invalid_parameter;16;spfile
 ```
 
-- Configmap, if specified, is applied during pdb **cloning** **opening** and **plugging**
-- Configmap is not monitored by the reconciliation loop; this feature will be available in feature releases. This means that is if someone decides to manually alter init parameter the operator does not take any actions to syncronize pdb configuration with config map.
+- Configmap, if specified, is applied during pdb **cloning**, **opening** and **plugging**
+- Configmap is not monitored by the reconciliation loop; this feature will be available in feature releases. This means that  if someone decides to manually alter an init parameter the operator does not take any actions to syncronize pdb configuration with config map.
 - **Alter system parameter feature** will be available in future releases. 
 - A ConfigMap application error (whatever reason) does not stop the execution of the process. A warning with sqlcode is reported in the logfile.
 
