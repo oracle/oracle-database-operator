@@ -54,7 +54,7 @@ import (
 type AutonomousDatabaseSpec struct {
 	// +kubebuilder:validation:Enum:="";Create;Sync;Update;Stop;Start;Terminate;Clone
 	Action    string                    `json:"action"`
-	Details   AutonomousDatabaseDetails `json:"details"`
+	Details   AutonomousDatabaseDetails `json:"details,omitempty"`
 	Clone     AutonomousDatabaseClone   `json:"clone,omitempty"`
 	Wallet    WalletSpec                `json:"wallet,omitempty"`
 	OciConfig OciConfigSpec             `json:"ociConfig,omitempty"`
