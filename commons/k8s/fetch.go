@@ -44,6 +44,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -96,11 +97,20 @@ func fetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv4
 	return adbList, nil
 }
 
-func FetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string) (*dbv4.AutonomousDatabaseBackupList, error) {
+func FetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string, adbName string) (*dbv4.AutonomousDatabaseBackupList, error) {
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
 	backupList := &dbv4.AutonomousDatabaseBackupList{}
 
-	if err := kubeClient.List(context.TODO(), backupList, &client.ListOptions{Namespace: namespace}); err != nil {
+	// Create a label selector
+	selector := labels.Set{"adb": adbName}.AsSelector()
+
+	if err := kubeClient.List(
+		context.TODO(),
+		backupList,
+		&client.ListOptions{
+			Namespace:     namespace,
+			LabelSelector: selector,
+		}); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
 		// No need to change the since we don't know if we obtain the object.
 		if !apiErrors.IsNotFound(err) {

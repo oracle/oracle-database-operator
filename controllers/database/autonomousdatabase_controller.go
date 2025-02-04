@@ -301,11 +301,16 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			specChanged = true
 		}
 
-		/*****************************************************
-		*	Sync AutonomousDatabase Backups from OCI
-		*****************************************************/
-		if err := r.syncBackupResources(logger, desiredAdb); err != nil {
-			return r.manageError(logger.WithName("syncBackupResources"), desiredAdb, err)
+		/******************************************************************
+		*	Sync AutonomousDatabase Backups from OCI.
+		* The backups will not be synced when the lifecycle state is
+		* TERMINATING or TERMINATED.
+		******************************************************************/
+		if desiredAdb.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminating &&
+			desiredAdb.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminated {
+			if err := r.syncBackupResources(logger, desiredAdb); err != nil {
+				return r.manageError(logger.WithName("syncBackupResources"), desiredAdb, err)
+			}
 		}
 
 		/*****************************************************
@@ -514,6 +519,10 @@ func (r *AutonomousDatabaseReconciler) performOperation(
 				return false, err
 			}
 
+			if err := r.removeBackupResources(l, adb); err != nil {
+				return false, err
+			}
+
 			adb.Status.LifecycleState = database.AutonomousDatabaseLifecycleStateTerminating
 		} else if dbv4.IsAdbIntermediateState(adb.Status.LifecycleState) {
 			l.Info("Can not terminate an ADB in an intermediate state; exit reconcile")
@@ -700,7 +709,7 @@ func (r *AutonomousDatabaseReconciler) syncBackupResources(logger logr.Logger, a
 	l := logger.WithName("syncBackupResources")
 
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
-	backupList, err := k8s.FetchAutonomousDatabaseBackups(r.KubeClient, adb.Namespace)
+	backupList, err := k8s.FetchAutonomousDatabaseBackups(r.KubeClient, adb.Namespace, adb.Name)
 	if err != nil {
 		return err
 	}
@@ -789,4 +798,25 @@ func (r *AutonomousDatabaseReconciler) ifBackupExists(backupSummary database.Aut
 	}
 
 	return false
+}
+
+// removeBackupResources remove all the AutonomousDatabasBackups that
+// are associated with the adb
+func (r *AutonomousDatabaseReconciler) removeBackupResources(logger logr.Logger, adb *dbv4.AutonomousDatabase) error {
+	l := logger.WithName("removeBackupResources")
+
+	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
+	backupList, err := k8s.FetchAutonomousDatabaseBackups(r.KubeClient, adb.Namespace, adb.Name)
+	if err != nil {
+		return err
+	}
+
+	for _, backup := range backupList.Items {
+		if err := r.KubeClient.Delete(context.TODO(), &backup); err != nil {
+			return err
+		}
+		l.Info("Delete AutonomousDatabaseBackup " + backup.Name)
+	}
+
+	return nil
 }
