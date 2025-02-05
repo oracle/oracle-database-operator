@@ -2,53 +2,68 @@
 
 ## Make Oracle Database Kubernetes Native
 
-As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating Oracle Database lifecycle management.
+As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released the  _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating the management of the Oracle Database lifecycle.
 
-In this v1.1.0 production release, `OraOperator` supports the following database configurations and infrastructure:
+##  Supported Database Configurations in V1.2.0
+In this v1.2.0 production release, `OraOperator` supports the following database configurations, and controllers:
 
 * Oracle Autonomous Database:
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
   * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
-  * Oracle Autonomous Container Database (ACD) (infrastructure) is the infrastructure for provisioning Autonomous Databases.
+  * Oracle Autonomous Container Database (ACD), the infrastructure for provisioning Autonomous Databases.
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Base Database Cloud Service (BDBCS)
-* Oracle Data Guard (Preview status)
-* Oracle Database Observability  (Preview status)
+* Oracle Data Guard
+* Oracle Database Observability
+* Oracle Database Rest Service (ORDS) instances
 
-Oracle will continue to extend `OraOperator` to support additional Oracle Database configurations.
+## New Lifecycle Features in V1.2.0 Release (Controllers Enhancements)
+* ORDSSERVICES
+  - Install on SIDB and ADB
+  - Provision and Delete ORDS instances
+* SIDB
+  - Oracle Database 23ai Free support
+  - Oracle Database 23ai Free-lite support
+  - SIDB resource management
+  - True Cache support for Free SIDB databases (Preview)
+  - Observer for FastStartFailover with Data Guard
+  - Snapshot Standby support in Data Guard setup
+* Globally Distributed Database : Support for Oracle Database 23ai Raft replication
+* Autonomous Database: support for Database cloning
+* Multitenant DB:
+  - ORDS-based Controller:  assertive deletion policy.
+  - New LRES based Controller  (ARM & AM)
+    - PDBs settings with init parameters config map
+    - Assertive deletion policy.
+* Database Observability (still preview)
+  - Support for Database Logs
+  - Support for the latest Exporter container images
 
-## New in V1.1.0 Release
-* Namespace scope deployment option
-* Enhanced security with namespace scope deployment option
-* Support for Oracle Database 23ai Free (with SIDB)
-* Automatic Storage Expansion for SIDB and Sharded DB
-* User-Defined Sharding
-* TCPS support customer provided certs
-* Execute custom scripts during DB setup/startup
-* Patching for SIDB Primary/Standby in Data Guard
-* Long-term backup for Autonomous Databases (ADB): Support for [long-term retention backup](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/backup-long-term.html) and removed support for the deprecated mandatory backup
-* Wallet expiry date for ADB: A user-friendly enhancement to display the wallet expiry date in the status of the associated ADB
-* Wait-for-Completion option for ADB: Supports `kubectl wait` command that allows the user to wait for a specific condition on ADB
-* OKE workload Identify: Supports OKE workload identity authentication method (i.e., uses OKE credentials). For more details, refer to [Oracle Autonomous Database (ADB) Prerequisites](docs/adb/ADB_PREREQUISITES.md#authorized-with-oke-workload-identity)
-* Database Observability (Preview - Metrics)
+* Base DB: support for Oracle Database 23ai Cloning
+* Prometheus label config (bug fix)
 
-## Features Summary
+
+* Published on operatorhub.io
+* Operator Lifecycle Manager (OLM) support (install from operatorhub.io)
+* Validated on Google Kubernetes Engine
+
+## Overall Features Summary
 
 This release of Oracle Database Operator for Kubernetes (the operator) supports the following lifecycle operations:
 
-* ADB-S/ADB-D: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore
+* ADB-S/ADB-D: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning.
 * ACD: provision, bind, restart, terminate (soft/hard)
-* SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (a basic observability console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, and Application Express (Apex)
-* SHARDED: Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard
-* Oracle Multitenant Database: Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB
-* Oracle Base Database Cloud Service (BDBCS): provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License
+* SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), and Snapshot Standby (Data Guard)
+* ORDS Services: provision and delete ORDS instances
+* Globally Distrib. (Sharded): Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard, Raft replication.
+* Oracle Multitenant Database (choice of controller): Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB, Assertive deletion policy
+* Oracle Base Database Cloud Service (BDBCS): provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License, Cloning.
 * Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
-* Oracle Database Observability: create, patch, delete databaseObserver resources
+* Oracle Database Observability: create, patch, delete databaseObserver resources (Logs and Metrics)
 * Watch over a set of namespaces or all the namespaces in the cluster using the "WATCH_NAMESPACE" env variable of the operator deployment
 
-The upcoming releases will support new configurations, operations, and capabilities.
 
 ## Release Status
 
@@ -56,11 +71,11 @@ This production release has been installed and tested on the following Kubernete
 
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.24
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.6
-* [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.29.0
-* [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/) 
+* [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
+* [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Red Hat OKD](https://www.okd.io/)
-* [Red Hat OpenShift](https://www.redhat.com/en/technologies/cloud-computing/openshift/)
+* [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.29.0
 
 ## Prerequisites
 
@@ -84,7 +99,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
     This is the default mode, in which OraOperator is deployed to operate in a cluster, and to monitor all the namespaces in the cluster.
 
   - Grant the `serviceaccount:oracle-database-operator-system:default` cluster wide access for the resources by applying [cluster-role-binding.yaml](./rbac/cluster-role-binding.yaml)
-      
+
     ```sh
       kubectl apply -f rbac/cluster-role-binding.yaml
     ```
@@ -118,7 +133,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
       kubectl apply -f oracle-database-operator.yaml
     ```
 
-  
+
 * ### ClusterRole and ClusterRoleBinding for NodePort services
 
   To expose services on each node's IP and port (the NodePort) apply the [node-rbac.yaml](./rbac/node-rbac.yaml). Note that this step is not required for LoadBalancer services.
@@ -141,7 +156,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
   ```sh
   $ kubectl get pods -n oracle-database-operator-system
-  
+
     NAME                                                                 READY   STATUS    RESTARTS   AGE
     pod/oracle-database-operator-controller-manager-78666fdddb-s4xcm     1/1     Running   0          11d
     pod/oracle-database-operator-controller-manager-78666fdddb-5k6n4     1/1     Running   0          11d
@@ -242,7 +257,7 @@ The following is an example of a YAML file fragment for specifying Oracle Cloud 
       ociSecretOCID: ocid1.vaultsecret.oc1...
 ```
 
-Examples in this repository where passwords are entered on the command line are for demonstration purposes only. 
+Examples in this repository where passwords are entered on the command line are for demonstration purposes only.
 
 ### Reporting a Security Issue
 
