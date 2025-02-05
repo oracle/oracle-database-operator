@@ -1,11 +1,9 @@
-# Oracle Rest Data Services (ORDS) Controller for Kubernetes - ORDSLFMNG ORDS Life cycle management
-
-
+# Oracle Rest Data Services (ORDSSRVS) Controller for Kubernetes -  ORDS Life cycle management
 
 
 ## Description
 
-The ORDS controller extends the Kubernetes API with a Custom Resource (CR) and Controller for automating Oracle Rest Data
+The ORDSRVS controller extends the Kubernetes API with a Custom Resource (CR) and Controller for automating Oracle Rest Data
 Services (ORDS) lifecycle management.  Using the ORDS controller, you can easily migrate existing, or create new, ORDS implementations
 into an existing Kubernetes cluster.  
 
@@ -15,10 +13,10 @@ This controller allows you to run what would otherwise be an On-Premises ORDS mi
 
 The custom RestDataServices resource supports the following configurations as a Deployment, StatefulSet, or DaemonSet:
 
-* Single RestDataServices resource with one database pool
-* Single RestDataServices resource with multiple database pools<sup>*</sup>
-* Multiple RestDataServices resources, each with one database pool
-* Multiple RestDataServices resources, each with multiple database pools<sup>*</sup>
+* Single OrdsSrvs resource with one database pool
+* Single OrdsSrvs resource with multiple database pools<sup>*</sup>
+* Multiple OrdsSrvs resources, each with one database pool
+* Multiple OrdsSrvs resources, each with multiple database pools<sup>*</sup>
 
 <sup>*See [Limitations](#limitations)</sup>
 
@@ -33,16 +31,6 @@ Oracle Database Version:
 * 19c
 * 23ai (incl. 23ai Free)
 
-
-### Quick Installation
-
-To install the ORDS controller, run:
-
-```bash
-kubectl apply -f https://github.com/gotsysdba/oracle-ords-controller/releases/latest/download/oracle-ords-controller.yaml
-```
-
-This will create a new namespace, `oracle-ords-controller-system`, in which the Controller will run.
 
 ### Common Configurations
 
@@ -75,5 +63,5 @@ See [Reporting security vulnerabilities](./SECURITY.md)
 
 ## License
 
-Copyright (c) 2024 Oracle and/or its affiliates.
+Copyright (c) 2025 Oracle and/or its affiliates.
 Released under the Universal Permissive License v1.0 as shown at [https://oss.oracle.com/licenses/upl/](https://oss.oracle.com/licenses/upl/)

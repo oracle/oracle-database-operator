@@ -85,6 +85,9 @@ func CreateAutonomousBackup(kubeClient client.Client,
 			Namespace:       ownerAdb.GetNamespace(),
 			Name:            backupName,
 			OwnerReferences: NewOwnerReference(ownerAdb),
+			Labels: map[string]string{
+				"adb": ownerAdb.Name,
+			},
 		},
 		Spec: dbv4.AutonomousDatabaseBackupSpec{
 			Target: dbv4.TargetSpec{

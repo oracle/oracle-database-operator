@@ -70,8 +70,11 @@ type OrdsSrvsSpec struct {
 	// Contains settings that are configured across the entire ORDS instance.
 	GlobalSettings GlobalSettings `json:"globalSettings"`
 	// Contains settings for individual pools/databases
+	// Private key
+	EncPrivKey   PasswordSecret  `json:"encPrivKey,omitempty"`
 	PoolSettings []*PoolSettings `json:"poolSettings,omitempty"`
 	// +k8s:openapi-gen=true
+
 }
 
 type GlobalSettings struct {
@@ -591,6 +594,10 @@ type PoolSettings struct {
 	// DBServiceNameSuffix string `json:"db.serviceNameSuffix,omitempty"`
 	// Not sure of use case here?!?
 	*/
+}
+
+type PriVKey struct {
+	Secret PasswordSecret `json:"secret"`
 }
 
 // Defines the secret containing Password mapped to secretKey

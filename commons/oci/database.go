@@ -41,7 +41,6 @@ package oci
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/go-logr/logr"
 	"github.com/oracle/oci-go-sdk/v65/common"
@@ -384,7 +383,7 @@ func (d *DatabaseService) GetAutonomousDatabaseBackup(backupOCID string) (databa
 	return d.dbClient.GetAutonomousDatabaseBackup(context.TODO(), getBackupRequest)
 }
 
-func (d *DatabaseService) CreateAutonomousDatabaseClone(adb *dbv4.AutonomousDatabase) (resp CreateAutonomousDatabaseCloneResponse, err error) {
+func (d *DatabaseService) CreateAutonomousDatabaseClone(adb *dbv4.AutonomousDatabase) (resp database.CreateAutonomousDatabaseResponse, err error) {
 	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Clone.AdminPassword)
 	if err != nil {
 		return resp, err
@@ -396,9 +395,8 @@ func (d *DatabaseService) CreateAutonomousDatabaseClone(adb *dbv4.AutonomousData
 	}
 
 	retryPolicy := common.DefaultRetryPolicy()
-
-	request := CreateAutonomousDatabaseCloneRequest{
-		CreateAutonomousDatabaseCloneDetails: database.CreateAutonomousDatabaseCloneDetails{
+	request := database.CreateAutonomousDatabaseRequest{
+		CreateAutonomousDatabaseDetails: database.CreateAutonomousDatabaseCloneDetails{
 			CompartmentId:                 adb.Spec.Clone.CompartmentId,
 			SourceId:                      adb.Spec.Details.Id,
 			AutonomousContainerDatabaseId: acdOCID,
@@ -430,58 +428,5 @@ func (d *DatabaseService) CreateAutonomousDatabaseClone(adb *dbv4.AutonomousData
 		},
 	}
 
-	return d.createAutonomousDatabaseClone(context.TODO(), request)
-}
-
-func (d *DatabaseService) createAutonomousDatabaseClone(ctx context.Context, request CreateAutonomousDatabaseCloneRequest) (response CreateAutonomousDatabaseCloneResponse, err error) {
-	var ociResponse common.OCIResponse
-	policy := common.NoRetryPolicy()
-	if request.RetryPolicy() != nil {
-		policy = *request.RetryPolicy()
-	}
-
-	if !(request.OpcRetryToken != nil && *request.OpcRetryToken != "") {
-		request.OpcRetryToken = common.String(common.RetryToken())
-	}
-
-	ociResponse, err = common.Retry(ctx, request, d.sencCreateAutonomousDatabaseClone, policy)
-	if err != nil {
-		if ociResponse != nil {
-			if httpResponse := ociResponse.HTTPResponse(); httpResponse != nil {
-				opcRequestId := httpResponse.Header.Get("opc-request-id")
-				response = CreateAutonomousDatabaseCloneResponse{RawResponse: httpResponse, OpcRequestId: &opcRequestId}
-			} else {
-				response = CreateAutonomousDatabaseCloneResponse{}
-			}
-		}
-		return
-	}
-	if convertedResponse, ok := ociResponse.(CreateAutonomousDatabaseCloneResponse); ok {
-		response = convertedResponse
-	} else {
-		err = fmt.Errorf("failed to convert OCIResponse into CreateAutonomousDatabaseResponse")
-	}
-	return
-}
-
-func (d *DatabaseService) sencCreateAutonomousDatabaseClone(ctx context.Context, request common.OCIRequest, binaryReqBody *common.OCIReadSeekCloser, extraHeaders map[string]string) (common.OCIResponse, error) {
-
-	httpRequest, err := request.HTTPRequest(http.MethodPost, "/autonomousDatabases", binaryReqBody, extraHeaders)
-	if err != nil {
-		return nil, err
-	}
-
-	var response CreateAutonomousDatabaseCloneResponse
-	var httpResponse *http.Response
-	httpResponse, err = d.dbClient.Call(ctx, &httpRequest)
-	defer common.CloseBodyIfValid(httpResponse)
-	response.RawResponse = httpResponse
-	if err != nil {
-		apiReferenceLink := "https://docs.oracle.com/iaas/api/#/en/database/20160918/AutonomousDatabase/CreateAutonomousDatabase"
-		err = common.PostProcessServiceError(err, "Database", "CreateAutonomousDatabase", apiReferenceLink)
-		return response, err
-	}
-
-	err = common.UnmarshalResponse(httpResponse, &response)
-	return response, err
+	return d.dbClient.CreateAutonomousDatabase(context.TODO(), request)
 }

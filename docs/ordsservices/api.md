@@ -8,12 +8,12 @@ Packages:
 
 Resource Types:
 
-- [RestDataServices](#restdataservices)
+- [OrdsSrvs](#ordssrvs)
 
 
 
 
-## RestDataServices
+## OrdsSrvs
 <sup><sup>[↩ Parent](#databaseoraclecomv1 )</sup></sup>
 
 
@@ -21,7 +21,7 @@ Resource Types:
 
 
 
-RestDataServices is the Schema for the restdataservices API
+OrdsSrvs is the Schema for the ordssrvs API
 
 <table>
     <thead>
@@ -41,7 +41,7 @@ RestDataServices is the Schema for the restdataservices API
       <tr>
       <td><b>kind</b></td>
       <td>string</td>
-      <td>RestDataServices</td>
+      <td>OrdsSrvs</td>
       <td>true</td>
       </tr>
       <tr>
@@ -50,111 +50,126 @@ RestDataServices is the Schema for the restdataservices API
       <td>Refer to the Kubernetes API documentation for the fields of the `metadata` field.</td>
       <td>true</td>
       </tr><tr>
-        <td><b><a href="#restdataservicesspec">spec</a></b></td>
+        <td><b><a href="#ordssrvsspec">spec</a></b></td>
         <td>object</td>
         <td>
-          RestDataServicesSpec defines the desired state of RestDataServices<br/>
+          OrdsSrvsSpec defines the desired state of OrdsSrvs<br/>
         </td>
         <td>false</td>
       </tr><tr>
-        <td><b><a href="#restdataservicesstatus">status</a></b></td>
+        <td><b><a href="#ordssrvsstatus">status</a></b></td>
         <td>object</td>
         <td>
-          RestDataServicesStatus defines the observed state of RestDataServices<br/>
+          OrdsSrvsStatus defines the observed state of OrdsSrvs<br/>
         </td>
         <td>false</td>
       </tr></tbody>
 </table>
 
 
-### RestDataServices.spec
-<sup><sup>[↩ Parent](#restdataservices)</sup></sup>
+### OrdsSrvs.spec
+<sup><sup>[↩ Parent](#ordssrvs)</sup></sup>
 
 
 
-RestDataServicesSpec defines the desired state of RestDataServices
+OrdsSrvsSpec defines the desired state of OrdsSrvs
 
 <table>
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Description</th>
-            <th>Required</th>
-        </tr>
-    </thead>
-    <tbody><tr>
-        <td><b><a href="#restdataservicesspecglobalsettings">globalSettings</a></b></td>
-        <td>object</td>
-        <td>
-          Contains settings that are configured across the entire ORDS instance.<br/>
-        </td>
-        <td>true</td>
-      </tr><tr>
-        <td><b>image</b></td>
-        <td>string</td>
-        <td>
-          Specifies the ORDS container image<br/>
-        </td>
-        <td>true</td>
-      </tr><tr>
-        <td><b>forceRestart</b></td>
-        <td>boolean</td>
-        <td>
-          Specifies whether to restart pods when Global or Pool configurations change<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
-        <td><b>imagePullPolicy</b></td>
-        <td>enum</td>
-        <td>
-          Specifies the ORDS container image pull policy<br/>
-          <br/>
-            <i>Enum</i>: IfNotPresent, Always, Never<br/>
-            <i>Default</i>: IfNotPresent<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
-        <td><b>imagePullSecrets</b></td>
-        <td>string</td>
-        <td>
-          Specifies the Secret Name for pulling the ORDS container image<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
-        <td><b><a href="#restdataservicesspecpoolsettingsindex">poolSettings</a></b></td>
-        <td>[]object</td>
-        <td>
-          Contains settings for individual pools/databases<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
-        <td><b>replicas</b></td>
-        <td>integer</td>
-        <td>
-          Defines the number of desired Replicas when workloadType is Deployment or StatefulSet<br/>
-          <br/>
-            <i>Format</i>: int32<br/>
-            <i>Default</i>: 1<br/>
-            <i>Minimum</i>: 1<br/>
-        </td>
-        <td>false</td>
-      </tr><tr>
-        <td><b>workloadType</b></td>
-        <td>enum</td>
-        <td>
-          Specifies the desired Kubernetes Workload<br/>
-          <br/>
-            <i>Enum</i>: Deployment, StatefulSet, DaemonSet<br/>
-            <i>Default</i>: Deployment<br/>
-        </td>
-        <td>false</td>
-      </tr></tbody>
+<thead> <tr>
+<th>Name</th>
+<th>Type</th>
+<th>Description</th>
+<th>Required</th>
+</tr>
+</thead> <tbody>
+<tr>
+<td><b><a href="#ordssrvsspecglobalsettings">globalSettings<!--
+a--></a></b></td>
+<td>object</td>
+<td> Contains settings that are configured across the entire
+ORDS instance.<br>
+</td>
+<td>true</td>
+</tr>
+<tr>
+<td><b>image</b></td>
+<td>string</td>
+<td> Specifies the ORDS container image<br>
+</td>
+<td>true</td>
+</tr>
+<tr>
+<td><b>forceRestart</b></td>
+<td>boolean</td>
+<td> Specifies whether to restart pods when Global or Pool
+configurations change<br>
+</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>imagePullPolicy</b></td>
+<td>enum</td>
+<td> Specifies the ORDS container image pull policy<br>
+<br>
+<i>Enum</i>: IfNotPresent, Always, Never<br>
+<i>Default</i>: IfNotPresent<br>
+</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>imagePullSecrets</b></td>
+<td>string</td>
+<td> Specifies the Secret Name for pulling the ORDS container
+image<br>
+</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b><a href="#ordssrvsspecpoolsettingsindex">poolSettings&lt;
+a&gt;</a></b></td>
+<td>[]object</td>
+<td> Contains settings for individual pools/databases<br>
+</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>replicas</b></td>
+<td>integer</td>
+<td> Defines the number of desired Replicas when workloadType
+Deployment or StatefulSet<br>
+<br>
+<i>Format</i>: int32<br>
+<i>Default</i>: 1<br>
+<i>Minimum</i>: 1<br>
+</td>
+<td>false</td>
+</tr>
+<tr>
+<td><b>workloadType</b></td>
+<td>enum</td>
+<td> Specifies the desired Kubernetes Workload<br>
+<br>
+<i>Enum</i>: Deployment, StatefulSet, DaemonSet<br>
+<i>Default</i>: Deployment<br>
+</td>
+<td>false</td>
+</tr>
+<tr>
+<td valign="top"><b>encPrivKey</b><b><br>
+</b></td>
+<td valign="top">secret<br>
+</td>
+<td valign="top"><b>secretName</b>: string&nbsp; <b>passwordKey:
+</b>string Define the private key to decrypt passwords<br>
+</td>
+<td valign="top">true<br>
+</td>
+</tr>
+</tbody>
 </table>
 
-
-### RestDataServices.spec.globalSettings
-<sup><sup>[↩ Parent](#restdataservicesspec)</sup></sup>
+### OrdsSrvs.spec.globalSettings
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
 
 
 
@@ -247,7 +262,7 @@ Contains settings that are configured across the entire ORDS instance.
         </td>
         <td>false</td>
       </tr><tr>
-        <td><b><a href="#restdataservicesspecglobalsettingscertsecret">certSecret</a></b></td>
+        <td><b><a href="#ordssrvsspecglobalsettingscertsecret">certSecret</a></b></td>
         <td>object</td>
         <td>
           Specifies the Secret containing the SSL Certificates Replaces: standalone.https.cert and standalone.https.cert.key<br/>
@@ -516,8 +531,8 @@ Contains settings that are configured across the entire ORDS instance.
 </table>
 
 
-### RestDataServices.spec.globalSettings.certSecret
-<sup><sup>[↩ Parent](#restdataservicesspecglobalsettings)</sup></sup>
+### OrdsSrvs.spec.globalSettings.certSecret
+<sup><sup>[↩ Parent](#ordssrvsspecglobalsettings)</sup></sup>
 
 
 
@@ -557,8 +572,8 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
 </table>
 
 
-### RestDataServices.spec.poolSettings[index]
-<sup><sup>[↩ Parent](#restdataservicesspec)</sup></sup>
+### OrdsSrvs.spec.poolSettings[index]
+<sup><sup>[↩ Parent](#ordssrvsspec)</sup></sup>
 
 
 
@@ -574,7 +589,7 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         </tr>
     </thead>
     <tbody><tr>
-        <td><b><a href="#restdataservicesspecpoolsettingsindexdbsecret">db.secret</a></b></td>
+        <td><b><a href="#ordssrvsspecpoolsettingsindexdbsecret">db.secret</a></b></td>
         <td>object</td>
         <td>
           Specifies the Secret with the dbUsername and dbPassword values for the connection.<br/>
@@ -627,7 +642,7 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         </td>
         <td>false</td>
       </tr><tr>
-        <td><b><a href="#restdataservicesspecpoolsettingsindexdbadminusersecret">db.adminUser.secret</a></b></td>
+        <td><b><a href="#ordssrvsspecpoolsettingsindexdbadminusersecret">db.adminUser.secret</a></b></td>
         <td>object</td>
         <td>
           Specifies the Secret with the dbAdminUser (SYS) and dbAdminPassword values for the database account that ORDS uses for administration operations in the database. replaces: db.adminUser.password<br/>
@@ -641,7 +656,7 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         </td>
         <td>false</td>
       </tr><tr>
-        <td><b><a href="#restdataservicesspecpoolsettingsindexdbcdbadminusersecret">db.cdb.adminUser.secret</a></b></td>
+        <td><b><a href="#ordssrvsspecpoolsettingsindexdbcdbadminusersecret">db.cdb.adminUser.secret</a></b></td>
         <td>object</td>
         <td>
           Specifies the Secret with the dbCdbAdminUser (SYS) and dbCdbAdminPassword values Specifies the username for the database account that ORDS uses for the Pluggable Database Lifecycle Management. Replaces: db.cdb.adminUser.password<br/>
@@ -735,7 +750,7 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         </td>
         <td>false</td>
       </tr><tr>
-        <td><b><a href="#restdataservicesspecpoolsettingsindexdbwalletsecret">dbWalletSecret</a></b></td>
+        <td><b><a href="#ordssrvsspecpoolsettingsindexdbwalletsecret">dbWalletSecret</a></b></td>
         <td>object</td>
         <td>
           Specifies the Secret containing the wallet archive containing connection details for the pool. Replaces: db.wallet.zip<br/>
@@ -1041,7 +1056,7 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
         </td>
         <td>false</td>
       </tr><tr>
-        <td><b><a href="#restdataservicesspecpoolsettingsindextnsadminsecret">tnsAdminSecret</a></b></td>
+        <td><b><a href="#ordssrvsspecpoolsettingsindextnsadminsecret">tnsAdminSecret</a></b></td>
         <td>object</td>
         <td>
           Specifies the Secret containing the TNS_ADMIN directory Replaces: db.tnsDirectory<br/>
@@ -1051,8 +1066,8 @@ Specifies the Secret containing the SSL Certificates Replaces: standalone.https.
 </table>
 
 
-### RestDataServices.spec.poolSettings[index].db.secret
-<sup><sup>[↩ Parent](#restdataservicesspecpoolsettingsindex)</sup></sup>
+### OrdsSrvs.spec.poolSettings[index].db.secret
+<sup><sup>[↩ Parent](#ordssrvsspecpoolsettingsindex)</sup></sup>
 
 
 
@@ -1087,8 +1102,8 @@ Specifies the Secret with the dbUsername and dbPassword values for the connectio
 </table>
 
 
-### RestDataServices.spec.poolSettings[index].db.adminUser.secret
-<sup><sup>[↩ Parent](#restdataservicesspecpoolsettingsindex)</sup></sup>
+### OrdsSrvs.spec.poolSettings[index].db.adminUser.secret
+<sup><sup>[↩ Parent](#ordssrvsspecpoolsettingsindex)</sup></sup>
 
 
 
@@ -1123,8 +1138,8 @@ Specifies the Secret with the dbAdminUser (SYS) and dbAdminPassword values for t
 </table>
 
 
-### RestDataServices.spec.poolSettings[index].db.cdb.adminUser.secret
-<sup><sup>[↩ Parent](#restdataservicesspecpoolsettingsindex)</sup></sup>
+### OrdsSrvs.spec.poolSettings[index].db.cdb.adminUser.secret
+<sup><sup>[↩ Parent](#ordssrvsspecpoolsettingsindex)</sup></sup>
 
 
 
@@ -1159,8 +1174,8 @@ Specifies the Secret with the dbCdbAdminUser (SYS) and dbCdbAdminPassword values
 </table>
 
 
-### RestDataServices.spec.poolSettings[index].dbWalletSecret
-<sup><sup>[↩ Parent](#restdataservicesspecpoolsettingsindex)</sup></sup>
+### OrdsSrvs.spec.poolSettings[index].dbWalletSecret
+<sup><sup>[↩ Parent](#ordssrvsspecpoolsettingsindex)</sup></sup>
 
 
 
@@ -1193,8 +1208,8 @@ Specifies the Secret containing the wallet archive containing connection details
 </table>
 
 
-### RestDataServices.spec.poolSettings[index].tnsAdminSecret
-<sup><sup>[↩ Parent](#restdataservicesspecpoolsettingsindex)</sup></sup>
+### OrdsSrvs.spec.poolSettings[index].tnsAdminSecret
+<sup><sup>[↩ Parent](#ordssrvsspecpoolsettingsindex)</sup></sup>
 
 
 
@@ -1220,12 +1235,12 @@ Specifies the Secret containing the TNS_ADMIN directory Replaces: db.tnsDirector
 </table>
 
 
-### RestDataServices.status
-<sup><sup>[↩ Parent](#restdataservices)</sup></sup>
+### OrdsSrvs.status
+<sup><sup>[↩ Parent](#ordssrvs)</sup></sup>
 
 
 
-RestDataServicesStatus defines the observed state of RestDataServices
+OrdsSrvsStatus defines the observed state of OrdsSrvs
 
 <table>
     <thead>
@@ -1244,7 +1259,7 @@ RestDataServicesStatus defines the observed state of RestDataServices
         </td>
         <td>true</td>
       </tr><tr>
-        <td><b><a href="#restdataservicesstatusconditionsindex">conditions</a></b></td>
+        <td><b><a href="#ordssrvsstatusconditionsindex">conditions</a></b></td>
         <td>[]object</td>
         <td>
           <br/>
@@ -1302,8 +1317,8 @@ RestDataServicesStatus defines the observed state of RestDataServices
 </table>
 
 
-### RestDataServices.status.conditions[index]
-<sup><sup>[↩ Parent](#restdataservicesstatus)</sup></sup>
+### OrdsSrvs.status.conditions[index]
+<sup><sup>[↩ Parent](#ordssrvsstatus)</sup></sup>
 
 
 

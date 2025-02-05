@@ -12,7 +12,7 @@ must be provided.  If they are not, the `autoUpgrade` specification is ignored.
 
 ```yaml
 apiVersion: database.oracle.com/v1
-kind: RestDataServices
+kind: OrdsSrvs
 metadata:
     name: ordspoc-server
 spec:
@@ -20,6 +20,9 @@ spec:
     forceRestart: true
     globalSettings:
         database.api.enabled: true
+    encPrivKey:
+        secretName: prvkey
+        passwordKey: privateKey
     poolSettings:
       - poolName: pdb1
         autoUpgradeORDS: true
@@ -30,12 +33,12 @@ spec:
             secretName:  pdb1-ords-auth
         db.adminUser: SYS
         db.adminUser.secret:
-            secretName:  pdb1-sys-auth
+            secretName:  pdb1-sys-auth-enc
       - poolName: pdb2
         db.connectionType: customurl
         db.customURL: jdbc:oracle:thin:@//localhost:1521/PDB2
         db.secret:
-            secretName:  pdb2-ords-auth
+            secretName:  pdb2-ords-auth-enc
 ```
 
 ## Minimum Privileges for Admin User
