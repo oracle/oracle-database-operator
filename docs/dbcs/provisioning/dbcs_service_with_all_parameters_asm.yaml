@@ -23,7 +23,6 @@ spec:
     diskRedundancy: "EXTERNAL"
     hostName: "host01234"
     initialDataStorageSizeInGB: 256
-    licenseModel: "BRING_YOUR_OWN_LICENSE"
     pdbName: "PDB0123"
     privateIp: "10.0.1.99"
     shape: "VM.Standard2.2"
