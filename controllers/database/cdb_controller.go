@@ -778,7 +778,7 @@ func (r *CDBReconciler) manageCDBDeletion(ctx context.Context, req ctrl.Request,
 		}
 
 	} else {
-		log.Info("cdb mark to be delited")
+		log.Info("cdb set to be deleted")
 		cdb.Status.Phase = cdbPhaseDelete
 		cdb.Status.Status = true
 		r.Status().Update(ctx, cdb)

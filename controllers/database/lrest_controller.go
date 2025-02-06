@@ -772,7 +772,7 @@ func (r *LRESTReconciler) manageLRESTDeletion(ctx context.Context, req ctrl.Requ
 		}
 
 	} else {
-		log.Info("lrest mark to be delited")
+		log.Info("lrest set to be deleted")
 		lrest.Status.Phase = lrestPhaseDelete
 		lrest.Status.Status = true
 		r.Status().Update(ctx, lrest)
@@ -1046,7 +1046,7 @@ func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lres
 						}
 
 						pdbitem.Status.SqlCode = int(objmap["sqlcode"].(float64))
-						log.Info("pdb closuer.......:", "sqlcode", pdbitem.Status.SqlCode)
+						log.Info("pdb closure.......:", "sqlcode", pdbitem.Status.SqlCode)
 
 						if errapi != nil {
 							log.Error(err, "callAPI cannot close pdb "+pdbitem.Spec.LRPDBName, "err", err.Error())
