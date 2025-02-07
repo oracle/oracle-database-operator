@@ -394,6 +394,9 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerCreation(broker *dbapi.
 			if broker.Status.Status != "" && broker.Status.FastStartFailover {
 				r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Possible Failover", "Primary db not in ready state after setting up DG configuration")
 			}
+			if err := updateReconcileStatus(r, broker, ctx, req); err != nil {
+				log.Info("Error updating Dgbroker status")
+			}
 			r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Waiting", err.Error())
 			return ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}, nil
 		}
