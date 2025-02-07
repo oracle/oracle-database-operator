@@ -150,6 +150,10 @@ func validateSidbReadiness(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 		log.Error(err, err.Error())
 		return err
 	}
+	if sidbReadyPod.Name == "" {
+		log.Info("No ready pod avail for the singleinstancedatabase")
+		return ErrCurrentPrimaryDatabaseNotReady
+	}
 
 	log.Info(fmt.Sprintf("Ready pod for the singleInstanceDatabase %s is %s", sidb.Name, sidbReadyPod.Name))
 
@@ -160,7 +164,7 @@ func validateSidbReadiness(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 		if apierrors.IsNotFound(err) {
 			//m.Status.Status = dbcommons.StatusError
 			eventReason := "Waiting"
-			eventMsg := "waiting for secret : " + sidb.Spec.AdminPassword.SecretName + " to get created"
+			eventMsg := "waiting for : " + sidb.Spec.AdminPassword.SecretName + " to get created"
 			r.Recorder.Eventf(broker, corev1.EventTypeNormal, eventReason, eventMsg)
 			r.Log.Info("Secret " + sidb.Spec.AdminPassword.SecretName + " Not Found")
 			return fmt.Errorf("adminPassword secret for singleinstancedatabase %v not found", sidb.Name)
@@ -173,6 +177,14 @@ func validateSidbReadiness(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword), dbcommons.GetSqlClient(sidb.Spec.Edition)))
 	if err != nil {
+		if strings.Contains(err.Error(), "dialing backend") && broker.Status.Status == dbcommons.StatusReady && broker.Status.FastStartFailover {
+			// Connection to the pod is failing after broker came up and running
+			// Might suggest disconnect or pod/vm going down
+			log.Info("Dialing connection error")
+			if err := updateReconcileStatus(r, broker, ctx, req); err != nil {
+				return err
+			}
+		}
 		log.Error(err, err.Error())
 		return err
 	}
@@ -210,7 +222,11 @@ func setupDataguardBrokerConfiguration(r *DataguardBrokerReconciler, broker *dba
 		return err
 	}
 
+	log.Info(fmt.Sprintf("broker.Spec.StandbyDatabaseRefs are %v", broker.Spec.StandbyDatabaseRefs))
+
 	for _, database := range broker.Spec.StandbyDatabaseRefs {
+
+		log.Info(fmt.Sprintf("adding database %v", database))
 
 		// Get the standby database resource
 		var standbyDatabase dbapi.SingleInstanceDatabase
@@ -655,7 +671,7 @@ func setFSFOTargets(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker,
 		if apierrors.IsNotFound(err) {
 			//m.Status.Status = dbcommons.StatusError
 			eventReason := "Waiting"
-			eventMsg := "waiting for secret : " + currentPrimaryDatabase.Spec.AdminPassword.SecretName + " to get created"
+			eventMsg := "waiting for : " + currentPrimaryDatabase.Spec.AdminPassword.SecretName + " to get created"
 			r.Recorder.Eventf(broker, corev1.EventTypeNormal, eventReason, eventMsg)
 			r.Log.Info("Secret " + currentPrimaryDatabase.Spec.AdminPassword.SecretName + " Not Found")
 			return errors.New("admin password secret not found")
