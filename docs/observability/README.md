@@ -115,7 +115,7 @@ The `databaseObserver` resource provides the remaining multiple fields that are 
 * `spec.log.path` - custom path to create
 * `spec.log.filename` - custom filename for the log file
 * `spec.log.volume.name` - custom name for the log volume
-* `spec.log.volume.persistentVolumeClaim.claimName` - a volume in which to place the log in order to be shared by the containers. If not specified, an EmptyDir is used by defautl.
+* `spec.log.volume.persistentVolumeClaim.claimName` - a volume in which to place the log in order to be shared by the containers. If not specified, an EmptyDir is used by default.
 * `spec.configuration.configMap.key` - configuration filename inside the container and the configmap
 * `spec.configuration.configMap.name` - name of the configMap that holds the custom metrics configuration
 * `spec.replicas` - number of replicas to deploy
