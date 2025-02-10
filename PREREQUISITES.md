@@ -2,7 +2,7 @@
 
 ## Prerequisites for Using Oracle Database Operator for Kubernetes
 
-Oracle Database Operator for Kubernetes (OraOperator) manages all Cloud deployments of Oracle Database, including:
+Oracle Database Operator for Kubernetes (`OraOperator`) manages all Cloud deployments of Oracle Database, including:
 
 * Oracle Autonomous Database (ADB)
 * Containerized Oracle Database Single Instance (SIDB)
@@ -19,16 +19,16 @@ To set up a Kubernetes cluster on Oracle Cloud Infrastructure:
 1. Create an OKE Cluster
 1. Provision persistent storage for data files (NFS or Block)
 
-Note: You must provision persistent storage if you intend to deploy containerized databases over the OKE cluster.
+Note: If you intend to deploy containerized databases over the OKE cluster, then you must provision persistent storage.
 
 ### Prerequites for Oracle Autonomous Database (ADB)
 
-If you intent to use `OraOperator` to handle Oracle Autonomous Database lifecycles, then read [Oracle Autonomous Database prerequisites](./docs/adb/ADB_PREREQUISITES.md)
+If you intend to use `OraOperator` to handle Oracle Autonomous Database lifecycles, then read [Oracle Autonomous Database prerequisites](./docs/adb/ADB_PREREQUISITES.md)
 
 ### Prerequites for Single Instance Databases (SIDB)
 
-If you intent to use `OraOperator` to handle Oracle Database Single Instance lifecycles, then read [Single Instance Database Prerequisites](./docs/sidb/PREREQUISITES.md)
+If you intend to use `OraOperator` to handle Oracle Database Single Instance lifecycles, then read [Single Instance Database Prerequisites](./docs/sidb/PREREQUISITES.md)
 
 ### Prerequites for Sharded Databases (SHARDING)  
 
- If you intent to use OraOperator to handle the lifecycle of Oracle Database deployed with Oracle Sharding, then read [Sharded Database Prerequisites](./docs/sharding/README.md#prerequsites-for-running-oracle-sharding-database-controller)
+ If you intend to use OraOperator to handle the lifecycle of Oracle Database deployed with Oracle Sharding, then read [Sharded Database Prerequisites](./docs/sharding/README.md#prerequsites-for-running-oracle-sharding-database-controller)
