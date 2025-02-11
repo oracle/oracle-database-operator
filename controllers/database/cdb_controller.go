@@ -1058,7 +1058,7 @@ func (r *CDBReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, cdb *d
 					}
 					r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "drop pdb", "pdbname=%s", pdbitem.Spec.PDBName)
 
-					err = r.Delete(context.Background(), &pdbitem, client.GracePeriodSeconds(1))
+					err = r.Delete(context.Background(), &pdbitem, client.GracePeriodSeconds(0))
 					if err != nil {
 						log.Info("Could not delete PDB resource", "err", err.Error())
 						return err

@@ -1077,17 +1077,17 @@ func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lres
 					}
 					r.Recorder.Eventf(lrest, corev1.EventTypeNormal, "drop pdb", "pdbname=%s", pdbitem.Spec.LRPDBName)
 
-					/*
-						if controllerutil.ContainsFinalizer(&pdbitem, LRPDBFinalizer) {
-							log.Info("Removing finalizer")
-							controllerutil.RemoveFinalizer(&pdbitem, LRPDBFinalizer)
-							err = r.Update(ctx, &pdbitem)
-							if err != nil {
-								log.Info("Could not remove finalizer", "err", err.Error())
-								return err
-							}
+					/* remove finalizer */
+
+					if controllerutil.ContainsFinalizer(&pdbitem, LRPDBFinalizer) {
+						log.Info("Removing finalizer")
+						controllerutil.RemoveFinalizer(&pdbitem, LRPDBFinalizer)
+						err = r.Update(ctx, &pdbitem)
+						if err != nil {
+							log.Info("Could not remove finalizer", "err", err.Error())
+							return err
 						}
-					*/
+					}
 
 					err = r.Delete(context.Background(), &pdbitem, client.GracePeriodSeconds(1))
 					if err != nil {
