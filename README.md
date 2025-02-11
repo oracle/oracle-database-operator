@@ -37,14 +37,15 @@ In this v1.2.0 production release, `OraOperator` supports the following database
   - New LRES based Controller  (ARM & AM)
     - PDBs settings with init parameters config map
     - Assertive deletion policy.
-* Database Observability (still preview)
-  - Support for Database Logs
+* Database Observability (preview)
+  - Support for Database Logs (in addition to Metrics)
   - Support for the latest Exporter container images
 
 * Base DB: support for Oracle Database 23ai Cloning
 * Prometheus label config (bug fix)
 
-
+## New Product Features
+*The Operator itself, as a product, brings the following new features:
 * Published on operatorhub.io
 * Operator Lifecycle Manager (OLM) support (install from operatorhub.io)
 * Validated on Google Kubernetes Engine
