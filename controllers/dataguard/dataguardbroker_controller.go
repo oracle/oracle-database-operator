@@ -123,64 +123,62 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// manage enabling and disabling faststartfailover
-	if dataguardBroker.Spec.FastStartFailover != dataguardBroker.Status.FastStartFailover {
-		if dataguardBroker.Spec.FastStartFailover {
+	if dataguardBroker.Spec.FastStartFailover {
 
-			for _, DbResource := range dataguardBroker.Status.DatabasesInDataguardConfig {
-				var singleInstanceDatabase dbapi.SingleInstanceDatabase
-				if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: DbResource}, &singleInstanceDatabase); err != nil {
-					return ctrl.Result{Requeue: false}, err
-				}
-				r.Log.Info("Check the role for database", "database", singleInstanceDatabase.Name, "role", singleInstanceDatabase.Status.Role)
-				if singleInstanceDatabase.Status.Role == "SNAPSHOT_STANDBY" {
-					r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Enabling FSFO failed", "database %s is a snapshot database", singleInstanceDatabase.Name)
-					r.Log.Info("Enabling FSFO failed, one of the database is a snapshot database", "snapshot database", singleInstanceDatabase.Name)
-					return ctrl.Result{Requeue: true}, nil
-				}
-			}
-
-			// set faststartfailover targets for all the singleinstancedatabases in the dataguard configuration
-			if err := setFSFOTargets(r, &dataguardBroker, ctx, req); err != nil {
+		for _, DbResource := range dataguardBroker.Status.DatabasesInDataguardConfig {
+			var singleInstanceDatabase dbapi.SingleInstanceDatabase
+			if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: DbResource}, &singleInstanceDatabase); err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
-
-			// enable faststartfailover in the dataguard configuration
-			if err := enableFSFOForDgConfig(r, &dataguardBroker, ctx, req); err != nil {
-				return ctrl.Result{Requeue: false}, err
+			r.Log.Info("Check the role for database", "database", singleInstanceDatabase.Name, "role", singleInstanceDatabase.Status.Role)
+			if singleInstanceDatabase.Status.Role == "SNAPSHOT_STANDBY" {
+				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Enabling FSFO failed", "database %s is a snapshot database", singleInstanceDatabase.Name)
+				r.Log.Info("Enabling FSFO failed, one of the database is a snapshot database", "snapshot database", singleInstanceDatabase.Name)
+				return ctrl.Result{Requeue: true}, nil
 			}
-
-			// create Observer Pod
-			if err := createObserverPods(r, &dataguardBroker, ctx, req); err != nil {
-				return ctrl.Result{Requeue: false}, err
-			}
-
-			// set faststartfailover status to true
-			dataguardBroker.Status.FastStartFailover = true
-
-		} else {
-
-			// disable faststartfailover
-			if err := disableFSFOForDGConfig(r, &dataguardBroker, ctx, req); err != nil {
-				return ctrl.Result{Requeue: false}, err
-			}
-
-			// delete Observer Pod
-			observerReadyPod, _, _, _, err := dbcommons.FindPods(r, "", "", dataguardBroker.Name, dataguardBroker.Namespace, ctx, req)
-			if err != nil {
-				return ctrl.Result{Requeue: false}, err
-			}
-			if observerReadyPod.Name != "" {
-				if err := r.Delete(ctx, &observerReadyPod); err != nil {
-					return ctrl.Result{Requeue: false}, err
-				}
-			}
-
-			r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeNormal, "Observer Deleted", "database observer pod deleted")
-			log.Info("database observer deleted")
-
-			// set faststartfailover status to false
-			dataguardBroker.Status.FastStartFailover = false
 		}
+
+		// set faststartfailover targets for all the singleinstancedatabases in the dataguard configuration
+		if err := setFSFOTargets(r, &dataguardBroker, ctx, req); err != nil {
+			return ctrl.Result{Requeue: false}, err
+		}
+
+		// enable faststartfailover in the dataguard configuration
+		if err := enableFSFOForDgConfig(r, &dataguardBroker, ctx, req); err != nil {
+			return ctrl.Result{Requeue: false}, err
+		}
+
+		// create Observer Pod
+		if err := createObserverPods(r, &dataguardBroker, ctx, req); err != nil {
+			return ctrl.Result{Requeue: false}, err
+		}
+
+		// set faststartfailover status to true
+		dataguardBroker.Status.FastStartFailover = true
+
+	} else {
+
+		// disable faststartfailover
+		if err := disableFSFOForDGConfig(r, &dataguardBroker, ctx, req); err != nil {
+			return ctrl.Result{Requeue: false}, err
+		}
+
+		// delete Observer Pod
+		observerReadyPod, _, _, _, err := dbcommons.FindPods(r, "", "", dataguardBroker.Name, dataguardBroker.Namespace, ctx, req)
+		if err != nil {
+			return ctrl.Result{Requeue: false}, err
+		}
+		if observerReadyPod.Name != "" {
+			if err := r.Delete(ctx, &observerReadyPod); err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
+		}
+
+		r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeNormal, "Observer Deleted", "database observer pod deleted")
+		log.Info("database observer deleted")
+
+		// set faststartfailover status to false
+		dataguardBroker.Status.FastStartFailover = false
 	}
 
 	// manage manual switchover

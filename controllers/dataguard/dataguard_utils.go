@@ -748,6 +748,41 @@ func createObserverPods(r *DataguardBrokerReconciler, broker *dbapi.DataguardBro
 		return nil
 	}
 
+	// Stop the already running observer
+	// find the avail pods for the currPrimaryDatabase
+	log.Info("Need to stop the observer if already running")
+	currPrimaryDatabaseReadyPod, _, _, _, err := dbcommons.FindPods(r, "", "", currPrimaryDatabase.Name, currPrimaryDatabase.Namespace, ctx, req)
+	if err != nil {
+		log.Error(err, err.Error())
+		return err
+	}
+	if currPrimaryDatabaseReadyPod.Name == "" {
+		return errors.New("No ready pods avail ")
+	}
+
+	// fetch singleinstancedatabase admin password
+	var adminPasswordSecret corev1.Secret
+	if err = r.Get(ctx, types.NamespacedName{Name: currPrimaryDatabase.Spec.AdminPassword.SecretName, Namespace: currPrimaryDatabase.Namespace}, &adminPasswordSecret); err != nil {
+		if apierrors.IsNotFound(err) {
+			//m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for : " + currPrimaryDatabase.Spec.AdminPassword.SecretName + " to get created"
+			r.Recorder.Eventf(broker, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + currPrimaryDatabase.Spec.AdminPassword.SecretName + " Not Found")
+			return errors.New("admin password secret not found")
+		}
+		log.Error(err, err.Error())
+		return err
+	}
+	adminPassword := string(adminPasswordSecret.Data[currPrimaryDatabase.Spec.AdminPassword.SecretKey])
+
+	out, err := dbcommons.ExecCommand(r, r.Config, currPrimaryDatabaseReadyPod.Name, currPrimaryDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e  \" STOP OBSERVER %s \"  | dgmgrl sys/%s@%s ", broker.Name, adminPassword, currPrimaryDatabase.Status.Sid))
+	if err != nil {
+		log.Error(err, err.Error())
+		return err
+	}
+	log.Info(out)
 	// instantiate observer pod specification
 	pod := dbcommons.NewRealPodBuilder().
 		SetNamespacedName(types.NamespacedName{
