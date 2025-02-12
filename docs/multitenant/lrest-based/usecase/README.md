@@ -3,11 +3,11 @@
 
 # Use case directory 
 
-The use case directory contains the yaml files to test the multitenant controller functionalities: create lrest pod and pdb operation  *create / open / close / unplug / plug / delete / clone /map / parameter session*  
+The use case directory contains the `yaml` files to test the multitenant controller functionalities: create `lrest` pod, and create PDB operations  *create / open / close / unplug / plug / delete / clone /map / parameter session*  
 
 ## Makefile helper
 
-Customizing yaml files (tns alias / credential / namespaces name etc...) is a long procedure prone to human error. A simple [makefile](../usecase/makefile) is available to quickly and safely configure yaml files with your system environment information. Just edit the [parameter file](../usecase/parameters.txt)  before proceding. 
+Customizing `yaml` files (tns alias / credential / namespaces name, and so on) is a long procedure that is prone to human error. A simple [`makefile`](../usecase/makefile) is available to quickly and safely configure `yaml` files with your system environment information. Just edit the [parameter file](../usecase/parameters.txt)  before proceding. 
 
 ```text 
 TNSALIAS...............:[Tnsalias do not use quotes and avoid space in the string --> (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELA....]
@@ -23,28 +23,28 @@ COMPANY................:[your company name]
 APIVERSION.............:v4 --> do not edit 
 ```
 
-⚠ **WARNING: The makefile is intended to speed up the usecase directory configuartion only, it is not supported, the editing and configuration of yaml files for production system is left up to the end user** 
+⚠ **WARNING: The makefile is only intended to speed up the usecase directory configuration. Use of this file for production purposes is not supported. The editing and configuration of yaml files for production system is left up to the end user** 
 
-### Pre requisistes:  
+### Prerequisistes:  
 
-- Make sure that **kubectl** is properly configured.
-- Make sure that all requirements listed in the [operator installation page](../../../../docs/installation/OPERATOR_INSTALLATION_README.md) are implemented. (role binding,webcert,etc)
-- Make sure that administrative user on the container database is configured as documented.
+- Ensure that **kubectl** is properly configured.
+- Ensure that all requirements listed in the [operator installation page](../../../../docs/installation/OPERATOR_INSTALLATION_README.md) are implemented. (role binding,webcert,etc)
+- Ensure that the administrative user (admin) on the container database is configured as documented.
 
 ```bash
 make operator
 ```
-This command creates the operator-database-operator.yaml in the local directory and set up the watchnamespace list. Note that the yaml file is not applyed.
+This command creates the `operator-database-operator.yaml` file in the local directory, and set up the `watchnamespace` list. Note that the `yaml` file is not applied.
 
 ```bash
 make secrets
 ```
-All the secrets with the ecrypted credential are created by this command execution. 
+This command creates all of the Secrets with the encrypted credentials.  
 
 ```bash
 make genyaml
 ```
-*make genyaml* generates the required yaml files to work with multitenant controllers.
+*make genyaml* generates the required `yaml` files to work with multitenant controllers.
 
 
 ![image](../images/UsecaseSchema.jpg)
@@ -94,7 +94,7 @@ I1029 10:07:20.189724       1 leaderelection.go:250] attempting to acquire leade
 
 ### Error decrypting credential 
 
-Resource creation failure due to decription error 
+The following is an example of a resource creation failure due to decription error: 
 
 ```text 
 2024-10-30T10:09:08Z    INFO    controllers.LRPDB       getEncriptedSecret :pdbusr      {"getEncriptedSecret": {"name":"lrpdb1","namespace":"pdbnamespace"}}
@@ -102,7 +102,7 @@ Resource creation failure due to decription error
 ```
 </span>
 
-**Solution**: make sure to use **PCKS8** format during private key generation. If you are not using openssl3 then execute this command
+**Solution**: Ensure you use **PCKS8** format during private key generation. If you are not using `openssl3`, then run this command:
 
 ```bash
 openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > mykey
@@ -110,7 +110,7 @@ openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keyge
 
 ### Crd details 
 
-Use **describe** option to get crd information
+Use the **describe** option to obtain `crd` information
 
 ```bash
 kubectl describe lrpdb lrpdb1 -n pdbnamespace
