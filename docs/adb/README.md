@@ -2,13 +2,13 @@
 
 Before you use the Oracle Database Operator for Kubernetes (the operator), ensure your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
 
-As indicated in the prerequisites (see above), to interact with OCI services, either the cluster has to be authorized using Principal Instance, or using the API Key Authentication by specifying the configMap and the secret under the `ociConfig` field.
+As indicated in the prerequisites (see above), to interact with OCI services, either the cluster must be authorized using Principal Instance, or by using the API Key Authentication and specifying the configMap and the secret under the `ociConfig` field.
 
 ## Required Permissions
 
-The operator must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. See [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb) for sample Autonomous Database policies.
+The operator must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. See [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb) for example Autonomous Database policies.
 
-The permission to view the workrequests is also required, so that the operator will update the resources when the work is done. See [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) for sample work request policies.
+The permission to view the work requests is also required, so that the operator will update the resources when the work is done. See [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) for example work request policies.
 
 ## Supported Features
 
@@ -27,7 +27,7 @@ After you create the resource, you can use the operator to perform the following
 * [Delete the resource](#delete-the-resource) from the cluster
 * [Clone](#clone-an-existing-autonomous-database) an existing Autonomous Database
 
-To debug the Oracle Autonomous Databases with Oracle Database operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
+To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
 
 ## Provision an Autonomous Database
 
