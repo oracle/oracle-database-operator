@@ -205,8 +205,9 @@ func GetExporterDeploymentVolumeMounts(a *api.DatabaseObserver) []corev1.VolumeM
 
 	// a.Spec.Log.Path path to mount for a custom log path, a volume is required
 	if rLogPath := a.Spec.Log.Path; rLogPath != "" {
+		vName := GetLogName(a)
 		volM = append(volM, corev1.VolumeMount{
-			Name:      DefaultLogVolumeString,
+			Name:      vName,
 			MountPath: rLogPath,
 		})
 	}
