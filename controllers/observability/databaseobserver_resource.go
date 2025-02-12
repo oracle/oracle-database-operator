@@ -44,6 +44,9 @@ func (resource *ObservabilityDeploymentResource) generate(a *api.DatabaseObserve
 	rPodLabels := constants.GetLabels(a, a.Spec.Exporter.Deployment.DeploymentPodTemplate.Labels)
 	rSelector := constants.GetSelectorLabel(a)
 
+	rDeploymentSecurityContext := constants.GetExporterDeploymentSecurityContext(a)
+	rPodSecurityContext := constants.GetExporterPodSecurityContext(a)
+
 	rPort := []corev1.ContainerPort{
 		{ContainerPort: constants.DefaultAppPort},
 	}
@@ -59,7 +62,9 @@ func (resource *ObservabilityDeploymentResource) generate(a *api.DatabaseObserve
 		Ports:           rPort,
 		Args:            rArgs,
 		Command:         rCommands,
+		SecurityContext: rDeploymentSecurityContext,
 	}
+
 	constants.AddSidecarContainers(a, &rContainers)
 	constants.AddSidecarVolumes(a, &rVolumes)
 
@@ -81,9 +86,10 @@ func (resource *ObservabilityDeploymentResource) generate(a *api.DatabaseObserve
 					Labels: rPodLabels,
 				},
 				Spec: corev1.PodSpec{
-					Containers:    rContainers,
-					RestartPolicy: corev1.RestartPolicyAlways,
-					Volumes:       rVolumes,
+					Containers:      rContainers,
+					RestartPolicy:   corev1.RestartPolicyAlways,
+					Volumes:         rVolumes,
+					SecurityContext: rPodSecurityContext,
 				},
 			},
 		},

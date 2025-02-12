@@ -92,17 +92,19 @@ type DatabaseObserverExporterConfig struct {
 
 // DatabaseObserverDeployment defines the exporter deployment component of DatabaseObserver
 type DatabaseObserverDeployment struct {
-	ExporterImage         string                `json:"image,omitempty"`
-	ExporterArgs          []string              `json:"args,omitempty"`
-	ExporterCommands      []string              `json:"commands,omitempty"`
-	ExporterEnvs          map[string]string     `json:"env,omitempty"`
-	Labels                map[string]string     `json:"labels,omitempty"`
-	DeploymentPodTemplate DeploymentPodTemplate `json:"podTemplate,omitempty"`
+	ExporterImage         string                  `json:"image,omitempty"`
+	SecurityContext       *corev1.SecurityContext `json:"securityContext,omitempty"`
+	ExporterArgs          []string                `json:"args,omitempty"`
+	ExporterCommands      []string                `json:"commands,omitempty"`
+	ExporterEnvs          map[string]string       `json:"env,omitempty"`
+	Labels                map[string]string       `json:"labels,omitempty"`
+	DeploymentPodTemplate DeploymentPodTemplate   `json:"podTemplate,omitempty"`
 }
 
 // DeploymentPodTemplate defines the labels for the DatabaseObserver pods component of a deployment
 type DeploymentPodTemplate struct {
-	Labels map[string]string `json:"labels,omitempty"`
+	SecurityContext *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+	Labels          map[string]string          `json:"labels,omitempty"`
 }
 
 // DatabaseObserverService defines the exporter service component of DatabaseObserver

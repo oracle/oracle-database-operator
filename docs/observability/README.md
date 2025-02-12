@@ -55,40 +55,42 @@ In the sample YAML file found in
 [./config/samples/observability/v4/databaseobserver.yaml](../../config/samples/observability/v4/databaseobserver.yaml),
 the databaseObserver custom resource offers the following properties to be configured:
 
-| Attribute                                          | Type   | Default                                                             | Required?   | Example                                                               |
-|----------------------------------------------------|--------|---------------------------------------------------------------------|:------------|-----------------------------------------------------------------------|
-| `spec.database.dbUser.key`                         | string | user                                                                | Optional    | _username_                                                            |
-| `spec.database.dbUser.secret`                      | string | -                                                                   | Yes         | _db-secret_                                                           |
-| `spec.database.dbPassword.key`                     | string | password                                                            | Optional    | _admin-password_                                                      |
-| `spec.database.dbPassword.secret`                  | string | -                                                                   | Conditional | _db-secret_                                                           |
-| `spec.database.dbPassword.vaultOCID`               | string | -                                                                   | Conditional | _ocid1.vault.oc1..._                                                  |
-| `spec.database.dbPassword.vaultSecretName`         | string | -                                                                   | Conditional | _db-vault_                                                            |
-| `spec.database.dbWallet.secret`                    | string | -                                                                   | Conditional | _devsec-oradevdb-wallet_                                              |
-| `spec.database.dbConnectionString.key`             | string | connection                                                          | Optional    | _connection_                                                          |
-| `spec.database.dbConnectionString.secret`          | string | -                                                                   | Yes         | _db-secretg_                                                          |
-| `spec.sidecars`                                    | array  | -                                                                   | Optional    | -                                                                     |
-| `spec.sidecarVolumes`                              | array  | -                                                                   | Optional    | -                                                                     |
-| `spec.exporter.deployment.env`                     | map    | -                                                                   | Optional    | _DB_ROLE: "SYSDBA"_                                                   |
-| `spec.exporter.deployment.image`                   | string | container-registry.oracle.com/database/observability-exporter:1.5.1 | Optional    | _container-registry.oracle.com/database/observability-exporter:1.3.0_ |
-| `spec.exporter.deployment.args`                    | array  | -                                                                   | Optional    | _[ "--log.level=info" ]_                                              |
-| `spec.exporter.deployment.commands`                | array  | -                                                                   | Optional    | _[ "/oracledb_exporter" ]_                                            |
-| `spec.exporter.deployment.labels`                  | map    | -                                                                   | Optional    | _environment: dev_                                                    |
-| `spec.exporter.deployment.podTemplate.labels`      | map    | -                                                                   | Optional    | _environment: dev_                                                    |
-| `spec.exporter.service.ports`                      | array  | -                                                                   | Optional    | -                                                                     |
-| `spec.exporter.service.labels`                     | map    | -                                                                   | Optional    | _environment: dev_                                                    |                                                                     |
-| `spec.configuration.configMap.key`                 | string | config.toml                                                         | Optional    | _config.toml_                                                         |
-| `spec.configuration.configMap.name`                | string | -                                                                   | Optional    | _devcm-oradevdb-config_                                               |
-| `spec.prometheus.serviceMonitor.labels`            | map    | -                                                                   | Yes         | _release: prometheus_                                                 |
-| `spec.prometheus.serviceMonitor.namespaceSelector` | -      | -                                                                   | Yes         | -                                                                     |
-| `spec.prometheus.serviceMonitor.endpoints`         | array  | -                                                                   | Optional    | -                                                                     |
-| `spec.log.filename`                                | string | alert.log                                                           | Optional    | _alert.log_                                                           |
-| `spec.log.path`                                    | string | /log                                                                | Optional    | _/log_                                                                |
-| `spec.log.volume.name`                             | string | log-volume                                                          | Optional    | _my-persistent-volume_                                                |
-| `spec.log.volume.persistentVolumeClaim.claimName`  | string | -                                                                   | Optional    | _my-pvc_                                                              |
-| `spec.replicas`                                    | number | 1                                                                   | Optional    | _1_                                                                   |
-| `spec.inheritLabels`                               | array  | -                                                                   | Optional    | _- environment: dev_<br/>- app.kubernetes.io/name: observer           |
-| `spec.ociConfig.configMapName`                     | string | -                                                                   | Conditional | _oci-cred_                                                            |
-| `spec.ociConfig.secretName`                        | string | -                                                                   | Conditional | _oci-privatekey_                                                      |
+| Attribute                                              | Type   | Default                                                             | Required?   | Example                                                               |
+|--------------------------------------------------------|--------|---------------------------------------------------------------------|:------------|-----------------------------------------------------------------------|
+| `spec.database.dbUser.key`                             | string | user                                                                | Optional    | _username_                                                            |
+| `spec.database.dbUser.secret`                          | string | -                                                                   | Yes         | _db-secret_                                                           |
+| `spec.database.dbPassword.key`                         | string | password                                                            | Optional    | _admin-password_                                                      |
+| `spec.database.dbPassword.secret`                      | string | -                                                                   | Conditional | _db-secret_                                                           |
+| `spec.database.dbPassword.vaultOCID`                   | string | -                                                                   | Conditional | _ocid1.vault.oc1..._                                                  |
+| `spec.database.dbPassword.vaultSecretName`             | string | -                                                                   | Conditional | _db-vault_                                                            |
+| `spec.database.dbWallet.secret`                        | string | -                                                                   | Conditional | _devsec-oradevdb-wallet_                                              |
+| `spec.database.dbConnectionString.key`                 | string | connection                                                          | Optional    | _connection_                                                          |
+| `spec.database.dbConnectionString.secret`              | string | -                                                                   | Yes         | _db-secretg_                                                          |
+| `spec.sidecars`                                        | array  | -                                                                   | Optional    | -                                                                     |
+| `spec.sidecarVolumes`                                  | array  | -                                                                   | Optional    | -                                                                     |
+| `spec.exporter.deployment.securityContext`             | object |                                                                     | Optional    | _                                                                     |
+| `spec.exporter.deployment.env`                         | map    | -                                                                   | Optional    | _DB_ROLE: "SYSDBA"_                                                   |
+| `spec.exporter.deployment.image`                       | string | container-registry.oracle.com/database/observability-exporter:1.5.1 | Optional    | _container-registry.oracle.com/database/observability-exporter:1.3.0_ |
+| `spec.exporter.deployment.args`                        | array  | -                                                                   | Optional    | _[ "--log.level=info" ]_                                              |
+| `spec.exporter.deployment.commands`                    | array  | -                                                                   | Optional    | _[ "/oracledb_exporter" ]_                                            |
+| `spec.exporter.deployment.labels`                      | map    | -                                                                   | Optional    | _environment: dev_                                                    |
+| `spec.exporter.deployment.podTemplate.labels`          | map    | -                                                                   | Optional    | _environment: dev_                                                    |
+| `spec.exporter.deployment.podTemplate.securityContext` | object | -                                                                   | Optional    | _                                                                     |
+| `spec.exporter.service.ports`                          | array  | -                                                                   | Optional    | -                                                                     |
+| `spec.exporter.service.labels`                         | map    | -                                                                   | Optional    | _environment: dev_                                                    |                                                                     |
+| `spec.configuration.configMap.key`                     | string | config.toml                                                         | Optional    | _config.toml_                                                         |
+| `spec.configuration.configMap.name`                    | string | -                                                                   | Optional    | _devcm-oradevdb-config_                                               |
+| `spec.prometheus.serviceMonitor.labels`                | map    | -                                                                   | Yes         | _release: prometheus_                                                 |
+| `spec.prometheus.serviceMonitor.namespaceSelector`     | -      | -                                                                   | Yes         | -                                                                     |
+| `spec.prometheus.serviceMonitor.endpoints`             | array  | -                                                                   | Optional    | -                                                                     |
+| `spec.log.filename`                                    | string | alert.log                                                           | Optional    | _alert.log_                                                           |
+| `spec.log.path`                                        | string | /log                                                                | Optional    | _/log_                                                                |
+| `spec.log.volume.name`                                 | string | log-volume                                                          | Optional    | _my-persistent-volume_                                                |
+| `spec.log.volume.persistentVolumeClaim.claimName`      | string | -                                                                   | Optional    | _my-pvc_                                                              |
+| `spec.replicas`                                        | number | 1                                                                   | Optional    | _1_                                                                   |
+| `spec.inheritLabels`                                   | array  | -                                                                   | Optional    | _- environment: dev_<br/>- app.kubernetes.io/name: observer           |
+| `spec.ociConfig.configMapName`                         | string | -                                                                   | Conditional | _oci-cred_                                                            |
+| `spec.ociConfig.secretName`                            | string | -                                                                   | Conditional | _oci-privatekey_                                                      |
 
 
 ### Configuration Options
@@ -125,8 +127,10 @@ The `databaseObserver` resource provides the remaining multiple fields that are 
 * `spec.exporter.deployment.env` - custom environment variables for the observability exporter
 * `spec.exporter.deployment.labels` - custom labels to add to deployment labels
 * `spec.exporter.deployment.podTemplate.labels` - custom labels to add to pod labels
+* `spec.exporter.deployment.podTemplate.securityContext` - configures pod securityContext
 * `spec.exporter.deployment.args` - additional arguments to provide the observability-exporter
 * `spec.exporter.deployment.commands` - commands to supply to the observability-exporter
+* `spec.exporter.deployment.securityContext` - configures container securityContext
 * `spec.inheritLabels` - keys of inherited labels from the databaseObserver resource. These labels are applied to generated resources.
 
 ### Resources Managed by the Controller
@@ -354,6 +358,28 @@ If `spec.log.volume.persistentVolumeClaim.claimName` is not specified, an `Empty
         claimName: "my-pvc"
 ```
 
+If security context, which defines privilege and access control settings for a pod container, need to be updated in the pod, 
+the same field is available on the DatabaseObserver spec. You can set this object under deployment: `spec.exporter.deployment.securityContext`.
+
+```yaml
+spec:
+  exporter:
+    deployment:
+      securityContext:
+        supplementalGroups: [1000]
+```
+
+Configuring security context under the PodTemplate is also possible. You can set this object under: `spec.exporter.deployment.podTemplate.securityContext`
+
+```yaml
+spec:
+  exporter:
+    deployment:
+      podTemplate:
+          securityContext:
+            supplementalGroups: [1000]
+```
+
 
 ### Working with Sidecars, to deploy Promtail
 The fields `spec.sidecars` and `spec.sidecarVolumes` provide the ability to deploy container images as a sidecar container
@@ -460,9 +486,9 @@ spec:
         labels:
     service:
       labels:
-    prometheus:
-      serviceMonitor:
-        labels:
+  prometheus:
+    serviceMonitor:
+      labels:
 ```
 
 ### Custom Exporter Image or Version
