@@ -40,9 +40,9 @@ For fast provisioning of single-node virtual machine database systems (using Log
 
 # Oracle DB Operator DBCS Controller Deployment
 
-To deploy OraOperator, use this [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
+To deploy Oracle Database Operator (`OraOperator`), use the [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
 
-After the Oracle Database Operator is deployed, you can see the DB operator pods running in the Kubernetes Cluster. As part of the OraOperator deployment, the DBCS Controller is deployed as a CRD (Custom Resource Definition). The following screen output is an example of such a deployment:
+After the Oracle Database Operator is deployed, you can see the DB operator pods running in the Kubernetes Cluster. As part of the `OraOperator` deployment, the DBCS Controller is deployed as a CRD (Custom Resource Definition). The following screen output is an example of such a deployment:
 ```bash
 [root@test-server oracle-database-operator]# kubectl get ns
 NAME                              STATUS   AGE
@@ -94,7 +94,7 @@ Before you deploy a DBCS system in OCI using the Oracle DB Operator DBCS Control
 
 **CAUTION :** You must make the changes specified in this section before you proceed to the next section.
 
-## 1. Create a Kubernetes Configmap. For example: We are creating a Kubernetes Configmap named `oci-cred` using the OCI account we are using as below: 
+## 1. Create a Kubernetes Configmap. In this example. we create a Kubernetes Configmap named `oci-cred` with the OCI account we are using: 
 
 ```bash
 kubectl create configmap oci-cred \
@@ -134,7 +134,7 @@ kubectl create secret generic tde-password --from-file=./tde-password -n default
 ```
 
 
-## 5. Create an ssh key pair, and use its public key to create a Kubernetes secret named `oci-publickey`; the private key for this public key can be used later to access the DBCS system's host machine using ssh:
+## 5. Create an SSH key pair, and use its public key to create a Kubernetes secret named `oci-publickey`; the private key for this public key can be used later to access the DBCS system's host machine using SSH:
 
 ```bash
 [root@test-server DBCS]# ssh-keygen -N "" -C "DBCS_System"-`date +%Y%m` -P ""
