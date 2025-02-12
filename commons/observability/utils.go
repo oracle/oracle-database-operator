@@ -86,6 +86,22 @@ func GetExporterArgs(a *api.DatabaseObserver) []string {
 	return nil
 }
 
+// GetExporterDeploymentSecurityContext retrieves security context for container
+func GetExporterDeploymentSecurityContext(a *api.DatabaseObserver) *corev1.SecurityContext {
+	if sc := a.Spec.Exporter.Deployment.SecurityContext; sc != nil {
+		return sc
+	}
+	return &corev1.SecurityContext{}
+}
+
+// GetExporterPodSecurityContext retrieves security context for pods
+func GetExporterPodSecurityContext(a *api.DatabaseObserver) *corev1.PodSecurityContext {
+	if sc := a.Spec.Exporter.Deployment.DeploymentPodTemplate.SecurityContext; sc != nil {
+		return sc
+	}
+	return &corev1.PodSecurityContext{}
+}
+
 // GetExporterCommands retrieves commands
 func GetExporterCommands(a *api.DatabaseObserver) []string {
 	if c := a.Spec.Exporter.Deployment.ExporterCommands; c != nil || len(c) > 0 {
