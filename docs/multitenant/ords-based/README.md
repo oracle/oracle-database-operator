@@ -2,28 +2,28 @@
 
 # Oracle Multitenant Database Controllers 
 
-The Oracle Database Operator for Kubernetes uses two controllers to manage [Pluggable Database life cycle][oradocpdb]
+The Oracle Database Operator for Kubernetes uses two controllers to manage the [Pluggable Database lifecycle][oradocpdb]
 
 - CDB controller
 - PDB controller
 
-By using CDB/PDB controllers you can perform the following actions **CREATE**, **MODIFY(OPEN/COSE)**, **DELETE**, **CLONE**, **PLUG** and **UNPLUG** against pluggable database
+By using CDB/PDB controllers, you can perform the following actions **CREATE**, **MODIFY(OPEN/COSE)**, **DELETE**, **CLONE**, **PLUG** and **UNPLUG** against pluggable database
 
 Examples are located under the following directories:
 
-- [Usecase](./usecase/) and [usecase01](./usecase01/) directories contain a [configuration file](./usecase/parameters.txt)  where you can specify all the details of your environment. A [makefile](./usecase/makefile) takes this file in input to generate the all the yaml files. There is no need to edit yaml files one by one.
-- [Singlenamespace provisioning](./provisioning/singlenamespace/) You will find base sample files to manage pdb and cdb within a single namespace 
-- [Multinamespace provisioning](./provisioning/multinamespace/) You will find base sample files to manage pdb and cdb in different namespaces.
-- [Usecase01](./usecase01/README.md) [Usecase02](./usecase02/README.md)  contain other step by step examples; 
+- the directories [`Usecase`](./usecase/) and [`usecase01`](./usecase01/) contain a [configuration file](./usecase/parameters.txt)  where you can specify all the details of your environment. A [`makefile`](./usecase/makefile) takes this file as input to generate all of the `yaml` files. There is no need to edit `yaml` files one by one.
+- [Singlenamespace provisioning](./provisioning/singlenamespace/) This file contains base example files that you can use to manage the PDB and CDB within a single namespace. 
+- [Multinamespace provisioning](./provisioning/multinamespace/) This file contains base example files that you can use to manage the PDB and CDB in different namespaces.
+- [Usecase01](./usecase01/README.md) [Usecase02](./usecase02/README.md) This file contains other step-by-step examples; 
 
-Automatic yaml generation is not available for directory usecase02 and provisioning directories 
+Automatic `yaml` generation is not available for the directory `usecase02` and provisioning directories. 
 
-**NOTE** cdb controller is not intended to manage the container database. The CDB controller is meant to provide a pod with a rest server connected to the container database to manage PDBs. 
+**NOTE** the CDB controller is not intended to manage the container database. The CDB controller is meant to provide a pod with a REST server connected to the container database that you can use to manage PDBs. 
 
 
 ## Macro steps for setup
 
-- Deploy the Oracle Database Operator 
+- Deploy the Oracle Database Operator (operator, or `OraOperator`)
 - [Create Ords based image for CDB pod](./provisioning/ords_image.md)
 - [Container RDBMB user creation](#prepare-the-container-database-for-pdb-lifecycle-management-pdb-lm)
 - Create certificates for https connection 
@@ -32,9 +32,9 @@ Automatic yaml generation is not available for directory usecase02 and provision
 
 ## Oracle DB Operator Multitenant Database Controller Deployment
 
-To deploy OraOperator, use this [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
+To deploy `OraOperator`, use this [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
 
-Once the **Oracle Database Operator** is deployed, you can see the DB Operator Pods running in the Kubernetes Cluster. The multitenant controllers are deployed as part of the `OraOperator` deploymentd. You can see the CRDs (Custom Resource Definition) for the CDB and PDBs in the list of CRDs. The following output is an example of such a deployment:
+After the **Oracle Database Operator** is deployed, you can see the Oracle Database (DB) Operator Pods running in the Kubernetes Cluster. The multitenant controllers are deployed as part of the `OraOperator` deployment. You can see the CRDs (Custom Resource Definition) for the CDB and PDBs in the list of CRDs. The following output is an example of such a deployment:
 
 ```bash
 [root@test-server oracle-database-operator]# kubectl get ns
@@ -86,7 +86,7 @@ singleinstancedatabases.database.oracle.com        2022-06-22T01:21:40Z
 
 ## Prerequisites to manage PDB Life Cycle using Oracle DB Operator Multitenant Database Controller
 
-* [Prepare the container database for PDB Lifecycle Management or PDB-LM](#prepare-cdb-for-pdb-lifecycle-management-pdb-lm)
+* [Prepare the container database (CDB) for PDB Lifecycle Management or PDB-LM](#prepare-cdb-for-pdb-lifecycle-management-pdb-lm)
 * [Oracle REST Data Service or ORDS Image](#oracle-rest-data-service-ords-image)
 * [Kubernetes Secrets](#kubernetes-secrets)
 * [Kubernetes CRD for CDB](#cdb-crd)
@@ -94,7 +94,7 @@ singleinstancedatabases.database.oracle.com        2022-06-22T01:21:40Z
 
 ## Prepare the container database for PDB Lifecycle Management (PDB-LM)
 
-Pluggable Database (PDB) management operations are performed in the Container Database (CDB). These operations include create, clone, plug, unplug, delete, modify and map pdb.
+Pluggable Database (PDB) management operations are performed in the Container Database (CDB). These operations include **create**, **clone**, **plug**, **unplug**, **delete**, **modify** and **map pdb**.
 
 To perform PDB lifecycle management operations, you must first use the following steps to define the default CDB administrator credentials on target CDBs:
 
@@ -122,25 +122,25 @@ select username, account_status from dba_users where username in ('ORDS_PUBLIC_U
 
 ## OCI OKE (Kubernetes Cluster) 
 
-You can use an [OKE in Oracle Cloud Infrastructure][okelink] to configure the controllers for PDB lifecycle management. **Note that there is no restriction about container database location; it can be anywhere (on cloud or on-premises).** 
+You can use an [OKE in Oracle Cloud Infrastructure][okelink] to configure the controllers for PDB lifecycle management. **Note that there is no restriction about container database location; it can be anywhere (on Cloud or on-premises).** 
 To quickly create an OKE cluster in your OCI cloud environment you can use the following [link](./provisioning/quickOKEcreation.md).
-In this setup example [provisioning example setup](./provisioning/example_setup_using_oci_oke_cluster.md), the Container Database is running on a OCI Exadata Database Cluster.
+In this setup example [provisioning example setup](./provisioning/example_setup_using_oci_oke_cluster.md), the Container Database is running on an OCI Exadata Database Cluster.
 
  
 ## Oracle REST Data Service (ORDS) Image
 
-  The PDB Database controllers require a pod running a dedicated rest server image based on [ORDS][ordsdoc]. Read the following [link](./provisioning/ords_image.md) to build the ords images.
+The PDB Database controllers require a pod running a dedicated REST server image based on [ORDS][ordsdoc]. Read the following [document on ORDS images](./provisioning/ords_image.md) to build the ORDS images.
   
 
 ## Kubernetes Secrets
 
-  Multitenant Controllers use Kubernetes secrets to store the required credential and https certificates.
+  Multitenant Controllers use Kubernetes Secrets to store the required credential and HTTPS certificates.
 
-  **Note** <span style="color:red"> In multi namespace environment you have to create specific secrets for each namespaces </span>
+  **Note** <span style="color:red"> In multi-namespace environments you must create specific Secrets for each namespaces. </span>
 
 ### Secrets for CERTIFICATES
 
-Create the certificates and key on your local host and use them to create the Kubernetes secret.
+Create the certificates and key on your local host, and then use them to create the Kubernetes Secret.
 
 ```bash 
 openssl genrsa -out ca.key 2048
@@ -157,11 +157,11 @@ kubectl create secret generic db-ca --from-file=ca.crt -n oracle-database-operat
 
 <img src="openssl_schema.jpg" alt="image_not_found" width="900"/>
 
-**Note:** <span style="color:red">  Remove temporary files after successfful secret creation. </span> 
+**Note:** <span style="color:red">  Remove temporary files after successfful Secret creation. </span> 
 
 ### Secrets for CDB CRD
 
-  **Note:** <span style="color:red">  base64 encoded secrets are no longer supported; use openssl secrets as documented in the following section.  After successful creation of the CDB Resource, the CDB and PDB secrets can be deleted from the Kubernetes system. Don't leave plaintext files containing sensitive data on disk. After loading the secret, remove the plaintext file or move it to secure storage. </span>
+  **Note:** <span style="color:red">  base64 encoded secrets are no longer supported; use OpenSSL secrets as documented in the following section.  After successful creation of the CDB Resource, the CDB and PDB Secrets can be deleted from the Kubernetes system. Don't leave plaintext files containing sensitive data on disk. After loading the Secret, remove the plaintext file or move it to secure storage. </span>
 
   ```bash
 
@@ -229,7 +229,7 @@ rm  ${WBUSERFILE}  ${WBPASSFILE} ${CDBPWDFILE} ${CDBUSRFILE}  \
      e_${SYSPWDFILE}  e_${ORDPWDFILE}  e_${PDBUSRFILE} e_${PDBPWDFILE}
 ```
 
-Check secrets details 
+Check Secrets details 
 
 ```bash 
 kubectl describe secrets syspwd -n cdbnamespace
@@ -244,7 +244,7 @@ Data
 ====
 e_syspwd.txt:  349 bytes
 ```
-Example of yaml file secret section:
+Example of `yaml` file Secret section:
 
 ```yaml 
 [...]
@@ -261,9 +261,9 @@ Example of yaml file secret section:
 
 ## CDB CRD
 
-The Oracle Database Operator Multitenant Controller creates the CDB kind as a custom resource that models a target CDB as a native Kubernetes object. This kind is used only to create Pods to connect to the target CDB to perform PDB-LM operations.  Each CDB resource follows the CDB CRD as defined here: [config/crd/bases/database.oracle.com_cdbs.yaml](../../../config/crd/bases/database.oracle.com_cdbs.yaml)
+The Oracle Database Operator Multitenant Controller creates the CDB as a custom resource object kind that models a target CDB as a native Kubernetes object. This object kind is used only to create Pods to connect to the target CDB to perform PDB-LM operations.  Each CDB resource follows the CDB CRD as defined here: [`config/crd/bases/database.oracle.com_cdbs.yaml`](../../../config/crd/bases/database.oracle.com_cdbs.yaml)
 
-To create a CDB CRD, use this example`.yaml` file: [cdb_create.yaml](../multitenant/provisioning/singlenamespace/cdb_create.yaml)
+To create a CDB CRD, use this example`.yaml` file: [`cdb_create.yaml`](../multitenant/provisioning/singlenamespace/cdb_create.yaml)
 
 **Note:** The password and username fields in this *cdb.yaml* Yaml are the Kubernetes Secrets created earlier in this procedure. For more information, see the section [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/). To understand more about creating secrets for pulling images from a Docker private registry, see [Kubernetes Private Registry Documenation]( https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/).
 
@@ -277,7 +277,7 @@ see [usecase01][uc01] and usecase02[uc02] for more information about file config
 
 ## PDB CRD
 
-The Oracle Database Operator Multitenant Controller creates the PDB kind as a custom resource that models a PDB as a native Kubernetes object. There is a one-to-one mapping between the actual PDB and the Kubernetes PDB Custom Resource. You cannot have more than one Kubernetes resource for a target PDB. This PDB resource can be used to perform PDB-LM operations by specifying the action attribute in the PDB Specs. Each PDB resource follows the PDB CRD as defined here: [config/crd/bases/database.oracle.com_pdbs.yaml](../../../config/crd/bases/database.oracle.com_pdbs.yaml)
+The Oracle Database Operator Multitenant Controller creates the PDB object kind as a custom resource that models a PDB as a native Kubernetes object. There is a one-to-one mapping between the actual PDB and the Kubernetes PDB Custom Resource. You cannot have more than one Kubernetes resource for a target PDB. This PDB resource can be used to perform PDB-LM operations by specifying the action attribute in the PDB Specs. Each PDB resource follows the PDB CRD as defined here: [config/crd/bases/database.oracle.com_pdbs.yaml](../../../config/crd/bases/database.oracle.com_pdbs.yaml)
 
 Yaml file [pdb_create.yaml](../multitenant/provisioning/singlenamespace/pdb_create.yaml) to create a pdb
 
@@ -293,10 +293,10 @@ kubectl apply -f pdb_create.yaml
 | dbTnsurl              | <tns connect descriptor\>     | [--db-custom-url/db.customURL][dbtnsurl]                                      | CDB       |
 | port                  | <oracle_port\>                | [--db-port][2]                                                                | CDB       |
 | cdbName               | <dbname\>                     | Container Name                                                                | CDB       |
-| name                  | <cdb-dev\>                    | Ords podname prefix in cdb.yaml                                               | CDB       |
-| name                  | <pdb\>                        | pdb resource in pdb.yaml                                                      | PDB       |
-| ordsImage             | ords-dboper:latest            | ords pod public container registry                                            | CDB       |
-| pdbName               | <pdbname\>                    | Pluggable database name                                                       | CDB       |
+| name                  | <cdb-dev\>                    | ORDS podname prefix in `cdb.yaml`                                               | CDB       |
+| name                  | <pdb\>                        | Pdb resource in `pdb.yaml`                                                      | PDB       |
+| ordsImage             | ords-dboper:latest            | ORDS pod public container registry                                            | CDB       |
+| pdbName               | <pdbname\>                    | Pluggable database (PDB) name                                                       | Container database (CDB)       |
 | servicename           | <service_name\>               | [--db-servicename][3]                                                         | CDB       |
 | sysadmin_user         | <SYS_SYSDBA\>                 | [--admin-user][adminuser]                                                     | CDB       |
 | sysadmin_pwd          | <sys_password\>               | [--password-stdin][pwdstdin]                                                  | CDB       |
@@ -310,19 +310,19 @@ kubectl apply -f pdb_create.yaml
 | pdbTlsCat             | <certauth\>                   | certificate authority                                                         | PDB       |
 | cdbTlsKey             | <keyfile\>                    | [standalone.https.cert.key][key]                                              | CDB       |
 | cdbTlsCrt             | <certfile\>                   | [standalone.https.cert][cr]                                                   | CDB       |
-| cdbTlsCat             | <certauth\>                   | certificate authority                                                         | CDB       |
-| cdbOrdsPrvKey         | <pvriv key secrets>           | private key                                                                   | CDB       |
-| pdbOrdsPrvKey         | <pvriv key secrets>           | private key                                                                   | PDB       |
-| xmlFileName           | <xml file path\>              | path for the unplug and plug operation                                        | PDB       |
-| srcPdbName            | <source db\>                  | name of the database to be cloned                                             | PDB       |
-| action                | <action>                      | create open close delete clone plug  unplug and map                           | PDB       |
-| deletePdbCascade      | boolean                       | delete pdbs cascade during cdb deletion                                       | CDB       |
-| assertivePdbDeletion  | boolean                       | Deleting pdb crd means deleteing pdb as well                                  | PDB       |
-| fileNameConversions   | <file name conversion\>       | used for database cloning                                                     | PDB       |
-| totalSize             | <value>                       | dbsize                                                                        | PDB       |
-| pdbState              | <OPEN|CLOSE>                  | change pdb state                                                              | PDB       |
-| modifyOption          | <READ WRITE|IMMEDIATE>        | to be used along with pdbState                                                | PDB       |
-| dropAction            | <INCLUDING>                   | delete datafiles during pdb deletion                                          | PDB       |
+| cdbTlsCat             | <certauth\>                   | Certificate authority                                                         | CDB       |
+| cdbOrdsPrvKey         | <pvriv key secrets>           | Private key                                                                   | CDB       |
+| pdbOrdsPrvKey         | <pvriv key secrets>           | Private key                                                                   | PDB       |
+| xmlFileName           | <xml file path\>              | Path for the unplug and plug operation                                        | PDB       |
+| srcPdbName            | <source db\>                  | Name of the database that you want to be cloned                                             | PDB       |
+| action                | <action>                      | Create open close delete clone plug  unplug and map                           | PDB       |
+| deletePdbCascade      | boolean                       | Delete PDBs cascade during CDB deletion                                       | CDB       |
+| assertivePdbDeletion  | boolean                       | Deleting the PDB crd means deleting the PDB as well                                  | PDB       |
+| fileNameConversions   | <file name conversion\>       | Used for database cloning                                                     | PDB       |
+| totalSize             | <value>                       | `dbsize`                                                                    | PDB       |
+| pdbState              | <OPEN|CLOSE>                  | Change PDB state                                                              | PDB       |
+| modifyOption          | <READ WRITE|IMMEDIATE>        | To be used along with `pdbState`                                                | PDB       |
+| dropAction            | <INCLUDING>                   | Delete datafiles during PDB deletion                                          | PDB       |
 | sourceFileNameConversions | <string>                  | [sourceFileNameConversions(optional): string][4]                              | PDB       |
 | tdeKeystorePath       | <TDE keystore path is required if the tdeExport flag is set to true\>   |  [tdeKeystorePath][tdeKeystorePath] | N/A       |
 | tdeExport             | <BOOLEAN\>              | [tdeExport] | N/A ]
@@ -357,7 +357,7 @@ kubectl apply -f pdb_create.yaml
 
 ## Known issues
 
- - Ords installation failure if pluaggable databases in the container db are not opened
+ - ORDS installation failure if pluaggable databases in the container db are not openedS
 
  - Version 1.1.0: encoded password for https authentication may include carriage return as consequence the https request fails with http 404 error. W/A generate encoded password using **printf** instead of **echo**.  
 
