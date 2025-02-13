@@ -75,7 +75,7 @@ type DataguardBrokerStatus struct {
 	ClusterConnectString  string `json:"clusterConnectString,omitempty"`
 	Status                string `json:"status,omitempty"`
 
-	FastStartFailover          bool              `json:"fastStartFailover,omitempty"`
+	FastStartFailover          string            `json:"fastStartFailover,omitempty"`
 	DatabasesInDataguardConfig map[string]string `json:"databasesInDataguardConfig,omitempty"`
 }
 

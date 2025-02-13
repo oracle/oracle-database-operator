@@ -42,6 +42,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -104,7 +105,7 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		dataguardBroker.Status.Status = dbcommons.StatusCreating
 		dataguardBroker.Status.ExternalConnectString = dbcommons.ValueUnavailable
 		dataguardBroker.Status.ClusterConnectString = dbcommons.ValueUnavailable
-		dataguardBroker.Status.FastStartFailover = false
+		dataguardBroker.Status.FastStartFailover = "false"
 		if len(dataguardBroker.Status.DatabasesInDataguardConfig) == 0 {
 			dataguardBroker.Status.DatabasesInDataguardConfig = map[string]string{}
 		}
@@ -154,7 +155,7 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 
 		// set faststartfailover status to true
-		dataguardBroker.Status.FastStartFailover = true
+		dataguardBroker.Status.FastStartFailover = "true"
 
 	} else {
 
@@ -178,7 +179,7 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		log.Info("database observer deleted")
 
 		// set faststartfailover status to false
-		dataguardBroker.Status.FastStartFailover = false
+		dataguardBroker.Status.FastStartFailover = "false"
 	}
 
 	// manage manual switchover
@@ -389,7 +390,8 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerCreation(broker *dbapi.
 	log.Info(fmt.Sprintf("Validating readiness for singleinstancedatabase %v", sidb.Name))
 	if err := validateSidbReadiness(r, broker, &sidb, ctx, req); err != nil {
 		if errors.Is(err, ErrCurrentPrimaryDatabaseNotReady) {
-			if broker.Status.Status != "" && broker.Status.FastStartFailover {
+			fastStartFailoverStatus, _ := strconv.ParseBool(broker.Status.FastStartFailover)
+			if broker.Status.Status != "" && fastStartFailoverStatus {
 				r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Possible Failover", "Primary db not in ready state after setting up DG configuration")
 			}
 			if err := updateReconcileStatus(r, broker, ctx, req); err != nil {
