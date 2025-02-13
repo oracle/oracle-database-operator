@@ -1,12 +1,12 @@
-# Clone DB System from Existing Database of DB System in OCI Base DBCS Service
+# Clone DB System from Existing Database of DB System in OCI Oracle Base Database System (OBDS)
 
-In this use case, an existing OCI DBCS system deployed earlier with existing Database is going to be cloned in OCI Base DBCS Service using existing Database ID. 
+In this use case, an existing OCI OBDS system deployed earlier with existing Database is going to be cloned in OCI Base OBDS Service using existing Database ID. 
 
-As an pre-requisite, get the details of OCID of database of an existing DBCS System which you want to clone.  
+As an pre-requisite, get the details of OCID of database of an existing OBDS System which you want to clone.  
 
 **NOTE:** We are assuming that before this step, you have followed the [prerequisite](./../README.md#prerequisites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) steps to create the configmap and the secrets required during the deployment.
 
-This example uses `clone_dbcs_system_from_database.yaml` to clone a Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with:
+This example uses `clone_dbcs_system_from_database.yaml` to clone a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with:
 - OCID of existing as `databaseId`
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`
@@ -18,18 +18,18 @@ Use the file: [clone_dbcs_system_from_database.yaml](./clone_dbcs_system_from_da
 
 1. Deploy the .yaml file:  
 ```sh
-[root@docker-test-server DBCS]# kubectl apply -f clone_dbcs_system_from_database.yaml
+[root@docker-test-server OBDS]# kubectl apply -f clone_dbcs_system_from_database.yaml
 dbcssystem.database.oracle.com/dbcssystem-clone created
 ```
 
-2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the DBCS VMDB creation of PDBs. 
+2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the OBDS VMDB creation of PDBs. 
 
 NOTE: Check the DB Operator Pod name in your environment.
 
 ```
-[root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output
 
-[Here](./clone_dbcs_system_from_database_sample_output.log) is the sample output for cloning an existing DBCS System deployed in OCI using Oracle DB Operator DBCS Controller.
+[Here](./clone_dbcs_system_from_database_sample_output.log) is the sample output for cloning an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.

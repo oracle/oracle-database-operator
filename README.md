@@ -14,7 +14,7 @@ In this v1.2.0 production release, `OraOperator` supports the following database
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
 * Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
-* Oracle Base Database Cloud Service (BDBCS)
+* Oracle Base Database Service (OBDS) on Oracle Cloud Infrastructure (OCI)
 * Oracle Data Guard
 * Oracle Database Observability
 * Oracle Database Rest Service (ORDS) instances
@@ -41,7 +41,7 @@ In this v1.2.0 production release, `OraOperator` supports the following database
   - Support for Database Logs (in addition to Metrics)
   - Support for the latest Exporter container images
 
-* Base DB: support for Oracle Database 23ai Cloning
+* Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation.
 * Prometheus label config (bug fix)
 
 ## New Product Features
@@ -60,7 +60,7 @@ This release of Oracle Database Operator for Kubernetes (the operator) supports 
 * ORDS Services: Provision and delete ORDS instances
 * Globally Distrib. (Sharded): Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard, Raft replication.
 * Oracle Multitenant Database (choice of controller): Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB, Assertive deletion policy
-* Oracle Base Database Cloud Service (BDBCS): Provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License, Cloning.
+* Oracle Base Database Service (OBDS): Provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License, Cloning, PDB creation, using KMS Vaults on Oracle Cloud Infrastructure (OCI)
 * Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
 * Oracle Database Observability: create, patch, delete `databaseObserver` resources (Logs and Metrics)
 * Watch over a set of namespaces or all the namespaces in the cluster using the `WATCH_NAMESPACE` environment variable of the operator deployment
@@ -180,7 +180,7 @@ The following quickstarts are designed for specific database configurations:
 * [Containerized Oracle Single Instance Database and Data Guard](./docs/sidb/README.md)
 * [Containerized Oracle Sharded Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
-* [Oracle Base Database Cloud Service (BDBCS)](./docs/dbcs/README.md)
+* [Oracle Base Database Service (OBDS)](./docs/dbcs/README.md)
 
 
 The following quickstart is designed for non-database configurations:
