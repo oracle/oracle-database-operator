@@ -46,26 +46,10 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
 	"github.com/oracle/oci-go-sdk/v65/workrequests"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // This file contains the util functions that are shared by specs in both
 // apis/database/v1alpha1 and apis/database/v4.
-
-// File the meta condition and return the meta view
-func CreateMetaCondition(obj client.Object, err error, lifecycleState string, stateMsg string) metav1.Condition {
-
-	return metav1.Condition{
-		Type:               lifecycleState,
-		LastTransitionTime: metav1.Now(),
-		ObservedGeneration: obj.GetGeneration(),
-		Reason:             stateMsg,
-		Message:            err.Error(),
-		Status:             metav1.ConditionTrue,
-	}
-}
 
 /**************************
 *	Remove Unchanged Fields

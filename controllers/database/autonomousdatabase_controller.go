@@ -398,53 +398,65 @@ func (r *AutonomousDatabaseReconciler) manageError(logger logr.Logger, adb *dbv4
 	return emptyResult, nil
 }
 
-const CONDITION_TYPE_COMPLETE = "Complete"
-const CONDITION_REASON_COMPLETE = "ReconcileComplete"
+const CONDITION_TYPE_AVAILABLE = "Available"
+const CONDITION_REASON_AVAILABLE = "Available"
+const CONDITION_TYPE_RECONCILE_QUEUED = "ReconcileQueued"
+const CONDITION_REASON_RECONCILE_QUEUED = "LastReconcileQueued"
+const CONDITION_TYPE_RECONCILE_ERROR = "ReconfileError"
+const CONDITION_REASON_RECONCILE_ERROR = "LastReconcileError"
 
 func updateCondition(adb *dbv4.AutonomousDatabase, err error) {
 	var condition metav1.Condition
+	var errMsg string
 
-	errMsg := func() string {
-		if err != nil {
-			return err.Error()
+	if err != nil {
+		errMsg = err.Error()
+	}
+
+	// Clean up the Conditions array
+	if len(adb.Status.Conditions) > 0 {
+		var allConditions = []string{
+			CONDITION_TYPE_AVAILABLE,
+			CONDITION_TYPE_RECONCILE_QUEUED,
+			CONDITION_TYPE_RECONCILE_ERROR}
+
+		for _, conditionType := range allConditions {
+			meta.RemoveStatusCondition(&adb.Status.Conditions, conditionType)
 		}
-		return "no reconcile errors"
-	}()
+	}
 
-	// If error occurs, ReconcileComplete will be marked as true and the error message will still be listed
-	// If the ADB lifecycleState is intermediate, then ReconcileComplete will be marked as false
+	// If error occurs, the condition status will be marked as false and the error message will still be listed
+	// If the ADB lifecycleState is intermediate, then condition status will be marked as true
+	// Otherwise, then condition status will be marked as true if no error occurs
 	if err != nil {
 		condition = metav1.Condition{
-			Type:               CONDITION_TYPE_COMPLETE,
+			Type:               CONDITION_TYPE_RECONCILE_ERROR,
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: adb.GetGeneration(),
-			Reason:             CONDITION_REASON_COMPLETE,
-			Message:            errMsg,
-			Status:             metav1.ConditionTrue,
-		}
-	} else if dbv4.IsAdbIntermediateState(adb.Status.LifecycleState) {
-		condition = metav1.Condition{
-			Type:               CONDITION_TYPE_COMPLETE,
-			LastTransitionTime: metav1.Now(),
-			ObservedGeneration: adb.GetGeneration(),
-			Reason:             CONDITION_REASON_COMPLETE,
+			Reason:             CONDITION_REASON_RECONCILE_ERROR,
 			Message:            errMsg,
 			Status:             metav1.ConditionFalse,
 		}
-	} else {
+	} else if dbv4.IsAdbIntermediateState(adb.Status.LifecycleState) {
 		condition = metav1.Condition{
-			Type:               CONDITION_TYPE_COMPLETE,
+			Type:               CONDITION_TYPE_RECONCILE_QUEUED,
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: adb.GetGeneration(),
-			Reason:             CONDITION_REASON_COMPLETE,
-			Message:            errMsg,
+			Reason:             CONDITION_REASON_RECONCILE_QUEUED,
+			Message:            "no reconcile errors",
+			Status:             metav1.ConditionTrue,
+		}
+	} else {
+		condition = metav1.Condition{
+			Type:               CONDITION_TYPE_AVAILABLE,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: adb.GetGeneration(),
+			Reason:             CONDITION_REASON_AVAILABLE,
+			Message:            "no reconcile errors",
 			Status:             metav1.ConditionTrue,
 		}
 	}
 
-	if len(adb.Status.Conditions) > 0 {
-		meta.RemoveStatusCondition(&adb.Status.Conditions, condition.Type)
-	}
 	meta.SetStatusCondition(&adb.Status.Conditions, condition)
 }
 
