@@ -1,15 +1,15 @@
-# Create PDB to an existing DBCS System
+# Create PDB to an existing OBDS System
 
-In this use case, an existing OCI DBCS system deployed earlier is going to have a PDB/many PDBs created. Its a 2 Step operation.
+In this use case, an existing OCI OBDS system deployed earlier is going to have a PDB/many PDBs created. Its a 2 Step operation.
 
-In order to create PDBs to an existing DBCS system, the steps will be:
+In order to create PDBs to an existing OBDS system, the steps will be:
 
-1. Bind the existing DBCS System to DBCS Controller.
+1. Bind the existing OBDS System to OBDS Controller.
 2. Apply the change to create PDBs.
 
 **NOTE:** We are assuming that before this step, you have followed the [prerequisite](./../README.md#prerequisites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) steps to create the configmap and the secrets required during the deployment.
 
-As step 1, first bind the existing DBCS System to DBCS Controller following [documentation](./../provisioning/bind_to_existing_dbcs_system.md). After successful binding, it will show as below-
+As step 1, first bind the existing OBDS System to OBDS Controller following [documentation](./../provisioning/bind_to_existing_dbcs_system.md). After successful binding, it will show as below-
 ```bash
 kubectl get dbcssystems
 NAME                  AGE
@@ -25,7 +25,7 @@ Create a Kubernetes secret `pdb-password` using the file:
 kubectl create secret generic pdb-password --from-file=./pdb-password -n default
 ```
 
-This example uses `createpdb_in_existing_dbcs_system_list.yaml` to scale up a Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with:
+This example uses `createpdb_in_existing_dbcs_system_list.yaml` to scale up a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with:
 
 - OCID of existing VMDB as `ocid1.dbsystem.oc1.iad.anuwcljsabf7htya55wz5vfil7ul3pkzpubnymp6zrp3fhgomv3fcdr2vtiq`
 - OCI Configmap as `oci-cred`  
@@ -38,18 +38,18 @@ Use the file: [createpdb_in_existing_dbcs_system_list.yaml](./createpdb_in_exist
 
 1. Deploy the .yaml file:  
 ```sh
-[root@docker-test-server DBCS]# kubectl apply -f createpdb_in_existing_dbcs_system_list.yaml
+[root@docker-test-server OBDS]# kubectl apply -f createpdb_in_existing_dbcs_system_list.yaml
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
-2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the DBCS VMDB creation of PDBs. 
+2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the OBDS VMDB creation of PDBs. 
 
 NOTE: Check the DB Operator Pod name in your environment.
 
 ```
-[root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
+[root@docker-test-server OBDS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
 ## Sample Output
 
-[Here](./createpdb_in_existing_dbcs_system_list_sample_output.log) is the sample output for creation of PDBs on an existing DBCS System deployed in OCI using Oracle DB Operator DBCS Controller.
+[Here](./createpdb_in_existing_dbcs_system_list_sample_output.log) is the sample output for creation of PDBs on an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.

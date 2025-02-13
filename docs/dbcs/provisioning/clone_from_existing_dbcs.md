@@ -1,12 +1,12 @@
-# Clone DB System from Existing DB System in OCI Base DBCS Service
+# Clone DB System from Existing DB System in OCI Oracle Base Database System (OBDS)
 
-In this use case, an existing OCI DBCS system deployed earlier is going to be cloned in OCI Base DBCS Service. Its a 2 Step operation.
+In this use case, an existing OCI OBDS system deployed earlier is going to be cloned in OCI Oracle Base Database System (OBDS). Its a 2 Step operation.
 
-In order to clone DBCS to an existing DBCS system, get the OCID of DB System ID  you want to clone.
+In order to clone OBDS to an existing OBDS system, get the OCID of DB System ID  you want to clone.
 
 **NOTE:** We are assuming that before this step, you have followed the [prerequisite](./../README.md#prerequisites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) steps to create the configmap and the secrets required during the deployment.
 
-This example uses `clone_dbcs_system.yaml` to clone a Single Instance DBCS VMDB using Oracle DB Operator DBCS Controller with:
+This example uses `clone_dbcs_system.yaml` to clone a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with:
 
 - OCID of existing VMDB as `id` to be cloned.
 - OCI Configmap as `oci-cred`  
