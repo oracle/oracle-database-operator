@@ -1,14 +1,14 @@
 # Create kubernetes secret for db user
 
-Below are the steps to create an encrypted file with a password for the DB User:
+Use the following steps to create an encrypted file with a password for the DB User:
 
-- Create a text file which is having the password which you want to use for the DB user.
+- Create a text file that has the password that you want to use for the DB user.
 - Create an RSA key pair using `openssl`.
-- Encrypt the text file with password using `openssl` with the RSA key pair generated earlier.
+- Encrypt the text file with a password, using `openssl` with the RSA key pair generated earlier.
 - Remove the initial text file.
-- Create the Kubernetes secret named `db-user-pass-rsa` using the encrypted file.
+- Create the Kubernetes Secret named `db-user-pass-rsa` using the encrypted file.
 
-Please refer the below example for the above steps:
+To understand how to create your own file, use the following example:
 
 ```sh
 # Create a directory for files for the secret:
