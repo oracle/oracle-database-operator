@@ -1,10 +1,10 @@
 # Database Connectivity
 
-The Oracle Database Sharding Topology deployed by Sharding Controller in Oracle Database Operator has an external IP available for each of the container.
+The Oracle Database Sharding Topology deployed by Sharding Controller in Oracle Database Operator has an external IP available for each of the containers.
 
 ## Below is an example setup with connection details
 
-Check the details of the Sharding Topology provisioned using Sharding Controller:
+Check the details of the Sharding Topology provisioned by using the Sharding Controller:
 
 ```sh
 $ kubectl get all  -n shns
@@ -35,7 +35,7 @@ statefulset.apps/shard1    1/1     10d
 statefulset.apps/shard2    1/1     10d
 ```
 
-After you have the external IP address, you can use the services shown below to make the database connection using the above example:
+After you have the external IP address, you can use the services shown below to make the database connection. Using the preceding example, that file should look as follows:
 
 1. **Direct connection to the CATALOG Database**: Connect to the service `catalogpdb` on catalog container external IP `xx.xx.xx.116` on port `1521`
 2. **Direct connection to the shard Database SHARD1**: Connect to the service `shard1pdb` on catalog container external IP `xx.xx.xx.187` on port `1521`
