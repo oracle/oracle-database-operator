@@ -1,14 +1,14 @@
 # Managing Oracle Autonomous Databases with Oracle Database Operator for Kubernetes
 
-Before you use the Oracle Database Operator for Kubernetes (the operator), ensure your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
+Before you use the Oracle Database Operator for Kubernetes (the operator), ensure that your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
 
-As indicated in the prerequisites (see above), to interact with OCI services, either the cluster must be authorized using Principal Instance, or by using the API Key Authentication and specifying the configMap and the secret under the `ociConfig` field.
+As indicated in the prerequisites (see above), to interact with OCI services, either the cluster must be authorized using Principal Instance, or the cluster must be authorized using the API Key Authentication by specifying the configMap and the secret under the `ociConfig` field.
 
 ## Required Permissions
 
-The operator must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. See [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb) for example Autonomous Database policies.
+The operator must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. For examples of Autonomous Database policies, see: [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb)
 
-The permission to view the work requests is also required, so that the operator will update the resources when the work is done. See [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) for example work request policies.
+Permissions to view the work requests are also required, so that the operator can update the resources when the work is done. For example work request policies, see: [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) 
 
 ## Supported Features
 
@@ -31,9 +31,9 @@ To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Deb
 
 ## Provision an Autonomous Database
 
-Follow these steps to provision an Autonomous Database that will map objects in your cluster.
+To provision an Autonomous Database that will map objects in your cluster, complete the following steps:
 
-1. Get the `Compartment OCID`.
+1. Obtain the `Compartment OCID`.
 
     Log in to the Cloud Console and click `Compartment`.
 
@@ -67,7 +67,7 @@ Follow these steps to provision an Autonomous Database that will map objects in 
     kubectl create secret generic admin-password --from-literal=admin-password='password_here'
     ```
 
-4. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
+4. Add the following fields to the Autonomous Database resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
     | `spec.details.compartmentId` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the compartment of the Autonomous Database. | Yes |
@@ -89,7 +89,7 @@ Follow these steps to provision an Autonomous Database that will map objects in 
     | `spec.details.isDedicated` | boolean | True if the database is on dedicated [Exadata infrastructure](https://docs.cloud.oracle.com/Content/Database/Concepts/adbddoverview.htm). `spec.details.autonomousContainerDatabase.k8sACD.name` or `spec.details.autonomousContainerDatabase.ociACD.id` has to be provided if the value is true. | No |
     | `spec.details.isFreeTier` | boolean | Indicates if this is an Always Free resource. The default value is false. Note that Always Free Autonomous Databases have 1 CPU and 20GB of memory. For Always Free databases, memory and CPU cannot be scaled.<br>This cannot be updated in parallel with any of the following: licenseModel, cpuCoreCount, computeCount, computeModel, adminPassword, whitelistedIps, isMtlsConnectionRequired, privateEndpointLabel, nsgIds, dbVersion, or dbName. | No |
     | `spec.details.isAccessControlEnabled` | boolean | Indicates if the database-level access control is enabled.<br>If disabled, database access is defined by the network security rules.<br>If enabled, database access is restricted to the IP addresses defined by the rules specified with the `whitelistedIps` property. While specifying `whitelistedIps` rules is optional, if database-level access control is enabled and no rules are specified, the database will become inaccessible.<br>When creating a database clone, the desired access control setting should be specified. By default, database-level access control will be disabled for the clone.<br>This property is applicable only to Autonomous Databases on the Exadata Cloud@Customer platform. For Autonomous Database Serverless instances, `whitelistedIps` is used. | No |
-    | `spec.details.whitelistedIps` | []string | The client IP access control list (ACL). This feature is available for [Autonomous Database Serverless](https://docs.oracle.com/en/cloud/paas/autonomous-database/index.html) and on Exadata Cloud@Customer.<br>Only clients connecting from an IP address included in the ACL may access the Autonomous Database instance.<br>If `arePrimaryWhitelistedIpsUsed` is 'TRUE' then Autonomous Database uses this primary's IP access control list (ACL) for the disaster recovery peer called `standbywhitelistedips`.<br>For Autonomous Database Serverless, this is an array of CIDR (classless inter-domain routing) notations for a subnet or VCN OCID (virtual cloud network Oracle Cloud ID).<br>Multiple IPs and VCN OCIDs should be separate strings separated by commas, but if it’s other configurations that need multiple pieces of information then its each piece is connected with semicolon (;) as a delimiter.<br>Example: `["1.1.1.1","1.1.1.0/24","ocid1.vcn.oc1.sea.<unique_id>","ocid1.vcn.oc1.sea.<unique_id1>;1.1.1.1","ocid1.vcn.oc1.sea.<unique_id2>;1.1.0.0/16"]`<br>For Exadata Cloud@Customer, this is an array of IP addresses or CIDR notations.<br>Example: `["1.1.1.1","1.1.1.0/24","1.1.2.25"]`<br>For an update operation, if you want to delete all the IPs in the ACL, use an array with a single empty string entry.<br>This cannot be updated in parallel with any of the following: licenseModel, cpuCoreCount, computeCount, computeModel, adminPassword, isMtlsConnectionRequired, dbWorkload, dbVersion, dbName, or isFreeTier. | No |
+    | `spec.details.whitelistedIps` | []string | The client IP access control list (ACL). This feature is available for [Autonomous Database Serverless](https://docs.oracle.com/en/cloud/paas/autonomous-database/index.html) and on Exadata Cloud@Customer.<br>Only clients connecting from an IP address included in the ACL may access the Autonomous Database instance.<br>If `arePrimaryWhitelistedIpsUsed` is 'TRUE' then Autonomous Database uses this primary's IP access control list (ACL) for the disaster recovery peer called `standbywhitelistedips`.<br>For Autonomous Database Serverless, this is an array of CIDR (classless inter-domain routing) notations for a subnet or VCN OCID (virtual cloud network Oracle Cloud ID).<br>Multiple IPs and VCN OCIDs should be separate strings separated by commas. However, if other configurations require multiple pieces of information, then each piece is connected with semicolon (;) as a delimiter.<br>Example: `["1.1.1.1","1.1.1.0/24","ocid1.vcn.oc1.sea.<unique_id>","ocid1.vcn.oc1.sea.<unique_id1>;1.1.1.1","ocid1.vcn.oc1.sea.<unique_id2>;1.1.0.0/16"]`<br>For Exadata Cloud@Customer, this is an array of IP addresses or CIDR notations.<br>Example: `["1.1.1.1","1.1.1.0/24","1.1.2.25"]`<br>For an update operation, if you want to delete all the IPs in the ACL, use an array with a single empty string entry.<br>This cannot be updated in parallel with any of the following: licenseModel, cpuCoreCount, computeCount, computeModel, adminPassword, isMtlsConnectionRequired, dbWorkload, dbVersion, dbName, or isFreeTier. | No |
     | `spec.details.subnetId` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the subnet the resource is associated with.<br> **Subnet Restrictions:**<br> - For Autonomous Database, setting this will disable public secure access to the database.<br> These subnets are used by the Oracle Clusterware private interconnect on the database instance.<br> Specifying an overlapping subnet will cause the private interconnect to malfunction.<br> This restriction applies to both the client subnet and the backup subnet. | No |
     | `spec.details.nsgIds` | []string | The list of [OCIDs](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) for the network security groups (NSGs) to which this resource belongs. Setting this to an empty list removes all resources from all NSGs. For more information about NSGs, see [Security Rules](https://docs.cloud.oracle.com/Content/Network/Concepts/securityrules.htm).<br> **NsgIds restrictions:**<br> - A network security group (NSG) is optional for Autonomous Databases with private access. The nsgIds list can be empty. | No |
     | `spec.details.privateEndpointLabel` | string | The resource's private endpoint label.<br> - Setting the endpoint label to a non-empty string creates a private endpoint database.<br> - Resetting the endpoint label to an empty string, after the creation of the private endpoint database, changes the private endpoint database to a public endpoint database.<br> - Setting the endpoint label to a non-empty string value, updates to a new private endpoint database, when the database is disabled and re-enabled.<br> This setting cannot be updated in parallel with any of the following: licenseModel, cpuCoreCount, computeCount, computeModel, adminPassword, whitelistedIps, isMTLSConnectionRequired, dbWorkload, dbVersion, dbName, or isFreeTier. | No |
@@ -125,7 +125,7 @@ Follow these steps to provision an Autonomous Database that will map objects in 
 
 5. Choose the type of network access (optional):
 
-   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the network access. See [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md) for more information.
+   By default, the network access type is set to PUBLIC, which allows secure connections from anywhere. Uncomment the code block if you want configure the network access. For more information, see: [Configuring Network Access of Autonomous Database](./NETWORK_ACCESS_OPTIONS.md)
 
 6. Apply the YAML:
 
@@ -156,7 +156,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 3. Add the following fields to the AutonomousDatabase resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_bind.yaml`](./../../config/samples/adb/autonomousdatabase_bind.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
-    | `spec.details.id` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the Autonomous Database you want to bind (create a reference) in your cluster. | Yes |
+    | `spec.details.id` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the Autonomous Database that you want to bind (create a reference) in your cluster. | Yes |
     | `spec.ociConfig` | dictionary | Not required when the Operator is authorized with [Instance Principal](./ADB_PREREQUISITES.md#authorized-with-instance-principal). Otherwise, you will need the values from the [Authorized with API Key Authentication](./ADB_PREREQUISITES.md#authorized-with-api-key-authentication) section. | Conditional |
     | `spec.ociConfig.configMapName` | string | Name of the ConfigMap that holds the local OCI configuration | Conditional |
     | `spec.ociConfig.secretName`| string | Name of the K8s Secret that holds the private key value | Conditional |
@@ -185,7 +185,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 
 ## Scale the OCPU core count or storage
 
-> Note: this operation requires an `AutonomousDatabase` object to be in your cluster. To use this example, either the provision operation or the bind operation must be done, and the operator is authorized with API Key Authentication.
+> Note: this operation requires an `AutonomousDatabase` object to be in your cluster. To use this example, either the provision operation or the bind operation must be completed, and the operator must be authorized with API Key Authentication.
 
 You can scale up or scale down the Oracle Autonomous Database OCPU core count or storage by updating the `cpuCoreCount` and `dataStorageSizeInTBs` parameters. The `isAutoScalingEnabled` indicates whether auto scaling is enabled. In this example, the CPU count and storage size (TB) are scaled up to 2 and the auto-scaling is turned off by updating the `autonomousdatabase-sample` custom resource.
 
