@@ -3329,7 +3329,7 @@ func convertPhysicalStdToSnapshotStdDB(r *SingleInstanceDatabaseReconciler, sing
 			return err
 		}
 		log.Info(fmt.Sprintf("database %s is configured with dgbroker %s", singleInstanceDatabase.Name, *singleInstanceDatabase.Status.DgBroker))
-		if dataguardBroker.Status.FastStartFailover {
+		if fastStartFailoverStatus, _ := strconv.ParseBool(dataguardBroker.Status.FastStartFailover); fastStartFailoverStatus {
 			// not allowed to convert to snapshot standby
 			return ErrFSFOEnabledForDGConfig
 		}

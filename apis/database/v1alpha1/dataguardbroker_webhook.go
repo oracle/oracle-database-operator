@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	"strconv"
 	"strings"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
@@ -158,8 +159,8 @@ func (r *DataguardBroker) ValidateUpdate(old runtime.Object) (admission.Warnings
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "cannot be changed"))
 	}
-
-	if (oldObj.Status.FastStartFailover || r.Spec.FastStartFailover) && r.Spec.SetAsPrimaryDatabase != "" {
+	fastStartFailoverStatus, _ := strconv.ParseBool(oldObj.Status.FastStartFailover)
+	if (fastStartFailoverStatus || r.Spec.FastStartFailover) && r.Spec.SetAsPrimaryDatabase != "" {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("setAsPrimaryDatabase"), "switchover not supported when fastStartFailover is true"))
 	}

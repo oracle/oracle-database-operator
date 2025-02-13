@@ -42,6 +42,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -177,7 +178,8 @@ func validateSidbReadiness(r *DataguardBrokerReconciler, broker *dbapi.Dataguard
 	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
 		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword), dbcommons.GetSqlClient(sidb.Spec.Edition)))
 	if err != nil {
-		if strings.Contains(err.Error(), "dialing backend") && broker.Status.Status == dbcommons.StatusReady && broker.Status.FastStartFailover {
+		fastStartFailoverStatus, _ := strconv.ParseBool(broker.Status.FastStartFailover)
+		if strings.Contains(err.Error(), "dialing backend") && broker.Status.Status == dbcommons.StatusReady && fastStartFailoverStatus {
 			// Connection to the pod is failing after broker came up and running
 			// Might suggest disconnect or pod/vm going down
 			log.Info("Dialing connection error")
