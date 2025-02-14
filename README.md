@@ -40,9 +40,9 @@ In this v1.2.0 production release, `OraOperator` supports the following database
 * Database Observability (preview)
   - Support for Database Logs (in addition to Metrics)
   - Support for the latest Exporter container images
-
+  - Bug Fix: Prometheus label config
 * Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation.
-* Prometheus label config (bug fix)
+
 
 ## New Product Features
 *The Operator itself, as a product, brings the following new features:
