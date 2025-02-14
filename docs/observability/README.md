@@ -31,6 +31,7 @@ of the controller.
     * [Custom Exporter Image or Version](#custom-exporter-image-or-version)
 * [Mandatory Roles and Privileges](#mandatory-roles-and-privileges-requirements-for-observability-controller)
 * [Debugging and troubleshooting](#debugging-and-troubleshooting)
+* [Known Issues](#known-issues)
 
 ## Prerequisites
 The `DatabaseObserver` custom resource has the following prerequisites:
@@ -297,7 +298,7 @@ spec:
 ```
 
 ### Prometheus Release
-To enable your Prometheus configuration to find and include the `ServiceMonitor` created by the `databaseObserver` resource, the field `spec.prometheus.serviceMonitor.labels` is an important and required field. The label on the ServiceMonitor
+To enable your Prometheus configuration to find and include the `ServiceMonitor` created by the `databaseObserver` resource, the field `spec.prometheus.serviceMonitor.labels` is an __important__ and __required__ field. The label on the ServiceMonitor
 must match the `spec.serviceMonitorSelector` field in your Prometheus configuration.
 
 ```yaml
@@ -343,6 +344,8 @@ These details can be used with any sidecar containers, or with other containers.
 
 If `spec.log.volume.persistentVolumeClaim.claimName` is not specified, then an `EmptyDir` volume is automatically used.
 
+> Important Note: the volume name must match all references of the volume, such as in any sidecar containers that use and mount this volume.
+
 ```yaml
   log:
     volume:
@@ -357,8 +360,7 @@ The security context defines privilege and access control settings for a pod con
 spec:
   exporter:
     deployment:
-      securityContext:
-        supplementalGroups: [1000]
+      runAsUser: 1000
 ```
 
 Configuring security context under the PodTemplate is also possible. You can set this object under: `spec.exporter.deployment.podTemplate.securityContext`
@@ -393,6 +395,8 @@ For example, to deploy a Grafana Promtail image, you can specify the container a
         - name: my-log-volume
           mountPath: /log  
 ```
+
+> Important Note: Make sure the volumeMount name matches the actual name of the volumes referenced. In this case, `my-log-volume` is referenced in `spec.log.volume.name`.
 
 In the field `spec.sidecarVolumes`, you can specify and list the volumes you need in your sidecar containers. The field
 `spec.sidecarVolumes` is an array of Volumes (`[]corev1.Volume`).
@@ -447,7 +451,7 @@ __About the Default Label__ - The resources created by the Observability Control
 
 
 For example, if the `databaseObserver` instance is named: `metrics-exporter`, then resources such as the deployment will be labelled
-with `app: metrics-exporter`. This label cannot be overwritten. Selectors used by the deployment, service and servicemonitor use this label.
+with `app: metrics-exporter`. This label `cannot be overwritten` as this label is used by multiple resources created. Selectors used by the deployment, service and servicemonitor use this label.
 
 The following configuration shows an example:
 
@@ -491,7 +495,7 @@ container image.
 spec:
   exporter:
     deployment:
-      image: "container-registry.oracle.com/database/observability-exporter:1.1.0"
+      image: "container-registry.oracle.com/database/observability-exporter:1.5.3"
 ```
 
 ### Custom Environment Variables, Arguments and Commands
@@ -594,6 +598,12 @@ Follow these steps to check the logs.
     ```sh
     kubectl logs deployment.apps/oracle-database-operator-controller-manager -n oracle-database-operator-system
     ```
+
+## Known Potential Issues
+
+| Issue                                                                                                                           | Example error                                                         | Potential Workaround                                                                                                                                      |
+|---------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Pod may encounter error Permission denied when creating log file. Pod cannot access file system due to insufficient permissions | ```level=error msg="Failed to create the log file: /log/alert.log"``` | Configure securityContext in the spec, add your group ID to the `supplementalgroups` inside `spec.exporter.deployment.podTemplate.securityContext` field. |    
 
 
 ## Resources
