@@ -73,7 +73,7 @@ Oracle strongly recommends that you comply with the [prerequisites](./PREREQUISI
   | Secrets | create delete get list patch update watch | 
   | Events | create patch |
 
-  For managing the required levels of access, configure [role binding](../../README.md#role-binding-for-access-management)
+  For managing the required levels of access, configure [role binding](../../README.md#create-role-bindings-for-access-management)
 
   ### Optional Resource Privileges
 
