@@ -1,0 +1,24 @@
+# permissions for end users to edit lrpdbs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lrpdb-editor-role
+rules:
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - lrpdbs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - lrpdbs/status
+  verbs:
+  - get

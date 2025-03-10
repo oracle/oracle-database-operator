@@ -42,7 +42,7 @@ import (
 	"fmt"
 	"strconv"
 
-	databasealphav1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,7 +52,7 @@ import (
 )
 
 // CHeck if record exist in a struct
-func CheckGsmStatusInst(instSpex []databasealphav1.GsmStatusDetails, name string,
+func CheckGsmStatusInst(instSpex []databasev4.GsmStatusDetails, name string,
 ) (int, bool) {
 
 	var status bool = false
@@ -69,9 +69,9 @@ func CheckGsmStatusInst(instSpex []databasealphav1.GsmStatusDetails, name string
 	return idx, status
 }
 
-func UpdateGsmStatusData(instance *databasealphav1.ShardingDatabase, Specidx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+func UpdateGsmStatusData(instance *databasev4.ShardingDatabase, Specidx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) {
-	if state == string(databasealphav1.AvailableState) {
+	if state == string(databasev4.AvailableState) {
 		// Evaluate following values only if state is set to available
 		svcName := instance.Spec.Gsm[Specidx].Name + "-0." + instance.Spec.Gsm[Specidx].Name
 		k8sExternalSvcName := svcName + strconv.FormatInt(int64(0), 10) + "-svc." + getInstanceNs(instance) + ".svc.cluster.local"
@@ -85,40 +85,40 @@ func UpdateGsmStatusData(instance *databasealphav1.ShardingDatabase, Specidx int
 		//	internIp := strings.Replace(K8sExternalSvcIP, "/r/n", "", -1)
 
 		// Populate the Maps
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.Name), instance.Spec.Gsm[Specidx].Name)
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.DbPasswordSecret), DbPasswordSecret)
+		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Name), instance.Spec.Gsm[Specidx].Name)
+		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.DbPasswordSecret), DbPasswordSecret)
 		if instance.Spec.IsExternalSvc == true {
-			insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sExternalSvc), k8sExternalSvcName)
-			insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sExternalSvcIP), K8sExternalSvcIP)
+			insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvc), k8sExternalSvcName)
+			insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvcIP), K8sExternalSvcIP)
 		}
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sInternalSvc), K8sInternalSvcName)
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sInternalSvcIP), K8sInternalSvcIP)
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.State), state)
-	} else if state == string(databasealphav1.Terminated) {
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.Name))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sInternalSvc))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sExternalSvc))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sExternalSvcIP))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sInternalSvcIP))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.Role))
+		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvc), K8sInternalSvcName)
+		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvcIP), K8sInternalSvcIP)
+		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.State), state)
+	} else if state == string(databasev4.Terminated) {
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Name))
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvc))
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvc))
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvcIP))
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvcIP))
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Role))
 		instance.Status.Gsm.Services = ""
 
 	} else {
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.Name), instance.Spec.Gsm[Specidx].Name)
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sInternalSvc))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sExternalSvc))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sExternalSvcIP))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.K8sInternalSvcIP))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasealphav1.Role))
+		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Name), instance.Spec.Gsm[Specidx].Name)
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvc))
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvc))
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvcIP))
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvcIP))
+		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Role))
 		instance.Status.Gsm.Services = ""
 	}
 
 }
 
-func UpdateCatalogStatusData(instance *databasealphav1.ShardingDatabase, Specidx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+func UpdateCatalogStatusData(instance *databasev4.ShardingDatabase, Specidx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) {
 	mode := GetDbOpenMode(instance.Spec.Catalog[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
-	if state == string(databasealphav1.AvailableState) {
+	if state == string(databasev4.AvailableState) {
 		// Evaluate following values only if state is set to available
 		svcName := instance.Spec.Catalog[Specidx].Name + "-0." + instance.Spec.Catalog[Specidx].Name
 		k8sExternalSvcName := svcName + strconv.FormatInt(int64(0), 10) + "-svc." + getInstanceNs(instance) + ".svc.cluster.local"
@@ -133,52 +133,52 @@ func UpdateCatalogStatusData(instance *databasealphav1.ShardingDatabase, Specidx
 		//	internIp := strings.Replace(K8sExternalSvcIP, "/r/n", "", -1)
 
 		// Populate the Maps
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.Name), instance.Spec.Catalog[Specidx].Name)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.DbPasswordSecret), DbPasswordSecret)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Name), instance.Spec.Catalog[Specidx].Name)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.DbPasswordSecret), DbPasswordSecret)
 		if instance.Spec.IsExternalSvc == true {
-			insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sExternalSvc), k8sExternalSvcName)
-			insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sExternalSvcIP), K8sExternalSvcIP)
+			insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvc), k8sExternalSvcName)
+			insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvcIP), K8sExternalSvcIP)
 		}
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sInternalSvc), K8sInternalSvcName)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sInternalSvcIP), K8sInternalSvcIP)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.State), state)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.OracleSid), oracleSid)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.OraclePdb), oraclePdb)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.Role), role)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.OpenMode), mode)
-	} else if state == string(databasealphav1.Terminated) {
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.State))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.Name))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sInternalSvc))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sExternalSvc))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sExternalSvcIP))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sInternalSvcIP))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.Role))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.OraclePdb))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.OracleSid))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.Role))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.OpenMode))
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvc), K8sInternalSvcName)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvcIP), K8sInternalSvcIP)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.State), state)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OracleSid), oracleSid)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OraclePdb), oraclePdb)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role), role)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OpenMode), mode)
+	} else if state == string(databasev4.Terminated) {
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.State))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Name))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvc))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvc))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvcIP))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvcIP))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OraclePdb))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OracleSid))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OpenMode))
 
 	} else {
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.State), state)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.Name), instance.Spec.Catalog[Specidx].Name)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.OpenMode), mode)
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sInternalSvc))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sExternalSvc))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sExternalSvcIP))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.K8sInternalSvcIP))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.Role))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.OraclePdb))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.OracleSid))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasealphav1.Role))
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.State), state)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Name), instance.Spec.Catalog[Specidx].Name)
+		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OpenMode), mode)
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvc))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvc))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvcIP))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvcIP))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OraclePdb))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OracleSid))
+		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role))
 	}
 
 }
 
-func UpdateShardStatusData(instance *databasealphav1.ShardingDatabase, Specidx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+func UpdateShardStatusData(instance *databasev4.ShardingDatabase, Specidx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) {
 	mode := GetDbOpenMode(instance.Spec.Shard[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
-	if state == string(databasealphav1.AvailableState) {
+	if state == string(databasev4.AvailableState) {
 		// Evaluate following values only if state is set to available
 		svcName := instance.Spec.Shard[Specidx].Name + "-0." + instance.Spec.Shard[Specidx].Name
 		k8sExternalSvcName := svcName + strconv.FormatInt(int64(0), 10) + "-svc." + getInstanceNs(instance) + ".svc.cluster.local"
@@ -191,49 +191,49 @@ func UpdateShardStatusData(instance *databasealphav1.ShardingDatabase, Specidx i
 		role := GetDbRole(instance.Spec.Shard[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
 
 		// Populate the Maps
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.Name), instance.Spec.Shard[Specidx].Name)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.DbPasswordSecret), DbPasswordSecret)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Name), instance.Spec.Shard[Specidx].Name)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.DbPasswordSecret), DbPasswordSecret)
 		if instance.Spec.IsExternalSvc == true {
-			insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sExternalSvc), k8sExternalSvcName)
-			insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sExternalSvcIP), K8sExternalSvcIP)
+			insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvc), k8sExternalSvcName)
+			insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvcIP), K8sExternalSvcIP)
 		}
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sInternalSvc), K8sInternalSvcName)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sInternalSvcIP), K8sInternalSvcIP)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.State), state)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.OracleSid), oracleSid)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.OraclePdb), oraclePdb)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.Role), role)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.OpenMode), mode)
-	} else if state == string(databasealphav1.Terminated) {
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.State))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.Name))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sInternalSvc))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sExternalSvc))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sExternalSvcIP))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sInternalSvcIP))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.Role))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.OraclePdb))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.OracleSid))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.Role))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.OpenMode))
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvc), K8sInternalSvcName)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvcIP), K8sInternalSvcIP)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.State), state)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OracleSid), oracleSid)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OraclePdb), oraclePdb)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role), role)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OpenMode), mode)
+	} else if state == string(databasev4.Terminated) {
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.State))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Name))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvc))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvc))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvcIP))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvcIP))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OraclePdb))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OracleSid))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OpenMode))
 
 	} else {
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.State), state)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.Name), instance.Spec.Shard[Specidx].Name)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.OpenMode), mode)
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sInternalSvc))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sExternalSvc))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sExternalSvcIP))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.K8sInternalSvcIP))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.Role))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.OraclePdb))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.OracleSid))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasealphav1.Role))
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.State), state)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Name), instance.Spec.Shard[Specidx].Name)
+		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OpenMode), mode)
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvc))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvc))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvcIP))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvcIP))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OraclePdb))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OracleSid))
+		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role))
 	}
 
 }
 
-func insertOrUpdateShardKeys(instance *databasealphav1.ShardingDatabase, name string, key string, value string) {
+func insertOrUpdateShardKeys(instance *databasev4.ShardingDatabase, name string, key string, value string) {
 	newKey := name + "_" + key
 	if len(instance.Status.Shard) > 0 {
 		if _, ok := instance.Status.Shard[newKey]; ok {
@@ -248,7 +248,7 @@ func insertOrUpdateShardKeys(instance *databasealphav1.ShardingDatabase, name st
 
 }
 
-func removeShardKeys(instance *databasealphav1.ShardingDatabase, name string, key string) {
+func removeShardKeys(instance *databasev4.ShardingDatabase, name string, key string) {
 	newKey := name + "_" + key
 	if len(instance.Status.Shard) > 0 {
 		if _, ok := instance.Status.Shard[newKey]; ok {
@@ -258,7 +258,7 @@ func removeShardKeys(instance *databasealphav1.ShardingDatabase, name string, ke
 	}
 }
 
-func insertOrUpdateCatalogKeys(instance *databasealphav1.ShardingDatabase, name string, key string, value string) {
+func insertOrUpdateCatalogKeys(instance *databasev4.ShardingDatabase, name string, key string, value string) {
 	newKey := name + "_" + key
 	if len(instance.Status.Catalog) > 0 {
 		if _, ok := instance.Status.Catalog[newKey]; ok {
@@ -273,7 +273,7 @@ func insertOrUpdateCatalogKeys(instance *databasealphav1.ShardingDatabase, name 
 
 }
 
-func removeCatalogKeys(instance *databasealphav1.ShardingDatabase, name string, key string) {
+func removeCatalogKeys(instance *databasev4.ShardingDatabase, name string, key string) {
 	newKey := name + "_" + key
 	if len(instance.Status.Catalog) > 0 {
 		if _, ok := instance.Status.Catalog[newKey]; ok {
@@ -283,7 +283,7 @@ func removeCatalogKeys(instance *databasealphav1.ShardingDatabase, name string, 
 	}
 }
 
-func insertOrUpdateGsmKeys(instance *databasealphav1.ShardingDatabase, name string, key string, value string) {
+func insertOrUpdateGsmKeys(instance *databasev4.ShardingDatabase, name string, key string, value string) {
 	newKey := name + "_" + key
 	if len(instance.Status.Gsm.Details) > 0 {
 		if _, ok := instance.Status.Gsm.Details[newKey]; ok {
@@ -298,7 +298,7 @@ func insertOrUpdateGsmKeys(instance *databasealphav1.ShardingDatabase, name stri
 
 }
 
-func removeGsmKeys(instance *databasealphav1.ShardingDatabase, name string, key string) {
+func removeGsmKeys(instance *databasev4.ShardingDatabase, name string, key string) {
 	newKey := name + "_" + key
 	if len(instance.Status.Gsm.Details) > 0 {
 		if _, ok := instance.Status.Gsm.Details[newKey]; ok {
@@ -308,18 +308,18 @@ func removeGsmKeys(instance *databasealphav1.ShardingDatabase, name string, key 
 	}
 }
 
-func getInstanceNs(instance *databasealphav1.ShardingDatabase) string {
+func getInstanceNs(instance *databasev4.ShardingDatabase) string {
 	var namespace string
-	if instance.Spec.Namespace == "" {
+	if instance.Namespace == "" {
 		namespace = "default"
 	} else {
-		namespace = instance.Spec.Namespace
+		namespace = instance.Namespace
 	}
 	return namespace
 }
 
 // File the meta condition and return the meta view
-func GetMetaCondition(instance *databasealphav1.ShardingDatabase, result *ctrl.Result, err *error, stateType string, stateMsg string) metav1.Condition {
+func GetMetaCondition(instance *databasev4.ShardingDatabase, result *ctrl.Result, err *error, stateType string, stateMsg string) metav1.Condition {
 
 	return metav1.Condition{
 		Type:               stateType,
@@ -332,7 +332,7 @@ func GetMetaCondition(instance *databasealphav1.ShardingDatabase, result *ctrl.R
 }
 
 // ======================= CHeck GSM Director Status ==============
-func CheckGsmStatus(gname string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func CheckGsmStatus(gname string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	var err error
 	var msg string = "Inside the checkGsmStatus. Checking GSM director in " + GetFmtStr(gname) + " pod."
@@ -349,17 +349,18 @@ func CheckGsmStatus(gname string, instance *databasealphav1.ShardingDatabase, ku
 
 // ============ Functiont o check the status of the Shard and catalog =========
 // ================================ Validate shard ===========================
-func ValidateDbSetup(podName string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func ValidateDbSetup(podName string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
 	_, _, err := ExecCommand(podName, shardValidationCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
+
 		return fmt.Errorf("error ocurred while validating the DB Setup")
 	}
 	return nil
 }
 
-func UpdateGsmShardStatus(instance *databasealphav1.ShardingDatabase, name string, state string) {
+func UpdateGsmShardStatus(instance *databasev4.ShardingDatabase, name string, state string) {
 	//smap := make(map[string]string)
 	if _, ok := instance.Status.Gsm.Shards[name]; ok {
 		instance.Status.Gsm.Shards[name] = state
@@ -383,7 +384,7 @@ func UpdateGsmShardStatus(instance *databasealphav1.ShardingDatabase, name strin
 
 }
 
-func GetGsmShardStatus(instance *databasealphav1.ShardingDatabase, name string) string {
+func GetGsmShardStatus(instance *databasev4.ShardingDatabase, name string) string {
 	if _, ok := instance.Status.Gsm.Shards[name]; ok {
 		return instance.Status.Gsm.Shards[name]
 
@@ -392,7 +393,7 @@ func GetGsmShardStatus(instance *databasealphav1.ShardingDatabase, name string) 
 
 }
 
-func GetGsmShardStatusKey(instance *databasealphav1.ShardingDatabase, key string) string {
+func GetGsmShardStatusKey(instance *databasev4.ShardingDatabase, key string) string {
 	if _, ok := instance.Status.Shard[key]; ok {
 		return instance.Status.Shard[key]
 
@@ -401,7 +402,7 @@ func GetGsmShardStatusKey(instance *databasealphav1.ShardingDatabase, key string
 
 }
 
-func GetGsmCatalogStatusKey(instance *databasealphav1.ShardingDatabase, key string) string {
+func GetGsmCatalogStatusKey(instance *databasev4.ShardingDatabase, key string) string {
 	if _, ok := instance.Status.Catalog[key]; ok {
 		return instance.Status.Catalog[key]
 
@@ -410,7 +411,7 @@ func GetGsmCatalogStatusKey(instance *databasealphav1.ShardingDatabase, key stri
 
 }
 
-func GetGsmDetailsSttausKey(instance *databasealphav1.ShardingDatabase, key string) string {
+func GetGsmDetailsSttausKey(instance *databasev4.ShardingDatabase, key string) string {
 	if _, ok := instance.Status.Gsm.Details[key]; ok {
 		return instance.Status.Gsm.Details[key]
 

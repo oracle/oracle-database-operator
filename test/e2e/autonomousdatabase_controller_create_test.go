@@ -48,8 +48,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	"github.com/oracle/oracle-database-operator/test/e2e/behavior"
-	"github.com/oracle/oracle-database-operator/test/e2e/util"
+	e2ebehavior "github.com/oracle/oracle-database-operator/test/e2e/behavior"
+	e2eutil "github.com/oracle/oracle-database-operator/test/e2e/util"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -89,28 +89,30 @@ var _ = Describe("test ADB provisioning", func() {
 				},
 				Spec: dbv1alpha1.AutonomousDatabaseSpec{
 					Details: dbv1alpha1.AutonomousDatabaseDetails{
-						CompartmentOCID: common.String(SharedCompartmentOCID),
-						DbName:          common.String(dbName),
-						DisplayName:     common.String(dbName),
-						CPUCoreCount:    common.Int(1),
-						AdminPassword: dbv1alpha1.PasswordSpec{
-							K8sSecret: dbv1alpha1.K8sSecretSpec{
-								Name: common.String(SharedAdminPassSecretName),
-							},
-						},
-						DataStorageSizeInTBs: common.Int(1),
-						IsAutoScalingEnabled: common.Bool(true),
-						Wallet: dbv1alpha1.WalletSpec{
-							Name: common.String(downloadedWallet),
-							Password: dbv1alpha1.PasswordSpec{
+						AutonomousDatabaseBase: dbv1alpha1.AutonomousDatabaseBase{
+							CompartmentId: common.String(SharedCompartmentOCID),
+							DbName:        common.String(dbName),
+							DisplayName:   common.String(dbName),
+							CpuCoreCount:  common.Int(1),
+							AdminPassword: dbv1alpha1.PasswordSpec{
 								K8sSecret: dbv1alpha1.K8sSecretSpec{
-									Name: common.String(SharedWalletPassSecretName),
+									Name: common.String(SharedAdminPassSecretName),
 								},
+							},
+							DataStorageSizeInTBs: common.Int(1),
+							IsAutoScalingEnabled: common.Bool(true),
+						},
+					},
+					Wallet: dbv1alpha1.WalletSpec{
+						Name: common.String(downloadedWallet),
+						Password: dbv1alpha1.PasswordSpec{
+							K8sSecret: dbv1alpha1.K8sSecretSpec{
+								Name: common.String(SharedWalletPassSecretName),
 							},
 						},
 					},
 					HardLink: common.Bool(true),
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OciConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},
@@ -134,20 +136,22 @@ var _ = Describe("test ADB provisioning", func() {
 				},
 				Spec: dbv1alpha1.AutonomousDatabaseSpec{
 					Details: dbv1alpha1.AutonomousDatabaseDetails{
-						CompartmentOCID: common.String(SharedCompartmentOCID),
-						DbName:          common.String(dbName),
-						DisplayName:     common.String(dbName),
-						CPUCoreCount:    common.Int(1),
-						AdminPassword: dbv1alpha1.PasswordSpec{
-							K8sSecret: dbv1alpha1.K8sSecretSpec{
-								Name: common.String(SharedAdminPassSecretName),
+						AutonomousDatabaseBase: dbv1alpha1.AutonomousDatabaseBase{
+							CompartmentId: common.String(SharedCompartmentOCID),
+							DbName:        common.String(dbName),
+							DisplayName:   common.String(dbName),
+							CpuCoreCount:  common.Int(1),
+							AdminPassword: dbv1alpha1.PasswordSpec{
+								K8sSecret: dbv1alpha1.K8sSecretSpec{
+									Name: common.String(SharedAdminPassSecretName),
+								},
 							},
+							DataStorageSizeInTBs: common.Int(1),
+							IsAutoScalingEnabled: common.Bool(true),
 						},
-						DataStorageSizeInTBs: common.Int(1),
-						IsAutoScalingEnabled: common.Bool(true),
 					},
 					HardLink: common.Bool(true),
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OciConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},
@@ -179,7 +183,7 @@ var _ = Describe("test ADB provisioning", func() {
 			// Get adb ocid
 			adb := &dbv1alpha1.AutonomousDatabase{}
 			Expect(k8sClient.Get(context.TODO(), adbLookupKey, adb)).To(Succeed())
-			databaseOCID := adb.Spec.Details.AutonomousDatabaseOCID
+			databaseOCID := adb.Spec.Details.Id
 			tnsEntry := dbName + "_high"
 			err := e2ebehavior.ConfigureADBBackup(&dbClient, databaseOCID, &tnsEntry, &SharedPlainTextAdminPassword, &SharedPlainTextWalletPassword, &SharedBucketUrl, &SharedAuthToken, &SharedOciUser)
 			Expect(err).ShouldNot(HaveOccurred())
@@ -195,12 +199,12 @@ var _ = Describe("test ADB provisioning", func() {
 				},
 				Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
 					Target: dbv1alpha1.TargetSpec{
-						OCIADB: dbv1alpha1.OCIADBSpec{
-							OCID: common.String(*databaseOCID),
+						OciAdb: dbv1alpha1.OciAdbSpec{
+							Ocid: common.String(*databaseOCID),
 						},
 					},
 					DisplayName: common.String(backupName),
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OCIConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},
@@ -227,16 +231,16 @@ var _ = Describe("test ADB provisioning", func() {
 				},
 				Spec: dbv1alpha1.AutonomousDatabaseRestoreSpec{
 					Target: dbv1alpha1.TargetSpec{
-						K8sADB: dbv1alpha1.K8sADBSpec{
+						K8sAdb: dbv1alpha1.K8sAdbSpec{
 							Name: common.String(resourceName),
 						},
 					},
 					Source: dbv1alpha1.SourceSpec{
-						K8sADBBackup: dbv1alpha1.K8sADBBackupSpec{
+						K8sAdbBackup: dbv1alpha1.K8sAdbBackupSpec{
 							Name: common.String(backupName),
 						},
 					},
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OCIConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},
@@ -273,29 +277,30 @@ var _ = Describe("test ADB provisioning", func() {
 				},
 				Spec: dbv1alpha1.AutonomousDatabaseSpec{
 					Details: dbv1alpha1.AutonomousDatabaseDetails{
-						CompartmentOCID: common.String(SharedCompartmentOCID),
-						DbName:          common.String(dbName),
-						DisplayName:     common.String(dbName),
-						CPUCoreCount:    common.Int(1),
-						AdminPassword: dbv1alpha1.PasswordSpec{
-							OCISecret: dbv1alpha1.OCISecretSpec{
-								OCID: common.String(SharedAdminPasswordOCID),
-							},
-						},
-						DataStorageSizeInTBs: common.Int(1),
-						IsAutoScalingEnabled: common.Bool(true),
-
-						Wallet: dbv1alpha1.WalletSpec{
-							Name: common.String(downloadedWallet),
-							Password: dbv1alpha1.PasswordSpec{
-								OCISecret: dbv1alpha1.OCISecretSpec{
-									OCID: common.String(SharedInstanceWalletPasswordOCID),
+						AutonomousDatabaseBase: dbv1alpha1.AutonomousDatabaseBase{
+							CompartmentId: common.String(SharedCompartmentOCID),
+							DbName:        common.String(dbName),
+							DisplayName:   common.String(dbName),
+							CpuCoreCount:  common.Int(1),
+							AdminPassword: dbv1alpha1.PasswordSpec{
+								OciSecret: dbv1alpha1.OciSecretSpec{
+									Id: common.String(SharedAdminPasswordOCID),
 								},
+							},
+							DataStorageSizeInTBs: common.Int(1),
+							IsAutoScalingEnabled: common.Bool(true),
+						},
+					},
+					Wallet: dbv1alpha1.WalletSpec{
+						Name: common.String(downloadedWallet),
+						Password: dbv1alpha1.PasswordSpec{
+							OciSecret: dbv1alpha1.OciSecretSpec{
+								Id: common.String(SharedInstanceWalletPasswordOCID),
 							},
 						},
 					},
 					HardLink: common.Bool(true),
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OciConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},

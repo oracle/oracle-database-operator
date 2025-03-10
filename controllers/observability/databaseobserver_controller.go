@@ -44,6 +44,7 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apiError "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,7 +56,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"time"
 
-	apiv1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
+	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	constants "github.com/oracle/oracle-database-operator/commons/observability"
 )
 
@@ -90,8 +91,8 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	r.Log.WithName(constants.LogReconcile).Info(constants.LogCRStart, "NamespacedName", req.NamespacedName)
 
 	// fetch databaseObserver
-	api := &apiv1.DatabaseObserver{}
-	if e := r.Get(context.TODO(), req.NamespacedName, api); e != nil {
+	a := &api.DatabaseObserver{}
+	if e := r.Get(context.TODO(), req.NamespacedName, a); e != nil {
 
 		// if CR is not found or does not exist then
 		// consider either CR has been deleted
@@ -101,7 +102,7 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 
 		r.Log.WithName(constants.LogReconcile).Error(e, constants.ErrorCRRetrieve)
-		r.Recorder.Event(api, corev1.EventTypeWarning, constants.EventReasonFailedCRRetrieval, constants.EventMessageFailedCRRetrieval)
+		r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonFailedCRRetrieval, constants.EventMessageFailedCRRetrieval)
 		return ctrl.Result{}, e
 
 	}
@@ -110,19 +111,19 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	defer r.validateCustomResourceReadiness(ctx, req)
 
 	// initialize databaseObserver custom resource
-	if e := r.initialize(ctx, api, req); e != nil {
+	if e := r.initialize(ctx, a, req); e != nil {
 		return ctrl.Result{}, e
 	}
 
 	// validate specs
-	if e := r.validateSpecs(api); e != nil {
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+	if e := r.validateSpecs(a); e != nil {
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsExporterDeploymentReady,
 			Status:  metav1.ConditionFalse,
 			Reason:  constants.ReasonDeploymentSpecValidationFailed,
 			Message: constants.MessageExporterDeploymentSpecValidationFailed,
 		})
-		if e := r.Status().Update(ctx, api); e != nil {
+		if e := r.Status().Update(ctx, a); e != nil {
 			r.Log.WithName(constants.LogReconcile).Error(e, constants.ErrorStatusUpdate)
 		}
 		r.Log.WithName(constants.LogExportersDeploy).Error(e, constants.ErrorSpecValidationFailedDueToAnError)
@@ -131,50 +132,74 @@ func (r *DatabaseObserverReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// create resource if they do not exist
 	exporterDeployment := &ObservabilityDeploymentResource{}
-	if res, e := r.createResourceIfNotExists(exporterDeployment, api, ctx, req); e != nil {
+	if res, e := r.createResourceIfNotExists(exporterDeployment, a, ctx, req); e != nil {
 		return res, e
 	}
 
-	if res, e := r.checkDeploymentForUpdates(exporterDeployment, api, ctx, req); e != nil {
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+	// otherwise, check for updates on resource for any changes
+	if res, e := r.checkResourceForUpdates(exporterDeployment, a, ctx, req); e != nil {
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsExporterDeploymentReady,
 			Status:  metav1.ConditionFalse,
-			Reason:  constants.ReasonDeploymentUpdateFailed,
-			Message: constants.MessageExporterDeploymentUpdateFailed,
+			Reason:  constants.ReasonResourceUpdateFailed,
+			Message: constants.MessageExporterResourceUpdateFailed,
 		})
 		return res, e
 	}
 
 	exporterService := &ObservabilityServiceResource{}
-	if res, e := r.createResourceIfNotExists(exporterService, api, ctx, req); e != nil {
+	if res, e := r.createResourceIfNotExists(exporterService, a, ctx, req); e != nil {
+		return res, e
+	}
+
+	// otherwise, check for updates on resource for any changes
+	if res, e := r.checkResourceForUpdates(exporterService, a, ctx, req); e != nil {
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
+			Type:    constants.IsExporterServiceReady,
+			Status:  metav1.ConditionFalse,
+			Reason:  constants.ReasonResourceUpdateFailed,
+			Message: constants.MessageExporterResourceUpdateFailed,
+		})
 		return res, e
 	}
 
 	exporterServiceMonitor := &ObservabilityServiceMonitorResource{}
-	if res, e := r.createResourceIfNotExists(exporterServiceMonitor, api, ctx, req); e != nil {
+	if res, e := r.createResourceIfNotExists(exporterServiceMonitor, a, ctx, req); e != nil {
+		return res, e
+	}
+
+	// otherwise, check for updates on resource for any changes
+	if res, e := r.checkResourceForUpdates(exporterServiceMonitor, a, ctx, req); e != nil {
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
+			Type:    constants.IsExporterServiceMonitorReady,
+			Status:  metav1.ConditionFalse,
+			Reason:  constants.ReasonResourceUpdateFailed,
+			Message: constants.MessageExporterResourceUpdateFailed,
+		})
 		return res, e
 	}
 
 	// check if deployment pods are ready
-	return r.validateDeploymentReadiness(api, ctx, req)
+	return r.validateDeploymentReadiness(a, ctx, req)
 }
 
 // initialize method sets the initial status to PENDING, exporterConfig and sets the base condition
-func (r *DatabaseObserverReconciler) initialize(ctx context.Context, api *apiv1.DatabaseObserver, req ctrl.Request) error {
+func (r *DatabaseObserverReconciler) initialize(ctx context.Context, a *api.DatabaseObserver, req ctrl.Request) error {
 
-	if api.Status.Conditions == nil || len(api.Status.Conditions) == 0 {
+	if a.Status.Conditions == nil || len(a.Status.Conditions) == 0 {
 
 		// set condition
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsCRAvailable,
 			Status:  metav1.ConditionFalse,
 			Reason:  constants.ReasonInitStart,
 			Message: constants.MessageCRInitializationStarted,
 		})
 
-		api.Status.Status = string(constants.StatusObservabilityPending)
-		api.Status.ExporterConfig = constants.UnknownValue
-		if e := r.Status().Update(ctx, api); e != nil {
+		a.Status.Status = string(constants.StatusObservabilityPending)
+		a.Status.ExporterConfig = constants.UnknownValue
+		a.Status.Version = constants.UnknownValue
+		if e := r.Status().Update(ctx, a); e != nil {
 			r.Log.WithName(constants.LogReconcile).Error(e, constants.ErrorStatusUpdate)
 			return e
 		}
@@ -185,45 +210,45 @@ func (r *DatabaseObserverReconciler) initialize(ctx context.Context, api *apiv1.
 }
 
 // validateSpecs method checks the values and secrets passed in the spec
-func (r *DatabaseObserverReconciler) validateSpecs(api *apiv1.DatabaseObserver) error {
+func (r *DatabaseObserverReconciler) validateSpecs(a *api.DatabaseObserver) error {
 
 	// If either Vault Fields are empty, then assume a DBPassword secret is supplied. If the DBPassword secret not found, then error out
-	if api.Spec.Database.DBPassword.VaultOCID == "" || api.Spec.Database.DBPassword.VaultSecretName == "" {
+	if a.Spec.Database.DBPassword.VaultOCID == "" || a.Spec.Database.DBPassword.VaultSecretName == "" {
 		dbSecret := &corev1.Secret{}
-		if e := r.Get(context.TODO(), types.NamespacedName{Name: api.Spec.Database.DBPassword.SecretName, Namespace: api.Namespace}, dbSecret); e != nil {
-			r.Recorder.Event(api, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPasswordSecretMissing)
+		if e := r.Get(context.TODO(), types.NamespacedName{Name: a.Spec.Database.DBPassword.SecretName, Namespace: a.Namespace}, dbSecret); e != nil {
+			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPasswordSecretMissing)
 			return e
 		}
 	}
 
 	// Does DB Connection String Secret Name actually exist
 	dbConnectSecret := &corev1.Secret{}
-	if e := r.Get(context.TODO(), types.NamespacedName{Name: api.Spec.Database.DBConnectionString.SecretName, Namespace: api.Namespace}, dbConnectSecret); e != nil {
-		r.Recorder.Event(api, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBConnectionStringSecretMissing)
+	if e := r.Get(context.TODO(), types.NamespacedName{Name: a.Spec.Database.DBConnectionString.SecretName, Namespace: a.Namespace}, dbConnectSecret); e != nil {
+		r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBConnectionStringSecretMissing)
 		return e
 	}
 
 	// Does DB User String Secret Name actually exist
 	dbUserSecret := &corev1.Secret{}
-	if e := r.Get(context.TODO(), types.NamespacedName{Name: api.Spec.Database.DBUser.SecretName, Namespace: api.Namespace}, dbUserSecret); e != nil {
-		r.Recorder.Event(api, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPUserSecretMissing)
+	if e := r.Get(context.TODO(), types.NamespacedName{Name: a.Spec.Database.DBUser.SecretName, Namespace: a.Namespace}, dbUserSecret); e != nil {
+		r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPUserSecretMissing)
 		return e
 	}
 
 	// Does a custom configuration configmap actually exist, if provided
-	if configurationCMName := api.Spec.Exporter.ExporterConfig.Configmap.Name; configurationCMName != "" {
+	if configurationCMName := a.Spec.ExporterConfig.Configmap.Name; configurationCMName != "" {
 		configurationCM := &corev1.ConfigMap{}
-		if e := r.Get(context.TODO(), types.NamespacedName{Name: configurationCMName, Namespace: api.Namespace}, configurationCM); e != nil {
-			r.Recorder.Event(api, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorConfigmapMissing)
+		if e := r.Get(context.TODO(), types.NamespacedName{Name: configurationCMName, Namespace: a.Namespace}, configurationCM); e != nil {
+			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorConfigmapMissing)
 			return e
 		}
 	}
 
 	// Does DBWallet actually exist, if provided
-	if dbWalletSecretName := api.Spec.Database.DBWallet.SecretName; dbWalletSecretName != "" {
+	if dbWalletSecretName := a.Spec.Database.DBWallet.SecretName; dbWalletSecretName != "" {
 		dbWalletSecret := &corev1.Secret{}
-		if e := r.Get(context.TODO(), types.NamespacedName{Name: dbWalletSecretName, Namespace: api.Namespace}, dbWalletSecret); e != nil {
-			r.Recorder.Event(api, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBWalletSecretMissing)
+		if e := r.Get(context.TODO(), types.NamespacedName{Name: dbWalletSecretName, Namespace: a.Namespace}, dbWalletSecret); e != nil {
+			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBWalletSecretMissing)
 			return e
 		}
 	}
@@ -232,17 +257,17 @@ func (r *DatabaseObserverReconciler) validateSpecs(api *apiv1.DatabaseObserver) 
 }
 
 // createResourceIfNotExists method creates an ObserverResource if they have not yet been created
-func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResource, api *apiv1.DatabaseObserver, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResource, a *api.DatabaseObserver, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	conditionType, logger, groupVersionKind := or.identify()
 
 	// update after
-	defer r.Status().Update(ctx, api)
+	defer r.Status().Update(ctx, a)
 
-	// generate desired object based on api.Spec
-	desiredObj, genErr := or.generate(api, r.Scheme)
+	// generate desired object based on a.Spec
+	desiredObj, genErr := or.generate(a, r.Scheme)
 	if genErr != nil {
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    conditionType,
 			Status:  metav1.ConditionFalse,
 			Reason:  constants.ReasonGeneralResourceGenerationFailed,
@@ -260,7 +285,7 @@ func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResour
 	if getErr != nil && apiError.IsNotFound(getErr) {
 
 		if e := r.Create(context.TODO(), desiredObj); e != nil { // create
-			meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+			meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 				Type:    conditionType,
 				Status:  metav1.ConditionFalse,
 				Reason:  constants.ReasonGeneralResourceCreationFailed,
@@ -271,7 +296,7 @@ func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResour
 		}
 
 		// mark ready if created
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    conditionType,
 			Status:  metav1.ConditionTrue,
 			Reason:  constants.ReasonGeneralResourceCreated,
@@ -280,7 +305,7 @@ func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResour
 		r.Log.WithName(logger).Info(constants.LogResourceCreated, "ResourceName", desiredObj.GetName(), "Kind", groupVersionKind, "Namespace", req.Namespace)
 
 	} else if getErr != nil { // if an error occurred
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    conditionType,
 			Status:  metav1.ConditionFalse,
 			Reason:  constants.ReasonGeneralResourceValidationFailureDueToError,
@@ -290,7 +315,7 @@ func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResour
 		return ctrl.Result{}, getErr
 
 	} else if getErr == nil && conditionType != constants.IsExporterDeploymentReady { // exclude deployment
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    conditionType,
 			Status:  metav1.ConditionTrue,
 			Reason:  constants.ReasonGeneralResourceValidationCompleted,
@@ -304,138 +329,68 @@ func (r *DatabaseObserverReconciler) createResourceIfNotExists(or ObserverResour
 	return ctrl.Result{}, nil
 }
 
-// checkDeploymentForUpdates method checks the deployment if it needs to be updated
-func (r *DatabaseObserverReconciler) checkDeploymentForUpdates(or ObserverResource, api *apiv1.DatabaseObserver, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+// checkResourceForUpdates method checks the resource if it needs to be updated, updates if changes are found
+func (r *DatabaseObserverReconciler) checkResourceForUpdates(or ObserverResource, a *api.DatabaseObserver, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
-	// declare
-	foundDeployment := &appsv1.Deployment{}
+	conditionType, logName, groupVersionKind := or.identify()
 
-	// generate object
-	desiredObj, genErr := or.generate(api, r.Scheme)
+	// generate desired object
+	dO, genErr := or.generate(a, r.Scheme)
 	if genErr != nil {
 		return ctrl.Result{}, genErr
 	}
 
-	// convert
-	desiredDeployment := &appsv1.Deployment{}
-	if e := r.Scheme.Convert(desiredObj, desiredDeployment, nil); e != nil {
+	// convert dO -> d
+	d := &unstructured.Unstructured{}
+	d.SetGroupVersionKind(groupVersionKind)
+	if e := r.Scheme.Convert(dO, d, nil); e != nil {
 		return ctrl.Result{}, e
 	}
 
-	// retrieve latest deployment
-	if e := r.Get(context.TODO(), types.NamespacedName{Name: desiredObj.GetName(), Namespace: req.Namespace}, foundDeployment); e != nil {
+	// declare found
+	// retrieve latest into f
+	f := &unstructured.Unstructured{}
+	f.SetGroupVersionKind(groupVersionKind)
+	if e := r.Get(context.TODO(), types.NamespacedName{Name: dO.GetName(), Namespace: req.Namespace}, f); e != nil {
 		return ctrl.Result{}, e
 	}
-	// check for containerImage
-	if constants.IsUpdateRequiredForContainerImage(desiredDeployment, foundDeployment) {
-		foundDeployment.Spec.Template.Spec.Containers[0].Image = constants.GetExporterImage(api)
 
-		if e := r.updateDeployment(api, ctx, req, foundDeployment, constants.MessageExporterDeploymentImageUpdated, constants.EventMessageUpdatedImageSucceeded); e != nil {
+	// check if something changed
+	if !equality.Semantic.DeepDerivative(d.Object, f.Object) {
+
+		if e := r.Update(context.TODO(), d); e != nil {
+			r.Log.WithName(logName).Error(e, constants.LogErrorWithResourceUpdate, "ResourceName", f.GetName(), "Kind", groupVersionKind.Kind, "Namespace", req.Namespace)
 			return ctrl.Result{}, e
 		}
-	}
 
-	// retrieve latest deployment
-	if e := r.Get(context.TODO(), types.NamespacedName{Name: desiredObj.GetName(), Namespace: req.Namespace}, foundDeployment); e != nil {
-		return ctrl.Result{}, e
-	}
-	// check environment variables
-	if constants.IsUpdateRequiredForEnvironmentVars(desiredDeployment, foundDeployment) {
-		foundDeployment.Spec.Template.Spec.Containers[0].Env = constants.GetExporterEnvs(api)
-
-		if e := r.updateDeployment(api, ctx, req, foundDeployment, constants.MessageExporterDeploymentEnvironmentUpdated, constants.EventMessageUpdatedEnvironmentSucceeded); e != nil {
-			return ctrl.Result{}, e
-		}
-	}
-
-	// retrieve latest deployment
-	foundDeployment = &appsv1.Deployment{}
-	if e := r.Get(context.TODO(), types.NamespacedName{Name: desiredObj.GetName(), Namespace: req.Namespace}, foundDeployment); e != nil {
-		return ctrl.Result{}, e
-	}
-	// check config-volume, creds and ocikey
-	if constants.IsUpdateRequiredForVolumes(desiredDeployment, foundDeployment) {
-		foundDeployment.Spec.Template.Spec.Volumes = constants.GetExporterDeploymentVolumes(api)
-		foundDeployment.Spec.Template.Spec.Containers[0].VolumeMounts = constants.GetExporterDeploymentVolumeMounts(api)
-
-		if e := r.updateDeployment(api, ctx, req, foundDeployment, constants.MessageExporterDeploymentVolumesUpdated, constants.EventMessageUpdatedVolumesSucceeded); e != nil {
-			return ctrl.Result{}, e
-		}
-	}
-
-	// update status for exporter config
-	var setConfigmapNameStatus string
-	for _, v := range desiredDeployment.Spec.Template.Spec.Volumes {
-		if v.Name == constants.DefaultConfigVolumeString {
-			setConfigmapNameStatus = v.ConfigMap.Name
-			api.Status.ExporterConfig = setConfigmapNameStatus
-		}
-	}
-	if api.Status.ExporterConfig != setConfigmapNameStatus {
-		api.Status.ExporterConfig = constants.DefaultValue
-	}
-	r.Status().Update(ctx, api)
-
-	// retrieve latest deployment
-	foundDeployment = &appsv1.Deployment{}
-	if e := r.Get(context.TODO(), types.NamespacedName{Name: desiredObj.GetName(), Namespace: req.Namespace}, foundDeployment); e != nil {
-		return ctrl.Result{}, e
-	}
-	// check replicateCount
-	if constants.IsUpdateRequiredForReplicas(desiredDeployment, foundDeployment) {
-		desiredReplicaCount := constants.GetExporterReplicas(api)
-		foundDeployment.Spec.Replicas = &desiredReplicaCount
-
-		if e := r.updateDeployment(api, ctx, req, foundDeployment, constants.MessageExporterDeploymentReplicaUpdated, constants.EventMessageUpdatedReplicaSucceeded); e != nil {
-			return ctrl.Result{}, e
-		}
+		// update completed, however the pods needs to be validated for readiness
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
+			Type:    conditionType,
+			Status:  metav1.ConditionFalse,
+			Reason:  constants.ReasonResourceUpdated,
+			Message: constants.MessageExporterResourceUpdated,
+		})
+		r.Log.WithName(logName).Info(constants.LogSuccessWithResourceUpdate, "ResourceName", f.GetName(), "Kind", groupVersionKind.Kind, "Namespace", req.Namespace)
+		r.Recorder.Event(a, corev1.EventTypeNormal, constants.EventReasonUpdateSucceeded, groupVersionKind.Kind+" is updated.")
+		r.Status().Update(ctx, a)
 	}
 
 	return ctrl.Result{}, nil
-}
 
-// updateDeployment method updates the deployment and sets the condition
-func (r *DatabaseObserverReconciler) updateDeployment(api *apiv1.DatabaseObserver, ctx context.Context, req ctrl.Request, d *appsv1.Deployment, updateMessage string, recorderMessage string) error {
-
-	// make update
-	defer r.Status().Update(ctx, api)
-
-	if e := r.Update(context.TODO(), d); e != nil {
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
-			Type:    constants.IsExporterDeploymentReady,
-			Status:  metav1.ConditionFalse,
-			Reason:  constants.ReasonDeploymentUpdateFailed,
-			Message: constants.MessageExporterDeploymentUpdateFailed,
-		})
-		r.Log.WithName(constants.LogExportersDeploy).Error(e, constants.ErrorDeploymentUpdate, "ResourceName", d.GetName(), "Kind", "Deployment", "Namespace", req.Namespace)
-		return e
-	}
-
-	// update completed, however the pods needs to be validated for readiness
-	meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
-		Type:    constants.IsExporterDeploymentReady,
-		Status:  metav1.ConditionFalse,
-		Reason:  constants.ReasonDeploymentUpdated,
-		Message: updateMessage,
-	})
-	r.Log.WithName(constants.LogExportersDeploy).Info(constants.LogResourceUpdated, "ResourceName", d.GetName(), "Kind", "Deployment", "Namespace", req.Namespace)
-	r.Recorder.Event(api, corev1.EventTypeNormal, constants.EventReasonUpdateSucceeded, recorderMessage)
-
-	return nil
 }
 
 // validateDeploymentReadiness method evaluates deployment readiness by checking the status of all deployment pods
-func (r *DatabaseObserverReconciler) validateDeploymentReadiness(api *apiv1.DatabaseObserver, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *DatabaseObserverReconciler) validateDeploymentReadiness(a *api.DatabaseObserver, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	d := &appsv1.Deployment{}
-	rName := constants.DefaultExporterDeploymentPrefix + api.Name
+	rName := a.Name
 
 	// update after
-	defer r.Status().Update(ctx, api)
+	defer r.Status().Update(ctx, a)
 
 	// get latest deployment
-	if e := r.Get(context.TODO(), types.NamespacedName{Name: rName, Namespace: api.Namespace}, d); e != nil {
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+	if e := r.Get(context.TODO(), types.NamespacedName{Name: rName, Namespace: a.Namespace}, d); e != nil {
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsExporterDeploymentReady,
 			Status:  metav1.ConditionFalse,
 			Reason:  constants.ReasonGeneralResourceValidationFailureDueToError,
@@ -445,16 +400,14 @@ func (r *DatabaseObserverReconciler) validateDeploymentReadiness(api *apiv1.Data
 	}
 
 	// get deployment labels
-	labels := d.Spec.Template.Labels
-	cLabels := client.MatchingLabels{}
-	for k, v := range labels {
-		cLabels[k] = v
+	cLabels := client.MatchingLabels{
+		"app": a.Name,
 	}
 
 	// list pods
 	pods := &corev1.PodList{}
 	if e := r.List(context.TODO(), pods, []client.ListOption{cLabels}...); e != nil {
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsExporterDeploymentReady,
 			Status:  metav1.ConditionFalse,
 			Reason:  constants.ReasonDeploymentFailed,
@@ -466,7 +419,7 @@ func (r *DatabaseObserverReconciler) validateDeploymentReadiness(api *apiv1.Data
 	// check each pod phase
 	for _, pod := range pods.Items {
 		if pod.Status.Phase == corev1.PodFailed {
-			meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+			meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 				Type:    constants.IsExporterDeploymentReady,
 				Status:  metav1.ConditionFalse,
 				Reason:  constants.ReasonDeploymentFailed,
@@ -475,7 +428,7 @@ func (r *DatabaseObserverReconciler) validateDeploymentReadiness(api *apiv1.Data
 			return ctrl.Result{}, errors.New(constants.ErrorDeploymentPodsFailure)
 
 		} else if pod.Status.Phase != corev1.PodRunning { // pod could be creating,
-			meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+			meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 				Type:    constants.IsExporterDeploymentReady,
 				Status:  metav1.ConditionUnknown,
 				Reason:  constants.ReasonDeploymentPending,
@@ -486,12 +439,14 @@ func (r *DatabaseObserverReconciler) validateDeploymentReadiness(api *apiv1.Data
 	}
 
 	// once all pods are found to be running, mark deployment as ready and the exporter as ready
-	meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+	meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 		Type:    constants.IsExporterDeploymentReady,
 		Status:  metav1.ConditionTrue,
 		Reason:  constants.ReasonDeploymentSuccessful,
 		Message: constants.MessageExporterDeploymentSuccessful,
 	})
+	a.Status.Version = constants.GetExporterVersion(a)
+	a.Status.ExporterConfig = constants.GetExporterConfig(a)
 	return ctrl.Result{}, nil
 }
 
@@ -499,48 +454,48 @@ func (r *DatabaseObserverReconciler) validateDeploymentReadiness(api *apiv1.Data
 func (r *DatabaseObserverReconciler) validateCustomResourceReadiness(ctx context.Context, req ctrl.Request) {
 
 	// get latest object
-	api := &apiv1.DatabaseObserver{}
-	if e := r.Get(context.TODO(), req.NamespacedName, api); e != nil {
+	a := &api.DatabaseObserver{}
+	if e := r.Get(context.TODO(), req.NamespacedName, a); e != nil {
 		r.Log.WithName(constants.LogReconcile).Error(e, constants.ErrorCRRetrieve)
 		return
 	}
 
 	// make update
-	defer r.Status().Update(ctx, api)
+	defer r.Status().Update(ctx, a)
 
-	if meta.IsStatusConditionPresentAndEqual(api.Status.Conditions, constants.IsExporterDeploymentReady, metav1.ConditionUnknown) {
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+	if meta.IsStatusConditionPresentAndEqual(a.Status.Conditions, constants.IsExporterDeploymentReady, metav1.ConditionUnknown) {
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsCRAvailable,
 			Status:  metav1.ConditionFalse,
 			Reason:  constants.ReasonValidationInProgress,
 			Message: constants.MessageCRValidationWaiting,
 		})
-		api.Status.Status = string(constants.StatusObservabilityPending)
-	} else if meta.IsStatusConditionFalse(api.Status.Conditions, constants.IsExporterDeploymentReady) ||
-		meta.IsStatusConditionFalse(api.Status.Conditions, constants.IsExporterServiceReady) ||
-		meta.IsStatusConditionFalse(api.Status.Conditions, constants.IsExporterServiceMonitorReady) {
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+		a.Status.Status = string(constants.StatusObservabilityPending)
+	} else if meta.IsStatusConditionFalse(a.Status.Conditions, constants.IsExporterDeploymentReady) ||
+		meta.IsStatusConditionFalse(a.Status.Conditions, constants.IsExporterServiceReady) ||
+		meta.IsStatusConditionFalse(a.Status.Conditions, constants.IsExporterServiceMonitorReady) {
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsCRAvailable,
 			Status:  metav1.ConditionFalse,
 			Reason:  constants.ReasonReadyFailed,
 			Message: constants.MessageCRValidationFailed,
 		})
-		api.Status.Status = string(constants.StatusObservabilityError)
+		a.Status.Status = string(constants.StatusObservabilityError)
 	} else {
-		meta.SetStatusCondition(&api.Status.Conditions, metav1.Condition{
+		meta.SetStatusCondition(&a.Status.Conditions, metav1.Condition{
 			Type:    constants.IsCRAvailable,
 			Status:  metav1.ConditionTrue,
 			Reason:  constants.ReasonReadyValidated,
 			Message: constants.MessageCRValidated,
 		})
-		api.Status.Status = string(constants.StatusObservabilityReady)
+		a.Status.Status = string(constants.StatusObservabilityReady)
 	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *DatabaseObserverReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&apiv1.DatabaseObserver{}).
+		For(&api.DatabaseObserver{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
 		Complete(r)

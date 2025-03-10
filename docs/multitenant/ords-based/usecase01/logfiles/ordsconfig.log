@@ -1,0 +1,39 @@
+ORDS: Release 23.4 Production on Tue Aug 20 07:48:44 2024
+
+Copyright (c) 2010, 2024, Oracle.
+
+Configuration:
+  /etc/ords/config/
+
+Database pool: default
+
+Setting                                     Value                                                Source
+-----------------------------------------   --------------------------------------------------   -----------
+database.api.enabled                        true                                                 Global
+database.api.management.services.disabled   false                                                Global
+db.cdb.adminUser                            C##DBAPI_CDB_ADMIN AS SYSDBA                         Pool
+db.cdb.adminUser.password                   ******                                               Pool Wallet
+db.connectionType                           customurl                                            Pool
+db.customURL                                jdbc:oracle:thin:@(DESCRIPTION=(CONNECT_TIMEOUT=90   Pool
+                                            )(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNEC
+                                            T_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=
+                                            TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONL
+                                            Y))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=
+                                            scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNEC
+                                            T_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))
+db.password                                 ******                                               Pool Wallet
+db.serviceNameSuffix                                                                             Pool
+db.username                                 ORDS_PUBLIC_USER                                     Pool
+error.externalPath                          /opt/oracle/ords/error                               Global
+jdbc.InitialLimit                           50                                                   Pool
+jdbc.MaxLimit                               100                                                  Pool
+misc.pagination.maxRows                     1000                                                 Pool
+plsql.gateway.mode                          disabled                                             Pool
+restEnabledSql.active                       true                                                 Pool
+security.requestValidationFunction          ords_util.authorize_plsql_gateway                    Pool
+security.verifySSL                          true                                                 Global
+standalone.access.log                       /home/oracle                                         Global
+standalone.https.cert                       /opt/oracle/ords//secrets/tls.crt                    Global
+standalone.https.cert.key                   /opt/oracle/ords//secrets/tls.key                    Global
+standalone.https.port                       8888                                                 Global
+

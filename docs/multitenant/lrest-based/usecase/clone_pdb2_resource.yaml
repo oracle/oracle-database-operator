@@ -1,0 +1,51 @@
+apiVersion: database.oracle.com/v4
+kind: LRPDB
+metadata:
+  name: pdb4
+  namespace: pdbnamespace
+  labels:
+    cdb: cdb-dev
+spec:
+  cdbResName: "cdb-dev"
+  cdbNamespace: "cdbnamespace"
+  cdbName: "DB12"
+  pdbName: "new_clone2"
+  srcPdbName: "pdbprd"
+  fileNameConversions: "NONE"
+  totalSize: "UNLIMITED"
+  tempSize: "UNLIMITED"
+  pdbconfigmap: "config-map-pdb"
+  assertiveLrpdbDeletion: true
+  action: "Clone"
+  adminpdbUser:
+    secret:
+      secretName: "pdbusr"
+      key: "e_pdbusr.txt"
+  adminpdbPass:
+    secret:
+      secretName: "pdbpwd"
+      key: "e_pdbpwd.txt"
+  lrpdbTlsKey:
+    secret:
+      secretName: "db-tls"
+      key: "tls.key"
+  lrpdbTlsCrt:
+    secret:
+      secretName: "db-tls"
+      key: "tls.crt"
+  lrpdbTlsCat:
+    secret:
+      secretName: "db-ca"
+      key: "ca.crt"
+  webServerUser:
+    secret:
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
+  webServerPwd:
+    secret:
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
+  cdbPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"

@@ -1,12 +1,12 @@
-# Provisioning Oracle Globally Distributed Database with User-Defined Sharding by cloning database from your own Database Gold Image across Availability Domains(ADs)
+# Provisioning Oracle Sharded Database with User Defined Sharding by cloning database from your own Database Gold Image across Availability Domains(ADs)
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-In this test case, you provision the Oracle Globally Distributed Database topology with User-Defined Sharding while provisioning the Catalog and Shard Databases by cloning from an existing Oracle Database Gold Image created earlier.
+In this test case, you provision the Oracle Database sharding topology with User Defined Sharding while provisioning the Catalog and Shard Databases by cloning from an existing Oracle Database Gold Image created earlier.
 
 This use case applies when you want to provision the database Pods on a Kubernetes Node in any availability domain (AD), which can also be different from the availability domain (AD) of the Block Volume that has the Oracle Database Gold Image provisioned earlier.
 
-Choosing this option takes substantially less time during the Oracle Globally Distributed Database Topology setup across ADs.
+Choosing this option takes substantially less time during the Oracle Database Sharding Topology setup across ADs.
 
 NOTE:
 
@@ -19,15 +19,15 @@ NOTE:
     ```sh
     kubectl get pv -n shns
     ```
-2. Create a Block Volume Backup for this Block Volume, and use the OCID of the Block Volume Backup in the next step. This example uses `udsharding_shard_prov_clone_across_ads.yaml` to provision an Oracle Globally Distributed Database topology using Oracle Sharding controller with:
+2. Create a Block Volume Backup for this Block Volume, and use the OCID of the Block Volume Backup in the next step. This example uses `udsharding_shard_prov_clone_across_ads.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three Shard Database Pods: `shard1`, `shard2` and `shard3`
+* Three sharding Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * Database Cloning from the `BLOCK VOLUME FULL BACKUP` of the Persistent Volume which had the Gold Image.
 * OCID of the Block Volume Backup: `ocid1.volumebackup.oc1.phx.abyhqljrxtv7tu5swqb3lzc7vpzwbwzdktd2y4k2vjjy2srmgu2w7bqdftjq`
-* User-Defined Sharding is specified using `shardingType: USER`
+* User Defined Sharding is specified using `shardingType: USER`
 
 NOTE: In this case, the Persistent Volume with DB Gold Image was provisioned in the Availability Domain `PHX-AD-1`. The Shards and Catalog will be provisioned across multiple Availability Domains by cloning the database.
 
@@ -37,7 +37,7 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * The `dbImage` used during provisioning the Persistent Volume with Database Gold Image and the `dbImage` used for deploying the Shard or Catalog Database by cloning should be same.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
 
-**NOTE:** Provisioning the Oracle Globally Distributed Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
+**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
 
 Use the file: [udsharding_shard_prov_clone_across_ads.yaml](./udsharding_shard_prov_clone_across_ads.yaml) for this use case as below:
 

@@ -1,0 +1,16 @@
+apiVersion: database.oracle.com/v4
+kind: DbcsSystem
+metadata:
+  name: dbcssystem-existing
+spec:
+  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyafdoaarkuhhxjfgjrzjtxpbcaycib3woadfmcz545mwua"
+  ociConfigMap: "oci-cred"
+  ociSecret: "oci-privatekey"
+  dbSystem:
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+    dbAdminPasswordSecret: "admin-password"
+    tdeWalletPasswordSecret: "tde-password"
+  kmsConfig:
+    vaultName: "dbvault"
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+    keyName: "dbkey"

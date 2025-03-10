@@ -2,7 +2,7 @@
 # Copyright (c) 2023, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: OracleRestDataService
 metadata:
   name: ords-sample
@@ -26,24 +26,9 @@ spec:
     secretKey:
     keepSecret: true
 
-  ## To configure APEX with ORDS, specfiy the apexPassword secret details. Leave empty if Apex is not needed
-  ## This is a secret containing a common password for APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER and Apex administrator (username: ADMIN) mapped to secretKey
-  ## This secret will be deleted after ORDS Installation unless keepSecret set to true.
-  ## This password should complete the following requirements:
-  ## 1. Contain at least 6 characters.
-  ## 2. Contain at least one numeric character (0123456789).
-  ## 3. Contain at least one punctuation character (!"#$%&()``*+,-/:;?_).
-  ## 4. Contain at least one uppercase alphabetic character.
-  
-  apexPassword:
-    secretName: 
-    secretKey:
-    keepSecret: true
-
   ## ORDS image details
-  ## Supported ORDS image is container-registry.oracle.com/database/ords:21.4.2-gh
   image:
-    pullFrom: container-registry.oracle.com/database/ords:21.4.2-gh
+    pullFrom: container-registry.oracle.com/database/ords-developer:latest
     pullSecrets:
 
   ## Dedicated persistent storage is optional. If not specified, ORDS will use persistent storage from .spec.databaseRef
@@ -65,6 +50,8 @@ spec:
   #serviceAnnotations:
   #  service.beta.kubernetes.io/oci-load-balancer-internal: "true"
 
+  ## Set this to true to enable MongoDB API
+  mongoDbApi: true
 
   ## Deploy only on nodes having required labels. Format label_name: label_value
   ## The same lables are applied to the created PVC

@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022-2024 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -42,6 +42,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/go-logr/logr"
 	dbcsv1 "github.com/oracle/oracle-database-operator/commons/annotations"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -52,11 +53,17 @@ import (
 
 // DbcsSystemSpec defines the desired state of DbcsSystem
 type DbcsSystemSpec struct {
-	DbSystem     DbSystemDetails `json:"dbSystem,omitempty"`
-	Id           *string         `json:"id,omitempty"`
-	OCIConfigMap string          `json:"ociConfigMap"`
-	OCISecret    string          `json:"ociSecret,omitempty"`
-	HardLink     bool            `json:"hardLink,omitempty"`
+	DbSystem       DbSystemDetails `json:"dbSystem,omitempty"`
+	Id             *string         `json:"id,omitempty"`
+	OCIConfigMap   *string         `json:"ociConfigMap"`
+	OCISecret      *string         `json:"ociSecret,omitempty"`
+	DbClone        *DbCloneConfig  `json:"dbClone,omitempty"`
+	HardLink       bool            `json:"hardLink,omitempty"`
+	PdbConfigs     []PDBConfig     `json:"pdbConfigs,omitempty"`
+	SetupDBCloning bool            `json:"setupDBCloning,omitempty"`
+	DbBackupId     *string         `json:"dbBackupId,omitempty"`
+	DatabaseId     *string         `json:"databaseId,omitempty"`
+	KMSConfig      KMSConfig       `json:"kmsConfig,omitempty"`
 }
 
 // DbSystemDetails Spec
@@ -66,7 +73,7 @@ type DbSystemDetails struct {
 	AvailabilityDomain         string            `json:"availabilityDomain"`
 	SubnetId                   string            `json:"subnetId"`
 	Shape                      string            `json:"shape"`
-	SshPublicKeys              []string          `json:"sshPublicKeys"`
+	SshPublicKeys              []string          `json:"sshPublicKeys,omitempty"`
 	HostName                   string            `json:"hostName"`
 	CpuCoreCount               int               `json:"cpuCoreCount,omitempty"`
 	FaultDomains               []string          `json:"faultDomains,omitempty"`
@@ -78,8 +85,6 @@ type DbSystemDetails struct {
 	Domain                     string            `json:"domain,omitempty"`
 	InitialDataStorageSizeInGB int               `json:"initialDataStorageSizeInGB,omitempty"`
 	ClusterName                string            `json:"clusterName,omitempty"`
-	KmsKeyId                   string            `json:"kmsKeyId,omitempty"`
-	KmsKeyVersionId            string            `json:"kmsKeyVersionId,omitempty"`
 	DbAdminPaswordSecret       string            `json:"dbAdminPaswordSecret"`
 	DbName                     string            `json:"dbName,omitempty"`
 	PdbName                    string            `json:"pdbName,omitempty"`
@@ -94,9 +99,10 @@ type DbSystemDetails struct {
 	TdeWalletPasswordSecret    string            `json:"tdeWalletPasswordSecret,omitempty"`
 	Tags                       map[string]string `json:"tags,omitempty"`
 	DbBackupConfig             Backupconfig      `json:"dbBackupConfig,omitempty"`
+	KMSConfig                  KMSConfig         `json:"kmsConfig,omitempty"`
 }
 
-// DB Backup COnfig Network Struct
+// DB Backup Config Network Struct
 type Backupconfig struct {
 	AutoBackupEnabled        *bool   `json:"autoBackupEnabled,omitempty"`
 	RecoveryWindowsInDays    *int    `json:"recoveryWindowsInDays,omitempty"`
@@ -121,11 +127,14 @@ type DbcsSystemStatus struct {
 	DataStorageSizeInGBs  *int   `json:"dataStorageSizeInGBs,omitempty"`
 	RecoStorageSizeInGB   *int   `json:"recoStorageSizeInGB,omitempty"`
 
-	Shape        *string          `json:"shape,omitempty"`
-	State        LifecycleState   `json:"state"`
-	DbInfo       []DbStatus       `json:"dbInfo,omitempty"`
-	Network      VmNetworkDetails `json:"network,omitempty"`
-	WorkRequests []DbWorkrequests `json:"workRequests,omitempty"`
+	Shape            *string            `json:"shape,omitempty"`
+	State            LifecycleState     `json:"state"`
+	DbInfo           []DbStatus         `json:"dbInfo,omitempty"`
+	Network          VmNetworkDetails   `json:"network,omitempty"`
+	WorkRequests     []DbWorkrequests   `json:"workRequests,omitempty"`
+	KMSDetailsStatus KMSDetailsStatus   `json:"kmsDetailsStatus,omitempty"`
+	DbCloneStatus    DbCloneStatus      `json:"dbCloneStatus,omitempty"`
+	PdbDetailsStatus []PDBDetailsStatus `json:"pdbDetailsStatus,omitempty"`
 }
 
 // DbcsSystemStatus defines the observed state of DbcsSystem
@@ -156,17 +165,49 @@ type VmNetworkDetails struct {
 	NetworkSG    string  `json:"networkSG,omitempty"`
 }
 
+// DbCloneConfig defines the configuration for the database clone
+type DbCloneConfig struct {
+	DbAdminPaswordSecret       string   `json:"dbAdminPaswordSecret,omitempty"`
+	TdeWalletPasswordSecret    string   `json:"tdeWalletPasswordSecret,omitempty"`
+	DbName                     string   `json:"dbName"`
+	HostName                   string   `json:"hostName"`
+	DbUniqueName               string   `json:"dbDbUniqueName"`
+	DisplayName                string   `json:"displayName"`
+	LicenseModel               string   `json:"licenseModel,omitempty"`
+	Domain                     string   `json:"domain,omitempty"`
+	SshPublicKeys              []string `json:"sshPublicKeys,omitempty"`
+	SubnetId                   string   `json:"subnetId"`
+	SidPrefix                  string   `json:"sidPrefix,omitempty"`
+	InitialDataStorageSizeInGB int      `json:"initialDataStorageSizeInGB,omitempty"`
+	KmsKeyId                   string   `json:"kmsKeyId,omitempty"`
+	KmsKeyVersionId            string   `json:"kmsKeyVersionId,omitempty"`
+	PrivateIp                  string   `json:"privateIp,omitempty"`
+}
+
+// DbCloneStatus defines the observed state of DbClone
+type DbCloneStatus struct {
+	Id                   *string  `json:"id,omitempty"`
+	DbAdminPaswordSecret string   `json:"dbAdminPaswordSecret,omitempty"`
+	DbName               string   `json:"dbName,omitempty"`
+	HostName             string   `json:"hostName"`
+	DbUniqueName         string   `json:"dbDbUniqueName"`
+	DisplayName          string   `json:"displayName,omitempty"`
+	LicenseModel         string   `json:"licenseModel,omitempty"`
+	Domain               string   `json:"domain,omitempty"`
+	SshPublicKeys        []string `json:"sshPublicKeys,omitempty"`
+	SubnetId             string   `json:"subnetId,omitempty"`
+}
+
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=DbcsSystem,scope=Namespaced
+// +kubebuilder:resource:path=dbcssystems,scope=Namespaced
 
 // DbcsSystem is the Schema for the dbcssystems API
 type DbcsSystem struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   DbcsSystemSpec   `json:"spec,omitempty"`
-	Status DbcsSystemStatus `json:"status,omitempty"`
+	Spec              DbcsSystemSpec   `json:"spec,omitempty"`
+	Status            DbcsSystemStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -206,6 +247,25 @@ func (dbcs *DbcsSystem) GetLastSuccessfulSpec() (*DbcsSystemSpec, error) {
 		return nil, err
 	}
 
+	return &sucSpec, nil
+}
+func (dbcs *DbcsSystem) GetLastSuccessfulSpecWithLog(log logr.Logger) (*DbcsSystemSpec, error) {
+	val, ok := dbcs.GetAnnotations()[lastSuccessfulSpec]
+	if !ok {
+		log.Info("No last successful spec annotation found")
+		return nil, nil
+	}
+
+	specBytes := []byte(val)
+	sucSpec := DbcsSystemSpec{}
+
+	err := json.Unmarshal(specBytes, &sucSpec)
+	if err != nil {
+		log.Error(err, "Failed to unmarshal last successful spec")
+		return nil, err
+	}
+
+	log.Info("Successfully retrieved last successful spec", "spec", sucSpec)
 	return &sucSpec, nil
 }
 

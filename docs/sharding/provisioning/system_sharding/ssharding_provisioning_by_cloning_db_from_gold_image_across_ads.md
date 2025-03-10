@@ -1,4 +1,4 @@
-# Provisioning Oracle Globally Distributed Database with System-Managed Sharding by cloning database from your own Database Gold Image across Availability Domains(ADs)
+# Provisioning Oracle Sharded Database with System-Managed Sharding by cloning database from your own Database Gold Image across Availability Domains(ADs)
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
@@ -22,7 +22,7 @@ NOTE:
 2. Create a Block Volume Backup for this Block Volume, and use the OCID of the Block Volume Backup in the next step. This example uses `ssharding_shard_prov_clone_across_ads.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three Shard Database Pods: `shard1`, `shard2` and `shard3`
+* Three sharding Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * Database Cloning from the `BLOCK VOLUME FULL BACKUP` of the Persistent Volume which had the Gold Image.
@@ -31,11 +31,11 @@ NOTE:
 NOTE: In this case, the Persistent Volume with DB Gold Image was provisioned in the Availability Domain `PHX-AD-1`. The Shards and Catalog will be provisioned across multiple Availability Domains by cloning the database.
 
 
-**NOTE:** Provisioning the Oracle Globally Distributed Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
+**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
 
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_clone_across_ads.yaml`. 
+  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_clone_across_ads.yaml`.
   * The `dbImage` used during provisioning the Persistent Volume with Database Gold Image and the `dbImage` used for deploying the Shard or Catalog Database by cloning should be same.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
 

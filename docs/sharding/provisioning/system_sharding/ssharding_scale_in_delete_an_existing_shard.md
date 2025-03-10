@@ -1,4 +1,4 @@
-# Scale In - Delete an existing Shard from a working Oracle Globally Distributed Database provisioned earlier with System-Managed Sharding
+# Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with System-Managed Sharding
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
@@ -6,10 +6,10 @@ This use case demonstrates how to delete an existing Shard from an existing Orac
 
 **NOTE** The deletion of a shard is done after verifying the Chunks have been moved out of that shard.
 
-In this use case, the existing Oracle Globally Distributed Database is having:
+In this use case, the existing database Sharding is having:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Five Shard Database Pods: `shard1`,`shard2`,`shard3`,`shard4` and `shard5`
+* Five sharding Pods: `shard1`,`shard2`,`shard3`,`shard4` and `shard5`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 
@@ -21,7 +21,7 @@ In this example, we are using pre-built Oracle Database and Global Data Services
 
 NOTE: Use tag `isDelete: enable` to delete the shard you want.
 
-This use case deletes the shard `shard4` from the above Oracle Globally Distributed Database Topology.
+This use case deletes the shard `shard4` from the above Sharding Topology.
 
 Use the file: [ssharding_shard_prov_delshard.yaml](./ssharding_shard_prov_delshard.yaml) for this use case as below:
 

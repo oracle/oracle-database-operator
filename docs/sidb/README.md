@@ -12,6 +12,8 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [Pre-built Database](#pre-built-database)
       * [XE Database](#xe-database)
       * [Free Database](#free-database)
+      * [Free Lite Database](#free-lite-database)
+      * [Oracle True Cache](#oracle-true-cache)
     * [Connecting to Database](#connecting-to-database)
     * [Database Persistence (Storage) Configuration Options](#database-persistence-storage-configuration-options)
       * [Dynamic Persistence](#dynamic-persistence)
@@ -29,17 +31,21 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
       * [Setup Database with LoadBalancer](#setup-database-with-loadbalancer)
       * [Enabling TCPS Connections](#enabling-tcps-connections)
       * [Specifying Custom Ports](#specifying-custom-ports)
-      * [Setup Data Guard Configuration for a Single Instance Database (Preview status)](#setup-data-guard-configuration-for-a-single-instance-database-preview-status)
+      * [Setup Data Guard Configuration for a Single Instance Database](#setup-data-guard-configuration-for-a-single-instance-database)
         * [Create a Standby Database](#create-a-standby-database)
         * [Create a Data Guard Configuration](#create-a-data-guard-configuration)
         * [Perform a Switchover](#perform-a-switchover)
-        * [Patch Primary and Standby databases in Data Guard configuration](#patch-primary-and-standby-databases-in-data-guard-configuration)
+        * [Enable Fast-Start Failover](#enable-fast-start-failover)
+        * [Convert Standby to Snapshot Standby](#convert-standby-to-snapshot-standby)
+        * [Static Data Guard Connect String](#static-data-guard-connect-string)
+        * [Patch Primary and Standby databases](#patch-primary-and-standby-databases)
         * [Delete the Data Guard Configuration](#delete-the-data-guard-configuration)
       * [Execute Custom Scripts](#execute-custom-scripts)
   * [OracleRestDataService Resource](#oraclerestdataservice-resource)
     * [REST Enable a Database](#rest-enable-a-database)
       * [Provision ORDS](#provision-ords)
       * [Database API](#database-api)
+      * [MongoDB API](#mongodb-api)
       * [Advanced Usages](#advanced-usages)
         * [Oracle Data Pump](#oracle-data-pump)
         * [REST Enabled SQL](#rest-enabled-sql)
@@ -52,7 +58,7 @@ Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Inst
 
 ## Prerequisites
 
-Oracle strongly recommends to comply with the [prerequisites](./PREREQUISITES.md) and the following requirements
+Oracle strongly recommends that you comply with the [prerequisites](./PREREQUISITES.md) and the following requirements
 
   ### Mandatory Resource Privileges
 
@@ -67,11 +73,11 @@ Oracle strongly recommends to comply with the [prerequisites](./PREREQUISITES.md
   | Secrets | create delete get list patch update watch | 
   | Events | create patch |
 
-  For managing the required levels of access, configure [role binding](../../README.md#role-binding-for-access-management)
+  For managing the required levels of access, configure [role binding](../../README.md#create-role-bindings-for-access-management)
 
   ### Optional Resource Privileges
 
-  Single Instance Database(sidb) controller optionally requires the following Kubernetes resource privileges depending on the functionality being used:
+  Single Instance Database(`sidb`) controller optionally requires the following Kubernetes resource privileges, depending on the functionality being used:
 
   | Functionality | Resources | Privileges |
   | --- | --- | --- | 
@@ -80,7 +86,7 @@ Oracle strongly recommends to comply with the [prerequisites](./PREREQUISITES.md
   | Custom Scripts Execution | PersistentVolumes | get list watch |
 
 
-  For exposing the database via Nodeport services, apply [RBAC](../../rbac/node-rbac.yaml)
+  For exposing the database using Nodeport services, apply [RBAC](../../rbac/node-rbac.yaml)
   ```sh
     kubectl apply -f rbac/node-rbac.yaml
   ```
@@ -88,22 +94,22 @@ Oracle strongly recommends to comply with the [prerequisites](./PREREQUISITES.md
   ```sh
     kubectl apply -f rbac/storage-class-rbac.yaml
   ```
-  For automatic execution of custom scripts post database setup or startup, apply [RBAC](../../rbac/persistent-volume-rbac.yaml)
+  For automatic execution of custom scripts after database setup or startup, apply [RBAC](../../rbac/persistent-volume-rbac.yaml)
   ```sh
     kubectl apply -f rbac/persistent-volume-rbac.yaml
   ```
   
   ### OpenShift Security Context Constraints
 
-  OpenShift requires additional Security Context Constraints (SCC) for deploying and managing the SingleInstanceDatabase resource. Follow these steps to create the appropriate SCCs before deploying the SingleInstanceDatabase resource.
+  OpenShift requires additional Security Context Constraints (SCC) for deploying and managing the `SingleInstanceDatabase` resource. To create the appropriate SCCs before deploying the `SingleInstanceDatabase` resource, complete these steps:
 
-  1. Create a new project/namespace for deploying the SingleInstanceDatabase resource
+  1. Create a new project/namespace for deploying the `SingleInstanceDatabase` resource
 
   ```sh
     oc new-project sidb-ns
   ```
 
-  **Note:** OpenShift recommends not to deploy in namespaces starting with `kube`, `openshift` and the `default` namespace.
+  **Note:** OpenShift recommends that you should not deploy in namespaces starting with `kube`, `openshift` and the `default` namespace.
 
   2. Apply the file [openshift_rbac.yaml](../../config/samples/sidb/openshift_rbac.yaml) with cluster-admin user privileges.
 
@@ -111,15 +117,15 @@ Oracle strongly recommends to comply with the [prerequisites](./PREREQUISITES.md
     oc apply -f openshift-rbac.yaml
   ```
 
-  This would result in creation of SCC (Security Context Constraints) and serviceaccount `sidb-sa` in the namespace `sidb-ns` which has access to the SCC.
+  Running this example procedure results in creation of SCC (Security Context Constraints) and serviceaccount `sidb-sa` in the namespace `sidb-ns`, which has access to the SCC.
 
-  **Note:** The above config yaml file will bind the SCC to the serviceaccount `sidb-sa` in namespace `sidb-ns`. For any other project/namespace update the file appropriately with the namespace before applying.
+  **Note:** This configuration yaml file example binds the SCC to the serviceaccount `sidb-sa` in namespace `sidb-ns`. For any other project/namespace, you must update the file appropriately with the namespace before applying this example.
 
   3. Set the `serviceAccountName` attribute to `sidb-sa` and the namespace to `sidb-ns` in **[config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)** before deploying the SingleInstanceDatabase resource.
 
 ## SingleInstanceDatabase Resource
 
-The Oracle Database Operator creates the `SingleInstanceDatabase` as a custom resource. Doing this enables Oracle Database to be managed as a native Kubernetes object. We will refer `SingleInstanceDatabase` resource as Database from now onwards.
+The Oracle Database Operator creates the `SingleInstanceDatabase` as a custom resource. Doing this enables Oracle Database to be managed as a native Kubernetes object. In this document, we will refer to the `SingleInstanceDatabase` resource as the database.
 
 ### Resource Details
 
@@ -207,22 +213,22 @@ $ kubectl describe singleinstancedatabase sidb-sample-clone
 ### Template YAML
   
 The template `.yaml` file for Single Instance Database (Enterprise and Standard Editions), including all the configurable options, is available at:
-**[config/samples/sidb/singleinstancedatabase.yaml](./../../config/samples/sidb/singleinstancedatabase.yaml)**
+**[`config/samples/sidb/singleinstancedatabase.yaml`](./../../config/samples/sidb/singleinstancedatabase.yaml)**
 
 **Note:** 
-The `adminPassword` field in the above `singleinstancedatabase.yaml` file refers to a secret for the SYS, SYSTEM and PDBADMIN users of the Single Instance Database. This secret is required when you provision a new database, or when you clone an existing database.
+The `adminPassword` field in the above `singleinstancedatabase.yaml`example file refers to a Secret for the SYS, SYSTEM and PDBADMIN users of the Single Instance Database. This Secret is required when you provision a new database, or when you clone an existing database.
 
-Create this secret using the following command as an example:
+Create this Secret using the following command as an example:
 
     kubectl create secret generic db-admin-secret --from-literal=oracle_pwd=<specify password here>
 
-This command creates a secret named `db-admin-secret`, with the key `oracle_pwd` mapped to the actual password specified in the command.
+This command creates a Secret named `db-admin-secret`, with the key `oracle_pwd` mapped to the actual password specified in the command.
 
 ### Create a Database
 
 #### New Database
 
-To provision a new database instance on the Kubernetes cluster, use the example **[config/samples/sidb/singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**.
+To provision a new database instance on the Kubernetes cluster, use the example **[`config/samples/sidb/singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml)**.
 
 1. Log into [Oracle Container Registry](https://container-registry.oracle.com/) and accept the license agreement for the Database image; ignore if you have accepted the license agreement already.
 
@@ -254,15 +260,15 @@ To provision a new database instance on the Kubernetes cluster, use the example 
     ```
 
 **Note:** 
-- For ease of use, the storage class **oci-bv** is specified in the **[singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml)**. This storage class facilitates dynamic provisioning of the OCI block volumes on the Oracle OKE for persistent storage of the database. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.
+- For ease of use, the storage class **oci-bv** is specified in the **[`singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml)**. This storage class facilitates dynamic provisioning of the OCI block volumes on the Oracle OKE for persistent storage of the database. The supported access mode for this class is `ReadWriteOnce`. For other cloud providers, you can similarly use their dynamic provisioning storage classes.
 - It is beneficial to have the database replica pods more than or equal to the number of available nodes if `ReadWriteMany` access mode is used with the OCI NFS volume. By doing so, the pods get distributed on different nodes and the database image is downloaded on all those nodes. This helps in reducing time for the database fail-over if the active database pod dies.
 - Supports Oracle Database Enterprise Edition (19.3.0), and later releases.
-- To pull the database image faster from the container registry, so that you can bring up the SIDB instance quickly, you can use the container-registry mirror of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, then you can use the `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, follow the link [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
-- To update the init parameters like `sgaTarget` and `pgaAggregateTarget`, refer the `initParams` section of the [singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file.
+- To pull the database image faster from the container registry, so that you can bring up the SIDB instance quickly, you can use the `container-registry mirror` of the corresponding cluster's region. For example, if the cluster exists in Mumbai region, then you can use the `container-registry-bom.oracle.com` mirror. For more information on container-registry mirrors, see: [https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure](https://blogs.oracle.com/wim/post/oracle-container-registry-mirrors-in-oracle-cloud-infrastructure).
+- To update the initialization (init) parameters, such as `sgaTarget` and `pgaAggregateTarget`, see the `initParams` section of the [`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
 #### Pre-built Database
 
-To provision a new pre-built database instance, use the sample **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
+To provision a new pre-built database instance, use the sample **[`config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file. For example:
 ```sh
 $ kubectl apply -f singleinstancedatabase_prebuiltdb.yaml
 
@@ -274,32 +280,45 @@ This pre-built image includes the data files of the database inside the image it
 To build the pre-built database image for the Enterprise/Standard edition, follow these instructions: [Pre-built Database (prebuiltdb) Extension](https://github.com/oracle/docker-images/blob/main/OracleDatabase/SingleInstance/extensions/prebuiltdb/README.md).
 
 #### XE Database
-To provision new Oracle Database Express Edition (XE) database, use the sample **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)** file. For example:
+To provision a new Oracle Database Express Edition (XE) database, use the sample **[config/samples/sidb/singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml)** file. For example:
 
       kubectl apply -f singleinstancedatabase_express.yaml
 
-This command pulls the XE image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/).
+This command pulls the XE image available in [Oracle Container Registry](https://container-registry.oracle.com/).
 
 **Note:**
-- Provisioning Oracle Database express edition is supported for release 21c (21.3.0) only.
+- Provisioning Oracle Database Express Edition is supported for release 21c (21.3.0) only. Oracle Database Free replaces Oracle Database Express Edition.
 - For XE database, only single replica mode (i.e. `replicas: 1`) is supported.
-- For XE database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
+- For XE database, you **cannot change** the init parameters, such as `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
 
 #### Free Database
-To provision new Oracle Database Free database, use the sample **[config/samples/sidb/singleinstancedatabase_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml)** file. For example:
+To provision new Oracle Database Free, use the sample **[config/samples/sidb/singleinstancedatabase_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml)** file. For example:
 
       kubectl apply -f singleinstancedatabase_free.yaml
 
-This command pulls the Free image uploaded on the [Oracle Container Registry](https://container-registry.oracle.com/).
+This command pulls the Free image available in [Oracle Container Registry](https://container-registry.oracle.com/).
+
+#### Free Lite Database
+To provision new Oracle Database Free Lite, use the sample **[config/samples/sidb/singleinstancedatabase_free-lite.yaml](../../config/samples/sidb/singleinstancedatabase_free-lite.yaml)** file. For example:
+
+      kubectl apply -f singleinstancedatabase_free-lite.yaml
+
+This command pulls the Free lite image available in [Oracle Container Registry](https://container-registry.oracle.com/).
 
 **Note:**
 - Provisioning Oracle Database Free is supported for release 23.3.0 and later releases.
-- For Free database, only single replica mode (i.e. `replicas: 1`) is supported.
-- For Free database, you **cannot change** the init parameters i.e. `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
-- Oracle Enterprise Manager Express (OEM Express) is not supported from release 23.3.0 and later releases. 
+- For Free database, only single replica mode (such as `replicas: 1`) is supported.
+- For Free database, you **cannot change** the init parameters. These include parameters such as `cpuCount, processes, sgaTarget or pgaAggregateTarget`.
+- Oracle Enterprise Manager Express (OEM Express) is not supported in release 23.3.0 and later releases. 
+
+#### Oracle True Cache
+Oracle True Cache is an in-memory, consistent, and automatically managed cache for Oracle Database.  
+To provision a True Cache instance for Oracle Free Database in Kubernetes, use the sample **[`config/samples/sidb/singleinstancedatabase_free-truecache.yaml`](../../config/samples/sidb/singleinstancedatabase_free-truecache.yaml)** file. For example
+
+      kubectl apply -f singleinstancedatabase_free-truecache.yaml
 
 #### Additional Information
-You are required to specify the database admin password secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [singleinstancedatabase_create.yaml](../../config/samples/sidb/singleinstancedatabase_create.yaml), [singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml), [singleinstancedatabase_express.yaml](../../config/samples/sidb/singleinstancedatabase_express.yaml) and [singleinstancedatabse_free.yaml](../../config/samples/sidb/singleinstancedatabase_free.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, `xedb-admin-secret` and `free-admin-secret` respectively. You can create these secrets manually by using the sample command mentioned in the [Template YAML](#template-yaml) section. Alternatively, you can create these secrets by filling the passwords in the **[singleinstancedatabase_secrets.yaml](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying it using the command below:
+You are required to specify the database administrative user (admin) password Secret in the corresponding YAML file. The default values mentioned in the `adminPassword.secretName` fields of [`singleinstancedatabase_create.yaml`](../../config/samples/sidb/singleinstancedatabase_create.yaml), [`singleinstancedatabase_prebuiltdb.yaml`](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml), [`singleinstancedatabase_express.yaml`](../../config/samples/sidb/singleinstancedatabase_express.yaml) and [`singleinstancedatabse_free.yaml`](../../config/samples/sidb/singleinstancedatabase_free.yaml) files are `db-admin-secret`, `prebuiltdb-admin-secret`, `xedb-admin-secret` and `free-admin-secret` respectively. You can create these Secrets manually by using the sample command mentioned in the [`Template YAML`](#template-yaml) section. Alternatively, you can create these Secrets by filling in the passwords in the **[`singleinstancedatabase_secrets.yaml`](../../config/samples/sidb/singleinstancedatabase_secrets.yaml)** file and applying them using the following command:
 
 ```bash
 kubectl apply -f singleinstancedatabase_secrets.yaml
@@ -307,7 +326,7 @@ kubectl apply -f singleinstancedatabase_secrets.yaml
 
 ### Connecting to Database
 
-Creating a new database instance takes a while. When the `status` column returns the response `Healthy`, the Database is open for connections.
+Creating a new database instance takes a while. When the `status` column returns the response `Healthy`, the database is open for connections.
 
 ```sh
 $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
@@ -315,7 +334,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
   Healthy
 ```
 
-Clients can get the connect-string to the CDB from `.status.connectString` and PDB from `.status.pdbConnectString`. For example:
+Clients can obtain the connect string to the CDB from `.status.connectString`, and the connect string to the PDB from `.status.pdbConnectString`. For example:
 
 ```sh
 $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.connectString}"
@@ -328,7 +347,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.pdbConnec
   10.0.25.54:1521/ORCLPDB
 ```
 
-Use any supported client or SQLPlus to connect to the database using the above connect strings as follows
+To connect to the database using the connect strings returned by the commands above, you can use any supported client, or use SQLPlus. For example:
 ```sh
 $ sqlplus sys/<.spec.adminPassword>@10.0.25.54:1521/ORCL as sysdba
 
@@ -356,7 +375,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.oemExpres
 **Note:** OEM Express is not available for 23.3.0 and later releases
 
 ### Database Persistence (Storage) Configuration Options
-The database persistence can be achieved in the following two ways:
+You can configure database persistence in the following two ways:
 - Dynamic Persistence Provisioning
 - Static Persistence Provisioning
 
@@ -379,8 +398,8 @@ $ kubectl patch singleinstancedatabase sidb-sample -p '{"spec":{"persistence":{"
 - User can only scale up a volume/storage and not scale down
 
 #### Static Persistence
-In **Static Persistence Provisioning**, you have to create a volume manually, and then use the name of this volume with the `<.spec.persistence.datafilesVolumeName>` field which corresponds to the `datafilesVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. The `Reclaim Policy` of such volume can be set to `Retain`. So, this volume does not get deleted with the deletion of its corresponding deployment.
-For example in **Minikube**, a persistent volume can be provisioned using the sample yaml file below:
+In **Static Persistence Provisioning**, you must create a volume manually, and then use the name of this volume with the `<.spec.persistence.datafilesVolumeName>` field, which corresponds to the `datafilesVolumeName` field of the persistence section in the **[`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**. The `Reclaim Policy` of such volumes can be set to `Retain`. When this policy is set, the volume is not deleted when its corresponding deployment is deleted.
+For example in **Minikube**, a persistent volume can be provisioned using the following yaml file example:
 ```yaml
 apiVersion: v1
 kind: PersistentVolume
@@ -395,7 +414,7 @@ spec:
   hostPath:
     path: /data/oradata
 ```
-The persistent volume name (i.e. db-vol) can be mentioned in the `datafilesVolumeName` field of the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**. `storageClass` field is not required in this case, and can be left empty.
+The persistent volume name (in this case, `db-vol`) can be mentioned in the `datafilesVolumeName` field of the **[`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**. `storageClass` field is not required in this case, and can be left empty.
 
 Static Persistence Provisioning in Oracle Cloud Infrastructure (OCI) is explained in the following subsections:
 
@@ -452,7 +471,7 @@ spec:
 
 - Whenever a mount target is provisioned in OCI, its `Reported Size (GiB)` values are very large. This is visible on the mount target page when logged in to the OCI console. Some applications will fail to install if the results of a space requirements check show too much available disk space. So in the OCI Console, click the little "Pencil" icon besides the **Reported Size** parameter of the Mount Target to specify, in gigabytes (GiB), the maximum capacity reported by file systems exported through this mount target. This setting does not limit the actual amount of data you can store.
 
-- Make sure to open the required ports to access the NFS volume from the K8S cluster: add the required ports to the security list of the subnet where your K8S nodes are connected to; see **[here](https://docs.oracle.com/en-us/iaas/Content/File/Tasks/securitylistsfilestorage.htm)** for the details.
+- You must open the required ports to access the NFS volume from the K8S cluster. Add the required ports to the security list of the subnet to which your K8S nodes are connected. For more information, see **[Security Lists File Storage](https://docs.oracle.com/en-us/iaas/Content/File/Tasks/securitylistsfilestorage.htm)** for the details.
 
 ### Configuring a Database
 The `OraOperator` facilitates you to configure the database. Various database configuration options are explained in the following subsections:
@@ -508,7 +527,7 @@ The following attributes cannot be modified after creating the Single Instance D
 - `pdbName`
 - `primaryDatabaseRef`
 
-If you attempt to changing one of these attributes, then you receive an error similar to the following:
+If you attempt to change one of these attributes, then you receive an error similar to the following:
 
 ```sh
 $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabase sidb-sample 
@@ -520,7 +539,7 @@ $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabas
 
 To create copies of your existing database quickly, you can use the cloning functionality. A cloned database is an exact, block-for-block copy of the source database. Cloning is much faster than creating a fresh database and copying over the data.
 
-To quickly clone the existing database sidb-sample created above, use the sample **[config/samples/sidb/singleinstancedatabase_clone.yaml](../../config/samples/sidb/singleinstancedatabase_clone.yaml)** file.
+To quickly clone the existing database `sidb-sample` we previously created for this document, use the sample **[`config/samples/sidb/singleinstancedatabase_clone.yaml`](../../config/samples/sidb/singleinstancedatabase_clone.yaml)** file.
 
 For example:
 
@@ -544,7 +563,7 @@ Patched Oracle Docker images can be built by using this [patching extension](htt
 
 #### Patch
 
-To patch an existing database, edit and apply the **[config/samples/sidb/singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
+To patch an existing database, edit and apply the **[`config/samples/sidb/singleinstancedatabase_patch.yaml`](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
 
 ```sh
 kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase sidb-sample
@@ -556,7 +575,7 @@ singleinstancedatabase.database.oracle.com/sidb-sample patched
 After patching is complete, the database pods are restarted with the new release update image.
 
 **Note:**
-- Only enterprise and standard editions support patching.
+- Only Enterprise and Standard Editions support patching.
 
 #### Patch after Cloning
     
@@ -578,7 +597,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.releaseUp
 ```
 
 #### Rollback
-You can roll back to a prior database version by specifying the old image in the `image` field of the **[config/samples/sidb/singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file, and applying it by the following command:
+You can roll back to a prior database version by specifying the old image in the `image` field of the **[`config/samples/sidb/singleinstancedatabase_patch.yaml`](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file, and applying it using the following command:
 
 ```bash
 kubectl apply -f singleinstancedatabase_patch.yaml
@@ -594,12 +613,12 @@ singleinstancedatabase.database.oracle.com/sidb-sample patched
 ```
 
 ### Delete a Database
-Please run the following command to delete the database:
+To delete the database, run the following command :
 
 ```bash
 kubectl delete singleinstancedatabase.database.oracle.com sidb-sample
 ```
-The command above will delete the database pods and associated service.
+This command will delete the database pods and associated service.
 
 ### Advanced Database Configurations
 Some advanced database configuration scenarios are as follows:
@@ -623,17 +642,20 @@ The following table depicts the fail over matrix for any destructive operation t
   | PDB close | No |
   
 **Note:** 
-- Maintence shutdown/startup can be executed using the scripts /home/oracle/shutDown.sh and /home/oracle/startUp.sh 
+- Maintence shutdown/startup can be run by using the scripts `/home/oracle/shutDown.sh` and `/home/oracle/startUp.sh` 
 - This functionality requires the [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s) extended images. The database image from the container registry `container-registry.oracle.com` includes the K8s extension.
 - Because Oracle Database Express Edition (XE) does not support [k8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s), it does not support multiple replicas.
-- If the `ReadWriteOnce` access mode is used, all the replicas will be scheduled on the same node where the persistent volume would be mounted.
-- If the `ReadWriteMany` access mode is used, all the replicas will be distributed on different nodes. So, it is recommended to have replicas more than or equal to the number of the nodes as the database image is downloaded on all those nodes. This is beneficial in quick cold fail-over scenario (when the active pod dies) as the image would already be available on that node.
+- If the `ReadWriteOnce` access mode is used, then all the replicas will be scheduled on the same node where the persistent volume would be mounted.
+- If the `ReadWriteMany` access mode is used, then all the replicas will be distributed on different nodes. For this reason, Oracle recommends that you have replicas more than or equal to the number of the nodes, because the database image is downloaded on all those nodes. This is beneficial in quick cold fail-over scenario (when the active pod dies) as the image would already be available on that node.
+
+#### Database Pod Resource Management
+When creating a Single Instance Database, you can specify the CPU and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod is scheduled on one of the pods that has the required resources available. To use database pod resource management, specify values for the `resources` attributes in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
 
 #### Database Pod Resource Management
 When creating a Single Instance Database you can specify the cpu and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod gets scheduled on one of the pods that has the required resources available. To use database pod resource management specify values for the `resources` attributes in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
 
 #### Setup Database with LoadBalancer
-For the Single Instance Database, the default service is the `NodePort` service. You can enable the `LoadBalancer` service by using `kubectl patch` command.
+For the Single Instance Database, the default service is the `NodePort` service. You can enable the `LoadBalancer` service by using the `kubectl patch` command.
 
 For example:
 
@@ -644,7 +666,7 @@ $ kubectl --type=merge -p '{"spec":{"loadBalancer": true}}' patch singleinstance
 ```
 
 ### Enabling TCPS Connections
-You can enable TCPS connections in the database by setting the `enableTCPS` field to `true` in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it.
+You can enable TCPS connections in the database by setting the `enableTCPS` field to `true` in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file, and applying it.
 
 Alternatively, you can use the following command:
 ```bash
@@ -684,44 +706,45 @@ true
   cd <Wallet Destination directory>
   export TNS_ADMIN=$(pwd)
   ```
-  After this, connect using SQL\*Plus using the following sample commands:
+  After this, connect with SQL*Plus, using the following example commands:
   ```bash
   sqlplus sys@ORCL1 as sysdba
   ```
 
 ### Specifying Custom Ports
-As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two kubernetes services possible for the database: NodePort and LoadBalancer. You can specify which port to use with these services by editing the `listenerPort` and `tcpsListenerPort` fields of the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file.
+As mentioned in the section [Setup Database with LoadBalancer](#setup-database-with-loadbalancer), there are two kubernetes services possible for the database: NodePort and LoadBalancer. You can specify which port to use with these services by editing the `listenerPort` and `tcpsListenerPort` fields of the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file.
 
 `listenerPort` is intended for normal database connections. Similarly, `tcpsListenerPort` is intended for TCPS database connections.
 
-If the `LoadBalancer` is enabled, the `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Load Balancer for normal and TCPS database connections respectively. The default values of `listenerPort` and `tcpsListenerPort` are 1521 and 2484 respectively when the `LoadBalancer` is enabled. 
+If the `LoadBalancer` is enabled, then the `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Load Balancer for normal and TCPS database connections respectively. When the `LoadBalancer` is enabled, the default values of `listenerPort` and `tcpsListenerPort` are 1521 and 2484. 
 
-In case of `NodePort` service, `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Kubernetes nodes for for normal and TCPS database connections respectively. In this case, the allowed range for the `listenerPort`, and `tcpsListenerPort` is 30000-32767.
+If the `NodePort` service is enabled, then the `listenerPort`, and `tcpsListenerPort` will be the opened ports on the Kubernetes nodes for for normal and TCPS database connections respectively. In this case, the allowed range for the `listenerPort`, and `tcpsListenerPort` is 30000-32767.
 
 **Note:**
-- `listenerPort` and `tcpsListenerPort` can not have same values.
-- `tcpsListenerPort` will come into effect only when TCPS connections are enabled (i.e. `enableTCPS` field is set in [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file).
-- If TCPS connections are enabled, and `listenerPort` is commented/removed in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, only TCPS endpoint will be exposed.
-- If LoadBalancer is enabled, and either `listenerPort` or `tcpsListenerPort` is changed, then it takes some time to complete the work requests (drain existing backend sets and create new ones). In this time, the database connectivity is broken. Although, SingleInstanceDatabase and LoadBalancer remain in the healthy state, you can check the progress of the work requests by logging into the cloud provider's console and checking the corresponding LoadBalancer.
+- `listenerPort` and `tcpsListenerPort` cannot have same values.
+- `tcpsListenerPort` will come into effect only when TCPS connections are enabled (specifically, the `enableTCPS` field is set in [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file).
+- If TCPS connections are enabled, and `listenerPort` is commented or removed in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file, then only the TCPS endpoint will be exposed.
+- If LoadBalancer is enabled, and either `listenerPort` or `tcpsListenerPort` is changed, then it takes some time to complete the work requests (drain existing backend sets and create new ones). During this time, the database connectivity is broken, although `SingleInstanceDatabase` and `LoadBalancer` remain in a healthy state. To check the progress of the work requests, you can by log in to the Cloud provider's console and check the corresponding LoadBalancer.
 
-### Setup Data Guard Configuration for a Single Instance Database (Preview status)
+### Setup Data Guard Configuration for a Single Instance Database
 
 ### Create a Standby Database
 
 #### Prerequisites
-- Before creating a Standby, ensure that ArchiveLog, FlashBack, and ForceLog on primary Single Instance Database(`.spec.primaryDatabaseRef`) are turned on.
-- Standby database is not supported for TCPS enabled Primary databases.
+- Before creating a Standby, ensure that ArchiveLog, FlashBack, and ForceLog on the primary Single Instance Database(`.spec.primaryDatabaseRef`) are turned on.
+- Standby database is not supported for TCPS-enabled Primary databases.
 
 #### Template YAML
-To create a standby database, edit and apply the sample yaml file [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml).
+To create a standby database, edit and apply the example YAML file [`config/samples/sidb/singleinstancedatabase_standby.yaml`](../../config/samples/sidb/singleinstancedatabase_standby.yaml).
 
 **Note:**
-- The `adminPassword` field of the above [config/samples/sidb/singleinstancedatabase_standby.yaml](../../config/samples/sidb/singleinstancedatabase_standby.yaml) contains an admin password secret of the primary database ref for Standby Database creation. This secret will get deleted after the database pod becomes ready if the `keepSecret` attribute of `adminPassword` field is set to `false`. By default `keepSecret` is set to `true`.
-- Mention referred primary database in `.spec.primaryDatabaseRef` in the yaml file.
-- `.spec.createAs` field of the yaml file should be set to "standby".
-- Database configuration like `Archivelog`, `FlashBack`, `ForceLog`, `TCPS connections` are not supported for standby database.
+- The `adminPassword` field of the above [`config/samples/sidb/singleinstancedatabase_standby.yaml`](../../config/samples/sidb/singleinstancedatabase_standby.yaml) contains an admin password Secret of the primary database referred to for Standby Database creation. By default `keepSecret` is set to `true`, which means that the secret is saved. However, if you want to delete the Secret after the database pod becomes ready, then this Secret will be deleted if the `keepSecret` attribute of `adminPassword` field is set to `false`. .
+- Specify the primary database with which the standby database is associateed in the `.spec.primaryDatabaseRef` yaml file.
+- The `.spec.createAs` field of the yaml file should be set to "standby".
+- Database configuration, such as `Archivelog`, `FlashBack`, `ForceLog`, `TCPS connections`, are not supported for standby database.
 
 #### List Standby Databases
+To list the standby databases, use the `get singleinstancedatabase` command.  For example:
 
 ```sh
 kubectl get singleinstancedatabase
@@ -733,7 +756,7 @@ stdby-1   Enterprise   Healthy   PHYSICAL_STANDBY   19.3.0.0.0   10.25.0.27:3239
 ```
 
 ### Query Primary Database Reference
-You can query the corresponding primary database for every standby database.
+You can query the corresponding primary database for every standby database. For example:
 
 ```sh
 kubectl get singleinstancedatabase stdby-1 -o "jsonpath={.status.primaryDatabase}"
@@ -742,7 +765,7 @@ sidb-19
 
 #### Creation Status
   
- Creating a new standby database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections.
+ Creating a new standby database instance takes a while. When the 'status' status returns the response "Healthy", the database is open for connections. For example: 
 
   ```sh
 $ kubectl get singleinstancedatabase stdby-1 -o "jsonpath={.status.status}"
@@ -754,23 +777,23 @@ $ kubectl get singleinstancedatabase stdby-1 -o "jsonpath={.status.status}"
 
 #### Template YAML
 
-After creating standbys, setup a dataguard configuration with protection mode and switch over capability using the following sample yaml.
-[config/samples/sidb/dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml)
+After creating standbys, set up an Oracle Data Guard (Data Guard) configuration with protection mode, and switch over capability using the following example YAML:
+[`config/samples/sidb/dataguardbroker.yaml`](./../../config/samples/sidb/dataguardbroker.yaml)
 
 #### Create DataGuardBroker Resource
 
-Provision a new DataguardBroker custom resource for a single instance database(`.spec.primaryDatabaseRef`) by specifying appropriate values for the primary and standby databases in the example `.yaml` file, and running the following command:
+To use the Data Guard broker, provision a new `dataguardbroker` custom resource for a single instance database(`.spec.primaryDatabaseRef`) by specifying the appropriate values for the primary and standby databases in the example `.yaml` file, and running the following command:
 
 ```sh
 $ kubectl create -f dataguardbroker.yaml
 
   dataguardbroker.database.oracle.com/dataguardbroker-sample created
 ```
-**Note:** The following attributes cannot be patched post DataguardBroker resource creation : `primaryDatabaseRef,    protectionMode`
+**Note:** The following attributes cannot be patched after you create the `dataguardbroker` resource: `primaryDatabaseRef,    protectionMode`
 
 #### DataguardBroker List
 
-To list the DataguardBroker resources, use the following command:
+To list the Data Guard broker resources, use the following command:
 
 ```sh
   $ kubectl get dataguardbroker -o name
@@ -780,6 +803,7 @@ To list the DataguardBroker resources, use the following command:
 ```
 
 #### Quick Status
+You can obtain a quick status of Data Guard broker by using the following command: 
 
 ```sh
   $ kubectl get dataguardbroker dataguardbroker-sample
@@ -790,6 +814,7 @@ To list the DataguardBroker resources, use the following command:
 ```
 
 #### Detailed Status
+To obtain more detailed Data Guard broker status, use this command: 
 
 ```sh
   $ kubectl describe dataguardbroker dataguardbroker-sample
@@ -827,8 +852,7 @@ To list the DataguardBroker resources, use the following command:
         Keep Secret:  true
         Secret Key:   oracle_pwd
         Secret Name:  db-secret
-      Fast Start Fail Over:
-        Enable:                 true
+      Fast Start Failover:      false
       Primary Database Ref:     sidb-sample
       Protection Mode:          MaxAvailability
       Set As Primary Database:  
@@ -838,6 +862,7 @@ To list the DataguardBroker resources, use the following command:
     Status:
       Cluster Connect String:   dataguardbroker-sample.default:1521/DATAGUARD
       External Connect String:  10.0.25.85:31167/DATAGUARD
+      Fast Start Failover:      false
       Primary Database:         OR19E3
       Standby Databases:        OR19E3S1,OR19E3S2
       Status:                   Healthy
@@ -850,9 +875,9 @@ To list the DataguardBroker resources, use the following command:
   
 ### Perform a Switchover
 
-Specify the approppriate SID  (SID of one of `.spec.primaryDatabaseRef` , `.spec.standbyDatabaseRefs[]`) to be set primary in the `.spec.setAsPrimaryDatabase` of [dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml) and apply the yaml file.
+Specify the approppriate database system identifier (SID)  (the SID of one of `.spec.primaryDatabaseRef` , `.spec.standbyDatabaseRefs[]`) to be set primary in the `.spec.setAsPrimaryDatabase` of [`dataguardbroker.yaml`](./../../config/samples/sidb/dataguardbroker.yaml) and apply the yaml file.
 
-The database will be set to primary. Ignored if the database is already primary.
+When you apply the YAML file, the database you specify will be set to primary. However, if the database specified with the `apply` command is already the primary, then this command has no effect: 
 
 ```sh
 $ kubectl apply -f dataguardbroker.yaml
@@ -860,7 +885,7 @@ $ kubectl apply -f dataguardbroker.yaml
   dataguardbroker.database.oracle.com/dataguardbroker-sample apply
 
 ```
-Or use the patch command 
+You can also use the patch command 
 
 ```sh
 $ kubectl --type=merge -p '{"spec":{"setAsPrimaryDatabase":"ORCLS1"}}' patch dataguardbroker dataguardbroker-sample
@@ -868,40 +893,87 @@ $ kubectl --type=merge -p '{"spec":{"setAsPrimaryDatabase":"ORCLS1"}}' patch dat
   dataguardbroker.database.oracle.com/dataguardbroker-sample patched
 ```
 
-#### Static Primary Database Connection String
+### Enable Fast-Start Failover
 
-  External and internal (running in Kubernetes pods) clients can connect to the primary database using `.status.connectString` and `.status.clusterConnectString` of the DataguardBroker resource respectively. These connection strings are fixed for the DataguardBroker resource and will not change on switchover. They can be queried using the following command
+Oracle Data Guard Fast-Start Failover (FSFO) monitors your Oracle Data Guard environments and initiates an automatic failover in the case of an outage.
+To enable FSFO, ensure the primary database is in the primary role, set the attribute `.spec.fastStartFailover` to `true` in [`datguardbroker.yaml`](./../../config/samples/sidb/dataguardbroker.yaml), and then apply it. For example: 
+
+```sh
+$ kubectl apply -f dataguardbroker.yaml
+
+  dataguardbroker.database.oracle.com/dataguardbroker-sample configured
+```
+
+You can also use the patch command:
+
+```sh
+$ kubectl --type=merge -p '{"spec":{"fastStartFailover": true}}' patch dataguardbroker dataguardbroker-sample
+
+  dataguardbroker.database.oracle.com/dataguardbroker-sample patched
+```
+
+Applying this results in the creation of a pod running the Observer. The Observer is a component of the DGMGRL interface, which monitors the availability of the primary database.
+
+**Note:** When the attribute `fastStartFailover` is `true`, then performing a switchover by specifying `setAsPrimaryDatabase` is not allowed.
+
+### Convert Standby to Snapshot Standby
+
+A snapshot standby is a fully updatable standby database that can be used development and testing. It receives and archives, but does not apply redo data from a primary database. The redo data received from the primary database is applied after a snapshot standby database is converted back into a physical standby database, and after discarding all local updates to the snapshot standby database.
+
+To convert a standby database to a snapshot standby, Ensure Fast-Start Failover is disabled, and tshen set the attribute `.spec.convertToSnapshotStandby` to `true` in [`singleinstancedatabase.yaml`](./../../config/samples/sidb/singleinstancedatabase.yaml) before applying it. For example:
+
+```sh
+$ kubectl apply -f singleinstancedatabase.yaml
+
+  singleinstancedatabase.database.oracle.com/sidb-sample configured
+```
+
+You can also use the patch command:
+
+```sh
+$ kubectl --type=merge -p '{"spec":{"convertToSnapshotStandby":true}}' patch singleinstancedatabase sidb-sample
+
+  singleinstancedatabase.database.oracle.com/sidb-sample patched
+```
+
+### Static Data Guard Connect String
+
+  External and internal (running in pods) applications can always connect to the database in the primary role by using `.status.externalConnectString` and `.status.clusterConnectString` of the Data Guard broker resource respectively. These connect strings are fixed for the Data Guard broker resource, and will not change on switchover or failover. The external connect string can be obtained using the following command:
 
   ```sh
   $ kubectl get dataguardbroker dataguardbroker-sample -o "jsonpath={.status.externalConnectString}"
 
     10.0.25.87:1521/DATAGUARD
   ```
-  The above connection string will always automatically route to the Primary database not requiring clients to change the connection string after switchover
+  This connect string will always automatically route to the database in the primary role. Client applications can be totally agnostic of the databases in the Oracle Data Guard configuration. Their number or host/IP details are not needed in the connect string.
 
-### Patch Primary and Standby databases in Data Guard configuration
+### Patch Primary and Standby databases
 
 Databases (both primary and standby) running in you cluster and managed by the Oracle Database operator can be patched between release updates of the same major release. 
 
-To patch an existing database, edit and apply the **[config/samples/sidb/singleinstancedatabase_patch.yaml](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
+To patch an existing database, edit and apply the **[`config/samples/sidb/singleinstancedatabase_patch.yaml`](../../config/samples/sidb/singleinstancedatabase_patch.yaml)** file of the database resource/object either by specifying a new release update for image attributes, or by running the following command:
 
 ```sh
 kubectl --type=merge -p '{"spec":{"image":{"pullFrom":"patched-image:tag","pullSecrets":"pull-secret"}}}' patch singleinstancedatabase <database-name>
 
 ```
-Follow these steps for patching databases configured with the dataguard broker:
-1. First patch all the standby databases by replacing the image with the new release update image
-2. Perform switch over of the primary to one of the standby databases
-3. Now patch the original primary database (currently standby after #2)  
-   After #3 the software for primary and standby databases is at the same release update
-4. Now bounce the current primary database by updating the replica count to 0 and then 1  
-   #4 will trigger a datapatch execution resulting in patching of the datafiles
-5. Finally perform switch over of the current primary back to the original primary (current standby)
+Follow these steps for patching databases configured with the Data Guard broker:
+1. Ensure Fast-Start Failover is disabled by running the following command
+```sh
+  kubectl patch dataguardbroker dataguardbroker-sample -p '{"spec":{"fastStartFailover": false}}' --type=merge
+```
+2. Patch all the standby databases by replacing the image with the new release update image.
+3. Perform switchover of the primary to one of the standby databases.
+4. Patch the original primary database (currently standby after #2)  
+   After step 3, the software for primary and standby databases is at the same release update
+5. Bounce the current primary database by updating the replica count to 0 and then 1  
+   Step 5 will trigger a datapatch execution, which results in patching the datafiles
+6. Finally, perform switch over of the current primary back to the original primary (current standby)
 
 
 ### Delete the Data Guard Configuration
 
-To delete a standby or primary database configured for Data Guard, delete the dataguardbroker resource first followed by the standby databases and finally the primary database
+To delete a standby or primary database configured for Oracle Data Guard, delete the `dataguardbroker` resource. After that is done, delete the standby databases, and then finally the primary database.
 
 #### Delete DataguardBroker Resource
 ```sh
@@ -910,8 +982,7 @@ $ kubectl delete dataguardbroker dgbroker-sample
   dataguardbroker.database.oracle.com/dgbroker-sample deleted
 ```
 
-**Note:** If a switch over to standby was performed, make sure to switch back to the original primary database before deleting the dataguard broker resource
-
+**Note:** If a switchover to standby was performed, then ensure that you switch back to the original primary database before deleting the Data Guard broker resource. For example:
 #### Delete Standby Database
 ```sh 
 $ kubectl delete singleinstancedatabase stdby-1
@@ -921,15 +992,15 @@ $ kubectl delete singleinstancedatabase stdby-1
 
 ### Execute Custom Scripts
 
-Custom scripts (sql and/or shell scripts) can be executed after the initial database setup and/or after each startup of the database. SQL scripts will be executed as sysdba, shell scripts will be executed as the current user. To ensure proper order it is recommended to prefix your scripts with a number. For example `01_users.sql`, `02_permissions.sql`, etc. Place all such scripts in setup and startup folders created in a persistent volume to execute them post setup and post startup respectively.
+You can set up custom scripts (SQL, shell scripts, or both) to run after the initial database setup, and to have scripts run after each startup of the database. SQL scripts will be executed as `sysdba`, and shell scripts will be executed as the current user. To ensure proper order, Oracle recommends that you prefix your scripts with a number. For example: `01_users.sql`, `02_permissions.sql`, and son on. To ensure that these scripts are available to run after setup or after each database startup, place all such scripts in setup and startup folders created in a persistent volume.
 
-Create a persistent volume using [static provisioning](#static-persistence) and then specify the name of this volume with the `<.spec.persistence.scriptsVolumeName>` field which corresponds to the `scriptsVolumeName` field of the persistence section in the **[singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml)**.
+Create a persistent volume by using [static provisioning](#static-persistence) and then specify the name of this volume with the `<.spec.persistence.scriptsVolumeName>` field which corresponds to the `scriptsVolumeName` field of the persistence section in the **[`singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml)**.
 
-**Note:** Executing custom scripts requires read and list access for persistent volumes as mentioned in [prerequisites](#prerequisites)
+**Note:** Running custom scripts requires read and list access for persistent volumes, as mentioned in [prerequisites](#prerequisites)
 
 ## OracleRestDataService Resource
 
-The Oracle Database Operator creates the `OracleRestDataService` as a custom resource. We will refer `OracleRestDataService` as ORDS from now onwards. Creating ORDS as a custom resource enables the RESTful API access to the Oracle Database in K8s and enables it to be managed as a native Kubernetes object.
+The Oracle Database Operator creates the `OracleRestDataService` as a custom resource. In this documeent, we will refer to `OracleRestDataService` as ORDS. Creating ORDS as a custom resource enables the RESTful API access to the Oracle Database in K8s, and enables it to be managed as a native Kubernetes object.
 
 ### Resource Details
 
@@ -950,7 +1021,7 @@ To obtain a quick status check of the ORDS service, use the following command:
 $ kubectl get oraclerestdataservice ords-sample
 
 NAME          STATUS      DATABASE         DATABASE API URL                                           DATABASE ACTIONS URL                           APEX URL
-ords-sample   Healthy     sidb-sample      https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/     https://10.0.25.54:8443/ords/sql-developer     https://10.0.25.54:8443/ords/ORCLPDB1/apex
+ords-sample   Healthy     sidb-sample      http://10.0.25.54:8181/ords/schema1/_/db-api/stable/     http://10.0.25.54:8181/ords/sql-developer     http://10.0.25.54:8181/ords/apex
 
 ```
 
@@ -969,10 +1040,10 @@ $ kubectl describe oraclerestdataservice ords-sample
   Metadata: ...
   Spec: ...
   Status:
-    Cluster Db API URL:    https://ords21c-1.default:8443/ords/ORCLPDB1/_/db-api/stable/
-    Database Actions URL:  https://10.0.25.54:8443/ords/sql-developer
-    Database API URL:      https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/
-    Apex URL:              https://10.0.25.54:8443/ords/ORCLPDB1/apex
+    Cluster Db API URL:    http://ords21c-1.default:8181/ords/schema1/_/db-api/stable/
+    Database Actions URL:  http://10.0.25.54:8181/ords/sql-developer
+    Database API URL:      http://10.0.25.54:8181/ords/schema1/_/db-api/stable/
+    Apex URL:              http://10.0.25.54:8181/ords/apex
     Database Ref:          sidb21c-1
     Image:
       Pull From:     ...
@@ -994,15 +1065,14 @@ The template `.yaml` file for Oracle Rest Data Services (`OracleRestDataService`
 
 **Note:**  
 - The `adminPassword` and `ordsPassword` fields in the `oraclerestdataservice.yaml` file contains secrets for authenticating the Single Instance Database and the ORDS user with the following roles: `SQL Administrator, System Administrator, SQL Developer, oracle.dbtools.autorest.any.schema`.  
-- To build the ORDS image, use the following instructions: [Building Oracle REST Data Services Install Images](https://github.com/oracle/docker-images/tree/main/OracleRestDataServices#building-oracle-rest-data-services-install-images).
-- By default, ORDS uses self-signed certificates. To use certificates from the Certificate Authority, the ORDS image needs to be rebuilt after specifying the values of `ssl.cert` and `ssl.cert.key` in the [standalone.properties](https://github.com/oracle/docker-images/blob/main/OracleRestDataServices/dockerfiles/standalone.properties.tmpl) file. After you rebuild the ORDS image, use the rebuilt image in the **[config/samples/sidb/oraclerestdataservice.yaml](../../config/samples/sidb/oraclerestdataservice.yaml)** file.
-- If you want to install ORDS in a [prebuilt database](#provision-a-pre-built-database), make sure to attach the **database persistence** by uncommenting the `persistence` section in the **[config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file, while provisioning the prebuilt database.
+
+- If you want to install ORDS in a [prebuilt database](#provision-a-pre-built-database), then ensure that you attach the **database persistence** by uncommenting the `persistence` section in the **[`config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml`](../../config/samples/sidb/singleinstancedatabase_prebuiltdb.yaml)** file, while provisioning the prebuilt database.
 
 ### REST Enable a Database
 
 #### Provision ORDS
 
-To quickly provision a new ORDS instance, use the sample **[config/samples/sidb/oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file. For example: 
+To quickly provision a new ORDS instance, use the example **[`config/samples/sidb/oraclerestdataservice_create.yaml`](../../config/samples/sidb/oraclerestdataservice_create.yaml)** file. For example: 
 
 ```sh
 $ kubectl apply -f oraclerestdataservice_create.yaml
@@ -1012,18 +1082,17 @@ $ kubectl apply -f oraclerestdataservice_create.yaml
 After this command completes, ORDS is installed in the container database (CDB) of the Single Instance Database.
 
 ##### Note:
-You are required to specify the ORDS secret in the [oraclerestdataservice_create.yaml](../../config/samples/sidb/oraclerestdataservice_create.yaml) file. The default value mentioned in the `adminPassword.secretName` field is `ords-secret`. You can create this secret manually by using the following command:
+You are required to specify the ORDS Secret in the [`oraclerestdataservice_create.yaml`](../../config/samples/sidb/oraclerestdataservice_create.yaml) file. The default value mentioned in the `adminPassword.secretName` field is `ords-secret`. You can create this Secret manually by using the following command:
 
 ```bash
 kubectl create secret generic ords-secret --from-literal=oracle_pwd=<specify password here>
 ```
 
-Alternatively, you can create this secret and the APEX secret by filling the passwords in the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file and applying it using the command below:
+Alternatively, you can create this Secret by filling the passwords in the **[`oraclerestdataservice_secrets.yaml`](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file and applying it using the following command:
 
 ```bash
 kubectl apply -f singleinstancedatabase_secrets.yaml
 ```
-The APEX secret created above, will be used while [installing APEX](#apex-installation).
 
 #### Creation Status
   
@@ -1043,7 +1112,7 @@ Clients can access the REST Endpoints using `.status.databaseApiUrl` as shown in
 ```sh
 $ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.databaseApiUrl}"
 
-  https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/
+  http://10.0.25.54:8181/ords/schema1/_/db-api/stable/
 ```
 
 All the REST Endpoints can be found in [_REST APIs for Oracle Database_](https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/rest-endpoints.html).
@@ -1052,37 +1121,51 @@ There are two basic approaches for authentication to the REST Endpoints. Certain
 
 #### Database API
 
-To call certain REST endpoints, you must use the ORDS_PUBLIC_USER with role `SQL Administrator`, and `.spec.ordsPassword` credentials.
+To call certain REST endpoints, you must use the Schema User, which is REST-Enabled with role `SQL Administrator`, and `.spec.ordsPassword` credentials.
 
-The ORDS user also has the following additional roles: `System Administrator, SQL Developer, oracle.dbtools.autorest.any.schema`.
+The Schema user also has the following additional roles: `System Administrator, SQL Developer`.
 
-Use this ORDS user to authenticate the following: 
+Use this Schema user to authenticate the following: 
 * Database APIs
 * Any Protected AutoRest Enabled Object APIs
 * Database Actions of any REST Enabled Schema
   
 ##### Examples
-Some examples for the Database API usage are as follows:
+Some examples for the Database API usage for REST-Enabled schema1 are as follows:
 - **Get all Database Components**
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/components/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/components/ | python -m json.tool
     ```
 - **Get all Database Users** 
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/security/users/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/security/users/ | python -m json.tool
     ```
 - **Get all Tablespaces**
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/storage/tablespaces/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/storage/tablespaces/ | python -m json.tool
     ```
 - **Get all Database Parameters**
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/parameters/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/parameters/ | python -m json.tool
     ```
 - **Get all Feature Usage Statistics**
     ```sh
-    curl -s -k -X GET -u 'ORDS_PUBLIC_USER:<.spec.ordsPassword>' https://10.0.25.54:8443/ords/ORCLPDB1/_/db-api/stable/database/feature_usage/ | python -m json.tool
+    curl -s -k -X GET -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' http://10.0.25.54:8181/ords/schema1/_/db-api/stable/database/feature_usage/ | python -m json.tool
     ```
+
+#### MongoDB API
+
+To enable the Database API for MongoDB, set `.spec.mongoDbApi` to `true`. When this is done, MongoDB applications are be able to connect to Oracle Database using the MongoDB API Access URL. For example:
+
+```sh
+$ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.mongoDbApiAccessUrl}"
+
+  mongodb://[{user}:{password}@]10.0.25.54:27017/{user}?authMechanism=PLAIN&authSource=$external&ssl=true&retryWrites=false&loadBalanced=true
+```
+
+* Change [{user}:{password}@] to database username and password. Retain the @ symbol but remove all the brackets.
+* Change the {user} later in the URL to database username as well.
+
 #### Advanced Usages
 
 ##### Oracle Data Pump
@@ -1091,10 +1174,9 @@ The Oracle REST Data Services (ORDS) database API enables you to create Oracle D
 REST APIs for Oracle Data Pump Jobs can be found at [https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/op-database-datapump-jobs-post.html](https://docs.oracle.com/en/database/oracle/oracle-database/21/dbrst/op-database-datapump-jobs-post.html).
 ##### REST Enabled SQL
 
-The REST Enable SQL functionality is available to all the schemas specified in the `.spec.restEnableSchemas` attribute of the sample yaml.
-Only these schemas will have access SQL Developer Web Console specified by the Database Actions URL. 
+The REST-Enabled SQL functionality is available to all of the schemas specified in the `.spec.restEnableSchemas` attribute of the example yaml in the sample folder. Only these schemas will have access SQL Developer Web Console specified by the Database Actions URL. 
 
-The REST Enabled SQL functionality enables REST calls to send DML, DDL and scripts to any REST enabled schema by exposing the same SQL engine used in SQL Developer and Oracle SQLcl (SQL Developer Command Line).
+The REST-Enabled SQL functionality enables REST calls to send DML, DDL and scripts to any REST-Enabled schema by exposing the same SQL engine used in SQL Developer and Oracle SQLcl (SQL Developer Command Line).
 
 For example:
 
@@ -1119,7 +1201,7 @@ Create a file called "/tmp/table.sql" with the following contents.
 Run the following API to run the script created in the previous example:
 
 ```sh
-  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdbName>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+  curl -s -k -X "POST" "http://10.0.25.54:8181/ords/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
   -H "Content-Type: application/sql" \
   -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' \
   -d @/tmp/table.sql
@@ -1130,7 +1212,7 @@ Run the following API to run the script created in the previous example:
 Fetch all entries from 'DEPT' table by calling the following API
 
 ```sh
-  curl -s -k -X "POST" "https://10.0.25.54:8443/ords/<.spec.restEnableSchemas[].pdbName>/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
+  curl -s -k -X "POST" "http://10.0.25.54:8181/ords/<.spec.restEnableSchemas[].urlMapping>/_/sql" \
   -H "Content-Type: application/sql" \
   -u '<.spec.restEnableSchemas[].schemaName>:<.spec.ordsPassword>' \
   -d $'select * from dept;' | python -m json.tool
@@ -1152,16 +1234,12 @@ Database Actions can be accessed with a browser by using `.status.databaseAction
 ```sh
 $ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.databaseActionsUrl}"
 
-  https://10.0.25.54:8443/ords/sql-developer
+  http://10.0.25.54:8181/ords/sql-developer
 ```
 
-To access Database Actions, sign in by using the following code as a database user whose schema has been REST-enabled: 
+To access Database Actions, sign in by using the following code as a database user whose schema has been REST-Enabled: 
 
-* First Page: \
-PDB Name: `.spec.restEnableSchemas[].pdbName` \
-Username: `.spec.restEnableSchemas[].urlMapping`
-
-* Second Page: \
+* Login Page: \
 Username: `.spec.restEnableSchemas[].schemaName` \
 Password: `.spec.ordsPassword`
 
@@ -1175,21 +1253,9 @@ Oracle APEX is a low-code development platform that enables developers to build 
 
 Using APEX, developers can quickly develop and deploy compelling apps that solve real problems and provide immediate value. Developers won't need to be an expert in a vast array of technologies to deliver sophisticated solutions. Focus on solving the problem and let APEX take care of the rest.
 
-The `OraOperator` facilitates installation of APEX in the database and also configures ORDS for it. The following section will explain installing APEX with configured ORDS:
+The `OraOperator` facilitates installation of APEX in the database and also configures ORDS for it.
 
-* For quick provisioning, use the sample **[config/samples/sidb/oraclerestdataservice_apex.yaml](../../config/samples/sidb/oraclerestdataservice_apex.yaml)** file. For example:
-
-      kubectl apply -f oraclerestdataservice_apex.yaml
-
-* The APEX Password is used as a common password for `APEX_PUBLIC_USER, APEX_REST_PUBLIC_USER, APEX_LISTENER` and Apex administrator (username: `ADMIN`) mapped to secretKey. You can create APEX secret using the following command:
-
-  ```bash
-  kubectl create secret generic apex-secret --from-literal=oracle_pwd=<specify password here>
-  ``` 
-  Please refer [this](#note) section for APEX secret creation using the **[oraclerestdataservice_secrets.yaml](../../config/samples/sidb/oraclerestdataservice_secrets.yaml)** file.
-
-* The status of ORDS turns to `Updating` during APEX configuration, and changes to `Healthy` after successful configuration. You can also check status by using the following command:
-
+* Status of APEX configuration can be checked using the following command:
 
   ```sh
   $ kubectl get oraclerestdataservice ords-sample -o "jsonpath={.status.apexConfigured}"
@@ -1197,28 +1263,27 @@ The `OraOperator` facilitates installation of APEX in the database and also conf
     [true]
   ```
 
-* If you configure APEX after ORDS is installed, then ORDS pods will be deleted and recreated.
-
 Application Express can be accessed via browser using `.status.apexUrl` in the following command.
 
 ```sh
 $ kubectl get oraclerestdataservice/ords-sample -o "jsonpath={.status.apexUrl}"
 
-  https://10.0.25.54:8443/ords/ORCLPDB1/apex
+  http://10.0.25.54:8181/ords/apex
 ```
 
-Sign in to Administration services using
-workspace: `INTERNAL`
-username: `ADMIN`
-password: `.spec.apexPassword`
+Sign in to Administration services using \
+workspace: `INTERNAL` \
+username: `ADMIN` \
+password: `Welcome_1`
 
 ![application-express-admin-home](/images/sidb/application-express-admin-home.png)
 
 **Note:**
+- Oracle strongly recommends that you change the default APEX admin password.
 - By default, the full development environment is initialized in APEX. After deployment, you can change it manually to the runtime environment. To change environments, run the script `apxdevrm.sql` after connecting to the primary database from the ORDS pod as the `SYS` user with `SYSDBA` privilege. For detailed instructions, see: [Converting a Full Development Environment to a Runtime Environment](https://docs.oracle.com/en/database/oracle/application-express/21.2/htmig/converting-between-runtime-and-full-development-environments.html#GUID-B0621B40-3441-44ED-9D86-29B058E26BE9).
 
 ### Delete ORDS
-- To delete ORDS run the following command:
+- To delete ORDS, run the following command:
       
       kubectl delete oraclerestdataservice ords-sample
 

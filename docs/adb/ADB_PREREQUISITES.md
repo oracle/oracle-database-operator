@@ -48,7 +48,7 @@ After creating the ConfigMap and the Secret, use their names as the values of `o
 
 Instance principal authorization enables the operator to make API calls from an instance (that is, a node) without requiring the `ociConfigMap`,  and `ociSecret` attributes in the `.yaml` file. This approach applies only to instances that are running in the Oracle Cloud Infrastructure (OCI). In addition, this approach grants permissions to the nodes that match the rules, which means that all the pods in the nodes can make the service calls.
 
-To set up the instance principals, you will have to:
+To set up the instance principals, complete the following tasks:
 
 * [Define dynamic group that includes the nodes in which the operator runs](#define-dynamic-group)
 * [Define policies that grant to the dynamic group the required permissions for the operator to its OCI interactions](#define-policies)

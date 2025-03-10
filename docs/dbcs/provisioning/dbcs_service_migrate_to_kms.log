@@ -1,0 +1,132 @@
+2025-01-10T14:30:21Z    INFO    Updating KMS details in Existing Database       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc"}
+2025-01-10T14:30:27Z    INFO    MigrateVaultKey request succeeded, waiting for database to reach the desired state      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc"}
+2025-01-10T14:30:27Z    INFO    Starting to wait for the database to reach the desired state    {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "DesiredState": "AVAILABLE", "Timeout": "2h0m0s"}
+2025-01-10T14:30:27Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:30:27Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:31:28Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:31:28Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:32:29Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:32:29Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:33:30Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:33:30Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:34:31Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:34:31Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:35:32Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:35:32Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:36:33Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:36:33Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:37:34Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:37:34Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:38:35Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:38:35Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:30:21Z    INFO    Updating KMS details in Existing Database       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc"}
+2025-01-10T14:30:27Z    INFO    MigrateVaultKey request succeeded, waiting for database to reach the desired state      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc"}
+2025-01-10T14:30:27Z    INFO    Starting to wait for the database to reach the desired state    {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "DesiredState": "AVAILABLE", "Timeout": "2h0m0s"}
+2025-01-10T14:30:27Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:30:27Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:31:28Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:31:28Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:32:29Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:32:29Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:33:30Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:33:30Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:34:31Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:34:31Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:35:32Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:35:32Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:36:33Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:36:33Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:37:34Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:37:34Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:38:35Z    INFO    Database State  {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING"}
+2025-01-10T14:38:35Z    INFO    Database not in the desired state yet, waiting...       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "CurrentState": "UPDATING", "DesiredState": "AVAILABLE", "NextCheckIn": "1m0s"}
+2025-01-10T14:40:37Z    INFO    Database reached the desired state      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc", "DatabaseID": "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq", "State": "AVAILABLE"}
+2025-01-10T14:40:39Z    INFO    KMS migration process completed successfully    {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "890fac49-f8c0-43a8-817b-fb94e96627cc"}
+
+
+basedb/ $ kubectl describe dbcssystems.database.oracle.com/dbcssystem-existing
+Name:         dbcssystem-existing
+Namespace:    default
+Labels:       <none>
+Annotations:  lastSuccessfulSpec:
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a","availabilityDomain":""...
+API Version:  database.oracle.com/v4
+Kind:         DbcsSystem
+Metadata:
+  Creation Timestamp:  2025-01-10T14:29:37Z
+  Generation:          2
+  Resource Version:    130979222
+  UID:                 f7535120-dd4a-4cbc-9e29-b9f104904773
+Spec:
+  Db System:
+    Availability Domain:       
+    Compartment Id:            ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
+    Db Admin Password Secret:  admin-password
+    Db Backup Config:
+    Host Name:  
+    Kms Config:
+    Shape:                       
+    Subnet Id:                   
+    Tde Wallet Password Secret:  tde-password
+  Id:                            ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyafdoaarkuhhxjfgjrzjtxpbcaycib3woadfmcz545mwua
+  Kms Config:
+    Compartment Id:  ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
+    Key Name:        dbkey
+    Vault Name:      dbvault
+  Oci Config Map:    oci-cred-mumbai
+  Oci Secret:        oci-privatekey
+Status:
+  Availability Domain:        OLou:AP-MUMBAI-1-AD-1
+  Cpu Core Count:             2
+  Data Storage Percentage:    80
+  Data Storage Size In G Bs:  256
+  Db Clone Status:
+    Db Db Unique Name:  
+    Host Name:          
+  Db Edition:           ENTERPRISE_EDITION_HIGH_PERFORMANCE
+  Db Info:
+    Db Home Id:      ocid1.dbhome.oc1.ap-mumbai-1.anrg6ljrqlb5nxia3s627hwjr36bix3dnh4dlbny22tzcmb2a3b4rcp74clq
+    Db Name:         cdb12
+    Db Unique Name:  cdb12_hf8_bom
+    Db Workload:     OLTP
+    Id:              ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyavlxjvktbs6xko5fbutwdwb3wgr2mnisovycrisj7abxq
+  Display Name:      dbsys123
+  Id:                ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyafdoaarkuhhxjfgjrzjtxpbcaycib3woadfmcz545mwua
+  Kms Details Status:
+    Compartment Id:       ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
+    Key Id:               ocid1.key.oc1.ap-mumbai-1.fbtxxaolaaavw.abrg6ljr63rcu5h6lmaeux752pzmp334zihovh3n2acags6zt37emab34yba
+    Key Name:             dbkey
+    Management Endpoint:  https://fbtxxaolaaavw-management.kms.ap-mumbai-1.oraclecloud.com
+    Vault Id:             ocid1.vault.oc1.ap-mumbai-1.fbtxxaolaaavw.abrg6ljrbjokn2fwhh36tqzyog4yjrth3mj2emxea4fxmzw6z35zlmh65p2a
+    Vault Name:           dbvault
+  License Model:          BRING_YOUR_OWN_LICENSE
+  Network:
+    Client Subnet:  oke-nodesubnet-quick-cluster1-2bebe95db-regional
+    Domain Name:    subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:      host01234
+    Listener Port:  1521
+    Scan Dns Name:  host01234-scan.subdda0b5eaa.cluster1.oraclevcn.com
+    Vcn Name:       oke-vcn-quick-cluster1-2bebe95db
+  Node Count:       1
+  Pdb Details Status:
+    Pdb Config Status:
+      Freeform Tags:
+        Created By:           MAA_TEAM
+        TEST:                 test_case_provision
+      Pdb Name:               PDB0123
+      Pdb State:              AVAILABLE
+      Pluggable Database Id:  ocid1.pluggabledatabase.oc1.ap-mumbai-1.anrg6ljrabf7htyafnt7gvokjw7cvzs6xjxw5nmlz6awzycqcnf57blcuefa
+  Reco Storage Size In GB:    256
+  Shape:                      VM.Standard2.2
+  State:                      AVAILABLE
+  Storage Management:         ASM
+  Subnet Id:                  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Time Zone:                  UTC
+  Work Requests:
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljroc46ic555q2rfcwxg3srsbq4indueiuvj7tlziyy63uz3pvpe4ra
+    Operation Type:    Create DB System
+    Percent Complete:  100
+    Time Accepted:     2025-01-10 06:30:12.411 +0000 UTC
+    Time Finished:     2025-01-10 07:51:04.59 +0000 UTC
+    Time Started:      2025-01-10 06:30:20.62 +0000 UTC
+Events:                <none>

@@ -3,7 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: SingleInstanceDatabase
 metadata:
   # Creates base standbydatabase-sample. Use singleinstancedatabase_clone.yaml for cloning
@@ -27,7 +27,7 @@ spec:
 
   ## Database image details
   image:
-    pullFrom: container-registry.oracle.com/database/enterprise:latest
+    pullFrom: container-registry.oracle.com/database/enterprise_ru:19
     pullSecrets: oracle-container-registry-secret
 
   ## size is the required minimum size of the persistent volume

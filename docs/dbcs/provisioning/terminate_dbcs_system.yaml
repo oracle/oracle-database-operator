@@ -1,4 +1,4 @@
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: DbcsSystem
 metadata:
   name: dbcssystem-terminate

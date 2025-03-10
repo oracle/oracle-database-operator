@@ -1,0 +1,20 @@
+# permissions for end users to view lrests.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: lrest-viewer-role
+rules:
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - lrests
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - lrests/status
+  verbs:
+  - get

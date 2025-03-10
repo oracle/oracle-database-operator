@@ -68,7 +68,6 @@ type ShardingDatabaseSpec struct {
 	GsmImagePullSecret        string              `json:"gsmImagePullSecret,omitempty"` // Optional  The name of an image pull secret in case of a private docker repository.
 	StagePvcName              string              `json:"stagePvcName,omitempty"`       // the Stagepvc  for the backup of cluster
 	PortMappings              []PortMapping       `json:"portMappings,omitempty"`       // Port mappings for the service that is created. The service is created if there is at least
-	Namespace                 string              `json:"namespace,omitempty"`          // Target namespace of the application.
 	IsDebug                   bool                `json:"isDebug,omitempty"`            // Optional parameter to enable logining
 	IsExternalSvc             bool                `json:"isExternalSvc,omitempty"`
 	IsClone                   bool                `json:"isClone,omitempty"`
@@ -95,6 +94,7 @@ type ShardingDatabaseSpec struct {
 	FssStorageClass           string              `json:"fssStorageClass,omitempty"`
 	TdeWalletPvcMountLocation string              `json:"tdeWalletPvcMountLocation,omitempty"`
 	DbEdition                 string              `json:"dbEdition,omitempty"`
+	TopicId                   string              `json:"topicId,omitempty"`
 }
 
 // To understand Metav1.Condition, please refer the link https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1
@@ -215,6 +215,7 @@ type GsmSpec struct {
 	Label            string                       `json:"label,omitempty"` // Optional GSM Label
 	IsDelete         string                       `json:"isDelete,omitempty"`
 	NodeSelector     map[string]string            `json:"nodeSelector,omitempty"`
+	PvAnnotations    map[string]string            `json:"pvAnnotations,omitempty"`
 	PvMatchLabels    map[string]string            `json:"pvMatchLabels,omitempty"`
 	ImagePulllPolicy *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
 	Region           string                       `json:"region,omitempty"`
@@ -364,6 +365,7 @@ const (
 var KubeConfigOnce sync.Once
 
 // #const lastSuccessfulSpec = "lastSuccessfulSpec"
+const lastSuccessfulSpecOnsInfo = "lastSuccessfulSpeOnsInfo"
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.
 // Returns nil, nil if there is no lastSuccessfulSpec.
@@ -393,6 +395,27 @@ func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpec(kubeClient client.C
 
 	anns := map[string]string{
 		lastSuccessfulSpec: string(specBytes),
+	}
+
+	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)
+}
+
+// GetLastSuccessfulOnsInfo returns spec from the lass successful reconciliation.
+// Returns nil, nil if there is no lastSuccessfulSpec.
+func (shardingv1 *ShardingDatabase) GetLastSuccessfulOnsInfo() ([]byte, error) {
+	val, ok := shardingv1.GetAnnotations()[lastSuccessfulSpecOnsInfo]
+	if !ok {
+		return nil, nil
+	}
+	specBytes := []byte(val)
+	return specBytes, nil
+}
+
+// UpdateLastSuccessfulSpec updates lastSuccessfulSpec with the current spec.
+func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpecOnsInfo(kubeClient client.Client, specBytes []byte) error {
+
+	anns := map[string]string{
+		lastSuccessfulSpecOnsInfo: string(specBytes),
 	}
 
 	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)

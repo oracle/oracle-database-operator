@@ -16,7 +16,7 @@ spec:
       displayName: Dbcs System
       kind: DbcsSystem
       name: DbcsSystem.database.oracle.com
-      version: v1alpha1
+      version: v4
     - description: AutonomousContainerDatabase is the Schema for the autonomouscontainerdatabases
         API
       displayName: Autonomous Container Database
@@ -70,7 +70,7 @@ spec:
       displayName: Sharding Database
       kind: ShardingDatabase
       name: shardingdatabases.database.oracle.com
-      version: v1alpha1
+      version: v4
     - description: SingleInstanceDatabase is the Schema for the singleinstancedatabases
         API
       displayName: Single Instance Database

@@ -71,8 +71,8 @@ var _ = Describe("test AutonomousDatabaseRestore webhook", func() {
 		It("Should specify at least one of the k8sADB and ociADB", func() {
 			var errMsg string = "target ADB is empty"
 
-			restore.Spec.Target.K8sADB.Name = nil
-			restore.Spec.Target.OCIADB.OCID = nil
+			restore.Spec.Target.K8sAdb.Name = nil
+			restore.Spec.Target.OciAdb.Ocid = nil
 
 			validateInvalidTest(restore, false, errMsg)
 		})
@@ -80,8 +80,8 @@ var _ = Describe("test AutonomousDatabaseRestore webhook", func() {
 		It("Should specify either k8sADB.name or ociADB.ocid, but not both", func() {
 			var errMsg string = "specify either k8sADB.name or ociADB.ocid, but not both"
 
-			restore.Spec.Target.K8sADB.Name = common.String("fake-target-adb")
-			restore.Spec.Target.OCIADB.OCID = common.String("fake.ocid1.autonomousdatabase.oc1...")
+			restore.Spec.Target.K8sAdb.Name = common.String("fake-target-adb")
+			restore.Spec.Target.OciAdb.Ocid = common.String("fake.ocid1.autonomousdatabase.oc1...")
 
 			validateInvalidTest(restore, false, errMsg)
 		})
@@ -89,7 +89,7 @@ var _ = Describe("test AutonomousDatabaseRestore webhook", func() {
 		It("Should select at least one restore source", func() {
 			var errMsg string = "retore source is empty"
 
-			restore.Spec.Source.K8sADBBackup.Name = nil
+			restore.Spec.Source.K8sAdbBackup.Name = nil
 			restore.Spec.Source.PointInTime.Timestamp = nil
 
 			validateInvalidTest(restore, false, errMsg)
@@ -98,7 +98,7 @@ var _ = Describe("test AutonomousDatabaseRestore webhook", func() {
 		It("Cannot apply backupName and the PITR parameters at the same time", func() {
 			var errMsg string = "cannot apply backupName and the PITR parameters at the same time"
 
-			restore.Spec.Source.K8sADBBackup.Name = common.String("fake-source-adb-backup")
+			restore.Spec.Source.K8sAdbBackup.Name = common.String("fake-source-adb-backup")
 			restore.Spec.Source.PointInTime.Timestamp = common.String("2021-12-23 11:03:13 UTC")
 
 			validateInvalidTest(restore, false, errMsg)

@@ -1,0 +1,137 @@
+2024-08-14T13:59:34Z    INFO    DbcsSystem system provisioned succesfully       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267"}
+2024-08-14T13:59:35Z    INFO    DBInst after assignment {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "dbcsInst:->": {"apiVersion": "database.oracle.com/v1alpha1", "kind": "DbcsSystem", "namespace": "default", "name": "dbcssystem-create-with-pdb"}}
+2024-08-14T13:59:36Z    INFO    Database details fetched successfully   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "DatabaseId": ["ocid1.database.oc1.iad.anuwcljsabf7htyarsik3zmfezgl5tvvnmtf7wqm2n3cnvhyx5oo3nk5f6lq"]}
+2024-08-14T13:59:36Z    INFO    Calling createPluggableDatabase {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "ctx:->": "context.Background.WithCancel.WithValue(type logr.contextKey, val <not Stringer>).WithValue(type controller.reconcileIDKey, val <not Stringer>)", "dbcsInst:->": {"apiVersion": "database.oracle.com/v1alpha1", "kind": "DbcsSystem", "namespace": "default", "name": "dbcssystem-create-with-pdb"}, "databaseIds:->": "ocid1.database.oc1.iad.anuwcljsabf7htyarsik3zmfezgl5tvvnmtf7wqm2n3cnvhyx5oo3nk5f6lq", "compartmentId:->": "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"}
+2024-08-14T13:59:36Z    INFO    Checking if the pluggable database exists       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBName": "pdb_sauahuja_11"}
+2024-08-14T13:59:36Z    INFO    TDE wallet password retrieved successfully      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267"}
+2024-08-14T13:59:36Z    INFO    PDB admin password retrieved successfully       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267"}
+2024-08-14T13:59:36Z    INFO    Creating pluggable database     {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBName": "pdb_sauahuja_11"}
+2024-08-14T13:59:37Z    INFO    Pluggable database creation initiated   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBName": "pdb_sauahuja_11", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4ydcdycxirop2jjf4htjcq6mnzavf6yyqfsuo74miviq"}
+2024-08-14T13:59:37Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4ydcdycxirop2jjf4htjcq6mnzavf6yyqfsuo74miviq", "Status": "PROVISIONING"}
+2024-08-14T14:00:07Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4ydcdycxirop2jjf4htjcq6mnzavf6yyqfsuo74miviq", "Status": "PROVISIONING"}
+2024-08-14T14:00:38Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4ydcdycxirop2jjf4htjcq6mnzavf6yyqfsuo74miviq", "Status": "PROVISIONING"}
+2024-08-14T14:01:08Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4ydcdycxirop2jjf4htjcq6mnzavf6yyqfsuo74miviq", "Status": "PROVISIONING"}
+2024-08-14T14:01:38Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4ydcdycxirop2jjf4htjcq6mnzavf6yyqfsuo74miviq", "Status": "PROVISIONING"}
+2024-08-14T14:02:08Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4ydcdycxirop2jjf4htjcq6mnzavf6yyqfsuo74miviq", "Status": "PROVISIONING"}
+2024-08-14T14:02:38Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4ydcdycxirop2jjf4htjcq6mnzavf6yyqfsuo74miviq", "Status": "AVAILABLE"}
+2024-08-14T14:02:38Z    INFO    Pluggable database successfully created {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBName": "pdb_sauahuja_11", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4ydcdycxirop2jjf4htjcq6mnzavf6yyqfsuo74miviq"}
+2024-08-14T14:02:39Z    INFO    Database details fetched successfully   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "DatabaseId": ["ocid1.database.oc1.iad.anuwcljsabf7htyarsik3zmfezgl5tvvnmtf7wqm2n3cnvhyx5oo3nk5f6lq"]}
+2024-08-14T14:02:39Z    INFO    Calling createPluggableDatabase {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "ctx:->": "context.Background.WithCancel.WithValue(type logr.contextKey, val <not Stringer>).WithValue(type controller.reconcileIDKey, val <not Stringer>)", "dbcsInst:->": {"apiVersion": "database.oracle.com/v1alpha1", "kind": "DbcsSystem", "namespace": "default", "name": "dbcssystem-create-with-pdb"}, "databaseIds:->": "ocid1.database.oc1.iad.anuwcljsabf7htyarsik3zmfezgl5tvvnmtf7wqm2n3cnvhyx5oo3nk5f6lq", "compartmentId:->": "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"}
+2024-08-14T14:02:39Z    INFO    Checking if the pluggable database exists       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBName": "pdb_sauahuja_12"}
+2024-08-14T14:02:39Z    INFO    TDE wallet password retrieved successfully      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267"}
+2024-08-14T14:02:39Z    INFO    PDB admin password retrieved successfully       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267"}
+2024-08-14T14:02:39Z    INFO    Creating pluggable database     {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBName": "pdb_sauahuja_12"}
+2024-08-14T14:02:40Z    INFO    Pluggable database creation initiated   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBName": "pdb_sauahuja_12", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q"}
+2024-08-14T14:02:40Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q", "Status": "PROVISIONING"}
+2024-08-14T14:03:11Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q", "Status": "PROVISIONING"}
+2024-08-14T14:03:41Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q", "Status": "PROVISIONING"}
+2024-08-14T14:04:11Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q", "Status": "PROVISIONING"}
+2024-08-14T14:04:41Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q", "Status": "PROVISIONING"}
+2024-08-14T14:05:11Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q", "Status": "PROVISIONING"}
+2024-08-14T14:05:42Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q", "Status": "PROVISIONING"}
+2024-08-14T14:06:12Z    INFO    Checking pluggable database status      {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q", "Status": "AVAILABLE"}
+2024-08-14T14:06:12Z    INFO    Pluggable database successfully created {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-create-with-pdb","namespace":"default"}, "namespace": "default", "name": "dbcssystem-create-with-pdb", "reconcileID": "4a257c84-d61d-4373-aec5-1bca6abf8267", "PDBName": "pdb_sauahuja_12", "PDBID": "ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyahbbg3hf56qhw55cou7465zmuukgv7hh46niu3dsoug3q"}
+
+
+#kubectl describe dbcssystems.database.oracle.com
+Name:         dbcssystem-create-with-pdb
+Namespace:    default
+Labels:       <none>
+Annotations:  lastSuccessfulSpec:
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a","availabilityDomain":"O...
+API Version:  database.oracle.com/v1alpha1
+Kind:         DbcsSystem
+Metadata:
+  Creation Timestamp:  2024-08-16T09:26:08Z
+  Generation:          1
+  Resource Version:    68483815
+  UID:                 9dd15628-e47b-4d9c-8bc6-2388e51cba30
+Spec:
+  Db System:
+    Availability Domain:      OLou:US-ASHBURN-AD-1
+    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
+    Cpu Core Count:           1
+    Db Admin Pasword Secret:  admin-password
+    Db Backup Config:
+    Db Edition:    ENTERPRISE_EDITION_HIGH_PERFORMANCE
+    Db Name:       dbsys
+    Db Version:    21c
+    Db Workload:   OLTP
+    Display Name:  dbsystem24
+    Domain:        subd215df3e6.k8stest.oraclevcn.com
+    Host Name:     host24
+    Kms Config:
+    License Model:  BRING_YOUR_OWN_LICENSE
+    Shape:          VM.Standard3.Flex
+    Ssh Public Keys:
+      oci-publickey
+    Subnet Id:  ocid1.subnet.oc1.iad.aaaaaaaa3lmmxwsykn2jc2vphzpq6eoyoqtte3dpwg6s5fzfkti22ibol2ua
+  Kms Config:
+  Oci Config Map:  oci-cred
+  Oci Secret:      oci-privatekey
+  Pdb Configs:
+    Freeform Tags:
+      Department:                        Finance
+    Pdb Admin Password:                  pdb-password
+    Pdb Name:                            pdb_sauahuja_11
+    Should Pdb Admin Account Be Locked:  false
+    Tde Wallet Password:                 tde-password
+    Freeform Tags:
+      Department:                        HR
+    Pdb Admin Password:                  pdb-password
+    Pdb Name:                            pdb_sauahuja_12
+    Should Pdb Admin Account Be Locked:  false
+    Tde Wallet Password:                 tde-password
+Status:
+  Availability Domain:        OLou:US-ASHBURN-AD-1
+  Cpu Core Count:             1
+  Data Storage Percentage:    80
+  Data Storage Size In G Bs:  256
+  Db Edition:                 ENTERPRISE_EDITION_HIGH_PERFORMANCE
+  Db Info:
+    Db Home Id:      ocid1.dbhome.oc1.iad.anuwcljsqlb5nxiaqfh3twuegmxxci5boocmowxd6kcczeq6e7jwqezfmbwq
+    Db Name:         dbsys
+    Db Unique Name:  dbsys_dss_iad
+    Db Workload:     OLTP
+    Id:              ocid1.database.oc1.iad.anuwcljsabf7htya5c2ttar7axxqq6qej3allfz23nvrtx6ilka4stdmrpga
+  Display Name:      dbsystem24
+  Id:                ocid1.dbsystem.oc1.iad.anuwcljsabf7htya55wz5vfil7ul3pkzpubnymp6zrp3fhgomv3fcdr2vtiq
+  Kms Details Status:
+  License Model:  BRING_YOUR_OWN_LICENSE
+  Network:
+    Client Subnet:  oke-nodesubnet-quick-k8s-test-ae2addeb0-regional
+    Domain Name:    subd215df3e6.k8stest.oraclevcn.com
+    Host Name:      host24
+    Listener Port:  1521
+    Scan Dns Name:  host24-scan.subd215df3e6.k8stest.oraclevcn.com
+    Vcn Name:       oke-vcn-quick-k8s-test-ae2addeb0
+  Node Count:       1
+  Pdb Details Status:
+    Pdb Config Status:
+      Freeform Tags:
+        Department:                        Finance
+      Pdb Name:                            pdb_sauahuja_11
+      Pdb State:                           AVAILABLE
+      Pluggable Database Id:               ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htya4arzakcgum6mv7h6cqmxhepyrjzfs77mxhqt4f3gylxq
+      Should Pdb Admin Account Be Locked:  false
+    Pdb Config Status:
+      Freeform Tags:
+        Department:                        HR
+      Pdb Name:                            pdb_sauahuja_12
+      Pdb State:                           AVAILABLE
+      Pluggable Database Id:               ocid1.pluggabledatabase.oc1.iad.anuwcljsabf7htyaiq6cyhxwqr4ad3pfn7g6e6nd2myiibj54tbg7vc27hfa
+      Should Pdb Admin Account Be Locked:  false
+  Reco Storage Size In GB:                 256
+  Shape:                                   VM.Standard3.Flex
+  State:                                   AVAILABLE
+  Storage Management:                      ASM
+  Subnet Id:                               ocid1.subnet.oc1.iad.aaaaaaaa3lmmxwsykn2jc2vphzpq6eoyoqtte3dpwg6s5fzfkti22ibol2ua
+  Time Zone:                               UTC
+  Work Requests:
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.iad.abuwcljscvomyvuthyc5bnmgi4myo565mbaghtjbhscgvabiy4tyzahjtiba
+    Operation Type:    Create DB System
+    Percent Complete:  100
+    Time Accepted:     2024-08-14 18:28:36.996 +0000 UTC
+    Time Finished:     2024-08-14 19:44:28.607 +0000 UTC
+    Time Started:      2024-08-14 18:28:45.134 +0000 UTC
+Events:                <none>

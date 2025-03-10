@@ -1,17 +1,17 @@
-# Example of provisioning Oracle Globally Distributed Database along with DB Events set at Database Level
+# Example of provisioning Oracle Sharded Database along with DB Events set at Database Level
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
 This example sets a Database Event at the Database Level for Catalog and Shard Databases. 
 
-The Oracle Globally Distributed Database in this example is deployed with System-Managed Sharding type. In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database when the Oracle Globally Distributed Database topology with System-Managed Sharding is deployed using Oracle Sharding controller. 
+The sharded database in this example is deployed with System-Managed Sharding type. In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database when the Oracle Sharding topology with System-Managed Sharding is deployed using Oracle Sharding controller. 
 
 **NOTE:** In this use case, because DBCA creates the database automatically during the deployment, the time required to create the database is greater than the time it takes when the database is created by cloning from a Database Gold Image.
 
-This example uses `sharding_provisioning_with_db_events.yaml` to provision an Oracle Globally Distributed Database topology using Oracle Sharding controller with:
+This example uses `sharding_provisioning_with_db_events.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three Shard Database  Pods: `shard1`, `shard2` and `shard3`
+* Three sharding Pods: `shard1`, `shard2` and `shard3`
 * One Catalog Pod: `catalog`
 * Namespace: `shns`
 * Database Event: `10798 trace name context forever, level 7` set along with `GWM_TRACE level 263`

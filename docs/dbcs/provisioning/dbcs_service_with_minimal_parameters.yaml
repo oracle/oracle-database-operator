@@ -1,4 +1,4 @@
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: DbcsSystem
 metadata:
   name: dbcssystem-create
@@ -6,20 +6,18 @@ spec:
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dbSystem:
-    availabilityDomain: "OLou:EU-MILAN-1-AD-1" 
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaaks5baeqlvv4kyj2jiwnrbxgzm3gsumcfy4c6ntj2ro5i3a5gzhhq"
-    dbAdminPaswordSecret: "admin-password"
+    availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+    dbAdminPasswordSecret: "admin-password"
     dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
-    dbName: "testdb"
-    displayName: "dbsystem0130"
+    dbName: "cdb1"
+    displayName: "dbsystem1234"
     licenseModel: "BRING_YOUR_OWN_LICENSE"
     dbVersion: "19c"
     dbWorkload: "OLTP"
-    hostName: "host1205"
+    hostName: "host1234"
     shape: "VM.Standard2.1"
-    domain: "vcndns.oraclevcn.com"
-    sshPublicKeys: 
+    domain: "subdda0b5eaa.cluster1.oraclevcn.com"
+    sshPublicKeys:
      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.eu-milan-1.aaaaaaaaeiy3tvcsnyg6upfp3ydtu7jmfnmoyifq2ax6y45b5qpdbpide5xa"
-
- 
+    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"

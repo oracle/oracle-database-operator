@@ -7,7 +7,7 @@ ords/*zip
 .gitattributes
 .vscode
 .gitlab-ci.yml
-
+.DS_Store
 # development
 .idea
 .local

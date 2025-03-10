@@ -7,9 +7,10 @@ kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
 spec:
+  action: Create
   details:
     # Update compartmentOCID with your compartment OCID.
-    compartmentOCID: ocid1.compartment... OR ocid1.tenancy...
+    compartmentId: ocid1.compartment... OR ocid1.tenancy...
     # The dbName must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy.
     dbName: NewADB
     displayName: NewADB

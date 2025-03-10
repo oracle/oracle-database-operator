@@ -7,8 +7,9 @@ kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
 spec:
+  action: Sync
   details:
-    autonomousDatabaseOCID: ocid1.autonomousdatabase...
+    id: ocid1.autonomousdatabase...
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:
     configMapName: oci-cred
