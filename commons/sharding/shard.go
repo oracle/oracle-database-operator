@@ -43,7 +43,7 @@ import (
 	"reflect"
 	"strconv"
 
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -54,7 +54,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func buildLabelsForShard(instance *databasev1alpha1.ShardingDatabase, label string) map[string]string {
+func buildLabelsForShard(instance *databasev4.ShardingDatabase, label string, shardName string) map[string]string {
 	return map[string]string{
 		"app":      "OracleSharding",
 		"type":     "Shard",
@@ -62,7 +62,7 @@ func buildLabelsForShard(instance *databasev1alpha1.ShardingDatabase, label stri
 	}
 }
 
-func getLabelForShard(instance *databasev1alpha1.ShardingDatabase) string {
+func getLabelForShard(instance *databasev4.ShardingDatabase) string {
 
 	//  if len(OraShardSpex.Label) !=0 {
 	//     return OraShardSpex.Label
@@ -71,7 +71,7 @@ func getLabelForShard(instance *databasev1alpha1.ShardingDatabase) string {
 	return instance.Name
 }
 
-func BuildStatefulSetForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) *appsv1.StatefulSet {
+func BuildStatefulSetForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *appsv1.StatefulSet {
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForShard(),
 		ObjectMeta: builObjectMetaForShard(instance, OraShardSpex),
@@ -92,29 +92,29 @@ func buildTypeMetaForShard() metav1.TypeMeta {
 }
 
 // Function to build ObjectMeta
-func builObjectMetaForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) metav1.ObjectMeta {
+func builObjectMetaForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) metav1.ObjectMeta {
 	// building objectMeta
 	objmeta := metav1.ObjectMeta{
 		Name:            OraShardSpex.Name,
-		Namespace:       instance.Spec.Namespace,
+		Namespace:       instance.Namespace,
 		OwnerReferences: getOwnerRef(instance),
-		Labels:          buildLabelsForShard(instance, "sharding"),
+		Labels:          buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 	}
 	return objmeta
 }
 
 // Function to build Stateful Specs
-func buildStatefulSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) *appsv1.StatefulSetSpec {
+func buildStatefulSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *appsv1.StatefulSetSpec {
 	// building Stateful set Specs
 	var size int32 = 1
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraShardSpex.Name,
 		Selector: &metav1.LabelSelector{
-			MatchLabels: buildLabelsForShard(instance, "sharding"),
+			MatchLabels: buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: buildLabelsForShard(instance, "sharding"),
+				Labels: buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 			},
 			Spec: *buildPodSpecForShard(instance, OraShardSpex),
 		},
@@ -132,7 +132,7 @@ func buildStatefulSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraS
 
 // Function to build PodSpec
 
-func buildPodSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) *corev1.PodSpec {
+func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *corev1.PodSpec {
 
 	user := oraRunAsUser
 	group := oraFsGroup
@@ -168,7 +168,7 @@ func buildPodSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardS
 }
 
 // Function to build Volume Spec
-func buildVolumeSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) []corev1.Volume {
+func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Volume {
 	var result []corev1.Volume
 	result = []corev1.Volume{
 		{
@@ -208,7 +208,7 @@ func buildVolumeSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraSha
 }
 
 // Function to build the container Specification
-func buildContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) []corev1.Container {
+func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Container {
 	// building Continer spec
 	var result []corev1.Container
 	containerSpec := corev1.Container{
@@ -287,7 +287,7 @@ func buildContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase, Ora
 }
 
 // Function to build the init Container Spec
-func buildInitContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) []corev1.Container {
+func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Container {
 	var result []corev1.Container
 	privFlag := false
 	var uid int64 = 0
@@ -325,7 +325,7 @@ func buildInitContainerSpecForShard(instance *databasev1alpha1.ShardingDatabase,
 	return result
 }
 
-func buildVolumeMountSpecForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) []corev1.VolumeMount {
+func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.VolumeMount {
 	var result []corev1.VolumeMount
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
@@ -351,7 +351,7 @@ func buildVolumeMountSpecForShard(instance *databasev1alpha1.ShardingDatabase, O
 	return result
 }
 
-func volumeClaimTemplatesForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec) []corev1.PersistentVolumeClaim {
+func volumeClaimTemplatesForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.PersistentVolumeClaim {
 
 	var claims []corev1.PersistentVolumeClaim
 
@@ -363,9 +363,9 @@ func volumeClaimTemplatesForShard(instance *databasev1alpha1.ShardingDatabase, O
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            OraShardSpex.Name + "-oradata-vol4",
-				Namespace:       instance.Spec.Namespace,
+				Namespace:       instance.Namespace,
 				OwnerReferences: getOwnerRef(instance),
-				Labels:          buildLabelsForShard(instance, "sharding"),
+				Labels:          buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes: []corev1.PersistentVolumeAccessMode{
@@ -395,7 +395,7 @@ func volumeClaimTemplatesForShard(instance *databasev1alpha1.ShardingDatabase, O
 	return claims
 }
 
-func BuildServiceDefForShard(instance *databasev1alpha1.ShardingDatabase, replicaCount int32, OraShardSpex databasev1alpha1.ShardSpec, svctype string) *corev1.Service {
+func BuildServiceDefForShard(instance *databasev4.ShardingDatabase, replicaCount int32, OraShardSpex databasev4.ShardSpec, svctype string) *corev1.Service {
 	//service := &corev1.Service{}
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForShard(instance, replicaCount, OraShardSpex, svctype),
@@ -410,7 +410,7 @@ func BuildServiceDefForShard(instance *databasev1alpha1.ShardingDatabase, replic
 
 	if svctype == "local" {
 		service.Spec.ClusterIP = corev1.ClusterIPNone
-		service.Spec.Selector = buildLabelsForShard(instance, "sharding")
+		service.Spec.Selector = getSvcLabelsForShard(replicaCount, OraShardSpex)
 	}
 
 	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
@@ -419,7 +419,7 @@ func BuildServiceDefForShard(instance *databasev1alpha1.ShardingDatabase, replic
 }
 
 // Function to build Service ObjectMeta
-func buildSvcObjectMetaForShard(instance *databasev1alpha1.ShardingDatabase, replicaCount int32, OraShardSpex databasev1alpha1.ShardSpec, svctype string) metav1.ObjectMeta {
+func buildSvcObjectMetaForShard(instance *databasev4.ShardingDatabase, replicaCount int32, OraShardSpex databasev4.ShardSpec, svctype string) metav1.ObjectMeta {
 	// building objectMeta
 
 	var svcName string
@@ -434,14 +434,14 @@ func buildSvcObjectMetaForShard(instance *databasev1alpha1.ShardingDatabase, rep
 
 	objmeta := metav1.ObjectMeta{
 		Name:            svcName,
-		Namespace:       instance.Spec.Namespace,
-		Labels:          buildLabelsForShard(instance, "sharding"),
+		Namespace:       instance.Namespace,
+		Labels:          buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
 		OwnerReferences: getOwnerRef(instance),
 	}
 	return objmeta
 }
 
-func getSvcLabelsForShard(replicaCount int32, OraShardSpex databasev1alpha1.ShardSpec) map[string]string {
+func getSvcLabelsForShard(replicaCount int32, OraShardSpex databasev4.ShardSpec) map[string]string {
 
 	var labelStr map[string]string = make(map[string]string)
 	if replicaCount == -1 {
@@ -455,7 +455,7 @@ func getSvcLabelsForShard(replicaCount int32, OraShardSpex databasev1alpha1.Shar
 }
 
 // ======================== Update Section ========================
-func UpdateProvForShard(instance *databasev1alpha1.ShardingDatabase, OraShardSpex databasev1alpha1.ShardSpec, kClient client.Client, sfSet *appsv1.StatefulSet, shardPod *corev1.Pod, logger logr.Logger,
+func UpdateProvForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec, kClient client.Client, sfSet *appsv1.StatefulSet, shardPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
 	var msg string
 	var size int32 = 1

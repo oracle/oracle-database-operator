@@ -1,0 +1,50 @@
+apiVersion: database.oracle.com/v4
+kind: PDB
+metadata:
+  name: pdb4
+  namespace: pdbnamespace
+  labels:
+    cdb: cdb-dev
+spec:
+  cdbResName: "cdb-dev"
+  cdbNamespace: "cdbnamespace"
+  cdbName: "DB12"
+  pdbName: "new_clone2"
+  srcPdbName: "pdbprd"
+  fileNameConversions: "NONE"
+  totalSize: "UNLIMITED"
+  tempSize: "UNLIMITED"
+  assertivePdbDeletion: true
+  action: "Clone"
+  adminName:
+    secret:
+      secretName: "pdbusr"
+      key: "e_pdbusr.txt"
+  adminPwd:
+    secret:
+      secretName: "pdbpwd"
+      key: "e_pdbpwd.txt"
+  pdbTlsKey:
+    secret:
+      secretName: "db-tls"
+      key: "tls.key"
+  pdbTlsCrt:
+    secret:
+      secretName: "db-tls"
+      key: "tls.crt"
+  pdbTlsCat:
+    secret:
+      secretName: "db-ca"
+      key: "ca.crt"
+  webServerUser:
+    secret:
+      secretName: "wbuser"
+      key: "e_wbuser.txt"
+  webServerPwd:
+    secret:
+      secretName: "wbpass"
+      key: "e_wbpass.txt"
+  pdbOrdsPrvKey:
+    secret:
+      secretName: "prvkey"
+      key: "privateKey"

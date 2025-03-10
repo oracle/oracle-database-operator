@@ -39,35 +39,35 @@
 package adbfamily
 
 import (
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	"github.com/oracle/oracle-database-operator/commons/k8s"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// VerifyTargetADB searches if the target ADB is in the cluster, and set the owner reference to the ADB if it exists.
+// VerifyTargetAdb searches if the target ADB is in the cluster.
 // The function returns two values in the following order:
 // ocid: the OCID of the target ADB. An empty string is returned if the ocid is nil.
 // ownerADB: the resource of the targetADB if it's found in the cluster
-func VerifyTargetADB(kubeClient client.Client, target dbv1alpha1.TargetSpec, namespace string) (*dbv1alpha1.AutonomousDatabase, error) {
+func VerifyTargetAdb(kubeClient client.Client, target dbv4.TargetSpec, namespace string) (*dbv4.AutonomousDatabase, error) {
 	var err error
-	var ownerADB *dbv1alpha1.AutonomousDatabase
+	var ownerAdb *dbv4.AutonomousDatabase
 
 	// Get the target ADB OCID
-	if target.K8sADB.Name != nil {
+	if target.K8sAdb.Name != nil {
 		// Find the target ADB using the name of the k8s ADB
-		ownerADB = &dbv1alpha1.AutonomousDatabase{}
-		if err := k8s.FetchResource(kubeClient, namespace, *target.K8sADB.Name, ownerADB); err != nil {
+		ownerAdb = &dbv4.AutonomousDatabase{}
+		if err := k8s.FetchResource(kubeClient, namespace, *target.K8sAdb.Name, ownerAdb); err != nil {
 			return nil, err
 		}
 
 	} else {
 		// Find the target ADB using the ADB OCID
-		ownerADB, err = k8s.FetchAutonomousDatabaseWithOCID(kubeClient, namespace, *target.OCIADB.OCID)
+		ownerAdb, err = k8s.FetchAutonomousDatabaseWithOCID(kubeClient, namespace, *target.OciAdb.OCID)
 		if err != nil {
 			return nil, err
 		}
 
 	}
 
-	return ownerADB, nil
+	return ownerAdb, nil
 }

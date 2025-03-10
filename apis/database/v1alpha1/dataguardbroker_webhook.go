@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	"strconv"
 	"strings"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
@@ -88,6 +89,10 @@ func (r *DataguardBroker) Default() {
 		if !ok {
 			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
 		}
+	}
+
+	if r.Spec.SetAsPrimaryDatabase != "" {
+		r.Spec.SetAsPrimaryDatabase = strings.ToUpper(r.Spec.SetAsPrimaryDatabase)
 	}
 }
 
@@ -153,6 +158,11 @@ func (r *DataguardBroker) ValidateUpdate(old runtime.Object) (admission.Warnings
 	if oldObj.Status.PrimaryDatabaseRef != "" && !strings.EqualFold(oldObj.Status.PrimaryDatabaseRef, r.Spec.PrimaryDatabaseRef) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "cannot be changed"))
+	}
+	fastStartFailoverStatus, _ := strconv.ParseBool(oldObj.Status.FastStartFailover)
+	if (fastStartFailoverStatus || r.Spec.FastStartFailover) && r.Spec.SetAsPrimaryDatabase != "" {
+		allErrs = append(allErrs,
+			field.Forbidden(field.NewPath("spec").Child("setAsPrimaryDatabase"), "switchover not supported when fastStartFailover is true"))
 	}
 
 	if len(allErrs) == 0 {

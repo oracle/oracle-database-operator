@@ -55,7 +55,8 @@ import (
 	"strings"
 	"time"
 
-	dbapi "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
+	lrcommons "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -80,6 +81,11 @@ type PDBReconciler struct {
 	Scheme   *runtime.Scheme
 	Interval time.Duration
 	Recorder record.EventRecorder
+}
+
+type controllers struct {
+	Pdbc PDBReconciler
+	Cdbc CDBReconciler
 }
 
 type RESTSQLCollection struct {
@@ -426,7 +432,8 @@ func (r *PDBReconciler) getSecret(ctx context.Context, req ctrl.Request, pdb *db
 /*
 ************************************************
   - Issue a REST API Call to the ORDS container
-    /***********************************************
+
+***********************************************
 */
 func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB, url string, payload map[string]string, action string) (string, error) {
 	log := r.Log.WithValues("callAPI", req.NamespacedName)
@@ -472,11 +479,6 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 	}
 
 	caCert := secret.Data[pdb.Spec.PDBTlsCat.Secret.Key]
-	/*
-		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaKeyPEM))
-		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaCertPEM))
-		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(caCert))
-	*/
 
 	certificate, err := tls.X509KeyPair([]byte(rsaCertPEM), []byte(rsaKeyPEM))
 	if err != nil {
@@ -620,7 +622,8 @@ func (r *PDBReconciler) callAPI(ctx context.Context, req ctrl.Request, pdb *dbap
 /*
 ************************************************
   - Create a PDB
-    /***********************************************
+
+***********************************************
 */
 func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
@@ -635,15 +638,52 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		return err
 	}
 
-	pdbAdminName, err := r.getSecret(ctx, req, pdb, pdb.Spec.AdminName.Secret.SecretName, pdb.Spec.AdminName.Secret.Key)
-	if err != nil {
-		return err
-	}
-	pdbAdminPwd, err := r.getSecret(ctx, req, pdb, pdb.Spec.AdminPwd.Secret.SecretName, pdb.Spec.AdminPwd.Secret.Key)
-	if err != nil {
-		return err
-	}
+	/*** BEGIN GET ENCPASS ***/
+	secret := &corev1.Secret{}
 
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.AdminName.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.AdminName.Secret.SecretName)
+			return err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return err
+	}
+	pdbAdminNameEnc := string(secret.Data[pdb.Spec.AdminName.Secret.Key])
+	pdbAdminNameEnc = strings.TrimSpace(pdbAdminNameEnc)
+
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBPriKey.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBPriKey.Secret.SecretName)
+			return err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return err
+	}
+	privKey := string(secret.Data[pdb.Spec.PDBPriKey.Secret.Key])
+	pdbAdminName, err := lrcommons.CommonDecryptWithPrivKey(privKey, pdbAdminNameEnc, req)
+
+	// Get Web Server User Password
+	secret = &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: pdb.Spec.AdminPwd.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.AdminPwd.Secret.SecretName)
+			return err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return err
+	}
+	pdbAdminPwdEnc := string(secret.Data[pdb.Spec.AdminPwd.Secret.Key])
+	pdbAdminPwdEnc = strings.TrimSpace(pdbAdminPwdEnc)
+	pdbAdminPwd, err := lrcommons.CommonDecryptWithPrivKey(privKey, pdbAdminPwdEnc, req)
+	pdbAdminName = strings.TrimSuffix(pdbAdminName, "\n")
+	pdbAdminPwd = strings.TrimSuffix(pdbAdminPwd, "\n")
+	/*** END GET ENCPASS ***/
+
+	log.Info("====================> " + pdbAdminName + ":" + pdbAdminPwd)
 	/* Prevent creating an existing pdb */
 	err = r.getPDBState(ctx, req, pdb)
 	if err != nil {
@@ -696,7 +736,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	_, err = NewCallApi(r, ctx, req, pdb, url, values, "POST")
 	if err != nil {
 		log.Error(err, "callAPI error", "err", err.Error())
 		return err
@@ -724,7 +764,8 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 /*
 ************************************************
   - Clone a PDB
-    /***********************************************
+
+***********************************************
 */
 func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
@@ -773,8 +814,6 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 		values["tempSize"] = pdb.Spec.TempSize
 	}
 
-	//url := "https://"+ pdb.Spec.CDBNamespace + "." + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.SrcPDBName + "/"
-	//url := "https://" + pdb.Spec.CDBResName + "-ords:" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.SrcPDBName + "/"
 	url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdb.Spec.SrcPDBName + "/"
 
 	pdb.Status.Phase = pdbPhaseClone
@@ -782,7 +821,7 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	_, err = NewCallApi(r, ctx, req, pdb, url, values, "POST")
 	if err != nil {
 		return err
 	}
@@ -809,7 +848,8 @@ func (r *PDBReconciler) clonePDB(ctx context.Context, req ctrl.Request, pdb *dba
 /*
 ************************************************
   - Plug a PDB
-    /***********************************************
+
+***********************************************
 */
 func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
@@ -868,7 +908,7 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	_, err = NewCallApi(r, ctx, req, pdb, url, values, "POST")
 	if err != nil {
 		return err
 	}
@@ -879,6 +919,12 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 		pdb.Status.ConnString = cdb.Spec.DBServer + ":" + strconv.Itoa(cdb.Spec.DBPort) + "/" + pdb.Spec.PDBName
 	} else {
 		pdb.Status.ConnString = cdb.Spec.DBTnsurl
+		ParseTnsAlias(&(pdb.Status.ConnString), &(pdb.Spec.PDBName))
+	}
+
+	assertivePdbDeletion = pdb.Spec.AssertivePdbDeletion
+	if pdb.Spec.AssertivePdbDeletion == true {
+		r.Recorder.Eventf(pdb, corev1.EventTypeNormal, "Plugged", "PDB '%s' assertive pdb deletion turned on", pdb.Spec.PDBName)
 	}
 
 	assertivePdbDeletion = pdb.Spec.AssertivePdbDeletion
@@ -894,7 +940,8 @@ func (r *PDBReconciler) plugPDB(ctx context.Context, req ctrl.Request, pdb *dbap
 /*
 ************************************************
   - Unplug a PDB
-    /***********************************************
+
+***********************************************
 */
 func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *dbapi.PDB) error {
 
@@ -950,7 +997,7 @@ func (r *PDBReconciler) unplugPDB(ctx context.Context, req ctrl.Request, pdb *db
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	_, err = NewCallApi(r, ctx, req, pdb, url, values, "POST")
 	if err != nil {
 		return err
 	}
@@ -1036,7 +1083,7 @@ func (r *PDBReconciler) modifyPDB(ctx context.Context, req ctrl.Request, pdb *db
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	_, err = r.callAPI(ctx, req, pdb, url, values, "POST")
+	_, err = NewCallApi(r, ctx, req, pdb, url, values, "POST")
 	if err != nil {
 		return err
 	}
@@ -1078,7 +1125,7 @@ func (r *PDBReconciler) getPDBState(ctx context.Context, req ctrl.Request, pdb *
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
 
-	respData, err := r.callAPI(ctx, req, pdb, url, nil, "GET")
+	respData, err := NewCallApi(r, ctx, req, pdb, url, nil, "GET")
 
 	if err != nil {
 		pdb.Status.OpenMode = "UNKNOWN"
@@ -1129,7 +1176,7 @@ func (r *PDBReconciler) mapPDB(ctx context.Context, req ctrl.Request, pdb *dbapi
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
 
-	respData, err := r.callAPI(ctx, req, pdb, url, nil, "GET")
+	respData, err := NewCallApi(r, ctx, req, pdb, url, nil, "GET")
 
 	if err != nil {
 		pdb.Status.OpenMode = "UNKNOWN"
@@ -1227,6 +1274,7 @@ func (r *PDBReconciler) managePDBDeletion2(ctx context.Context, req ctrl.Request
 					return err
 				}
 
+				var errclose error
 				pdbName := pdb.Spec.PDBName
 				if pdb.Status.OpenMode == "READ WRITE" {
 					valuesclose := map[string]string{
@@ -1234,23 +1282,26 @@ func (r *PDBReconciler) managePDBDeletion2(ctx context.Context, req ctrl.Request
 						"modifyOption": "IMMEDIATE",
 						"getScript":    "FALSE"}
 					url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/status"
-					_, errclose := r.callAPI(ctx, req, pdb, url, valuesclose, "POST")
+					_, errclose = NewCallApi(r, ctx, req, pdb, url, valuesclose, "POST")
 					if errclose != nil {
 						log.Info("Warning error closing pdb continue anyway")
 					}
 				}
 
-				valuesdrop := map[string]string{
-					"action":    "INCLUDING",
-					"getScript": "FALSE"}
-				url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
+				if errclose == nil {
+					valuesdrop := map[string]string{
+						"action":    "INCLUDING",
+						"getScript": "FALSE"}
+					url := "https://" + pdb.Spec.CDBResName + "-ords." + pdb.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbName + "/"
 
-				log.Info("Call Delete()")
-				_, errdelete := r.callAPI(ctx, req, pdb, url, valuesdrop, "DELETE")
-				if errdelete != nil {
-					log.Error(errdelete, "Fail to delete pdb :"+pdb.Name, "err", err.Error())
-					return errdelete
+					log.Info("Call Delete()")
+					_, errdelete := NewCallApi(r, ctx, req, pdb, url, valuesdrop, "DELETE")
+					if errdelete != nil {
+						log.Error(errdelete, "Fail to delete pdb :"+pdb.Name, "err", errdelete.Error())
+						return errdelete
+					}
 				}
+
 			} /* END OF ASSERTIVE SECTION */
 
 			log.Info("Marked to be deleted")
@@ -1304,7 +1355,7 @@ func (r *PDBReconciler) deletePDBInstance(req ctrl.Request, ctx context.Context,
 	if err := r.Status().Update(ctx, pdb); err != nil {
 		log.Error(err, "Failed to update status for :"+pdb.Name, "err", err.Error())
 	}
-	_, err = r.callAPI(ctx, req, pdb, url, values, "DELETE")
+	_, err = NewCallApi(r, ctx, req, pdb, url, values, "DELETE")
 	if err != nil {
 		pdb.Status.ConnString = ""
 		return err
@@ -1362,4 +1413,227 @@ func ParseTnsAlias(tns *string, pdbsrv *string) {
 
 	fmt.Printf("Newstring [%s]\n", *tns)
 
+}
+
+func NewCallApi(intr interface{}, ctx context.Context, req ctrl.Request, pdb *dbapi.PDB, url string, payload map[string]string, action string) (string, error) {
+
+	var c client.Client
+	var r logr.Logger
+	var e record.EventRecorder
+	var err error
+
+	recpdb, ok1 := intr.(*PDBReconciler)
+	if ok1 {
+		fmt.Printf("func NewCallApi ((*PDBReconciler),......)\n")
+		c = recpdb.Client
+		e = recpdb.Recorder
+		r = recpdb.Log
+	}
+
+	reccdb, ok2 := intr.(*CDBReconciler)
+	if ok2 {
+		fmt.Printf("func NewCallApi ((*CDBReconciler),......)\n")
+		c = reccdb.Client
+		e = reccdb.Recorder
+		r = reccdb.Log
+	}
+
+	secret := &corev1.Secret{}
+
+	log := r.WithValues("NewCallApi", req.NamespacedName)
+	log.Info("Call c.Get")
+	err = c.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBTlsKey.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBTlsKey.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+	rsaKeyPEM := secret.Data[pdb.Spec.PDBTlsKey.Secret.Key]
+
+	err = c.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBTlsCrt.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBTlsCrt.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+
+	rsaCertPEM := secret.Data[pdb.Spec.PDBTlsCrt.Secret.Key]
+
+	err = c.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBTlsCat.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBTlsCat.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+
+	caCert := secret.Data[pdb.Spec.PDBTlsCat.Secret.Key]
+	/*
+		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaKeyPEM))
+		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(rsaCertPEM))
+		r.Recorder.Eventf(pdb, corev1.EventTypeWarning, "ORDSINFO", string(caCert))
+	*/
+
+	certificate, err := tls.X509KeyPair([]byte(rsaCertPEM), []byte(rsaKeyPEM))
+	if err != nil {
+		pdb.Status.Msg = "Error tls.X509KeyPair"
+		return "", err
+	}
+
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConf := &tls.Config{Certificates: []tls.Certificate{certificate}, RootCAs: caCertPool}
+
+	tr := &http.Transport{TLSClientConfig: tlsConf}
+
+	httpclient := &http.Client{Transport: tr}
+
+	log.Info("Issuing REST call", "URL", url, "Action", action)
+
+	/*
+		cdb, err := r.getCDBResource(ctx, req, pdb)
+		if err != nil {
+			return "", err
+		}
+	*/
+
+	err = c.Get(ctx, types.NamespacedName{Name: pdb.Spec.WebServerUsr.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.WebServerUsr.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+	webUserEnc := string(secret.Data[pdb.Spec.WebServerUsr.Secret.Key])
+	webUserEnc = strings.TrimSpace(webUserEnc)
+
+	err = c.Get(ctx, types.NamespacedName{Name: pdb.Spec.PDBPriKey.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.PDBPriKey.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+	privKey := string(secret.Data[pdb.Spec.PDBPriKey.Secret.Key])
+	webUser, err := lrcommons.CommonDecryptWithPrivKey(privKey, webUserEnc, req)
+
+	// Get Web Server User Password
+	secret = &corev1.Secret{}
+	err = c.Get(ctx, types.NamespacedName{Name: pdb.Spec.WebServerPwd.Secret.SecretName, Namespace: pdb.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Secret not found:" + pdb.Spec.WebServerPwd.Secret.SecretName)
+			return "", err
+		}
+		log.Error(err, "Unable to get the secret.")
+		return "", err
+	}
+	webUserPwdEnc := string(secret.Data[pdb.Spec.WebServerPwd.Secret.Key])
+	webUserPwdEnc = strings.TrimSpace(webUserPwdEnc)
+	webUserPwd, err := lrcommons.CommonDecryptWithPrivKey(privKey, webUserPwdEnc, req)
+	///////////////////////////////////////////////////////////////////////////////////
+
+	var httpreq *http.Request
+	if action == "GET" {
+		httpreq, err = http.NewRequest(action, url, nil)
+	} else {
+		jsonValue, _ := json.Marshal(payload)
+		httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
+	}
+
+	if err != nil {
+		log.Info("Unable to create HTTP Request for PDB : "+pdb.Name, "err", err.Error())
+		return "", err
+	}
+
+	httpreq.Header.Add("Accept", "application/json")
+	httpreq.Header.Add("Content-Type", "application/json")
+	httpreq.SetBasicAuth(webUser, webUserPwd)
+
+	resp, err := httpclient.Do(httpreq)
+	if err != nil {
+		errmsg := err.Error()
+		log.Error(err, "Failed - Could not connect to ORDS Pod", "err", err.Error())
+		pdb.Status.Msg = "Error: Could not connect to ORDS Pod"
+		e.Eventf(pdb, corev1.EventTypeWarning, "ORDSError", errmsg)
+		return "", err
+	}
+
+	e.Eventf(pdb, corev1.EventTypeWarning, "Done", pdb.Spec.CDBResName)
+	if resp.StatusCode != http.StatusOK {
+		bb, _ := ioutil.ReadAll(resp.Body)
+
+		if resp.StatusCode == 404 {
+			pdb.Status.ConnString = ""
+			pdb.Status.Msg = pdb.Spec.PDBName + " not found"
+
+		} else {
+			if floodcontrol == false {
+				pdb.Status.Msg = "ORDS Error - HTTP Status Code:" + strconv.Itoa(resp.StatusCode)
+			}
+		}
+
+		if floodcontrol == false {
+			log.Info("ORDS Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
+		}
+
+		var apiErr ORDSError
+		json.Unmarshal([]byte(bb), &apiErr)
+		if floodcontrol == false {
+			e.Eventf(pdb, corev1.EventTypeWarning, "ORDSError", "Failed: %s", apiErr.Message)
+		}
+		//fmt.Printf("%+v", apiErr)
+		//fmt.Println(string(bb))
+		floodcontrol = true
+		return "", errors.New("ORDS Error")
+	}
+	floodcontrol = false
+
+	defer resp.Body.Close()
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Print(err.Error())
+	}
+	respData := string(bodyBytes)
+	//fmt.Println(string(bodyBytes))
+
+	var apiResponse RESTSQLCollection
+	json.Unmarshal([]byte(bodyBytes), &apiResponse)
+	//fmt.Printf("%#v", apiResponse)
+	//fmt.Printf("%+v", apiResponse)
+
+	errFound := false
+	for _, sqlItem := range apiResponse.Items {
+		if sqlItem.ErrorDetails != "" {
+			log.Info("ORDS Error - Oracle Error Code :" + strconv.Itoa(sqlItem.ErrorCode))
+			if !errFound {
+				pdb.Status.Msg = sqlItem.ErrorDetails
+			}
+			e.Eventf(pdb, corev1.EventTypeWarning, "OraError", "%s", sqlItem.ErrorDetails)
+			errFound = true
+		}
+	}
+
+	if errFound {
+		return "", errors.New("Oracle Error")
+	}
+
+	return respData, nil
 }

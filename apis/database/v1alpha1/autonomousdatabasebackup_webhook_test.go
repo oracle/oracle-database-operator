@@ -75,8 +75,8 @@ var _ = Describe("test AutonomousDatabaseBackup webhook", func() {
 		It("Should specify at least one of the k8sADB and ociADB", func() {
 			var errMsg string = "target ADB is empty"
 
-			backup.Spec.Target.K8sADB.Name = nil
-			backup.Spec.Target.OCIADB.OCID = nil
+			backup.Spec.Target.K8sAdb.Name = nil
+			backup.Spec.Target.OciAdb.Ocid = nil
 
 			validateInvalidTest(backup, false, errMsg)
 		})
@@ -84,8 +84,8 @@ var _ = Describe("test AutonomousDatabaseBackup webhook", func() {
 		It("Should specify either k8sADB or ociADB, but not both", func() {
 			var errMsg string = "specify either k8sADB or ociADB, but not both"
 
-			backup.Spec.Target.K8sADB.Name = common.String("fake-target-adb")
-			backup.Spec.Target.OCIADB.OCID = common.String("fake.ocid1.autonomousdatabase.oc1...")
+			backup.Spec.Target.K8sAdb.Name = common.String("fake-target-adb")
+			backup.Spec.Target.OciAdb.Ocid = common.String("fake.ocid1.autonomousdatabase.oc1...")
 
 			validateInvalidTest(backup, false, errMsg)
 		})
@@ -133,15 +133,15 @@ var _ = Describe("test AutonomousDatabaseBackup webhook", func() {
 			Expect(k8sClient.Delete(context.TODO(), backup)).To(Succeed())
 		})
 
-		Context("The bakcup is using target.k8sADB.name", func() {
+		Context("The bakcup is using target.k8sAdb.name", func() {
 			BeforeEach(func() {
-				backup.Spec.Target.K8sADB.Name = common.String("fake-target-adb")
+				backup.Spec.Target.K8sAdb.Name = common.String("fake-target-adb")
 			})
 
 			It("Cannot assign a new name to the target", func() {
 				var errMsg string = "cannot assign a new name to the target"
 
-				backup.Spec.Target.K8sADB.Name = common.String("modified-target-adb")
+				backup.Spec.Target.K8sAdb.Name = common.String("modified-target-adb")
 
 				validateInvalidTest(backup, true, errMsg)
 			})
@@ -157,13 +157,13 @@ var _ = Describe("test AutonomousDatabaseBackup webhook", func() {
 
 		Context("The bakcup is using target.ociADB.ocid", func() {
 			BeforeEach(func() {
-				backup.Spec.Target.OCIADB.OCID = common.String("fake.ocid1.autonomousdatabase.oc1...")
+				backup.Spec.Target.OciAdb.Ocid = common.String("fake.ocid1.autonomousdatabase.oc1...")
 			})
 
 			It("Cannot assign a new ocid to the target", func() {
 				var errMsg string = "cannot assign a new ocid to the target"
 
-				backup.Spec.Target.OCIADB.OCID = common.String("modified.ocid1.autonomousdatabase.oc1...")
+				backup.Spec.Target.OciAdb.Ocid = common.String("modified.ocid1.autonomousdatabase.oc1...")
 
 				validateInvalidTest(backup, true, errMsg)
 			})

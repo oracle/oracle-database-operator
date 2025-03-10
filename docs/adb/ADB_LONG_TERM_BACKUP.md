@@ -2,13 +2,13 @@
 
 To create long-term backups of Autonomous Databases, use this procedure.
 
-Oracle Cloud Infrastructure (OCI) automatically backs up your Autonomous Databases, and retains these backups for 60 days. You can restore and recover your database to any point-in-time in this retention period. Automatic backups are full backups taken every 60 days, with daily incremental backups. You can also create long-term backups for your database with a retention period between 3 months and up to 10 years. For more information, please visit [Create Long-Term Backups on Autonomous Database](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/backup-long-term.html) and [Backup and Restore Notes](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/backup-restore-notes.html).
+Oracle Cloud Infrastructure (OCI) automatically backs up your Autonomous Databases, and retains these backups for 60 days. You can restore and recover your database to any point-in-time in this retention period. Automatic backups are full backups taken every 60 days, with daily incremental backups. You can also create long-term backups for your database with a retention period ranging from 3 months to 10 years. For more information, see: [Create Long-Term Backups on Autonomous Database](https://docs.oracle.com/en/cloud/paas/autonomous-database/serverless/adbsb/backup-long-term.html) and [Backup and Restore Notes](https://docs.oracle.com/en-us/iaas/autonomous-database-serverless/doc/backup-restore-notes.html).
 
 ## Create Long-Term Backup
 
 To back up an Autonomous Database, complete this procedure.
 
-1. Add the following fields to the AutonomousDatabaseBackup resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_backup.yaml`](./../../config/samples/adb/autonomousdatabase_backup.yaml)
+1. Add the following fields to the `AutonomousDatabaseBackup` resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_backup.yaml`](./../../config/samples/adb/autonomousdatabase_backup.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
     | `spec.displayName` | string | The user-friendly name for the backup. This name does not have to be unique. | Yes |

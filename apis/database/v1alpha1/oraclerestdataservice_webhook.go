@@ -74,9 +74,6 @@ func (r *OracleRestDataService) Default() {
 	if r.Spec.OrdsPassword.KeepSecret == nil {
 		r.Spec.OrdsPassword.KeepSecret = &keepSecret
 	}
-	if r.Spec.ApexPassword.KeepSecret == nil {
-		r.Spec.ApexPassword.KeepSecret = &keepSecret
-	}
 	if r.Spec.AdminPassword.KeepSecret == nil {
 		r.Spec.AdminPassword.KeepSecret = &keepSecret
 	}

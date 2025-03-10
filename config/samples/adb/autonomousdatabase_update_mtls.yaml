@@ -7,12 +7,11 @@ kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
 spec:
+  action: Update
   details:
-    autonomousDatabaseOCID: ocid1.autonomousdatabase...
-    networkAccess:
-      # Set the patameter to false to allow both TLS and mutual TLS (mTLS) authentication.
-      # Avaiable when the networkAccessType is RESTRICTED or PRIVATE on shared Autnomous Database.
-      isMTLSConnectionRequired: false
+    id: ocid1.autonomousdatabase...
+    # Set the patameter to false to allow both TLS and mutual TLS (mTLS) authentication, or true to require mTLS connections and disallow TLS connections.
+    isMTLSConnectionRequired: true
 
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:

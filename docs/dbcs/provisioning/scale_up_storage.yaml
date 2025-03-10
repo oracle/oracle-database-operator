@@ -1,18 +1,19 @@
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: DbcsSystem
 metadata:
   name: dbcssystem-existing
 spec:
-  id: "ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa"
+  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dbSystem:
-    availabilityDomain: "OLou:PHX-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya"
-    dbAdminPaswordSecret: "admin-password"
-    hostName: "host0130"
-    initialDataStorageSizeInGB: 512
+    availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
+    dbAdminPasswordSecret: "admin-password"
+    hostName: "host1234"
     shape: "VM.Standard2.1"
+    domain: "subdda0b5eaa.cluster1.oraclevcn.com"
+    initialDataStorageSizeInGB: 512
     sshPublicKeys:
-      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a"
+     - "oci-publickey"
+    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"

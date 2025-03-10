@@ -1,9 +1,7 @@
-
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
-  creationTimestamp: null
   name: mutating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
@@ -12,34 +10,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-autonomousdatabase
+      path: /mutate-database-oracle-com-v4-autonomousdatabasebackup
   failurePolicy: Fail
-  name: mautonomousdatabase.kb.io
+  name: mautonomousdatabasebackupv4.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-autonomousdatabasebackup
-  failurePolicy: Fail
-  name: mautonomousdatabasebackup.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
+    - v4
     operations:
     - CREATE
     - UPDATE
@@ -53,9 +31,132 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-cdb
+      path: /mutate-database-oracle-com-v4-cdb
   failurePolicy: Fail
   name: mcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-dbcssystem
+  failurePolicy: Fail
+  name: mdbcssystemv4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dbcssystems
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-lrest
+  failurePolicy: Fail
+  name: mlrest.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrests
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-lrpdb
+  failurePolicy: Fail
+  name: mlrpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrpdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-pdb
+  failurePolicy: Fail
+  name: mpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-shardingdatabase
+  failurePolicy: Fail
+  name: mshardingdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v1alpha1-autonomousdatabasebackup
+  failurePolicy: Fail
+  name: mautonomousdatabasebackupv1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -65,7 +166,7 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - cdbs
+    - autonomousdatabasebackups
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -90,6 +191,26 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-database-oracle-com-v4-dbcssystem
+  failurePolicy: Fail
+  name: mdbcssystemv1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dbcssystems
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   - v1beta1
   clientConfig:
     service:
@@ -111,14 +232,13 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
-  - v1beta1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-pdb
+      path: /mutate-database-oracle-com-v1alpha1-shardingdatabase
   failurePolicy: Fail
-  name: mpdb.kb.io
+  name: mshardingdatabasev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -128,7 +248,7 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - pdbs
+    - shardingdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -177,6 +297,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /mutate-observability-oracle-com-v1-databaseobserver
+  failurePolicy: Fail
+  name: mdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /mutate-observability-oracle-com-v1alpha1-databaseobserver
   failurePolicy: Fail
   name: mdatabaseobserver.kb.io
@@ -191,12 +331,30 @@ webhooks:
     resources:
     - databaseobservers
   sideEffects: None
-
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-observability-oracle-com-v4-databaseobserver
+  failurePolicy: Fail
+  name: mdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  creationTimestamp: null
   name: validating-webhook-configuration
 webhooks:
 - admissionReviewVersions:
@@ -205,9 +363,174 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-database-oracle-com-v4-autonomouscontainerdatabase
+  failurePolicy: Fail
+  name: vautonomouscontainerdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomouscontainerdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-autonomousdatabasebackup
+  failurePolicy: Fail
+  name: vautonomousdatabasebackupv4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabasebackups
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-autonomousdatabaserestore
+  failurePolicy: Fail
+  name: vautonomousdatabaserestorev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabaserestores
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-cdb
+  failurePolicy: Fail
+  name: vcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-lrest
+  failurePolicy: Fail
+  name: vlrest.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrests
+  sideEffects: None
+- admissionReviewVersions:
+  - v4
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-lrpdb
+  failurePolicy: Fail
+  name: vlrpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - lrpdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-pdb
+  failurePolicy: Fail
+  name: vpdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-shardingdatabase
+  failurePolicy: Fail
+  name: vshardingdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase
   failurePolicy: Fail
-  name: vautonomouscontainerdatabase.kb.io
+  name: vautonomouscontainerdatabasev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -225,29 +548,9 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-database-oracle-com-v1alpha1-autonomousdatabase
-  failurePolicy: Fail
-  name: vautonomousdatabase.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
       path: /validate-database-oracle-com-v1alpha1-autonomousdatabasebackup
   failurePolicy: Fail
-  name: vautonomousdatabasebackup.kb.io
+  name: vautonomousdatabasebackupv1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -267,7 +570,7 @@ webhooks:
       namespace: system
       path: /validate-database-oracle-com-v1alpha1-autonomousdatabaserestore
   failurePolicy: Fail
-  name: vautonomousdatabaserestore.kb.io
+  name: vautonomousdatabaserestorev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -281,14 +584,13 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
-  - v1beta1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-database-oracle-com-v1alpha1-cdb
+      path: /validate-database-oracle-com-v1alpha1-autonomousdatabase
   failurePolicy: Fail
-  name: vcdb.kb.io
+  name: vautonomousdatabasev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -298,7 +600,7 @@ webhooks:
     - CREATE
     - UPDATE
     resources:
-    - cdbs
+    - autonomousdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -344,14 +646,13 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
-  - v1beta1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-database-oracle-com-v1alpha1-pdb
+      path: /validate-database-oracle-com-v1alpha1-shardingdatabase
   failurePolicy: Fail
-  name: vpdb.kb.io
+  name: vshardingdatabasev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -360,8 +661,9 @@ webhooks:
     operations:
     - CREATE
     - UPDATE
+    - DELETE
     resources:
-    - pdbs
+    - shardingdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -412,6 +714,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-observability-oracle-com-v1-databaseobserver
+  failurePolicy: Fail
+  name: vdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-observability-oracle-com-v1alpha1-databaseobserver
   failurePolicy: Fail
   name: vdatabaseobserver.kb.io
@@ -420,6 +742,26 @@ webhooks:
     - observability.oracle.com
     apiVersions:
     - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-observability-oracle-com-v4-databaseobserver
+  failurePolicy: Fail
+  name: vdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v4
     operations:
     - CREATE
     - UPDATE

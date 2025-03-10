@@ -44,8 +44,7 @@ import (
 	"fmt"
 	"slices"
 
-	databasealphav1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
 	"regexp"
 	"strconv"
@@ -103,7 +102,7 @@ const (
 )
 
 // Function to build the env var specification
-func buildEnvVarsSpec(instance *databasealphav1.ShardingDatabase, variables []databasealphav1.EnvironmentVariable, name string, restype string, masterFlag bool, directorParams string) []corev1.EnvVar {
+func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databasev4.EnvironmentVariable, name string, restype string, masterFlag bool, directorParams string) []corev1.EnvVar {
 	var result []corev1.EnvVar
 	var varinfo string
 	var sidFlag bool = false
@@ -295,7 +294,7 @@ func buildEnvVarsSpec(instance *databasealphav1.ShardingDatabase, variables []da
 		}
 
 		if instance.Spec.InvitedNodeSubnetFlag == "" {
-			instance.Spec.InvitedNodeSubnetFlag = "FALSE"
+			instance.Spec.InvitedNodeSubnetFlag = "TRUE"
 
 		}
 		if strings.ToUpper(instance.Spec.InvitedNodeSubnetFlag) != "FALSE" {
@@ -351,7 +350,7 @@ func buildEnvVarsSpec(instance *databasealphav1.ShardingDatabase, variables []da
 }
 
 // FUnction to build the svc definition for catalog/shard and GSM
-func buildSvcPortsDef(instance *databasealphav1.ShardingDatabase, resType string) []corev1.ServicePort {
+func buildSvcPortsDef(instance *databasev4.ShardingDatabase, resType string) []corev1.ServicePort {
 	var result []corev1.ServicePort
 	if len(instance.Spec.PortMappings) > 0 {
 		for _, portMapping := range instance.Spec.PortMappings {
@@ -393,12 +392,12 @@ func generateName(base string) string {
 }
 
 // Function to generate the port mapping
-func generatePortMapping(portMapping databasealphav1.PortMapping) string {
+func generatePortMapping(portMapping databasev4.PortMapping) string {
 	return generateName(fmt.Sprintf("%s-%d-%d-", "tcp",
 		portMapping.Port, portMapping.TargetPort))
 }
 
-func LogMessages(msgtype string, msg string, err error, instance *databasealphav1.ShardingDatabase, logger logr.Logger) {
+func LogMessages(msgtype string, msg string, err error, instance *databasev4.ShardingDatabase, logger logr.Logger) {
 	// setting logrus formatter
 	//logrus.SetFormatter(&logrus.JSONFormatter{})
 	//logrus.SetOutput(os.Stdout)
@@ -411,6 +410,8 @@ func LogMessages(msgtype string, msg string, err error, instance *databasealphav
 		}
 	} else if msgtype == "INFO" {
 		logger.Info(msg)
+	} else if msgtype == "Error" {
+		logger.Error(err, msg)
 	}
 }
 
@@ -419,7 +420,7 @@ func GetGsmPodName(gsmName string) string {
 	return podName
 }
 
-func GetSidName(variables []databasealphav1.EnvironmentVariable, name string) string {
+func GetSidName(variables []databasev4.EnvironmentVariable, name string) string {
 	var result string
 
 	for _, variable := range variables {
@@ -433,7 +434,7 @@ func GetSidName(variables []databasealphav1.EnvironmentVariable, name string) st
 	return result
 }
 
-func GetPdbName(variables []databasealphav1.EnvironmentVariable, name string) string {
+func GetPdbName(variables []databasev4.EnvironmentVariable, name string) string {
 	var result string
 
 	for _, variable := range variables {
@@ -447,34 +448,34 @@ func GetPdbName(variables []databasealphav1.EnvironmentVariable, name string) st
 	return result
 }
 
-func getlabelsForGsm(instance *databasealphav1.ShardingDatabase) map[string]string {
-	return buildLabelsForGsm(instance, "sharding")
+func getlabelsForGsm(instance *databasev4.ShardingDatabase) map[string]string {
+	return buildLabelsForGsm(instance, "sharding", "gsm")
 }
 
-func getlabelsForShard(instance *databasealphav1.ShardingDatabase) map[string]string {
-	return buildLabelsForShard(instance, "sharding")
+func getlabelsForShard(instance *databasev4.ShardingDatabase) map[string]string {
+	return buildLabelsForShard(instance, "sharding", "shard")
 }
 
-func getlabelsForCatalog(instance *databasealphav1.ShardingDatabase) map[string]string {
-	return buildLabelsForCatalog(instance, "sharding")
+func getlabelsForCatalog(instance *databasev4.ShardingDatabase) map[string]string {
+	return buildLabelsForCatalog(instance, "sharding", "catalog")
 }
 
-func LabelsForProvShardKind(instance *databasealphav1.ShardingDatabase, sftype string,
+func LabelsForProvShardKind(instance *databasev4.ShardingDatabase, sftype string,
 ) map[string]string {
 
 	if sftype == "shard" {
-		return buildLabelsForShard(instance, "sharding")
+		return buildLabelsForShard(instance, "sharding", "shard")
 	}
 
 	return nil
 
 }
 
-func CheckSfset(sfsetName string, instance *databasealphav1.ShardingDatabase, kClient client.Client) (*appsv1.StatefulSet, error) {
+func CheckSfset(sfsetName string, instance *databasev4.ShardingDatabase, kClient client.Client) (*appsv1.StatefulSet, error) {
 	sfSetFound := &appsv1.StatefulSet{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      sfsetName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, sfSetFound)
 	if err != nil {
 		return sfSetFound, err
@@ -482,11 +483,11 @@ func CheckSfset(sfsetName string, instance *databasealphav1.ShardingDatabase, kC
 	return sfSetFound, nil
 }
 
-func checkPvc(pvcName string, instance *databasealphav1.ShardingDatabase, kClient client.Client) (*corev1.PersistentVolumeClaim, error) {
+func checkPvc(pvcName string, instance *databasev4.ShardingDatabase, kClient client.Client) (*corev1.PersistentVolumeClaim, error) {
 	pvcFound := &corev1.PersistentVolumeClaim{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      pvcName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, pvcFound)
 	if err != nil {
 		return pvcFound, err
@@ -494,7 +495,7 @@ func checkPvc(pvcName string, instance *databasealphav1.ShardingDatabase, kClien
 	return pvcFound, nil
 }
 
-func DelPvc(pvcName string, instance *databasealphav1.ShardingDatabase, kClient client.Client, logger logr.Logger) error {
+func DelPvc(pvcName string, instance *databasev4.ShardingDatabase, kClient client.Client, logger logr.Logger) error {
 
 	LogMessages("DEBUG", "Inside the delPvc and received param: "+GetFmtStr(pvcName), nil, instance, logger)
 	pvcFound, err := checkPvc(pvcName, instance, kClient)
@@ -510,7 +511,7 @@ func DelPvc(pvcName string, instance *databasealphav1.ShardingDatabase, kClient 
 	return nil
 }
 
-func DelSvc(pvcName string, instance *databasealphav1.ShardingDatabase, kClient client.Client, logger logr.Logger) error {
+func DelSvc(pvcName string, instance *databasev4.ShardingDatabase, kClient client.Client, logger logr.Logger) error {
 
 	LogMessages("DEBUG", "Inside the delPvc and received param: "+GetFmtStr(pvcName), nil, instance, logger)
 	pvcFound, err := checkPvc(pvcName, instance, kClient)
@@ -526,11 +527,11 @@ func DelSvc(pvcName string, instance *databasealphav1.ShardingDatabase, kClient 
 	return nil
 }
 
-func CheckSvc(svcName string, instance *databasealphav1.ShardingDatabase, kClient client.Client) (*corev1.Service, error) {
+func CheckSvc(svcName string, instance *databasev4.ShardingDatabase, kClient client.Client) (*corev1.Service, error) {
 	svcFound := &corev1.Service{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      svcName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, svcFound)
 	if err != nil {
 		return svcFound, err
@@ -538,7 +539,7 @@ func CheckSvc(svcName string, instance *databasealphav1.ShardingDatabase, kClien
 	return svcFound, nil
 }
 
-func PodListValidation(podList *corev1.PodList, sfName string, instance *databasealphav1.ShardingDatabase, kClient client.Client,
+func PodListValidation(podList *corev1.PodList, sfName string, instance *databasev4.ShardingDatabase, kClient client.Client,
 ) (bool, *corev1.Pod) {
 
 	var isPodExist bool = false
@@ -574,7 +575,7 @@ func PodListValidation(podList *corev1.PodList, sfName string, instance *databas
 	return isPodExist, podInfo
 }
 
-func GetPodList(sfsetName string, resType string, instance *databasealphav1.ShardingDatabase, kClient client.Client,
+func GetPodList(sfsetName string, resType string, instance *databasev4.ShardingDatabase, kClient client.Client,
 ) (*corev1.PodList, error) {
 	podList := &corev1.PodList{}
 	//labelSelector := labels.SelectorFromSet(getlabelsForGsm(instance))
@@ -595,7 +596,7 @@ func GetPodList(sfsetName string, resType string, instance *databasealphav1.Shar
 		return nil, err1
 	}
 
-	listOps := &client.ListOptions{Namespace: instance.Spec.Namespace, LabelSelector: labelSelector}
+	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
 
 	err := kClient.List(context.TODO(), podList, listOps)
 	if err != nil {
@@ -604,11 +605,11 @@ func GetPodList(sfsetName string, resType string, instance *databasealphav1.Shar
 	return podList, nil
 }
 
-func checkPod(instance *databasealphav1.ShardingDatabase, pod *corev1.Pod, kClient client.Client,
+func checkPod(instance *databasev4.ShardingDatabase, pod *corev1.Pod, kClient client.Client,
 ) error {
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      pod.Name,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, pod)
 
 	if err != nil {
@@ -664,15 +665,15 @@ func checkContainerStatus(pod *corev1.Pod, kClient client.Client,
 
 //  Namespace related function
 
-func AddNamespace(instance *databasealphav1.ShardingDatabase, kClient client.Client, logger logr.Logger,
+func AddNamespace(instance *databasev4.ShardingDatabase, kClient client.Client, logger logr.Logger,
 ) error {
 	var msg string
 	ns := &corev1.Namespace{}
-	err := kClient.Get(context.TODO(), types.NamespacedName{Name: instance.Spec.Namespace}, ns)
+	err := kClient.Get(context.TODO(), types.NamespacedName{Name: instance.Namespace}, ns)
 	if err != nil {
-		//msg = "Namespace " + instance.Spec.Namespace + " doesn't exist! creating namespace"
+		//msg = "Namespace " + instance.Namespace + " doesn't exist! creating namespace"
 		if errors.IsNotFound(err) {
-			err = kClient.Create(context.TODO(), NewNamespace(instance.Spec.Namespace))
+			err = kClient.Create(context.TODO(), NewNamespace(instance.Namespace))
 			if err != nil {
 				msg = "Error in creating namespace!"
 				LogMessages("Error", msg, nil, instance, logger)
@@ -700,7 +701,7 @@ func NewNamespace(name string) *corev1.Namespace {
 	}
 }
 
-func getOwnerRef(instance *databasealphav1.ShardingDatabase,
+func getOwnerRef(instance *databasev4.ShardingDatabase,
 ) []metav1.OwnerReference {
 
 	var ownerRef []metav1.OwnerReference
@@ -708,8 +709,8 @@ func getOwnerRef(instance *databasealphav1.ShardingDatabase,
 	return ownerRef
 }
 
-func buildCatalogParams(instance *databasealphav1.ShardingDatabase) string {
-	var variables []databasealphav1.EnvironmentVariable = instance.Spec.Catalog[0].EnvVars
+func buildCatalogParams(instance *databasev4.ShardingDatabase) string {
+	var variables []databasev4.EnvironmentVariable = instance.Spec.Catalog[0].EnvVars
 	var result string
 	var varinfo string
 	var sidFlag bool = false
@@ -858,8 +859,8 @@ func buildCatalogParams(instance *databasealphav1.ShardingDatabase) string {
 	return result
 }
 
-func buildDirectorParams(instance *databasealphav1.ShardingDatabase, oraGsmSpex databasealphav1.GsmSpec, idx int) string {
-	var variables []databasealphav1.EnvironmentVariable
+func buildDirectorParams(instance *databasev4.ShardingDatabase, oraGsmSpex databasev4.GsmSpec, idx int) string {
+	var variables []databasev4.EnvironmentVariable
 	var result string
 	var varinfo string
 	var dnameFlag bool = false
@@ -905,7 +906,7 @@ func buildDirectorParams(instance *databasealphav1.ShardingDatabase, oraGsmSpex 
 	return result
 }
 
-func BuildShardParams(instance *databasealphav1.ShardingDatabase, sfSet *appsv1.StatefulSet, OraShardSpex databasev1alpha1.ShardSpec) string {
+func BuildShardParams(instance *databasev4.ShardingDatabase, sfSet *appsv1.StatefulSet, OraShardSpex databasev4.ShardSpec) string {
 	var variables []corev1.EnvVar = sfSet.Spec.Template.Spec.Containers[0].Env
 	var result string
 	var varinfo string
@@ -1014,11 +1015,11 @@ func BuildShardParams(instance *databasealphav1.ShardingDatabase, sfSet *appsv1.
 	return result
 }
 
-func labelsForShardingDatabaseKind(instance *databasealphav1.ShardingDatabase, sftype string,
+func labelsForShardingDatabaseKind(instance *databasev4.ShardingDatabase, sftype string,
 ) map[string]string {
 
 	if sftype == "shard" {
-		return buildLabelsForShard(instance, "sharding")
+		return buildLabelsForShard(instance, "sharding", "shard")
 	}
 
 	return nil
@@ -1199,7 +1200,7 @@ func GetFmtStr(pstr string,
 	return "[" + pstr + "]"
 }
 
-func ReadConfigMap(cmName string, instance *databasealphav1.ShardingDatabase, kClient client.Client, logger logr.Logger,
+func ReadConfigMap(cmName string, instance *databasev4.ShardingDatabase, kClient client.Client, logger logr.Logger,
 ) (string, string, string, string, string, string) {
 
 	var region, fingerprint, user, tenancy, passphrase, str1, topicid, k, value string
@@ -1210,7 +1211,7 @@ func ReadConfigMap(cmName string, instance *databasealphav1.ShardingDatabase, kC
 	// Reding a config map
 	err = kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      cmName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, cm)
 
 	if err != nil {
@@ -1253,7 +1254,7 @@ func ReadConfigMap(cmName string, instance *databasealphav1.ShardingDatabase, kC
 	return region, user, tenancy, passphrase, fingerprint, topicid
 }
 
-func ReadSecret(secName string, instance *databasealphav1.ShardingDatabase, kClient client.Client, logger logr.Logger,
+func ReadSecret(secName string, instance *databasev4.ShardingDatabase, kClient client.Client, logger logr.Logger,
 ) string {
 
 	var value string
@@ -1263,7 +1264,7 @@ func ReadSecret(secName string, instance *databasealphav1.ShardingDatabase, kCli
 	// Reading a Secret
 	var err error = kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      secName,
-		Namespace: instance.Spec.Namespace,
+		Namespace: instance.Namespace,
 	}, sc)
 
 	if err != nil {
@@ -1285,20 +1286,17 @@ func GetK8sClientConfig(kClient client.Client) (clientcmd.ClientConfig, kubernet
 	var kubeConfig clientcmd.ClientConfig
 	var kubeClient kubernetes.Interface
 
-	databasealphav1.KubeConfigOnce.Do(func() {
-		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-		configOverrides := &clientcmd.ConfigOverrides{}
-		kubeConfig = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-		config, err := kubeConfig.ClientConfig()
-		if err != nil {
-			err1 = err
-		}
-		kubeClient, err = kubernetes.NewForConfig(config)
-		if err != nil {
-			err1 = err
-		}
-
-	})
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{}
+	kubeConfig = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
+	config, err := kubeConfig.ClientConfig()
+	if err != nil {
+		err1 = err
+	}
+	kubeClient, err = kubernetes.NewForConfig(config)
+	if err != nil {
+		err1 = err
+	}
 	return kubeConfig, kubeClient, err1
 }
 
@@ -1312,7 +1310,7 @@ func Contains(list []string, s string) bool {
 }
 
 // Function to check shadrd in GSM
-func CheckShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func CheckShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
 	_, _, err := ExecCommand(gsmPodName, getShardCheckCmd(sparams), kubeClient, kubeconfig, instance, logger)
@@ -1325,7 +1323,7 @@ func CheckShardInGsm(gsmPodName string, sparams string, instance *databasealphav
 }
 
 // Function to check the online Shard
-func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
 	_, _, err := ExecCommand(gsmPodName, getOnlineShardCmd(sparams), kubeClient, kubeconfig, instance, logger)
@@ -1338,7 +1336,7 @@ func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *database
 }
 
 // Function to move the chunks
-func MoveChunks(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func MoveChunks(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
 	_, _, err := ExecCommand(gsmPodName, getMoveChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
@@ -1351,7 +1349,7 @@ func MoveChunks(gsmPodName string, sparams string, instance *databasealphav1.Sha
 }
 
 // Function to verify the chunks
-func VerifyChunks(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func VerifyChunks(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	_, _, err := ExecCommand(gsmPodName, getNoChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -1363,7 +1361,7 @@ func VerifyChunks(gsmPodName string, sparams string, instance *databasealphav1.S
 }
 
 // Function to verify the chunks
-func AddShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func AddShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	_, _, err := ExecCommand(gsmPodName, getShardAddCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -1375,7 +1373,7 @@ func AddShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.
 }
 
 // Function to deploy the Shards
-func DeployShardInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func DeployShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	_, _, err := ExecCommand(gsmPodName, getdeployShardCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -1387,7 +1385,7 @@ func DeployShardInGsm(gsmPodName string, sparams string, instance *databasealpha
 }
 
 // Function to verify the chunks
-func CancelChunksInGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func CancelChunksInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	_, _, err := ExecCommand(gsmPodName, getCancelChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -1399,7 +1397,7 @@ func CancelChunksInGsm(gsmPodName string, sparams string, instance *databasealph
 }
 
 // Function to delete the shard
-func RemoveShardFromGsm(gsmPodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func RemoveShardFromGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	_, _, err := ExecCommand(gsmPodName, getShardDelCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -1410,7 +1408,7 @@ func RemoveShardFromGsm(gsmPodName string, sparams string, instance *databasealp
 	return nil
 }
 
-func GetSvcIp(PodName string, sparams string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func GetSvcIp(PodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) (string, string, error) {
 	stdoutput, stderror, err := ExecCommand(PodName, GetIpCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -1421,7 +1419,7 @@ func GetSvcIp(PodName string, sparams string, instance *databasealphav1.Sharding
 	return strings.Replace(stdoutput, "\r\n", "", -1), strings.Replace(stderror, "/r/n", "", -1), nil
 }
 
-func GetGsmServices(PodName string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func GetGsmServices(PodName string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(PodName, getGsmSvcCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -1432,7 +1430,7 @@ func GetGsmServices(PodName string, instance *databasealphav1.ShardingDatabase, 
 	return stdoutput
 }
 
-func GetDbRole(PodName string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func GetDbRole(PodName string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(PodName, getDbRoleCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -1443,7 +1441,7 @@ func GetDbRole(PodName string, instance *databasealphav1.ShardingDatabase, kubeC
 	return strings.TrimSpace(stdoutput)
 }
 
-func GetDbOpenMode(PodName string, instance *databasealphav1.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func GetDbOpenMode(PodName string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(PodName, getDbModeCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -1454,7 +1452,7 @@ func GetDbOpenMode(PodName string, instance *databasealphav1.ShardingDatabase, k
 	return strings.TrimSpace(stdoutput)
 }
 
-func SfsetLabelPatch(sfSetFound *appsv1.StatefulSet, sfSetPod *corev1.Pod, instance *databasealphav1.ShardingDatabase, kClient client.Client,
+func SfsetLabelPatch(sfSetFound *appsv1.StatefulSet, sfSetPod *corev1.Pod, instance *databasev4.ShardingDatabase, kClient client.Client,
 ) error {
 
 	//var msg string
@@ -1462,7 +1460,7 @@ func SfsetLabelPatch(sfSetFound *appsv1.StatefulSet, sfSetPod *corev1.Pod, insta
 	var err error
 
 	sfsetCopy := sfSetFound.DeepCopy()
-	sfsetCopy.Labels[string(databasealphav1.ShardingDelLabelKey)] = string(databasealphav1.ShardingDelLabelTrueValue)
+	sfsetCopy.Labels[string(databasev4.ShardingDelLabelKey)] = string(databasev4.ShardingDelLabelTrueValue)
 	patch := client.MergeFrom(sfSetFound)
 	err = kClient.Patch(context.Background(), sfsetCopy, patch)
 	if err != nil {
@@ -1470,7 +1468,7 @@ func SfsetLabelPatch(sfSetFound *appsv1.StatefulSet, sfSetPod *corev1.Pod, insta
 	}
 
 	podCopy := sfSetPod.DeepCopy()
-	podCopy.Labels[string(databasealphav1.ShardingDelLabelKey)] = string(databasealphav1.ShardingDelLabelTrueValue)
+	podCopy.Labels[string(databasev4.ShardingDelLabelKey)] = string(databasev4.ShardingDelLabelTrueValue)
 	podPatch := client.MergeFrom(sfSetPod.DeepCopy())
 	err = kClient.Patch(context.Background(), podCopy, podPatch)
 	if err != nil {
@@ -1480,14 +1478,14 @@ func SfsetLabelPatch(sfSetFound *appsv1.StatefulSet, sfSetPod *corev1.Pod, insta
 	return nil
 }
 
-func InstanceShardPatch(obj client.Object, instance *databasealphav1.ShardingDatabase, kClient client.Client, id int32, field string, value string,
+func InstanceShardPatch(obj client.Object, instance *databasev4.ShardingDatabase, kClient client.Client, id int32, field string, value string,
 ) error {
 
 	var err error
 	instSpec := instance.Spec
 	instSpec.Shard[id].IsDelete = "failed"
 	instshardM, _ := json.Marshal(struct {
-		Spec *databasealphav1.ShardingDatabaseSpec `json:"spec":`
+		Spec *databasev4.ShardingDatabaseSpec `json:"spec":`
 	}{
 		Spec: &instSpec,
 	})
@@ -1504,7 +1502,7 @@ func InstanceShardPatch(obj client.Object, instance *databasealphav1.ShardingDat
 
 // Send Notification
 
-func SendNotification(title string, body string, instance *databasealphav1.ShardingDatabase, topicId string, rclient ons.NotificationDataPlaneClient, logger logr.Logger,
+func SendNotification(title string, body string, instance *databasev4.ShardingDatabase, topicId string, rclient ons.NotificationDataPlaneClient, logger logr.Logger,
 ) {
 	var msg string
 	req := ons.PublishMessageRequest{TopicId: common.String(topicId),
@@ -1525,14 +1523,14 @@ func GetSecretMount() string {
 	return oraSecretMount
 }
 
-func checkTdeWalletFlag(instance *databasev1alpha1.ShardingDatabase) bool {
+func checkTdeWalletFlag(instance *databasev4.ShardingDatabase) bool {
 	if strings.ToLower(instance.Spec.IsTdeWallet) == "enable" {
 		return true
 	}
 	return false
 }
 
-func CheckIsDeleteFlag(delStr string, instance *databasealphav1.ShardingDatabase, logger logr.Logger) bool {
+func CheckIsDeleteFlag(delStr string, instance *databasev4.ShardingDatabase, logger logr.Logger) bool {
 	if strings.ToLower(delStr) == "enable" {
 		return true
 	}
@@ -1542,7 +1540,7 @@ func CheckIsDeleteFlag(delStr string, instance *databasealphav1.ShardingDatabase
 	return false
 }
 
-func getTdeWalletMountLoc(instance *databasev1alpha1.ShardingDatabase) string {
+func getTdeWalletMountLoc(instance *databasev4.ShardingDatabase) string {
 	if len(instance.Spec.TdeWalletPvcMountLocation) > 0 {
 		return instance.Spec.TdeWalletPvcMountLocation
 	}

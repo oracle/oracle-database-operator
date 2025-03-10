@@ -47,38 +47,11 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/database"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	"github.com/oracle/oracle-database-operator/commons/k8s"
 )
 
-type DatabaseService interface {
-	CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDatabase) (database.CreateAutonomousDatabaseResponse, error)
-	GetAutonomousDatabase(adbOCID string) (database.GetAutonomousDatabaseResponse, error)
-	UpdateAutonomousDatabaseGeneralFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseDBWorkload(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseLicenseModel(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseAdminPassword(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateAutonomousDatabaseScalingFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccessMTLSRequired(adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccessMTLS(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccessPublic(lastAccessType dbv1alpha1.NetworkAccessTypeEnum, adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	UpdateNetworkAccess(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error)
-	StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error)
-	StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error)
-	DeleteAutonomousDatabase(adbOCID string) (database.DeleteAutonomousDatabaseResponse, error)
-	DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (database.GenerateAutonomousDatabaseWalletResponse, error)
-	RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error)
-	ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error)
-	CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error)
-	GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error)
-	CreateAutonomousContainerDatabase(acd *dbv1alpha1.AutonomousContainerDatabase) (database.CreateAutonomousContainerDatabaseResponse, error)
-	GetAutonomousContainerDatabase(acdOCID string) (database.GetAutonomousContainerDatabaseResponse, error)
-	UpdateAutonomousContainerDatabase(acdOCID string, difACD *dbv1alpha1.AutonomousContainerDatabase) (database.UpdateAutonomousContainerDatabaseResponse, error)
-	RestartAutonomousContainerDatabase(acdOCID string) (database.RestartAutonomousContainerDatabaseResponse, error)
-	TerminateAutonomousContainerDatabase(acdOCID string) (database.TerminateAutonomousContainerDatabaseResponse, error)
-}
-
-type databaseService struct {
+type DatabaseService struct {
 	logger       logr.Logger
 	kubeClient   client.Client
 	dbClient     database.DatabaseClient
@@ -88,19 +61,19 @@ type databaseService struct {
 func NewDatabaseService(
 	logger logr.Logger,
 	kubeClient client.Client,
-	provider common.ConfigurationProvider) (DatabaseService, error) {
+	provider common.ConfigurationProvider) (databaseService DatabaseService, err error) {
 
 	dbClient, err := database.NewDatabaseClientWithConfigurationProvider(provider)
 	if err != nil {
-		return nil, err
+		return databaseService, err
 	}
 
 	vaultService, err := NewVaultService(logger, provider)
 	if err != nil {
-		return nil, err
+		return databaseService, err
 	}
 
-	return &databaseService{
+	return DatabaseService{
 		logger:       logger.WithName("dbService"),
 		kubeClient:   kubeClient,
 		dbClient:     dbClient,
@@ -114,7 +87,7 @@ func NewDatabaseService(
 
 // ReadPassword reads the password from passwordSpec, and returns the pointer to the read password string.
 // The function returns a nil if nothing is read
-func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1.PasswordSpec) (*string, error) {
+func (d *DatabaseService) readPassword(namespace string, passwordSpec dbv4.PasswordSpec) (*string, error) {
 	logger := d.logger.WithName("readPassword")
 
 	if passwordSpec.K8sSecret.Name != nil {
@@ -129,10 +102,10 @@ func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1
 		return common.String(password), nil
 	}
 
-	if passwordSpec.OCISecret.OCID != nil {
-		logger.Info(fmt.Sprintf("Getting password from OCI Vault Secret OCID %s", *passwordSpec.OCISecret.OCID))
+	if passwordSpec.OciSecret.Id != nil {
+		logger.Info(fmt.Sprintf("Getting password from OCI Vault Secret OCID %s", *passwordSpec.OciSecret.Id))
 
-		password, err := d.vaultService.GetSecretValue(*passwordSpec.OCISecret.OCID)
+		password, err := d.vaultService.GetSecretValue(*passwordSpec.OciSecret.Id)
 		if err != nil {
 			return nil, err
 		}
@@ -142,14 +115,14 @@ func (d *databaseService) readPassword(namespace string, passwordSpec dbv1alpha1
 	return nil, nil
 }
 
-func (d *databaseService) readACD_OCID(acd *dbv1alpha1.ACDSpec, namespace string) (*string, error) {
-	if acd.OCIACD.OCID != nil {
-		return acd.OCIACD.OCID, nil
+func (d *DatabaseService) readACD_OCID(acd *dbv4.AcdSpec, namespace string) (*string, error) {
+	if acd.OciAcd.Id != nil {
+		return acd.OciAcd.Id, nil
 	}
 
-	if acd.K8sACD.Name != nil {
-		fetchedACD := &dbv1alpha1.AutonomousContainerDatabase{}
-		if err := k8s.FetchResource(d.kubeClient, namespace, *acd.K8sACD.Name, fetchedACD); err != nil {
+	if acd.K8sAcd.Name != nil {
+		fetchedACD := &dbv4.AutonomousContainerDatabase{}
+		if err := k8s.FetchResource(d.kubeClient, namespace, *acd.K8sAcd.Name, fetchedACD); err != nil {
 			return nil, err
 		}
 
@@ -160,7 +133,7 @@ func (d *databaseService) readACD_OCID(acd *dbv1alpha1.ACDSpec, namespace string
 }
 
 // CreateAutonomousDatabase sends a request to OCI to provision a database and returns the AutonomousDatabase OCID.
-func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDatabase) (resp database.CreateAutonomousDatabaseResponse, err error) {
+func (d *DatabaseService) CreateAutonomousDatabase(adb *dbv4.AutonomousDatabase) (resp database.CreateAutonomousDatabaseResponse, err error) {
 	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.AdminPassword)
 	if err != nil {
 		return resp, err
@@ -172,9 +145,12 @@ func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDat
 	}
 
 	createAutonomousDatabaseDetails := database.CreateAutonomousDatabaseDetails{
-		CompartmentId:                 adb.Spec.Details.CompartmentOCID,
+		CompartmentId:                 adb.Spec.Details.CompartmentId,
 		DbName:                        adb.Spec.Details.DbName,
-		CpuCoreCount:                  adb.Spec.Details.CPUCoreCount,
+		CpuCoreCount:                  adb.Spec.Details.CpuCoreCount,
+		ComputeModel:                  database.CreateAutonomousDatabaseBaseComputeModelEnum(adb.Spec.Details.ComputeModel),
+		ComputeCount:                  adb.Spec.Details.ComputeCount,
+		OcpuCount:                     adb.Spec.Details.OcpuCount,
 		DataStorageSizeInTBs:          adb.Spec.Details.DataStorageSizeInTBs,
 		AdminPassword:                 adminPassword,
 		DisplayName:                   adb.Spec.Details.DisplayName,
@@ -182,21 +158,26 @@ func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDat
 		IsDedicated:                   adb.Spec.Details.IsDedicated,
 		AutonomousContainerDatabaseId: acdOCID,
 		DbVersion:                     adb.Spec.Details.DbVersion,
-		DbWorkload: database.CreateAutonomousDatabaseBaseDbWorkloadEnum(
-			adb.Spec.Details.DbWorkload),
-		LicenseModel:             database.CreateAutonomousDatabaseBaseLicenseModelEnum(adb.Spec.Details.LicenseModel),
-		IsAccessControlEnabled:   adb.Spec.Details.NetworkAccess.IsAccessControlEnabled,
-		WhitelistedIps:           adb.Spec.Details.NetworkAccess.AccessControlList,
-		IsMtlsConnectionRequired: adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
-		SubnetId:                 adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID,
-		NsgIds:                   adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs,
-		PrivateEndpointLabel:     adb.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix,
+		DbWorkload:                    database.CreateAutonomousDatabaseBaseDbWorkloadEnum(adb.Spec.Details.DbWorkload),
+		LicenseModel:                  database.CreateAutonomousDatabaseBaseLicenseModelEnum(adb.Spec.Details.LicenseModel),
+		IsFreeTier:                    adb.Spec.Details.IsFreeTier,
+		IsAccessControlEnabled:        adb.Spec.Details.IsAccessControlEnabled,
+		WhitelistedIps:                adb.Spec.Details.WhitelistedIps,
+		IsMtlsConnectionRequired:      adb.Spec.Details.IsMtlsConnectionRequired,
+		SubnetId:                      adb.Spec.Details.SubnetId,
+		NsgIds:                        adb.Spec.Details.NsgIds,
+		PrivateEndpointLabel:          adb.Spec.Details.PrivateEndpointLabel,
 
 		FreeformTags: adb.Spec.Details.FreeformTags,
 	}
 
+	retryPolicy := common.DefaultRetryPolicy()
+
 	createAutonomousDatabaseRequest := database.CreateAutonomousDatabaseRequest{
 		CreateAutonomousDatabaseDetails: createAutonomousDatabaseDetails,
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
 	}
 
 	resp, err = d.dbClient.CreateAutonomousDatabase(context.TODO(), createAutonomousDatabaseRequest)
@@ -207,165 +188,115 @@ func (d *databaseService) CreateAutonomousDatabase(adb *dbv1alpha1.AutonomousDat
 	return resp, nil
 }
 
-func (d *databaseService) GetAutonomousDatabase(adbOCID string) (database.GetAutonomousDatabaseResponse, error) {
+func (d *DatabaseService) GetAutonomousDatabase(adbOCID string) (database.GetAutonomousDatabaseResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
 	getAutonomousDatabaseRequest := database.GetAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
 	}
 
 	return d.dbClient.GetAutonomousDatabase(context.TODO(), getAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseGeneralFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: common.String(adbOCID),
-		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			DisplayName:  difADB.Spec.Details.DisplayName,
-			DbName:       difADB.Spec.Details.DbName,
-			DbVersion:    difADB.Spec.Details.DbVersion,
-			FreeformTags: difADB.Spec.Details.FreeformTags,
-		},
-	}
-	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-}
-
-func (d *databaseService) UpdateAutonomousDatabaseDBWorkload(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: common.String(adbOCID),
-		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			DbWorkload: database.UpdateAutonomousDatabaseDetailsDbWorkloadEnum(difADB.Spec.Details.DbWorkload),
-		},
-	}
-	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-}
-
-func (d *databaseService) UpdateAutonomousDatabaseLicenseModel(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: common.String(adbOCID),
-		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			LicenseModel: database.UpdateAutonomousDatabaseDetailsLicenseModelEnum(difADB.Spec.Details.LicenseModel),
-		},
-	}
-	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-}
-
-func (d *databaseService) UpdateAutonomousDatabaseAdminPassword(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	adminPassword, err := d.readPassword(difADB.Namespace, difADB.Spec.Details.AdminPassword)
+func (d *DatabaseService) UpdateAutonomousDatabase(adbOCID string, adb *dbv4.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
+	// Retrieve admin password
+	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.AdminPassword)
 	if err != nil {
 		return resp, err
 	}
 
+	retryPolicy := common.DefaultRetryPolicy()
+
 	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			AdminPassword: adminPassword,
+			DisplayName:              adb.Spec.Details.DisplayName,
+			DbName:                   adb.Spec.Details.DbName,
+			DbVersion:                adb.Spec.Details.DbVersion,
+			FreeformTags:             adb.Spec.Details.FreeformTags,
+			DbWorkload:               database.UpdateAutonomousDatabaseDetailsDbWorkloadEnum(adb.Spec.Details.DbWorkload),
+			LicenseModel:             database.UpdateAutonomousDatabaseDetailsLicenseModelEnum(adb.Spec.Details.LicenseModel),
+			AdminPassword:            adminPassword,
+			DataStorageSizeInTBs:     adb.Spec.Details.DataStorageSizeInTBs,
+			CpuCoreCount:             adb.Spec.Details.CpuCoreCount,
+			ComputeModel:             database.UpdateAutonomousDatabaseDetailsComputeModelEnum(adb.Spec.Details.ComputeModel),
+			ComputeCount:             adb.Spec.Details.ComputeCount,
+			OcpuCount:                adb.Spec.Details.OcpuCount,
+			IsAutoScalingEnabled:     adb.Spec.Details.IsAutoScalingEnabled,
+			IsFreeTier:               adb.Spec.Details.IsFreeTier,
+			IsMtlsConnectionRequired: adb.Spec.Details.IsMtlsConnectionRequired,
+			IsAccessControlEnabled:   adb.Spec.Details.IsAccessControlEnabled,
+			WhitelistedIps:           adb.Spec.Details.WhitelistedIps,
+			SubnetId:                 adb.Spec.Details.SubnetId,
+			NsgIds:                   adb.Spec.Details.NsgIds,
+			PrivateEndpointLabel:     adb.Spec.Details.PrivateEndpointLabel,
+		},
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
 		},
 	}
 	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
 }
 
-func (d *databaseService) UpdateAutonomousDatabaseScalingFields(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: common.String(adbOCID),
-		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			DataStorageSizeInTBs: difADB.Spec.Details.DataStorageSizeInTBs,
-			CpuCoreCount:         difADB.Spec.Details.CPUCoreCount,
-			IsAutoScalingEnabled: difADB.Spec.Details.IsAutoScalingEnabled,
-		},
-	}
-	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-}
+func (d *DatabaseService) StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
 
-func (d *databaseService) UpdateNetworkAccessMTLSRequired(adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: common.String(adbOCID),
-		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			IsMtlsConnectionRequired: common.Bool(true),
-		},
-	}
-	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-}
-
-func (d *databaseService) UpdateNetworkAccessMTLS(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: common.String(adbOCID),
-		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			IsMtlsConnectionRequired: difADB.Spec.Details.NetworkAccess.IsMTLSConnectionRequired,
-		},
-	}
-	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-}
-
-func (d *databaseService) UpdateNetworkAccessPublic(
-	lastAccessType dbv1alpha1.NetworkAccessTypeEnum,
-	adbOCID string) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-
-	updateAutonomousDatabaseDetails := database.UpdateAutonomousDatabaseDetails{}
-
-	if lastAccessType == dbv1alpha1.NetworkAccessTypeRestricted {
-		updateAutonomousDatabaseDetails.WhitelistedIps = []string{""}
-	} else if lastAccessType == dbv1alpha1.NetworkAccessTypePrivate {
-		updateAutonomousDatabaseDetails.PrivateEndpointLabel = common.String("")
-	}
-
-	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId:            common.String(adbOCID),
-		UpdateAutonomousDatabaseDetails: updateAutonomousDatabaseDetails,
-	}
-
-	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-}
-
-func (d *databaseService) UpdateNetworkAccess(adbOCID string, difADB *dbv1alpha1.AutonomousDatabase) (resp database.UpdateAutonomousDatabaseResponse, err error) {
-	updateAutonomousDatabaseRequest := database.UpdateAutonomousDatabaseRequest{
-		AutonomousDatabaseId: common.String(adbOCID),
-		UpdateAutonomousDatabaseDetails: database.UpdateAutonomousDatabaseDetails{
-			IsAccessControlEnabled: difADB.Spec.Details.NetworkAccess.IsAccessControlEnabled,
-			WhitelistedIps:         difADB.Spec.Details.NetworkAccess.AccessControlList,
-			SubnetId:               difADB.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID,
-			NsgIds:                 difADB.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs,
-			PrivateEndpointLabel:   difADB.Spec.Details.NetworkAccess.PrivateEndpoint.HostnamePrefix,
-		},
-	}
-
-	return d.dbClient.UpdateAutonomousDatabase(context.TODO(), updateAutonomousDatabaseRequest)
-}
-
-func (d *databaseService) StartAutonomousDatabase(adbOCID string) (database.StartAutonomousDatabaseResponse, error) {
 	startRequest := database.StartAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
 	}
 
 	return d.dbClient.StartAutonomousDatabase(context.TODO(), startRequest)
 }
 
-func (d *databaseService) StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error) {
+func (d *DatabaseService) StopAutonomousDatabase(adbOCID string) (database.StopAutonomousDatabaseResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
 	stopRequest := database.StopAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
 	}
 
 	return d.dbClient.StopAutonomousDatabase(context.TODO(), stopRequest)
 }
 
-func (d *databaseService) DeleteAutonomousDatabase(adbOCID string) (database.DeleteAutonomousDatabaseResponse, error) {
+func (d *DatabaseService) DeleteAutonomousDatabase(adbOCID string) (database.DeleteAutonomousDatabaseResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
 	deleteRequest := database.DeleteAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
 	}
 
 	return d.dbClient.DeleteAutonomousDatabase(context.TODO(), deleteRequest)
 }
 
-func (d *databaseService) DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (resp database.GenerateAutonomousDatabaseWalletResponse, err error) {
+func (d *DatabaseService) DownloadWallet(adb *dbv4.AutonomousDatabase) (resp database.GenerateAutonomousDatabaseWalletResponse, err error) {
 	// Prepare wallet password
-	walletPassword, err := d.readPassword(adb.Namespace, adb.Spec.Details.Wallet.Password)
+	walletPassword, err := d.readPassword(adb.Namespace, adb.Spec.Wallet.Password)
 	if err != nil {
 		return resp, err
 	}
 
+	retryPolicy := common.DefaultRetryPolicy()
+
 	// Download a Wallet
 	req := database.GenerateAutonomousDatabaseWalletRequest{
-		AutonomousDatabaseId: adb.Spec.Details.AutonomousDatabaseOCID,
+		AutonomousDatabaseId: adb.Spec.Details.Id,
 		GenerateAutonomousDatabaseWalletDetails: database.GenerateAutonomousDatabaseWalletDetails{
 			Password: walletPassword,
+		},
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
 		},
 	}
 
@@ -382,11 +313,16 @@ func (d *databaseService) DownloadWallet(adb *dbv1alpha1.AutonomousDatabase) (re
  * Autonomous Database Restore
  *******************************/
 
-func (d *databaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error) {
+func (d *DatabaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime common.SDKTime) (database.RestoreAutonomousDatabaseResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
 	request := database.RestoreAutonomousDatabaseRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
 		RestoreAutonomousDatabaseDetails: database.RestoreAutonomousDatabaseDetails{
 			Timestamp: &sdkTime,
+		},
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
 		},
 	}
 	return d.dbClient.RestoreAutonomousDatabase(context.TODO(), request)
@@ -396,20 +332,30 @@ func (d *databaseService) RestoreAutonomousDatabase(adbOCID string, sdkTime comm
  * Autonomous Database Backup
  *******************************/
 
-func (d *databaseService) ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error) {
+func (d *DatabaseService) ListAutonomousDatabaseBackups(adbOCID string) (database.ListAutonomousDatabaseBackupsResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
 	listBackupRequest := database.ListAutonomousDatabaseBackupsRequest{
 		AutonomousDatabaseId: common.String(adbOCID),
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
 	}
 
 	return d.dbClient.ListAutonomousDatabaseBackups(context.TODO(), listBackupRequest)
 }
 
-func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error) {
+func (d *DatabaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv4.AutonomousDatabaseBackup, adbOCID string) (database.CreateAutonomousDatabaseBackupResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
 	createBackupRequest := database.CreateAutonomousDatabaseBackupRequest{
 		CreateAutonomousDatabaseBackupDetails: database.CreateAutonomousDatabaseBackupDetails{
 			AutonomousDatabaseId:  common.String(adbOCID),
 			IsLongTermBackup:      adbBackup.Spec.IsLongTermBackup,
 			RetentionPeriodInDays: adbBackup.Spec.RetentionPeriodInDays,
+		},
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
 		},
 	}
 
@@ -424,10 +370,63 @@ func (d *databaseService) CreateAutonomousDatabaseBackup(adbBackup *dbv1alpha1.A
 	return d.dbClient.CreateAutonomousDatabaseBackup(context.TODO(), createBackupRequest)
 }
 
-func (d *databaseService) GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error) {
+func (d *DatabaseService) GetAutonomousDatabaseBackup(backupOCID string) (database.GetAutonomousDatabaseBackupResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
 	getBackupRequest := database.GetAutonomousDatabaseBackupRequest{
 		AutonomousDatabaseBackupId: common.String(backupOCID),
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
 	}
 
 	return d.dbClient.GetAutonomousDatabaseBackup(context.TODO(), getBackupRequest)
+}
+
+func (d *DatabaseService) CreateAutonomousDatabaseClone(adb *dbv4.AutonomousDatabase) (resp database.CreateAutonomousDatabaseResponse, err error) {
+	adminPassword, err := d.readPassword(adb.Namespace, adb.Spec.Clone.AdminPassword)
+	if err != nil {
+		return resp, err
+	}
+
+	acdOCID, err := d.readACD_OCID(&adb.Spec.Clone.AutonomousContainerDatabase, adb.Namespace)
+	if err != nil {
+		return resp, err
+	}
+
+	retryPolicy := common.DefaultRetryPolicy()
+	request := database.CreateAutonomousDatabaseRequest{
+		CreateAutonomousDatabaseDetails: database.CreateAutonomousDatabaseCloneDetails{
+			CompartmentId:                 adb.Spec.Clone.CompartmentId,
+			SourceId:                      adb.Spec.Details.Id,
+			AutonomousContainerDatabaseId: acdOCID,
+			DisplayName:                   adb.Spec.Clone.DisplayName,
+			DbName:                        adb.Spec.Clone.DbName,
+			DbWorkload:                    database.CreateAutonomousDatabaseBaseDbWorkloadEnum(adb.Spec.Clone.DbWorkload),
+			LicenseModel:                  database.CreateAutonomousDatabaseBaseLicenseModelEnum(adb.Spec.Clone.LicenseModel),
+			DbVersion:                     adb.Spec.Clone.DbVersion,
+			DataStorageSizeInTBs:          adb.Spec.Clone.DataStorageSizeInTBs,
+			CpuCoreCount:                  adb.Spec.Clone.CpuCoreCount,
+			ComputeModel:                  database.CreateAutonomousDatabaseBaseComputeModelEnum(adb.Spec.Clone.ComputeModel),
+			ComputeCount:                  adb.Spec.Clone.ComputeCount,
+			OcpuCount:                     adb.Spec.Clone.OcpuCount,
+			AdminPassword:                 adminPassword,
+			IsAutoScalingEnabled:          adb.Spec.Clone.IsAutoScalingEnabled,
+			IsDedicated:                   adb.Spec.Clone.IsDedicated,
+			IsFreeTier:                    adb.Spec.Clone.IsFreeTier,
+			IsAccessControlEnabled:        adb.Spec.Clone.IsAccessControlEnabled,
+			WhitelistedIps:                adb.Spec.Clone.WhitelistedIps,
+			SubnetId:                      adb.Spec.Clone.SubnetId,
+			NsgIds:                        adb.Spec.Clone.NsgIds,
+			PrivateEndpointLabel:          adb.Spec.Clone.PrivateEndpointLabel,
+			IsMtlsConnectionRequired:      adb.Spec.Clone.IsMtlsConnectionRequired,
+			FreeformTags:                  adb.Spec.Clone.FreeformTags,
+			CloneType:                     adb.Spec.Clone.CloneType,
+		},
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
+	}
+
+	return d.dbClient.CreateAutonomousDatabase(context.TODO(), request)
 }

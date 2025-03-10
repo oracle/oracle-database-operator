@@ -50,8 +50,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	"github.com/oracle/oracle-database-operator/test/e2e/behavior"
-	"github.com/oracle/oracle-database-operator/test/e2e/util"
+	e2ebehavior "github.com/oracle/oracle-database-operator/test/e2e/behavior"
+	e2eutil "github.com/oracle/oracle-database-operator/test/e2e/util"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -103,18 +103,18 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 				},
 				Spec: dbv1alpha1.AutonomousDatabaseSpec{
 					Details: dbv1alpha1.AutonomousDatabaseDetails{
-						AutonomousDatabaseOCID: adbID,
-						Wallet: dbv1alpha1.WalletSpec{
-							Name: common.String(downloadedWallet),
-							Password: dbv1alpha1.PasswordSpec{
-								K8sSecret: dbv1alpha1.K8sSecretSpec{
-									Name: common.String(SharedWalletPassSecretName),
-								},
+						Id: adbID,
+					},
+					Wallet: dbv1alpha1.WalletSpec{
+						Name: common.String(downloadedWallet),
+						Password: dbv1alpha1.PasswordSpec{
+							K8sSecret: dbv1alpha1.K8sSecretSpec{
+								Name: common.String(SharedWalletPassSecretName),
 							},
 						},
 					},
 					HardLink: common.Bool(false),
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OciConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},
@@ -136,9 +136,9 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 
 		It("Should restart ADB", e2ebehavior.UpdateAndAssertADBState(&k8sClient, &dbClient, &adbLookupKey, database.AutonomousDatabaseLifecycleStateAvailable))
 
-		It("Should change to RESTRICTED network access", e2ebehavior.TestNetworkAccessRestricted(&k8sClient, &dbClient, &adbLookupKey, false))
+		It("Should change to RESTRICTED network access", e2ebehavior.TestNetworkAccessRestricted(&k8sClient, &dbClient, &adbLookupKey, []string{"192.168.0.1"}, false))
 
-		It("Should change isMTLSConnectionRequired to false", e2ebehavior.TestNetworkAccessRestricted(&k8sClient, &dbClient, &adbLookupKey, false))
+		It("Should change isMTLSConnectionRequired to false", e2ebehavior.TestNetworkAccessRestricted(&k8sClient, &dbClient, &adbLookupKey, []string{"192.168.0.1"}, false))
 
 		It("Should should change to PRIVATE network access", e2ebehavior.TestNetworkAccessPrivate(&k8sClient, &dbClient, &adbLookupKey, false, &SharedSubnetOCID, &SharedNsgOCID))
 
@@ -162,18 +162,18 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 				},
 				Spec: dbv1alpha1.AutonomousDatabaseSpec{
 					Details: dbv1alpha1.AutonomousDatabaseDetails{
-						AutonomousDatabaseOCID: adbID,
-						Wallet: dbv1alpha1.WalletSpec{
-							Name: common.String(downloadedWallet),
-							Password: dbv1alpha1.PasswordSpec{
-								OCISecret: dbv1alpha1.OCISecretSpec{
-									OCID: common.String(SharedInstanceWalletPasswordOCID),
-								},
+						Id: adbID,
+					},
+					Wallet: dbv1alpha1.WalletSpec{
+						Name: common.String(downloadedWallet),
+						Password: dbv1alpha1.PasswordSpec{
+							OciSecret: dbv1alpha1.OciSecretSpec{
+								Id: common.String(SharedInstanceWalletPasswordOCID),
 							},
 						},
 					},
 					HardLink: common.Bool(true),
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OciConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},
@@ -210,10 +210,10 @@ var _ = Describe("test ADB binding with hardLink=true", func() {
 				},
 				Spec: dbv1alpha1.AutonomousDatabaseSpec{
 					Details: dbv1alpha1.AutonomousDatabaseDetails{
-						AutonomousDatabaseOCID: &terminatedAdbID,
+						Id: &terminatedAdbID,
 					},
 					HardLink: common.Bool(true),
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OciConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},

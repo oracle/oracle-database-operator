@@ -59,21 +59,16 @@ func (r *AutonomousDatabaseBackup) SetupWebhookWithManager(mgr ctrl.Manager) err
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,verbs=create;update,versions=v1alpha1,name=mautonomousdatabasebackup.kb.io,admissionReviewVersions={v1}
+//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,verbs=create;update,versions=v1alpha1,name=mautonomousdatabasebackupv1alpha1.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Defaulter = &AutonomousDatabaseBackup{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *AutonomousDatabaseBackup) Default() {
 	autonomousdatabasebackuplog.Info("default", "name", r.Name)
-
-	// TODO(user): fill in your defaulting logic.
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,versions=v1alpha1,name=vautonomousdatabasebackup.kb.io,admissionReviewVersions={v1}
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,versions=v1alpha1,name=vautonomousdatabasebackupv1alpha1.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &AutonomousDatabaseBackup{}
 
@@ -96,12 +91,12 @@ func (r *AutonomousDatabaseBackup) ValidateCreate() (admission.Warnings, error) 
 		}
 	}
 
-	if r.Spec.Target.K8sADB.Name == nil && r.Spec.Target.OCIADB.OCID == nil {
+	if r.Spec.Target.K8sAdb.Name == nil && r.Spec.Target.OciAdb.Ocid == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
 	}
 
-	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
+	if r.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.OciAdb.Ocid != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB or ociADB, but not both"))
 	}
@@ -128,14 +123,14 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) (admission
 				"cannot assign a new autonomousDatabaseBackupOCID to this backup"))
 	}
 
-	if oldBackup.Spec.Target.K8sADB.Name != nil && r.Spec.Target.K8sADB.Name != nil &&
-		*oldBackup.Spec.Target.K8sADB.Name != *r.Spec.Target.K8sADB.Name {
+	if oldBackup.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.K8sAdb.Name != nil &&
+		*oldBackup.Spec.Target.K8sAdb.Name != *r.Spec.Target.K8sAdb.Name {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target").Child("k8sADB").Child("name"), "cannot assign a new name to the target"))
 	}
 
-	if oldBackup.Spec.Target.OCIADB.OCID != nil && r.Spec.Target.OCIADB.OCID != nil &&
-		*oldBackup.Spec.Target.OCIADB.OCID != *r.Spec.Target.OCIADB.OCID {
+	if oldBackup.Spec.Target.OciAdb.Ocid != nil && r.Spec.Target.OciAdb.Ocid != nil &&
+		*oldBackup.Spec.Target.OciAdb.Ocid != *r.Spec.Target.OciAdb.Ocid {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target").Child("ociADB").Child("ocid"), "cannot assign a new ocid to the target"))
 	}

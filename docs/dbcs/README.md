@@ -1,12 +1,12 @@
-# Using the DB Operator DBCS Controller 
+# Using the DB Operator Oracle Base Database Service (OBDS) Controller 
 
-Oracle Cloud Infastructure (OCI) Oracle Base Database Cloud Service (BDBCS) provides single-node Database (DB) systems, deployed on virtual machines, and provides two-node Oracle Real Appliation Clusters (Oracle RAC) database systems on virtual machines.
+Oracle Cloud Infastructure (OCI) Oracle Base Database Service (OBDS) provides single-node Database (DB) systems, deployed on virtual machines, and provides two-node Oracle Real Application Clusters (Oracle RAC) database systems on virtual machines.
 
-The single-node DB systems and Oracle RAC systems on virtual machines are [co-managed Oracle Database cloud solutions](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/overview.htm). To manage the lifecycle of an OCI DBCS system, you can use the OCI Console, the REST API, or the Oracle Cloud Infrastructure command-line interface (CLI). At the granular level, you can use the Oracle Database CLI (DBCLI), Oracle Enterprise Manager, or Oracle SQL Developer.
+The single-node DB systems and Oracle RAC systems on virtual machines are [co-managed Oracle Database cloud solutions](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/overview.htm). To manage the lifecycle of an OCI OBDS system, you can use the OCI Console, the REST API, or the Oracle Cloud Infrastructure command-line interface (CLI). At the granular level, you can use the Oracle Database CLI (DBCLI), Oracle Enterprise Manager, or Oracle SQL Developer.
 
-The Oracle DB Operator DBCS Controller is a feature of the Oracle DB Operator for Kubernetes (OraOperator) which uses OCI's BDBCS service to support lifecycle management of the database systems.
+The Oracle DB Operator Oracle Base Database Service (OBDS) Controller is a feature of the Oracle DB Operator for Kubernetes (OraOperator) which uses OCI's Oracle Base Database Service OBDS service to support lifecycle management of the database systems.
 
-Note: Oracle Base Database Cloud Service (BDBCS) was previously known as Database Cloud Service (DBCS).
+Note: Oracle Base Database Cloud Service (OBDS) was previously known as Database Cloud Service (DBCS).
 
 # Supported Database Editions and Versions
 
@@ -22,55 +22,47 @@ Two-node Oracle RAC DB systems require Oracle Enterprise Edition - Extreme Perfo
 
 For standard provisioning of DB systems (using Oracle Automatic Storage Management (ASM) as your storage management software), the following database releases are supported:
 
--   Oracle Database 21c
+-   Oracle Database 23ai 
 -   Oracle Database 19c
--   Oracle Database 18c (18.0)
--   Oracle Database 12c Release 2 (12.2)
--   Oracle Database 12c Release 1 (12.1)
--   Oracle Database 11g Release 2 (11.2)
-
 
 For fast provisioning of single-node virtual machine database systems (using Logical Volume Manager as your storage management software), the following database releases are supported:
 
-- Oracle Database 21c
+- Oracle Database 23ai
 - Oracle Database 19c
-- Oracle Database 18c
-- Oracle Database 12c Release 2 (12.2)
 
 
-# Oracle DB Operator DBCS Controller Deployment
+# Oracle DB Operator Oracle Base Database Service (OBDS) Controller Deployment
 
-To deploy OraOperator, use this [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
+To deploy Oracle Database Operator (`OraOperator`), use the [Oracle Database Operator for Kubernetes](https://github.com/oracle/oracle-database-operator/blob/main/README.md) step-by-step procedure.
 
-After the Oracle Database Operator is deployed, you can see the DB operator pods running in the Kubernetes Cluster. As part of the OraOperator deployment, the DBCS Controller is deployed as a CRD (Custom Resource Definition). The following screen output is an example of such a deployment:
-```
+After the Oracle Database Operator is deployed, you can see the DB operator pods running in the Kubernetes Cluster. As part of the `OraOperator` deployment, the OBDS Controller is deployed as a CRD (Custom Resource Definition). The following screen output is an example of such a deployment:
+```bash
 [root@test-server oracle-database-operator]# kubectl get ns
 NAME                              STATUS   AGE
-cert-manager                      Active   2m5s
-default                           Active   125d
-kube-node-lease                   Active   125d
-kube-public                       Active   125d
-kube-system                       Active   125d
-oracle-database-operator-system   Active   17s    <<<< namespace to deploy the Oracle Database Operator
+cert-manager                      Active   33d
+default                           Active   118d
+kube-node-lease                   Active   118d
+kube-public                       Active   118d
+kube-system                       Active   118d
+oracle-database-operator-system   Active   10m    <<<< namespace to deploy the Oracle Database Operator
  
  
 [root@test-server oracle-database-operator]# kubectl get all -n  oracle-database-operator-system
 NAME                                                               READY   STATUS    RESTARTS   AGE
-pod/oracle-database-operator-controller-manager-665874bd57-dlhls   1/1     Running   0          28s
-pod/oracle-database-operator-controller-manager-665874bd57-g2cgw   1/1     Running   0          28s
-pod/oracle-database-operator-controller-manager-665874bd57-q42f8   1/1     Running   0          28s
- 
+pod/oracle-database-operator-controller-manager-678f96f5f4-f4rhq   1/1     Running   0          10m
+pod/oracle-database-operator-controller-manager-678f96f5f4-plxcp   1/1     Running   0          10m
+pod/oracle-database-operator-controller-manager-678f96f5f4-qgcg8   1/1     Running   0          10m
+
 NAME                                                                  TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
-service/oracle-database-operator-controller-manager-metrics-service   ClusterIP   10.96.130.124   <none>        8443/TCP   29s
-service/oracle-database-operator-webhook-service                      ClusterIP   10.96.4.104     <none>        443/TCP    29s
- 
+service/oracle-database-operator-controller-manager-metrics-service   ClusterIP   10.96.197.164   <none>        8443/TCP   11m
+service/oracle-database-operator-webhook-service                      ClusterIP   10.96.35.62     <none>        443/TCP    11m
+
 NAME                                                          READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/oracle-database-operator-controller-manager   3/3     3            3           29s
- 
+deployment.apps/oracle-database-operator-controller-manager   3/3     3            3           11m
+
 NAME                                                                     DESIRED   CURRENT   READY   AGE
-replicaset.apps/oracle-database-operator-controller-manager-665874bd57   3         3         3       29s
-[root@docker-test-server oracle-database-operator]#
- 
+replicaset.apps/oracle-database-operator-controller-manager-6657bfc664   0         0         0       11m
+replicaset.apps/oracle-database-operator-controller-manager-678f96f5f4   3         3         3       10m 
  
 [root@test-server oracle-database-operator]# kubectl get crd
 NAME                                             CREATED AT
@@ -81,7 +73,7 @@ certificaterequests.cert-manager.io              2022-02-22T23:21:35Z
 certificates.cert-manager.io                     2022-02-22T23:21:36Z
 challenges.acme.cert-manager.io                  2022-02-22T23:21:36Z
 clusterissuers.cert-manager.io                   2022-02-22T23:21:36Z
-dbcssystems.database.oracle.com                  2022-02-22T23:23:25Z  <<<< CRD for DBCS Controller
+dbcssystems.database.oracle.com                  2022-02-22T23:23:25Z  <<<< CRD for OBDS Controller
 issuers.cert-manager.io                          2022-02-22T23:21:36Z
 orders.acme.cert-manager.io                      2022-02-22T23:21:37Z
 shardingdatabases.database.oracle.com            2022-02-22T23:23:25Z
@@ -89,56 +81,56 @@ singleinstancedatabases.database.oracle.com      2022-02-22T23:23:25Z
 ```
 
 
-# Prerequisites to deploy a DBCS system using Oracle DB Operator DBCS Controller
+# Prerequisites to deploy a OBDS system using Oracle DB Operator OBDS Controller
 
-Before you deploy a DBCS system in OCI using the Oracle DB Operator DBCS Controller, complete the following procedure.
+Before you deploy a OBDS system in OCI using the Oracle DB Operator OBDS Controller, complete the following procedure.
 
 **CAUTION :** You must make the changes specified in this section before you proceed to the next section.
 
-## 1. Create a Kubernetes Configmap. For example: We are creating a Kubernetes Configmap named `oci-cred` using the OCI account we are using as below: 
+## 1. Create a Kubernetes Configmap. In this example. we create a Kubernetes Configmap named `oci-cred` with the OCI account we are using: 
 
-```
+```bash
 kubectl create configmap oci-cred \
---from-literal=tenancy=ocid1.tenancy.oc1..................67iypsmea \
---from-literal=user=ocid1.user.oc1..aaaaaaaaxw3i...............ce6qzdrnmq \
---from-literal=fingerprint=b2:7c:a8:d5:44:f5.....................:9a:55 \
+--from-literal=tenancy=<tenancy-ocid> \
+--from-literal=user=<user-ocid> \
+--from-literal=fingerprint=<fingerprint in xx:xx format> \
 --from-literal=region=us-phoenix-1
 ```
 
 
 ## 2. Create a Kubernetes secret `oci-privatekey` using the OCI Pem key taken from OCI console for the account you are using:
 
-```
--- assuming the OCI Pem key to be "/root/.oci/oci_api_key.pem"
+```bash
+#---assuming the OCI Pem key to be "/root/.oci/oci_api_key.pem"
 
 kubectl create secret generic oci-privatekey --from-file=privatekey=/root/.oci/oci_api_key.pem
 ```
 
 
-## 3. Create a Kubernetes secret named `admin-password`; This passward must meet the minimum passward requirements for the OCI BDBCS Service.
+## 3. Create a Kubernetes secret named `admin-password`; This passward must meet the minimum passward requirements for the OCI OBDS Service.
 For example:
 
-```
--- assuming the passward has been added to a text file named "admin-password":
+```bash
+#-- assuming the passward has been added to a text file named "admin-password":
 
 kubectl create secret generic admin-password --from-file=./admin-password -n default
 ```
 
 
-## 4. Create a Kubernetes secret named `tde-password`; this passward must meet the minimum passward requirements for the OCI BDBCS Service.
+## 4. Create a Kubernetes secret named `tde-password`; this passward must meet the minimum passward requirements for the OCI OBDS Service.
 For example:
 
-```
--- assuming the passward has been added to a text file named "tde-password":
+```bash
+# -- assuming the passward has been added to a text file named "tde-password":
 
 kubectl create secret generic tde-password --from-file=./tde-password -n default
 ```
 
 
-## 5. Create an ssh key pair, and use its public key to create a Kubernetes secret named `oci-publickey`; the private key for this public key can be used later to access the DBCS system's host machine using ssh:
+## 5. Create an SSH key pair, and use its public key to create a Kubernetes secret named `oci-publickey`; the private key for this public key can be used later to access the OBDS system's host machine using SSH:
 
-```
-[root@test-server DBCS]# ssh-keygen -N "" -C "DBCS_System"-`date +%Y%m` -P ""
+```bash
+[root@test-server OBDS]# ssh-keygen -N "" -C "DBCS_System"-`date +%Y%m` -P ""
 Generating public/private rsa key pair.
 Enter file in which to save the key (/root/.ssh/id_rsa):
 Your identification has been saved in /root/.ssh/id_rsa.
@@ -159,31 +151,35 @@ The key's randomart image is:
 +----[SHA256]-----+
  
 
-[root@test-server DBCS]# kubectl create secret generic oci-publickey --from-file=publickey=/root/DBCS/id_rsa.pub
+[root@test-server OBDS]# kubectl create secret generic oci-publickey --from-file=publickey=/root/DBCS/id_rsa.pub
 ```
 
+# Use Cases to manage the lifecycle of an OCI OBDS System with Oracle DB Operator OBDS Controller
 
+For more informatoin about the multiple use cases available to you to deploy and manage the OCI OBDS Service-based database using the Oracle DB Operator OBDS Controller, review this list:
 
+[1. Deploy a DB System using OCI OBDS Service with minimal parameters](./provisioning/dbcs_service_with_minimal_parameters.md)  
+[2. Binding to an existing OBDS System already deployed in OCI Oracle Base Database Service](./provisioning/bind_to_existing_dbcs_system.md)  
+[3. Scale UP the shape of an existing OBDS System](./provisioning/scale_up_dbcs_system_shape.md)  
+[4. Scale DOWN the shape of an existing OBDS System](./provisioning/scale_down_dbcs_system_shape.md)  
+[5. Scale UP the storage of an existing OBDS System](./provisioning/scale_up_storage.md)  
+[6. Update License type of an existing OBDS System](./provisioning/update_license.md)  
+[7. Terminate an existing OBDS System](./provisioning/terminate_dbcs_system.md)  
+[8. Create OBDS with All Parameters with Storage Management as LVM](./provisioning/dbcs_service_with_all_parameters_lvm.md)  
+[9. Create OBDS with All Parameters with Storage Management as ASM](./provisioning/dbcs_service_with_all_parameters_asm.md)  
+[10. Deploy a 2 Node RAC DB System using OCI OBDS Service](./provisioning/dbcs_service_with_2_node_rac.md)  
+[11. Create PDB to an existing OBDS System already deployed in OCI OBDS Service](./provisioning/create_pdb_to_existing_dbcs_system.md)   
+[12. Create OBDS with PDB in OCI](./provisioning/create_dbcs_with_pdb.md)  
+[13. Create OBDS with KMS Vault Encryption in OCI](./provisioning/create_dbcs_with_kms.md)    
+[14. Migrate to KMS vault from TDE Wallet password encryption of an existing OBDS System already deployed in OCI Base OBDS Service](./provisioning/migrate_to_kms.md)  
+[15. Clone DB System from Existing DB System in OCI OBDS Service](./provisioning/clone_from_existing_dbcs.md)  
+[16. Clone DB System from Backup of Existing DB System in OCI OBDS Service](./provisioning/clone_from_backup_dbcs.md)  
+[17. Clone DB System from Existing Database of DB System in OCI OBDS Service](./provisioning/clone_from_database.md)  
 
-# Use Cases to manage the lifecycle of an OCI DBCS System with Oracle DB Operator DBCS Controller
+## Connecting to OCI OBDS database deployed using Oracle DB Operator OBDS Controller
 
-For more informatoin about the multiple use cases available to you to deploy and manage the OCI BDBCS Service-based database using the Oracle DB Operator DBCS Controller, review this list:
-
-[1. Deploy a DB System using OCI BDBCS Service with minimal parameters](./provisioning/dbcs_service_with_minimal_parameters.md)  
-[2. Binding to an existing DBCS System already deployed in OCI BDBCS Service](./provisioning/bind_to_existing_dbcs_system.md)  
-[3. Scale UP the shape of an existing BDBCS System](./provisioning/scale_up_dbcs_system_shape.md)  
-[4. Scale DOWN the shape of an existing BDBCS System](./provisioning/scale_down_dbcs_system_shape.md)  
-[5. Scale UP the storage of an existing BDBCS System](./provisioning/scale_up_storage.md)  
-[6. Update License type of an existing BDBCS System](./provisioning/update_license.md)  
-[7. Terminate an existing BDBCS System](./provisioning/terminate_dbcs_system.md)  
-[8. Create BDBCS with All Parameters with Storage Management as LVM](./provisioning/dbcs_service_with_all_parameters_lvm.md)  
-[9. Create BDBCS with All Parameters with Storage Management as ASM](./provisioning/dbcs_service_with_all_parameters_asm.md)  
-[10. Deploy a 2 Node RAC DB System using OCI BDBCS Service](./provisioning/dbcs_service_with_2_node_rac.md)
-
-## Connecting to OCI DBCS database deployed using Oracle DB Operator DBCS Controller
-
-After you have deployed the OCI BDBCS database with the Oracle DB Operator DBCS Controller, you can connect to the database. To see how to connect and use the database, refer to the steps in [Database Connectivity](./provisioning/database_connection.md).
+After you have deployed the OCI OBDS database with the Oracle DB Operator OBDS Controller, you can connect to the database. To see how to connect and use the database, refer to the steps in [Database Connectivity](./provisioning/database_connection.md).
 
 ## Known Issues
 
-If you encounter any issues with deployment, refer to the list of [Known Issues](./provisioning/known_issues.md) for an OCI DBCS System deployed using Oracle DB Operator DBCS Controller.
+If you encounter any issues with deployment, refer to the list of [Known Issues](./provisioning/known_issues.md) for an OCI OBDS System deployed using Oracle DB Operator OBDS Controller.

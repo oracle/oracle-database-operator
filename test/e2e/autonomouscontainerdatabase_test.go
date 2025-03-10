@@ -49,8 +49,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
-	"github.com/oracle/oracle-database-operator/test/e2e/behavior"
-	"github.com/oracle/oracle-database-operator/test/e2e/util"
+	e2ebehavior "github.com/oracle/oracle-database-operator/test/e2e/behavior"
+	e2eutil "github.com/oracle/oracle-database-operator/test/e2e/util"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -81,7 +81,7 @@ var _ = Describe("test ACD binding", func() {
 					CompartmentOCID:                common.String(SharedCompartmentOCID),
 					AutonomousExadataVMClusterOCID: common.String(SharedExadataVMClusterOCID),
 					PatchModel:                     database.AutonomousContainerDatabasePatchModelUpdates,
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OCIConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},
@@ -119,7 +119,7 @@ var _ = Describe("test ACD binding", func() {
 				},
 				Spec: dbv1alpha1.AutonomousContainerDatabaseSpec{
 					AutonomousContainerDatabaseOCID: common.String(acdID),
-					OCIConfig: dbv1alpha1.OCIConfigSpec{
+					OCIConfig: dbv1alpha1.OciConfigSpec{
 						ConfigMapName: common.String(SharedOCIConfigMapName),
 						SecretName:    common.String(SharedOCISecretName),
 					},

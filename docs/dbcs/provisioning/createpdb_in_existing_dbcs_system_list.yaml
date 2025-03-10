@@ -1,0 +1,27 @@
+apiVersion: database.oracle.com/v4
+kind: DbcsSystem
+metadata:
+  name: dbcssystem-existing
+spec:
+  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa"
+  ociConfigMap: "oci-cred"
+  ociSecret: "oci-privatekey"
+  pdbConfigs:
+    - pdbName: "pdb_sauahuja_sdk_13"
+      tdeWalletPassword: "tde-password"
+      pdbAdminPassword: "pdb-password"
+      shouldPdbAdminAccountBeLocked: false
+      freeformTags:
+        Department: "Finance"
+    - pdbName: "pdb_sauahuja_sdk_14"
+      tdeWalletPassword: "tde-password"
+      pdbAdminPassword: "pdb-password"
+      shouldPdbAdminAccountBeLocked: false
+      freeformTags:
+        Department: "HR"
+    - pdbName: "pdb_sauahuja_sdk_15"
+      tdeWalletPassword: "tde-password"
+      pdbAdminPassword: "pdb-password"
+      shouldPdbAdminAccountBeLocked: false
+      freeformTags:
+        Department: "IT"

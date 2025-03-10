@@ -106,36 +106,42 @@ function setupOrds() {
 echo "===================================================="
 echo CONFIG=$CONFIG
 
+echo $R1|sed 's/-----BEGIN PRIVATE KEY-----/-----BEGIN PRIVATE KEY-----\n/g'|\
+       	sed 's/-----END PRIVATE KEY-----/\n-----END PRIVATE KEY-----/' > $ORDS_HOME/k.txt
+
+
 export ORDS_LOGS=/tmp
 
  [ -f $ORDS_HOME/secrets/$WEBSERVER_USER_KEY ]     && 
   {
-    WEBSERVER_USER=`cat $ORDS_HOME/secrets/$WEBSERVER_USER_KEY` 
+    WEBSERVER_USER=$(cat /opt/oracle/ords/secrets/${WEBSERVER_USER_KEY}|base64 --decode |openssl rsautl -decrypt  -out swap -inkey $ORDS_HOME/k.txt -in - ; cat swap ;rm swap)
   }
 
  [ -f $ORDS_HOME/secrets/$WEBSERVER_PASSWORD_KEY ] && 
   { 
-    WEBSERVER_PASSWORD=`cat $ORDS_HOME/secrets/$WEBSERVER_PASSWORD_KEY` 
+    WEBSERVER_PASSWORD=$(cat /opt/oracle/ords/secrets/${WEBSERVER_PASSWORD_KEY}|base64 --decode |openssl rsautl -decrypt  -out swap -inkey $ORDS_HOME/k.txt -in - ; cat swap ;rm swap)
   }
 
  [ -f $ORDS_HOME/secrets/$CDBADMIN_USER_KEY ]      && 
   {
-     CDBADMIN_USER=`cat $ORDS_HOME/secrets/$CDBADMIN_USER_KEY` 
+     CDBADMIN_USER=$(cat  /opt/oracle/ords/secrets/${CDBADMIN_USER_KEY} | base64 --decode |openssl rsautl -decrypt  -out swap -inkey $ORDS_HOME/k.txt -in - ; cat swap ;rm swap)
   }
 
  [ -f $ORDS_HOME/secrets/$CDBADMIN_PWD_KEY ]       && 
   { 
-     CDBADMIN_PWD=`cat $ORDS_HOME/secrets/$CDBADMIN_PWD_KEY` 
+     CDBADMIN_PWD=$(cat  /opt/oracle/ords/secrets/${CDBADMIN_PWD_KEY} | base64 --decode |openssl rsautl -decrypt  -out swap -inkey $ORDS_HOME/k.txt -in - ; cat swap ;rm swap)
   }
 
  [ -f $ORDS_HOME/secrets/$ORACLE_PWD_KEY ]         && 
   { 
-    SYSDBA_PASSWORD=`cat $ORDS_HOME/secrets/$ORACLE_PWD_KEY`
+    #SYSDBA_PASSWORD=`cat $ORDS_HOME/secrets/$ORACLE_PWD_KEY`
+    SYSDBA_PASSWORD=$(cat $ORDS_HOME/secrets/${ORACLE_PWD_KEY} | base64 --decode |openssl rsautl -decrypt  -out swap -inkey $ORDS_HOME/k.txt -in - ; cat swap ;rm swap)
    }
 
  [ -f $ORDS_HOME/secrets/$ORACLE_PWD_KEY ]         && 
   { 
-    ORDS_PASSWORD=`cat $ORDS_HOME/secrets/$ORDS_PWD_KEY`
+    #ORDS_PASSWORD=`cat $ORDS_HOME/secrets/$ORDS_PWD_KEY`
+    ORDS_PASSWORD=$(cat $ORDS_HOME/secrets/${ORDS_PWD_KEY} | base64 --decode |openssl rsautl -decrypt  -out swap -inkey $ORDS_HOME/k.txt -in - ; cat swap ;rm swap)
   }
 
 
@@ -151,6 +157,7 @@ ${SYSDBA_PASSWORD:-PROVIDE_A_PASSWORD}
 ${ORDS_PASSWORD:-PROVIDE_A_PASSWORD}
 EOF
 
+rm $ORDS_HOME/k.txt
 
 
 if [ $? -ne 0 ]

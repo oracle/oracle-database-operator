@@ -49,10 +49,10 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/workrequests"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 )
 
-func GetDbHomeDetails(kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev1alpha1.DbcsSystem) (database.CreateDbHomeDetails, error) {
+func GetDbHomeDetails(kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem) (database.CreateDbHomeDetails, error) {
 
 	dbHomeDetails := database.CreateDbHomeDetails{}
 
@@ -72,7 +72,7 @@ func GetDbHomeDetails(kubeClient client.Client, dbClient database.DatabaseClient
 	return dbHomeDetails, nil
 }
 
-func GetDbLatestVersion(dbClient database.DatabaseClient, dbcs *databasev1alpha1.DbcsSystem, dbSystemId string) (string, error) {
+func GetDbLatestVersion(dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, dbSystemId string) (string, error) {
 
 	//var provisionedDbcsSystemId string
 	ctx := context.TODO()
@@ -105,27 +105,34 @@ func GetDbLatestVersion(dbClient database.DatabaseClient, dbcs *databasev1alpha1
 			s2 := getStr(dbcs.Spec.DbSystem.DbVersion, 2)
 			if strings.EqualFold(s1, s2) {
 				val, _ = strconv.Atoi(s1)
-				if val >= 18 {
+				if val >= 18 && val <= 21 {
 					s3 := s1 + "c"
 					if strings.EqualFold(s3, dbcs.Spec.DbSystem.DbVersion) {
 						sFlag = 1
 						break
 					}
+				} else if val >= 23 {
+					s3 := s1 + "ai"
+					if strings.EqualFold(s3, dbcs.Spec.DbSystem.DbVersion) {
+						sFlag = 1
+						break
+					}
+				} else if val < 18 && val >= 11 {
+					s4 := getStr(*version.Version, 4)
+					if strings.EqualFold(s4, dbcs.Spec.DbSystem.DbVersion) {
+						sFlag = 1
+						break
+					}
 				}
-			} else if val < 18 && val >= 11 {
-				s4 := getStr(*version.Version, 4)
-				if strings.EqualFold(s4, dbcs.Spec.DbSystem.DbVersion) {
-					sFlag = 1
-					break
-				}
-			}
 
+			}
 		}
 	}
 
 	if sFlag == 1 {
 		return *version.Version, nil
 	}
+
 	return *version.Version, fmt.Errorf("no database version matched")
 }
 
@@ -133,7 +140,7 @@ func getStr(str1 string, num int) string {
 	return str1[0:num]
 }
 
-func GetDBDetails(kubeClient client.Client, dbcs *databasev1alpha1.DbcsSystem) (database.CreateDatabaseDetails, error) {
+func GetDBDetails(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (database.CreateDatabaseDetails, error) {
 	dbDetails := database.CreateDatabaseDetails{}
 	var val database.CreateDatabaseDetailsDbWorkloadEnum
 
@@ -188,7 +195,7 @@ func GetDBDetails(kubeClient client.Client, dbcs *databasev1alpha1.DbcsSystem) (
 	return dbDetails, nil
 }
 
-func getBackupConfig(kubeClient client.Client, dbcs *databasev1alpha1.DbcsSystem) (database.DbBackupConfig, error) {
+func getBackupConfig(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (database.DbBackupConfig, error) {
 	backupConfig := database.DbBackupConfig{}
 
 	if dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupEnabled != nil {
@@ -216,7 +223,7 @@ func getBackupConfig(kubeClient client.Client, dbcs *databasev1alpha1.DbcsSystem
 	return backupConfig, nil
 }
 
-func getBackupWindowEnum(dbcs *databasev1alpha1.DbcsSystem) (database.DbBackupConfigAutoBackupWindowEnum, error) {
+func getBackupWindowEnum(dbcs *databasev4.DbcsSystem) (database.DbBackupConfigAutoBackupWindowEnum, error) {
 
 	if strings.ToUpper(*dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupWindow) == "SLOT_ONE" {
 		return database.DbBackupConfigAutoBackupWindowOne, nil
@@ -251,7 +258,7 @@ func getBackupWindowEnum(dbcs *databasev1alpha1.DbcsSystem) (database.DbBackupCo
 	//return database.DbBackupConfigAutoBackupWindowEight, fmt.Errorf("AutoBackupWindow values can be SLOT_ONE|SLOT_TWO|SLOT_THREE|SLOT_FOUR|SLOT_FIVE|SLOT_SIX|SLOT_SEVEN|SLOT_EIGHT|SLOT_NINE|SLOT_TEN|SLOT_ELEVEN|SLOT_TWELEVE. The current value set to " + *dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupWindow)
 }
 
-func getRecoveryWindowsInDays(dbcs *databasev1alpha1.DbcsSystem) (int, error) {
+func getRecoveryWindowsInDays(dbcs *databasev4.DbcsSystem) (int, error) {
 
 	var days int
 
@@ -274,7 +281,7 @@ func getRecoveryWindowsInDays(dbcs *databasev1alpha1.DbcsSystem) (int, error) {
 }
 
 func GetDBSystemopts(
-	dbcs *databasev1alpha1.DbcsSystem) database.DbSystemOptions {
+	dbcs *databasev4.DbcsSystem) database.DbSystemOptions {
 
 	dbSystemOpt := database.DbSystemOptions{}
 
@@ -294,7 +301,7 @@ func GetDBSystemopts(
 	return dbSystemOpt
 }
 
-func getLicenceModel(dbcs *databasev1alpha1.DbcsSystem) database.DbSystemLicenseModelEnum {
+func getLicenceModel(dbcs *databasev4.DbcsSystem) database.DbSystemLicenseModelEnum {
 	if dbcs.Spec.DbSystem.LicenseModel == "BRING_YOUR_OWN_LICENSE" {
 		return database.DbSystemLicenseModelBringYourOwnLicense
 
@@ -302,7 +309,7 @@ func getLicenceModel(dbcs *databasev1alpha1.DbcsSystem) database.DbSystemLicense
 	return database.DbSystemLicenseModelLicenseIncluded
 }
 
-func getDbWorkLoadType(dbcs *databasev1alpha1.DbcsSystem) (database.CreateDatabaseDetailsDbWorkloadEnum, error) {
+func getDbWorkLoadType(dbcs *databasev4.DbcsSystem) (database.CreateDatabaseDetailsDbWorkloadEnum, error) {
 
 	if strings.ToUpper(dbcs.Spec.DbSystem.DbWorkload) == "OLTP" {
 
@@ -317,7 +324,7 @@ func getDbWorkLoadType(dbcs *databasev1alpha1.DbcsSystem) (database.CreateDataba
 }
 
 func GetNodeCount(
-	dbcs *databasev1alpha1.DbcsSystem) int {
+	dbcs *databasev4.DbcsSystem) int {
 
 	if dbcs.Spec.DbSystem.NodeCount != nil {
 		return *dbcs.Spec.DbSystem.NodeCount
@@ -327,7 +334,7 @@ func GetNodeCount(
 }
 
 func GetInitialStorage(
-	dbcs *databasev1alpha1.DbcsSystem) int {
+	dbcs *databasev4.DbcsSystem) int {
 
 	if dbcs.Spec.DbSystem.InitialDataStorageSizeInGB > 0 {
 		return dbcs.Spec.DbSystem.InitialDataStorageSizeInGB
@@ -335,7 +342,7 @@ func GetInitialStorage(
 	return 256
 }
 
-func GetDBEdition(dbcs *databasev1alpha1.DbcsSystem) database.LaunchDbSystemDetailsDatabaseEditionEnum {
+func GetDBEdition(dbcs *databasev4.DbcsSystem) database.LaunchDbSystemDetailsDatabaseEditionEnum {
 
 	if dbcs.Spec.DbSystem.ClusterName != "" {
 		return database.LaunchDbSystemDetailsDatabaseEditionEnterpriseEditionExtremePerformance
@@ -360,7 +367,7 @@ func GetDBEdition(dbcs *databasev1alpha1.DbcsSystem) database.LaunchDbSystemDeta
 }
 
 func GetDBbDiskRedundancy(
-	dbcs *databasev1alpha1.DbcsSystem) database.LaunchDbSystemDetailsDiskRedundancyEnum {
+	dbcs *databasev4.DbcsSystem) database.LaunchDbSystemDetailsDiskRedundancyEnum {
 
 	if dbcs.Spec.DbSystem.ClusterName != "" {
 		return database.LaunchDbSystemDetailsDiskRedundancyHigh
@@ -376,7 +383,7 @@ func GetDBbDiskRedundancy(
 	return database.LaunchDbSystemDetailsDiskRedundancyNormal
 }
 
-func getWorkRequest(workId string, wrClient workrequests.WorkRequestClient, dbcs *databasev1alpha1.DbcsSystem) ([]workrequests.WorkRequestSummary, error) {
+func getWorkRequest(workId string, wrClient workrequests.WorkRequestClient, dbcs *databasev4.DbcsSystem) ([]workrequests.WorkRequestSummary, error) {
 	var workReq []workrequests.WorkRequestSummary
 
 	req := workrequests.ListWorkRequestsRequest{CompartmentId: &dbcs.Spec.DbSystem.CompartmentId, OpcRequestId: &workId, ResourceId: dbcs.Spec.Id}
@@ -405,10 +412,10 @@ func GetFmtStr(pstr string) string {
 	return "[" + pstr + "]"
 }
 
-func checkValue(dbcs *databasev1alpha1.DbcsSystem, workId *string) int {
+func checkValue(dbcs *databasev4.DbcsSystem, workId *string) int {
 
 	var status int = 0
-	//dbWorkRequest := databasev1alpha1.DbWorkrequests{}
+	//dbWorkRequest := databasev4.DbWorkrequests{}
 
 	if len(dbcs.Status.WorkRequests) > 0 {
 		for _, v := range dbcs.Status.WorkRequests {
@@ -420,10 +427,10 @@ func checkValue(dbcs *databasev1alpha1.DbcsSystem, workId *string) int {
 
 	return status
 }
-func setValue(dbcs *databasev1alpha1.DbcsSystem, dbWorkRequest databasev1alpha1.DbWorkrequests) {
+func setValue(dbcs *databasev4.DbcsSystem, dbWorkRequest databasev4.DbWorkrequests) {
 
 	//var status int = 1
-	//dbWorkRequest := databasev1alpha1.DbWorkrequests{}
+	//dbWorkRequest := databasev4.DbWorkrequests{}
 	var counter int = 0
 	if len(dbcs.Status.WorkRequests) > 0 {
 		for _, v := range dbcs.Status.WorkRequests {

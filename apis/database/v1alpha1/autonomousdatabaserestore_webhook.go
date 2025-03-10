@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -59,10 +60,7 @@ func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) er
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v1alpha1,name=vautonomousdatabaserestore.kb.io,admissionReviewVersions={v1}
+//+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v1alpha1,name=vautonomousdatabaserestorev1alpha1.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &AutonomousDatabaseRestore{}
 
@@ -86,24 +84,24 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error)
 	}
 
 	// Validate the target ADB
-	if r.Spec.Target.K8sADB.Name == nil && r.Spec.Target.OCIADB.OCID == nil {
+	if r.Spec.Target.K8sAdb.Name == nil && r.Spec.Target.OciAdb.Ocid == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
 	}
 
-	if r.Spec.Target.K8sADB.Name != nil && r.Spec.Target.OCIADB.OCID != nil {
+	if r.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.OciAdb.Ocid != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB.name or ociADB.ocid, but not both"))
 	}
 
 	// Validate the restore source
-	if r.Spec.Source.K8sADBBackup.Name == nil &&
+	if r.Spec.Source.K8sAdbBackup.Name == nil &&
 		r.Spec.Source.PointInTime.Timestamp == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("source"), "retore source is empty"))
 	}
 
-	if r.Spec.Source.K8sADBBackup.Name != nil &&
+	if r.Spec.Source.K8sAdbBackup.Name != nil &&
 		r.Spec.Source.PointInTime.Timestamp != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("source"), "cannot apply backupName and the PITR parameters at the same time"))
@@ -111,7 +109,7 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error)
 
 	// Verify the timestamp format if it's PITR
 	if r.Spec.Source.PointInTime.Timestamp != nil {
-		_, err := parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
+		_, err := dbv4.ParseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 		if err != nil {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime").Child("timestamp"), "invalid timestamp format"))

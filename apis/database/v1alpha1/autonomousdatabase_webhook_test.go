@@ -50,55 +50,6 @@ import (
 )
 
 var _ = Describe("test AutonomousDatabase webhook", func() {
-	Describe("Test AutonomousDatabase mutating webhook", func() {
-		var (
-			resourceName = "testadb"
-			namespace    = "default"
-			adbLookupKey = types.NamespacedName{Name: resourceName, Namespace: namespace}
-
-			timeout = time.Second * 5
-
-			adb *AutonomousDatabase
-		)
-
-		BeforeEach(func() {
-			adb = &AutonomousDatabase{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "database.oracle.com/v1alpha1",
-					Kind:       "AutonomousDatabase",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      resourceName,
-					Namespace: namespace,
-				},
-				Spec: AutonomousDatabaseSpec{
-					Details: AutonomousDatabaseDetails{},
-				},
-			}
-		})
-
-		AfterEach(func() {
-			Expect(k8sClient.Delete(context.TODO(), adb)).To(Succeed())
-		})
-
-		It("Should set the default network access type to PRIVATE, if it's a dedicated ADB", func() {
-			By("Creating an AutonomousDatabase with ACD_OCID")
-			adb.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID = common.String("ocid1.autonomouscontainerdatabase.oc1.dummy-acd-ocid")
-
-			Expect(k8sClient.Create(context.TODO(), adb)).To(Succeed())
-
-			By("Checking the AutonomousDatabase has a network access type PRIVATE")
-			Eventually(func() NetworkAccessTypeEnum {
-				err := k8sClient.Get(context.TODO(), adbLookupKey, adb)
-				if err != nil {
-					return ""
-				}
-
-				return adb.Spec.Details.NetworkAccess.AccessType
-			}, timeout).Should(Equal(NetworkAccessTypePrivate))
-		})
-	})
-
 	Describe("Test ValidateCreate of the AutonomousDatabase validating webhook", func() {
 		var (
 			resourceName = "testadb"
@@ -119,16 +70,18 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 				},
 				Spec: AutonomousDatabaseSpec{
 					Details: AutonomousDatabaseDetails{
-						CompartmentOCID: common.String("fake-compartment-ocid"),
-						DbName:          common.String("fake-dbName"),
-						DisplayName:     common.String("fake-displayName"),
-						CPUCoreCount:    common.Int(1),
-						AdminPassword: PasswordSpec{
-							K8sSecret: K8sSecretSpec{
-								Name: common.String("fake-admin-password"),
+						AutonomousDatabaseBase: AutonomousDatabaseBase{
+							CompartmentId: common.String("fake-compartment-ocid"),
+							DbName:        common.String("fake-dbName"),
+							DisplayName:   common.String("fake-displayName"),
+							CpuCoreCount:  common.Int(1),
+							AdminPassword: PasswordSpec{
+								K8sSecret: K8sSecretSpec{
+									Name: common.String("fake-admin-password"),
+								},
 							},
+							DataStorageSizeInTBs: common.Int(1),
 						},
-						DataStorageSizeInTBs: common.Int(1),
 					},
 				},
 			}
@@ -139,7 +92,7 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 			var errMsg string = "cannot apply k8sSecret.name and ociSecret.ocid at the same time"
 
 			adb.Spec.Details.AdminPassword.K8sSecret.Name = common.String("test-admin-password")
-			adb.Spec.Details.AdminPassword.OCISecret.OCID = common.String("fake.ocid1.vaultsecret.oc1...")
+			adb.Spec.Details.AdminPassword.OciSecret.Id = common.String("fake.ocid1.vaultsecret.oc1...")
 
 			validateInvalidTest(adb, false, errMsg)
 		})
@@ -147,54 +100,23 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 		It("Should not apply values to wallet.password.k8sSecret and wallet.password.ociSecret at the same time", func() {
 			var errMsg string = "cannot apply k8sSecret.name and ociSecret.ocid at the same time"
 
-			adb.Spec.Details.Wallet.Password.K8sSecret.Name = common.String("test-wallet-password")
-			adb.Spec.Details.Wallet.Password.OCISecret.OCID = common.String("fake.ocid1.vaultsecret.oc1...")
+			adb.Spec.Wallet.Password.K8sSecret.Name = common.String("test-wallet-password")
+			adb.Spec.Wallet.Password.OciSecret.Id = common.String("fake.ocid1.vaultsecret.oc1...")
 
 			validateInvalidTest(adb, false, errMsg)
 		})
 
-		// Network validation
-		Context("Shared Autonomous Database", func() {
-			It("AccessControlList cannot be empty when the network access type is RESTRICTED", func() {
-				var errMsg string = "accessControlList cannot be empty when the network access type is " + string(NetworkAccessTypeRestricted)
-
-				adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypeRestricted
-				adb.Spec.Details.NetworkAccess.AccessControlList = nil
-
-				validateInvalidTest(adb, false, errMsg)
-			})
-
-			It("SubnetOCID and nsgOCIDs cannot be empty when the network access type is PRIVATE", func() {
-				var errMsg1 string = "subnetOCID cannot be empty when the network access type is " + string(NetworkAccessTypePrivate)
-				var errMsg2 string = "nsgOCIDs cannot be empty when the network access type is " + string(NetworkAccessTypePrivate)
-
-				adb.Spec.Details.NetworkAccess.AccessType = NetworkAccessTypePrivate
-				adb.Spec.Details.NetworkAccess.PrivateEndpoint.SubnetOCID = nil
-				adb.Spec.Details.NetworkAccess.PrivateEndpoint.NsgOCIDs = nil
-
-				validateInvalidTest(adb, false, errMsg1, errMsg2)
-			})
-
-			It("IsAccessControlEnabled is not applicable on a shared Autonomous Database", func() {
-				var errMsg string = "isAccessControlEnabled is not applicable on a shared Autonomous Database"
-
-				adb.Spec.Details.NetworkAccess.IsAccessControlEnabled = common.Bool(true)
-
-				validateInvalidTest(adb, false, errMsg)
-			})
-		})
-
 		Context("Dedicated Autonomous Database", func() {
 			BeforeEach(func() {
-				adb.Spec.Details.AutonomousContainerDatabase.K8sACD.Name = common.String("testACD")
-				adb.Spec.Details.AutonomousContainerDatabase.OCIACD.OCID = common.String("fake-acd-ocid")
+				adb.Spec.Details.AutonomousContainerDatabase.K8sAcd.Name = common.String("testACD")
+				adb.Spec.Details.AutonomousContainerDatabase.OciAcd.Id = common.String("fake-acd-ocid")
 			})
 
 			It("AccessControlList cannot be empty when the network access type is RESTRICTED", func() {
 				var errMsg string = "access control list cannot be provided when Autonomous Database's access control is disabled"
 
-				adb.Spec.Details.NetworkAccess.IsAccessControlEnabled = common.Bool(false)
-				adb.Spec.Details.NetworkAccess.AccessControlList = []string{"192.168.1.1"}
+				adb.Spec.Details.IsAccessControlEnabled = common.Bool(false)
+				adb.Spec.Details.WhitelistedIps = []string{"192.168.1.1"}
 
 				validateInvalidTest(adb, false, errMsg)
 			})
@@ -202,20 +124,11 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 			It("AccessControlList cannot be empty when the network access type is RESTRICTED", func() {
 				var errMsg string = "isMTLSConnectionRequired is not supported on a dedicated database"
 
-				adb.Spec.Details.NetworkAccess.IsMTLSConnectionRequired = common.Bool(true)
+				adb.Spec.Details.IsMtlsConnectionRequired = common.Bool(true)
 
 				validateInvalidTest(adb, false, errMsg)
 			})
 
-		})
-
-		// Others
-		It("Cannot apply lifecycleState to a provision operation", func() {
-			var errMsg string = "cannot apply lifecycleState to a provision operation"
-
-			adb.Spec.Details.LifecycleState = database.AutonomousDatabaseLifecycleStateStopped
-
-			validateInvalidTest(adb, false, errMsg)
 		})
 	})
 
@@ -242,14 +155,16 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 					Namespace: namespace,
 				},
 				Spec: AutonomousDatabaseSpec{
+					Action: "Create",
 					Details: AutonomousDatabaseDetails{
-						CompartmentOCID:        common.String("fake-compartment-ocid"),
-						AutonomousDatabaseOCID: common.String("fake-adb-ocid"),
-						DbName:                 common.String("fake-dbName"),
-						DisplayName:            common.String("fake-displayName"),
-						CPUCoreCount:           common.Int(1),
-						DataStorageSizeInTBs:   common.Int(1),
-						LifecycleState:         database.AutonomousDatabaseLifecycleStateAvailable,
+						Id: common.String("fake-adb-ocid"),
+						AutonomousDatabaseBase: AutonomousDatabaseBase{
+							CompartmentId:        common.String("fake-compartment-ocid"),
+							DbName:               common.String("fake-dbName"),
+							DisplayName:          common.String("fake-displayName"),
+							CpuCoreCount:         common.Int(1),
+							DataStorageSizeInTBs: common.Int(1),
+						},
 					},
 				},
 			}
@@ -293,16 +208,7 @@ var _ = Describe("test AutonomousDatabase webhook", func() {
 		It("AutonomousDatabaseOCID cannot be modified", func() {
 			var errMsg string = "autonomousDatabaseOCID cannot be modified"
 
-			adb.Spec.Details.AutonomousDatabaseOCID = common.String("modified-adb-ocid")
-
-			validateInvalidTest(adb, true, errMsg)
-		})
-
-		It("Cannot change lifecycleState with other spec attributes at the same time", func() {
-			var errMsg string = "cannot change lifecycleState with other spec attributes at the same time"
-
-			adb.Spec.Details.LifecycleState = database.AutonomousDatabaseLifecycleStateStopped
-			adb.Spec.Details.CPUCoreCount = common.Int(2)
+			adb.Spec.Details.Id = common.String("modified-adb-ocid")
 
 			validateInvalidTest(adb, true, errMsg)
 		})

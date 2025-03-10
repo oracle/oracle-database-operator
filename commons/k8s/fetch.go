@@ -44,10 +44,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 )
 
 func FetchResource(kubeClient client.Client, namespace string, name string, object client.Object) error {
@@ -64,16 +65,16 @@ func FetchResource(kubeClient client.Client, namespace string, name string, obje
 
 // Returns the first AutonomousDatabase resource that matches the AutonomousDatabaseOCID of the backup
 // Sometimes the AutonomousDatabase doesn't exist. It could happen if a user simply want to restore or
-// backup the ADB without creating an ADB rersource in the cluster.
+// backup the AutonomousDatabase without creating an AutonomousDatabase rersource in the cluster.
 // If there isn't an AutonomousDatabase with the same OCID, a nil is returned.
-func FetchAutonomousDatabaseWithOCID(kubeClient client.Client, namespace string, ocid string) (*dbv1alpha1.AutonomousDatabase, error) {
+func FetchAutonomousDatabaseWithOCID(kubeClient client.Client, namespace string, ocid string) (*dbv4.AutonomousDatabase, error) {
 	adbList, err := fetchAutonomousDatabases(kubeClient, namespace)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, adb := range adbList.Items {
-		if adb.Spec.Details.AutonomousDatabaseOCID != nil && *adb.Spec.Details.AutonomousDatabaseOCID == ocid {
+		if adb.Spec.Details.Id != nil && *adb.Spec.Details.Id == ocid {
 			return &adb, nil
 		}
 	}
@@ -81,9 +82,9 @@ func FetchAutonomousDatabaseWithOCID(kubeClient client.Client, namespace string,
 	return nil, nil
 }
 
-func fetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseList, error) {
+func fetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv4.AutonomousDatabaseList, error) {
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
-	adbList := &dbv1alpha1.AutonomousDatabaseList{}
+	adbList := &dbv4.AutonomousDatabaseList{}
 
 	if err := kubeClient.List(context.TODO(), adbList, &client.ListOptions{Namespace: namespace}); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
@@ -96,11 +97,20 @@ func fetchAutonomousDatabases(kubeClient client.Client, namespace string) (*dbv1
 	return adbList, nil
 }
 
-func FetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string) (*dbv1alpha1.AutonomousDatabaseBackupList, error) {
+func FetchAutonomousDatabaseBackups(kubeClient client.Client, namespace string, adbName string) (*dbv4.AutonomousDatabaseBackupList, error) {
 	// Get the list of AutonomousDatabaseBackupOCID in the same namespace
-	backupList := &dbv1alpha1.AutonomousDatabaseBackupList{}
+	backupList := &dbv4.AutonomousDatabaseBackupList{}
 
-	if err := kubeClient.List(context.TODO(), backupList, &client.ListOptions{Namespace: namespace}); err != nil {
+	// Create a label selector
+	selector := labels.Set{"adb": adbName}.AsSelector()
+
+	if err := kubeClient.List(
+		context.TODO(),
+		backupList,
+		&client.ListOptions{
+			Namespace:     namespace,
+			LabelSelector: selector,
+		}); err != nil {
 		// Ignore not-found errors, since they can't be fixed by an immediate requeue.
 		// No need to change the since we don't know if we obtain the object.
 		if !apiErrors.IsNotFound(err) {
