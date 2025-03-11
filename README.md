@@ -16,10 +16,16 @@ In this v1.2.0 production release, `OraOperator` supports the following database
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Base Database Service (OBDS) on Oracle Cloud Infrastructure (OCI)
 * Oracle Data Guard
-* Oracle Database Observability
 * Oracle Database Rest Service (ORDS) instances
 
-## New Lifecycle Features in V1.2.0 Release (Controllers Enhancements)
+## New Product Features in V1.2.0
+The Operator itself, as a product, brings the following new features:
+* Upgraded Kubernetes API version to V4
+* Published on `operatorhub.io`
+* Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
+* Validated on Google Kubernetes Engine
+
+## New Services and Lifecycle Enhancements (Controllers Enhancements) in V1.2.0
 * ORDSSERVICES
   - Install on SIDB and ADB
   - Provision and Delete ORDS instances
@@ -44,15 +50,9 @@ In this v1.2.0 production release, `OraOperator` supports the following database
 * Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation.
 
 
-## New Product Features
-*The Operator itself, as a product, brings the following new features:
-* Published on `operatorhub.io`
-* Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
-* Validated on Google Kubernetes Engine
-
 ## Overall Features Summary
 
-This release of Oracle Database Operator for Kubernetes (the operator) supports the following lifecycle operations:
+As of release v1.2, the Oracle Database Operator for Kubernetes ( OraOperator) supports the following lifecycle operations:
 
 * ADB-S/ADB-D: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning.
 * ACD: Provision, bind, restart, terminate (soft/hard)
