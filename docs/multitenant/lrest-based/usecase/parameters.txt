@@ -1,0 +1,52 @@
+
+########################
+## REST SERVER IMAGE ###
+########################
+
+LRESTIMG:container-registry.oracle.com/database/operator:lrest-241210-amd64
+
+##############################
+## TNS URL FOR CDB CREATION ##
+##############################
+TNSALIAS:"(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
+
+###########################################
+## CDB USER FOR PDB LIFECYCLE MANAGMENT ###
+###########################################
+
+DBUSER:restdba
+DBPASS:CLWKO655321
+
+#######################
+## HTTPS CREDENTIAL ###
+#######################
+
+WBUSER:welcome
+WBPASS:welcome1
+
+#####################
+## PDB ADMIN USER ###
+##################### 
+
+PDBUSR:Citizenkane
+PDBPWD:Rosebud
+
+###################
+### NAMESPACES ####
+###################
+
+PDBNAMESPACE:pdbnamespace
+LRSNAMESPACE:cdbnamespace
+
+
+####################
+### COMPANY NAME ### 
+####################
+
+COMPANY:oracle
+
+####################
+### APIVERSION   ### 
+####################
+
+APIVERSION:v4

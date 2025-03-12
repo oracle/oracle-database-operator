@@ -1,0 +1,76 @@
+# example
+apiVersion: observability.oracle.com/v4
+kind: DatabaseObserver
+metadata:
+  name: obs-sample
+  labels:
+    app.kubernetes.io/name: observability-exporter
+    app.kubernetes.io/instance: obs-sample
+    app.kubernetes.io/version: latest
+spec:
+  database:
+    dbUser:
+      key: "username"
+      secret: db-secret
+
+    dbPassword:
+      key: "password"
+      secret: db-secret
+
+    dbConnectionString:
+      key: "connection"
+      secret: db-secret
+
+    dbWallet:
+      secret: instance-wallet
+
+  inheritLabels:
+    - app.kubernetes.io/name
+    - app.kubernetes.io/instance
+    - app.kubernetes.io/version
+
+  sidecars:
+    - name: promtail
+      image: grafana/promtail
+      args:
+        - -config.file=/etc/promtail/promtail.yaml
+      volumeMounts:
+        - name: config
+          mountPath: /etc/promtail
+        - name: log-volume
+          mountPath: /log
+
+  sidecarVolumes:
+    - name: config
+      configMap:
+        name: promtail-sidecar-config
+  exporter:
+    deployment:
+      image: "container-registry.oracle.com/database/observability-exporter:1.5.1"
+      args: [ "--log.level=info" ]
+      commands: [ "/oracledb_exporter" ]
+
+  configuration:
+    configMap:
+      key: "config.toml"
+      name: "devcm-oradevdb-config"
+
+  prometheus:
+    serviceMonitor:
+      labels:
+        release: prometheus
+
+  log:
+    filename: "alert.log"
+    path: "/log"
+
+    volume:
+      name: log-volume
+
+  replicas: 1
+
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey
+
+

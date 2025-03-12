@@ -46,22 +46,23 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
 	"github.com/oracle/oci-go-sdk/v65/workrequests"
+	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-type K8sADBBackupSpec struct {
+type K8sAdbBackupSpec struct {
 	Name *string `json:"name,omitempty"`
 }
 
-type PITSpec struct {
+type PitSpec struct {
 	// The timestamp must follow this format: YYYY-MM-DD HH:MM:SS GMT
 	Timestamp *string `json:"timestamp,omitempty"`
 }
 
 type SourceSpec struct {
-	K8sADBBackup K8sADBBackupSpec `json:"k8sADBBackup,omitempty"`
-	PointInTime  PITSpec          `json:"pointInTime,omitempty"`
+	K8sAdbBackup K8sAdbBackupSpec `json:"k8sADBBackup,omitempty"`
+	PointInTime  PitSpec          `json:"pointInTime,omitempty"`
 }
 
 // AutonomousDatabaseRestoreSpec defines the desired state of AutonomousDatabaseRestore
@@ -70,7 +71,7 @@ type AutonomousDatabaseRestoreSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	Target    TargetSpec    `json:"target"`
 	Source    SourceSpec    `json:"source"`
-	OCIConfig OCIConfigSpec `json:"ociConfig,omitempty"`
+	OCIConfig OciConfigSpec `json:"ociConfig,omitempty"`
 }
 
 // AutonomousDatabaseRestoreStatus defines the observed state of AutonomousDatabaseRestore
@@ -120,7 +121,7 @@ func (r *AutonomousDatabaseRestore) GetPIT() (*common.SDKTime, error) {
 	if r.Spec.Source.PointInTime.Timestamp == nil {
 		return nil, errors.New("the timestamp is empty")
 	}
-	return parseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
+	return dbv4.ParseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
 }
 
 func (r *AutonomousDatabaseRestore) UpdateStatus(
@@ -132,7 +133,7 @@ func (r *AutonomousDatabaseRestore) UpdateStatus(
 
 	r.Status.WorkRequestOCID = *workResp.Id
 	r.Status.Status = workResp.Status
-	r.Status.TimeAccepted = FormatSDKTime(workResp.TimeAccepted)
-	r.Status.TimeStarted = FormatSDKTime(workResp.TimeStarted)
-	r.Status.TimeEnded = FormatSDKTime(workResp.TimeFinished)
+	r.Status.TimeAccepted = dbv4.FormatSDKTime(workResp.TimeAccepted)
+	r.Status.TimeStarted = dbv4.FormatSDKTime(workResp.TimeStarted)
+	r.Status.TimeEnded = dbv4.FormatSDKTime(workResp.TimeFinished)
 }

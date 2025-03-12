@@ -40,7 +40,9 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	//"fmt"
 	"strconv"
@@ -64,7 +66,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	dbapi "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 )
 
@@ -506,6 +508,17 @@ func (r *CDBReconciler) createPodSpec(cdb *dbapi.CDB) corev1.PodSpec {
 						Name:  "WEBSERVER_PASSWORD_KEY",
 						Value: cdb.Spec.WebServerPwd.Secret.Key,
 					},
+					{
+						Name: "R1",
+						ValueFrom: &corev1.EnvVarSource{
+							SecretKeyRef: &corev1.SecretKeySelector{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: cdb.Spec.CDBPriKey.Secret.SecretName,
+								},
+								Key: cdb.Spec.CDBPriKey.Secret.Key,
+							},
+						},
+					},
 				}
 			}(),
 		}},
@@ -749,56 +762,46 @@ func (r *CDBReconciler) createSvcSpec(cdb *dbapi.CDB) *corev1.Service {
 /*
 ************************************************
   - Check CDB deletion
-    /***********************************************
+
+/***********************************************
 */
 func (r *CDBReconciler) manageCDBDeletion(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 	log := r.Log.WithValues("manageCDBDeletion", req.NamespacedName)
 
-	// Check if the PDB instance is marked to be deleted, which is
-	// indicated by the deletion timestamp being set.
-	isCDBMarkedToBeDeleted := cdb.GetDeletionTimestamp() != nil
-	if isCDBMarkedToBeDeleted {
-		log.Info("Marked to be deleted")
+	/* REGISTER FINALIZER */
+	if cdb.ObjectMeta.DeletionTimestamp.IsZero() {
+		if !controllerutil.ContainsFinalizer(cdb, CDBFinalizer) {
+			controllerutil.AddFinalizer(cdb, CDBFinalizer)
+			if err := r.Update(ctx, cdb); err != nil {
+				return err
+			}
+		}
+
+	} else {
+		log.Info("cdb set to be deleted")
 		cdb.Status.Phase = cdbPhaseDelete
 		cdb.Status.Status = true
 		r.Status().Update(ctx, cdb)
+
 		if controllerutil.ContainsFinalizer(cdb, CDBFinalizer) {
-			// Run finalization logic for CDBFinalizer. If the
-			// finalization logic fails, don't remove the finalizer so
-			// that we can retry during the next reconciliation.
-			err := r.deleteCDBInstance(ctx, req, cdb)
-			if err != nil {
-				log.Info("Could not delete CDB Resource", "CDB Name", cdb.Spec.CDBName, "err", err.Error())
+
+			if err := r.DeletePDBS(ctx, req, cdb); err != nil {
+				log.Info("Cannot delete pdbs")
 				return err
 			}
 
-			// Remove CDBFinalizer. Once all finalizers have been
-			// removed, the object will be deleted.
-			log.Info("Removing finalizer")
 			controllerutil.RemoveFinalizer(cdb, CDBFinalizer)
-			err = r.Update(ctx, cdb)
-			if err != nil {
-				log.Info("Could not remove finalizer", "err", err.Error())
+			if err := r.Update(ctx, cdb); err != nil {
 				return err
 			}
-
-			log.Info("Successfully removed CDB Resource")
-			return nil
 		}
-	}
 
-	// Add finalizer for this CR
-	if !controllerutil.ContainsFinalizer(cdb, CDBFinalizer) {
-		log.Info("Adding finalizer")
-
-		cdb.Status.Phase = cdbPhaseInit
-		cdb.Status.Status = false
-		controllerutil.AddFinalizer(cdb, CDBFinalizer)
-		err := r.Update(ctx, cdb)
+		err := r.deleteCDBInstance(ctx, req, cdb)
 		if err != nil {
-			log.Info("Could not add finalizer", "err", err.Error())
+			log.Info("Could not delete CDB Resource", "CDB Name", cdb.Spec.CDBName, "err", err.Error())
 			return err
 		}
+
 	}
 	return nil
 }
@@ -852,7 +855,8 @@ func (r *CDBReconciler) deleteCDBInstance(ctx context.Context, req ctrl.Request,
 /*
 ************************************************
   - Get Secret Key for a Secret Name
-    /***********************************************
+
+/***********************************************
 */
 func (r *CDBReconciler) verifySecrets(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
 
@@ -876,6 +880,9 @@ func (r *CDBReconciler) verifySecrets(ctx context.Context, req ctrl.Request, cdb
 	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.WebServerPwd.Secret.SecretName); err != nil {
 		return err
 	}
+	if err := r.checkSecret(ctx, req, cdb, cdb.Spec.CDBPriKey.Secret.SecretName); err != nil {
+		return err
+	}
 
 	cdb.Status.Msg = ""
 	log.Info("Verified secrets successfully")
@@ -885,7 +892,8 @@ func (r *CDBReconciler) verifySecrets(ctx context.Context, req ctrl.Request, cdb
 /*
 ************************************************
   - Get Secret Key for a Secret Name
-    /***********************************************
+
+/***********************************************
 */
 func (r *CDBReconciler) checkSecret(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB, secretName string) error {
 
@@ -909,7 +917,8 @@ func (r *CDBReconciler) checkSecret(ctx context.Context, req ctrl.Request, cdb *
 /*
 ************************************************
   - Delete Secrets
-    /***********************************************
+
+/***********************************************
 */
 func (r *CDBReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) {
 
@@ -966,11 +975,104 @@ func (r *CDBReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, cdb
 	}
 }
 
+/* Delete cascade option */
+
 /*
 *************************************************************
   - SetupWithManager sets up the controller with the Manager.
-    /************************************************************
+/************************************************************
 */
+
+func (r *CDBReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, cdb *dbapi.CDB) error {
+	log := r.Log.WithValues("DeletePDBS", req.NamespacedName)
+
+	/* =================== DELETE CASCADE ================ */
+	if cdb.Spec.DeletePDBCascade == true {
+		log.Info("DELETE PDB CASCADE OPTION")
+		pdbList := &dbapi.PDBList{}
+		listOpts := []client.ListOption{}
+		err := r.List(ctx, pdbList, listOpts...)
+		if err != nil {
+			log.Info("Failed to get the list of pdbs")
+		}
+
+		var url string
+		if err == nil {
+			for _, pdbitem := range pdbList.Items {
+				log.Info("pdbitem.Spec.CDBName     :               " + pdbitem.Spec.CDBName)
+				log.Info("pdbitem.Spec.CDBNamespace:               " + pdbitem.Spec.CDBNamespace)
+				log.Info("cdb.Spec.CDBName         :               " + cdb.Spec.CDBName)
+				log.Info("cdb.Namespace            :               " + cdb.Namespace)
+				if pdbitem.Spec.CDBName == cdb.Spec.CDBName && pdbitem.Spec.CDBNamespace == cdb.Namespace {
+					fmt.Printf("DeletePDBS Call Delete function for %s %s\n", pdbitem.Name, pdbitem.Spec.PDBName)
+
+					var objmap map[string]interface{} /* Used for the return payload */
+					values := map[string]string{
+						"state":        "CLOSE",
+						"modifyOption": "IMMEDIATE",
+						"getScript":    "FALSE",
+					}
+
+					//url := "https://" + pdbitem.Spec.CDBResName + "-cdb." + pdbitem.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/database/pdbs/" + pdbitem.Spec.PDBName
+					url = "https://" + pdbitem.Spec.CDBResName + "-ords." + pdbitem.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbitem.Spec.PDBName + "/status"
+
+					log.Info("callAPI(URL):" + url)
+					log.Info("pdbitem.Status.OpenMode" + pdbitem.Status.OpenMode)
+
+					if pdbitem.Status.OpenMode != "MOUNTED" {
+
+						log.Info("Force pdb closure")
+						respData, errapi := NewCallApi(r, ctx, req, &pdbitem, url, values, "POST")
+
+						fmt.Printf("Debug NEWCALL:%s\n", respData)
+						if err := json.Unmarshal([]byte(respData), &objmap); err != nil {
+							log.Error(err, "failed to get respData from callAPI", "err", err.Error())
+							return err
+						}
+
+						if errapi != nil {
+							log.Error(err, "callAPI cannot close pdb "+pdbitem.Spec.PDBName, "err", err.Error())
+							return err
+						}
+
+						r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "close pdb", "pdbname=%s", pdbitem.Spec.PDBName)
+					}
+
+					/* start dropping pdb */
+					log.Info("Drop pluggable database")
+					values = map[string]string{
+						"action":    "INCLUDING",
+						"getScript": "FALSE",
+					}
+					url = "https://" + pdbitem.Spec.CDBResName + "-ords." + pdbitem.Spec.CDBNamespace + ":" + strconv.Itoa(cdb.Spec.ORDSPort) + "/ords/_/db-api/latest/database/pdbs/" + pdbitem.Spec.PDBName + "/"
+					respData, errapi := NewCallApi(r, ctx, req, &pdbitem, url, values, "DELETE")
+
+					if err := json.Unmarshal([]byte(respData), &objmap); err != nil {
+						log.Error(err, "failed to get respData from callAPI", "err", err.Error())
+						return err
+					}
+
+					if errapi != nil {
+						log.Error(err, "callAPI cannot drop pdb "+pdbitem.Spec.PDBName, "err", err.Error())
+						return err
+					}
+					r.Recorder.Eventf(cdb, corev1.EventTypeNormal, "drop pdb", "pdbname=%s", pdbitem.Spec.PDBName)
+
+					err = r.Delete(context.Background(), &pdbitem, client.GracePeriodSeconds(0))
+					if err != nil {
+						log.Info("Could not delete PDB resource", "err", err.Error())
+						return err
+					}
+
+				} /* check pdb name */
+			} /* end of loop */
+		}
+
+	}
+	/* ================================================ */
+	return nil
+}
+
 func (r *CDBReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dbapi.CDB{}).

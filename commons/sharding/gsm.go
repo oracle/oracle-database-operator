@@ -44,7 +44,7 @@ import (
 	"reflect"
 	"strconv"
 
-	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -56,7 +56,7 @@ import (
 )
 
 // Constants for hello-stateful StatefulSet & Volumes
-func buildLabelsForGsm(instance *databasev1alpha1.ShardingDatabase, label string) map[string]string {
+func buildLabelsForGsm(instance *databasev4.ShardingDatabase, label string, gsmName string) map[string]string {
 	return map[string]string{
 		"app":        "OracleGsming",
 		"shard_name": "Gsm",
@@ -64,7 +64,7 @@ func buildLabelsForGsm(instance *databasev1alpha1.ShardingDatabase, label string
 	}
 }
 
-func getLabelForGsm(instance *databasev1alpha1.ShardingDatabase) string {
+func getLabelForGsm(instance *databasev4.ShardingDatabase) string {
 
 	//  if len(OraGsmSpex.Label) !=0 {
 	//     return OraGsmSpex.Label
@@ -73,7 +73,7 @@ func getLabelForGsm(instance *databasev1alpha1.ShardingDatabase) string {
 	return instance.Name
 }
 
-func BuildStatefulSetForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) *appsv1.StatefulSet {
+func BuildStatefulSetForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) *appsv1.StatefulSet {
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForGsm(),
 		ObjectMeta: builObjectMetaForGsm(instance, OraGsmSpex),
@@ -93,29 +93,29 @@ func buildTypeMetaForGsm() metav1.TypeMeta {
 }
 
 // Function to build ObjectMeta
-func builObjectMetaForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) metav1.ObjectMeta {
+func builObjectMetaForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) metav1.ObjectMeta {
 	// building objectMeta
 	objmeta := metav1.ObjectMeta{
 		Name:            OraGsmSpex.Name,
-		Namespace:       instance.Spec.Namespace,
-		Labels:          buildLabelsForGsm(instance, "sharding"),
+		Namespace:       instance.Namespace,
+		Labels:          buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 		OwnerReferences: getOwnerRef(instance),
 	}
 	return objmeta
 }
 
 // Function to build Stateful Specs
-func buildStatefulSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) *appsv1.StatefulSetSpec {
+func buildStatefulSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) *appsv1.StatefulSetSpec {
 	// building Stateful set Specs
 
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraGsmSpex.Name,
 		Selector: &metav1.LabelSelector{
-			MatchLabels: buildLabelsForGsm(instance, "sharding"),
+			MatchLabels: buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: buildLabelsForGsm(instance, "sharding"),
+				Labels: buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 			},
 			Spec: *buildPodSpecForGsm(instance, OraGsmSpex),
 		},
@@ -136,7 +136,7 @@ func buildStatefulSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsm
 
 // Function to build PodSpec
 
-func buildPodSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) *corev1.PodSpec {
+func buildPodSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) *corev1.PodSpec {
 
 	user := oraRunAsUser
 	group := oraFsGroup
@@ -170,7 +170,7 @@ func buildPodSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex 
 }
 
 // Function to build Volume Spec
-func buildVolumeSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) []corev1.Volume {
+func buildVolumeSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.Volume {
 	var result []corev1.Volume
 	result = []corev1.Volume{
 		{
@@ -204,7 +204,7 @@ func buildVolumeSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSp
 }
 
 // Function to build the container Specification
-func buildContainerSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) []corev1.Container {
+func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.Container {
 	// building Continer spec
 	var result []corev1.Container
 	var masterGsmFlag = false
@@ -272,7 +272,7 @@ func buildContainerSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGs
 }
 
 // Function to build the init Container Spec
-func buildInitContainerSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) []corev1.Container {
+func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
 	privFlag := true
@@ -309,7 +309,7 @@ func buildInitContainerSpecForGsm(instance *databasev1alpha1.ShardingDatabase, O
 	return result
 }
 
-func buildVolumeMountSpecForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) []corev1.VolumeMount {
+func buildVolumeMountSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.VolumeMount {
 	var result []corev1.VolumeMount
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "-oradata-vol4", MountPath: oraGsmDataMount})
@@ -325,7 +325,7 @@ func buildVolumeMountSpecForGsm(instance *databasev1alpha1.ShardingDatabase, Ora
 	return result
 }
 
-func volumeClaimTemplatesForGsm(instance *databasev1alpha1.ShardingDatabase, OraGsmSpex databasev1alpha1.GsmSpec) []corev1.PersistentVolumeClaim {
+func volumeClaimTemplatesForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.PersistentVolumeClaim {
 
 	var claims []corev1.PersistentVolumeClaim
 
@@ -337,8 +337,8 @@ func volumeClaimTemplatesForGsm(instance *databasev1alpha1.ShardingDatabase, Ora
 		{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            OraGsmSpex.Name + "-oradata-vol4",
-				Namespace:       instance.Spec.Namespace,
-				Labels:          buildLabelsForGsm(instance, "sharding"),
+				Namespace:       instance.Namespace,
+				Labels:          buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 				OwnerReferences: getOwnerRef(instance),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
@@ -354,6 +354,14 @@ func volumeClaimTemplatesForGsm(instance *databasev1alpha1.ShardingDatabase, Ora
 			},
 		},
 	}
+
+	if len(OraGsmSpex.PvAnnotations) > 0 {
+		claims[0].ObjectMeta.Annotations = make(map[string]string)
+		for key, value := range OraGsmSpex.PvAnnotations {
+			claims[0].ObjectMeta.Annotations[key] = value
+		}
+	}
+
 	if len(OraGsmSpex.PvMatchLabels) > 0 {
 		claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraGsmSpex.PvMatchLabels}
 	}
@@ -361,7 +369,7 @@ func volumeClaimTemplatesForGsm(instance *databasev1alpha1.ShardingDatabase, Ora
 	return claims
 }
 
-func BuildServiceDefForGsm(instance *databasev1alpha1.ShardingDatabase, replicaCount int32, OraGsmSpex databasev1alpha1.GsmSpec, svctype string) *corev1.Service {
+func BuildServiceDefForGsm(instance *databasev4.ShardingDatabase, replicaCount int32, OraGsmSpex databasev4.GsmSpec, svctype string) *corev1.Service {
 	//service := &corev1.Service{}
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForGsm(instance, replicaCount, OraGsmSpex, svctype),
@@ -376,7 +384,7 @@ func BuildServiceDefForGsm(instance *databasev1alpha1.ShardingDatabase, replicaC
 
 	if svctype == "local" {
 		service.Spec.ClusterIP = corev1.ClusterIPNone
-		service.Spec.Selector = buildLabelsForGsm(instance, "sharding")
+		service.Spec.Selector = getSvcLabelsForGsm(replicaCount, OraGsmSpex)
 	}
 
 	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
@@ -385,7 +393,7 @@ func BuildServiceDefForGsm(instance *databasev1alpha1.ShardingDatabase, replicaC
 }
 
 // Function to build Service ObjectMeta
-func buildSvcObjectMetaForGsm(instance *databasev1alpha1.ShardingDatabase, replicaCount int32, OraGsmSpex databasev1alpha1.GsmSpec, svctype string) metav1.ObjectMeta {
+func buildSvcObjectMetaForGsm(instance *databasev4.ShardingDatabase, replicaCount int32, OraGsmSpex databasev4.GsmSpec, svctype string) metav1.ObjectMeta {
 	// building objectMeta
 	var svcName string
 	if svctype == "local" {
@@ -398,14 +406,14 @@ func buildSvcObjectMetaForGsm(instance *databasev1alpha1.ShardingDatabase, repli
 
 	objmeta := metav1.ObjectMeta{
 		Name:            svcName,
-		Namespace:       instance.Spec.Namespace,
-		Labels:          buildLabelsForGsm(instance, "sharding"),
+		Namespace:       instance.Namespace,
+		Labels:          buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 		OwnerReferences: getOwnerRef(instance),
 	}
 	return objmeta
 }
 
-func getSvcLabelsForGsm(replicaCount int32, OraGsmSpex databasev1alpha1.GsmSpec) map[string]string {
+func getSvcLabelsForGsm(replicaCount int32, OraGsmSpex databasev4.GsmSpec) map[string]string {
 
 	var labelStr map[string]string = make(map[string]string)
 	if replicaCount == -1 {
@@ -419,8 +427,8 @@ func getSvcLabelsForGsm(replicaCount int32, OraGsmSpex databasev1alpha1.GsmSpec)
 }
 
 // This function cleanup the shard from GSM
-func OraCleanupForGsm(instance *databasev1alpha1.ShardingDatabase,
-	OraGsmSpex databasev1alpha1.GsmSpec,
+func OraCleanupForGsm(instance *databasev4.ShardingDatabase,
+	OraGsmSpex databasev4.GsmSpec,
 	oldReplicaSize int32,
 	newReplicaSize int32,
 ) string {
@@ -435,8 +443,8 @@ func OraCleanupForGsm(instance *databasev1alpha1.ShardingDatabase,
 	return err1
 }
 
-func UpdateProvForGsm(instance *databasev1alpha1.ShardingDatabase,
-	OraGsmSpex databasev1alpha1.GsmSpec, kClient client.Client, sfSet *appsv1.StatefulSet, gsmPod *corev1.Pod, logger logr.Logger,
+func UpdateProvForGsm(instance *databasev4.ShardingDatabase,
+	OraGsmSpex databasev4.GsmSpec, kClient client.Client, sfSet *appsv1.StatefulSet, gsmPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
 
 	var msg string

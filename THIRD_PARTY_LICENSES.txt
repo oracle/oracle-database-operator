@@ -1,11 +1,11 @@
 -------------------------------------
-Operator SDK 1.32.0
+Operator SDK 1.37.0
 https://github.com/operator-framework/operator-sdk
 Apache 2.0
 
 -------------------------------------
 
-Apache License: 
+Apache License:
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
 
@@ -206,13 +206,13 @@ Apache License:
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-   
+
    ------------------------------
-   GO lang 1.21.4
+   GO lang 1.23.3
    https://github.com/golang
 
 
-   Copyright (c) 2009 The Go Authors. 
+   Copyright (c) 2009 The Go Authors.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
@@ -241,22 +241,20 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 -------------------------
-apimachinery 0.28.4
+apimachinery 0.31.3
 https://github.com/kubernetes/apimachinery/tr
 Apache 2.0
 
 -------------------------
-controller-runtime 0.16.3
+controller-runtime 0.19.3
 https://github.com/kubernetes-sigs/controller-runtime/releases/tag/v0.16.3
 Apache 2.0
 
 -------------------------
-golang 1.21.4
+golang 1.23.3
 https://github.com/golang/go/releases/tag/go1.21.4
-BSD 2-clause or 3-clause
 
-
-BSD 2-clause or 3-clause License: 
+BSD 2-clause or 3-clause License:
 
 Copyright (c) 2009 The Go Authors. All rights reserved.
 
@@ -1008,23 +1006,23 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    limitations under the License.
 
 --------------------------
-Logr 1.3.0
+Logr 1.4.2
 https://pkg.go.dev/github.com/go-logr/logr
 https://github.com/go-logr/logr/tree/v1.3.0
 Apache 2.0 License
 
 -------------------------
-OCI Go SDK 65.53.0
+OCI Go SDK 65.77.1
 https://github.com/oracle/oci-go-sdk/releases/tag/v65.53.0
 
 Dual-License: UPL + Apache 2.0
 
-UPL license: 
+UPL license:
 
-Copyright (c) 2016, 2018, 2020, Oracle and/or its affiliates.  
-This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 
+Copyright (c) 2016, 2018, 2020, Oracle and/or its affiliates.
+This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0
 as shown at https://oss.oracle.com/licenses/upl
-or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. 
+or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0.
 You may choose either license.
 
 Copyright (c) 2019, 2020 Oracle and/or its affiliates.
@@ -1065,58 +1063,58 @@ The Universal Permissive License (UPL), Version 1.0
 
 
 -------------------------
-ginkgo 2.13.1
+ginkgo 2.202.
 https://github.com/onsi/ginkgo/releases/tag/v2.13.1
 MIT
 ------------------------------------
 Gomega
 github.com/onsi/gomega
-MIT License 
+MIT License
 Copyright (c) 2013-2014 Onsi Fakhouri
 
 ----------------------------
-gomega 1.30.0
+gomega 1.34.2
 http://onsi.github.io/gomega/
 MIT
 
 -------------------------
-Kubernetes api 0.28.4
+Kubernetes api 0.31.3
 https://pkg.go.dev/k8s.io/api
 Apache 2.0
 
 ----------------------------------
-Kubernetes apimachinery 0.28.4
+Kubernetes apimachinery 0.31.3
 https://pkg.go.dev/k8s.io/apimachinery
 Apache 2.0
 
 -----------------------------------
-Kubernetes client-go 0.28.4
+Kubernetes client-go 0.31.3
 https://pkg.go.dev/k8s.io/client-go
 Apache 2.0
 
 -------------------------------------
-Kubernetes controller-runtime project 0.16.3
+Kubernetes controller-runtime project 0.19.3
 https://pkg.go.dev/sigs.k8s.io/controller-runtime
 Apache 2.0
 
 ------------------------------------
 kubernetes-sigs/yaml 1.4.0
 https://github.com/kubernetes-sigs/yaml/tree/v1.3.0
-MIT 
+MIT
 
 -------------------------
-OCI SDK for Go 65.53.0
+OCI SDK for Go 65.77.1
 https://github.com/oracle/oci-go-sdk
 Multiple Licenses: Apache 2.0, UPL
 
 ------------------------------
-Operator Lifecycle Manager (OLM)
+Operator Lifecycle Manager (OLM) 0.30.0
 github.com/operator-framework/operator-lifecycle-manager
 Apache 2.0
 
 
 ------------------------------------
-Prometheus Operator 0.65.2
+Prometheus Operator 0.78.2
 https://github.com/prometheus-operator/prometheus-operator
 Apache 2.0
 
@@ -1135,8 +1133,8 @@ https://pkg.go.dev/sigs.k8s.io/yaml
 Dual license: BSD-3-Clause, MIT
 
 ------------------------------------
-zap 1.26.0
-https://github.com/uber-go/zap/releases/tag/v1.26.0
+zap 1.27.0
+https://github.com/uber-go/zap/releases/tag/v1.27.0
 MIT
 
 ------------------------------------
@@ -1163,7 +1161,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-Copyright (c) 2012 The Go Authors. 
+Copyright (c) 2012 The Go Authors.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
@@ -1192,9 +1190,9 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------
-Ginkgo 2.13.1
+Ginkgo 2.20.2
 github.com/onsi/ginkgo
-MIT License 
+MIT License
 Copyright (c) 2013-2014 Onsi Fakhouri
 
 Permission is hereby granted, free of charge, to any person obtaining
@@ -1216,4 +1214,3 @@ LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ---------------------------
-

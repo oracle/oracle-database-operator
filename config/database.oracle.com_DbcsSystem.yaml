@@ -4,7 +4,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.6.1
+    controller-gen.kubebuilder.io/version: v0.16.5
   creationTimestamp: null
   name: DbcsSystem.database.oracle.com
 spec:
@@ -16,7 +16,7 @@ spec:
     singular: dbcssystem
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - name: v4
     schema:
       openAPIV3Schema:
         description: DbcsSystem is the Schema for the dbcssystems API
@@ -36,6 +36,53 @@ spec:
           spec:
             description: DbcsSystemSpec defines the desired state of DbcsSystem
             properties:
+              databaseId:
+                type: string
+              dbBackupId:
+                type: string
+              dbClone:
+                description: DbCloneConfig defines the configuration for the database
+                  clone
+                properties:
+                  dbAdminPaswordSecret:
+                    type: string
+                  dbDbUniqueName:
+                    type: string
+                  dbName:
+                    type: string
+                  displayName:
+                    type: string
+                  domain:
+                    type: string
+                  hostName:
+                    type: string
+                  initialDataStorageSizeInGB:
+                    type: integer
+                  kmsKeyId:
+                    type: string
+                  kmsKeyVersionId:
+                    type: string
+                  licenseModel:
+                    type: string
+                  privateIp:
+                    type: string
+                  sidPrefix:
+                    type: string
+                  sshPublicKeys:
+                    items:
+                      type: string
+                    type: array
+                  subnetId:
+                    type: string
+                  tdeWalletPasswordSecret:
+                    type: string
+                required:
+                - dbDbUniqueName
+                - dbName
+                - displayName
+                - hostName
+                - subnetId
+                type: object
               dbSystem:
                 properties:
                   availabilityDomain:
@@ -51,7 +98,7 @@ spec:
                   dbAdminPaswordSecret:
                     type: string
                   dbBackupConfig:
-                    description: DB Backup COnfig Network Struct
+                    description: DB Backup Config Network Struct
                     properties:
                       autoBackupEnabled:
                         type: boolean
@@ -88,10 +135,19 @@ spec:
                     type: string
                   initialDataStorageSizeInGB:
                     type: integer
-                  kmsKeyId:
-                    type: string
-                  kmsKeyVersionId:
-                    type: string
+                  kmsConfig:
+                    properties:
+                      compartmentId:
+                        type: string
+                      encryptionAlgo:
+                        type: string
+                      keyName:
+                        type: string
+                      vaultName:
+                        type: string
+                      vaultType:
+                        type: string
+                    type: object
                   licenseModel:
                     type: string
                   nodeCount:
@@ -124,17 +180,80 @@ spec:
                 - dbAdminPaswordSecret
                 - hostName
                 - shape
-                - sshPublicKeys
                 - subnetId
                 type: object
               hardLink:
                 type: boolean
               id:
                 type: string
+              kmsConfig:
+                properties:
+                  compartmentId:
+                    type: string
+                  encryptionAlgo:
+                    type: string
+                  keyName:
+                    type: string
+                  vaultName:
+                    type: string
+                  vaultType:
+                    type: string
+                type: object
               ociConfigMap:
                 type: string
               ociSecret:
                 type: string
+              pdbConfigs:
+                items:
+                  description: PDBConfig defines details of PDB struct for DBCS systems
+                  properties:
+                    freeformTags:
+                      additionalProperties:
+                        type: string
+                      description: '// Free-form tags for this resource. Each tag
+                        is a simple key-value pair with no predefined name, type,
+                        or namespace. // For more information, see Resource Tags (https://docs.cloud.oracle.com/Content/General/Concepts/resourcetags.htm).
+                        // Example: `{"Department": "Finance"}`'
+                      type: object
+                    isDelete:
+                      description: To specify whether to delete the PDB
+                      type: boolean
+                    pdbAdminPassword:
+                      description: // A strong password for PDB Admin. The password
+                        must be at least nine characters and contain at least two
+                        uppercase, two lowercase, two numbers, and two special characters.
+                        The special characters must be _, \#, or -.
+                      type: string
+                    pdbName:
+                      description: The name for the pluggable database (PDB). The
+                        name is unique in the context of a Database. The name must
+                        begin with an alphabetic character and can contain a maximum
+                        of thirty alphanumeric characters. Special characters are
+                        not permitted. The pluggable database name should not be same
+                        as the container database name.
+                      type: string
+                    pluggableDatabaseId:
+                      description: The OCID of the PDB for deletion purposes.
+                      type: string
+                    shouldPdbAdminAccountBeLocked:
+                      description: // The locked mode of the pluggable database admin
+                        account. If false, the user needs to provide the PDB Admin
+                        Password to connect to it. // If true, the pluggable database
+                        will be locked and user cannot login to it.
+                      type: boolean
+                    tdeWalletPassword:
+                      description: // The existing TDE wallet password of the CDB.
+                      type: string
+                  required:
+                  - freeformTags
+                  - pdbAdminPassword
+                  - pdbName
+                  - shouldPdbAdminAccountBeLocked
+                  - tdeWalletPassword
+                  type: object
+                type: array
+              setupDBCloning:
+                type: boolean
             required:
             - ociConfigMap
             type: object
@@ -149,6 +268,35 @@ spec:
                 type: integer
               dataStorageSizeInGBs:
                 type: integer
+              dbCloneStatus:
+                description: DbCloneStatus defines the observed state of DbClone
+                properties:
+                  dbAdminPaswordSecret:
+                    type: string
+                  dbDbUniqueName:
+                    type: string
+                  dbName:
+                    type: string
+                  displayName:
+                    type: string
+                  domain:
+                    type: string
+                  hostName:
+                    type: string
+                  id:
+                    type: string
+                  licenseModel:
+                    type: string
+                  sshPublicKeys:
+                    items:
+                      type: string
+                    type: array
+                  subnetId:
+                    type: string
+                required:
+                - dbDbUniqueName
+                - hostName
+                type: object
               dbEdition:
                 type: string
               dbInfo:
@@ -171,6 +319,25 @@ spec:
                 type: string
               id:
                 type: string
+              kmsDetailsStatus:
+                properties:
+                  compartmentId:
+                    type: string
+                  encryptionAlgo:
+                    type: string
+                  keyId:
+                    type: string
+                  keyName:
+                    type: string
+                  managementEndpoint:
+                    type: string
+                  vaultId:
+                    type: string
+                  vaultName:
+                    type: string
+                  vaultType:
+                    type: string
+                type: object
               licenseModel:
                 type: string
               network:
@@ -192,6 +359,32 @@ spec:
                 type: object
               nodeCount:
                 type: integer
+              pdbDetailsStatus:
+                items:
+                  properties:
+                    pdbConfigStatus:
+                      items:
+                        properties:
+                          freeformTags:
+                            additionalProperties:
+                              type: string
+                            type: object
+                          pdbName:
+                            type: string
+                          pdbState:
+                            type: string
+                          pluggableDatabaseId:
+                            type: string
+                          shouldPdbAdminAccountBeLocked:
+                            type: boolean
+                        required:
+                        - freeformTags
+                        - pdbName
+                        - shouldPdbAdminAccountBeLocked
+                        type: object
+                      type: array
+                  type: object
+                type: array
               recoStorageSizeInGB:
                 type: integer
               shape:

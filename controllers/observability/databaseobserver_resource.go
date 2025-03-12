@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	apiv1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
+	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	constants "github.com/oracle/oracle-database-operator/commons/observability"
 	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -25,55 +24,78 @@ type ObservabilityServiceResource struct{}
 type ObservabilityServiceMonitorResource struct{}
 
 type ObserverResource interface {
-	generate(*apiv1.DatabaseObserver, *runtime.Scheme) (*unstructured.Unstructured, error)
+	generate(*api.DatabaseObserver, *runtime.Scheme) (*unstructured.Unstructured, error)
 	identify() (string, string, schema.GroupVersionKind)
 }
 
-func (resource *ObservabilityDeploymentResource) generate(api *apiv1.DatabaseObserver, scheme *runtime.Scheme) (*unstructured.Unstructured, error) {
-	rName := constants.DefaultExporterDeploymentPrefix + api.Name
+func (resource *ObservabilityDeploymentResource) generate(a *api.DatabaseObserver, scheme *runtime.Scheme) (*unstructured.Unstructured, error) {
+	rName := a.Name
 	rContainerName := constants.DefaultExporterContainerName
-	rContainerImage := constants.GetExporterImage(api)
-	rVolumes := constants.GetExporterDeploymentVolumes(api)
-	rVolumeMounts := constants.GetExporterDeploymentVolumeMounts(api)
-	rSelectors := constants.GetExporterSelector(api)
-	rReplicas := constants.GetExporterReplicas(api)
-	rEnvs := constants.GetExporterEnvs(api)
+	rContainerImage := constants.GetExporterImage(a)
+	rArgs := constants.GetExporterArgs(a)
+	rCommands := constants.GetExporterCommands(a)
+	rVolumes := constants.GetExporterDeploymentVolumes(a)
+	rVolumeMounts := constants.GetExporterDeploymentVolumeMounts(a)
+
+	rReplicas := constants.GetExporterReplicas(a)
+	rEnvs := constants.GetExporterEnvs(a)
+
+	rLabels := constants.GetLabels(a, a.Spec.Exporter.Deployment.Labels)
+	rPodLabels := constants.GetLabels(a, a.Spec.Exporter.Deployment.DeploymentPodTemplate.Labels)
+	rSelector := constants.GetSelectorLabel(a)
+
+	rDeploymentSecurityContext := constants.GetExporterDeploymentSecurityContext(a)
+	rPodSecurityContext := constants.GetExporterPodSecurityContext(a)
 
 	rPort := []corev1.ContainerPort{
-		{ContainerPort: 8080},
+		{ContainerPort: constants.DefaultAppPort},
 	}
+
+	// exporterContainer
+	rContainers := make([]corev1.Container, 1)
+	rContainers[0] = corev1.Container{
+		Image:           rContainerImage,
+		ImagePullPolicy: corev1.PullAlways,
+		Name:            rContainerName,
+		Env:             rEnvs,
+		VolumeMounts:    rVolumeMounts,
+		Ports:           rPort,
+		Args:            rArgs,
+		Command:         rCommands,
+		SecurityContext: rDeploymentSecurityContext,
+	}
+
+	constants.AddSidecarContainers(a, &rContainers)
+	constants.AddSidecarVolumes(a, &rVolumes)
+
+	// additionalContainers
 
 	obj := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      rName,
-			Namespace: api.Namespace,
+			Namespace: a.Namespace,
+			Labels:    rLabels,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &rReplicas,
 			Selector: &metav1.LabelSelector{
-				MatchLabels: rSelectors,
+				MatchLabels: rSelector,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: rSelectors,
+					Labels: rPodLabels,
 				},
 				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{
-						Image:           rContainerImage,
-						ImagePullPolicy: corev1.PullAlways,
-						Name:            rContainerName,
-						Env:             rEnvs,
-						VolumeMounts:    rVolumeMounts,
-						Ports:           rPort,
-					}},
-					RestartPolicy: corev1.RestartPolicyAlways,
-					Volumes:       rVolumes,
+					Containers:      rContainers,
+					RestartPolicy:   corev1.RestartPolicyAlways,
+					Volumes:         rVolumes,
+					SecurityContext: rPodSecurityContext,
 				},
 			},
 		},
 	}
 
-	if err := controllerutil.SetControllerReference(api, obj, scheme); err != nil {
+	if err := controllerutil.SetControllerReference(a, obj, scheme); err != nil {
 		return nil, err
 	}
 
@@ -84,32 +106,26 @@ func (resource *ObservabilityDeploymentResource) generate(api *apiv1.DatabaseObs
 	return u, nil
 }
 
-func (resource *ObservabilityServiceResource) generate(api *apiv1.DatabaseObserver, scheme *runtime.Scheme) (*unstructured.Unstructured, error) {
-	rServiceName := "obs-svc-" + api.Name
-	rLabels := constants.GetExporterLabels(api)
-	rPort := constants.GetExporterServicePort(api)
-	rSelector := constants.GetExporterSelector(api)
+func (resource *ObservabilityServiceResource) generate(a *api.DatabaseObserver, scheme *runtime.Scheme) (*unstructured.Unstructured, error) {
+	rServiceName := a.Name
+	rLabels := constants.GetLabels(a, a.Spec.Exporter.Service.Labels)
+	rSelector := constants.GetSelectorLabel(a)
+	rPorts := constants.GetExporterServicePort(a)
 
 	obj := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      rServiceName,
 			Labels:    rLabels,
-			Namespace: api.Namespace,
+			Namespace: a.Namespace,
 		},
 		Spec: corev1.ServiceSpec{
-			Type:     "ClusterIP",
+			Type:     constants.DefaultServiceType,
 			Selector: rSelector,
-			Ports: []corev1.ServicePort{
-				{
-					Name:       "metrics",
-					Port:       rPort,
-					TargetPort: intstr.FromInt32(constants.DefaultServiceTargetPort),
-				},
-			},
+			Ports:    rPorts,
 		},
 	}
 
-	if err := controllerutil.SetControllerReference(api, obj, scheme); err != nil {
+	if err := controllerutil.SetControllerReference(a, obj, scheme); err != nil {
 		return nil, err
 	}
 
@@ -120,32 +136,32 @@ func (resource *ObservabilityServiceResource) generate(api *apiv1.DatabaseObserv
 	return u, nil
 }
 
-func (resource *ObservabilityServiceMonitorResource) generate(api *apiv1.DatabaseObserver, scheme *runtime.Scheme) (*unstructured.Unstructured, error) {
-	rName := constants.DefaultServiceMonitorPrefix + api.Name
-	rLabels := constants.GetExporterLabels(api)
-	rSelector := constants.GetExporterSelector(api)
-	rPort := constants.GetExporterServiceMonitorPort(api)
-	rInterval := "20s"
+func (resource *ObservabilityServiceMonitorResource) generate(a *api.DatabaseObserver, scheme *runtime.Scheme) (*unstructured.Unstructured, error) {
+	rName := a.Name
+	rEndpoints := constants.GetEndpoints(a)
+
+	rSelector := constants.GetSelectorLabel(a)
+	rLabels := constants.GetLabels(a, a.Spec.Prometheus.ServiceMonitor.Labels)
+
+	smSpec := monitorv1.ServiceMonitorSpec{
+		Endpoints: rEndpoints,
+		Selector: metav1.LabelSelector{
+			MatchLabels: rSelector,
+		},
+	}
+	constants.AddNamespaceSelector(a, &smSpec)
 
 	obj := &monitorv1.ServiceMonitor{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      rName,
 			Labels:    rLabels,
-			Namespace: api.Namespace,
+			Namespace: a.Namespace,
 		},
-		Spec: monitorv1.ServiceMonitorSpec{
-			Endpoints: []monitorv1.Endpoint{{
-				Interval: monitorv1.Duration(rInterval),
-				Port:     rPort,
-			}},
-			Selector: metav1.LabelSelector{
-				MatchLabels: rSelector,
-			},
-		},
+		Spec: smSpec,
 	}
 
 	// set reference
-	if e := controllerutil.SetControllerReference(api, obj, scheme); e != nil {
+	if e := controllerutil.SetControllerReference(a, obj, scheme); e != nil {
 		return nil, e
 	}
 

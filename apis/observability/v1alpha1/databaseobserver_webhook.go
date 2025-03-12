@@ -145,9 +145,9 @@ func (r *DatabaseObserver) ValidateCreate() (admission.Warnings, error) {
 	}
 
 	// disallow usage of any other image than the observability-exporter
-	if r.Spec.Exporter.ExporterImage != "" && !strings.HasPrefix(r.Spec.Exporter.ExporterImage, AllowedExporterImage) {
+	if r.Spec.Exporter.Deployment.ExporterImage != "" && !strings.HasPrefix(r.Spec.Exporter.Deployment.ExporterImage, AllowedExporterImage) {
 		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), r.Spec.Exporter.ExporterImage,
+			field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), r.Spec.Exporter.Deployment.ExporterImage,
 				ErrorSpecExporterImageNotAllowed))
 	}
 
@@ -165,9 +165,9 @@ func (r *DatabaseObserver) ValidateUpdate(old runtime.Object) (admission.Warning
 	var e field.ErrorList
 
 	// disallow usage of any other image than the observability-exporter
-	if r.Spec.Exporter.ExporterImage != "" && !strings.HasPrefix(r.Spec.Exporter.ExporterImage, AllowedExporterImage) {
+	if r.Spec.Exporter.Deployment.ExporterImage != "" && !strings.HasPrefix(r.Spec.Exporter.Deployment.ExporterImage, AllowedExporterImage) {
 		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), r.Spec.Exporter.ExporterImage,
+			field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), r.Spec.Exporter.Deployment.ExporterImage,
 				ErrorSpecExporterImageNotAllowed))
 	}
 	// Return if any errors

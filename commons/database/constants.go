@@ -50,6 +50,8 @@ const DBA_GUID int64 = 54322
 
 const SQLPlusCLI string = "sqlplus -s / as sysdba"
 
+const SQLCLI string = "sql -s / as sysdba"
+
 const GetVersionSQL string = "SELECT VERSION_FULL FROM V\\$INSTANCE;"
 
 const CheckModesSQL string = "SELECT 'log_mode:' || log_mode AS log_mode ,'flashback_on:' || flashback_on AS flashback_on ,'force_logging:' || force_logging AS force_logging FROM v\\$database;"
@@ -182,10 +184,6 @@ const DataguardBrokerMaxPerformanceCMD string = "CREATE CONFIGURATION dg_config 
 	"\nADD DATABASE ${ORACLE_SID} AS CONNECT IDENTIFIER IS ${SVC_HOST}:1521/${ORACLE_SID} MAINTAINED AS PHYSICAL;" +
 	"\nEDIT DATABASE ${PRIMARY_SID} SET PROPERTY LogXptMode='ASYNC';" +
 	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY LogXptMode='ASYNC';" +
-	"\nEDIT DATABASE ${PRIMARY_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${PRIMARY_IP})(PORT=1521))" +
-	"(CONNECT_DATA=(SERVICE_NAME=${PRIMARY_SID}_DGMGRL)(INSTANCE_NAME=${PRIMARY_SID})(SERVER=DEDICATED)))';" +
-	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${SVC_HOST})(PORT=1521))" +
-	"(CONNECT_DATA=(SERVICE_NAME=${ORACLE_SID}_DGMGRL)(INSTANCE_NAME=${ORACLE_SID})(SERVER=DEDICATED)))';" +
 	"\nEDIT CONFIGURATION SET PROTECTION MODE AS MAXPERFORMANCE;" +
 	"\nENABLE CONFIGURATION;"
 
@@ -193,10 +191,6 @@ const DataguardBrokerMaxAvailabilityCMD string = "CREATE CONFIGURATION dg_config
 	"\nADD DATABASE ${ORACLE_SID} AS CONNECT IDENTIFIER IS ${SVC_HOST}:1521/${ORACLE_SID} MAINTAINED AS PHYSICAL;" +
 	"\nEDIT DATABASE ${PRIMARY_SID} SET PROPERTY LogXptMode='SYNC';" +
 	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY LogXptMode='SYNC';" +
-	"\nEDIT DATABASE ${PRIMARY_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${PRIMARY_IP})(PORT=1521))" +
-	"(CONNECT_DATA=(SERVICE_NAME=${PRIMARY_SID}_DGMGRL)(INSTANCE_NAME=${PRIMARY_SID})(SERVER=DEDICATED)))';" +
-	"\nEDIT DATABASE ${ORACLE_SID} SET PROPERTY STATICCONNECTIDENTIFIER='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=${SVC_HOST})(PORT=1521))" +
-	"(CONNECT_DATA=(SERVICE_NAME=${ORACLE_SID}_DGMGRL)(INSTANCE_NAME=${ORACLE_SID})(SERVER=DEDICATED)))';" +
 	"\nEDIT CONFIGURATION SET PROTECTION MODE AS MAXAVAILABILITY;" +
 	"\nENABLE CONFIGURATION;"
 
@@ -220,6 +214,9 @@ const DBShowConfigCMD string = "SHOW CONFIGURATION;"
 const DataguardBrokerGetDatabaseCMD string = "SELECT DATABASE || ':' || DATAGUARD_ROLE AS DATABASE FROM V\\$DG_BROKER_CONFIG;"
 
 const EnableFSFOCMD string = "ENABLE FAST_START FAILOVER;"
+
+const DisableFSFOCMD string = "STOP OBSERVER %s" +
+	"\nDISABLE FAST_START FAILOVER;"
 
 const RemoveDataguardConfiguration string = "DISABLE FAST_START FAILOVER;" +
 	"\nEDIT CONFIGURATION SET PROTECTION MODE AS MAXPERFORMANCE;" +
@@ -345,6 +342,8 @@ const InitORDSCMD string = "if [ -f $ORDS_HOME/config/ords/defaults.xml ]; then 
 	"\nrm -f sqladmin.passwd" +
 	"\numask 022"
 
+const DbConnectString string = "CONN_STRING=sys/%[1]s@%[2]s:1521/%[3]s"
+
 const GetSessionInfoSQL string = "select s.sid || ',' || s.serial# as Info FROM v\\$session s, v\\$process p " +
 	"WHERE (s.username = 'ORDS_PUBLIC_USER' or " +
 	"s.username = 'APEX_PUBLIC_USER' or " +
@@ -369,7 +368,9 @@ const UninstallORDSCMD string = "\numask 177" +
 	"\nrm -rf /opt/oracle/ords/config/ords/standalone" +
 	"\nrm -rf /opt/oracle/ords/config/ords/apex"
 
-const GetORDSStatus string = "curl -sSkv -k -X GET https://localhost:8443/ords/_/db-api/stable/metadata-catalog/"
+const GetORDSStatus string = "curl -sSkvf -k -X GET http://localhost:8181/ords/_/db-api/stable/metadata-catalog/"
+
+const ORDSReadinessProbe string = "curl -sSkvf -k -X GET http://localhost:8181/ords/_/landing"
 
 const ValidateAdminPassword string = "conn sys/\\\"%s\\\"@${ORACLE_SID} as sysdba\nshow user"
 
@@ -402,6 +403,8 @@ const StatusUpdating string = "Updating"
 const StatusReady string = "Healthy"
 
 const StatusError string = "Error"
+
+const StatusUnknown string = "Unknown"
 
 const ValueUnavailable string = "Unavailable"
 
@@ -442,18 +445,18 @@ const ChownApex string = " chown oracle:oinstall /opt/oracle/oradata/${ORACLE_SI
 const InstallApex string = "if [ -f /opt/oracle/oradata/${ORACLE_SID^^}/apex/apexins.sql ]; then  ( while true; do  sleep 60; echo \"Installing Apex...\" ; done ) & " +
 	" cd /opt/oracle/oradata/${ORACLE_SID^^}/apex && echo -e \"@apexins.sql SYSAUX SYSAUX TEMP /i/\" | %[1]s && kill -9 $!; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
-const InstallApexInContainer string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;\n" +
+const InstallApexInContainer string = "cd ${APEX_HOME}/${APEX_VER} && echo -e \"@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ %[1]s %[1]s %[1]s %[1]s;\n" +
 	"@apex_rest_config_core.sql;\n" +
 	"exec APEX_UTIL.set_workspace(p_workspace => 'INTERNAL');\n" +
 	"exec APEX_UTIL.EDIT_USER(p_user_id => APEX_UTIL.GET_USER_ID('ADMIN'), p_user_name  => 'ADMIN', p_change_password_on_first_use => 'Y');\n" +
-	"\" | sqlplus -s sys/%[2]s@${ORACLE_HOST}:${ORACLE_PORT}/%[3]s as sysdba;"
+	"\" | sql -s sys/%[2]s@${ORACLE_HOST}:${ORACLE_PORT}/%[3]s as sysdba;"
 
 const IsApexInstalled string = "echo -e \"select 'APEXVERSION:'||version as version FROM DBA_REGISTRY WHERE COMP_ID='APEX';\"" +
-	" | sqlplus -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/%[2]s as sysdba;"
+	" | sql -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/%[2]s as sysdba;"
 
-const UninstallApex string = "cd ${ORDS_HOME}/config/apex/ && echo -e \"@apxremov.sql\n\" | sqlplus -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/%[2]s as sysdba;"
+const UninstallApex string = "cd ${APEX_HOME}/${APEX_VER} && echo -e \"@apxremov.sql\n\" | sql -s sys/%[1]s@${ORACLE_HOST}:${ORACLE_PORT}/%[2]s as sysdba;"
 
-const ConfigureApexRest string = "if [ -f ${ORDS_HOME}/config/apex/apex_rest_config.sql ]; then  cd ${ORDS_HOME}/config/apex && " +
+const ConfigureApexRest string = "if [ -f ${APEX_HOME}/${APEX_VER}/apex_rest_config.sql ]; then  cd ${ORDS_HOME}/config/apex && " +
 	"echo -e \"%[1]s\n%[1]s\" | %[2]s ; else echo \"Apex Folder doesn't exist\" ; fi ;"
 
 const AlterApexUsers string = "\nALTER SESSION SET CONTAINER=%[2]s;" +
@@ -507,6 +510,9 @@ const SetApexUsers string = "\numask 177" +
 	"\n$JAVA_HOME/bin/java -jar $ORDS_HOME/ords.war set-properties --conf apex apexPublicUser" +
 	"\nrm -f apexPublicUser" +
 	"\numask 022"
+
+// Command to enable/disable MongoDB API support in ords pods
+const ConfigMongoDb string = "ords config set mongo.enabled %[1]s"
 
 // Get Sid, Pdbname, Edition for prebuilt db
 const GetSidPdbEditionCMD string = "echo $ORACLE_SID,$ORACLE_PDB,$ORACLE_EDITION;"

@@ -48,130 +48,61 @@ replicaset.apps/oracle-database-operator-controller-manager-665874bd57   3      
 2022-03-08T23:27:48.625Z  INFO  controller-runtime.manager.controller.dbcssystem  OCI provider configured succesfully {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
 2022-03-08T23:27:52.513Z  INFO  controller-runtime.manager.controller.dbcssystem  Sync information from remote DbcsSystem System successfully {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
 
-[root@docker-test-server test]# kubectl describe dbcssystems.database.oracle.com dbcssystem-existing
+[root@docker-test-server test]#  kubectl describe dbcssystems.database.oracle.com dbcssystem-existing
 Name:         dbcssystem-existing
 Namespace:    default
 Labels:       <none>
 Annotations:  lastSuccessfulSpec:
-                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya","availabilityDomain":"O...
-API Version:  database.oracle.com/v1alpha1
+                {"dbSystem":{"compartmentId":"","availabilityDomain":"","subnetId":"","shape":"","hostName":"","dbAdminPaswordSecret":"","dbBackupConfig":...
+API Version:  database.oracle.com/v4
 Kind:         DbcsSystem
 Metadata:
-  Creation Timestamp:  2022-03-08T23:27:48Z
+  Creation Timestamp:  2024-12-06T15:16:07Z
   Generation:          1
-  Managed Fields:
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    fieldsV1:
-      f:metadata:
-        f:annotations:
-          .:
-          f:kubectl.kubernetes.io/last-applied-configuration:
-      f:spec:
-        .:
-        f:id:
-        f:ociConfigMap:
-        f:ociSecret:
-    Manager:      kubectl-client-side-apply
-    Operation:    Update
-    Time:         2022-03-08T23:27:48Z
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    fieldsV1:
-      f:metadata:
-        f:annotations:
-          f:lastSuccessfulSpec:
-      f:spec:
-        f:dbSystem:
-          .:
-          f:availabilityDomain:
-          f:compartmentId:
-          f:cpuCoreCount:
-          f:dbAdminPaswordSecret:
-          f:dbBackupConfig:
-          f:dbEdition:
-          f:dbName:
-          f:dbUniqueName:
-          f:dbVersion:
-          f:diskRedundancy:
-          f:displayName:
-          f:faultDomains:
-          f:hostName:
-          f:nodeCount:
-          f:shape:
-          f:sshPublicKeys:
-          f:subnetId:
-      f:status:
-        .:
-        f:availabilityDomain:
-        f:cpuCoreCount:
-        f:dataStoragePercentage:
-        f:dataStorageSizeInGBs:
-        f:dbEdition:
-        f:dbInfo:
-        f:displayName:
-        f:id:
-        f:licenseModel:
-        f:network:
-          .:
-          f:clientSubnet:
-          f:domainName:
-          f:hostName:
-          f:listenerPort:
-          f:scanDnsName:
-          f:vcnName:
-        f:nodeCount:
-        f:recoStorageSizeInGB:
-        f:shape:
-        f:state:
-        f:storageManagement:
-        f:subnetId:
-        f:timeZone:
-        f:workRequests:
-    Manager:         manager
-    Operation:       Update
-    Time:            2022-03-08T23:27:52Z
-  Resource Version:  55191827
-  UID:               96d7bc49-33e9-42cc-8dd0-ada9a5a4c7e5
+  Resource Version:    116146012
+  UID:                 375b1bea-9b69-4b86-a2b1-fe7750608913
 Spec:
-  Id:              ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa
-  Oci Config Map:  oci-cred
+  Db System:
+    Availability Domain:      
+    Compartment Id:           
+    Db Admin Pasword Secret:  
+    Db Backup Config:
+    Host Name:  
+    Kms Config:
+    Shape:      
+    Subnet Id:  
+  Id:           ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htya6crmqdnyz5h7ngpi4azbhndm6ssdmyn7yxk2uhbvxala
+  Kms Config:
+  Oci Config Map:  oci-cred-mumbai
   Oci Secret:      oci-privatekey
 Status:
-  Availability Domain:        OLou:PHX-AD-1
-  Cpu Core Count:             1
+  Availability Domain:        OLou:AP-MUMBAI-1-AD-1
+  Cpu Core Count:             2
   Data Storage Percentage:    80
   Data Storage Size In G Bs:  256
-  Db Edition:                 ENTERPRISE_EDITION
-  Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.phx.anyhqljr5gy3jhqat52milqwt3gq6lwohhacwg5yi4mtzq7c7hag53lrkugq
-    Db Name:         db0130
-    Db Unique Name:  db0130_phx1zn
-    Db Workload:     OLTP
-    Id:              ocid1.database.oc1.phx.anyhqljrabf7htyackgmsaqjfexoqgrzuuk33ju2q25z2al43tnd5mhhvkra
-  Display Name:      dbsystem20220308221302
-  Id:                ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa
-  License Model:     LICENSE_INCLUDED
+  Db Edition:                 ENTERPRISE_EDITION_HIGH_PERFORMANCE
+  Display Name:               dbsystem1234
+  Id:                         ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htya6crmqdnyz5h7ngpi4azbhndm6ssdmyn7yxk2uhbvxala
+  License Model:              BRING_YOUR_OWN_LICENSE
   Network:
-    Client Subnet:          k8test-pubvcn
-    Domain Name:            k8testpubvcn.k8test.oraclevcn.com
-    Host Name:              host0130
+    Client Subnet:          oke-nodesubnet-quick-cluster1-2bebe95db-regional
+    Domain Name:            subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:              host1234
     Listener Port:          1521
-    Scan Dns Name:          host0130-scan.k8testpubvcn.k8test.oraclevcn.com
-    Vcn Name:               k8test
+    Scan Dns Name:          host1234-scan.subdda0b5eaa.cluster1.oraclevcn.com
+    Vcn Name:               oke-vcn-quick-cluster1-2bebe95db
   Node Count:               1
   Reco Storage Size In GB:  256
-  Shape:                    VM.Standard2.1
+  Shape:                    VM.Standard.E5.Flex
   State:                    AVAILABLE
   Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
+  Subnet Id:                ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
   Time Zone:                UTC
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrxivzvgzel47zuoyke5yk36o7mrgjl27vscd5z3bqptmyh3rxwbqq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljro3fhuxevjwxlue5gqq63q7rd7uhub2ru6gd6ay6k35f4hdeqqxkq
     Operation Type:    Create DB System
     Percent Complete:  100
-    Time Accepted:     2022-03-08 22:13:02.999 +0000 UTC
-    Time Finished:     2022-03-08 23:11:50.46 +0000 UTC
-    Time Started:      2022-03-08 22:13:16.995 +0000 UTC
+    Time Accepted:     2024-12-06 12:12:04.031 +0000 UTC
+    Time Finished:     2024-12-06 13:01:20.457 +0000 UTC
+    Time Started:      2024-12-06 12:12:11.041 +0000 UTC
 Events:                <none>
-[root@docker-test-server test]#

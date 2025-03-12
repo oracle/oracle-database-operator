@@ -3,7 +3,7 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: SingleInstanceDatabase
 metadata:
   # sidb-sample should have already been created using singleinstancedatabase_create.yaml

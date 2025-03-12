@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2024 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -39,6 +39,8 @@
 package v1alpha1
 
 import (
+	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -46,11 +48,32 @@ type StatusEnum string
 
 // DatabaseObserverSpec defines the desired state of DatabaseObserver
 type DatabaseObserverSpec struct {
-	Database   DatabaseObserverDatabase       `json:"database,omitempty"`
-	Exporter   DatabaseObserverExporterConfig `json:"exporter,omitempty"`
-	Prometheus PrometheusConfig               `json:"prometheus,omitempty"`
-	OCIConfig  OCIConfigSpec                  `json:"ociConfig,omitempty"`
-	Replicas   int32                          `json:"replicas,omitempty"`
+	Database         DatabaseObserverDatabase       `json:"database,omitempty"`
+	Exporter         DatabaseObserverExporterConfig `json:"exporter,omitempty"`
+	ExporterConfig   DatabaseObserverConfigMap      `json:"configuration,omitempty"`
+	Prometheus       PrometheusConfig               `json:"prometheus,omitempty"`
+	OCIConfig        OCIConfigSpec                  `json:"ociConfig,omitempty"`
+	Replicas         int32                          `json:"replicas,omitempty"`
+	Log              LogConfig                      `json:"log,omitempty"`
+	InheritLabels    []string                       `json:"inheritLabels,omitempty"`
+	ExporterSidecars []corev1.Container             `json:"sidecars,omitempty"`
+	SideCarVolumes   []corev1.Volume                `json:"sidecarVolumes,omitempty"`
+}
+
+// LogConfig defines the configuration details relation to the logs of DatabaseObserver
+type LogConfig struct {
+	Path     string    `json:"path,omitempty"`
+	Filename string    `json:"filename,omitempty"`
+	Volume   LogVolume `json:"volume,omitempty"`
+}
+
+type LogVolume struct {
+	Name                  string           `json:"name,omitempty"`
+	PersistentVolumeClaim LogVolumePVClaim `json:"persistentVolumeClaim,omitempty"`
+}
+
+type LogVolumePVClaim struct {
+	ClaimName string `json:"claimName,omitempty"`
 }
 
 // DatabaseObserverDatabase defines the database details used for DatabaseObserver
@@ -63,27 +86,52 @@ type DatabaseObserverDatabase struct {
 
 // DatabaseObserverExporterConfig defines the configuration details related to the exporters of DatabaseObserver
 type DatabaseObserverExporterConfig struct {
-	ExporterImage  string                    `json:"image,omitempty"`
-	ExporterConfig DatabaseObserverConfigMap `json:"configuration,omitempty"`
-	Service        DatabaseObserverService   `json:"service,omitempty"`
+	Deployment DatabaseObserverDeployment `json:"deployment,omitempty"`
+	Service    DatabaseObserverService    `json:"service,omitempty"`
+}
+
+// DatabaseObserverDeployment defines the exporter deployment component of DatabaseObserver
+type DatabaseObserverDeployment struct {
+	ExporterImage         string                  `json:"image,omitempty"`
+	SecurityContext       *corev1.SecurityContext `json:"securityContext,omitempty"`
+	ExporterArgs          []string                `json:"args,omitempty"`
+	ExporterCommands      []string                `json:"commands,omitempty"`
+	ExporterEnvs          map[string]string       `json:"env,omitempty"`
+	Labels                map[string]string       `json:"labels,omitempty"`
+	DeploymentPodTemplate DeploymentPodTemplate   `json:"podTemplate,omitempty"`
+}
+
+// DeploymentPodTemplate defines the labels for the DatabaseObserver pods component of a deployment
+type DeploymentPodTemplate struct {
+	SecurityContext *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+	Labels          map[string]string          `json:"labels,omitempty"`
 }
 
 // DatabaseObserverService defines the exporter service component of DatabaseObserver
 type DatabaseObserverService struct {
-	Port int32 `json:"port,omitempty"`
+	Ports  []corev1.ServicePort `json:"ports,omitempty"`
+	Labels map[string]string    `json:"labels,omitempty"`
 }
 
 // PrometheusConfig defines the generated resources for Prometheus
 type PrometheusConfig struct {
-	Labels map[string]string `json:"labels,omitempty"`
-	Port   string            `json:"port,omitempty"`
+	ServiceMonitor PrometheusServiceMonitor `json:"serviceMonitor,omitempty"`
 }
 
+// PrometheusServiceMonitor defines DatabaseObserver servicemonitor spec
+type PrometheusServiceMonitor struct {
+	Labels            map[string]string            `json:"labels,omitempty"`
+	NamespaceSelector *monitorv1.NamespaceSelector `json:"namespaceSelector,omitempty"`
+	Endpoints         []monitorv1.Endpoint         `json:"endpoints,omitempty"`
+}
+
+// DBSecret  defines secrets used in reference
 type DBSecret struct {
 	Key        string `json:"key,omitempty"`
 	SecretName string `json:"secret,omitempty"`
 }
 
+// DBSecretWithVault  defines secrets used in reference with vault fields
 type DBSecretWithVault struct {
 	Key             string `json:"key,omitempty"`
 	SecretName      string `json:"secret,omitempty"`
@@ -91,16 +139,18 @@ type DBSecretWithVault struct {
 	VaultSecretName string `json:"vaultSecretName,omitempty"`
 }
 
+// DatabaseObserverConfigMap defines configMap used for metrics configuration
 type DatabaseObserverConfigMap struct {
-	Configmap ConfigMapDetails `json:"configmap,omitempty"`
+	Configmap ConfigMapDetails `json:"configMap,omitempty"`
 }
 
 // ConfigMapDetails defines the configmap name
 type ConfigMapDetails struct {
 	Key  string `json:"key,omitempty"`
-	Name string `json:"configmapName,omitempty"`
+	Name string `json:"name,omitempty"`
 }
 
+// OCIConfigSpec defines the configmap name and secret name used for connecting to OCI
 type OCIConfigSpec struct {
 	ConfigMapName string `json:"configMapName,omitempty"`
 	SecretName    string `json:"secretName,omitempty"`
@@ -108,20 +158,21 @@ type OCIConfigSpec struct {
 
 // DatabaseObserverStatus defines the observed state of DatabaseObserver
 type DatabaseObserverStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 	Conditions     []metav1.Condition `json:"conditions"`
 	Status         string             `json:"status,omitempty"`
 	ExporterConfig string             `json:"exporterConfig"`
+	Version        string             `json:"version"`
 	Replicas       int                `json:"replicas,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:resource:shortName="dbobserver";"dbobservers"
 
 // DatabaseObserver is the Schema for the databaseobservers API
 // +kubebuilder:printcolumn:JSONPath=".status.exporterConfig",name="ExporterConfig",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type=string
+// +kubebuilder:printcolumn:JSONPath=".status.version",name="Version",type=string
 type DatabaseObserver struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

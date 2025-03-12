@@ -3,387 +3,111 @@ Name:         dbcssystem-existing
 Namespace:    default
 Labels:       <none>
 Annotations:  lastSuccessfulSpec:
-                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya","availabilityDomain":"O...
-API Version:  database.oracle.com/v1alpha1
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a","availabilityDomain":"O...
+API Version:  database.oracle.com/v4
 Kind:         DbcsSystem
 Metadata:
-  Creation Timestamp:  2022-03-08T23:27:48Z
+  Creation Timestamp:  2024-12-10T10:54:17Z
   Generation:          3
-  Managed Fields:
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    fieldsV1:
-      f:metadata:
-        f:annotations:
-          .:
-          f:kubectl.kubernetes.io/last-applied-configuration:
-      f:spec:
-        .:
-        f:dbSystem:
-          .:
-          f:availabilityDomain:
-          f:compartmentId:
-          f:dbAdminPaswordSecret:
-          f:hostName:
-          f:shape:
-          f:sshPublicKeys:
-          f:subnetId:
-        f:id:
-        f:ociConfigMap:
-        f:ociSecret:
-    Manager:      kubectl-client-side-apply
-    Operation:    Update
-    Time:         2022-03-08T23:32:50Z
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    fieldsV1:
-      f:metadata:
-        f:annotations:
-          f:lastSuccessfulSpec:
-      f:spec:
-        f:dbSystem:
-          f:cpuCoreCount:
-          f:dbBackupConfig:
-          f:dbEdition:
-          f:dbName:
-          f:dbUniqueName:
-          f:dbVersion:
-          f:diskRedundancy:
-          f:displayName:
-          f:faultDomains:
-          f:nodeCount:
-      f:status:
-        .:
-        f:availabilityDomain:
-        f:cpuCoreCount:
-        f:dataStoragePercentage:
-        f:dataStorageSizeInGBs:
-        f:dbEdition:
-        f:dbInfo:
-        f:displayName:
-        f:id:
-        f:licenseModel:
-        f:network:
-          .:
-          f:clientSubnet:
-          f:domainName:
-          f:hostName:
-          f:listenerPort:
-          f:scanDnsName:
-          f:vcnName:
-        f:nodeCount:
-        f:recoStorageSizeInGB:
-        f:shape:
-        f:state:
-        f:storageManagement:
-        f:subnetId:
-        f:timeZone:
-        f:workRequests:
-    Manager:         manager
-    Operation:       Update
-    Time:            2022-03-08T23:32:55Z
-  Resource Version:  55214174
-  UID:               96d7bc49-33e9-42cc-8dd0-ada9a5a4c7e5
+  Resource Version:    117788129
+  UID:                 c9da1245-3582-4926-b311-c24d75e75003
 Spec:
   Db System:
-    Availability Domain:      OLou:PHX-AD-1
-    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya
+    Availability Domain:      OLou:AP-MUMBAI-1-AD-1
+    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
     Db Admin Pasword Secret:  admin-password
-    Host Name:                host0130
-    Shape:                    VM.Standard2.1
-    Ssh Public Keys:
-      oci-publickey
-    Subnet Id:     ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
-  Id:              ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa
-  Oci Config Map:  oci-cred
-  Oci Secret:      oci-privatekey
-Status:
-  Availability Domain:        OLou:PHX-AD-1
-  Cpu Core Count:             1
-  Data Storage Percentage:    80
-  Data Storage Size In G Bs:  256
-  Db Edition:                 ENTERPRISE_EDITION
-  Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.phx.anyhqljr5gy3jhqat52milqwt3gq6lwohhacwg5yi4mtzq7c7hag53lrkugq
-    Db Name:         db0130
-    Db Unique Name:  db0130_phx1zn
-    Db Workload:     OLTP
-    Id:              ocid1.database.oc1.phx.anyhqljrabf7htyackgmsaqjfexoqgrzuuk33ju2q25z2al43tnd5mhhvkra
-  Display Name:      dbsystem20220308221302
-  Id:                ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa
-  License Model:     LICENSE_INCLUDED
-  Network:
-    Client Subnet:          k8test-pubvcn
-    Domain Name:            k8testpubvcn.k8test.oraclevcn.com
-    Host Name:              host0130
-    Listener Port:          1521
-    Scan Dns Name:          host0130-scan.k8testpubvcn.k8test.oraclevcn.com
-    Vcn Name:               k8test
-  Node Count:               1
-  Reco Storage Size In GB:  256
-  Shape:                    VM.Standard2.1
-  State:                    AVAILABLE
-  Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
-  Time Zone:                UTC
-  Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrxivzvgzel47zuoyke5yk36o7mrgjl27vscd5z3bqptmyh3rxwbqq
-    Operation Type:    Create DB System
-    Percent Complete:  100
-    Time Accepted:     2022-03-08 22:13:02.999 +0000 UTC
-    Time Finished:     2022-03-08 23:11:50.46 +0000 UTC
-    Time Started:      2022-03-08 22:13:16.995 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrc3fx6kwq4yxerk3ngztdbbngm7w4dnlddcdhxqxjn6e4kcyux5ca
-    Operation Type:    Update Shape
-    Percent Complete:  100
-    Time Accepted:     2022-03-08 23:33:42.807 +0000 UTC
-    Time Finished:     2022-03-08 23:46:21.126 +0000 UTC
-    Time Started:      2022-03-08 23:33:52.109 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljr5sveun3f6k3zuz23py7mm7jncmpq5vwyajbo5ezhc765347defwq
-    Operation Type:    Update Shape
-    Percent Complete:  100
-    Time Accepted:     2022-03-09 00:25:03.644 +0000 UTC
-    Time Finished:     2022-03-09 00:38:59.526 +0000 UTC
-    Time Started:      2022-03-09 00:25:15.578 +0000 UTC
-Events:                <none>
-[root@docker-test-server test]#
-
-
-
-[root@docker-test-server test]# cat scale_up_storage.yaml
-apiVersion: database.oracle.com/v1alpha1
-kind: DbcsSystem
-metadata:
-  name: dbcssystem-existing
-spec:
-  id: "ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa"
-  ociConfigMap: "oci-cred"
-  ociSecret: "oci-privatekey"
-  dbSystem:
-    availabilityDomain: "OLou:PHX-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya"
-    dbAdminPaswordSecret: "admin-password"
-    hostName: "host0130"
-    initialDataStorageSizeInGB: 512
-    shape: "VM.Standard2.1"
-    sshPublicKeys:
-      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a"
-[root@docker-test-server test]#
-[root@docker-test-server test]# kubectl apply -f scale_up_storage.yaml
-dbcssystem.database.oracle.com/dbcssystem-existing configured
-[root@docker-test-server test]#
-
-
-
-[root@docker-test-server test]# kubectl get ns
-
-kubectl get allNAME                              STATUS   AGE
-cert-manager                      Active   13d
-default                           Active   139d
-kube-node-lease                   Active   139d
-kube-public                       Active   139d
-kube-system                       Active   139d
-oracle-database-operator-system   Active   13d
-shns                              Active   88d
-[root@docker-test-server test]#
-[root@docker-test-server test]# kubectl get all -n oracle-database-operator-system
-NAME                                                               READY   STATUS    RESTARTS   AGE
-pod/oracle-database-operator-controller-manager-665874bd57-dlhls   1/1     Running   3          13d
-pod/oracle-database-operator-controller-manager-665874bd57-g2cgw   1/1     Running   3          13d
-pod/oracle-database-operator-controller-manager-665874bd57-q42f8   1/1     Running   4          13d
-
-NAME                                                                  TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
-service/oracle-database-operator-controller-manager-metrics-service   ClusterIP   10.96.130.124   <none>        8443/TCP   13d
-service/oracle-database-operator-webhook-service                      ClusterIP   10.96.4.104     <none>        443/TCP    13d
-
-NAME                                                          READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/oracle-database-operator-controller-manager   3/3     3            3           13d
-
-NAME                                                                     DESIRED   CURRENT   READY   AGE
-replicaset.apps/oracle-database-operator-controller-manager-665874bd57   3         3         3       13d
-[root@docker-test-server test]#
-
-
-[root@docker-test-server test]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-dlhls -n oracle-database-operator-system
-.
-.
-2022-03-09T00:48:11.373Z  INFO  controller-runtime.manager.controller.dbcssystem  OCI provider configured succesfully {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:48:15.961Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:49:16.273Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:50:16.557Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:51:16.910Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:52:17.277Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:53:17.600Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:54:18.189Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:55:18.506Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:56:18.862Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:57:19.180Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:58:19.544Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T00:59:19.870Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T01:00:20.230Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T01:01:20.663Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T01:02:21.303Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-2022-03-09T01:03:21.690Z  INFO  controller-runtime.manager.controller.dbcssystem  DB System current state is still:UPDATING. Sleeping for 60 seconds. {"reconciler group": "database.oracle.com", "reconciler kind": "DbcsSystem", "name": "dbcssystem-existing", "namespace": "default"}
-
-
-
-
-
-[root@docker-test-server test]# kubectl describe dbcssystems.database.oracle.com dbcssystem-existing
-Name:         dbcssystem-existing
-Namespace:    default
-Labels:       <none>
-Annotations:  lastSuccessfulSpec:
-                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya","availabilityDomain":"O...
-API Version:  database.oracle.com/v1alpha1
-Kind:         DbcsSystem
-Metadata:
-  Creation Timestamp:  2022-03-08T23:27:48Z
-  Generation:          4
-  Managed Fields:
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    fieldsV1:
-      f:metadata:
-        f:annotations:
-          f:lastSuccessfulSpec:
-      f:spec:
-        f:dbSystem:
-          f:cpuCoreCount:
-          f:dbBackupConfig:
-          f:dbEdition:
-          f:dbName:
-          f:dbUniqueName:
-          f:dbVersion:
-          f:diskRedundancy:
-          f:displayName:
-          f:faultDomains:
-          f:nodeCount:
-      f:status:
-        .:
-        f:availabilityDomain:
-        f:cpuCoreCount:
-        f:dataStoragePercentage:
-        f:dataStorageSizeInGBs:
-        f:dbEdition:
-        f:dbInfo:
-        f:displayName:
-        f:id:
-        f:licenseModel:
-        f:network:
-          .:
-          f:clientSubnet:
-          f:domainName:
-          f:hostName:
-          f:listenerPort:
-          f:scanDnsName:
-          f:vcnName:
-        f:nodeCount:
-        f:recoStorageSizeInGB:
-        f:shape:
-        f:state:
-        f:storageManagement:
-        f:subnetId:
-        f:timeZone:
-        f:workRequests:
-    Manager:      manager
-    Operation:    Update
-    Time:         2022-03-08T23:32:55Z
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    fieldsV1:
-      f:metadata:
-        f:annotations:
-          .:
-          f:kubectl.kubernetes.io/last-applied-configuration:
-      f:spec:
-        .:
-        f:dbSystem:
-          .:
-          f:availabilityDomain:
-          f:compartmentId:
-          f:dbAdminPaswordSecret:
-          f:hostName:
-          f:initialDataStorageSizeInGB:
-          f:shape:
-          f:sshPublicKeys:
-          f:subnetId:
-        f:id:
-        f:ociConfigMap:
-        f:ociSecret:
-    Manager:         kubectl-client-side-apply
-    Operation:       Update
-    Time:            2022-03-09T00:48:11Z
-  Resource Version:  55222013
-  UID:               96d7bc49-33e9-42cc-8dd0-ada9a5a4c7e5
-Spec:
-  Db System:
-    Availability Domain:              OLou:PHX-AD-1
-    Compartment Id:                   ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya
-    Db Admin Pasword Secret:          admin-password
-    Host Name:                        host0130
+    Db Backup Config:
+    Domain:                           subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:                        host1234
     Initial Data Storage Size In GB:  512
-    Shape:                            VM.Standard2.1
+    Kms Config:
+    Shape:  VM.Standard2.1
     Ssh Public Keys:
       oci-publickey
-    Subnet Id:     ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
-  Id:              ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa
-  Oci Config Map:  oci-cred
+    Subnet Id:  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Id:           ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Kms Config:
+  Oci Config Map:  oci-cred-mumbai
   Oci Secret:      oci-privatekey
 Status:
-  Availability Domain:        OLou:PHX-AD-1
+  Availability Domain:        OLou:AP-MUMBAI-1-AD-1
   Cpu Core Count:             1
   Data Storage Percentage:    80
   Data Storage Size In G Bs:  512
-  Db Edition:                 ENTERPRISE_EDITION
+  Db Clone Status:
+    Db Db Unique Name:  
+    Host Name:          
+  Db Edition:           ENTERPRISE_EDITION_HIGH_PERFORMANCE
   Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.phx.anyhqljr5gy3jhqat52milqwt3gq6lwohhacwg5yi4mtzq7c7hag53lrkugq
-    Db Name:         db0130
-    Db Unique Name:  db0130_phx1zn
+    Db Home Id:      ocid1.dbhome.oc1.ap-mumbai-1.anrg6ljrqlb5nxiaoqqlaxhx4urdwmefw4il5efzekneuru4bpfv57i7iy6a
+    Db Name:         cdb1
+    Db Unique Name:  cdb1_tkf_bom
     Db Workload:     OLTP
-    Id:              ocid1.database.oc1.phx.anyhqljrabf7htyackgmsaqjfexoqgrzuuk33ju2q25z2al43tnd5mhhvkra
-  Display Name:      dbsystem20220308221302
-  Id:                ocid1.dbsystem.oc1.phx.anyhqljrabf7htyanr3lnp6wtu5ld7qwszohiteodvwahonr2yymrftarkqa
-  License Model:     LICENSE_INCLUDED
+    Id:              ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyalxin4xpiggjh4nxlta6o6iq56hjrlh4of2cq6c4qgrqa
+  Display Name:      dbsystem1234
+  Id:                ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Kms Details Status:
+  License Model:  BRING_YOUR_OWN_LICENSE
   Network:
-    Client Subnet:          k8test-pubvcn
-    Domain Name:            k8testpubvcn.k8test.oraclevcn.com
-    Host Name:              host0130
-    Listener Port:          1521
-    Scan Dns Name:          host0130-scan.k8testpubvcn.k8test.oraclevcn.com
-    Vcn Name:               k8test
-  Node Count:               1
-  Reco Storage Size In GB:  256
-  Shape:                    VM.Standard2.1
-  State:                    AVAILABLE
-  Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
-  Time Zone:                UTC
+    Client Subnet:  oke-nodesubnet-quick-cluster1-2bebe95db-regional
+    Domain Name:    subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:      host1234
+    Listener Port:  1521
+    Scan Dns Name:  host1234-scan.subdda0b5eaa.cluster1.oraclevcn.com
+    Vcn Name:       oke-vcn-quick-cluster1-2bebe95db
+  Node Count:       1
+  Pdb Details Status:
+    Pdb Config Status:
+      Pdb Name:               cdb1_pdb1
+      Pdb State:              AVAILABLE
+      Pluggable Database Id:  ocid1.pluggabledatabase.oc1.ap-mumbai-1.anrg6ljrabf7htyakgj4wuabus6z5kmalvob6r6b7vivkbsmmh7bjprzbuwa
+  Reco Storage Size In GB:    256
+  Shape:                      VM.Standard2.1
+  State:                      AVAILABLE
+  Storage Management:         ASM
+  Subnet Id:                  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Time Zone:                  UTC
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrxivzvgzel47zuoyke5yk36o7mrgjl27vscd5z3bqptmyh3rxwbqq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrtpnjzjidageolva6ytlzjfb2lqhbbrivm4lsb67xyjzyyke6bt4a
+    Operation Type:    Update Shape
+    Percent Complete:  100
+    Time Accepted:     2024-12-10 08:57:53.547 +0000 UTC
+    Time Finished:     2024-12-10 09:14:04.572 +0000 UTC
+    Time Started:      2024-12-10 08:57:57.588 +0000 UTC
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrxg7gov22vlcbqbnxrkl7t7xkcfya6w6gvck344jdf5vtqgw5wzgq
+    Operation Type:    Update DB System
+    Percent Complete:  100
+    Time Accepted:     2024-12-10 08:57:43.701 +0000 UTC
+    Time Finished:     2024-12-10 09:14:22.705 +0000 UTC
+    Time Started:      2024-12-10 08:57:53.873 +0000 UTC
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrk2efvqjda2t7k5iaerahw7wcyz5dq2zev2k55gmq2gvsjkui7hxq
     Operation Type:    Create DB System
     Percent Complete:  100
-    Time Accepted:     2022-03-08 22:13:02.999 +0000 UTC
-    Time Finished:     2022-03-08 23:11:50.46 +0000 UTC
-    Time Started:      2022-03-08 22:13:16.995 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrc3fx6kwq4yxerk3ngztdbbngm7w4dnlddcdhxqxjn6e4kcyux5ca
+    Time Accepted:     2024-12-10 05:19:52.499 +0000 UTC
+    Time Finished:     2024-12-10 07:59:19.083 +0000 UTC
+    Time Started:      2024-12-10 05:19:55.747 +0000 UTC
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljr4qmf6rdtcbrc5p2q7bev3igugtpgfbwc2laht22yyjzr2srrg7vq
+    Operation Type:    Update DB System
+    Percent Complete:  100
+    Time Accepted:     2024-12-10 10:57:27.313 +0000 UTC
+    Time Finished:     2024-12-10 11:15:50.597 +0000 UTC
+    Time Started:      2024-12-10 10:57:45.242 +0000 UTC
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljr2vehqv3vgrxr5mrmd6hoqxg2zr6m5eaunv3ip6bcrubcpvhudmia
     Operation Type:    Update Shape
     Percent Complete:  100
-    Time Accepted:     2022-03-08 23:33:42.807 +0000 UTC
-    Time Finished:     2022-03-08 23:46:21.126 +0000 UTC
-    Time Started:      2022-03-08 23:33:52.109 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljr5sveun3f6k3zuz23py7mm7jncmpq5vwyajbo5ezhc765347defwq
-    Operation Type:    Update Shape
-    Percent Complete:  100
-    Time Accepted:     2022-03-09 00:25:03.644 +0000 UTC
-    Time Finished:     2022-03-09 00:38:59.526 +0000 UTC
-    Time Started:      2022-03-09 00:25:15.578 +0000 UTC
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrbaqah6qktukvdlnx66fp2hlevegryfuppsshkqemfcdjtwfwaq3q
+    Time Accepted:     2024-12-10 10:57:44.95 +0000 UTC
+    Time Finished:     2024-12-10 11:15:40.364 +0000 UTC
+    Time Started:      2024-12-10 10:57:54.082 +0000 UTC
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljr36bt7ot5oq3otch4bu2axn3azkicot4zuwgwmxeupxr4siisydja
     Operation Type:    Scale Storage
     Percent Complete:  100
-    Time Accepted:     2022-03-09 00:48:54.849 +0000 UTC
-    Time Finished:     2022-03-09 01:03:10.885 +0000 UTC
-    Time Started:      2022-03-09 00:49:05.911 +0000 UTC
+    Time Accepted:     2024-12-10 11:44:49.369 +0000 UTC
+    Time Finished:     2024-12-10 11:58:45.01 +0000 UTC
+    Time Started:      2024-12-10 11:44:55.544 +0000 UTC
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrxdpmmaipuqke5yx3szyfnf2zwkfptz3jevlq3coicecfjihnm4kq
+    Operation Type:    Scale Storage
+    Percent Complete:  100
+    Time Accepted:     2024-12-10 11:44:55.255 +0000 UTC
+    Time Finished:     2024-12-10 11:58:25.229 +0000 UTC
+    Time Started:      2024-12-10 11:44:57.743 +0000 UTC
 Events:                <none>
-[root@docker-test-server test]#

@@ -1,6 +1,8 @@
 package observability
 
-import "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
+import (
+	v4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
+)
 
 const (
 	UnknownValue = "UNKNOWN"
@@ -9,9 +11,9 @@ const (
 
 // Observability Status
 const (
-	StatusObservabilityPending v1alpha1.StatusEnum = "PENDING"
-	StatusObservabilityError   v1alpha1.StatusEnum = "ERROR"
-	StatusObservabilityReady   v1alpha1.StatusEnum = "READY"
+	StatusObservabilityPending v4.StatusEnum = "PENDING"
+	StatusObservabilityError   v4.StatusEnum = "ERROR"
+	StatusObservabilityReady   v4.StatusEnum = "READY"
 )
 
 // Log Names
@@ -27,8 +29,9 @@ const (
 	DefaultDbUserKey                 = "username"
 	DefaultDBPasswordKey             = "password"
 	DefaultDBConnectionStringKey     = "connection"
-	DefaultLabelKey                  = "app"
 	DefaultConfigVolumeString        = "config-volume"
+	DefaultLogFilename               = "alert.log"
+	DefaultLogVolumeString           = "log-volume"
 	DefaultWalletVolumeString        = "creds"
 	DefaultOCIPrivateKeyVolumeString = "ocikey"
 	DefaultOCIConfigFingerprintKey   = "fingerprint"
@@ -36,10 +39,12 @@ const (
 	DefaultOCIConfigTenancyKey       = "tenancy"
 	DefaultOCIConfigUserKey          = "user"
 
-	DefaultExporterImage                 = "container-registry.oracle.com/database/observability-exporter:1.1.0"
+	DefaultExporterImage                 = "container-registry.oracle.com/database/observability-exporter:1.5.2"
 	DefaultServicePort                   = 9161
 	DefaultServiceTargetPort             = 9161
+	DefaultAppPort                       = 8080
 	DefaultPrometheusPort                = "metrics"
+	DefaultServiceType                   = "ClusterIP"
 	DefaultReplicaCount                  = 1
 	DefaultExporterConfigMountRootPath   = "/oracle/observability"
 	DefaultOracleHome                    = "/lib/oracle/21/client64/lib"
@@ -52,12 +57,15 @@ const (
 	DefaultExporterConfigmapAbsolutePath = DefaultExporterConfigMountRootPath + "/" + DefaultExporterConfigmapFilename
 )
 
-// default resource prefixes
+// labeling
 const (
-	DefaultServiceMonitorPrefix     = "obs-servicemonitor-"
-	DefaultLabelPrefix              = "obs-"
-	DefaultExporterDeploymentPrefix = "obs-deploy-"
-	DefaultExporterContainerName    = "observability-exporter"
+	DefaultSelectorLabelKey = "app"
+	DefaultReleaseLabelKey  = "release"
+)
+
+// default resource
+const (
+	DefaultExporterContainerName = "observability-exporter"
 )
 
 // Known environment variables
@@ -66,6 +74,7 @@ const (
 	EnvVarDataSourceUser               = "DB_USERNAME"
 	EnvVarDataSourcePassword           = "DB_PASSWORD"
 	EnvVarDataSourceConnectString      = "DB_CONNECT_STRING"
+	EnvVarDataSourceLogDestination     = "LOG_DESTINATION"
 	EnvVarDataSourcePwdVaultSecretName = "VAULT_SECRET_NAME"
 	EnvVarDataSourcePwdVaultId         = "VAULT_ID"
 	EnvVarCustomConfigmap              = "CUSTOM_METRICS"
@@ -93,11 +102,11 @@ const (
 	ReasonReadyFailed                    = "ReadinessValidationFailed"
 	ReasonDeploymentSpecValidationFailed = "SpecValidationFailed"
 
-	ReasonDeploymentSuccessful   = "ResourceDeployed"
-	ReasonDeploymentUpdated      = "ResourceDeploymentUpdated"
-	ReasonDeploymentUpdateFailed = "ResourceDeploymentUpdateFailed"
-	ReasonDeploymentFailed       = "ResourceDeploymentFailed"
-	ReasonDeploymentPending      = "ResourceDeploymentInProgress"
+	ReasonDeploymentSuccessful = "ResourceDeployed"
+	ReasonResourceUpdated      = "ResourceUpdated"
+	ReasonResourceUpdateFailed = "ResourceUpdateFailed"
+	ReasonDeploymentFailed     = "ResourceDeploymentFailed"
+	ReasonDeploymentPending    = "ResourceDeploymentInProgress"
 
 	ReasonGeneralResourceGenerationFailed            = "ResourceGenerationFailed"
 	ReasonGeneralResourceCreated                     = "ResourceCreated"
@@ -112,18 +121,19 @@ const (
 	ErrorStatusUpdate                         = "an error occurred with updating the cr status"
 	ErrorSpecValidationFailedDueToAnError     = "an error occurred with validating the exporter deployment spec"
 	ErrorDeploymentPodsFailure                = "an error occurred with deploying exporter deployment pods"
-	ErrorDeploymentUpdate                     = "an error occurred with updating exporter deployment"
 	ErrorResourceCreationFailure              = "an error occurred with creating databaseobserver resource"
 	ErrorResourceRetrievalFailureDueToAnError = "an error occurred with retrieving databaseobserver resource"
+	LogErrorWithResourceUpdate                = "an error occurred with updating resource"
 )
 
 // Log Infos
 const (
-	LogCRStart         = "Started DatabaseObserver instance reconciliation"
-	LogCREnd           = "Ended DatabaseObserver instance reconciliation, resource must have been deleted."
-	LogResourceCreated = "Created DatabaseObserver resource successfully"
-	LogResourceUpdated = "Updated DatabaseObserver resource successfully"
-	LogResourceFound   = "Validated DatabaseObserver resource readiness"
+	LogCRStart                   = "Started DatabaseObserver instance reconciliation"
+	LogCREnd                     = "Ended DatabaseObserver instance reconciliation, resource must have been deleted."
+	LogResourceCreated           = "Created DatabaseObserver resource successfully"
+	LogResourceUpdated           = "Updated DatabaseObserver resource successfully"
+	LogResourceFound             = "Validated DatabaseObserver resource readiness"
+	LogSuccessWithResourceUpdate = "Updated DatabaseObserver resource successfully"
 )
 
 // Messages
@@ -140,11 +150,8 @@ const (
 	MessageResourceGenerationFailed          = "Failed to generate resource due to an error"
 
 	MessageExporterDeploymentSpecValidationFailed = "Failed to validate export deployment spec due to an error with the spec"
-	MessageExporterDeploymentImageUpdated         = "Completed updating exporter deployment image successfully"
-	MessageExporterDeploymentEnvironmentUpdated   = "Completed updating exporter deployment environment values successfully"
-	MessageExporterDeploymentReplicaUpdated       = "Completed updating exporter deployment replicaCount successfully"
-	MessageExporterDeploymentVolumesUpdated       = "Completed updating exporter deployment volumes successfully"
-	MessageExporterDeploymentUpdateFailed         = "Failed to update exporter deployment due to an error"
+	MessageExporterResourceUpdateFailed           = "Failed to update exporter resource due to an error"
+	MessageExporterResourceUpdated                = "Updated exporter resource successfully"
 	MessageExporterDeploymentValidationFailed     = "Failed to validate exporter deployment due to an error retrieving resource"
 	MessageExporterDeploymentSuccessful           = "Completed validation of exporter deployment readiness"
 	MessageExporterDeploymentFailed               = "Failed to deploy exporter deployment due to PodFailure"
@@ -158,16 +165,11 @@ const (
 	EventMessageFailedCRRetrieval = "Encountered error retrieving databaseObserver instance"
 
 	EventReasonSpecError                                 = "DeploymentSpecValidationFailed"
-	EventMessageSpecErrorDBPasswordMissing               = "Spec validation failed due to missing dbPassword field values"
 	EventMessageSpecErrorDBPasswordSecretMissing         = "Spec validation failed due to required dbPassword secret not found"
 	EventMessageSpecErrorDBConnectionStringSecretMissing = "Spec validation failed due to required dbConnectionString secret not found"
 	EventMessageSpecErrorDBPUserSecretMissing            = "Spec validation failed due to dbUser secret not found"
 	EventMessageSpecErrorConfigmapMissing                = "Spec validation failed due to custom config configmap not found"
 	EventMessageSpecErrorDBWalletSecretMissing           = "Spec validation failed due to provided dbWallet secret not found"
 
-	EventReasonUpdateSucceeded              = "ExporterDeploymentUpdated"
-	EventMessageUpdatedImageSucceeded       = "Exporter deployment image updated successfully"
-	EventMessageUpdatedEnvironmentSucceeded = "Exporter deployment environment values updated successfully"
-	EventMessageUpdatedVolumesSucceeded     = "Exporter deployment volumes updated successfully"
-	EventMessageUpdatedReplicaSucceeded     = "Exporter deployment replicaCount updated successfully"
+	EventReasonUpdateSucceeded = "ExporterDeploymentUpdated"
 )

@@ -4,13 +4,13 @@ Namespace:    default
 Labels:       <none>
 Annotations:  lastSuccessfulSpec:
                 {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya","availabilityDomain":"O...
-API Version:  database.oracle.com/v1alpha1
+API Version:  database.oracle.com/v4
 Kind:         DbcsSystem
 Metadata:
   Creation Timestamp:  2022-03-08T23:27:48Z
   Generation:          5
   Managed Fields:
-    API Version:  database.oracle.com/v1alpha1
+    API Version:  database.oracle.com/v4
     Fields Type:  FieldsV1
     fieldsV1:
       f:metadata:
@@ -58,7 +58,7 @@ Metadata:
     Manager:      manager
     Operation:    Update
     Time:         2022-03-08T23:32:55Z
-    API Version:  database.oracle.com/v1alpha1
+    API Version:  database.oracle.com/v4
     Fields Type:  FieldsV1
     fieldsV1:
       f:metadata:
@@ -164,7 +164,7 @@ Events:                <none>
 
 
 [root@docker-test-server test]# cat terminate_dbcs_system.yaml
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: DbcsSystem
 metadata:
   name: dbcssystem-terminate

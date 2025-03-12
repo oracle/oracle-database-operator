@@ -1,35 +1,36 @@
 [root@docker-test-server test]# cat dbcs_service_with_all_parameters_asm.yaml
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: DbcsSystem
 metadata:
   name: dbcssystem-create
 spec:
-  ociConfigMap: "oci-cred"
+  ociConfigMap: "oci-cred-mumbai"
   ociSecret: "oci-privatekey"
   dbSystem:
-    availabilityDomain: "OLou:PHX-AD-1"
-    compartmentId: "ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya"
+    availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
+    compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
     dbAdminPaswordSecret: "admin-password"
     dbBackupConfig:
       autoBackupEnabled: True
       autoBackupWindow: "SLOT_FOUR"
       recoveryWindowsInDays: 15
-    dbEdition: "STANDARD_EDITION"
-    dbName: "db0130"
-    dbVersion: "21c"
+    dbEdition: "ENTERPRISE_EDITION_HIGH_PERFORMANCE"
+    dbName: "cdb12"
+    displayName: "dbsys123"
+    licenseModel: "BRING_YOUR_OWN_LICENSE"
+    dbVersion: "19c"
     dbWorkload: "OLTP"
     diskRedundancy: "EXTERNAL"
-    displayName: "dbsystem0130"
-    hostName: "host0130"
+    hostName: "host01234"
     initialDataStorageSizeInGB: 256
     licenseModel: "BRING_YOUR_OWN_LICENSE"
-    pdbName: "PDB0130"
+    pdbName: "PDB0123"
     privateIp: "10.0.1.99"
-    shape: "VM.Standard2.1"
+    shape: "VM.Standard.E5.Flex"
     sshPublicKeys:
       - "oci-publickey"
     storageManagement: "ASM"
-    subnetId: "ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a"
+    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
     tags:
       "TEST": "test_case_provision"
       "CreatedBy": "MAA_TEAM"
@@ -39,9 +40,6 @@ spec:
 [root@docker-test-server test]#
 [root@docker-test-server test]# kubectl apply -f dbcs_service_with_all_parameters_asm.yaml
 dbcssystem.database.oracle.com/dbcssystem-create created
-
-
-
 
 
 [root@docker-test-server test]# kubectl get ns
@@ -145,169 +143,100 @@ replicaset.apps/oracle-database-operator-controller-manager-665874bd57   3      
 
 
 [root@docker-test-server test]# kubectl describe dbcssystems.database.oracle.com dbcssystem-create
+user/ $ k describe dbcssystems/dbcssystem-create
 Name:         dbcssystem-create
 Namespace:    default
 Labels:       <none>
 Annotations:  lastSuccessfulSpec:
-                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya","availabilityDomain":"O...
-API Version:  database.oracle.com/v1alpha1
+                {"dbSystem":{"compartmentId":"ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a","availabilityDomain":"O...
+API Version:  database.oracle.com/v4
 Kind:         DbcsSystem
 Metadata:
-  Creation Timestamp:  2022-03-09T02:59:43Z
-  Generation:          1
-  Managed Fields:
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    fieldsV1:
-      f:metadata:
-        f:annotations:
-          .:
-          f:kubectl.kubernetes.io/last-applied-configuration:
-      f:spec:
-        .:
-        f:dbSystem:
-          .:
-          f:availabilityDomain:
-          f:compartmentId:
-          f:dbAdminPaswordSecret:
-          f:dbBackupConfig:
-            .:
-            f:autoBackupEnabled:
-            f:autoBackupWindow:
-            f:recoveryWindowsInDays:
-          f:dbEdition:
-          f:dbName:
-          f:dbVersion:
-          f:dbWorkload:
-          f:diskRedundancy:
-          f:displayName:
-          f:hostName:
-          f:initialDataStorageSizeInGB:
-          f:licenseModel:
-          f:pdbName:
-          f:privateIp:
-          f:shape:
-          f:sshPublicKeys:
-          f:storageManagement:
-          f:subnetId:
-          f:tags:
-            .:
-            f:CreatedBy:
-            f:TEST:
-          f:tdeWalletPasswordSecret:
-          f:timeZone:
-        f:ociConfigMap:
-        f:ociSecret:
-    Manager:      kubectl-client-side-apply
-    Operation:    Update
-    Time:         2022-03-09T02:59:43Z
-    API Version:  database.oracle.com/v1alpha1
-    Fields Type:  FieldsV1
-    fieldsV1:
-      f:metadata:
-        f:annotations:
-          f:lastSuccessfulSpec:
-      f:spec:
-        f:id:
-      f:status:
-        .:
-        f:availabilityDomain:
-        f:cpuCoreCount:
-        f:dataStoragePercentage:
-        f:dataStorageSizeInGBs:
-        f:dbEdition:
-        f:dbInfo:
-        f:displayName:
-        f:id:
-        f:licenseModel:
-        f:network:
-          .:
-          f:clientSubnet:
-          f:domainName:
-          f:hostName:
-          f:listenerPort:
-          f:scanDnsName:
-          f:vcnName:
-        f:nodeCount:
-        f:recoStorageSizeInGB:
-        f:shape:
-        f:state:
-        f:storageManagement:
-        f:subnetId:
-        f:timeZone:
-        f:workRequests:
-    Manager:         manager
-    Operation:       Update
-    Time:            2022-03-09T03:59:22Z
-  Resource Version:  55276756
-  UID:               e7d874e7-3cd7-4b8b-8cd1-32d68795a38c
+  Creation Timestamp:  2024-12-09T09:42:08Z
+  Generation:          2
+  Resource Version:    117337682
+  UID:                 cc31eb51-56bc-48f5-926b-2453710b1592
 Spec:
   Db System:
-    Availability Domain:      OLou:PHX-AD-1
-    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa4hecw2shffuuc4fcatpin4x3rdkesmmf4he67osupo7g6f7i6eya
+    Availability Domain:      OLou:AP-MUMBAI-1-AD-1
+    Compartment Id:           ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a
     Db Admin Pasword Secret:  admin-password
     Db Backup Config:
       Auto Backup Enabled:            true
       Auto Backup Window:             SLOT_FOUR
       Recovery Windows In Days:       15
-    Db Edition:                       STANDARD_EDITION
-    Db Name:                          db0130
-    Db Version:                       21c
+    Db Edition:                       ENTERPRISE_EDITION_HIGH_PERFORMANCE
+    Db Name:                          cdb12
+    Db Version:                       19c
     Db Workload:                      OLTP
     Disk Redundancy:                  EXTERNAL
-    Display Name:                     dbsystem0130
-    Host Name:                        host0130
+    Display Name:                     dbsys123
+    Host Name:                        host01234
     Initial Data Storage Size In GB:  256
-    License Model:                    BRING_YOUR_OWN_LICENSE
-    Pdb Name:                         PDB0130
-    Private Ip:                       10.0.1.99
-    Shape:                            VM.Standard2.1
+    Kms Config:
+    License Model:  BRING_YOUR_OWN_LICENSE
+    Pdb Name:       PDB0123
+    Private Ip:     10.0.1.99
+    Shape:          VM.Standard.E5.Flex
     Ssh Public Keys:
       oci-publickey
     Storage Management:  ASM
-    Subnet Id:           ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
+    Subnet Id:           ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
     Tags:
       Created By:                MAA_TEAM
       TEST:                      test_case_provision
     Tde Wallet Password Secret:  tde-password
     Time Zone:                   Europe/Berlin
-  Oci Config Map:                oci-cred
-  Oci Secret:                    oci-privatekey
+  Id:                            ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyap33onviyojoimevpazf4wtbnfsi5v5izah2s365wmyka
+  Kms Config:
+  Oci Config Map:  oci-cred-mumbai
+  Oci Secret:      oci-privatekey
 Status:
-  Availability Domain:        OLou:PHX-AD-1
-  Cpu Core Count:             1
+  Availability Domain:        OLou:AP-MUMBAI-1-AD-1
+  Cpu Core Count:             2
   Data Storage Percentage:    80
   Data Storage Size In G Bs:  256
-  Db Edition:                 STANDARD_EDITION
+  Db Clone Status:
+    Db Db Unique Name:  
+    Host Name:          
+  Db Edition:           ENTERPRISE_EDITION_HIGH_PERFORMANCE
   Db Info:
-    Db Home Id:      ocid1.dbhome.oc1.phx.anyhqljr5gy3jhqaubltt77vlwmsx7w5d5dvq6be7isglwbpqijfi5gflh5a
-    Db Name:         db0130
-    Db Unique Name:  db0130_phx1sw
+    Db Home Id:      ocid1.dbhome.oc1.ap-mumbai-1.anrg6ljrqlb5nxiav4nm27oy6tfbqqyukvcgba7nalyozrgwfvkt5f25fazq
+    Db Name:         cdb12
+    Db Unique Name:  cdb12_z4b_bom
     Db Workload:     OLTP
-    Id:              ocid1.database.oc1.phx.anyhqljrabf7htya5bzvoxrrc2qu6yjw6c27hcsx32bp7c76vzy35kesa2nq
-  Display Name:      dbsystem0130
-  Id:                ocid1.dbsystem.oc1.phx.anyhqljrabf7htyaz42sxinatef6xieeppxmwg3bwlw5chpefc52s4joraxq
-  License Model:     BRING_YOUR_OWN_LICENSE
+    Id:              ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htyanuajzgrh6u5qtvlui4e7jtfwbcnx7lcplw36dy4u4fza
+  Display Name:      dbsys123
+  Id:                ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyap33onviyojoimevpazf4wtbnfsi5v5izah2s365wmyka
+  Kms Details Status:
+  License Model:  BRING_YOUR_OWN_LICENSE
   Network:
-    Client Subnet:          k8test-pubvcn
-    Domain Name:            k8testpubvcn.k8test.oraclevcn.com
-    Host Name:              host0130
-    Listener Port:          1521
-    Scan Dns Name:          host0130-scan.k8testpubvcn.k8test.oraclevcn.com
-    Vcn Name:               k8test
-  Node Count:               1
-  Reco Storage Size In GB:  256
-  Shape:                    VM.Standard2.1
-  State:                    AVAILABLE
-  Storage Management:       ASM
-  Subnet Id:                ocid1.subnet.oc1.phx.aaaaaaaauso243tymnzeh6zbz5vkejgyu4ugujul5okpa5xbaq3275izbc7a
-  Time Zone:                Europe/Berlin
+    Client Subnet:  oke-nodesubnet-quick-cluster1-2bebe95db-regional
+    Domain Name:    subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:      host01234
+    Listener Port:  1521
+    Scan Dns Name:  host01234-scan.subdda0b5eaa.cluster1.oraclevcn.com
+    Vcn Name:       oke-vcn-quick-cluster1-2bebe95db
+  Node Count:       1
+  Pdb Details Status:
+    Pdb Config Status:
+      Freeform Tags:
+        Created By:           MAA_TEAM
+        TEST:                 test_case_provision
+      Pdb Name:               PDB0123
+      Pdb State:              AVAILABLE
+      Pluggable Database Id:  ocid1.pluggabledatabase.oc1.ap-mumbai-1.anrg6ljrabf7htya6wvrskrlk2fazy4pa25jcbinks7vsjdv4kxf5t6nxcxq
+  Reco Storage Size In GB:    256
+  Shape:                      VM.Standard.E5.Flex
+  State:                      AVAILABLE
+  Storage Management:         ASM
+  Subnet Id:                  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Time Zone:                  UTC
   Work Requests:
-    Operation Id:      ocid1.coreservicesworkrequest.oc1.phx.abyhqljrlpxe723pq3z5fkeyfgbu4ewsysjcdrxiyxigponwosy44uhcpcsq
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrq63rk37tfqyu64lwason4rczllxmd5nk5iovdzbqkkk2d4nwp5ka
     Operation Type:    Create DB System
     Percent Complete:  100
-    Time Accepted:     2022-03-09 02:59:48.969 +0000 UTC
-    Time Finished:     2022-03-09 03:56:52.77 +0000 UTC
-    Time Started:      2022-03-09 02:59:56.287 +0000 UTC
+    Time Accepted:     2024-12-09 09:42:14.521 +0000 UTC
+    Time Finished:     2024-12-09 10:32:30.77 +0000 UTC
+    Time Started:      2024-12-09 09:42:21.084 +0000 UTC
 Events:                <none>
-[root@docker-test-server test]#

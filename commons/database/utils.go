@@ -502,32 +502,6 @@ func GetPrimaryDatabase(databases []string) string {
 	return primary
 }
 
-// Returns the databases in DG config .
-func GetDatabasesInDgConfig(readyPod corev1.Pod, r client.Reader,
-	config *rest.Config, ctx context.Context, req ctrl.Request) ([]string, string, error) {
-	log := ctrllog.FromContext(ctx).WithValues("GetDatabasesInDgConfig", req.NamespacedName)
-
-	// ## FIND DATABASES PRESENT IN DG CONFIGURATION
-	out, err := ExecCommand(r, config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | sqlplus -s / as sysdba ", DataguardBrokerGetDatabaseCMD))
-	if err != nil {
-		return []string{}, "", err
-	}
-	log.Info("GetDatabasesInDgConfig Output")
-	log.Info(out)
-
-	if !strings.Contains(out, "no rows selected") && !strings.Contains(out, "ORA-") {
-		out1 := strings.Replace(out, " ", "_", -1)
-		// filtering output and storing databses in dg configuration in  "databases" slice
-		databases := strings.Fields(out1)
-
-		// first 2 values in the slice will be column name(DATABASES) and a seperator(--------------) . so take the slice from position [2:]
-		databases = databases[2:]
-		return databases, out, nil
-	}
-	return []string{}, out, errors.New("databases in DG config is nil")
-}
-
 // Returns Database version
 func GetDatabaseVersion(readyPod corev1.Pod, r client.Reader,
 	config *rest.Config, ctx context.Context, req ctrl.Request) (string, error) {

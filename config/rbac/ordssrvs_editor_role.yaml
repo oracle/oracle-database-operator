@@ -1,0 +1,24 @@
+# permissions for end users to edit ordssrvs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ordssrvs-editor-role
+rules:
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - ordssrvs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - ordssrvs/status
+  verbs:
+  - get

@@ -1,0 +1,48 @@
+#
+# Copyright (c) 2024, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+
+apiVersion: database.oracle.com/v4
+kind: SingleInstanceDatabase
+metadata:
+  name: truecache-sample
+  namespace: default
+spec:
+  
+  ## DB edition
+  edition: free
+
+  ## DB Type 
+  createAs: truecache
+
+  ## Reference to the source primary database.
+  primaryDatabaseRef: "freedb-sample"
+  
+  ## Accepts a semi colon separated list of `PRIMARY_PDB_SERIVCE_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
+  trueCacheServices:
+  # - "FREEPDB1:sales1:sales1_tc"
+  # - "FREEPDB1:sales2:sales2_tc" 
+  # - "FREEPDB1:sales3:sales3_tc"
+
+  ## Secret containing SIDB password mapped to secretKey
+  adminPassword:
+    secretName: freedb-admin-secret
+
+  ## Database image details
+  image:
+    ## Oracle True Cache is only supported with 23ai
+    pullFrom: container-registry.oracle.com/database/free:latest
+
+
+  ## size is the required minimum size of the persistent volume
+  ## storageClass is specified for automatic volume provisioning
+  ## accessMode can only accept one of ReadWriteOnce, ReadWriteMany
+  persistence:
+    size: 50Gi
+    ## oci-bv applies to OCI block volumes. Use "standard" storageClass for dynamic provisioning in Minikube. Update as appropriate for other cloud service providers
+    storageClass: "oci-bv"
+    accessMode: "ReadWriteOnce"
+
+  ## Count of Database Pods. Should be 1 for free edition.
+  replicas: 1

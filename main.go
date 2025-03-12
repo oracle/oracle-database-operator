@@ -63,8 +63,12 @@ import (
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 	databasecontroller "github.com/oracle/oracle-database-operator/controllers/database"
+	dataguardcontroller "github.com/oracle/oracle-database-operator/controllers/dataguard"
 
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
 	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
+	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
 	// +kubebuilder:scaffold:imports
 )
@@ -79,6 +83,9 @@ func init() {
 	utilruntime.Must(observabilityv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(monitorv1.AddToScheme(scheme))
 	utilruntime.Must(databasev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(databasev4.AddToScheme(scheme))
+	utilruntime.Must(observabilityv1.AddToScheme(scheme))
+	utilruntime.Must(observabilityv4.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -221,12 +228,20 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
 			os.Exit(1)
 		}
-		if err = (&databasev1alpha1.PDB{}).SetupWebhookWithManager(mgr); err != nil {
+		if err = (&databasev4.PDB{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "PDB")
 			os.Exit(1)
 		}
-		if err = (&databasev1alpha1.CDB{}).SetupWebhookWithManager(mgr); err != nil {
+		if err = (&databasev4.LRPDB{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "LRPDB")
+			os.Exit(1)
+		}
+		if err = (&databasev4.CDB{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "CDB")
+			os.Exit(1)
+		}
+		if err = (&databasev4.LREST{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "LREST")
 			os.Exit(1)
 		}
 		if err = (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
@@ -245,14 +260,55 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
 			os.Exit(1)
 		}
+		if err = (&databasev4.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
+			os.Exit(1)
+		}
 		if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
 			os.Exit(1)
 		}
 		if err = (&databasev1alpha1.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
+			os.Exit(1)
+		}
+		if err = (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
 		}
 		if err = (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
+			os.Exit(1)
+		}
+		if err = (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
+			os.Exit(1)
+		}
+		if err = (&observabilityv1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
+			os.Exit(1)
+		}
+
+		if err = (&observabilityv4.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
 			os.Exit(1)
 		}
@@ -270,6 +326,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// LRPDBR Reconciler
+	if err = (&databasecontroller.LRPDBReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Log:      ctrl.Log.WithName("controllers").WithName("LRPDB"),
+		Interval: time.Duration(i),
+		Recorder: mgr.GetEventRecorderFor("LRPDB"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "LRPDB")
+		os.Exit(1)
+	}
+
 	// CDB Reconciler
 	if err = (&databasecontroller.CDBReconciler{
 		Client:   mgr.GetClient(),
@@ -282,15 +350,38 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "CDB")
 		os.Exit(1)
 	}
-	if err = (&databasecontroller.DataguardBrokerReconciler{
+
+	// LREST Reconciler
+	if err = (&databasecontroller.LRESTReconciler{
 		Client:   mgr.GetClient(),
-		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("DataguardBroker"),
+		Scheme:   mgr.GetScheme(),
+		Config:   mgr.GetConfig(),
+		Log:      ctrl.Log.WithName("controllers").WithName("LREST"),
+		Interval: time.Duration(i),
+		Recorder: mgr.GetEventRecorderFor("LREST"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "LREST")
+		os.Exit(1)
+	}
+
+	if err = (&dataguardcontroller.DataguardBrokerReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("dataguard").WithName("DataguardBroker"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Recorder: mgr.GetEventRecorderFor("DataguardBroker"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DataguardBroker")
 		os.Exit(1)
+	}
+
+	if err = (&databasecontroller.OrdsSrvsReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		// Config:   mgr.GetConfig(),
+		Recorder: mgr.GetEventRecorderFor("OrdsSrvs"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "OrdsSrvs")
 	}
 
 	// Observability DatabaseObserver Reconciler
@@ -304,14 +395,34 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
+		os.Exit(1)
+	}
+	if err = (&databasev4.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
+		os.Exit(1)
+	}
+	if err = (&databasev4.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs
 	indexFunc := func(obj client.Object) []string {
-		return []string{obj.(*databasev1alpha1.PDB).Spec.PDBName}
+		return []string{obj.(*databasev4.PDB).Spec.PDBName}
 	}
-	if err = cache.IndexField(context.TODO(), &databasev1alpha1.PDB{}, "spec.pdbName", indexFunc); err != nil {
+	if err = cache.IndexField(context.TODO(), &databasev4.PDB{}, "spec.pdbName", indexFunc); err != nil {
 		setupLog.Error(err, "unable to create index function for ", "controller", "PDB")
+		os.Exit(1)
+	}
+
+	indexFunc2 := func(obj client.Object) []string {
+		return []string{obj.(*databasev4.LRPDB).Spec.LRPDBName}
+	}
+	if err = cache.IndexField(context.TODO(), &databasev4.LRPDB{}, "spec.pdbName", indexFunc2); err != nil {
+		setupLog.Error(err, "unable to create index function for ", "controller", "LRPDB")
 		os.Exit(1)
 	}
 

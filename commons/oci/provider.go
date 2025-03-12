@@ -60,13 +60,13 @@ const (
 	privatekeyKey  = "privatekey"
 )
 
-type APIKeyAuth struct {
+type ApiKeyAuth struct {
 	ConfigMapName *string
 	SecretName    *string
 	Namespace     string
 }
 
-func GetOCIProvider(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
+func GetOciProvider(kubeClient client.Client, authData ApiKeyAuth) (common.ConfigurationProvider, error) {
 	if authData.ConfigMapName != nil && authData.SecretName == nil {
 		return getWorkloadIdentityProvider(kubeClient, authData)
 	} else if authData.ConfigMapName != nil && authData.SecretName != nil {
@@ -84,7 +84,7 @@ func GetOCIProvider(kubeClient client.Client, authData APIKeyAuth) (common.Confi
 	}
 }
 
-func getWorkloadIdentityProvider(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
+func getWorkloadIdentityProvider(kubeClient client.Client, authData ApiKeyAuth) (common.ConfigurationProvider, error) {
 	ociConfigMap, err := k8s.FetchConfigMap(kubeClient, authData.Namespace, *authData.ConfigMapName)
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func getWorkloadIdentityProvider(kubeClient client.Client, authData APIKeyAuth) 
 	return auth.OkeWorkloadIdentityConfigurationProvider()
 }
 
-func getProviderWithAPIKey(kubeClient client.Client, authData APIKeyAuth) (common.ConfigurationProvider, error) {
+func getProviderWithAPIKey(kubeClient client.Client, authData ApiKeyAuth) (common.ConfigurationProvider, error) {
 	var region, fingerprint, user, tenancy, passphrase, privatekeyValue string
 
 	// Prepare ConfigMap

@@ -2,7 +2,7 @@
 # Copyright (c) 2023, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: SingleInstanceDatabase
 metadata:
   name: sidb-sample
@@ -17,14 +17,24 @@ spec:
   edition: enterprise
 
   ## Type of database. 
-  ## Valid values for createAs are primary, clone or standby
-  ## Valid only for enterprise and standard editions
+  ## Valid values for createAs are primary, clone, standby or truecache
   createAs: primary
 
+  ## Specify true to convert this standby to a snapshot standby
+  ## Valid only if createAs is standby
+  convertToSnapshotStandby: false
+
   ## Reference to a source primary database.
-  ## Valid only for createAs clone or standby
+  ## Valid only when createAs is clone, standby or truecache
   ## The name of a source primary database resource from the same namespace
   primaryDatabaseRef: ""
+
+  ## Only valid when createAs is set to truecache 
+  ## Accepts a semi colon separated map of `PRIMARY_PDB_SERIVCE_NAME:PRIMARY_SERVICE_NAME:TRUECACHE_SERVICE_NAME`
+  trueCacheServices: 
+  # - "FREEPDB1:sales1:sales1_tc"
+  # - "FREEPDB1:sales2:sales2_tc" 
+  # - "FREEPDB1:sales3:sales3_tc"
   
   ## Secret containing SIDB password mapped to secretKey. secretKey defaults to oracle_pwd
   ## Should refer to adminPassword of Source DB if createAs is clone or standby
