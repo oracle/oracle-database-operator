@@ -68,13 +68,15 @@ As of release v1.2, the Oracle Database Operator for Kubernetes ( OraOperator) s
 
 ## Release Status
 
-This production release has been installed and tested on the following Kubernetes platforms:
+This production release has been installed and tested on:
+* [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
+
+The previous releases were tested on the following platforms:
 
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.24
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.6
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
-* [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Red Hat OKD](https://www.okd.io/)
 * [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.29.0
 
