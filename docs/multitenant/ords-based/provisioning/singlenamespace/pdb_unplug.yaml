@@ -30,6 +30,12 @@ spec:
       key: "ca.crt"
   webServerUser:
     secret:
+      secretName: "pdb1-secret"
+      key: "webserver_user"
+  webServerPwd:
+    secret:
+      secretName: "pdb1-secret"
+      key: "webserver_pwd"
       secretName: "[...]"
       key: "[...]"
   webServerPwd:

@@ -12,7 +12,7 @@ In this v1.2.0 production release, `OraOperator` supports the following database
   * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
   * Oracle Autonomous Container Database (ACD), the infrastructure for provisioning Autonomous Databases.
 * Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
-* Containerized Sharded databases (SHARDED) deployed in OKE and any k8s where OraOperator is deployed
+* Containerized Oracle Globally Distributed Databases(GDD) deployed in OKE and any k8s where OraOperator is deployed
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Base Database Service (OBDS) on Oracle Cloud Infrastructure (OCI)
 * Oracle Data Guard
@@ -49,6 +49,14 @@ The Operator itself, as a product, brings the following new features:
   - Bug Fix: Prometheus label config
 * Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation.
 
+<<<<<<< README.md
+## New Product Features
+* The Operator itself, as a product, brings the following new features:
+* Published on `operatorhub.io`
+* Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
+* Validated on Google Kubernetes Engine
+=======
+>>>>>>> README.md
 
 ## Overall Features Summary
 
@@ -136,7 +144,6 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
       kubectl apply -f oracle-database-operator.yaml
     ```
 
-
 * ### ClusterRole and ClusterRoleBinding for NodePort services
 
   To expose services on each node's IP and port (the NodePort), apply the [`node-rbac.yaml`](./rbac/node-rbac.yaml). Note that this step is not required for LoadBalancer services.
@@ -144,6 +151,16 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   ```sh
     kubectl apply -f rbac/node-rbac.yaml
   ```
+## Installation
+### Install Oracle DB Operator
+
+   After you have completed the preceding prerequisite changes, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
+
+   Run the following command
+
+   ```sh
+   kubectl apply -f oracle-database-operator.yaml
+   ```
 
 ## Install Oracle DB Operator
 
@@ -172,7 +189,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 You should see that the operator is up and running, along with the shipped controllers.
 
 For more details, see [Oracle Database Operator Installation Instructions](./docs/installation/OPERATOR_INSTALLATION_README.md).
-
+## Documentation
 ## Getting Started with the Operator (Quickstart)
 
 The following quickstarts are designed for specific database configurations:
@@ -180,7 +197,7 @@ The following quickstarts are designed for specific database configurations:
 * [Oracle Autonomous Database](./docs/adb/README.md)
 * [Oracle Autonomous Container Database](./docs/adb/ACD.md)
 * [Containerized Oracle Single Instance Database and Data Guard](./docs/sidb/README.md)
-* [Containerized Oracle Sharded Database](./docs/sharding/README.md)
+* [Containerized Oracle Globally Distributed Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Service (OBDS)](./docs/dbcs/README.md)
 
@@ -188,6 +205,11 @@ The following quickstarts are designed for specific database configurations:
 The following quickstart is designed for non-database configurations:
 * [Oracle Database Observability](./docs/observability/README.md)
 
+
+The following quickstart is designed for non-database configurations:
+* [Oracle Database Observability](./docs/observability/README.md)
+
+## Examples
 YAML file templates are available under [`/config/samples`](./config/samples/). You can copy and edit these template files to configure them for your use cases.
 
 ## Uninstall the Operator
@@ -234,20 +256,20 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 * [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
 * [Components of Dedicated Autonomous Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/components.html)
 * [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
-* [Oracle Database Sharding](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
+* [Oracle Globally Distributed Database](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
 * [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
 
 ## Contributing
 
-See [Contributing to this Repository](./CONTRIBUTING.md)
+This project welcomes contributions from the community. Before submitting a pull request, please [review our contribution guide](./CONTRIBUTING.md)
 
-## Support
+## Help
 
 You can submit a GitHub issue, or submit an issue and then file an [Oracle Support service](https://support.oracle.com/portal/) request. To file an issue or a service request, use the following product ID: 14430.
 
 ## Security
 
-Secure platforms are an important basis for general system security. Ensure that your deployment is in compliance with common security practices.
+Please consult the [security guide](./SECURITY.md) for our responsible security vulnerability disclosure process
 
 ### Managing Sensitive Data
 
@@ -261,10 +283,6 @@ The following is an example of a YAML file fragment for specifying Oracle Cloud 
 ```
 
 Examples in this repository where passwords are entered on the command line are for demonstration purposes only.
-
-### Reporting a Security Issue
-
-See [Reporting security vulnerabilities](./SECURITY.md)
 
 ## License
 

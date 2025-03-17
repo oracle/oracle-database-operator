@@ -84,4 +84,3 @@ EXPOSE 8888
 # Define default command to start Ords Services
 CMD $ORDS_HOME/$RUN_FILE
 
-

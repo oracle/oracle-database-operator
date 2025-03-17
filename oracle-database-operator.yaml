@@ -11080,9 +11080,15 @@ spec:
                 type: boolean
               assertivePdbDeletion:
                 type: boolean
+              assertivePdbDeletion:
+                description: turn on the assertive approach to delete pdb resource kubectl delete pdb ..... automatically triggers the pluggable database deletion
+                type: boolean
               cdbName:
                 type: string
               cdbNamespace:
+                type: string
+              cdbNamespace:
+                description: CDB Namespace
                 type: string
               cdbResName:
                 type: string
@@ -11460,6 +11466,7 @@ spec:
                     directorName:
                       type: string
                     envVars:
+                      description: Replicas         int32                        `json:"replicas,omitempty"`                                        // Gsm Replicas. If you set OraGsmPvcName then it is set default to 1.
                       items:
                         properties:
                           name:
@@ -11961,6 +11968,12 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    shardGroup:
+                      type: string
+                    shardRegion:
+                      type: string
+                    shardSpace:
+                      type: string
                     storageSizeInGb:
                       format: int32
                       type: integer
@@ -13777,6 +13790,26 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-shardingdatabase
+  failurePolicy: Fail
+  name: mshardingdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   - v1beta1
   clientConfig:
     service:
@@ -14120,6 +14153,27 @@ webhooks:
       path: /validate-database-oracle-com-v1alpha1-shardingdatabase
   failurePolicy: Fail
   name: vshardingdatabasev1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - shardingdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-shardingdatabase
+  failurePolicy: Fail
+  name: vshardingdatabase.kb.io
   rules:
   - apiGroups:
     - database.oracle.com

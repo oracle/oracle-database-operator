@@ -2,7 +2,7 @@
 
  In this use case, a Persistent Volume with a Oracle Database Gold Image is created. 
  
- This is required when you do not already have a Persistent Volume with a Database Gold Image from which you can clone database to save time while deploying Oracle Sharding topology using Oracle Sharding controller.
+ This is required when you do not already have a Persistent Volume with a Database Gold Image from which you can clone database to save time while deploying Oracle Globally Distributed Database topology using Oracle Sharding controller.
 
 This example uses file `oraclesi.yaml` to provision a single instance Oracle Database:
 

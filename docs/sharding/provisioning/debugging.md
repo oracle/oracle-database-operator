@@ -24,7 +24,7 @@ kubectl describe pod/catalog-0 -n shns
 
 If the failure is related to the Cloud Infrastructure, then troubleshoot the infrastructure using the documentation from the Cloud infrastructure provider.
 
-## Failure in the provisioning of the Sharded Database
+## Failure in the provisioning of the Oracle Globally Distributed Database
 
 If the failure occures after the Kubernetes Pods are created but during the execution of the scripts to create the shard databases, catalog database or the GSM, then you must troubleshoot that failure at the individual Pod level.
 

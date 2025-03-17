@@ -6,7 +6,7 @@ In this case, the database is created automatically by cloning from an existing 
 
 This use case applies when you are cloning from a Block Volume, and you can clone _only_ in the same availability domain (AD). The result is that the cloned shard database PODs can be created _only_ in the same AD where the Gold Image Block Volume is present.
 
-Choosing this option takes substantially less time during the Oracle Database Sharding Topology setup.
+Choosing this option takes substantially less time during the Oracle Globally Distributed Database Topology setup.
 
 **NOTE** For this step, the Persistent Volume that has the Oracle Database Gold Image is identified using its OCID.
 

@@ -100,9 +100,17 @@ spec:
                 type: boolean
               assertivePdbDeletion:
                 type: boolean
+              assertivePdbDeletion:
+                description: turn on the assertive approach to delete pdb resource
+                  kubectl delete pdb ..... automatically triggers the pluggable database
+                  deletion
+                type: boolean
               cdbName:
                 type: string
               cdbNamespace:
+                type: string
+              cdbNamespace:
+                description: CDB Namespace
                 type: string
               cdbResName:
                 type: string

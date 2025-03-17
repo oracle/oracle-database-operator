@@ -163,7 +163,6 @@ GRANT SYSDBA TO <CDB_ADMIN_USER> CONTAINER = ALL;
 GRANT CREATE SESSION TO <CDB_ADMIN_USER> CONTAINER = ALL;
 ```
 ----
-
 #### Create Certificates
 
 + Create certificates: At this stage we need to create certificates on our local machine and upload into kubernetes cluster by creating new secrets.
@@ -371,7 +370,6 @@ NAME      CDB NAME   DB SERVER              DB PORT   REPLICAS   STATUS   MESSAG
 [Example of executions](./logfiles/ordsconfig.log)
 
 -----
-
 #### Apply pdb yaml file to create pdb 
 
 ```bash
