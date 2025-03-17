@@ -1323,6 +1323,11 @@ func SetDBCSStatus(dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem
 		return nil
 	}
 
+	if dbcs.Spec.Id == nil {
+		dbcs.Status.State = "FAILED"
+		return nil
+	}
+
 	dbcsId := *dbcs.Spec.Id
 
 	dbcsReq := database.GetDbSystemRequest{

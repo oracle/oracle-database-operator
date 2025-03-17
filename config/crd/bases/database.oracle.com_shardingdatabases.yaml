@@ -154,6 +154,9 @@ spec:
                     directorName:
                       type: string
                     envVars:
+                      description: Replicas         int32                        `json:"replicas,omitempty"`                                        //
+                        Gsm Replicas. If you set OraGsmPvcName then it is set default
+                        to 1.
                       items:
                         properties:
                           name:
@@ -655,6 +658,12 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    shardGroup:
+                      type: string
+                    shardRegion:
+                      type: string
+                    shardSpace:
+                      type: string
                     storageSizeInGb:
                       format: int32
                       type: integer

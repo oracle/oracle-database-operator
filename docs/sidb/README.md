@@ -651,6 +651,9 @@ The following table depicts the fail over matrix for any destructive operation t
 #### Database Pod Resource Management
 When creating a Single Instance Database, you can specify the CPU and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod is scheduled on one of the pods that has the required resources available. To use database pod resource management, specify values for the `resources` attributes in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
 
+#### Database Pod Resource Management
+When creating a Single Instance Database you can specify the cpu and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod gets scheduled on one of the pods that has the required resources available. To use database pod resource management specify values for the `resources` attributes in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
+
 #### Setup Database with LoadBalancer
 For the Single Instance Database, the default service is the `NodePort` service. You can enable the `LoadBalancer` service by using the `kubectl patch` command.
 

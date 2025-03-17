@@ -6,7 +6,7 @@ In this test case, you provision the Oracle Database sharding topology with Syst
 
 This use case applies when you want to provision the database Pods on a Kubernetes Node in any availability domain (AD), which can also be different from the availability domain (AD) of the Block Volume that has the Oracle Database Gold Image provisioned earlier.
 
-Choosing this option takes substantially less time during the Oracle Database Sharding Topology setup across ADs.
+Choosing this option takes substantially less time during the Oracle Globally Distributed Database Topology setup across ADs.
 
 NOTE:
 
