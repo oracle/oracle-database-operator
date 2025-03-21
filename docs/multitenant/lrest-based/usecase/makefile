@@ -31,27 +31,27 @@
 #
 #               -----------------------------       ----------------------------------
 # 		oracle-database-operator.yaml     : oracle database operator
-# 		cdbnamespace_binding.yaml         : role binding for cdbnamespace
+# 		lrestnamespace_binding.yaml       : role binding for lrestnamespace
 # 		pdbnamespace_binding.yaml         : role binding for pdbnamespace
 # 		create_lrest_secret.yaml          : create secrets for rest server pod
 # 		create_lrpdb_secret.yaml          : create secrets for pluggable database
 # 		create_lrest_pod.yaml             : create rest server pod
-# 		create_pdb1_resource.yaml       : create first pluggable database
-# 		create_pdb2_resource.yaml       : create second pluggable database
-# 		open_pdb1_resource.yaml         : open first pluggable database
-# 		open_pdb2_resource.yaml         : open second pluggable database
-# 		close_pdb1_resource.yaml        : close first pluggable database
-# 		close_pdb2_resource.yaml        : close second pluggable database
+# 		create_pdb1_resource.yaml         : create first pluggable database
+# 		create_pdb2_resource.yaml         : create second pluggable database
+# 		open_pdb1_resource.yaml           : open first pluggable database
+# 		open_pdb2_resource.yaml           : open second pluggable database
+# 		close_pdb1_resource.yaml          : close first pluggable database
+# 		close_pdb2_resource.yaml          : close second pluggable database
 # 		clone_lrpdb_resource.yaml         : clone thrid pluggable database
-# 		clone_pdb2_resource.yaml        : clone 4th pluggable database
-# 		delete_pdb1_resource.yaml       : delete first pluggable database
-# 		delete_pdb2_resource.yaml       : delete sencond pluggable database
-# 		delete_pdb3_resource.yaml       : delete thrid pluggable database
-# 		unplug_pdb1_resource.yaml       : unplug first pluggable database
-# 		plug_pdb1_resource.yaml         : plug first pluggable database
-# 		map_pdb1_resource.yaml          : map the first pluggable database
+# 		clone_pdb2_resource.yaml          : clone 4th pluggable database
+# 		delete_pdb1_resource.yaml         : delete first pluggable database
+# 		delete_pdb2_resource.yaml         : delete sencond pluggable database
+# 		delete_pdb3_resource.yaml         : delete thrid pluggable database
+# 		unplug_pdb1_resource.yaml         : unplug first pluggable database
+# 		plug_pdb1_resource.yaml           : plug first pluggable database
+# 		map_pdb1_resource.yaml            : map the first pluggable database
 # 		config_map.yam                    : pdb parameters array
-# 		altersystem_pdb1_resource.yaml  : chage cpu_count count parameter for the first pdb
+# 		altersystem_pdb1_resource.yaml    : chage cpu_count count parameter for the first pdb
 #
 DATE  := `date "+%y%m%d%H%M%S"`
 ######################
@@ -328,7 +328,7 @@ apiVersion: database.oracle.com/${APIVERSION}
 kind: LREST
 metadata: 
   name: cdb-dev
-  namespace: cdbnamespace
+  namespace: ${LRSNAMESPACE}
 spec:
   cdbName: "DB12"
   lrestImage: ${LRESTIMG}
@@ -524,7 +524,7 @@ spec:
   cdbResName: "cdb-dev"
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
-  pdbName: ""new_clone"
+  pdbName: "new_clone"
   pdbState: "CLOSE"
   modifyOption: "IMMEDIATE"
   action: "Modify"
@@ -619,7 +619,7 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbdev"
-  xmlFileName: "/tmp/pdb.xml"
+  xmlFileName: "/var/tmp/pdb.$$.xml"
   action: "Unplug"
 EOF
 
@@ -636,7 +636,7 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbdev"
-  xmlFileName: "/tmp/pdb.xml"
+  xmlFileName: "/var/tmp/pdb.$$.xml"
   action: "plug"
   fileNameConversions: "NONE"
   sourceFileNameConversions: "NONE"
@@ -901,10 +901,10 @@ run07.1:
 	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)
 
 run99.1:
-	$(KUBECTL) delete lrest cdb-dev -n cdbnamespace
+	$(KUBECTL) delete lrest cdb-dev -n $(LRSNAMESPACE)
 	$(KUBECTL) wait --for=delete lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
-	$(KUBECTL) get lrest -n cdbnamespaace
-	$(KUBECTL) get lrpdb -n pdbnamespaace
+	$(KUBECTL) get lrest -n $(LRSNAMESPACE)
+	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)
 	
 runall01:  run00 run01.1 run01.2 run02.1 run02.2 run03.1 run03.2 run04.1 run04.2 run05.1 run06.1 run07.1
 

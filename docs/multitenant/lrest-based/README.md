@@ -274,10 +274,11 @@ Parsing sqltext=select count(*) from pdb_plug_in_violations where name =:b1
 |  Name                   | Dcription                                                                     |
 --------------------------|-------------------------------------------------------------------------------|
 |cdbName                  | Name of the container database (db)                                                   |
-|lrestImage (DO NOT EDIT) | **container-registry.oracle.com/database/lrest-dboper:latest**                |
-|dbTnsurl                 | TNS alias of the container db                                                 |
+|lrestImage (DO NOT EDIT) | **container-registry.oracle.com/database/lrest-dboper:latest** use the latest label availble on OCR               |
+|dbTnsurl                 | The string of the tns alias to connect to cdb. Attention: remove all white space from string  |
 |deletePdbCascade         | Delete all of the PDBs associated to a CDB resource when the CDB resource is dropped using [imperative approach](https://kubernetes.io/docs/tasks/manage-kubernetes-objects/imperative-command/)  |
 |cdbAdminUser             | Secret: the administrative (admin) user                                                     |
+|fileNameConversions      | Use file name conversion if you are not using ASM   | 
 |cdbAdminPwd              | Secret: the admin user password                                            |
 |webServerUser            | Secret: the HTTPS user                                                     |
 |webServerPwd             | Secret: the HTTPS user password                                            |
@@ -290,10 +291,10 @@ Parsing sqltext=select count(*) from pdb_plug_in_violations where name =:b1
 
 ### Create PDB  
 
-To create a pluggable database (PDB), apply the yaml file [`create_lrpdb1_resource.yaml`](./usecase/clone_lrpdb1_resource.yaml)  
+To create a pluggable database, apply the yaml file [`create_pdb1_resource.yaml`](./usecase/create_pdb1_resource.yaml)  
 
 ```bash
-kubectl apply -f create_lrpdb1_resource.yaml
+kubectl apply -f create_pdb1_resource.yaml
 ```
 Check the status of the resource and the PDB existence on the container db: 
 
@@ -391,10 +392,10 @@ test_invalid_parameter;16;spfile
 
 ### Open PDB
 
-To open the PDB, use the file [`open_lrpdb1_resource.yaml`](./usecase/open_lrpdb1_resource.yaml):
+To open the PDB, use the file [`open_pdb1_resource.yaml`](./usecase/open_pdb1_resource.yaml):
 
 ```bash
-kubectl apply -f open_lrpdb1_resource.yaml
+kubectl apply -f open_pdb1_resource.yaml
 ```
  
  **pdb opening** - parameters list
@@ -411,10 +412,10 @@ kubectl apply -f open_lrpdb1_resource.yaml
 
 ### Close PDB
 
-To close the PDB, use the file [`close_lrpdb1_resource.yaml`](./usecase/close_lrpdb1_resource.yaml): 
+To close the PDB, use the file [`close_pdb1_resource.yaml`](./usecase/close_pdb1_resource.yaml): 
 
 ```bash
-kubectl apply -f close_lrpdb1_resource.yaml
+kubectl apply -f close_pdb1_resource.yaml
 ```
 **pdb closing** - parameters list 
 |  Name                   | Description/Value                                                               |
@@ -429,10 +430,10 @@ kubectl apply -f close_lrpdb1_resource.yaml
 
 ### Clone PDB ### 
 
-To clone the PDB, use the file [`clone_lrpdb1_resource.yaml`](./usecase/clone_lrpdb1_resource.yaml): 
+To clone the PDB, use the file [`clone_pdb1_resource.yaml`](./usecase/clone_pdb1_resource.yaml): 
 
 ```bash
-kubeclt apply -f clone_lrpdb1_resource.yaml
+kubeclt apply -f clone_pdb1_resource.yaml
 ```
 **pdb cloning** - parameters list 
 |  Name                   | Description/Value                                                               |
@@ -450,7 +451,7 @@ kubeclt apply -f clone_lrpdb1_resource.yaml
 
 ### Unplug PDB
 
-To unplug the PDB, use the file [`unplug_lrpdb1_resource.yaml`](./usecase/unplug_lrpdb1_resource.yaml):
+To unplug the PDB, use the file [`unplug_pdb1_resource.yaml`](./usecase/unplug_pdb1_resource.yaml):
 
 **pdb unplugging** 
 |  Name                   | Description/Value                                                               |
@@ -461,7 +462,7 @@ To unplug the PDB, use the file [`unplug_lrpdb1_resource.yaml`](./usecase/unplug
 |pdbName                  | Name of the pluggable database (PDB)|
 ### Plug PDB 
 
-To plug in the PDB, use the file [`plug_lrpdb1_resource.yaml`](./usecase/plug_lrpdb1_resource.yaml). In this example, we plug in the PDB that was unpluged in the previous step:
+To plug in the PDB, use the file [`plug_pdb1_resource.yaml`](./usecase/plug_pdb1_resource.yaml). In this example, we plug in the PDB that was unpluged in the previous step:
 
 **pdb plugging** 
 |  Name                   | Description/Value                                                               |
@@ -478,7 +479,7 @@ To plug in the PDB, use the file [`plug_lrpdb1_resource.yaml`](./usecase/plug_lr
 
 ### Delete PDB
 
-To delete the PDB, use the file [`delete_lrpdb1_resource.yaml`](./usecase/delete_lrpdb1_resource.yaml)
+To delete the PDB, use the file [`delete_pdb1_resource.yaml`](./usecase/delete_pdb1_resource.yaml)
 
 **pdb deletion** 
 
@@ -493,8 +494,8 @@ To delete the PDB, use the file [`delete_lrpdb1_resource.yaml`](./usecase/delete
 
 ### Map PDB
 
-If you need to create a CRD for an existing PDB, then you can use the map option by applying the file [`map_lrpdb1_resource.yaml`](./usecase/map_lrpdb1_resource.yaml)
-
+If you need to create a CRD for an existing PDB, then you can use the map option by applying the file [`map_pdb1_resource.yaml`](./usecase/map_pdb1_resource.yaml)
+Map functionality can be used in a situation where you have a pdb which is not registered in the operator as a CRD. It's a temporary solution while waiting the autodiscovery to be available.
 
 
 </span>
