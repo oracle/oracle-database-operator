@@ -9,7 +9,7 @@ spec:
   cdbResName: "cdb-dev"
   cdbNamespace: "cdbnamespace"
   cdbName: "DB12"
-  pdbName: ""new_clone"
+  pdbName: "new_clone"
   pdbState: "CLOSE"
   modifyOption: "IMMEDIATE"
   action: "Modify"
