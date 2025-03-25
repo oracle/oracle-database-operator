@@ -312,6 +312,18 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
 			os.Exit(1)
 		}
+		if err = (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev4.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
+			os.Exit(1)
+		}
+		if err = (&databasev4.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
+			os.Exit(1)
+		}
 	}
 
 	// PDB Reconciler
@@ -392,19 +404,6 @@ func main() {
 		Recorder: mgr.GetEventRecorderFor("DatabaseObserver"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DatabaseObserver")
-		os.Exit(1)
-	}
-
-	if err = (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
-		os.Exit(1)
-	}
-	if err = (&databasev4.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
-		os.Exit(1)
-	}
-	if err = (&databasev4.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
