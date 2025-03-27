@@ -11,7 +11,7 @@ By using CDB/PDB controllers, you can perform the following actions **CREATE**, 
 
 Examples are located under the following directories:
 
-- the directories [`Usecase`](./usecase/) and [`usecase01`](./usecase01/) contain a [configuration file](./usecase/parameters.txt)  where you can specify all the details of your environment. A [`makefile`](./usecase/makefile) takes this file as input to generate all of the `yaml` files. There is no need to edit `yaml` files one by one.
+- the directories [`usecase`](./usecase/) and [`usecase01`](./usecase01/) contain a [configuration file](./usecase/parameters.txt)  where you can specify all the details of your environment. A [`makefile`](./usecase/makefile) takes this file as input to generate all of the `yaml` files. There is no need to edit `yaml` files one by one.
 - [Singlenamespace provisioning](./provisioning/singlenamespace/) This file contains base example files that you can use to manage the PDB and CDB within a single namespace. 
 - [Multinamespace provisioning](./provisioning/multinamespace/) This file contains base example files that you can use to manage the PDB and CDB in different namespaces.
 - [Usecase01](./usecase01/README.md) [Usecase02](./usecase02/README.md) This file contains other step-by-step examples; 
@@ -263,9 +263,9 @@ Example of `yaml` file Secret section:
 
 The Oracle Database Operator Multitenant Controller creates the CDB as a custom resource object kind that models a target CDB as a native Kubernetes object. This object kind is used only to create Pods to connect to the target CDB to perform PDB-LM operations.  Each CDB resource follows the CDB CRD as defined here: [`config/crd/bases/database.oracle.com_cdbs.yaml`](../../../config/crd/bases/database.oracle.com_cdbs.yaml)
 
-To create a CDB CRD, use this example`.yaml` file: [`cdb_create.yaml`](../multitenant/provisioning/singlenamespace/cdb_create.yaml)
+To create a CDB CRD, use this example`.yaml` file: [`cdb_create.yaml`](./provisioning/singlenamespace/cdb_create.yaml)
 
-**Note:** The password and username fields in this *cdb.yaml* Yaml are the Kubernetes Secrets created earlier in this procedure. For more information, see the section [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/). To understand more about creating secrets for pulling images from a Docker private registry, see [Kubernetes Private Registry Documenation]( https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/).
+**Note:** The password and username fields in this *cdb.yaml* Yaml are the Kubernetes Secrets created earlier in this procedure. For more information, see the section [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/). To understand more about creating secrets for pulling images from a Docker private registry, see [Kubernetes Private Registry Documentation]( https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/).
 
 Create a CDB CRD Resource example
 
@@ -273,7 +273,7 @@ Create a CDB CRD Resource example
 kubectl apply -f cdb_create.yaml 
 ```
 
-see [usecase01][uc01] and usecase02[uc02] for more information about file configuration
+see [usecase01][uc01] and [usecase02][uc02] for more information about file configuration
 
 ## PDB CRD
 
@@ -369,9 +369,9 @@ kubectl apply -f pdb_create.yaml
 
  [ordsdoc]:https://docs.oracle.com/en/database/oracle/oracle-rest-data-services/23.1/index.html
 
- [uc01]:../multitenant/usecase01/README.md
+ [uc01]:./usecase01/README.md
 
- [uc02]:../multitenant/usecase02/README.md
+ [uc02]:./usecase02/README.md
 
  [oradocpdb]:https://docs.oracle.com/en/database/oracle/oracle-database/21/multi/introduction-to-the-multitenant-architecture.html#GUID-AB84D6C9-4BBE-4D36-992F-2BB85739329F
 
