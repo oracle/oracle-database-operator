@@ -94,7 +94,7 @@ spec:
               externalConnectString:
                 type: string
               fastStartFailover:
-                type: boolean
+                type: string
               primaryDatabase:
                 type: string
               primaryDatabaseRef:
@@ -191,7 +191,7 @@ spec:
               externalConnectString:
                 type: string
               fastStartFailover:
-                type: boolean
+                type: string
               primaryDatabase:
                 type: string
               primaryDatabaseRef:

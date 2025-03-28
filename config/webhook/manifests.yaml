@@ -252,26 +252,6 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-shardingdatabase
-  failurePolicy: Fail
-  name: mshardingdatabase.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - shardingdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
   - v1beta1
   clientConfig:
     service:
@@ -653,27 +633,6 @@ webhooks:
       path: /validate-database-oracle-com-v1alpha1-shardingdatabase
   failurePolicy: Fail
   name: vshardingdatabasev1alpha1.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    - DELETE
-    resources:
-    - shardingdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-database-oracle-com-v1alpha1-shardingdatabase
-  failurePolicy: Fail
-  name: vshardingdatabase.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
