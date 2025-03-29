@@ -36,6 +36,7 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `udsharding_shard_prov_clone_across_ads.yaml`.
   * The `dbImage` used during provisioning the Persistent Volume with Database Gold Image and the `dbImage` used for deploying the Shard or Catalog Database by cloning should be same.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
+  * Make sure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
 
 **NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
 
