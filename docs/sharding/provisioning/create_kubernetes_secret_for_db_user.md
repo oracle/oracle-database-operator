@@ -8,6 +8,8 @@ Use the following steps to create an encrypted file with a password for the DB U
 - Remove the initial text file.
 - Create the Kubernetes Secret named `db-user-pass-rsa` using the encrypted file.
 
+**IMPORTANT:** Make sure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
+
 To understand how to create your own file, use the following example:
 
 ```sh

@@ -63,9 +63,9 @@ spec:
       storageSizeInGb: 50
       region: standby
  storageClass: oci
- dbImage: container-registry.oracle.com/database/enterprise:latest
+ dbImage: container-registry.oracle.com/database/enterprise_ru:19.25.0.0
  dbImagePullSecret: ocr-reg-cred
- gsmImage: container-registry.oracle.com/database/gsm:latest
+ gsmImage: container-registry.oracle.com/database/gsm_ru:19.25.0.0
  gsmImagePullSecret: ocr-reg-cred
  shardingType: USER
  isExternalSvc: False

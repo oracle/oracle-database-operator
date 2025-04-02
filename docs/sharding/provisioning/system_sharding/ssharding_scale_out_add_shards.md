@@ -16,6 +16,7 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_extshard.yaml`.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
   * If the existing Sharding Topology was deployed using [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then the additional parameter `dbEdition: "free"` will be needed for the below .yaml file as well.
+  * Make sure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
 
 This use case adds two new shards `shard4`,`shard5` to above Sharding Topology.
 
