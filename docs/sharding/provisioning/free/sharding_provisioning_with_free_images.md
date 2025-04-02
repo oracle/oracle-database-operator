@@ -19,8 +19,11 @@ This example uses `sharding_provisioning_with_free_images.yaml` to provision an 
 To get the Oracle 23ai FREE Database and GSM Images:
   * The Oracle 23ai FREE RDBMS Image used is `container-registry.oracle.com/database/free:latest`. Check [Oracle Database Free Get Started](https://www.oracle.com/database/free/get-started/?source=v0-DBFree-ChatCTA-j2032-20240709) for details.
   * To pull the above image from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * Use the Oracle 23ai FREE GSM Binaries `LINUX.X64_234000_gsm.zip` as listed on page [Oracle Database Free Get Started](https://www.oracle.com/database/free/get-started/?source=v0-DBFree-ChatCTA-j2032-20240709) and prepare the GSM Container Image following [Oracle Global Data Services Image](https://github.com/oracle/db-sharding/tree/master/docker-based-sharding-deployment/dockerfiles)
+  * The the Oracle 23ai FREE GSM Image used is `container-registry.oracle.com/database/gsm:latest`.
+  * To pull the above image from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
   * You need to change `dbImage` and `gsmImage` tag with the images you want to use in your enviornment in file `sharding_provisioning_with_free_images.yaml`.
+
+**IMPORTANT:** Make sure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
   
   
 
