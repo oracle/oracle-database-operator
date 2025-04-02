@@ -1,6 +1,6 @@
 # Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with System-Managed Sharding with RAFT reolication enabled
 
-**NOTE: RAFT Replication Feature is available only for Oracle 23c RDBMS and Oracle 23c GSM version.**
+**NOTE: RAFT Replication Feature is available only for Oracle 23ai RDBMS and Oracle 23ai GSM version.**
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
@@ -21,6 +21,7 @@ In this example, we are using pre-built Oracle Database and Global Data Services
   * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `snr_ssharding_shard_prov_delshard.yaml`.
   * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
   * In case you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you will need to add the additional parameter `dbEdition: "free"` to the below .yaml file.
+  * Make sure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
 
 NOTE: Use tag `isDelete: enable` to delete the shard you want.
 

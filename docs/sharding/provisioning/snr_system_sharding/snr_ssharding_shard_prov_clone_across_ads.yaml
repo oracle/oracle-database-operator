@@ -71,10 +71,11 @@ spec:
       pvMatchLabels:
         "failure-domain.beta.kubernetes.io/zone": "PHX-AD-3"
  storageClass: oci
- dbImage: container-registry.oracle.com/database/enterprise:latest
+ dbImage: container-registry.oracle.com/database/free:latest
  dbImagePullSecret: ocr-reg-cred
  gsmImage: container-registry.oracle.com/database/gsm:latest
  gsmImagePullSecret: ocr-reg-cred
+ dbEdition: "free"
  replicationType: "native" 
  isExternalSvc: False
  isDeleteOraPvc: True
