@@ -175,6 +175,27 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /mutate-database-oracle-com-v4-cdb
+  failurePolicy: Fail
+  name: mcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /mutate-database-oracle-com-v1alpha1-dataguardbroker
   failurePolicy: Fail
   name: mdataguardbroker.kb.io
@@ -232,23 +253,24 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-shardingdatabase
+      path: /mutate-database-oracle-com-v4-pdb
   failurePolicy: Fail
-  name: mshardingdatabasev1alpha1.kb.io
+  name: mpdb.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v1alpha1
+    - v4
     operations:
     - CREATE
     - UPDATE
     resources:
-    - shardingdatabases
+    - pdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -258,7 +280,7 @@ webhooks:
       namespace: system
       path: /mutate-database-oracle-com-v1alpha1-shardingdatabase
   failurePolicy: Fail
-  name: mshardingdatabase.kb.io
+  name: mshardingdatabasev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
@@ -609,6 +631,27 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-database-oracle-com-v4-cdb
+  failurePolicy: Fail
+  name: vcdb.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cdbs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-database-oracle-com-v1alpha1-dataguardbroker
   failurePolicy: Fail
   name: vdataguardbroker.kb.io
@@ -646,24 +689,24 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
   clientConfig:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-database-oracle-com-v1alpha1-shardingdatabase
+      path: /validate-database-oracle-com-v4-pdb
   failurePolicy: Fail
-  name: vshardingdatabasev1alpha1.kb.io
+  name: vpdb.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v1alpha1
+    - v4
     operations:
     - CREATE
     - UPDATE
-    - DELETE
     resources:
-    - shardingdatabases
+    - pdbs
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -673,7 +716,7 @@ webhooks:
       namespace: system
       path: /validate-database-oracle-com-v1alpha1-shardingdatabase
   failurePolicy: Fail
-  name: vshardingdatabase.kb.io
+  name: vshardingdatabasev1alpha1.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
