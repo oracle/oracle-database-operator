@@ -200,10 +200,7 @@ The following quickstarts are designed for specific database configurations:
 * [Containerized Oracle Globally Distributed Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Service (OBDS)](./docs/dbcs/README.md)
-
-
-The following quickstart is designed for non-database configurations:
-* [Oracle Database Observability](./docs/observability/README.md)
+* [ORDS Services (ORDSSRVS)](./docs/ordsservices/README.md)
 
 
 The following quickstart is designed for non-database configurations:
