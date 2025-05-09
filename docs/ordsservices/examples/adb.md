@@ -5,11 +5,7 @@ This example walks through using the **ORDSSRVS controller** with an Oracle Auto
 This assumes that an ADB has already been provisioned and is configured as "Secure Access from Anywhere".  
 Note that if behind a Proxy, this example will not work as the Wallet will need to be modified to support the proxy configuration.
 
-
-### Cert-Manager and Oracle Database Operator installation
-
-Install the [Cert Manager](https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml) and the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator) using the instractions in the Operator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) file.
-
+Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
 
 ### ADB Wallet Secret
 
@@ -25,13 +21,13 @@ kubectl create secret generic adb-wallet \
 Create a Secret for the ADB ADMIN password, replacing <ADMIN_PASSWORD> with the real password:
 
 ```bash
-echo <ADMIN_PASSWORD> adb-db-auth-enc
-openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.k
+echo ${ADMIN_PASSWORD} > adb-db-auth-enc
+openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
 kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
-openssl rsautl -encrypt -pubin -inkey public.pem -in adb-db-auth-enc |base64 > e_sidb-db-auth-enc
-kubectl create secret generic adb-db-auth-enc --from-file=password=e_sidb-db-auth-enc -n  ordsnamespace
-rm adb-db-auth-enc e_sidb-db-auth-enc
+openssl rsautl -encrypt -pubin -inkey public.pem -in adb-db-auth-enc |base64 > e_adb-db-auth-enc
+kubectl create secret generic adb-oraoper-db-auth-enc  --from-file=password=e_adb-db-auth-enc -n  ordsnamespace
+rm adb-db-auth-enc e_adb-db-auth-enc
 ```
 
 ### Create RestDataServices Resource
@@ -43,22 +39,24 @@ rm adb-db-auth-enc e_sidb-db-auth-enc
 
     Replace <ADB_NAME> with the ADB Name and ensure that the `db.wallet.zip.service` is valid for your ADB Workload (e.g. _TP or _HIGH, etc.):
 
-    ```bash
-    echo "
-    apiVersion: database.oracle.com/v1
-    kind: OrdsSrvs
+    ```yaml
+    apiVersion: database.oracle.com/v4
+    kind:  OrdsSrvs
     metadata:
       name: ords-adb
       namespace: ordsnamespace
     spec:
       image: container-registry.oracle.com/database/ords:24.1.1
-      globalSettings:
-        database.api.enabled: true
+      forceRestart: true
       encPrivKey:
         secretName: prvkey
         passwordKey: privateKey
+      globalSettings:
+        database.api.enabled: true
       poolSettings:
         - poolName: adb
+          restEnabledSql.active: true
+          plsql.gateway.mode: direct
           db.wallet.zip.service: <ADB_NAME>_TP
           dbWalletSecret:
             secretName: adb-wallet
@@ -68,18 +66,16 @@ rm adb-db-auth-enc e_sidb-db-auth-enc
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER_OPER
           db.secret:
-            secretName:  adb-db-auth-enc
-            passwordKey: password
+            secretName:  adb-oraoper-db-auth-enc
           db.adminUser: ADMIN
           db.adminUser.secret:
-            secretName:  adb-db-auth-enc
-            passwordKey: password" | kubectl apply -f -
+            secretName:  adb-oraoper-db-auth-enc
     ```
     <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
     
 1. Watch the restdataservices resource until the status is **Healthy**:
     ```bash
-    kubectl get ordssrvs  ords-adb -w
+    kubectl get -n ordsnamespace ordssrvs ords-adb -w
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.  If APEX
@@ -91,7 +87,7 @@ rm adb-db-auth-enc e_sidb-db-auth-enc
 Open a port-forward to the ORDS service, for example:
 
 ```bash
-kubectl port-forward service/ords-adb 8443:8443
+kubectl port-forward service/ords-adb -n ordsnamespace 8443:8443
 ```
 
 Direct your browser to: `https://localhost:8443/ords/adb`

@@ -4,9 +4,8 @@ This example walks through using the **ORDSSRVS Operator** with multiple databas
 Keep in mind that all pools are running in the same Pod, therefore, changing the configuration of one pool will require
 a recycle of all pools.
 
-### Cert-Manager and  Oracle Database Operator installation
+Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
 
-Install the [Cert Manager](https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml) and the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator) using the instractions in the Operator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) file.
 
 ### TNS_ADMIN Secret
 
@@ -86,25 +85,18 @@ If taking advantage of the [AutoUpgrade](../autoupgrade.md) functionality, creat
 In this example, only PDB1 will be set for [AutoUpgrade](../autoupgrade.md), the other PDBs already have APEX and ORDS installed.
 
 ```bash
-
-
-
 echo "THIS_IS_A_PASSWORD"     > syspwdfile
-openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_syspwdfile
+openssl rsautl -encrypt -pubin -inkey public.pem -in syspwdfile |base64 > e_syspwdfile
 kubectl create secret generic pdb1-priv-auth-enc --from-file=password=e_syspwdfile -n  ordsnamespace
 rm syspwdfile e_syspwdfile
-
-kubectl create secret generic pdb1-priv-auth \
-  --from-literal=password=pdb1-battery-staple
 ```
 
 ### Create OrdsSrvs Resource
 
-1. Create a manifest for ORDS.
+1. Create a manifest for ORDS, ords-multi-pool.yaml:
 
-    ```bash
-    echo "
-    apiVersion: database.oracle.com/v1
+    ```yaml
+    apiVersion: database.oracle.com/v4
     kind: OrdsSrvs
     metadata:
       name: ords-multi-pool
@@ -166,10 +158,15 @@ kubectl create secret generic pdb1-priv-auth \
           plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName: multi-ords-auth-enc" | kubectl apply -f -
+            secretName: multi-ords-auth-enc
     ```
     <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
-    
+
+1. Apply the yaml file:
+    ```bash
+    kubectl apply -f ords-multi-pool.yaml
+    ```
+
 1. Watch the ordssrvs resource until the status is **Healthy**:
     ```bash
     kubectl get OrdsSrvs ords-multi-pool -n ordsnamespace -w

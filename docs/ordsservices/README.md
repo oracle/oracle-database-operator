@@ -25,22 +25,53 @@ It supports the majority of ORDS configuration settings as per the [API Document
 The ORDS and APEX schemas can be [automatically installed/upgraded](./autoupgrade.md) into the Oracle Database by the ORDS controller.
 
 ORDS Version support: 
-* v22.1+
+* 24.1.1  
+(Newer versions of ORDS will be supported in the next update of OraOperator)
 
 Oracle Database Version: 
 * 19c
 * 23ai (incl. 23ai Free)
 
+### Prerequisites
 
-### Common Configurations
+1. Oracle Database Operator  
+
+    Install the Oracle Database Operator (OraOperator) using the instructions in the [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) file.
+
+1. Namespace  
+
+    For a dedicated namespace deployment of the ORDSSRVS controller, refer to the "Namespace Scoped Deployment" section in the OraOperator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md#2-namespace-scoped-deployment).
+
+    The following examples deploy the controller to the 'ordsnamespace' namespace.
+
+    Create the namespace:
+    ```bash
+    kubectl create namespace ordsnamespace
+    ```
+
+    Apply namespace role binding [ordsnamespace-role-binding.yaml](./ordsnamespace-role-binding.yaml):
+    ```bash
+    kubectl apply -f ordsnamespace-role-binding.yaml
+    ```
+
+    Edit OraOperator to add the namespace under WATCH_NAMESPACE:
+    ```yaml
+    - name: WATCH_NAMESPACE
+    value: "default,<your namespaces>,ordsnamespace"
+    ```
+
+### Common configuration examples
 
 A few common configuration examples can be used to quickly familiarise yourself with the ORDS Custom Resource Definition.
 The "Conclusion" section of each example highlights specific settings to enable functionality that maybe of interest.
 
-* [Containerised Single Instance Database using the Oracontroller](./examples/sidb_container.md)
-* [Multipool, Multidatabase using a TNS Names file](./examples/multi_pool.md)
-* [Autonomous Database using the Oracontroller](./examples/adb_oraoper.md) - (Customer Managed ORDS) <sup>*See [Limitations](#limitations)</sup>
-* [Autonomous Database without the Oracontroller](./examples/adb.md) - (Customer Managed ORDS)
+Before 
+
+* [Pre-existing Database](./examples/existing_db.md)
+* [Containerised Single Instance Database (SIDB)](./examples/sidb_container.md)
+* [Multidatabase using a TNS Names file](./examples/multi_pool.md)
+* [Autonomous Database using the OraOperator](./examples/adb_oraoper.md) <sup>*See [Limitations](#limitations)</sup>
+* [Autonomous Database without the OraOperator](./examples/adb.md)
 * [Oracle API for MongoDB Support](./examples/mongo_api.md)
 
 Running through all examples in the same Kubernetes cluster illustrates the ability to run multiple ORDS instances with a variety of different configurations.

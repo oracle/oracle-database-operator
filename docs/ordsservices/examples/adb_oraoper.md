@@ -4,23 +4,15 @@ This example walks through using the **ORDS Controller** with a Containerised Or
 
 When connecting to a mTLS enabled ADB while using the OraOperator to retreive the Wallet as is done in the example, it is currently not supported to have multiple, different databases supported by the single Ordssrvs resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-operator/issues/97)).
 
-### Cert-Manager and  Oracle Database Operator installation
-
-Install the [Cert Manager](https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml) and the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator) using the instractions in the Operator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) file.
+Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
 
 ### Setup Oracle Cloud Authorisation
 
-In order for the OraOperator to access the ADB, some pre-requisites are required, as detailed [here](https://github.com/oracle/oracle-database-operator/blob/main/docs/adb/ADB_PREREQUISITES.md).  Either establish Instance Principles or create the required ConfigMap/Secret.  This example uses the later:
+In order for the OraOperator to access the ADB, some additional pre-requisites are required, as detailed [here](https://github.com/oracle/oracle-database-operator/blob/main/docs/adb/ADB_PREREQUISITES.md).  
+Either establish Instance Principles or create the required ConfigMap/Secret.  This example uses the later, using the helper script [set_ocicredentials.sh](https://github.com/oracle/oracle-database-operator/blob/main/set_ocicredentials.sh) :
 
 ```bash
-kubectl create configmap oci-cred \
---from-literal=tenancy=<TENANCY_OCID> \
---from-literal=user=<USER_OCID> \
---from-literal=fingerprint=<FINGERPRINT> \
---from-literal=region=<REGION>
-
-kubectl create secret generic oci-privatekey \
---from-file=privatekey=<full path to private key>
+./set_ocicredentials.sh run -n ordsnamespace
 ```
 
 ### ADB ADMIN Password Secret
@@ -31,6 +23,7 @@ Create a Secret for the ADB Admin password:
 DB_PWD=$(echo "ORDSpoc_$(date +%H%S%M)")
 
 kubectl create secret generic adb-oraoper-db-auth \
+  -n ordsnamespace \
   --from-literal=adb-oraoper-db-auth=${DB_PWD}
 ```
 
@@ -40,51 +33,49 @@ kubectl create secret generic adb-oraoper-db-auth \
 
 1. Obtain the OCID of the ADB and set to an environment variable:
 
-  ```
-  export ADB_OCID=<insert OCID here>
-  ```
-
-1. Create a manifest to bind to the ADB.
-
     ```bash
-    echo "
-    apiVersion: database.oracle.com/v1alpha1
+    export ADB_OCID=<insert OCID here>
+    ```
+
+1. Create and apply a manifest to bind to the ADB.
+    "adb-oraoper-tns-admin" secret will be created by the controller.
+
+    ```yaml
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: adb-oraoper
+      namespace: ordsnamespace
     spec:
-      hardLink: false
-      ociConfig:
-        configMapName: oci-cred
-        secretName: oci-privatekey
-      details:
-        autonomousDatabaseOCID: $ADB_OCID
-        wallet:
+      action: Sync
+      wallet:
           name: adb-oraoper-tns-admin
           password:
             k8sSecret:
-              name: adb-oraoper-db-auth" | kubectl apply -f -
+              name: adb-oraoper-db-auth
+      details:
+        id: $ADB_OCID
     ```
 
 1. Update the ADMIN Password:
 
-```bash
-  kubectl patch adb adb-oraoper --type=merge \
-    -p '{"spec":{"details":{"adminPassword":{"k8sSecret":{"name":"adb-oraoper-db-auth"}}}}}'
-```
+    ```bash
+    kubectl patch adb adb-oraoper --type=merge \
+      -n ordsnamespace \
+      -p '{"spec":{"details":{"adminPassword":{"k8sSecret":{"name":"adb-oraoper-db-auth"}}}}}'
+    ```
 
 1. Watch the `adb` resource until the STATE is **AVAILABLE**:
 
     ```bash
-    kubectl get adb/adb-oraoper -w
+    kubectl get -n ordsnamespace adb/adb-oraoper -w
     ```
 
 ### Create encrypted password 
 
-
 ```bash
-echo ${DB_PWD} adb-db-auth-enc
-openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.k
+echo ${DB_PWD} > adb-db-auth-enc
+openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
 kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
 openssl rsautl -encrypt -pubin -inkey public.pem -in adb-db-auth-enc |base64 > e_adb-db-auth-enc
@@ -92,24 +83,21 @@ kubectl create secret generic adb-oraoper-db-auth-enc  --from-file=password=e_ad
 rm adb-db-auth-enc e_adb-db-auth-enc
 ```
 
-
-
 ### Create OrdsSrvs Resource
 
 1. Obtain the Service Name from the OraOperator
 
-  ```bash
-  SERVICE_NAME=$(kubectl get adb adb-oraoper -o=jsonpath='{.spec.details.dbName}'_TP)
-  ```
+    ```bash
+    SERVICE_NAME=$(kubectl get -n ordsnamespace adb adb-oraoper -o=jsonpath='{.spec.details.dbName}'_TP)
+    ```
 
 1. Create a manifest for ORDS.
 
     As an ADB already maintains ORDS and APEX, `autoUpgradeORDS` and `autoUpgradeAPEX` will be ignored if set.  A new DB User for ORDS will be created to avoid conflict with the pre-provisioned one.  This user will be
     named, `ORDS_PUBLIC_USER_OPER` if `db.username` is either not specified or set to `ORDS_PUBLIC_USER`.
 
-    ```bash
-    echo "
-    apiVersion: database.oracle.com/v1
+    ```yaml
+    apiVersion: database.oracle.com/v4
     kind:  OrdsSrvs
     metadata:
       name: ords-adb-oraoper
@@ -117,10 +105,10 @@ rm adb-db-auth-enc e_adb-db-auth-enc
     spec:
       image: container-registry.oracle.com/database/ords:24.1.1
       forceRestart: true
-    encPrivKey:
-      secretName: prvkey
-      passwordKey: privateKey
-    globalSettings:
+      encPrivKey:
+        secretName: prvkey
+        passwordKey: privateKey
+      globalSettings:
         database.api.enabled: true
       poolSettings:
         - poolName: adb-oraoper
@@ -134,11 +122,9 @@ rm adb-db-auth-enc e_adb-db-auth-enc
           db.username: ORDS_PUBLIC_USER_OPER
           db.secret:
             secretName:  adb-oraoper-db-auth-enc
-            passwordKey: adb-oraoper-db-auth-enc
           db.adminUser: ADMIN
           db.adminUser.secret:
             secretName:  adb-oraoper-db-auth-enc
-            passwordKey: adb-oraoper-db-auth-enc" | kubectl apply -f -
     ```
     <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
 
@@ -157,7 +143,7 @@ rm adb-db-auth-enc e_adb-db-auth-enc
 Open a port-forward to the ORDS service, for example:
 
 ```bash
-kubectl port-forward service/ords-adb-oraoper 8443:8443
+kubectl port-forward service/ords-adb-oraoper -n ordsnamespace 8443:8443
 ```
 
 Direct your browser to: `https://localhost:8443/ords/adb-oraoper`

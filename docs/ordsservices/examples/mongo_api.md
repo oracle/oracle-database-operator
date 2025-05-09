@@ -2,11 +2,7 @@
 
 This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database to enable MongoDB API Support.
 
-
-### Cert-Manager and  Oracle Database Operator installation
-
-Install the [Cert Manager](https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml) and the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator) using the instractions in the Operator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) file.
-
+Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
 
 ### Database Access
 
@@ -39,13 +35,15 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
 ### Create encrypted secrets 
 
 ```bash
-openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.k
+
+openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
 kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
+
+echo "${DB_PWD}" > sidb-db-auth-enc
 openssl rsautl -encrypt -pubin -inkey public.pem -in sidb-db-auth-enc |base64 > e_sidb-db-auth-enc
 kubectl create secret generic sidb-db-auth-enc --from-file=password=e_sidb-db-auth-enc -n  ordsnamespace
 rm sidb-db-auth-enc e_sidb-db-auth-enc
-
 ```
 
 ### Create ordssrvs Resource
@@ -71,7 +69,7 @@ rm sidb-db-auth-enc e_sidb-db-auth-enc
     ```bash
     echo "
     apiVersion: database.oracle.com/v4
-    kind: ordssrvs
+    kind: OrdsSrvs
     metadata:
       name: ords-sidb
       namespace: ordsnamespace
