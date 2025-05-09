@@ -49,7 +49,7 @@ Oracle Database Version:
     kubectl create namespace ordsnamespace
     ```
 
-    Apply namespace role binding [ordsnamespace-role-binding.yaml](./ordsnamespace-role-binding.yaml):
+    Apply namespace role binding [ordsnamespace-role-binding.yaml](./examples/ordsnamespace-role-binding.yaml):
     ```bash
     kubectl apply -f ordsnamespace-role-binding.yaml
     ```
