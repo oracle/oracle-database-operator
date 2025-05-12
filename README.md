@@ -49,14 +49,11 @@ The Operator itself, as a product, brings the following new features:
   - Bug Fix: Prometheus label config
 * Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation.
 
-<<<<<<< README.md
 ## New Product Features
 * The Operator itself, as a product, brings the following new features:
 * Published on `operatorhub.io`
 * Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
 * Validated on Google Kubernetes Engine
-=======
->>>>>>> README.md
 
 ## Overall Features Summary
 
