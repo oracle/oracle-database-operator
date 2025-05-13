@@ -3241,6 +3241,7 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 	if err != nil {
 		return requeueY, err
 	}
+
 	if sidbReadyPod.Name == "" {
 		log.Info("No ready Pod for the requested singleinstancedatabase")
 		return requeueY, nil
@@ -3248,25 +3249,30 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 
 	if singleInstanceDatabase.Spec.ConvertToSnapshotStandby {
 		// Convert a PHYSICAL_STANDBY -> SNAPSHOT_STANDBY
-		singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
+		if singleInstanceDatabase.Status.Status != dbcommons.StatusPending {
+			singleInstanceDatabase.Status.Status = dbcommons.StatusUpdating
+		}
+
 		r.Status().Update(ctx, &singleInstanceDatabase)
 		if err := convertPhysicalStdToSnapshotStdDB(r, &singleInstanceDatabase, &sidbReadyPod, ctx, req); err != nil {
+			singleInstanceDatabase.Status.Status = dbcommons.StatusPending
+			r.Status().Update(ctx, &singleInstanceDatabase)
 			switch err {
 			case ErrNotPhysicalStandby:
-				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Conversion to Snapshot Standby Not allowed", "Database not in physical standby role")
-				log.Info("Conversion to Snapshot Standby not allowed as database not in physical standby role")
+				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Conversion to Snapshot Standby Not allowed", "Database not in physical standby role")
+				log.Info("Error: Conversion to Snapshot Standby not allowed as database not in physical standby role")
 				return requeueY, nil
 			case ErrDBNotConfiguredWithDG:
 				// cannot convert to snapshot database
-				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Conversion to Snapshot Standby Not allowed", "Database is not configured with dataguard")
+				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Conversion to Snapshot Standby Not allowed", "Database is not configured with dataguard")
 				log.Info("Conversion to Snapshot Standby not allowed as requested database is not configured with dataguard")
 				return requeueY, nil
 			case ErrFSFOEnabledForDGConfig:
-				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Conversion to Snapshot Standby Not allowed", "Database is a FastStartFailover target")
+				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Conversion to Snapshot Standby Not allowed", "Database is a FastStartFailover target")
 				log.Info("Conversion to Snapshot Standby Not allowed as database is a FastStartFailover target")
 				return requeueY, nil
 			case ErrAdminPasswordSecretNotFound:
-				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Admin Password", "Database admin password secret not found")
+				r.Recorder.Event(&singleInstanceDatabase, corev1.EventTypeWarning, "Error: Admin Password", "Database admin password secret not found")
 				log.Info("Database admin password secret not found")
 				return requeueY, nil
 			default:
