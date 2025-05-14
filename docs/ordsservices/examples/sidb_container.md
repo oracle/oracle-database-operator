@@ -2,57 +2,50 @@
 
 This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database created by the **SIDB Controller** in the same Kubernetes Cluster.
 
-### Cert-Manager and  Oracle Database Operator installation
-
-Install the [Cert Manager](https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml) and the [Oracle Database Operator](https://github.com/oracle/oracle-database-operator) using the instractions in the Operator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) file.
-
+Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
 
 ### Deploy a Containerised Oracle Database
+
+Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/oracle-database-operator/blob/main/docs/sidb/README.md) for details.
 
 1. Create a Secret for the Database password:
 
     ```bash
-    DB_PWD=$(echo "ORDSpoc_$(date +%H%S%M)")
-
-    kubectl create secret generic sidb-db-auth \
-      --from-literal=password=${DB_PWD}
+    DB_PWD=<specify password here>
+    kubectl create secret generic sidb-db-auth --from-literal=password=${DB_PWD} --namespace ordsnamespace
     ```
 1. Create a manifest for the containerised Oracle Database.
 
     The POC uses an Oracle Free Image, but other versions may be subsituted; review the OraOperator Documentation for details on the manifests.
 
-    ```bash
-    echo "
-    apiVersion: database.oracle.com/v1alpha1
+    ```yaml
+    apiVersion: database.oracle.com/v4
     kind: SingleInstanceDatabase
     metadata:
       name: oraoper-sidb
+      namespace: ordsnamespace
     spec:
-      replicas: 1
-      image:
-        pullFrom: container-registry.oracle.com/database/free:23.4.0.0
-        prebuiltDB: true
-      sid: FREE
       edition: free
       adminPassword:
         secretName: sidb-db-auth
-        secretKey: password
-      pdbName: FREEPDB1" | kubectl apply -f -
+      image:
+        pullFrom: container-registry.oracle.com/database/free:23.7.0.0
+        prebuiltDB: true
+      replicas: 1
     ```
-    <sup>latest container-registry.oracle.com/database/free version, **23.4.0.0**, valid as of **2-May-2024**</sup>
+    <sup>latest container-registry.oracle.com/database/free version, **23.7.0.0-lite**, valid as of **2-May-2025**</sup>
+
 
 1. Watch the `singleinstancedatabases` resource until the database status is **Healthy**:
 
     ```bash
-    kubectl get singleinstancedatabases/oraoper-sidb -w
+    kubectl get singleinstancedatabases/oraoper-sidb -w -n ordsnamespace
     ```
-
     **NOTE**: If this is the first time pulling the free database image, it may take up to 15 minutes for the database to become available.
 
 ### Create encryped secret 
 
 ```bash
-
 openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
 kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
@@ -61,8 +54,6 @@ echo "${DB_PWD}"     > sidb-db-auth
 openssl rsautl -encrypt -pubin -inkey public.pem -in sidb-db-auth |base64 > e_sidb-db-auth
 kubectl create secret generic sidb-db-auth-enc --from-file=password=e_sidb-db-auth -n  ordsnamespace
 rm sidb-db-auth e_sidb-db-auth
-
-
 ```
 
 
@@ -72,6 +63,7 @@ rm sidb-db-auth e_sidb-db-auth
 
     ```bash
     CONN_STRING=$(kubectl get singleinstancedatabase oraoper-sidb \
+      -n ordsnamespace \
       -o jsonpath='{.status.pdbConnectString}')
 
     echo $CONN_STRING
@@ -89,7 +81,7 @@ rm sidb-db-auth e_sidb-db-auth
 
     ```bash
     echo "
-    apiVersion: database.oracle.com/v1
+    apiVersion: database.oracle.com/v4
     kind: OrdsSrvs
     metadata:
       name: ords-sidb
@@ -97,6 +89,9 @@ rm sidb-db-auth e_sidb-db-auth
     spec:
       image: container-registry.oracle.com/database/ords:24.1.1
       forceRestart: true
+      encPrivKey:
+        secretName: prvkey
+        passwordKey: privateKey
       globalSettings:
         database.api.enabled: true
       poolSettings:
@@ -112,7 +107,10 @@ rm sidb-db-auth e_sidb-db-auth
             secretName:  sidb-db-auth-enc
           db.adminUser: SYS
           db.adminUser.secret:
-            secretName:  sidb-db-auth-enc" | kubectl apply -f -
+            secretName:  sidb-db-auth-enc
+    " > ords-sidb.yaml
+
+    kubectl apply -f ords-sidb.yaml
     ```
     <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
 
