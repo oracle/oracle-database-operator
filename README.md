@@ -44,7 +44,7 @@ In this v1.2.0 production release, `OraOperator` supports the following database
 * Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation.
 
 ## New Product Features
-*The Operator itself, as a product, brings the following new features:
+* The Operator itself, as a product, brings the following new features:
 * Published on `operatorhub.io`
 * Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
 * Validated on Google Kubernetes Engine
@@ -140,26 +140,20 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   ```sh
     kubectl apply -f rbac/node-rbac.yaml
   ```
-## Installation
-### Install Oracle DB Operator
-
-   After you have completed the preceding prerequisite changes, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
-
-   Run the following command
-
-   ```sh
-   kubectl apply -f oracle-database-operator.yaml
-   ```
 
 ## Install Oracle DB Operator
 
-   After you have completed the preceding prerequisite changes, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
+  After you have completed the preceding prerequisite changes, you can install the operator using one of the following methods:
 
-   Run the following command
+### Option 1: Install Using `oracle-database-operator.yaml`
 
-   ```sh
-   kubectl apply -f oracle-database-operator.yaml
-   ```
+  To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
+
+  Run the following command
+
+  ```sh
+  kubectl apply -f oracle-database-operator.yaml
+  ```
 
   Ensure that the operator pods are up and running. For high availability, operator pod replicas are set to a default of 3. You can scale this setting up or down.
 
@@ -173,12 +167,20 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
   ```
 
-* Check the resources
+### Option 2: Install via OperatorHub.io
+
+  You can also install the Oracle DB Operator from [OperatorHub.io](https://operatorhub.io/operator/oracle-database-operator).
+
+  1. Visit the [Oracle Database Operator](https://operatorhub.io/operator/oracle-database-operator) page on OperatorHub.io.
+
+  2. Click the **Install** button to view and follow the step-by-step installation instructions for your Kubernetes environment.
+
+### Check the resources
 
 You should see that the operator is up and running, along with the shipped controllers.
 
 For more details, see [Oracle Database Operator Installation Instructions](./docs/installation/OPERATOR_INSTALLATION_README.md).
-## Documentation
+
 ## Getting Started with the Operator (Quickstart)
 
 The following quickstarts are designed for specific database configurations:
@@ -229,6 +231,10 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 
 * ### Delete the Deployment
 
+  #### Option1: Delete `oracle-database-operator.yaml`
+
+  Use this option if you install the operator using `oracle-database-operator.yaml`
+
   After all CRD instances are deleted, it is safe to remove the CRDs, APIServices and operator deployment. To remove these files, use the following command:
 
   ```sh
@@ -236,6 +242,25 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
   ```
 
   Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods, services, PVCs, and so on) are deleted. However, if that happens, then the CRD deletion stops responding. This is because the CRD instances have properties that prevent their deletion, and that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
+
+  #### Option2: Delete the Operator’s ClusterServiceVersion (CSV)
+
+  Use this option if you install the operation from OperatorHub.io.
+
+  First, identify the name of the installed operator’s ClusterServiceVersion (CSV) using the following command:
+
+  ```sh
+  kubectl clusterserviceversion -n operators
+  ```
+
+  Look for a CSV name similar to oracle-database-operator.vx.x.x.
+
+  Once identified, delete the ClusterServiceVersion with the following command (replace the placeholder with the actual CSV name):
+
+  ```sh
+  kubectl delete clusterserviceversion oracle-database-operator.vx.x.x -n operators
+  ```
+
 
 ## Documentation for the supported Oracle Database configurations
 
