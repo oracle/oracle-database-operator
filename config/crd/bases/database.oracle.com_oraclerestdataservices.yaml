@@ -11,6 +11,8 @@ spec:
     kind: OracleRestDataService
     listKind: OracleRestDataServiceList
     plural: oraclerestdataservices
+    shortNames:
+    - ords
     singular: oraclerestdataservice
   scope: Namespaced
   versions:

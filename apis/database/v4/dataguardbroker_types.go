@@ -80,6 +80,7 @@ type DataguardBrokerStatus struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:resource:shortName=dgbroker;dgbrokers
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".status.primaryDatabase",name="Primary",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.standbyDatabases",name="Standbys",type="string"

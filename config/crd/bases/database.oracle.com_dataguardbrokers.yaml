@@ -11,6 +11,9 @@ spec:
     kind: DataguardBroker
     listKind: DataguardBrokerList
     plural: dataguardbrokers
+    shortNames:
+    - dgbroker
+    - dgbrokers
     singular: dataguardbroker
   scope: Namespaced
   versions:

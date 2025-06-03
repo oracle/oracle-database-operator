@@ -193,8 +193,9 @@ type SingleInstanceDatabaseStatus struct {
 	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:shortName=sidb;sidbs
+// +kubebuilder:subresource:status
 // +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas
 // +kubebuilder:printcolumn:JSONPath=".status.edition",name="Edition",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.sid",name="Sid",type="string",priority=1

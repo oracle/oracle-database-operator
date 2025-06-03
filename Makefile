@@ -71,11 +71,13 @@ run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
  
 GOLANG_VERSION ?= 1.23.3
+DOCKER ?= docker
 ## Download golang in the Dockerfile if BUILD_INTERNAL is set to true.
 ## Otherwise, use golang image from docker hub as the builder.
 ifeq ($(BUILD_INTERNAL), true)
 BUILDER_IMG = oraclelinux:9
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg GOLANG_VERSION=$(GOLANG_VERSION) --build-arg INSTALL_GO=true
+DOCKER = podman
 else
 BUILDER_IMG = golang:$(GOLANG_VERSION)
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg INSTALL_GO="false" --build-arg GOLANG_VERSION=$(GOLANG_VERSION)
@@ -86,18 +88,18 @@ PUSH_ARGS := manifest
 else
 BUILD_ARGS := $(BUILD_ARGS) --platform=linux/amd64 --tag
 endif
-docker-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
-	docker build --no-cache=true --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
+image-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
+	$(DOCKER) build --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
                      --build-arg CI_COMMIT_SHA=$(CI_COMMIT_SHA) --build-arg CI_COMMIT_BRANCH=$(CI_COMMIT_BRANCH) \
                      $(BUILD_ARGS) $(IMG) .
- 
-docker-push: ## Push docker image with the manager.
-	docker $(PUSH_ARGS) push $(IMG)
+
+image-push: ## Push docker image with the manager.
+	$(DOCKER) $(PUSH_ARGS) push $(IMG)
 
 # Push to minikube's local registry enabled by registry add-on
 minikube-push:
-	docker tag $(IMG) $$(minikube ip):5000/$(IMG)
-	docker push --tls-verify=false $$(minikube ip):5000/$(IMG)
+	$(DOCKER) tag $(IMG) $$(minikube ip):5000/$(IMG)
+	$(DOCKER) push --tls-verify=false $$(minikube ip):5000/$(IMG)
 
 ##@ Deployment
  
@@ -123,7 +125,6 @@ operator-yaml: manifests kustomize
 	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_YAML).bak")  >>  "$(OPERATOR_YAML)"
 	rm "$(OPERATOR_YAML).bak"
 
-minikube-operator-yaml: IMG:=localhost:5000/$(IMG)
 minikube-operator-yaml: operator-yaml
 	sed -i.bak 's/\(replicas.\) 3/\1 1/g' "$(OPERATOR_YAML)"
 	rm "$(OPERATOR_YAML).bak"
@@ -173,11 +174,11 @@ bundle: manifests kustomize ## Generate bundle manifests and metadata, then vali
  
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
-	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	$(DOCKER) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
  
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
-	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
+	$(MAKE) image-push IMG=$(BUNDLE_IMG)
  
 .PHONY: opm
 OPM = ./bin/opm
@@ -218,4 +219,4 @@ catalog-build: opm ## Build a catalog image.
 # Push the catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
-	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+	$(MAKE) image-push IMG=$(CATALOG_IMG)
