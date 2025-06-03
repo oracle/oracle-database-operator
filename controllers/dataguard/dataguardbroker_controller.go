@@ -202,7 +202,7 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	// Update Status for broker and sidb resources
 	if err := updateReconcileStatus(r, &dataguardBroker, ctx, req); err != nil {
-		return ctrl.Result{Requeue: false}, err
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, err
 	}
 
 	dataguardBroker.Status.Status = dbcommons.StatusReady
