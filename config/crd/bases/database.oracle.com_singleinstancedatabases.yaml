@@ -11,6 +11,9 @@ spec:
     kind: SingleInstanceDatabase
     listKind: SingleInstanceDatabaseList
     plural: singleinstancedatabases
+    shortNames:
+    - sidb
+    - sidbs
     singular: singleinstancedatabase
   scope: Namespaced
   versions:

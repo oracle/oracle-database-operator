@@ -31,7 +31,7 @@ spec:
         - /manager
         args:
         - --enable-leader-election
-        image: container-registry.oracle.com/database/operator:1.2.0
+        image: controller:latest
         imagePullPolicy: Always
         name: manager
         resources:
