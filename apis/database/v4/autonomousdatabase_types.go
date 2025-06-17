@@ -52,7 +52,7 @@ import (
 // AutonomousDatabaseSpec defines the desired state of AutonomousDatabase
 // Important: Run "make" to regenerate code after modifying this file
 type AutonomousDatabaseSpec struct {
-	// +kubebuilder:validation:Enum:="";Create;Sync;Update;Stop;Start;Terminate;Clone
+	// +kubebuilder:validation:Enum:="";Create;Sync;Update;Stop;Start;Terminate;Clone;Switchover;Failover
 	Action    string                    `json:"action"`
 	Details   AutonomousDatabaseDetails `json:"details,omitempty"`
 	Clone     AutonomousDatabaseClone   `json:"clone,omitempty"`
