@@ -568,6 +568,30 @@ func (r *AutonomousDatabaseReconciler) performOperation(
 		}
 		return true, nil
 
+	case "Switchover":
+		l.Info("Sending SwitchoverAutonomousDatabase request to OCI")
+
+		resp, err := r.dbService.SwitchoverAutonomousDatabase(*adb.Spec.Details.Id)
+		if err != nil {
+			return false, err
+		}
+
+		adb.Spec.Action = ""
+		adb.Status.LifecycleState = resp.LifecycleState
+		return true, nil
+
+	case "Failover":
+		l.Info("Sending FailOverAutonomousDatabase request to OCI")
+
+		resp, err := r.dbService.FailoverAutonomousDatabase(*adb.Spec.Details.Id)
+		if err != nil {
+			return false, err
+		}
+
+		adb.Spec.Action = ""
+		adb.Status.LifecycleState = resp.LifecycleState
+		return true, nil
+
 	case "":
 		// No-op
 		return false, nil

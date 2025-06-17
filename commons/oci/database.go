@@ -430,3 +430,27 @@ func (d *DatabaseService) CreateAutonomousDatabaseClone(adb *dbv4.AutonomousData
 
 	return d.dbClient.CreateAutonomousDatabase(context.TODO(), request)
 }
+
+func (d *DatabaseService) SwitchoverAutonomousDatabase(adbOCID string) (database.SwitchoverAutonomousDatabaseResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
+	request := database.SwitchoverAutonomousDatabaseRequest{
+		AutonomousDatabaseId: common.String(adbOCID),
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
+	}
+	return d.dbClient.SwitchoverAutonomousDatabase(context.TODO(), request)
+}
+
+func (d *DatabaseService) FailoverAutonomousDatabase(adbOCID string) (database.FailOverAutonomousDatabaseResponse, error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
+	request := database.FailOverAutonomousDatabaseRequest{
+		AutonomousDatabaseId: common.String(adbOCID),
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
+	}
+	return d.dbClient.FailOverAutonomousDatabase(context.TODO(), request)
+}

@@ -64,6 +64,8 @@ spec:
                 - Start
                 - Terminate
                 - Clone
+                - Switchover
+                - Failover
                 type: string
               clone:
                 properties:
@@ -397,6 +399,8 @@ spec:
                 - Start
                 - Terminate
                 - Clone
+                - Switchover
+                - Failover
                 type: string
               clone:
                 properties:
