@@ -13760,6 +13760,7 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - nodes
   - persistentvolumes
   verbs:
   - get
