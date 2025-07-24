@@ -39,6 +39,8 @@
 package v1alpha1
 
 import (
+	"context"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -59,21 +61,12 @@ func (r *AutonomousDatabaseBackup) SetupWebhookWithManager(mgr ctrl.Manager) err
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,verbs=create;update,versions=v1alpha1,name=mautonomousdatabasebackupv1alpha1.kb.io,admissionReviewVersions=v1
-
-var _ webhook.Defaulter = &AutonomousDatabaseBackup{}
-
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *AutonomousDatabaseBackup) Default() {
-	autonomousdatabasebackuplog.Info("default", "name", r.Name)
-}
-
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabasebackup,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabasebackups,versions=v1alpha1,name=vautonomousdatabasebackupv1alpha1.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &AutonomousDatabaseBackup{}
+var _ webhook.CustomValidator = &AutonomousDatabaseBackup{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseBackup) ValidateCreate() (admission.Warnings, error) {
+func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	autonomousdatabasebackuplog.Info("validate create", "name", r.Name)
 
 	var allErrs field.ErrorList
@@ -110,11 +103,11 @@ func (r *AutonomousDatabaseBackup) ValidateCreate() (admission.Warnings, error) 
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *AutonomousDatabaseBackup) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	autonomousdatabasebackuplog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
-	oldBackup := old.(*AutonomousDatabaseBackup)
+	oldBackup := oldObj.(*AutonomousDatabaseBackup)
 
 	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil && r.Spec.AutonomousDatabaseBackupOCID != nil &&
 		*oldBackup.Spec.AutonomousDatabaseBackupOCID != *r.Spec.AutonomousDatabaseBackupOCID {
@@ -150,9 +143,6 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(old runtime.Object) (admission
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseBackup) ValidateDelete() (admission.Warnings, error) {
-	autonomousdatabasebackuplog.Info("validate delete", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object deletion.
+func (r *AutonomousDatabaseBackup) ValidateDelete(context.Context, runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }
