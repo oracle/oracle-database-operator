@@ -39,6 +39,8 @@
 package v4
 
 import (
+	"context"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -61,10 +63,10 @@ func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) er
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v4,name=vautonomousdatabaserestorev4.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &AutonomousDatabaseRestore{}
+var _ webhook.CustomValidator = &AutonomousDatabaseRestore{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error) {
+func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	autonomousdatabaserestorelog.Info("validate create", "name", r.Name)
 
 	var allErrs field.ErrorList
@@ -124,23 +126,11 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	autonomousdatabaserestorelog.Info("validate update", "name", r.Name)
-
-	var allErrs field.ErrorList
-
-	if len(allErrs) == 0 {
-		return nil, nil
-	}
-	return nil, apierrors.NewInvalid(
-		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseRestore"},
-		r.Name, allErrs)
+func (r *AutonomousDatabaseRestore) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	return nil, nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateDelete() (admission.Warnings, error) {
-	autonomousdatabaserestorelog.Info("validate delete", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object deletion.
+func (r *AutonomousDatabaseRestore) ValidateDelete(context.Context, runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }

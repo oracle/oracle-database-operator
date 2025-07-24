@@ -39,6 +39,8 @@
 package v1alpha1
 
 import (
+	"context"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -61,11 +63,11 @@ func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v1alpha1,name=vautonomousdatabasev1alpha1.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &AutonomousDatabase{}
+var _ webhook.CustomValidator = &AutonomousDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 // ValidateCreate checks if the spec is valid for a provisioning or a binding operation
-func (r *AutonomousDatabase) ValidateCreate() (admission.Warnings, error) {
+func (r *AutonomousDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 
 	autonomousdatabaselog.Info("validate create", "name", r.Name)
@@ -92,9 +94,9 @@ func (r *AutonomousDatabase) ValidateCreate() (admission.Warnings, error) {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *AutonomousDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	var allErrs field.ErrorList
-	var oldAdb *AutonomousDatabase = old.(*AutonomousDatabase)
+	var oldAdb *AutonomousDatabase = oldObj.(*AutonomousDatabase)
 
 	autonomousdatabaselog.Info("validate update", "name", r.Name)
 
@@ -158,7 +160,7 @@ func validateCommon(adb *AutonomousDatabase, allErrs field.ErrorList) field.Erro
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabase) ValidateDelete() (admission.Warnings, error) {
+func (r *AutonomousDatabase) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	autonomousdatabaselog.Info("validate delete", "name", r.Name)
 	return nil, nil
 }
