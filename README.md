@@ -200,6 +200,7 @@ The following quickstarts are designed for specific database configurations:
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Service (OBDS)](./docs/dbcs/README.md)
 * [ORDS Services (ORDSSRVS)](./docs/ordsservices/README.md)
+* [Oracle Restart Database](./docs/oraclerestart/README.md)
 
 
 The following quickstart is designed for non-database configurations:

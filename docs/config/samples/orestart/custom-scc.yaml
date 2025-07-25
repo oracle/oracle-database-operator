@@ -1,0 +1,50 @@
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: custom-scc
+allowPrivilegedContainer: true
+allowedCapabilities:
+  - '*'
+allowedUnsafeSysctls:
+  - kernel.shm*
+  - net.*
+  - kernel.sem
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+volumes:
+  - awsElasticBlockStore
+  - azureDisk
+  - azureFile
+  - cephFS
+  - cinder
+  - configMap
+  - csi
+  - downwardAPI
+  - emptyDir
+  - ephemeral
+  - fc
+  - flexVolume
+  - flocker
+  - gcePersistentDisk
+  - gitRepo
+  - glusterfs
+  - hostPath
+  - image
+  - iscsi
+  - nfs
+  - persistentVolumeClaim
+  - photonPersistentDisk
+  - portworxVolume
+  - projected
+  - quobyte
+  - rbd
+  - scaleIO
+  - secret
+  - storageOS
+  - vsphere

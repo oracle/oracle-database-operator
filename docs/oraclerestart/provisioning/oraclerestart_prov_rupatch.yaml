@@ -1,0 +1,107 @@
+# API version of the OracleRestart Custom Resource
+apiVersion: database.oracle.com/v4
+
+# Kind of Kubernetes object being defined
+kind: OracleRestart
+
+# Metadata section: name and namespace of the OracleRestart object
+metadata:
+  name: oraclerestart-sample          # Name of the OracleRestart instance
+  namespace: orestart                 # Kubernetes namespace to deploy into
+
+spec:
+  # Instance configuration for Oracle Restart
+  instDetails:
+    name: dbmc1                       # Logical name of the OracleRestart instance
+    hostSwLocation: /scratch/orestart/  # Host directory for Oracle GI HOME and Oracle RDBMS HOME
+
+    # Target worker node(s) for this instance
+    workerNode:
+      - 10.0.10.108                   # IP address of the node where DB will run
+
+    # NodePort service configuration for exposing DB port externally
+    nodePortSvc:
+      - svcType: nodeport             # Service type (NodePort to expose externally)
+        name: dbmc1                   # Name of the Kubernetes Service
+
+    # Mapping between container and host ports
+    portMappings:
+      - port: 1521                    # Port inside container (Oracle Listener port)
+        targetPort: 1521              # Target port for the service
+        protocol: TCP                 # Protocol type (TCP for Oracle)
+        nodePort: 30007               # Host port exposed on worker node (must be in NodePort range)
+
+  # ASM (Automatic Storage Management) disk group configuration
+  asmStorageDetails:
+    disksBySize:
+      - storageSizeInGb: 50       # Size of each ASM disk
+        diskNames:
+          - /dev/oracleoci/oraclevdd  # Device for ASM disk 1
+          - /dev/oracleoci/oraclevde  # Device for ASM disk 2
+
+  # SSH key secret used for remote access and automation
+  sshKeySecret:
+    name: ssh-key-secret          # Kubernetes secret name
+    privKeySecretName: ssh-privkey  # Private key inside secret
+    pubKeySecretName: ssh-pubkey    # Public key inside secret
+
+  # Secret containing DB user credentials
+  dbSecret:
+    name: db-user-pass-pkutl     # Secret name
+    keyFileName: key.pem         # Key file name inside secret
+    pwdFileName: pwdfile.enc     # Password file name inside secret
+
+  # Image for Oracle Restart database container
+  # image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0703
+  image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0723  # Latest image to use
+  imagePullPolicy: Always        # Always pull the image when starting the pod
+
+  # Optional: ServiceAccount for RBAC and security policies (mandatory in OpenShift)
+  # serviceAccountName: oraclerestart <-- optional normally for normal kubernetes cluster but mandatory for Openshift cluster to allow permissions in security contexts
+
+  # Service name exposed for the database
+  serviceDetails:
+    name: soepdb
+
+  # Resource requests and limits for CPU and memory
+  resources:
+    requests:
+      memory: "16Gi"                  # Minimum required memory
+      cpu: "2"                        # Minimum required CPU cores
+    limits:
+      memory: "16Gi"                  # Max allowed memory
+      cpu: "2"                        # Max allowed CPU cores
+
+  # Security context for kernel parameters tuning
+  securityContext:
+    sysctls:
+      - name: kernel.shmall
+        value: "2097152"
+      - name: kernel.sem
+        value: "250 32000 100 128"
+      - name: kernel.shmmax
+        value: "8589934592"
+      - name: kernel.shmmni
+        value: "4096"
+
+  # Configuration for Oracle Grid and Database software
+  configParams:
+    gridHome: "/u01/app/19c/grid"                         # Path for Oracle Grid Infrastructure home
+    gridBase: "/u01/app/grid"                             # Base path for Grid Infrastructure
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"        # Oracle Database software home
+    dbBase: "/u01/app/oracle"                             # Oracle base directory
+    crsAsmDeviceList: /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde  # Comma-separated list of ASM device files
+    inventory: "/u01/app/oraInventory"                    # Path to oraInventory
+    gridSwZipFile: "grid_home.zip"                        # Grid software ZIP file
+    dbSwZipFile: "db_home.zip"                            # Database software ZIP file
+    sgaSize: "3G"                                         # Size of SGA memory
+    pgaSize: "1G"                                         # Size of PGA memory
+    processes: 2000                                       # Number of Oracle processes
+    cpuCount: 4                                           # Number of CPUs to allocate
+    dbName: "PORCLCDB"                                    # Database name
+
+    # Location where Base Release Software .zip files are staged
+    hostSwStageLocation: /scratch/software/stage       # Base Release Software Location
+
+    # Directory containing the unzipped RU patch (includes PatchSearch.xml)
+    ruPatchLocation: /scratch/software/ru_patch        #<--- RU patch unzipped folder

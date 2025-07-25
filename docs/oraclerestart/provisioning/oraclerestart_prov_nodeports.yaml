@@ -1,0 +1,104 @@
+# API version for OracleRestart custom resource
+apiVersion: database.oracle.com/v4
+
+# The kind of Kubernetes object being defined
+kind: OracleRestart
+
+# Metadata contains identifying information for the resource
+metadata:
+  name: oraclerestart-sample          # Name of the OracleRestart resource
+  namespace: orestart                 # Kubernetes namespace for deployment
+
+spec:
+  # Instance configuration for Oracle Restart
+  instDetails:
+    name: dbmc1                       # Logical name of the OracleRestart instance
+    hostSwLocation: /scratch/orestart/  # Host directory for Oracle GI HOME and Oracle RDBMS HOME
+
+    # Target worker node(s) for this instance
+    workerNode:
+      - 10.0.10.108                   # IP address of the node where DB will run
+
+    # NodePort service configuration for exposing DB port externally
+    nodePortSvc:
+      - svcType: nodeport             # Service type (NodePort to expose externally)
+        name: dbmc1-service-nodeport  # Name of the Kubernetes Service
+
+    # Mapping between container and host ports
+    portMappings:
+      - port: 1521                    # Port inside container (Oracle Listener port)
+        targetPort: 1521              # Target port for the service
+        protocol: TCP                 # Protocol type (TCP for Oracle)
+        nodePort: 30007               # Host port exposed on worker node (must be in NodePort range)
+
+  # ASM (Automatic Storage Management) disk group configuration
+  asmStorageDetails:
+    disksBySize:
+      - storageSizeInGb: 50           # ASM group size
+        diskNames:
+          - /dev/oracleoci/oraclevdd  # Device for ASM disk 1
+          - /dev/oracleoci/oraclevde  # Device for ASM disk 2
+
+  # SSH key secret used for remote access and automation
+  sshKeySecret:
+    name: ssh-key-secret          # Kubernetes secret name
+    privKeySecretName: ssh-privkey  # Private key inside secret
+    pubKeySecretName: ssh-pubkey    # Public key inside secret
+
+  # Secret containing DB user credentials
+  dbSecret:
+    name: db-user-pass-pkutl     # Secret name
+    keyFileName: key.pem         # Key file name inside secret
+    pwdFileName: pwdfile.enc     # Password file name inside secret
+
+  # Oracle RAC slim image to be used for container creation
+  image: localhost/oracle/database-rac:19.3.0-slim
+  # image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim  # <-- Replace with your custom registry if applicable
+
+  # Ensures the latest version of the image is always pulled
+  imagePullPolicy: Always
+
+  # Optional: ServiceAccount for RBAC and security policies (mandatory in OpenShift)
+  # serviceAccountName: oraclerestart  # <-- Uncomment for OpenShift environments
+
+  # Oracle database service information
+  serviceDetails:
+    name: soepdb                      # Logical name of the Oracle service (CDB or PDB)
+
+  # Resource requests and limits for CPU and memory
+  resources:
+    requests:
+      memory: "16Gi"                  # Minimum required memory
+      cpu: "2"                        # Minimum required CPU cores
+    limits:
+      memory: "16Gi"                  # Max allowed memory
+      cpu: "2"                        # Max allowed CPU cores
+
+  # System-level kernel parameters needed for Oracle database
+  securityContext:
+    sysctls:
+      - name: kernel.shmall
+        value: "2097152"
+      - name: kernel.sem
+        value: "250 32000 100 128"
+      - name: kernel.shmmax
+        value: "8589934592"
+      - name: kernel.shmmni
+        value: "4096"
+
+  # Configuration for Oracle Grid and Database software
+  configParams:
+    gridHome: "/u01/app/19c/grid"                         # Path for Oracle Grid Infrastructure home
+    gridBase: "/u01/app/grid"                             # Base path for Grid Infrastructure
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"        # Oracle Database software home
+    dbBase: "/u01/app/oracle"                             # Oracle base directory
+    crsAsmDeviceList: /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde  # Comma-separated list of ASM device files
+    inventory: "/u01/app/oraInventory"                    # Path to oraInventory
+    gridSwZipFile: "grid_home.zip"                        # Grid software ZIP file
+    dbSwZipFile: "db_home.zip"                            # Database software ZIP file
+    sgaSize: "3G"                                          # Oracle SGA size
+    pgaSize: "1G"                                          # Oracle PGA size
+    processes: 2000                                        # Number of Oracle background/user processes
+    cpuCount: 4                                            # Number of CPUs Oracle should use
+    dbName: "PORCLCDB"                                     # Database name
+    hostSwStageLocation: /scratch/software/19c/HAS_19.28.0.0.0OCWRU_LINUX.X64_250626/  # Host software staging location

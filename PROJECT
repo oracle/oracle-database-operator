@@ -259,4 +259,13 @@ resources:
   webhooks:
     conversion: true
     webhookVersion: v1beta1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: OracleRestart
+  path: github.com/oracle/oracle-database-operator/api/database/v4
+  version: v4
 version: "3"
