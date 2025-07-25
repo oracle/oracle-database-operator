@@ -5,15 +5,16 @@ build-operator:
     OP_YAML: oracle-database-operator.yaml
     BUILD_INTERNAL: "true"
   script:
-    - export GOROOT=$(go1.23.3 env GOROOT)
+    - export GOLANG_VERSION=1.24.4
+    - export GOROOT=$(go${GOLANG_VERSION} env GOROOT)
     - export PATH="${GOROOT}/bin:${PATH}"
-    - make operator-yaml IMG=$IMAGE
+    - make operator-yaml IMG=$IMAGE GOLANG_VERSION=$GOLANG_VERSION
     - if [ "$CI_COMMIT_BRANCH" = "master" ]; then
         podman run --rm --privileged multiarch/qemu-user-static --reset -p yes;
-        make image-build image-push IMG="$IMAGE" BUILD_MANIFEST=true;
+        make image-build image-push IMG="$IMAGE" BUILD_MANIFEST=true GOLANG_VERSION=$GOLANG_VERSION;
         podman manifest rm "$IMAGE";
       else
-        make image-build image-push IMG="$IMAGE";
+        make image-build image-push IMG="$IMAGE" GOLANG_VERSION=$GOLANG_VERSION;
         podman rmi "$IMAGE";
         sed -i "s/\(replicas.\) 3/\1 1/g" ./$OP_YAML;
       fi
