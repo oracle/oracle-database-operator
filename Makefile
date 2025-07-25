@@ -23,7 +23,7 @@ IMG ?= controller:latest
 # https://github.com/kubernetes-sigs/kubebuilder/issues/1140 
 CRD_OPTIONS ?= "crd:maxDescLen=0,allowDangerousTypes=true"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.29.0
+ENVTEST_K8S_VERSION = 1.31.0
 # Operator YAML file
 OPERATOR_YAML=$$(basename $$(pwd)).yaml
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -70,7 +70,7 @@ build: generate fmt vet ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
  
-GOLANG_VERSION ?= 1.23.3
+GOLANG_VERSION ?= 1.24.4
 DOCKER ?= docker
 ## Download golang in the Dockerfile if BUILD_INTERNAL is set to true.
 ## Otherwise, use golang image from docker hub as the builder.
@@ -145,7 +145,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
  
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.3.0
+KUSTOMIZE_VERSION ?= v5.4.3
 CONTROLLER_TOOLS_VERSION ?= v0.16.5
  
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"

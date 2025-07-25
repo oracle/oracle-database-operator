@@ -1,0 +1,127 @@
+kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
+    Name:         oraclerestart-sample
+    Namespace:    orestart
+    Labels:       <none>
+    Annotations:  OracleRestarts.database.oracle.com/old-spec:
+                    {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.108"],"envFile":"dbmc1oraclerestart-sample-cma...
+    API Version:  database.oracle.com/v4
+    Kind:         OracleRestart
+    Metadata:
+      Creation Timestamp:  2025-07-02T06:51:16Z
+      Finalizers:
+        database.oracle.com/oraclerestartfinalizer
+      Generation:        1
+      Resource Version:  386393
+      UID:               d9faa000-bb7f-42b7-83d8-cf43f6bf30e9
+    Spec:
+      Asm Storage Details:
+        Disks By Size:
+          Disk Names:
+            /dev/oracleoci/oraclevdd
+            /dev/oracleoci/oraclevde
+          Storage Size In Gb:  50
+      Config Params:
+        Cpu Count:               4
+        Crs Asm Device List:     /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde
+        Db Base:                 /u01/app/oracle
+        Db Home:                 /u01/app/oracle/product/19c/dbhome_1
+        Db Name:                 PORCLCDB
+        Db Sw Zip File:          db_home.zip
+        Grid Base:               /u01/app/grid
+        Grid Home:               /u01/app/19c/grid
+        Grid Sw Zip File:        grid_home.zip
+        Host Sw Stage Location:  /scratch/software/19c/HAS_19.28.0.0.0OCWRU_LINUX.X64_250626/
+        Inventory:               /u01/app/oraInventory
+        Pga Size:                1G
+        Processes:               2000
+        Sga Size:                3G
+      Db Secret:
+        Key File Name:    key.pem
+        Name:             db-user-pass-pkutl
+        Pwd File Name:    pwdfile.enc
+      Image:              phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0630
+      Image Pull Policy:  Always
+      Inst Details:
+        Host Sw Location:  /scratch/orestart/
+        Name:              dbmc1
+        Worker Node:
+          10.0.10.108
+      Resources:
+        Limits:
+          Cpu:     2
+          Memory:  16Gi
+        Requests:
+          Cpu:     2
+          Memory:  16Gi
+      Security Context:
+        Sysctls:
+          Name:   kernel.shmall
+          Value:  2097152
+          Name:   kernel.sem
+          Value:  250 32000 100 128
+          Name:   kernel.shmmax
+          Value:  8589934592
+          Name:   kernel.shmmni
+          Value:  4096
+      Service Details:
+        Name:  soepdb
+      Ssh Key Secret:
+        Name:                  ssh-key-secret
+        Priv Key Secret Name:  ssh-privkey
+        Pub Key Secret Name:   ssh-pubkey
+    Status:
+      Oracle Restart Nodes:
+        Name:  dbmc1-0
+        Node Details:
+          Instance State:  OPEN
+          Pod State:       AVAILABLE
+          Cluster State:   Pending
+          Mounted Devices:
+            /dev/oracleoci/oraclevdd
+            /dev/oracleoci/oraclevde
+          State:  AVAILABLE
+      Asm Details:
+        Diskgroup:
+          Disks:
+            NOT READY
+          Name:        NOT READY
+          Redundancy:  NOT READY
+      Client Etc Host:
+        150.136.178.0    dbmc1-0.rac.svc.cluster.local dbmc1-0-vip.rac.svc.cluster.local    OracleRestartNode-scan.rac.svc.cluster.local
+      Conditions:
+        Last Transition Time:  2025-07-02T08:03:17Z
+        Message:               no reconcile errors
+        Observed Generation:   1
+        Reason:                LastReconcileCycleCompleted
+        Status:                True
+        Type:                  ReconcileComplete
+      Config Params:
+        Crs Asm Device List:         /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde
+        Crs Asm Disk Dg:             +DATA
+        Crs Asm Disk Dg Redundancy:  external
+        Db Base:                     /u01/app/oracle
+        Db Data File Dest Dg:        +DATA
+        Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+        Db Name:                     PORCLCDB
+        Db Recovery File Dest:       +DATA
+        Db Response File:
+        Grid Base:  /u01/app/grid
+        Grid Home:  /u01/app/19c/grid
+        Grid Response File:
+        Inventory:     /u01/app/oraInventory
+      Connect String:  dbmc1-0:1521/PORCLCDB
+      Db Secret:
+        Key File Name:  key.pem
+        Name:           db-user-pass-pkutl
+        Pwd File Name:  pwdfile.enc
+      Db State:         OPEN
+      Inst Details:
+        Name:              
+      Pdb Connect String:  dbmc1-0:1521/ORCLPDB
+      Release Update:      19.28.0.0.0
+      Role:                PRIMARY
+      Service Details:
+        Name:       soepdb
+        Svc State:  service soepdb is running
+      State:        AVAILABLE
+    Events:         <none>

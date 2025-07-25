@@ -14,4 +14,5 @@ resources:
 - observability/databaseobserver.yaml
 - sharding/sharding_v1alpha1_provshard.yaml
 - sidb/singleinstancedatabase_create.yaml
+- database_v4_oraclerestart.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

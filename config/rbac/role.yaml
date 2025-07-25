@@ -10,9 +10,11 @@ rules:
   - configmaps
   - containers
   - deployments
+  - endpoints
   - events
   - namespaces
   - persistentvolumeclaims
+  - persistentvolumes
   - pods
   - pods/exec
   - pods/log
@@ -39,14 +41,6 @@ rules:
   - get
   - patch
   - update
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumes
-  verbs:
-  - get
-  - list
-  - watch
 - apiGroups:
   - ""
   resources:
@@ -109,6 +103,7 @@ rules:
   - events
   - lrests
   - lrpdbs
+  - oraclerestarts
   - oraclerestdataservices
   - ordssrvs
   - pdbs
@@ -133,6 +128,7 @@ rules:
   - dbcssystems/status
   - lrests/status
   - lrpdbs/status
+  - oraclerestarts/status
   - oraclerestdataservices/status
   - ordssrvs/status
   - pdbs/status
@@ -177,6 +173,7 @@ rules:
   resources:
   - dbcssystems/finalizers
   - lrpdbs/finalizers
+  - oraclerestarts/finalizers
   - pdbs/finalizers
   - shardingdatabases/finalizers
   verbs:
