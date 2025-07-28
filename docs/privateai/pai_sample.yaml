@@ -1,0 +1,25 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+---
+apiVersion: omlai.oracle.com/v4
+kind: PrivateAi
+metadata:
+  name: pai-sample
+  namespace: pai
+spec:
+ paiConfigFile:
+  name: omlconfigjson
+  mountLocation: /oml/config
+ paiSecret:
+  name: paisecret
+  mountLocation: /oml/ssl
+ isExternalSvc: true
+ storageClass: oci-bv
+ paiImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:1.8.10
+ paiService:
+   name: paisvc
+ paiLBIP: 129.xxx.xxx.xxx
+ storageSizeInGb: 30
+ replicas: 1

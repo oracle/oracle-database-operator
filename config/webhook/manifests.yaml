@@ -311,6 +311,26 @@ webhooks:
     resources:
     - databaseobservers
   sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-omlai-oracle-com-v4-privateai
+  failurePolicy: Fail
+  name: mprivateai-v4.kb.io
+  rules:
+  - apiGroups:
+    - omlai.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - privateais
+  sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -727,4 +747,24 @@ webhooks:
     - UPDATE
     resources:
     - databaseobservers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-omlai-oracle-com-v4-privateai
+  failurePolicy: Fail
+  name: vprivateai-v4.kb.io
+  rules:
+  - apiGroups:
+    - omlai.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - privateais
   sideEffects: None

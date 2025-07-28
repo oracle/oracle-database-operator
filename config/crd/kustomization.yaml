@@ -21,6 +21,7 @@ resources:
 - bases/database.oracle.com_lrests.yaml
 - bases/database.oracle.com_lrpdbs.yaml
 - bases/database.oracle.com_ordssrvs.yaml
+- bases/omlai.oracle.com_privateais.yaml
 - bases/database.oracle.com_oraclerestarts.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
