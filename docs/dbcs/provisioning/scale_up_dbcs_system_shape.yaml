@@ -3,16 +3,24 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-existing
 spec:
+<<<<<<< HEAD
+  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyamvvn4n2yg6gv6s5c42qgfhtxrzcbdootuiki4wb3s5yq"
+=======
   id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa"
+>>>>>>> origin/master
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
   dbSystem:
     availabilityDomain: "OLou:AP-MUMBAI-1-AD-1"
     compartmentId: "ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a"
     dbAdminPasswordSecret: "admin-password"
+<<<<<<< HEAD
+    hostName: "host12345"
+=======
     hostName: "host1234"
+>>>>>>> origin/master
     shape: "VM.Standard2.2"
-    domain: "subdda0b5eaa.cluster1.oraclevcn.com"
+    domain: "sub0ea2e07ef.cluster1.oraclevcn.com"
     sshPublicKeys:
      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
+    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaaklvzufcgma65ibn4al7xukjmyfz7nnrpaewfzbffz5zrnz3htweq"

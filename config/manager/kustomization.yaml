@@ -9,4 +9,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: phx.ocir.io/intsanjaysingh/db-repo/oracle/database
-  newTag: restart-operator-sa
+  newTag: basedb-operator-sa

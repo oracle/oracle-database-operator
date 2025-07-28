@@ -53,31 +53,36 @@ import (
 
 // DbcsSystemSpec defines the desired state of DbcsSystem
 type DbcsSystemSpec struct {
-	DbSystem       DbSystemDetails `json:"dbSystem,omitempty"`
-	Id             *string         `json:"id,omitempty"`
-	OCIConfigMap   *string         `json:"ociConfigMap"`
-	OCISecret      *string         `json:"ociSecret,omitempty"`
-	DbClone        *DbCloneConfig  `json:"dbClone,omitempty"`
-	HardLink       bool            `json:"hardLink,omitempty"`
-	PdbConfigs     []PDBConfig     `json:"pdbConfigs,omitempty"`
-	SetupDBCloning bool            `json:"setupDBCloning,omitempty"`
-	DbBackupId     *string         `json:"dbBackupId,omitempty"`
-	DatabaseId     *string         `json:"databaseId,omitempty"`
-	KMSConfig      KMSConfig       `json:"kmsConfig,omitempty"`
+	DbSystem       *DbSystemDetails `json:"dbSystem,omitempty"`
+	Id             *string          `json:"id,omitempty"`
+	OCIConfigMap   *string          `json:"ociConfigMap"`
+	OCISecret      *string          `json:"ociSecret,omitempty"`
+	DbClone        *DbCloneConfig   `json:"dbClone,omitempty"`
+	HardLink       bool             `json:"hardLink,omitempty"`
+	PdbConfigs     []PDBConfig      `json:"pdbConfigs,omitempty"`
+	SetupDBCloning bool             `json:"setupDBCloning,omitempty"`
+	DbBackupId     *string          `json:"dbBackupId,omitempty"`
+	DatabaseId     *string          `json:"databaseId,omitempty"`
+	KMSConfig      *KMSConfig       `json:"kmsConfig,omitempty"`
+	EnableBackup   bool             `json:"enableBackup,omitempty"`
+	IsPatch        bool             `json:"isPatch,omitempty"`
+	IsUpgrade      bool             `json:"isUpgrade,omitempty"`
+	DataGuard      DataGuardConfig  `json:"dataGuard,omitempty"`
 }
 
 // DbSystemDetails Spec
 
 type DbSystemDetails struct {
-	CompartmentId              string            `json:"compartmentId"`
-	AvailabilityDomain         string            `json:"availabilityDomain"`
-	SubnetId                   string            `json:"subnetId"`
-	Shape                      string            `json:"shape"`
+	CompartmentId              string            `json:"compartmentId,omitempty"`
+	AvailabilityDomain         string            `json:"availabilityDomain,omitempty"`
+	SubnetId                   string            `json:"subnetId,omitempty"`
+	Shape                      string            `json:"shape,omitempty"`
 	SshPublicKeys              []string          `json:"sshPublicKeys,omitempty"`
-	HostName                   string            `json:"hostName"`
+	HostName                   string            `json:"hostName,omitempty"`
 	CpuCoreCount               int               `json:"cpuCoreCount,omitempty"`
 	FaultDomains               []string          `json:"faultDomains,omitempty"`
 	DisplayName                string            `json:"displayName,omitempty"`
+	BackupDisplayName          string            `json:"backupDisplayName,omitempty"`
 	BackupSubnetId             string            `json:"backupSubnetId,omitempty"`
 	TimeZone                   string            `json:"timeZone,omitempty"`
 	NodeCount                  *int              `json:"nodeCount,omitempty"`
@@ -85,8 +90,9 @@ type DbSystemDetails struct {
 	Domain                     string            `json:"domain,omitempty"`
 	InitialDataStorageSizeInGB int               `json:"initialDataStorageSizeInGB,omitempty"`
 	ClusterName                string            `json:"clusterName,omitempty"`
-	DbAdminPasswordSecret      string            `json:"dbAdminPasswordSecret"`
+	DbAdminPasswordSecret      string            `json:"dbAdminPasswordSecret,omitempty"`
 	DbName                     string            `json:"dbName,omitempty"`
+	DbHomeId                   string            `json:"dbHomeId,omitempty"`
 	PdbName                    string            `json:"pdbName,omitempty"`
 	DbDomain                   string            `json:"dbDomain,omitempty"`
 	DbUniqueName               string            `json:"dbUniqueName,omitempty"`
@@ -98,8 +104,31 @@ type DbSystemDetails struct {
 	LicenseModel               string            `json:"licenseModel,omitempty"`
 	TdeWalletPasswordSecret    string            `json:"tdeWalletPasswordSecret,omitempty"`
 	Tags                       map[string]string `json:"tags,omitempty"`
-	DbBackupConfig             Backupconfig      `json:"dbBackupConfig,omitempty"`
-	KMSConfig                  KMSConfig         `json:"kmsConfig,omitempty"`
+	DbBackupConfig             *Backupconfig     `json:"dbBackupConfig,omitempty"`
+	KMSConfig                  *KMSConfig        `json:"kmsConfig,omitempty"`
+	RestoreConfig              *RestoreConfig    `json:"restoreConfig,omitempty"`
+	PatchOCID                  string            `json:"dbPatchOcid,omitempty"`
+	UpgradeVersion             string            `json:"dbUpgradeVersion,omitempty"`
+}
+
+type DataGuardConfig struct {
+	Enabled               bool              `json:"enabled,omitempty"`
+	ProtectionMode        *string           `json:"protectionMode,omitempty"` // Options: "MAXIMUM_PROTECTION", "MAXIMUM_AVAILABILITY", "MAXIMUM_PERFORMANCE"
+	TransportType         *string           `json:"transportType,omitempty"`  // Options: "ASYNC", "SYNC"
+	PeerRole              *string           `json:"peerRole,omitempty"`       // Options: "STANDBY", "PRIMARY"
+	DbAdminPasswordSecret *string           `json:"dbAdminPasswordSecret,omitempty"`
+	DbName                *string           `json:"dbName,omitempty"`
+	HostName              *string           `json:"hostName,omitempty"`
+	DisplayName           *string           `json:"displayName,omitempty"`
+	PeerSidPrefix         *string           `json:"sidPrefix,omitempty"`
+	PeerDbSystemId        *string           `json:"peerDbSystemId,omitempty"`
+	PeerDbHomeId          *string           `json:"peerDbHomeId,omitempty"`
+	PrimaryDatabaseId     *string           `json:"primaryDatabaseId,omitempty"`
+	AvailabilityDomain    *string           `json:"availabilityDomain,omitempty"` // Availability domain for the new DB system
+	SubnetId              *string           `json:"subnetId,omitempty"`           // Subnet ID for the new DB system
+	Shape                 *string           `json:"shape,omitempty"`              // Shape of the new DB system
+	DbSystemFreeformTags  map[string]string `json:"dbSystemFreeformTags,omitempty"`
+	IsDelete              bool              `json:"isDelete,omitempty"`
 }
 
 // DB Backup Config Network Struct
@@ -108,6 +137,19 @@ type Backupconfig struct {
 	RecoveryWindowsInDays    *int    `json:"recoveryWindowsInDays,omitempty"`
 	AutoBackupWindow         *string `json:"autoBackupWindow,omitempty"`
 	BackupDestinationDetails *string `json:"backupDestinationDetails,omitempty"`
+}
+
+// Manual backup information
+type BackupInfo struct {
+	Name      string `json:"name"`
+	BackupID  string `json:"backupId"`
+	Timestamp string `json:"timestamp"` // Optional: for sorting, audit, GC
+}
+
+type RestoreConfig struct {
+	Timestamp *metav1.Time `json:"timestamp,omitempty"` // Restore to specific point in time
+	SCN       *string      `json:"scn,omitempty"`       // Restore to specific SCN (as string)
+	Latest    bool         `json:"latest,omitempty"`    // Restore to latest state
 }
 
 // DbcsSystemStatus defines the observed state of DbcsSystem
@@ -135,15 +177,20 @@ type DbcsSystemStatus struct {
 	KMSDetailsStatus KMSDetailsStatus   `json:"kmsDetailsStatus,omitempty"`
 	DbCloneStatus    DbCloneStatus      `json:"dbCloneStatus,omitempty"`
 	PdbDetailsStatus []PDBDetailsStatus `json:"pdbDetailsStatus,omitempty"`
+	DataGuardStatus  DataGuardStatus    `json:"dataGuardStatus,omitempty"`
+	Backups          []BackupInfo       `json:"backups,omitempty"`
+	Message          string             `json:"message,omitempty"`
 }
 
 // DbcsSystemStatus defines the observed state of DbcsSystem
 type DbStatus struct {
-	Id           *string `json:"id,omitempty"`
-	DbName       string  `json:"dbName,omitempty"`
-	DbUniqueName string  `json:"dbUniqueName,omitempty"`
-	DbWorkload   string  `json:"dbWorkload,omitempty"`
-	DbHomeId     string  `json:"dbHomeId,omitempty"`
+	Id                   *string `json:"id,omitempty"`
+	DbName               string  `json:"dbName,omitempty"`
+	DbUniqueName         string  `json:"dbUniqueName,omitempty"`
+	DbWorkload           string  `json:"dbWorkload,omitempty"`
+	DbHomeId             string  `json:"dbHomeId,omitempty"`
+	ConnectionString     string  `json:"connectionString,omitempty"`
+	ConnectionStringLong string  `json:"connectionStringLong,omitempty"`
 }
 
 type DbWorkrequests struct {
@@ -184,27 +231,52 @@ type DbCloneConfig struct {
 	PrivateIp                  string   `json:"privateIp,omitempty"`
 }
 
+type DataGuardStatus struct {
+	Id                         *string `json:"id,omitempty"`
+	IsActiveDataGuardEnabled   bool    `json:"isActiveDataGuardEnabled,omitempty"`
+	PeerDbSystemId             *string `json:"peerDbSystemId,omitempty"`
+	PeerDatabaseId             *string `json:"peerDatabaseId,omitempty"`
+	DbName                     *string `json:"dbName,omitempty"`
+	DbWorkload                 string  `json:"dbWorkload,omitempty"`
+	PeerDbHomeId               *string `json:"peerDbHomeId,omitempty"`
+	PeerRole                   *string `json:"peerRole,omitempty"` // Options: "STANDBY", "PRIMARY"
+	Shape                      *string `json:"shape,omitempty"`
+	SubnetId                   *string `json:"subnetId,omitempty"`
+	PrimaryDatabaseId          *string `json:"primaryDatabaseId,omitempty"`
+	DbAdminPasswordSecret      *string `json:"dbAdminPasswordSecret,omitempty"`
+	TransportType              *string `json:"transportType,omitempty"`
+	ProtectionMode             *string `json:"protectionMode,omitempty"` // Options: "MAXIMUM_PROTECTION", "MAXIMUM_AVAILABILITY", "MAXIMUM_PERFORMANCE"
+	LifecycleState             *string `json:"lifecycleState,omitempty"`
+	PeerDataGuardAssociationId *string `json:"peerDataGuardAssociationId,omitempty"`
+	LifecycleDetails           *string `json:"lifecycleDetails,omitempty"`
+}
+
 // DbCloneStatus defines the observed state of DbClone
 type DbCloneStatus struct {
-	Id                   *string  `json:"id,omitempty"`
-	DbAdminPaswordSecret string   `json:"dbAdminPaswordSecret,omitempty"`
-	DbName               string   `json:"dbName,omitempty"`
-	HostName             string   `json:"hostName"`
-	DbUniqueName         string   `json:"dbDbUniqueName"`
-	DisplayName          string   `json:"displayName,omitempty"`
-	LicenseModel         string   `json:"licenseModel,omitempty"`
-	Domain               string   `json:"domain,omitempty"`
-	SshPublicKeys        []string `json:"sshPublicKeys,omitempty"`
-	SubnetId             string   `json:"subnetId,omitempty"`
+	Id                    *string  `json:"id,omitempty"`
+	DbAdminPasswordSecret string   `json:"dbAdminPasswordSecret,omitempty"`
+	DbName                string   `json:"dbName,omitempty"`
+	HostName              string   `json:"hostName"`
+	DbUniqueName          string   `json:"dbDbUniqueName"`
+	DisplayName           string   `json:"displayName,omitempty"`
+	LicenseModel          string   `json:"licenseModel,omitempty"`
+	Domain                string   `json:"domain,omitempty"`
+	SshPublicKeys         []string `json:"sshPublicKeys,omitempty"`
+	SubnetId              string   `json:"subnetId,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:path=dbcssystems,scope=Namespaced
 // +kubebuilder:storageversion
-// +kubebuilder:storageversion
-
-// DbcsSystem is the Schema for the dbcssystems API
+// +kubebuilder:printcolumn:name="Display Name",type="string",JSONPath=".status.displayName"
+// +kubebuilder:printcolumn:name="DB Name",type="string",JSONPath=".status.dbInfo[0].dbName"
+// +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state"
+// +kubebuilder:printcolumn:name="OCPUs",type="integer",JSONPath=".status.cpuCoreCount"
+// +kubebuilder:printcolumn:name="Storage (TB)",type="integer",JSONPath=".status.dataStorageSizeInGBs"
+// +kubebuilder:printcolumn:name="Reco Storage (GB)",type="integer",JSONPath=".status.recoStorageSizeInGB"
+// +kubebuilder:printcolumn:name="Storage Mgmt",type="string",JSONPath=".status.storageManagement"
+// +kubebuilder:printcolumn:name="ConnString",type="string",JSONPath=".status.dbInfo[0].connectionString"
 type DbcsSystem struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -229,6 +301,7 @@ const (
 	Update    LifecycleState = "UPDATING"
 	Provision LifecycleState = "PROVISIONING"
 	Terminate LifecycleState = "TERMINATED"
+	Upgrade   LifecycleState = "UPGRADING"
 )
 
 const lastSuccessfulSpec = "lastSuccessfulSpec"
