@@ -553,6 +553,20 @@ func (r *OracleRestart) validateGeneric() field.ErrorList {
 		}
 	}
 
+	if r.Spec.ConfigParams.RuPatchLocation != "" {
+		_, isPVCKey := r.Spec.InstDetails.PvcName[r.Spec.ConfigParams.RuPatchLocation]
+		if !isPVCKey {
+			// Not found in PVC map, treat as direct path — validate format
+			if !strings.HasPrefix(r.Spec.ConfigParams.RuPatchLocation, "/") {
+				validationErrs = append(validationErrs,
+					field.Invalid(
+						field.NewPath("spec").Child("configParams").Child("ruPatchLocation"),
+						r.Spec.ConfigParams.RuPatchLocation,
+						"ruPatchLocation must be either a key in instDetails.pvcName or an absolute path starting with '/'"))
+			}
+		}
+	}
+
 	if r.Spec.Image == "" {
 		validationErrs = append(validationErrs,
 			field.Invalid(field.NewPath("spec").Child("Image"), r.Spec.Image,

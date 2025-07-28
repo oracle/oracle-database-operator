@@ -312,9 +312,16 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 		result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-oradata-sw-vol", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: OracleRestartSpex.HostSwLocation}}})
 	}
 
-	if instance.Spec.ConfigParams != nil {
-		if instance.Spec.ConfigParams.HostSwStageLocation != "" {
-			result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-oradata-swstage-vol", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: instance.Spec.ConfigParams.HostSwStageLocation}}})
+	if instance.Spec.ConfigParams != nil && instance.Spec.ConfigParams.HostSwStageLocation != "" {
+		if _, exists := OracleRestartSpex.PvcName[instance.Spec.ConfigParams.HostSwStageLocation]; !exists {
+			result = append(result, corev1.Volume{
+				Name: OracleRestartSpex.Name + "-oradata-swstage-vol",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: instance.Spec.ConfigParams.HostSwStageLocation,
+					},
+				},
+			})
 		}
 	}
 
@@ -325,26 +332,30 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 	}
 
 	if instance.Spec.ConfigParams != nil {
-		if len(instance.Spec.ConfigParams.RuPatchLocation) != 0 {
-			result = append(result, corev1.Volume{
-				Name: OracleRestartSpex.Name + "-oradata-rupatch-vol",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: instance.Spec.ConfigParams.RuPatchLocation,
+		if instance.Spec.ConfigParams.RuPatchLocation != "" {
+			if _, exists := OracleRestartSpex.PvcName[instance.Spec.ConfigParams.RuPatchLocation]; !exists {
+				result = append(result, corev1.Volume{
+					Name: OracleRestartSpex.Name + "-oradata-rupatch-vol",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: instance.Spec.ConfigParams.RuPatchLocation,
+						},
 					},
-				},
-			})
+				})
+			}
 		}
 
-		if len(instance.Spec.ConfigParams.OPatchLocation) != 0 {
-			result = append(result, corev1.Volume{
-				Name: OracleRestartSpex.Name + "-oradata-opatch-vol",
-				VolumeSource: corev1.VolumeSource{
-					HostPath: &corev1.HostPathVolumeSource{
-						Path: instance.Spec.ConfigParams.OPatchLocation,
+		if instance.Spec.ConfigParams.OPatchLocation != "" {
+			if _, exists := OracleRestartSpex.PvcName[instance.Spec.ConfigParams.OPatchLocation]; !exists {
+				result = append(result, corev1.Volume{
+					Name: OracleRestartSpex.Name + "-oradata-opatch-vol",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: instance.Spec.ConfigParams.OPatchLocation,
+						},
 					},
-				},
-			})
+				})
+			}
 		}
 	}
 
@@ -538,21 +549,34 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 		fmt.Println("No Location is passed for the software storage in" + OracleRestartSpex.Name)
 	}
 
+	// Check if ConfigParams is not nil
 	if instance.Spec.ConfigParams != nil {
-		if len(instance.Spec.ConfigParams.HostSwStageLocation) != 0 {
+
+		// Check if HostSwStageLocation is provided in ConfigParams
+		if len(instance.Spec.ConfigParams.HostSwStageLocation) != 0 && len(OracleRestartSpex.PvcName) == 0 {
 			result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-oradata-swstage-vol", MountPath: utils.OraSwStageLocation})
 		}
 	}
 
 	if instance.Spec.ConfigParams != nil {
-		if len(instance.Spec.ConfigParams.RuPatchLocation) != 0 {
-			result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-oradata-rupatch-vol", MountPath: utils.OraRuPatchStageLocation})
+		if instance.Spec.ConfigParams.RuPatchLocation != "" {
+			if _, exists := OracleRestartSpex.PvcName[instance.Spec.ConfigParams.RuPatchLocation]; !exists {
+				result = append(result, corev1.VolumeMount{
+					Name:      OracleRestartSpex.Name + "-oradata-rupatch-vol",
+					MountPath: utils.OraRuPatchStageLocation,
+				})
+			}
 		}
 	}
 
 	if instance.Spec.ConfigParams != nil {
-		if len(instance.Spec.ConfigParams.OPatchLocation) != 0 {
-			result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-oradata-opatch-vol", MountPath: utils.OraOPatchStageLocation})
+		if instance.Spec.ConfigParams.OPatchLocation != "" {
+			if _, exists := OracleRestartSpex.PvcName[instance.Spec.ConfigParams.OPatchLocation]; !exists {
+				result = append(result, corev1.VolumeMount{
+					Name:      OracleRestartSpex.Name + "-oradata-opatch-vol",
+					MountPath: utils.OraOPatchStageLocation,
+				})
+			}
 		}
 	}
 
@@ -798,22 +822,6 @@ func UpdateProvForOracleRestart(instance *oraclerestart.OracleRestart,
 			isUpdate = true
 		}
 	}
-	// Memory Check
-	//resources := corev1.Pod.Spec.Containers
-
-	/**
-
-	 for i = 0; i < len(sfSet.Spec.VolumeClaimTemplates); i++ {
-		 if sfSet.Spec.VolumeClaimTemplates[i].Name == OracleRestartSpex.Name+"-oradata-vol4" {
-			 volumeSize := sfSet.Spec.VolumeClaimTemplates[i].Size()
-			 if volumeSize != int(OracleRestartSpex.StorageSizeInGb) {
-				 isUpdate = true
-			 }
-
-		 }
-	 }
-
-	 **/
 
 	if isUpdate {
 		err = kClient.Update(context.Background(), BuildStatefulSetForOracleRestart(instance, OracleRestartSpex, kClient))
