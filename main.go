@@ -75,7 +75,10 @@ import (
 	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
 	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
+	omlaiv4 "github.com/oracle/oracle-database-operator/apis/omlai/v4"
+	webhookomlaiv4 "github.com/oracle/oracle-database-operator/apis/omlai/v4"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
+	omlaicontroller "github.com/oracle/oracle-database-operator/controllers/omlai"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -91,6 +94,7 @@ func init() {
 	utilruntime.Must(databasev4.AddToScheme(scheme))
 	utilruntime.Must(observabilityv1.AddToScheme(scheme))
 	utilruntime.Must(observabilityv4.AddToScheme(scheme))
+	utilruntime.Must(omlaiv4.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -303,98 +307,7 @@ func main() {
 
 	// Set ENABLE_WEBHOOKS=false when we run locally to skip webhook part when testing just the controller. Not to be used in production.
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err = (&databasev1alpha1.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
-			os.Exit(1)
-		}
-		if err = (&databasev4.PDB{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "PDB")
-			os.Exit(1)
-		}
-		if err = (&databasev4.LRPDB{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "LRPDB")
-			os.Exit(1)
-		}
-		if err = (&databasev4.CDB{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "CDB")
-			os.Exit(1)
-		}
-		if err = (&databasev4.LREST{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "LREST")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev4.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev4.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
-			os.Exit(1)
-		}
-		if err = (&databasev4.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
-			os.Exit(1)
-		}
-		if err = (&databasev4.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
-			os.Exit(1)
-		}
-		if err = (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
-		}
-		if err = (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
-			os.Exit(1)
-		}
-		if err = (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
-			os.Exit(1)
-		}
-		if err = (&observabilityv1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
-			os.Exit(1)
-		}
 
-		if err = (&observabilityv4.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
-			os.Exit(1)
-		}
 		if err = (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
 			os.Exit(1)
@@ -493,7 +406,21 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "DatabaseObserver")
 		os.Exit(1)
 	}
-
+	if err = (&omlaicontroller.PrivateAiReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Config: mgr.GetConfig(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PrivateAi")
+		os.Exit(1)
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = webhookomlaiv4.SetupPrivateAiWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "PrivateAi")
+			os.Exit(1)
+		}
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Add index for PDB CR to enable mgr to cache PDBs

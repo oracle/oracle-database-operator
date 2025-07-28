@@ -1,6 +1,6 @@
 module github.com/oracle/oracle-database-operator
 
-go 1.24
+go 1.24.4
 
 require (
 	github.com/go-logr/logr v1.4.2
