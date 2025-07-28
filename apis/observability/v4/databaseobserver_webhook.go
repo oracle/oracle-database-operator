@@ -39,6 +39,7 @@
 package v4
 
 import (
+	"context"
 	"strings"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
@@ -68,26 +69,31 @@ const (
 func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		For(&DatabaseObserver{}).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:path=/mutate-observability-oracle-com-v4-databaseobserver,mutating=true,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,verbs=create;update,versions=v4,name=mdatabaseobserver.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &DatabaseObserver{}
+var _ webhook.CustomDefaulter = &DatabaseObserver{}
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *DatabaseObserver) Default() {
+// Default implements webhook.CustomDefaulter so a webhook will be registered for the type
+func (r *DatabaseObserver) Default(ctx context.Context, obj runtime.Object) error {
 	databaseobserverlog.Info("default", "name", r.Name)
+
+	return nil
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-observability-oracle-com-v4-databaseobserver,mutating=false,sideEffects=none,failurePolicy=fail,groups=observability.oracle.com,resources=databaseobservers,versions=v4,name=vdatabaseobserver.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &DatabaseObserver{}
+var _ webhook.CustomValidator = &DatabaseObserver{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateCreate() (admission.Warnings, error) {
+// ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
+func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	databaseobserverlog.Info("validate create", "name", r.Name)
 
 	var e field.ErrorList
@@ -157,8 +163,8 @@ func (r *DatabaseObserver) ValidateCreate() (admission.Warnings, error) {
 
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+// ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
+func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	databaseobserverlog.Info("validate update", "name", r.Name)
 	var e field.ErrorList
 
@@ -175,8 +181,8 @@ func (r *DatabaseObserver) ValidateUpdate(old runtime.Object) (admission.Warning
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DatabaseObserver) ValidateDelete() (admission.Warnings, error) {
+// ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
+func (r *DatabaseObserver) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	databaseobserverlog.Info("validate delete", "name", r.Name)
 
 	return nil, nil
