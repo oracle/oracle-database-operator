@@ -1,0 +1,100 @@
+2025-04-09T08:57:48Z    INFO    Backup creation initiated       {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga"}
+2025-04-09T08:57:48Z    INFO    Waiting for backup to reach ACTIVE state...     {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9"}
+2025-04-09T08:58:19Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T08:58:48Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T08:59:18Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T08:59:48Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T09:00:18Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T09:00:48Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T09:09:48Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T09:10:18Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T09:10:48Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T09:11:18Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T09:11:48Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T09:12:18Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "CREATING"}
+2025-04-09T09:12:48Z    INFO    Polling backup status   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga", "State": "ACTIVE"}
+2025-04-09T09:12:48Z    INFO    Backup completed successfully   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga"}
+2025-04-09T09:12:51Z    INFO    Backup Completed successfully   {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-existing","namespace":"default"}, "namespace": "default", "name": "dbcssystem-existing", "reconcileID": "a1edd2a5-7a6a-4dde-a071-e2a634b4b3b9", "BackupID": "ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga"}
+
+
+kubectl describe dbcssystems.database.oracle.com/dbcssystem-existing
+Warning: To increase security of your API key located at /home/sauahuja/.oci/oci_api_key.pem, append an extra line with 'OCI_API_KEY' at the end. For more information, refer to https://docs.oracle.com/iaas/Content/API/Concepts/apisigningkey.htm. To suppress the warning, set the env variable SUPPRESS_LABEL_WARNING=True
+Name:         dbcssystem-existing
+Namespace:    default
+Labels:       <none>
+Annotations:  lastSuccessfulSpec:
+                {"dbSystem":{"compartmentId":"","availabilityDomain":"","subnetId":"","shape":"","hostName":"","backupDisplayName":"Full-Backup","dbAdminP...
+API Version:  database.oracle.com/v4
+Kind:         DbcsSystem
+Metadata:
+  Creation Timestamp:  2025-04-09T08:57:34Z
+  Generation:          2
+  Resource Version:    168679344
+  UID:                 0633f774-92a9-4ab0-b65e-616be3fc7adb
+Spec:
+  Db System:
+    Availability Domain:       
+    Backup Display Name:       Full-Backup
+    Compartment Id:            
+    Db Admin Password Secret:  
+    Db Backup Config:
+    Host Name:  
+    Kms Config:
+    Shape:        
+    Subnet Id:    
+  Enable Backup:  true
+  Id:             ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyaezbusohovqidnjud2w5wmeisqydsmkqlzcghctvrscfq
+  Kms Config:
+  Oci Config Map:  oci-cred-mumbai
+  Oci Secret:      oci-privatekey
+Status:
+  Availability Domain:  OLou:AP-MUMBAI-1-AD-1
+  Backups:
+    Backup Id:                ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyadzfhqva7rs7ttlz3ql3vwexfl4yoghzsllg7hy7oxdga
+    Name:                     Full-Backup-20250409-085744
+    Timestamp:                2025-04-09T08:57:53Z
+    Backup Id:                ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyazmu2w7bjtivgbjj37aym6cfsnutruzyrb2t7uiuidksq
+    Name:                     Saurabh-JustInTime-manual-20250408-144538
+    Timestamp:                2025-04-08T14:45:48Z
+    Backup Id:                ocid1.dbbackup.oc1.ap-mumbai-1.anrg6ljrabf7htyab6cgmv5vs6rtyfusfw3w7dj5e5ck5h6x32xuz253qcla
+    Name:                     backup-20250408-142512
+    Timestamp:                2025-04-08T14:25:22Z
+  Cpu Core Count:             1
+  Data Storage Percentage:    80
+  Data Storage Size In G Bs:  256
+  Db Clone Status:
+    Db Db Unique Name:  
+    Host Name:          
+  Db Edition:           ENTERPRISE_EDITION_HIGH_PERFORMANCE
+  Display Name:         dbsystem123
+  Id:                   ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyaezbusohovqidnjud2w5wmeisqydsmkqlzcghctvrscfq
+  Kms Details Status:
+  License Model:  BRING_YOUR_OWN_LICENSE
+  Network:
+    Client Subnet:  oke-nodesubnet-quick-cluster1-2bebe95db-regional
+    Domain Name:    subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:      host123
+    Listener Port:  1521
+    Scan Dns Name:  host123-scan.subdda0b5eaa.cluster1.oraclevcn.com
+    Vcn Name:       oke-vcn-quick-cluster1-2bebe95db
+  Node Count:       1
+  Pdb Details Status:
+    Pdb Config Status:
+      Pdb Name:               cdb123_pdb1
+      Pdb State:              AVAILABLE
+      Pluggable Database Id:  ocid1.pluggabledatabase.oc1.ap-mumbai-1.anrg6ljrabf7htyao76wku3parutii5ojxmejzfbevloxcizvt3lt5pyzvja
+  Reco Storage Size In GB:    256
+  Shape:                      VM.Standard2.1
+  State:                      AVAILABLE
+  Storage Management:         ASM
+  Subnet Id:                  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Time Zone:                  UTC
+  Work Requests:
+    Operation Id:      ocid1.coreservicesworkrequest.oc1.ap-mumbai-1.abrg6ljrjajnyzhsjbuaxu76mc3ku2xr2itlip45hj75rhyd7xtdcvtar77q
+    Operation Type:    Create DB System
+    Percent Complete:  100
+    Time Accepted:     2025-04-06 04:55:35.586 +0000 UTC
+    Time Finished:     2025-04-06 07:24:02.505 +0000 UTC
+    Time Started:      2025-04-06 04:55:39.439 +0000 UTC
+Events:                <none>
+basedb/ $ 

@@ -673,6 +673,8 @@ spec:
                 - Start
                 - Terminate
                 - Clone
+                - Switchover
+                - Failover
                 type: string
               clone:
                 properties:
@@ -1006,6 +1008,8 @@ spec:
                 - Start
                 - Terminate
                 - Clone
+                - Switchover
+                - Failover
                 type: string
               clone:
                 properties:
@@ -9378,7 +9382,32 @@ spec:
     storage: false
     subresources:
       status: {}
-  - name: v4
+  - additionalPrinterColumns:
+    - jsonPath: .status.displayName
+      name: Display Name
+      type: string
+    - jsonPath: .status.dbInfo[0].dbName
+      name: DB Name
+      type: string
+    - jsonPath: .status.state
+      name: State
+      type: string
+    - jsonPath: .status.cpuCoreCount
+      name: OCPUs
+      type: integer
+    - jsonPath: .status.dataStorageSizeInGBs
+      name: Storage (TB)
+      type: integer
+    - jsonPath: .status.recoStorageSizeInGB
+      name: Reco Storage (GB)
+      type: integer
+    - jsonPath: .status.storageManagement
+      name: Storage Mgmt
+      type: string
+    - jsonPath: .status.dbInfo[0].connectionString
+      name: ConnString
+      type: string
+    name: v4
     schema:
       openAPIV3Schema:
         properties:
@@ -9390,6 +9419,45 @@ spec:
             type: object
           spec:
             properties:
+              dataGuard:
+                properties:
+                  availabilityDomain:
+                    type: string
+                  dbAdminPasswordSecret:
+                    type: string
+                  dbName:
+                    type: string
+                  dbSystemFreeformTags:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  displayName:
+                    type: string
+                  enabled:
+                    type: boolean
+                  hostName:
+                    type: string
+                  isDelete:
+                    type: boolean
+                  peerDbHomeId:
+                    type: string
+                  peerDbSystemId:
+                    type: string
+                  peerRole:
+                    type: string
+                  primaryDatabaseId:
+                    type: string
+                  protectionMode:
+                    type: string
+                  shape:
+                    type: string
+                  sidPrefix:
+                    type: string
+                  subnetId:
+                    type: string
+                  transportType:
+                    type: string
+                type: object
               databaseId:
                 type: string
               dbBackupId:
@@ -9439,6 +9507,8 @@ spec:
                 properties:
                   availabilityDomain:
                     type: string
+                  backupDisplayName:
+                    type: string
                   backupSubnetId:
                     type: string
                   clusterName:
@@ -9464,9 +9534,15 @@ spec:
                     type: string
                   dbEdition:
                     type: string
+                  dbHomeId:
+                    type: string
                   dbName:
                     type: string
+                  dbPatchOcid:
+                    type: string
                   dbUniqueName:
+                    type: string
+                  dbUpgradeVersion:
                     type: string
                   dbVersion:
                     type: string
@@ -9507,6 +9583,16 @@ spec:
                     type: string
                   privateIp:
                     type: string
+                  restoreConfig:
+                    properties:
+                      latest:
+                        type: boolean
+                      scn:
+                        type: string
+                      timestamp:
+                        format: date-time
+                        type: string
+                    type: object
                   shape:
                     type: string
                   sshPublicKeys:
@@ -9525,18 +9611,17 @@ spec:
                     type: string
                   timeZone:
                     type: string
-                required:
-                - availabilityDomain
-                - compartmentId
-                - dbAdminPasswordSecret
-                - hostName
-                - shape
-                - subnetId
                 type: object
+              enableBackup:
+                type: boolean
               hardLink:
                 type: boolean
               id:
                 type: string
+              isPatch:
+                type: boolean
+              isUpgrade:
+                type: boolean
               kmsConfig:
                 properties:
                   compartmentId:
@@ -9590,15 +9675,67 @@ spec:
             properties:
               availabilityDomain:
                 type: string
+              backups:
+                items:
+                  properties:
+                    backupId:
+                      type: string
+                    name:
+                      type: string
+                    timestamp:
+                      type: string
+                  required:
+                  - backupId
+                  - name
+                  - timestamp
+                  type: object
+                type: array
               cpuCoreCount:
                 type: integer
+              dataGuardStatus:
+                properties:
+                  dbAdminPasswordSecret:
+                    type: string
+                  dbName:
+                    type: string
+                  dbWorkload:
+                    type: string
+                  id:
+                    type: string
+                  isActiveDataGuardEnabled:
+                    type: boolean
+                  lifecycleDetails:
+                    type: string
+                  lifecycleState:
+                    type: string
+                  peerDataGuardAssociationId:
+                    type: string
+                  peerDatabaseId:
+                    type: string
+                  peerDbHomeId:
+                    type: string
+                  peerDbSystemId:
+                    type: string
+                  peerRole:
+                    type: string
+                  primaryDatabaseId:
+                    type: string
+                  protectionMode:
+                    type: string
+                  shape:
+                    type: string
+                  subnetId:
+                    type: string
+                  transportType:
+                    type: string
+                type: object
               dataStoragePercentage:
                 type: integer
               dataStorageSizeInGBs:
                 type: integer
               dbCloneStatus:
                 properties:
-                  dbAdminPaswordSecret:
+                  dbAdminPasswordSecret:
                     type: string
                   dbDbUniqueName:
                     type: string
@@ -9629,6 +9766,10 @@ spec:
               dbInfo:
                 items:
                   properties:
+                    connectionString:
+                      type: string
+                    connectionStringLong:
+                      type: string
                     dbHomeId:
                       type: string
                     dbName:
@@ -9665,6 +9806,8 @@ spec:
                     type: string
                 type: object
               licenseModel:
+                type: string
+              message:
                 type: string
               network:
                 properties:
@@ -15580,26 +15723,6 @@ metadata:
 webhooks:
 - admissionReviewVersions:
   - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v4-autonomousdatabasebackup
-  failurePolicy: Fail
-  name: mautonomousdatabasebackupv4.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabasebackups
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
   - v1beta1
   clientConfig:
     service:
@@ -15741,26 +15864,6 @@ webhooks:
     - UPDATE
     resources:
     - shardingdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v1alpha1-autonomousdatabasebackup
-  failurePolicy: Fail
-  name: mautonomousdatabasebackupv1alpha1.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabasebackups
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -16290,7 +16393,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:restart-operator-sa
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:basedb-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

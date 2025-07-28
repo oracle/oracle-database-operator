@@ -1,0 +1,11 @@
+apiVersion: database.oracle.com/v4
+kind: DbcsSystem
+metadata:
+  name: dbcssystem-existing
+spec:
+  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq"
+  ociConfigMap: "oci-cred-mumbai"
+  ociSecret: "oci-privatekey"
+  isPatch: true
+  dbSystem:
+    dbPatchOcid: "ocid1.dbupdate.oc1.ap-mumbai-1.anrg6ljrt5t4sqqa2z6zz3vxd4u2gmkvrofeatpufsbw332yksvuzc2xmgxq"

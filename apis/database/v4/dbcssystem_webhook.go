@@ -39,7 +39,13 @@
 package v4
 
 import (
+	"context"
+	"fmt"
+	"reflect"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -51,7 +57,9 @@ var dbcssystemlog = logf.Log.WithName("dbcssystem-resource")
 
 func (r *DbcsSystem) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+		For(&DbcsSystem{}).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -59,38 +67,61 @@ func (r *DbcsSystem) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-dbcssystem,mutating=true,failurePolicy=fail,sideEffects=none,groups=database.oracle.com,resources=dbcssystems,verbs=create;update,versions=v4,name=mdbcssystemv4.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &DbcsSystem{}
+var _ webhook.CustomDefaulter = &DbcsSystem{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *DbcsSystem) Default() {
+func (r *DbcsSystem) Default(ctx context.Context, obj runtime.Object) error {
 	dbcssystemlog.Info("default", "name", r.Name)
 
 	// TODO(user): fill in your defaulting logic.
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 
 // +kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-dbcssystem,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dbcssystems,versions=v4,name=vdbcssystemv4.kb.io,admissionReviewVersions=v1
-var _ webhook.Validator = &DbcsSystem{}
+var _ webhook.CustomValidator = &DbcsSystem{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DbcsSystem) ValidateCreate() (admission.Warnings, error) {
+func (r *DbcsSystem) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	dbcssystemlog.Info("validate create", "name", r.Name)
 
-	// 	// TODO(user): fill in your validation logic upon object creation.
 	return nil, nil
 }
 
 // // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DbcsSystem) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *DbcsSystem) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
 	dbcssystemlog.Info("validate update", "name", r.Name)
 
-	// 	// TODO(user): fill in your validation logic upon object update.
+	// Type cast the old object to *DbcsSystem
+	oldDbcs, ok := old.(*DbcsSystem)
+	if !ok {
+		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast old object to DbcsSystem"))
+	}
+	// Block spec updates in non-available states
+	blockedStates := map[string]bool{
+		"UPDATING": true,
+		"FAILED":   true,
+	}
+
+	if blockedStates[string(r.Status.State)] {
+		if !reflect.DeepEqual(oldDbcs.Spec, r.Spec) {
+			return nil, apierrors.NewForbidden(
+				schema.GroupResource{
+					Group:    "database.oracle.com",
+					Resource: "DbcsSystem",
+				},
+				r.Name,
+				fmt.Errorf("updates to DbcsSystem Spec are not allowed while resource is in state %q", r.Status.State),
+			)
+		}
+	}
+
 	return nil, nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DbcsSystem) ValidateDelete() (admission.Warnings, error) {
+func (r *DbcsSystem) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	dbcssystemlog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.

@@ -44,7 +44,8 @@ default                           Active   118d
 kube-node-lease                   Active   118d
 kube-public                       Active   118d
 kube-system                       Active   118d
-oracle-database-operator-system   Active   10m    <<<< namespace to deploy the Oracle Database Operator
+oracle-database-operator-system   Active   10m   # <<<< NAMESPACE TO DEPLOY ORACLE DB OPERATOR 
+
  
  
 [root@test-server oracle-database-operator]# kubectl get all -n  oracle-database-operator-system
@@ -73,7 +74,7 @@ certificaterequests.cert-manager.io              2022-02-22T23:21:35Z
 certificates.cert-manager.io                     2022-02-22T23:21:36Z
 challenges.acme.cert-manager.io                  2022-02-22T23:21:36Z
 clusterissuers.cert-manager.io                   2022-02-22T23:21:36Z
-dbcssystems.database.oracle.com                  2022-02-22T23:23:25Z  <<<< CRD for OBDS Controller
+dbcssystems.database.oracle.com                  2022-02-22T23:23:25Z  # <<<< CRD for OBDS Controller
 issuers.cert-manager.io                          2022-02-22T23:21:36Z
 orders.acme.cert-manager.io                      2022-02-22T23:21:37Z
 shardingdatabases.database.oracle.com            2022-02-22T23:23:25Z
@@ -174,6 +175,13 @@ For more informatoin about the multiple use cases available to you to deploy and
 [14. Migrate to KMS vault from TDE Wallet password encryption of an existing OBDS System already deployed in OCI Base OBDS Service](./provisioning/migrate_to_kms.md)  
 [15. Clone DB System from Existing DB System in OCI OBDS Service](./provisioning/clone_from_existing_dbcs.md)  
 [16. Clone DB System from Backup of Existing DB System in OCI OBDS Service](./provisioning/clone_from_backup_dbcs.md)  
+[17. Clone DB System from Existing Database of DB System in OCI OBDS Service](./provisioning/clone_from_database.md)
+[18. Create Backup of Existing Database of DB System in OCI OBDS Service](./provisioning/backup_of_database.md)
+[19. Restore from Backup of Existing Database of DB System in OCI OBDS Service](./provisioning/restore_of_database.md)
+[20. Setup Dataguard Association to Existing Database of DB System in OCI Base DBCS Service](./provisioning/dataguard_to_database.md)
+[21. Disable Dataguard Association to Existing Database of DB System and Terminate Peer DB System in OCI Base DBCS Service](./provisioning/disable_dataguard_to_database.md)
+[22. Patching Existing Database of DB System in OCI Base DBCS Service](./provisioning/patching_database.md) 
+[23. Upgrading Existing Database of DB System in OCI Base DBCS Service](./provisioning/upgrading_database.md) 
 [17. Clone DB System from Existing Database of DB System in OCI OBDS Service](./provisioning/clone_from_database.md)  
 
 ## Connecting to OCI OBDS database deployed using Oracle DB Operator OBDS Controller

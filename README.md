@@ -16,6 +16,43 @@ In this v1.2.0 production release, `OraOperator` supports the following database
 * Oracle Multitenant Databases (CDB/PDBs)
 * Oracle Base Database Service (OBDS) on Oracle Cloud Infrastructure (OCI)
 * Oracle Data Guard
+<<<<<<< HEAD
+* Oracle Database Observability
+* Oracle Database Rest Service (ORDS) instances
+
+## New Lifecycle Features in V1.2.0 Release (Controllers Enhancements)
+* ORDSSERVICES
+  - Install on SIDB and ADB
+  - Provision and Delete ORDS instances
+* SIDB
+  - Oracle Database 23ai Free support
+  - Oracle Database 23ai Free-lite support
+  - SIDB resource management
+  - True Cache support for Free SIDB databases (Preview)
+  - Observer for FastStartFailover with Data Guard
+  - Snapshot Standby support in Data Guard setup
+* Globally Distributed Database : Support for Oracle Database 23ai Raft replication
+* Autonomous Database: support for Database cloning
+* Multitenant DB:
+  - ORDS-based Controller:  assertive deletion policy.
+  - New LRES based Controller  (ARM & AM)
+    - PDBs settings with init parameters config map
+    - Assertive deletion policy.
+* Database Observability (preview)
+  - Support for Database Logs (in addition to Metrics)
+  - Support for the latest Exporter container images
+
+* Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation.
+* Prometheus label config (bug fix)
+
+## New Product Features
+*The Operator itself, as a product, brings the following new features:
+* Published on `operatorhub.io`
+* Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
+* Validated on Google Kubernetes Engine
+
+## Overall Features Summary
+=======
 * Oracle Database Rest Service (ORDS) instances
 
 ## New Product Features in V1.2.0
@@ -54,17 +91,25 @@ The Operator itself, as a product, brings the following new features:
 * Published on `operatorhub.io`
 * Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
 * Validated on Google Kubernetes Engine
+>>>>>>> origin/master
 
 ## Overall Features Summary
 
+<<<<<<< HEAD
+=======
 As of release v1.2, the Oracle Database Operator for Kubernetes ( OraOperator) supports the following lifecycle operations:
 
+>>>>>>> origin/master
 * ADB-S/ADB-D: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning.
 * ACD: Provision, bind, restart, terminate (soft/hard)
 * SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), and Snapshot Standby (Data Guard)
 * ORDS Services: Provision and delete ORDS instances
 * Globally Distrib. (Sharded): Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard, Raft replication.
+<<<<<<< HEAD
+* Oracle Multitenant Database (choice of controller): Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB, Assertive deletion policy
+=======
 * Oracle Multitenant Database (choice of controller): Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB, Assertive deletion policy
+>>>>>>> origin/master
 * Oracle Base Database Service (OBDS): Provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License, Cloning, PDB creation, using KMS Vaults on Oracle Cloud Infrastructure (OCI)
 * Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
 * Oracle Database Observability: create, patch, delete `databaseObserver` resources (Logs and Metrics)
@@ -82,6 +127,7 @@ The previous releases were tested on the following platforms:
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.6
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
+* [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Red Hat OKD](https://www.okd.io/)
 * [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.29.0
 
@@ -141,6 +187,10 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
       kubectl apply -f oracle-database-operator.yaml
     ```
 
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/master
 * ### ClusterRole and ClusterRoleBinding for NodePort services
 
   To expose services on each node's IP and port (the NodePort), apply the [`node-rbac.yaml`](./rbac/node-rbac.yaml). Note that this step is not required for LoadBalancer services.
@@ -157,12 +207,15 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
   To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
 
+<<<<<<< HEAD
+=======
   Run the following command
 
   ```sh
   kubectl apply -f oracle-database-operator.yaml
   ```
 
+>>>>>>> origin/master
   Ensure that the operator pods are up and running. For high availability, operator pod replicas are set to a default of 3. You can scale this setting up or down.
 
   ```sh
@@ -199,8 +252,11 @@ The following quickstarts are designed for specific database configurations:
 * [Containerized Oracle Globally Distributed Database](./docs/sharding/README.md)
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Service (OBDS)](./docs/dbcs/README.md)
+<<<<<<< HEAD
+=======
 * [ORDS Services (ORDSSRVS)](./docs/ordsservices/README.md)
 * [Oracle Restart Database](./docs/oraclerestart/README.md)
+>>>>>>> origin/master
 
 
 The following quickstart is designed for non-database configurations:
@@ -303,8 +359,19 @@ The following is an example of a YAML file fragment for specifying Oracle Cloud 
 ```
 
 Examples in this repository where passwords are entered on the command line are for demonstration purposes only.
+<<<<<<< HEAD
+
+### Reporting a Security Issue
+
+See [Reporting security vulnerabilities](./SECURITY.md)
+=======
+>>>>>>> origin/master
 
 ## License
 
 Copyright (c) 2022, 2025 Oracle and/or its affiliates.
+<<<<<<< HEAD
 Released under the Universal Permissive License v1.0 as shown at [https://oss.oracle.com/licenses/upl/](https://oss.oracle.com/licenses/upl/)
+=======
+Released under the Universal Permissive License v1.0 as shown at [https://oss.oracle.com/licenses/upl/](https://oss.oracle.com/licenses/upl/)
+>>>>>>> origin/master

@@ -1,0 +1,12 @@
+apiVersion: database.oracle.com/v4
+kind: DbcsSystem
+metadata:
+  name: dbcssystem-existing
+spec:
+  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq"
+  ociConfigMap: "oci-cred-mumbai"
+  ociSecret: "oci-privatekey"
+  isUpgrade: true
+  databaseId: "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htya2mo5an5blhlvx5euyqnazi45hli7zqs5uig7juzgme5a"
+  dbSystem:
+    dbUpgradeVersion: "23.6.0.24.10"
