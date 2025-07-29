@@ -384,58 +384,48 @@ func ManageReplicas(
 	req ctrl.Request,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
-	var msg string
 	var desired int32 = 1
-
 	if instance.Spec.Replicas > 0 {
 		desired = instance.Spec.Replicas
 	}
 
 	current := *deploy.Spec.Replicas
 
-	//var isUpdate bool
-
 	if deploy.Spec.Replicas != nil && current != desired {
-		msg = "Current Deployment replicas do not match configured PrivateAI Replicas."
-		LogMessages("DEBUG", msg, nil, instance, logger)
-		//isUpdate = true
-		//isUpdate = true
+		LogMessages("DEBUG", "Deployment replicas mismatch. Updating deployment...", nil, instance, logger)
+
+		newDeploy := BuildDeploySetForPrivateAI(instance)
+		newDeploy.Spec.Replicas = &desired
+		err := kClient.Update(context.Background(), newDeploy)
+		if err != nil {
+			LogMessages("ERROR", "Failed to update Deployment with new replica count", err, instance, logger)
+			return ctrl.Result{}, err
+		}
 	}
 
+	// Re-mark pods based on diff
 	diff := current - desired
 
-	if diff > 0 && len(podList.Items) > 0 {
-		count := int32(0)
-		for i := range podList.Items {
-			if count >= diff {
-				break
-			}
-			pod := &podList.Items[i]
-			// var touchFileCmd []string = []string{"/bin/touch /tmp/unhealthy"}
-			var touchFileCmd []string = []string{"/bin/touch", "/tmp/unhealthy"}
+	for i := range podList.Items {
+		pod := &podList.Items[i]
 
-			_, err := ExecCommand(
-				r,
-				Config,
-				pod.Name,
-				pod.Namespace,
-				pod.Spec.Containers[0].Name,
-				ctx,
-				req,
-				false,
-				touchFileCmd,
-			)
+		if diff > 0 {
+			// Mark pod as unhealthy
+			touchCmd := []string{"/bin/touch", "/tmp/unhealthy"}
+			_, err := ExecCommand(r, Config, pod.Name, pod.Namespace, pod.Spec.Containers[0].Name, ctx, req, false, touchCmd)
 			if err != nil {
-				LogMessages("ERROR", "Failed to exec command", err, instance, logger)
+				LogMessages("ERROR", "Failed to mark pod as unhealthy", err, instance, logger)
 				return ctrl.Result{}, err
 			}
-			err = kClient.Update(context.Background(), pod)
+			diff--
+		} else {
+			// Heal pod if previously unready
+			removeCmd := []string{"rm", "-f", "/tmp/unhealthy"}
+			_, err := ExecCommand(r, Config, pod.Name, pod.Namespace, pod.Spec.Containers[0].Name, ctx, req, false, removeCmd)
 			if err != nil {
-				msg = "Failed to update Pod Label: " + pod.Name
+				LogMessages("ERROR", "Failed to heal pod back to ready state", err, instance, logger)
 				return ctrl.Result{}, err
 			}
-			count++
-
 		}
 	}
 
@@ -443,29 +433,31 @@ func ManageReplicas(
 }
 
 // Update Section
-func UpdateDeploySetForPrivateAI(instance *privateaiv4.PrivateAi, paiSpec privateaiv4.PrivateAiSpec, kClient client.Client, Config *rest.Config, deploy *appsv1.Deployment, pod *corev1.Pod, logger logr.Logger) (ctrl.Result, error) {
-	//var msg string
-
-	// var isUpdate bool
-
+func UpdateDeploySetForPrivateAI(
+	instance *privateaiv4.PrivateAi,
+	paiSpec privateaiv4.PrivateAiSpec,
+	kClient client.Client,
+	Config *rest.Config,
+	deploy *appsv1.Deployment,
+	pod *corev1.Pod,
+	logger logr.Logger,
+) (ctrl.Result, error) {
 	for i := range pod.Spec.Containers {
 		if pod.Spec.Containers[i].Name == deploy.Name {
 			contRes := pod.Spec.Containers[i].Resources
 			paiRes := paiSpec.Resources
 			if !reflect.DeepEqual(contRes, paiRes) {
-				// isUpdate = true
-				LogMessages("DEBUG", "Container ", nil, instance, logger)
+				LogMessages("DEBUG", "Container resources have changed. Updating deployment...", nil, instance, logger)
+
+				// Update the deployment with new spec
+				err := kClient.Update(context.Background(), BuildDeploySetForPrivateAI(instance))
+				if err != nil {
+					LogMessages("ERROR", "Failed to update deployment with new spec", err, instance, logger)
+					return ctrl.Result{}, err
+				}
 			}
 		}
 	}
-
-	// if isUpdate {
-	// 	err := kClient.Update(context.Background(), BuildDeploySetForPrivateAI(instance))
-	// 	if err != nil {
-	// 		//msg = "Failed to update PrivateAI Deployment: " + deploy.Name
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
 
 	return ctrl.Result{}, nil
 }
