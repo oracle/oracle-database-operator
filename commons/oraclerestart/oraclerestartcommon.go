@@ -1216,7 +1216,7 @@ func ValidateNetInterface(net string, instance *oraclerestart.OracleRestart, rsp
 
 	if net != "" {
 		if !strings.Contains(rspNetData, net) {
-			err = fmt.Errorf("Error occurred during retreiving network card detail from grid responsefile: %s", "The key does not exist")
+			err = fmt.Errorf("error occurred during retreiving network card detail from grid responsefile: %s", "The key does not exist")
 		}
 	}
 

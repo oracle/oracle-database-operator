@@ -9877,9 +9877,6 @@ spec:
                       type: string
                     timeStarted:
                       type: string
-                  required:
-                  - operationId
-                  - operationType
                   type: object
                 type: array
             required:
@@ -10808,6 +10805,12 @@ spec:
                           type: string
                       type: object
                     type: array
+                  onsLocalPort:
+                    format: int32
+                    type: integer
+                  onsTargetPort:
+                    format: int32
+                    type: integer
                   portMappings:
                     items:
                       properties:
@@ -11551,6 +11554,12 @@ spec:
                           type: string
                       type: object
                     type: array
+                  onsLocalPort:
+                    format: int32
+                    type: integer
+                  onsTargetPort:
+                    format: int32
+                    type: integer
                   portMappings:
                     items:
                       properties:
@@ -16687,7 +16696,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:basedb-operator-sa
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:restart-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

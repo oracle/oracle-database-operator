@@ -43,9 +43,10 @@ Deploy Oracle Restart Database YAML files using Kubernetes Cluster on your Oracl
 
 [1. Provisioning an Oracle Restart Database](./provisioning/provisioning_oracle_restart_db.md)  
 [2. Provisioning an Oracle Restart Database with NodePort Service](./provisioning/provisioning_oracle_restart_db_nodeport.md)  
-[3. Provisioning an Oracle Restart Database with RU Patch on FileSystem](./provisioning/provisioning_oracle_restart_db_rupatch.md)  
-[4. Provisioning an Oracle Restart Database with Custom Storage Class](./provisioning/provisioning_oracle_restart_storage_class.md)
-[4. Provisioning an Oracle Restart Database with RU Patch on Existing PVC](./provisioning/provisioning_oracle_restart_rupatch_pvc.md)
+[3. Provisioning an Oracle Restart Database with OnsPort Service](./provisioning/provisioning_oracle_restart_db_onsport.md)  
+[4. Provisioning an Oracle Restart Database with RU Patch on FileSystem](./provisioning/provisioning_oracle_restart_db_rupatch.md)  
+[5. Provisioning an Oracle Restart Database with Custom Storage Class](./provisioning/provisioning_oracle_restart_storage_class.md)
+[6. Provisioning an Oracle Restart Database with RU Patch on Existing PVC](./provisioning/provisioning_oracle_restart_rupatch_pvc.md)
 
 ## Connecting to Oracle Restart Database
 
