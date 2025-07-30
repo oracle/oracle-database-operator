@@ -32,6 +32,7 @@ const (
 	DefaultConfigVolumeString        = "config-volume"
 	DefaultLogFilename               = "alert.log"
 	DefaultLogVolumeString           = "log-volume"
+	DefaultLogDestination			 = "/log"
 	DefaultWalletVolumeString        = "creds"
 	DefaultOCIPrivateKeyVolumeString = "ocikey"
 	DefaultOCIConfigFingerprintKey   = "fingerprint"
@@ -39,7 +40,7 @@ const (
 	DefaultOCIConfigTenancyKey       = "tenancy"
 	DefaultOCIConfigUserKey          = "user"
 
-	DefaultExporterImage                 = "container-registry.oracle.com/database/observability-exporter:1.5.2"
+	DefaultExporterImage                 = "container-registry.oracle.com/database/observability-exporter:1.6.1"
 	DefaultServicePort                   = 9161
 	DefaultServiceTargetPort             = 9161
 	DefaultAppPort                       = 8080

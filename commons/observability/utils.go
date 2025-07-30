@@ -203,12 +203,18 @@ func GetExporterDeploymentVolumeMounts(a *api.DatabaseObserver) []corev1.VolumeM
 		})
 	}
 
-	// a.Spec.Log.Path path to mount for a custom log path, a volume is required
-	if rLogPath := a.Spec.Log.Path; rLogPath != "" {
-		vName := GetLogName(a)
+	// a.Spec.Log.Destination path to mount for a custom log path, a volume is required
+	if disabled := a.Spec.Log.Disable; !disabled {
+		vName := DefaultLogVolumeString
+
+		vDestination := a.Spec.Log.Destination
+		if vDestination == "" {
+			vDestination = DefaultLogDestination
+		}
+
 		volM = append(volM, corev1.VolumeMount{
 			Name:      vName,
-			MountPath: rLogPath,
+			MountPath: vDestination,
 		})
 	}
 
@@ -272,9 +278,9 @@ func GetExporterDeploymentVolumes(a *api.DatabaseObserver) []corev1.Volume {
 	}
 
 	// log-volume Volume
-	if rLogPath := a.Spec.Log.Path; rLogPath != "" {
+	if disabled := a.Spec.Log.Disable; !disabled {
 		vs := GetLogVolumeSource(a)
-		vName := GetLogName(a)
+		vName := DefaultLogVolumeString
 
 		vol = append(vol, corev1.Volume{
 			Name:         vName,
@@ -294,13 +300,6 @@ func GetExporterConfig(a *api.DatabaseObserver) string {
 	}
 
 	return configName
-}
-
-func GetLogName(a *api.DatabaseObserver) string {
-	if name := a.Spec.Log.Volume.Name; name != "" {
-		return name
-	}
-	return DefaultLogVolumeString
 }
 
 // GetLogVolumeSource function retrieves the source to help GetExporterDeploymentVolumes
@@ -355,8 +354,6 @@ func GetExporterEnvs(a *api.DatabaseObserver) []corev1.EnvVar {
 	rDBUserSKey := a.Spec.Database.DBUser.Key
 	rDBUserSName := a.Spec.Database.DBUser.SecretName
 	rOCIConfigCMName := a.Spec.OCIConfig.ConfigMapName
-	rLogPath := a.Spec.Log.Path
-	rLogFilename := a.Spec.Log.Filename
 	rCustomEnvs := a.Spec.Exporter.Deployment.ExporterEnvs
 
 	var env = make([]corev1.EnvVar, 0)
@@ -462,15 +459,20 @@ func GetExporterEnvs(a *api.DatabaseObserver) []corev1.EnvVar {
 	env = AddEnv(env, rCustomEnvs, EnvVarOracleHome, DefaultOracleHome)
 	env = AddEnv(env, rCustomEnvs, EnvVarTNSAdmin, DefaultOracleTNSAdmin)
 
-	// LOG_DESTINATION environment variable
-	if rLogPath != "" {
-		if rLogFilename == "" {
-			rLogFilename = DefaultLogFilename
+	// LOG_DESTINATION environment variable4
+	if disabled := a.Spec.Log.Disable; !disabled {
+		d := a.Spec.Log.Destination
+		if d == "" {
+			d = DefaultLogDestination
 		}
-		d := filepath.Join(rLogPath, rLogFilename)
-		env = AddEnv(env, rCustomEnvs, EnvVarDataSourceLogDestination, d)
-	}
 
+		f := a.Spec.Log.Filename
+		if f == "" {
+			f = DefaultLogFilename
+		}
+		ld := filepath.Join(d, f)
+		env = AddEnv(env, rCustomEnvs, EnvVarDataSourceLogDestination, ld)
+	}
 	return env
 }
 

@@ -1,44 +1,23 @@
 # example
-apiVersion: observability.oracle.com/v1alpha1
+apiVersion: observability.oracle.com/v4
 kind: DatabaseObserver
 metadata:
   name: obs-sample
 spec:
   database:
     dbUser:
-      key: "username"
       secret: db-secret
 
     dbPassword:
-      key: "password"
       secret: db-secret
 
     dbConnectionString:
-      key: "connection"
       secret: db-secret
 
     dbWallet:
       secret: instance-wallet
 
-  exporter:
-    image: "container-registry.oracle.com/database/observability-exporter:latest"
-    configuration:
-      configmap:
-        key: "config.toml"
-        configmapName: "devcm-oradevdb-config"
-
-    service:
-      port: 9161
-
   prometheus:
-    port: metrics
-    labels:
-      app: app-sample-label
-
-  replicas: 1
-
-  ociConfig:
-    configMapName: oci-cred
-    secretName: oci-privatekey
-
-
+    serviceMonitor:
+      labels:
+        release: prometheus

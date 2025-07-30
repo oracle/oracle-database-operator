@@ -61,11 +61,8 @@ spec:
         release: prometheus
 
   log:
+    destination: "/log"
     filename: "alert.log"
-    path: "/log"
-
-    volume:
-      name: log-volume
 
   replicas: 1
 

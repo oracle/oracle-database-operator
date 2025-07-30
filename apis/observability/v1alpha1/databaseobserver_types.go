@@ -62,13 +62,14 @@ type DatabaseObserverSpec struct {
 
 // LogConfig defines the configuration details relation to the logs of DatabaseObserver
 type LogConfig struct {
-	Path     string    `json:"path,omitempty"`
-	Filename string    `json:"filename,omitempty"`
-	Volume   LogVolume `json:"volume,omitempty"`
+	Disable 		bool 	  `json:"disable,omitempty"`
+	Destination     string    `json:"destination,omitempty"`
+	Filename 		string 	  `json:"filename,omitempty"`
+	Volume   		LogVolume `json:"volume,omitempty"`
 }
 
+
 type LogVolume struct {
-	Name                  string           `json:"name,omitempty"`
 	PersistentVolumeClaim LogVolumePVClaim `json:"persistentVolumeClaim,omitempty"`
 }
 

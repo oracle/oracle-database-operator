@@ -36,20 +36,27 @@ of the controller.
 ## Prerequisites
 The `DatabaseObserver` custom resource has the following prerequisites:
 
-1. Prometheus and its `servicemonitor` custom resource definition must be installed on the cluster.
+1. Installation of Prometheus `servicemonitor` custom resource definition (CRD) on the cluster.
 
 - The Observability controller creates multiple Kubernetes resources that include
   a Prometheus `servicemonitor`. For the controller
-  to create ServiceMonitors, the ServiceMonitor custom resource must exist.
+  to create ServiceMonitors, the ServiceMonitor custom resource must exist. For example, to install
+  Prometheus CRDs using the [Kube Prometheus Stack helm chart](https://prometheus-community.github.io/helm-charts/), run the following helm commands:
+    ```bash
+    helm repo add prometheus https://prometheus-community.github.io/helm-charts
+    helm repo update
+    helm upgrade --install prometheus prometheus/kube-prometheus-stack -n prometheus --create-namespace
+    ```
 
-2. A preexisting Oracle Database and the proper database grants and privileges.
+2. A pre-existing Oracle Database and the proper database grants and privileges.
+
 
 - The controller exports metrics through SQL queries that the user can control 
    and specify through a _toml_ file. The necessary access privileges to the tables used in the queries
    are not provided and applied automatically.
 
 ## The DatabaseObserver Custom Resource
-The Oracle Database Operator (__v1.2.0__ or later) includes the Oracle Database Observability controller, which automates
+The Oracle Database Operator (__v2.0.0__ or later) includes the Oracle Database Observability controller, which automates
 the deployment and setting up of the Oracle Database exporter and the related resources to make Oracle Databases observable.
 
 In the example YAML file found in 
@@ -84,9 +91,9 @@ the databaseObserver custom resource provides the following configurable propert
 | `spec.prometheus.serviceMonitor.labels`                | map    | -                                                                   | Yes         | _release: prometheus_                                                 |
 | `spec.prometheus.serviceMonitor.namespaceSelector`     | -      | -                                                                   | Yes         | -                                                                     |
 | `spec.prometheus.serviceMonitor.endpoints`             | array  | -                                                                   | Optional    | -                                                                     |
-| `spec.log.filename`                                    | string | alert.log                                                           | Optional    | _alert.log_                                                           |
-| `spec.log.path`                                        | string | /log                                                                | Optional    | _/log_                                                                |
-| `spec.log.volume.name`                                 | string | log-volume                                                          | Optional    | _my-persistent-volume_                                                |
+| `spec.log.destination`                                 | string | alert.log                                                           | Optional    | _alert.log_                                                           |
+| `spec.log.filename`                                    | string | /log                                                                | Optional    | _/log_                                                                |
+| `spec.log.disable`                                     | bool   | -                                                                   | Optional    | true                                                                  |
 | `spec.log.volume.persistentVolumeClaim.claimName`      | string | -                                                                   | Optional    | _my-pvc_                                                              |
 | `spec.replicas`                                        | number | 1                                                                   | Optional    | _1_                                                                   |
 | `spec.inheritLabels`                                   | array  | -                                                                   | Optional    | _- environment: dev_<br/>- app.kubernetes.io/name: observer           |
@@ -115,9 +122,9 @@ The `databaseObserver` Resource provides the remaining multiple fields that are 
 * `spec.prometheus.serviceMonitor.namespaceSelector` - ServiceMonitor namespace selector
 * `spec.sidecars` - List of containers to run as a sidecar container with the observability exporter container image
 * `spec.sidecarVolumes` - Volumes of any sidecar containers
-* `spec.log.path` - Custom path to create
+* `spec.log.disable` - Disables Log volume creation
 * `spec.log.filename` - Custom filename for the log file
-* `spec.log.volume.name` - Custom name for the log volume
+* `spec.log.destination` - Custom destination for the log volume
 * `spec.log.volume.persistentVolumeClaim.claimName` - A volume in which to place the log to be shared by the containers. If not specified, an EmptyDir is used by default.
 * `spec.configuration.configMap.key` - Configuration filename inside the container and the configmap
 * `spec.configuration.configMap.name` - Name of the `configMap` that holds the custom metrics configuration
@@ -220,7 +227,7 @@ To obtain a quick status, use the following command as an example:
 ```sh
 $ kubectl get databaseobserver obs-sample
 NAME         EXPORTERCONFIG   STATUS   VERSION
-obs-sample   DEFAULT          READY    1.5.1
+obs-sample   DEFAULT          READY    1.6.0
 ```
 
 
@@ -237,7 +244,7 @@ deployment of the `databaseObserver` resource object should display `READY` as t
 ### Patch Resource
 The Observability controller currently supports updates for most of the fields in the manifest. The following is an example of patching the `databaseObserver` resource:
 ```bash
-kubectl --type=merge -p '{"spec":{"exporter":{"image":"container-registry.oracle.com/database/observability-exporter:1.5.0"}}}' patch databaseobserver obs-sample
+kubectl --type=merge -p '{"spec":{"exporter":{"image":"container-registry.oracle.com/database/observability-exporter:1.6.0"}}}' patch databaseobserver obs-sample
 ```
 
 ### Delete Resource
@@ -328,13 +335,13 @@ You can find an example in the `samples` directory, which deploys a Promtail sid
 
 ### Custom Log Location with PersistentVolumes
 
-The fields `spec.log.filename` and `spec.log.path` enable you to configure a custom location and filename for the log.
+The fields `spec.log.filename` and `spec.log.destination` enable you to configure a custom location and filename for the log.
 Using a custom location enables you to control where to place the logfile, such as a `persistentVolume`.
 
 ```yaml
   log:
     filename: "alert.log"
-    path: "/log"
+    destination: "/log"
 ```
 
 To configure the `databaseObserver` resource to put the log file in a `persistentVolume`, you can set the following fields 
@@ -349,7 +356,6 @@ If `spec.log.volume.persistentVolumeClaim.claimName` is not specified, then an `
 ```yaml
   log:
     volume:
-      name: my-log-volume
       persistentVolumeClaim:
         claimName: "my-pvc"
 ```
@@ -495,7 +501,7 @@ container image.
 spec:
   exporter:
     deployment:
-      image: "container-registry.oracle.com/database/observability-exporter:1.5.3"
+      image: "container-registry.oracle.com/database/observability-exporter:1.6.0"
 ```
 
 ### Custom Environment Variables, Arguments and Commands
@@ -598,13 +604,6 @@ Follow these steps to check the logs.
     ```sh
     kubectl logs deployment.apps/oracle-database-operator-controller-manager -n oracle-database-operator-system
     ```
-
-## Known Potential Issues
-
-| Issue                                                                                                                           | Example error                                                         | Potential Workaround                                                                                                                                      |
-|---------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Pod may encounter error Permission denied when creating log file. Pod cannot access file system due to insufficient permissions | ```level=error msg="Failed to create the log file: /log/alert.log"``` | Configure securityContext in the spec, add your group ID to the `supplementalgroups` inside `spec.exporter.deployment.podTemplate.securityContext` field. |    
-
 
 ## Resources
 - [GitHub - Unified Observability for Oracle Database Project](https://github.com/oracle/oracle-db-appdev-monitoring)
