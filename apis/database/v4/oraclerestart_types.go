@@ -138,21 +138,22 @@ type InitParams struct {
 }
 
 type OracleRestartInstDetailSpec struct {
-	Name           string                       `json:"name"`
-	HostSwLocation string                       `json:"hostSwLocation,omitempty"`
-	WorkerNode     []string                     `json:"workerNode,omitempty"`
-	EnvVars        []corev1.EnvVar              `json:"envVars,omitempty"`                                         //Optional Env variables for Shards
-	Resources      *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requiremen
-	Label          string                       `json:"label,omitempty"`
-	IsDelete       string                       `json:"isDelete,omitempty"`
-	IsForceDelete  string                       `json:"isForceDelete,omitempty"`
-	IsKeepPVC      string                       `json:"isKeepPVC,omitempty"`
-	PvcName        map[string]string            `json:"pvcName,omitempty"`
-	NodePortSvc    []OracleRestartNodePortSvc   `json:"nodePortSvc,omitempty"`  // Port mappings for the service that is created. The service is created if
-	PortMappings   []OracleRestartPortMapping   `json:"portMappings,omitempty"` // Port mappings for the service that is created. The service is created if there is at least
-	EnvFile        string                       `json:"envFile,omitempty"`
-	OnsTargetPort  *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
-	OnsLocalPort   *int32                       `json:"onsLocalPort,omitempty"`  // Port that will be exposed on the service.
+	Name                 string                       `json:"name"`
+	HostSwLocation       string                       `json:"hostSwLocation,omitempty"`
+	SwLocStorageSizeInGb int                          `json:"swLocStorageSizeInGb,omitempty"`
+	WorkerNode           []string                     `json:"workerNode,omitempty"`
+	EnvVars              []corev1.EnvVar              `json:"envVars,omitempty"`                                         //Optional Env variables for Shards
+	Resources            *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requiremen
+	Label                string                       `json:"label,omitempty"`
+	IsDelete             string                       `json:"isDelete,omitempty"`
+	IsForceDelete        string                       `json:"isForceDelete,omitempty"`
+	IsKeepPVC            string                       `json:"isKeepPVC,omitempty"`
+	PvcName              map[string]string            `json:"pvcName,omitempty"`
+	NodePortSvc          []OracleRestartNodePortSvc   `json:"nodePortSvc,omitempty"`  // Port mappings for the service that is created. The service is created if
+	PortMappings         []OracleRestartPortMapping   `json:"portMappings,omitempty"` // Port mappings for the service that is created. The service is created if there is at least
+	EnvFile              string                       `json:"envFile,omitempty"`
+	OnsTargetPort        *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
+	OnsLocalPort         *int32                       `json:"onsLocalPort,omitempty"`  // Port that will be exposed on the service.
 }
 
 // Responsefile Name
