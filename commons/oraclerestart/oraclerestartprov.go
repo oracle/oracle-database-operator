@@ -563,6 +563,7 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 	} else {
 		fmt.Println("No Location is passed for the software storage in" + OracleRestartSpex.Name)
 	}
+
 	var mountLoc string
 	if filepath.IsAbs(instance.Spec.ConfigParams.HostSwStageLocation) {
 		mountLoc = instance.Spec.ConfigParams.HostSwStageLocation

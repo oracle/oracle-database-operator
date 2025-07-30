@@ -349,6 +349,8 @@ spec:
                           x-kubernetes-int-or-string: true
                         type: object
                     type: object
+                  swLocStorageSizeInGb:
+                    type: integer
                   workerNode:
                     items:
                       type: string
@@ -1098,6 +1100,8 @@ spec:
                           x-kubernetes-int-or-string: true
                         type: object
                     type: object
+                  swLocStorageSizeInGb:
+                    type: integer
                   workerNode:
                     items:
                       type: string

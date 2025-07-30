@@ -43,6 +43,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 
 	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
@@ -77,6 +78,10 @@ func buildEnvVarsSpec(envVariables []corev1.EnvVar) []corev1.EnvVar {
 	**/
 
 	return result
+}
+
+func checkAbsPath(location string) bool {
+	return filepath.IsAbs(location)
 }
 
 // FUnction to build the svc definition for RAC

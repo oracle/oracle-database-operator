@@ -10864,6 +10864,8 @@ spec:
                           x-kubernetes-int-or-string: true
                         type: object
                     type: object
+                  swLocStorageSizeInGb:
+                    type: integer
                   workerNode:
                     items:
                       type: string
@@ -11613,6 +11615,8 @@ spec:
                           x-kubernetes-int-or-string: true
                         type: object
                     type: object
+                  swLocStorageSizeInGb:
+                    type: integer
                   workerNode:
                     items:
                       type: string
@@ -16696,7 +16700,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:restart-operator-sa
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-mltp1
         imagePullPolicy: Always
         name: manager
         ports:
