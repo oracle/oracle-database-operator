@@ -1954,24 +1954,21 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	}
 
 	if instance.Spec.ConfigParams.HostSwStageLocation != "" {
-		if swStagePath, ok := instance.Spec.InstDetails.PvcName[instance.Spec.ConfigParams.HostSwStageLocation]; ok {
-			data = append(data, "STAGING_SOFTWARE_LOC="+swStagePath)
-		} else {
-			data = append(data, "STAGING_SOFTWARE_LOC="+utils.OraSwStageLocation)
-		}
+		data = append(data, "STAGING_SOFTWARE_LOC="+instance.Spec.ConfigParams.HostSwStageLocation)
+	} else {
+		data = append(data, "STAGING_SOFTWARE_LOC="+utils.OraSwStageLocation)
 	}
 
 	if instance.Spec.ConfigParams.RuPatchLocation != "" {
-		if ruPatchPath, ok := instance.Spec.InstDetails.PvcName[instance.Spec.ConfigParams.RuPatchLocation]; ok {
-			data = append(data, "APPLY_RU_LOCATION="+ruPatchPath)
-		} else {
-			data = append(data, "APPLY_RU_LOCATION="+utils.OraRuPatchStageLocation)
-		}
+		data = append(data, "APPLY_RU_LOCATION="+instance.Spec.ConfigParams.RuPatchLocation)
+	} else {
+		data = append(data, "APPLY_RU_LOCATION="+utils.OraRuPatchStageLocation)
 	}
 
 	if instance.Spec.ConfigParams.RuFolderName != "" {
 		data = append(data, "RU_FOLDER_NAME="+instance.Spec.ConfigParams.RuFolderName)
 	}
+
 	if instance.Spec.ConfigParams.OPatchLocation != "" {
 		data = append(data, "OPATCH_ZIP_FILE="+utils.OraOPatchStageLocation+"/"+instance.Spec.ConfigParams.OPatchSwZipFile)
 	}

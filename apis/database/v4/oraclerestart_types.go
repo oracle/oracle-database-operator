@@ -135,6 +135,8 @@ type InitParams struct {
 	RuPatchLocation         string       `json:"ruPatchLocation,omitempty"`
 	RuFolderName            string       `json:"ruFolderName,omitempty"`
 	OPatchLocation          string       `json:"oPatchLocation,omitempty"`
+	SwStagePvc              string       `json:"swStagePvc,omitempty"`
+	SwStagePvcMountLocation string       `json:"swStagePvcMountLocation,omitempty"`
 }
 
 type OracleRestartInstDetailSpec struct {
