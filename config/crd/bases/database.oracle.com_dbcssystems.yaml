@@ -882,9 +882,6 @@ spec:
                       type: string
                     timeStarted:
                       type: string
-                  required:
-                  - operationId
-                  - operationType
                   type: object
                 type: array
             required:

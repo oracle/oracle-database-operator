@@ -100,14 +100,14 @@ func getDBServiceStatus(dbhome string, dbname string, svcname string) []string {
 	return oraRacVersionCmd
 }
 
-func modifyDBServiceStatus(dbhome string, dbname string, svcname string) []string {
-	oraDBUser := getOraDbUser()
+// func modifyDBServiceStatus(dbhome string, dbname string, svcname string) []string {
+// 	oraDBUser := getOraDbUser()
 
-	//oraGiUser := getOraGiUser()
-	svcModifyCmd := "su " + oraDBUser + " -c \"" + oraDBUser + " ;srvctl modify service -s " + svcname + " -d " + dbname + " " + dbhome + "\""
-	var oraModifySvcCmd = []string{svcModifyCmd}
-	return oraModifySvcCmd
-}
+// 	//oraGiUser := getOraGiUser()
+// 	svcModifyCmd := "su " + oraDBUser + " -c \"" + oraDBUser + " ;srvctl modify service -s " + svcname + " -d " + dbname + " " + dbhome + "\""
+// 	var oraModifySvcCmd = []string{svcModifyCmd}
+// 	return oraModifySvcCmd
+// }
 
 func getAsmDiskgroupCmd() []string {
 	oraScriptMount1 := getOraScriptMount()

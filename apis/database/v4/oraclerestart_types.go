@@ -151,6 +151,8 @@ type OracleRestartInstDetailSpec struct {
 	NodePortSvc    []OracleRestartNodePortSvc   `json:"nodePortSvc,omitempty"`  // Port mappings for the service that is created. The service is created if
 	PortMappings   []OracleRestartPortMapping   `json:"portMappings,omitempty"` // Port mappings for the service that is created. The service is created if there is at least
 	EnvFile        string                       `json:"envFile,omitempty"`
+	OnsTargetPort  *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
+	OnsLocalPort   *int32                       `json:"onsLocalPort,omitempty"`  // Port that will be exposed on the service.
 }
 
 // Responsefile Name

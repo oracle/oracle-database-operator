@@ -290,6 +290,12 @@ spec:
                           type: string
                       type: object
                     type: array
+                  onsLocalPort:
+                    format: int32
+                    type: integer
+                  onsTargetPort:
+                    format: int32
+                    type: integer
                   portMappings:
                     items:
                       properties:
@@ -1033,6 +1039,12 @@ spec:
                           type: string
                       type: object
                     type: array
+                  onsLocalPort:
+                    format: int32
+                    type: integer
+                  onsTargetPort:
+                    format: int32
+                    type: integer
                   portMappings:
                     items:
                       properties:

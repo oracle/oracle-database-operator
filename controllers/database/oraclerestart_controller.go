@@ -113,6 +113,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// var svcType string
 	var nilErr error = nil
 	var oracleRestartInst oraclerestartdb.OracleRestartInstDetailSpec
+
 	resultNq := ctrl.Result{Requeue: false}
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}
 
@@ -236,7 +237,13 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return result, err
 		}
 	}
+	var svcType string
 
+	if oracleRestart.Spec.ExternalSvcType != nil {
+		svcType = *oracleRestart.Spec.ExternalSvcType
+	} else {
+		svcType = "nodeport"
+	}
 	result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, "local"))
 	if err != nil {
 		result = resultNq
@@ -245,13 +252,22 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if oracleRestartInst.NodePortSvc != nil {
 		for index := range oracleRestartInst.NodePortSvc {
-			result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, int32(index), oracleRestart.Spec.InstDetails, "nodeport", "nodeport"))
+			result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, int32(index), oracleRestart.Spec.InstDetails, svcType, "nodeport"))
 			if err != nil {
 				result = resultNq
 				return result, err
 			}
 
 		}
+	}
+
+	if oracleRestartInst.OnsTargetPort != nil {
+		result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, svcType, "onssvc"))
+		if err != nil {
+			result = resultNq
+			return result, err
+		}
+
 	}
 
 	r.ensureAsmStorageStatus(oracleRestart)
@@ -459,6 +475,29 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return result, err
 	}
 
+	if oracleRestartInst.OnsTargetPort != nil {
+
+		OraRestartSpex := oracleRestart.Spec.InstDetails
+		orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
+		if err != nil {
+			//msg := "Unable to find Oracle Restart statefulset " + oraclerestartcommon.GetFmtStr(OraRestartSpex.Name) + "."
+			r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
+			return ctrl.Result{}, err
+		}
+
+		podList, err := oraclerestartcommon.GetPodList(orestartSfSet.Name, oracleRestart, r.Client, oracleRestart.Spec.InstDetails)
+		if err != nil {
+			r.Log.Error(err, "Failed to list pods")
+			return ctrl.Result{}, err
+		}
+		err = r.updateONS(ctx, podList, oracleRestart, "start")
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		r.Log.Info("ONS Started")
+
+	}
+
 	completed = true
 	// // Update the current spec after successful reconciliation
 	if err = r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
@@ -576,7 +615,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 	if err1 == nil {
 		_ = r.updateoraclerestartdbTopologyStatus(oracleRestart, ctx, req, podNames, nodeDetails)
 	} else {
-		r.Log.Info("Error during RAC cluster update", "err1", err1)
+		r.Log.Info("Error during Oracle Restart update", "err1", err1)
 	}
 
 	errMsg := func() string {
@@ -1562,7 +1601,7 @@ func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oracl
 
 	orestartSfSet, err = oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
 	if err != nil {
-		//msg := "Unable to find Rac statefulset " + oraclerestartcommon.GetFmtStr(OraRestartSpex.Name) + "."
+		//msg := "Unable to find Oracle Restart statefulset " + oraclerestartcommon.GetFmtStr(OraRestartSpex.Name) + "."
 		//oraclerestartcommon.LogMessages("INFO", msg, nil, instance, r.Log)
 		r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
 		return orestartSfSet, orestartPod, err
@@ -2405,43 +2444,6 @@ func (r *OracleRestartReconciler) addDisks(ctx context.Context, podList *corev1.
 	return nil
 }
 
-// // Function to delete disks
-// func (r *OracleRestartReconciler) deleteDisks(ctx context.Context, podList *corev1.PodList, instance *oraclerestartdb.OracleRestart, deviceListName string, deviceList []string) error {
-// 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-// 	diskGroupName := getDiskGroupName(deviceListName, instance)
-// 	// Remove '+' prefix if present
-// 	if strings.HasPrefix(diskGroupName, "+") {
-// 		diskGroupName = strings.TrimPrefix(diskGroupName, "+")
-// 	}
-
-// 	for _, pod := range podList.Items {
-// 		podName := pod.Name
-
-// 		// Check if the disk group exists before trying to delete disks
-// 		exists, err := r.diskGroupExists(podName, diskGroupName, r.kubeClient, r.kubeConfig, instance, reqLogger)
-// 		if err != nil {
-// 			reqLogger.Error(err, "Failed to check if disk group exists", "Pod.Name", podName, "DiskGroup", diskGroupName)
-// 			return err
-// 		}
-// 		if !exists {
-// 			err = fmt.Errorf("disk group %s does not exist", diskGroupName)
-// 			reqLogger.Error(err, "Disk group does not exist", "Pod.Name", podName, "DiskGroup", diskGroupName)
-// 			return err
-// 		}
-
-// 		for _, disk := range deviceList {
-// 			cmd := fmt.Sprintf("python3 /opt/scripts/startup/scripts/main.py --updateasmdevices=\"diskname=%s;diskgroup=%s;processtype=deletion\"", disk, diskGroupName)
-// 			reqLogger.Info("Executing command to delete disk", "Pod.Name", podName, "Command", cmd)
-// 			stdout, stderr, err := oraclerestartcommon.ExecCommand(podName, []string{"bash", "-c", cmd}, r.kubeClient, r.kubeConfig, instance, reqLogger)
-// 			if err != nil {
-// 				reqLogger.Error(err, "Failed to execute command", "Pod.Name", podName, "Command", cmd, "Stdout", stdout, "Stderr", stderr)
-// 				return err
-// 			}
-// 		}
-// 	}
-// 	return nil
-// }
-
 // Function to check DaemonSet status with retry, timeout, and log analysis
 func checkDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracleRestart *oraclerestartdb.OracleRestart) (bool, error) {
 	timeout := time.After(2 * time.Minute)
@@ -2772,9 +2774,6 @@ waitLoop:
 
 	if isLast && asmAutoUpdate {
 		// last iteration
-		// update status column with configParams
-		// Addition fo Disk Execution
-		// Check each new disk against CrsAsmDeviceList, DbAsmDeviceList, RecoAsmDeviceList, RedoAsmDeviceList
 		deviceDg := ""
 		for _, disk := range addedAsmDisks {
 			if isDiskInDeviceList(disk, oracleRestart.Spec.ConfigParams.CrsAsmDeviceList) {
@@ -3370,5 +3369,31 @@ func (r *OracleRestartReconciler) SetCurrentSpec(ctx context.Context, oracleRest
 	}
 
 	r.Log.Info("RAC Object annotations updated with current spec annotation")
+	return nil
+}
+
+func (r *OracleRestartReconciler) updateONS(ctx context.Context, podList *corev1.PodList, instance *oraclerestartdb.OracleRestart, onsState string) error {
+	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
+
+	for _, pod := range podList.Items {
+		podName := pod.Name
+
+		cmd := fmt.Sprintf("python3 /opt/scripts/startup/scripts/main.py --ons=%s", onsState)
+		reqLogger.Info("Executing command to update ONS", "Pod.Name", podName, "Command", cmd)
+
+		stdout, stderr, err := oraclerestartcommon.ExecCommand(
+			podName,
+			[]string{"bash", "-c", cmd},
+			r.kubeClient,
+			r.kubeConfig,
+			instance,
+			reqLogger,
+		)
+		if err != nil {
+			instance.Spec.IsFailed = true
+			reqLogger.Error(err, "Failed to execute command", "Pod.Name", podName, "Command", cmd, "Stdout", stdout, "Stderr", stderr)
+			return err
+		}
+	}
 	return nil
 }

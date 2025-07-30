@@ -696,6 +696,8 @@ func BuildExternalServiceDefForOracleRestart(instance *oraclerestart.OracleResta
 		ObjectMeta: buildSvcObjectMetaForOracleRestart(instance, index, OracleRestartSpex, opType),
 		Spec:       corev1.ServiceSpec{},
 	}
+	var exSvcPorts oraclerestart.OracleRestartPortMapping
+	var exSvc oraclerestart.OracleRestartNodePortSvc
 
 	if opType == "nodeport" {
 		// service.Spec.ClusterIP = string(corev1.ServiceTypeNodePort)
@@ -706,6 +708,20 @@ func BuildExternalServiceDefForOracleRestart(instance *oraclerestart.OracleResta
 		} else {
 			service.Spec.Selector = getSvcLabelsForOracleRestart(0, OracleRestartSpex)
 		}
+	}
+	if opType == "onssvc" {
+		//exSvc.SvcName = OracleRestartSpex.Name + "-0-ons"
+		exSvc.SvcType = svctype
+		exSvcPorts.NodePort = *OracleRestartSpex.OnsTargetPort
+		if OracleRestartSpex.OnsLocalPort != nil {
+			exSvcPorts.Port = *OracleRestartSpex.OnsLocalPort
+		} else {
+			exSvcPorts.Port = 6200
+		}
+
+		exSvc.PortMappings = append(exSvc.PortMappings, exSvcPorts)
+		service.Spec.Selector = getSvcLabelsForOracleRestart(0, OracleRestartSpex)
+		npSvc = exSvc
 	}
 
 	service.Spec.Ports = buildOracleRestartSvcPortsDef(npSvc)
@@ -957,6 +973,10 @@ func flattenDisksBySize(oraclerestartSpec *oraclerestart.OracleRestartSpec) []st
 }
 
 func CreateServiceAccountIfNotExists(instance *oraclerestart.OracleRestart, kClient client.Client) error {
+	if instance.Spec.SrvAccountName == "" {
+		return nil
+	}
+
 	ServiceAccountName := instance.Spec.SrvAccountName
 	if ServiceAccountName == "" {
 		ServiceAccountName = "default"
