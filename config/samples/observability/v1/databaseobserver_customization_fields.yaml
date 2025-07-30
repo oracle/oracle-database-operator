@@ -18,7 +18,7 @@ spec:
       secret: db-secret
 
     dbWallet:
-      secret: instance-wallets
+      secret: instance-wallet
 
   exporter:
     deployment:
