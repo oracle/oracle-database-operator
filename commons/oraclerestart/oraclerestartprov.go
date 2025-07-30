@@ -1058,7 +1058,7 @@ func SwVolumeClaimTemplatesForOracleRestart(instance *oraclerestart.OracleRestar
 
 func ASMVolumeClaimTemplatesForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.PersistentVolumeClaim {
 	var claims []corev1.PersistentVolumeClaim
-
+	mode := corev1.PersistentVolumeBlock
 	// If user-provided PVC name exists, skip volume claim template creation
 	if len(OracleRestartSpex.PvcName) != 0 {
 		return claims
@@ -1079,6 +1079,7 @@ func ASMVolumeClaimTemplatesForOracleRestart(instance *oraclerestart.OracleResta
 					AccessModes: []corev1.PersistentVolumeAccessMode{
 						corev1.ReadWriteOnce,
 					},
+					VolumeMode:       &mode,
 					StorageClassName: &instance.Spec.StorageClass,
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
