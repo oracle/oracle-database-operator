@@ -157,6 +157,10 @@ spec:
                     type: string
                   swMountLocation:
                     type: string
+                  swStagePvc:
+                    type: string
+                  swStagePvcMountLocation:
+                    type: string
                 type: object
               dbSecret:
                 properties:
@@ -903,6 +907,10 @@ spec:
                   stagingSoftwareLocation:
                     type: string
                   swMountLocation:
+                    type: string
+                  swStagePvc:
+                    type: string
+                  swStagePvcMountLocation:
                     type: string
                 type: object
               connectString:
