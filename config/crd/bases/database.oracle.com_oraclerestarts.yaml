@@ -47,6 +47,8 @@ spec:
             properties:
               asmStorageDetails:
                 properties:
+                  asmStorageClass:
+                    type: string
                   autoUpdate:
                     type: string
                   disksBySize:
@@ -355,6 +357,8 @@ spec:
                     type: object
                   swLocStorageSizeInGb:
                     type: integer
+                  swStorageClass:
+                    type: string
                   workerNode:
                     items:
                       type: string
@@ -1110,6 +1114,8 @@ spec:
                     type: object
                   swLocStorageSizeInGb:
                     type: integer
+                  swStorageClass:
+                    type: string
                   workerNode:
                     items:
                       type: string
