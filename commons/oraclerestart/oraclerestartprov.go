@@ -338,16 +338,14 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 			})
 		}
 		if instance.Spec.ConfigParams.RuPatchLocation != "" {
-			if len(instance.Spec.ConfigParams.RuPatchLocation) == 0 {
-				result = append(result, corev1.Volume{
-					Name: OracleRestartSpex.Name + "-oradata-rupatch-vol",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: instance.Spec.ConfigParams.RuPatchLocation,
-						},
+			result = append(result, corev1.Volume{
+				Name: OracleRestartSpex.Name + "-oradata-rupatch-vol",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: instance.Spec.ConfigParams.RuPatchLocation,
 					},
-				})
-			}
+				},
+			})
 		}
 		if instance.Spec.ConfigParams.OPatchLocation != "" {
 			result = append(result, corev1.Volume{
