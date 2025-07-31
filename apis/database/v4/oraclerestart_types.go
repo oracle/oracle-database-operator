@@ -58,7 +58,6 @@ type OracleRestartSpec struct {
 	AsmStorageDetails  *AsmDiskDetails                  `json:"asmStorageDetails,omitempty"`
 	NfsStorageDetails  *corev1.NFSVolumeSource          `json:"nfsStorageDetails,omitempty"`
 	UseNfsforSwStorage string                           `json:"useNfsforSwStorage,omitempty"`
-	StorageClass       string                           `json:"storageClass,omitempty"`
 	StorageSizeInGB    int                              `json:"storageSizeInGB,omitempty"`
 	Image              string                           `json:"image,omitempty"`
 	ImagePullSecret    string                           `json:"imagePullSecret,omitempty"`
@@ -79,12 +78,12 @@ type OracleRestartSpec struct {
 	IsFailed           bool                             `json:"isFailed,omitempty"`
 	IsManual           bool                             `json:"isManual,omitempty"`
 	SrvAccountName     string                           `json:"serviceAccountName,omitempty"`
+	StorageClass       string                           `json:"storageClass,omitempty"`
 }
 
 type AsmDiskDetails struct {
-	DisksBySize     []DiskBySize `json:"disksBySize,omitempty"`
-	AutoUpdate      string       `json:"autoUpdate,omitempty"`
-	AsmStorageClass string       `json:"asmStorageClass,omitempty"`
+	DisksBySize []DiskBySize `json:"disksBySize,omitempty"`
+	AutoUpdate  string       `json:"autoUpdate,omitempty"`
 }
 
 // DiskBySize represents a list of disks grouped by size
@@ -157,7 +156,6 @@ type OracleRestartInstDetailSpec struct {
 	EnvFile              string                       `json:"envFile,omitempty"`
 	OnsTargetPort        *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
 	OnsLocalPort         *int32                       `json:"onsLocalPort,omitempty"`  // Port that will be exposed on the service.
-	SwStorageClass       string                       `json:"swStorageClass,omitempty"`
 }
 
 // Responsefile Name

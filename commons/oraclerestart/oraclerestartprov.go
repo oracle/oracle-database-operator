@@ -139,11 +139,11 @@ func buildStatefulSpecForOracleRestart(
 		},
 	}
 	// Add volume claim templates if a storage class is specified
-	if len(instance.Spec.AsmStorageDetails.AsmStorageClass) != 0 && !asmPvcsExist(instance, kClient) {
+	if len(instance.Spec.StorageClass) != 0 && !asmPvcsExist(instance, kClient) {
 		sfsetspec.VolumeClaimTemplates = ASMVolumeClaimTemplatesForOracleRestart(instance, OracleRestartSpex)
 	}
 
-	if len(instance.Spec.InstDetails.SwStorageClass) != 0 && len(instance.Spec.InstDetails.HostSwLocation) == 0 {
+	if len(instance.Spec.StorageClass) != 0 && len(instance.Spec.InstDetails.HostSwLocation) == 0 {
 		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, SwVolumeClaimTemplatesForOracleRestart(instance, OracleRestartSpex))
 	}
 	// Add annotations to the Pod template
@@ -314,7 +314,7 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 	if len(OracleRestartSpex.HostSwLocation) != 0 {
 		result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-oradata-sw-vol", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: OracleRestartSpex.HostSwLocation}}})
 	} else {
-		if instance.Spec.InstDetails.SwStorageClass != "" {
+		if instance.Spec.StorageClass != "" {
 			result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-oradata-sw-vol", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OracleRestartSpex.Name + "-oradata-sw-vol-pvc-" + OracleRestartSpex.Name + "-0"}}})
 		}
 	}
@@ -551,7 +551,7 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 	}
 	if len(OracleRestartSpex.HostSwLocation) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-oradata-sw-vol", MountPath: instance.Spec.ConfigParams.SwMountLocation})
-	} else if len(instance.Spec.InstDetails.SwStorageClass) != 0 {
+	} else if len(instance.Spec.StorageClass) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-oradata-sw-vol", MountPath: instance.Spec.ConfigParams.SwMountLocation})
 	} else {
 		fmt.Println("No Location is passed for the software storage in" + OracleRestartSpex.Name)
@@ -621,11 +621,12 @@ func VolumePVCForASM(instance *oraclerestart.OracleRestart, index int, diskName 
 	}
 
 	// Check if a StorageClass is defined and set it
-	if len(instance.Spec.AsmStorageDetails.AsmStorageClass) != 0 {
-		asmPvc.Spec.StorageClassName = &instance.Spec.AsmStorageDetails.AsmStorageClass
+	if len(instance.Spec.StorageClass) != 0 {
+		asmPvc.Spec.StorageClassName = &instance.Spec.StorageClass
 	} else {
 		// If no StorageClass, use the LabelSelector based on disk size
 		asmPvc.Spec.Selector = &metav1.LabelSelector{MatchLabels: buildLabelsForAsmPv(instance, string(diskName), index)}
+		asmPvc.Spec.StorageClassName = nil
 	}
 
 	return asmPvc
@@ -650,17 +651,16 @@ func VolumePVForASM(instance *oraclerestart.OracleRestart, index int, diskName s
 		},
 	}
 
-	/*
-		if len(instance.Spec.StorageClass) != 0 {
-			asmPvc.Spec.StorageClassName = instance.Spec.StorageClass
-			asmPvc.Spec.NodeAffinity = getAsmNodeAffinity(instance, index, asmStorage)
-			asmPvc.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: diskName}}
+	if len(instance.Spec.StorageClass) != 0 {
+		asmPvc.Spec.StorageClassName = instance.Spec.StorageClass
+		asmPvc.Spec.NodeAffinity = getAsmNodeAffinity(instance, index, asmStorage)
+		asmPvc.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: diskName}}
 
-		} else { */
+	} else {
 
-	asmPvc.Spec.NodeAffinity = getAsmNodeAffinity(instance, index, asmStorage)
-	asmPvc.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: diskName}}
-
+		asmPvc.Spec.NodeAffinity = getAsmNodeAffinity(instance, index, asmStorage)
+		asmPvc.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: diskName}}
+	}
 	return asmPvc
 }
 
@@ -1014,7 +1014,7 @@ func CreateServiceAccountIfNotExists(instance *oraclerestart.OracleRestart, kCli
 }
 
 func IsStaticProvisioning(k8sClient client.Client, instance *oraclerestart.OracleRestart) bool {
-	if instance.Spec.InstDetails.SwStorageClass != "" {
+	if instance.Spec.StorageClass != "" {
 		return false
 	}
 
@@ -1047,7 +1047,7 @@ func SwVolumeClaimTemplatesForOracleRestart(instance *oraclerestart.OracleRestar
 			AccessModes: []corev1.PersistentVolumeAccessMode{
 				corev1.ReadWriteOnce,
 			},
-			StorageClassName: &instance.Spec.InstDetails.SwStorageClass,
+			StorageClassName: &instance.Spec.StorageClass,
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", OracleRestartSpex.SwLocStorageSizeInGb)),
@@ -1081,7 +1081,7 @@ func ASMVolumeClaimTemplatesForOracleRestart(instance *oraclerestart.OracleResta
 						corev1.ReadWriteOnce,
 					},
 					VolumeMode:       &mode,
-					StorageClassName: &instance.Spec.AsmStorageDetails.AsmStorageClass,
+					StorageClassName: &instance.Spec.StorageClass,
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", diskBySize.StorageSizeInGb)),

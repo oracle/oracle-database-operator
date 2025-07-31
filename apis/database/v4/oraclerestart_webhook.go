@@ -433,7 +433,7 @@ func (r *OracleRestart) validateGeneric() field.ErrorList {
 					"Name must contain only alphanumeric characters"))
 		}
 
-		if r.Spec.InstDetails.HostSwLocation == "" && r.Spec.InstDetails.SwStorageClass == "" {
+		if r.Spec.InstDetails.HostSwLocation == "" && r.Spec.StorageClass == "" {
 			validationErrs = append(validationErrs,
 				field.Invalid(field.NewPath("spec").Child("InstDetails").Child("HostSwLocation"), r.Spec.InstDetails.HostSwLocation,
 					"Either HostSwLocation or SwStorageClass must be specified"))
