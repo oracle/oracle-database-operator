@@ -13558,6 +13558,8 @@ spec:
                 type: string
               paiImagePullSecret:
                 type: string
+              paiInternalLB:
+                type: boolean
               paiLBIP:
                 type: string
               paiLBPort:
@@ -13598,6 +13600,10 @@ spec:
                     type: array
                   svcType:
                     type: string
+                type: object
+              pailbAnnotation:
+                additionalProperties:
+                  type: string
                 type: object
               portMappings:
                 items:

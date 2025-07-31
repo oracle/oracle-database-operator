@@ -78,6 +78,8 @@ type PrivateAiSpec struct {
 	PaiAuthentication       bool                         `json:"paiAuthentication,omitempty"`
 	PaiLBPort               int32                        `json:"paiLBPort,omitempty"`
 	PaiLBIP                 string                       `json:"paiLBIP,omitempty"`
+	PaiInternalLB           bool                         `json:"paiInternalLB,omitempty"`
+	PailbAnnotation         map[string]string            `json:"pailbAnnotation,omitempty"`
 }
 
 // Secret Details
