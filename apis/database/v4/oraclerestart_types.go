@@ -82,8 +82,9 @@ type OracleRestartSpec struct {
 }
 
 type AsmDiskDetails struct {
-	DisksBySize []DiskBySize `json:"disksBySize,omitempty"`
-	AutoUpdate  string       `json:"autoUpdate,omitempty"`
+	DisksBySize     []DiskBySize `json:"disksBySize,omitempty"`
+	AutoUpdate      string       `json:"autoUpdate,omitempty"`
+	AsmStorageClass string       `json:"asmStorageClass,omitempty"`
 }
 
 // DiskBySize represents a list of disks grouped by size
@@ -156,6 +157,7 @@ type OracleRestartInstDetailSpec struct {
 	EnvFile              string                       `json:"envFile,omitempty"`
 	OnsTargetPort        *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
 	OnsLocalPort         *int32                       `json:"onsLocalPort,omitempty"`  // Port that will be exposed on the service.
+	SwStorageClass       string                       `json:"swStorageClass,omitempty"`
 }
 
 // Responsefile Name
