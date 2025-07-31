@@ -323,26 +323,28 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// PV Creation
-	if isNewSetup || isDiskChanged {
-		if oracleRestart.Spec.AsmStorageDetails != nil {
-			for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-				for index, diskName := range diskBySize.DiskNames {
-					pvVolume := oraclerestartcommon.VolumePVForASM(
-						oracleRestart,
-						index,
-						diskName,
-						diskBySize.StorageSizeInGb,
-						oracleRestart.Spec.AsmStorageDetails,
-						r.Client,
-					)
-					// if pvVolume == nil {
-					// 	r.Log.Info("VolumePVForASM returned nil for Dynamic Provisioning", "diskName", diskName, "index", index)
-					// 	continue // or return error
-					// }
-					_, result, err = r.createOrReplaceAsmPv(ctx, oracleRestart, pvVolume)
-					if err != nil {
-						result = resultNq
-						return result, err
+	if len(oracleRestart.Spec.StorageClass) == 0 {
+		if isNewSetup || isDiskChanged {
+			if oracleRestart.Spec.AsmStorageDetails != nil {
+				for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
+					for index, diskName := range diskBySize.DiskNames {
+						pvVolume := oraclerestartcommon.VolumePVForASM(
+							oracleRestart,
+							index,
+							diskName,
+							diskBySize.StorageSizeInGb,
+							oracleRestart.Spec.AsmStorageDetails,
+							r.Client,
+						)
+						// if pvVolume == nil {
+						// 	r.Log.Info("VolumePVForASM returned nil for Dynamic Provisioning", "diskName", diskName, "index", index)
+						// 	continue // or return error
+						// }
+						_, result, err = r.createOrReplaceAsmPv(ctx, oracleRestart, pvVolume)
+						if err != nil {
+							result = resultNq
+							return result, err
+						}
 					}
 				}
 			}
