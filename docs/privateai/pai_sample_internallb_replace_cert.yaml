@@ -26,14 +26,14 @@ spec:
   # Location inside the Pod to which the file containining the configmap will be mounted to
   mountLocation: /oml/config
 
- # Specify the Kubernetes Secret Details
+ # Specify the Kubernetes Secret Details 
  paiSecret:
-  name: paisecret
+  name: paisecretnew
   mountLocation: /oml/ssl
-
+ 
  # If you want to enable Authentication for the Private AI Access
  paiEnableAuthentication: true
-
+ 
  # If LoadBalancer will be used
  isExternalSvc: true
 
@@ -51,11 +51,15 @@ spec:
      targetPort: 8443
      protocol: TCP
 
- # Public Reserved IP of the Public LoadBalancer
- paiLBIP: 129.xxx.xxx.xxx
- 
+ # annotation to replace the certificate for the OCI Internal LoadBalancer
+ pailbAnnotation:
+  service.beta.kubernetes.io/oci-load-balancer-tls-secret: paisecretnew
+
+ # If Internal Load Balancer will be used
+ paiInternalLB: true
+
  # Storage Allocation for the Pod
  storageSizeInGb: 30
- 
+
  # Replica Count
- replicas: 3
+ replicas: 1
