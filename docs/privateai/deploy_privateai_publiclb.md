@@ -1,16 +1,16 @@
-# Deploying Oracle PrivateAI Container
+# Deploying Oracle PrivateAI Container using Public LoadBalancer
 
 Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In this example, the deployment uses the YAML file based on `OCI OKE` cluster. 
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle PrivartAI Controller](./README.md#prerequisites-for-running-oracle-privartai-controller) before using Oracle PrivateAI Controller.
 
-**NOTE:** Modify the file `pai_sample.yaml` with the actual Reserved Public IP before deployment.
+**NOTE:** Modify the file `pai_sample_publiclb.yaml` with the actual Reserved Public IP before deployment.
 
-Use the file: [pai_sample.yaml](./pai_sample.yaml) for this use case as below:
+Use the file: [pai_sample_publiclb.yaml](./pai_sample_publiclb.yaml) for this use case as below:
 
-1. Deploy the `pai_sample.yaml` file:
+1. Deploy the `pai_sample_publiclb.yaml` file:
     ```sh
-    kubectl apply -f pai_sample.yaml
+    kubectl apply -f pai_sample_publiclb.yaml
     ```
 2. Check the status of the deployment:
     ```sh

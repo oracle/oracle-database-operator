@@ -79,10 +79,15 @@ kubectl get configmap -n pai
 
 ### 6. Reserve LoadBalancer Public IP
 
-- The SSL certificate used during the PrivateAI Container Deployment will a common name(hostname or IP) to be specified.
+- The SSL certificate used during the PrivateAI Container Deployment will need a common name(hostname or IP) to be specified during the certificate creation.
 - Later, for a secure communication with the PrivateAI Container Deployed in a Kuberentes Cluster, the client will use the same `cert.pem` file and will send the connection request to same hostname or IP.
-- If you are deploying PrivateAI Container on an OKE cluster, you will need to reserve a Public IP in OCI. Refer to [OCI Load Balancer Documentation](https://docs.public.oneportal.content.oci.oraclecloud.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm) for the details.
+- If you are deploying PrivateAI Container on an OKE cluster, you will need to reserve a Public IP in OCI. - OCI allows provisioning a Public LoadBalancer and assigning a reserved public ip to it. Please the [documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
+- To reserve a Public IP in OCI, refer to [OCI LoadBalancer Documentation](https://docs.public.oneportal.content.oci.oraclecloud.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm) for the details.
 - Once you have reserved the Public IP, use this Public IP as `Common Name` while generating the openssl certificate in the next step.
+
+**NOTE:** This step is required only if you are going to deploy the PrivateAI Container on OKE Cluster using OCI Public LoadBalancer.
+
+**NOTE:** The option to reserve a Private IP and use that with an OCI Internal LoadBalancer is not available as of now. Please check the [documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
 
 ### 7. Create Kubernetes secret for the Oracle PrivateAI Deployment
 
@@ -90,11 +95,15 @@ kubectl get configmap -n pai
 
 Create a file `oml-ssl-pwd` with the password you want to use. This password will be used in the next step. The script [pai_secret.sh](./pai_secret.sh) has the command to generate the required keys and an SSL certificate.
 
-Use the Shell Script `pai_secret.sh` to create the required secrets for the Oracle PrivateAI Container Deployment. Run this file as below and enter the password when prompted:
+Use the Shell Script `pai_secret.sh` to create the required secrets for the Oracle PrivateAI Container Deployment. Run this file as below and enter the password when prompted.
+
+In case of the Public LoadBalancer, use the reserved Public IP as the `common name`.
 
 ```sh
 ./pai_secret.sh
 ```
+
+**NOTE:** In case of the Internal LoadBalancer, we can not use a reserved Private IP. In this case, you can leave `common name` empty.
 
 Use below command to check the Kubernetes Secret Created:
 
@@ -108,7 +117,9 @@ After you have the above prerequisites completed, you can proceed to the next se
 
 ## Quick Start
 
-Please refer to [this page](./deploy_privateai.md) for the details to deploy the PrivateAI Container Pod in Kubernetes.
+Please refer to [Deploy PrivateAI in OKE cluster using Public LB](./deploy_privateai_publiclb.md) for the details to deploy the PrivateAI Container Pod in an OKE Cluster using OCI Public LoadBalancer.
+
+Please refer to [Deploy PrivateAI in OKE cluster using Internal LB](./deploy_privateai_internallb.md) for the details to deploy the PrivateAI Container Pod in an OKE Cluster using OCI Internal LoadBalancer.
 
 ## Accessing the PrivateAI Container Pod in Kubernetes
 
