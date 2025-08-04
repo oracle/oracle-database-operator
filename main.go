@@ -307,7 +307,98 @@ func main() {
 
 	// Set ENABLE_WEBHOOKS=false when we run locally to skip webhook part when testing just the controller. Not to be used in production.
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err = (&databasev1alpha1.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
+			os.Exit(1)
+		}
+		if err = (&databasev4.PDB{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "PDB")
+			os.Exit(1)
+		}
+		if err = (&databasev4.LRPDB{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "LRPDB")
+			os.Exit(1)
+		}
+		if err = (&databasev4.CDB{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "CDB")
+			os.Exit(1)
+		}
+		if err = (&databasev4.LREST{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "LREST")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousDatabaseBackup{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseBackup")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabaseRestore")
+			os.Exit(1)
+		}
+		if err = (&databasev4.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousContainerDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
+			os.Exit(1)
+		}
+		if err = (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
+		}
+		if err = (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
+			os.Exit(1)
+		}
+		if err = (&databasev4.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DbcsSystem")
+			os.Exit(1)
+		}
+		if err = (&observabilityv1.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
+			os.Exit(1)
+		}
 
+		if err = (&observabilityv4.DatabaseObserver{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
+			os.Exit(1)
+		}
 		if err = (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
 			os.Exit(1)
