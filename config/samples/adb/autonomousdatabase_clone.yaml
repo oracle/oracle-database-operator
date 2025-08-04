@@ -16,7 +16,7 @@ spec:
     # The dbName must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy.
     dbName: ClonedADB
     displayName: ClonedADB
-    cpuCoreCount: 1
+    computeCount: 1
     adminPassword:
       # Comment out k8sSecret and uncomment ociSecret if you pass the admin password using OCI Secret.
       k8sSecret:

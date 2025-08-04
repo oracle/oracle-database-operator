@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2022, Oracle and/or its affiliates. 
+# Copyright (c) 2022, 2025, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 apiVersion: database.oracle.com/v4
@@ -7,16 +7,11 @@ kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
 spec:
-  action: Update
+  action: Switchover
   details:
     id: ocid1.autonomousdatabase...
-    # Your database's compute count
-    computeCount: 2
-    # Your database's storage size in TB
-    dataStorageSizeInTBs: 2
-    # Enable/Disable auto scaling for your database
-    isAutoScalingEnabled: true
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:
     configMapName: oci-cred
+    # Comment out secretName if using OKE workload identity
     secretName: oci-privatekey
