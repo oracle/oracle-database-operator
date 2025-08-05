@@ -224,7 +224,7 @@ func (src *AutonomousDatabaseBackup) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v4.AutonomousDatabaseBackup)
 
 	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
-	dst.Spec.Target.OciAdb.OCID = src.Spec.Target.OciAdb.Ocid
+	dst.Spec.Target.OciAdb.Ocid = src.Spec.Target.OciAdb.Ocid
 	dst.Spec.DisplayName = src.Spec.DisplayName
 	dst.Spec.AutonomousDatabaseBackupOCID = src.Spec.AutonomousDatabaseBackupOCID
 	dst.Spec.IsLongTermBackup = src.Spec.IsLongTermBackup
@@ -250,7 +250,7 @@ func (dst *AutonomousDatabaseBackup) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v4.AutonomousDatabaseBackup)
 
 	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
-	dst.Spec.Target.OciAdb.Ocid = src.Spec.Target.OciAdb.OCID
+	dst.Spec.Target.OciAdb.Ocid = src.Spec.Target.OciAdb.Ocid
 	dst.Spec.DisplayName = src.Spec.DisplayName
 	dst.Spec.AutonomousDatabaseBackupOCID = src.Spec.AutonomousDatabaseBackupOCID
 	dst.Spec.IsLongTermBackup = src.Spec.IsLongTermBackup
@@ -276,7 +276,7 @@ func (src *AutonomousDatabaseRestore) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v4.AutonomousDatabaseRestore)
 
 	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
-	dst.Spec.Target.OciAdb.OCID = src.Spec.Target.OciAdb.Ocid
+	dst.Spec.Target.OciAdb.Ocid = src.Spec.Target.OciAdb.Ocid
 	dst.Spec.Source.K8sAdbBackup.Name = src.Spec.Source.K8sAdbBackup.Name
 	dst.Spec.Source.PointInTime.Timestamp = src.Spec.Source.PointInTime.Timestamp
 	dst.Spec.OCIConfig.ConfigMapName = src.Spec.OCIConfig.ConfigMapName
@@ -298,7 +298,7 @@ func (dst *AutonomousDatabaseRestore) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v4.AutonomousDatabaseRestore)
 
 	dst.Spec.Target.K8sAdb.Name = src.Spec.Target.K8sAdb.Name
-	dst.Spec.Target.OciAdb.Ocid = src.Spec.Target.OciAdb.OCID
+	dst.Spec.Target.OciAdb.Ocid = src.Spec.Target.OciAdb.Ocid
 	dst.Spec.Source.K8sAdbBackup.Name = src.Spec.Source.K8sAdbBackup.Name
 	dst.Spec.Source.PointInTime.Timestamp = src.Spec.Source.PointInTime.Timestamp
 	dst.Spec.OCIConfig.ConfigMapName = src.Spec.OCIConfig.ConfigMapName

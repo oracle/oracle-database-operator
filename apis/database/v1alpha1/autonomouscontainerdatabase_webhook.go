@@ -58,6 +58,7 @@ var autonomouscontainerdatabaselog = logf.Log.WithName("autonomouscontainerdatab
 func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithValidator(r).
 		Complete()
 }
 

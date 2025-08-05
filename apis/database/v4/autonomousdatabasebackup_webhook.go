@@ -58,6 +58,7 @@ var autonomousdatabasebackuplog = logf.Log.WithName("autonomousdatabasebackup-re
 func (r *AutonomousDatabaseBackup) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -84,12 +85,12 @@ func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj runti
 		}
 	}
 
-	if r.Spec.Target.K8sAdb.Name == nil && r.Spec.Target.OciAdb.OCID == nil {
+	if r.Spec.Target.K8sAdb.Name == nil && r.Spec.Target.OciAdb.Ocid == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
 	}
 
-	if r.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.OciAdb.OCID != nil {
+	if r.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.OciAdb.Ocid != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB or ociADB, but not both"))
 	}
@@ -122,8 +123,8 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(ctx context.Context, oldObj, n
 			field.Forbidden(field.NewPath("spec").Child("target").Child("k8sADB").Child("name"), "cannot assign a new name to the target"))
 	}
 
-	if oldBackup.Spec.Target.OciAdb.OCID != nil && r.Spec.Target.OciAdb.OCID != nil &&
-		*oldBackup.Spec.Target.OciAdb.OCID != *r.Spec.Target.OciAdb.OCID {
+	if oldBackup.Spec.Target.OciAdb.Ocid != nil && r.Spec.Target.OciAdb.Ocid != nil &&
+		*oldBackup.Spec.Target.OciAdb.Ocid != *r.Spec.Target.OciAdb.Ocid {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target").Child("ociADB").Child("ocid"), "cannot assign a new ocid to the target"))
 	}
