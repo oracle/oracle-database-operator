@@ -227,8 +227,8 @@ func (r *AutonomousDatabaseBackupReconciler) verifyTargetAdb(backup *dbv4.Autono
 		}
 	}
 
-	if backup.Spec.Target.OciAdb.OCID != nil {
-		return *backup.Spec.Target.OciAdb.OCID, nil
+	if backup.Spec.Target.OciAdb.Ocid != nil {
+		return *backup.Spec.Target.OciAdb.Ocid, nil
 	}
 	if ownerAdb != nil && ownerAdb.Spec.Details.Id != nil {
 		return *ownerAdb.Spec.Details.Id, nil

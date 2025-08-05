@@ -62,7 +62,7 @@ func VerifyTargetAdb(kubeClient client.Client, target dbv4.TargetSpec, namespace
 
 	} else {
 		// Find the target ADB using the ADB OCID
-		ownerAdb, err = k8s.FetchAutonomousDatabaseWithOCID(kubeClient, namespace, *target.OciAdb.OCID)
+		ownerAdb, err = k8s.FetchAutonomousDatabaseWithOCID(kubeClient, namespace, *target.OciAdb.Ocid)
 		if err != nil {
 			return nil, err
 		}

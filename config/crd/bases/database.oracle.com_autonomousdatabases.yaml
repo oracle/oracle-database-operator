@@ -31,7 +31,7 @@ spec:
       name: Dedicated
       type: string
     - jsonPath: .spec.details.computeCount
-      name: computeCount
+      name: Compute Count
       type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
@@ -366,7 +366,7 @@ spec:
       name: Dedicated
       type: string
     - jsonPath: .spec.details.computeCount
-      name: computeCount
+      name: Compute Count
       type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
