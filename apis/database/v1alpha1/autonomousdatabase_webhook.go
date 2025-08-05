@@ -58,6 +58,7 @@ var autonomousdatabaselog = logf.Log.WithName("autonomousdatabase-resource")
 func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithValidator(&AutonomousDatabase{}).
 		Complete()
 }
 

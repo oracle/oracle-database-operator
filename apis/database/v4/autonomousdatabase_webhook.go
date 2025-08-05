@@ -58,10 +58,12 @@ var autonomousdatabaselog = logf.Log.WithName("autonomousdatabase-resource")
 func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithValidator(r).
 		Complete()
 }
 
 // +kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v4,name=vautonomousdatabasev4.kb.io,admissionReviewVersions=v1
+
 var _ webhook.CustomValidator = &AutonomousDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type

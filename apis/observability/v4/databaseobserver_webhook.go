@@ -69,7 +69,6 @@ const (
 func (r *DatabaseObserver) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
-		For(&DatabaseObserver{}).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()

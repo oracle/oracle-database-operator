@@ -194,7 +194,7 @@ type ConnectionStringSpec struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.details.dbName",name="Db Name",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.lifecycleState",name="State",type=string
 // +kubebuilder:printcolumn:JSONPath=".spec.details.isDedicated",name="Dedicated",type=string
-// +kubebuilder:printcolumn:JSONPath=".spec.details.cpuCoreCount",name="OCPUs",type=integer
+// +kubebuilder:printcolumn:JSONPath=".spec.details.computeCount",name="Compute Count",type=number
 // +kubebuilder:printcolumn:JSONPath=".spec.details.dataStorageSizeInTBs",name="Storage (TB)",type=integer
 // +kubebuilder:printcolumn:JSONPath=".spec.details.dbWorkload",name="Workload Type",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.timeCreated",name="Created",type=string

@@ -11,7 +11,7 @@ spec:
   details:
     id: ocid1.autonomousdatabase...
     # Set the patameter to false to allow both TLS and mutual TLS (mTLS) authentication, or true to require mTLS connections and disallow TLS connections.
-    isMTLSConnectionRequired: true
+    isMtlsConnectionRequired: true
 
   # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
   ociConfig:

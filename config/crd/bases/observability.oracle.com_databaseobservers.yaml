@@ -302,14 +302,14 @@ spec:
                 type: array
               log:
                 properties:
-                  filename:
+                  destination:
                     type: string
-                  path:
+                  disable:
+                    type: boolean
+                  filename:
                     type: string
                   volume:
                     properties:
-                      name:
-                        type: string
                       persistentVolumeClaim:
                         properties:
                           claimName:
@@ -2625,14 +2625,14 @@ spec:
                 type: array
               log:
                 properties:
-                  filename:
+                  destination:
                     type: string
-                  path:
+                  disable:
+                    type: boolean
+                  filename:
                     type: string
                   volume:
                     properties:
-                      name:
-                        type: string
                       persistentVolumeClaim:
                         properties:
                           claimName:
@@ -4948,14 +4948,14 @@ spec:
                 type: array
               log:
                 properties:
-                  filename:
+                  destination:
                     type: string
-                  path:
+                  disable:
+                    type: boolean
+                  filename:
                     type: string
                   volume:
                     properties:
-                      name:
-                        type: string
                       persistentVolumeClaim:
                         properties:
                           claimName:
