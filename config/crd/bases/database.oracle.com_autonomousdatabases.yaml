@@ -30,9 +30,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: computeCount
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
@@ -365,9 +365,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: computeCount
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer

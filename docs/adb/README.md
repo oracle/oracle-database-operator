@@ -313,7 +313,7 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
 
     \* The password must be at least 8 characters long and must include at least 1 letter and either 1 numeric character or 1 special character.
 
-2. Update the example [config/samples/adb/autonomousdatabase_wallet.yaml](./../../config/samples/adb/autonomousdatabase_wallet.yaml)
+2. Update the example [config/samples/adb/autonomousdatabase_download_wallet.yaml](./../../config/samples/adb/autonomousdatabase_download_wallet.yaml)
 
     ```yaml
     ---
@@ -554,7 +554,7 @@ To switchover an existing Autonomous Database, complete these steps:
 
 To manually failover an existing Autonomous Database, complete these steps:
 
-1. Add the following fields to the AutonomousDatabase resource definition. An example YAML file is available here: [config/samples/adb/autonomousdatabase_failover.yaml](./../../config/samples/adb/autonomousdatabase_failover.yaml)
+1. Add the following fields to the AutonomousDatabase resource definition. An example YAML file is available here: [config/samples/adb/autonomousdatabase_manual_failover.yaml](./../../config/samples/adb/autonomousdatabase_manual_failover.yaml)
     | Attribute | Type | Description | Required? |
     |----|----|----|----|
     | `spec.details.id` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the source Autonomous Database that you will clone to create a new Autonomous Database. | Yes |
