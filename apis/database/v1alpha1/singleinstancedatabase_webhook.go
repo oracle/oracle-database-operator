@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -61,6 +62,8 @@ var singleinstancedatabaselog = logf.Log.WithName("singleinstancedatabase-resour
 func (r *SingleInstanceDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -68,10 +71,10 @@ func (r *SingleInstanceDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-singleinstancedatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=singleinstancedatabases,verbs=create;update,versions=v1alpha1,name=msingleinstancedatabase.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Defaulter = &SingleInstanceDatabase{}
+var _ webhook.CustomDefaulter = &SingleInstanceDatabase{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) Default() {
+func (r *SingleInstanceDatabase) Default(ctx context.Context, obj runtime.Object) error {
 	singleinstancedatabaselog.Info("default", "name", r.Name)
 
 	if r.Spec.LoadBalancer {
@@ -139,15 +142,17 @@ func (r *SingleInstanceDatabase) Default() {
 	if r.Spec.TrueCacheServices == nil {
 		r.Spec.TrueCacheServices = make([]string, 0)
 	}
+
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v1alpha1-singleinstancedatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=singleinstancedatabases,versions=v1alpha1,name=vsingleinstancedatabase.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Validator = &SingleInstanceDatabase{}
+var _ webhook.CustomValidator = &SingleInstanceDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
+func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
 
@@ -405,19 +410,19 @@ func (r *SingleInstanceDatabase) ValidateCreate() (admission.Warnings, error) {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object) (admission.Warnings, error) {
+func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldRuntimeObject, newRuntimeObj runtime.Object) (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate update", "name", r.Name)
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	warnings, err := r.ValidateCreate()
+	warnings, err := r.ValidateCreate(ctx, newRuntimeObj)
 	if err != nil {
 		return warnings, err
 	}
 
 	// Validate Deletion
 	if r.GetDeletionTimestamp() != nil {
-		warnings, err := r.ValidateDelete()
+		warnings, err := r.ValidateDelete(ctx, newRuntimeObj)
 		if err != nil {
 			return warnings, err
 		}
@@ -537,7 +542,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(oldRuntimeObject runtime.Object)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *SingleInstanceDatabase) ValidateDelete() (admission.Warnings, error) {
+func (r *SingleInstanceDatabase) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	singleinstancedatabaselog.Info("validate delete", "name", r.Name)
 	var allErrs field.ErrorList
 	if r.Status.OrdsReference != "" {

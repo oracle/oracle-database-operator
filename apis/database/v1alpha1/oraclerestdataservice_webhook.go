@@ -39,6 +39,8 @@
 package v1alpha1
 
 import (
+	"context"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,6 +58,8 @@ var oraclerestdataservicelog = logf.Log.WithName("oraclerestdataservice-resource
 func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -63,10 +67,10 @@ func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error 
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-oraclerestdataservice,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestdataservices,verbs=create;update,versions=v1alpha1,name=moraclerestdataservice.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Defaulter = &OracleRestDataService{}
+var _ webhook.CustomDefaulter = &OracleRestDataService{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *OracleRestDataService) Default() {
+func (r *OracleRestDataService) Default(ctx context.Context, obj runtime.Object) error {
 	oraclerestdataservicelog.Info("default", "name", r.Name)
 	// OracleRestDataService Currently supports single replica
 	r.Spec.Replicas = 1
@@ -77,15 +81,17 @@ func (r *OracleRestDataService) Default() {
 	if r.Spec.AdminPassword.KeepSecret == nil {
 		r.Spec.AdminPassword.KeepSecret = &keepSecret
 	}
+
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-oraclerestdataservice,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestdataservices,versions=v1alpha1,name=voraclerestdataservice.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Validator = &OracleRestDataService{}
+var _ webhook.CustomValidator = &OracleRestDataService{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateCreate() (admission.Warnings, error) {
+func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	oraclerestdataservicelog.Info("validate create", "name", r.Name)
 
 	var allErrs field.ErrorList
@@ -137,13 +143,13 @@ func (r *OracleRestDataService) ValidateCreate() (admission.Warnings, error) {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateUpdate(oldRuntimeObject runtime.Object) (admission.Warnings, error) {
+func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeObject, newRuntimeObject runtime.Object) (admission.Warnings, error) {
 	oraclerestdataservicelog.Info("validate update", "name", r.Name)
 
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	warnings, err := r.ValidateCreate()
+	warnings, err := r.ValidateCreate(ctx, newRuntimeObject)
 	if err != nil {
 		return warnings, err
 	}
@@ -173,7 +179,7 @@ func (r *OracleRestDataService) ValidateUpdate(oldRuntimeObject runtime.Object) 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateDelete() (admission.Warnings, error) {
+func (r *OracleRestDataService) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	oraclerestdataservicelog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.

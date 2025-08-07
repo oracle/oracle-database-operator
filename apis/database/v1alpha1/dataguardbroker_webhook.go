@@ -39,6 +39,7 @@
 package v1alpha1
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -59,6 +60,8 @@ var dataguardbrokerlog = logf.Log.WithName("dataguardbroker-resource")
 func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -66,10 +69,10 @@ func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-dataguardbroker,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dataguardbrokers,verbs=create;update,versions=v1alpha1,name=mdataguardbroker.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Defaulter = &DataguardBroker{}
+var _ webhook.CustomDefaulter = &DataguardBroker{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *DataguardBroker) Default() {
+func (r *DataguardBroker) Default(ctx context.Context, obj runtime.Object) error {
 	dataguardbrokerlog.Info("default", "name", r.Name)
 
 	if r.Spec.LoadBalancer {
@@ -94,15 +97,17 @@ func (r *DataguardBroker) Default() {
 	if r.Spec.SetAsPrimaryDatabase != "" {
 		r.Spec.SetAsPrimaryDatabase = strings.ToUpper(r.Spec.SetAsPrimaryDatabase)
 	}
+
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-dataguardbroker,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dataguardbrokers,versions=v1alpha1,name=vdataguardbroker.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Validator = &DataguardBroker{}
+var _ webhook.CustomValidator = &DataguardBroker{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateCreate() (admission.Warnings, error) {
+func (r *DataguardBroker) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 
 	dataguardbrokerlog.Info("validate create", "name", r.Name)
 	var allErrs field.ErrorList
@@ -125,21 +130,21 @@ func (r *DataguardBroker) ValidateCreate() (admission.Warnings, error) {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *DataguardBroker) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate update", "name", r.Name)
 
 	dataguardbrokerlog.Info("validate update", "name", r.Name)
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	_, err := r.ValidateCreate()
+	_, err := r.ValidateCreate(ctx, newObj)
 	if err != nil {
 		return nil, err
 	}
 
 	// Validate Deletion
 	if r.GetDeletionTimestamp() != nil {
-		warnings, err := r.ValidateDelete()
+		warnings, err := r.ValidateDelete(ctx, newObj)
 		if err != nil {
 			return warnings, err
 		}
@@ -175,7 +180,7 @@ func (r *DataguardBroker) ValidateUpdate(old runtime.Object) (admission.Warnings
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateDelete() (admission.Warnings, error) {
+func (r *DataguardBroker) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
