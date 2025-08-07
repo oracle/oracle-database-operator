@@ -357,6 +357,18 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 				})
 			}
 		}
+		if instance.Spec.ConfigParams.OneOffLocation != "" {
+			if _, exists := OracleRestartSpex.PvcName[instance.Spec.ConfigParams.OneOffLocation]; !exists {
+				result = append(result, corev1.Volume{
+					Name: OracleRestartSpex.Name + "-oradata-oneoff-vol",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: instance.Spec.ConfigParams.OneOffLocation,
+						},
+					},
+				})
+			}
+		}
 	}
 
 	if instance.Spec.AsmStorageDetails != nil {

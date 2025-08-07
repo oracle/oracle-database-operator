@@ -1975,6 +1975,12 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	if instance.Spec.ConfigParams.OPatchLocation != "" {
 		data = append(data, "OPATCH_ZIP_FILE="+utils.OraOPatchStageLocation+"/"+instance.Spec.ConfigParams.OPatchSwZipFile)
 	}
+	if instance.Spec.ConfigParams.OneOffLocation != "" {
+		data = append(data, "ONEOFF_FOLDER_NAME="+instance.Spec.ConfigParams.OneOffLocation)
+	}
+	if instance.Spec.ConfigParams.OneOffIds != "" {
+		data = append(data, "ONEOFF_IDS="+instance.Spec.ConfigParams.OneOffIds)
+	}
 
 	if instance.Spec.ConfigParams.DbSwZipFile != "" {
 		data = append(data, "DB_SW_ZIP_FILE="+instance.Spec.ConfigParams.DbSwZipFile)
@@ -2396,7 +2402,7 @@ func getDiskGroupName(deviceDg string, oracleRestart *oraclerestartdb.OracleRest
 // Function to check if a disk group exists
 func (r *OracleRestartReconciler) diskGroupExists(podName, diskGroupName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (bool, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	cmd := fmt.Sprintf("su - grid -c 'asmcmd lsdg | grep -w %s'", diskGroupName)
+	cmd := "python3 /opt/scripts/startup/scripts/main.py --getasmdiskgroup=true"
 	stdout, _, err := oraclerestartcommon.ExecCommand(podName, []string{"bash", "-c", cmd}, r.kubeClient, r.kubeConfig, instance, reqLogger)
 	if err != nil {
 		return false, err
@@ -3077,6 +3083,14 @@ func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 			if err := r.Client.Delete(context.Background(), svcFound); err != nil {
 				return err
 			}
+		}
+	}
+	svcFound, err := oraclerestartcommon.CheckORestartSvc(oracleRestart, "onssvc", oracleRestart.Spec.InstDetails, "", r.Client)
+	if err == nil {
+		// See if service already exists and create if it doesn't
+		err = r.Client.Delete(context.Background(), svcFound)
+		if err != nil {
+			return err
 		}
 	}
 

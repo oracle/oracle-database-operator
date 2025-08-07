@@ -4,8 +4,6 @@ go 1.24.4
 
 require (
 	github.com/go-logr/logr v1.4.2
-	github.com/go-logr/zapr v1.3.0
-	github.com/natefinch/lumberjack v2.0.0+incompatible
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.2
 	github.com/oracle/oci-go-sdk/v65 v65.77.1
@@ -37,6 +35,7 @@ require (
 	github.com/fatih/camelcase v1.0.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
+	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.6 // indirect
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/swag v0.22.4 // indirect
