@@ -43,13 +43,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-logr/zapr"
-	"github.com/natefinch/lumberjack"
 	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
 	"go.uber.org/zap/zapcore"
@@ -62,8 +59,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	uberzap "go.uber.org/zap"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
@@ -83,7 +79,8 @@ import (
 )
 
 var (
-	scheme = runtime.NewScheme()
+	scheme   = runtime.NewScheme()
+	setupLog = ctrl.Log.WithName("setup")
 )
 
 func init() {
@@ -113,74 +110,7 @@ func main() {
 		TimeEncoder: zapcore.RFC3339TimeEncoder,
 	}
 
-	ctrl.SetLogger(ctrlzap.New(func(o *ctrlzap.Options) { *o = *options }))
-
-	var logFilePath string
-	// Set log directory from environment variable or default to /tmp
-	logDir := os.Getenv("LOG_DIR")
-	if logDir == "" {
-		logDir = "/tmp"
-	}
-	// Create log file name with date
-	currentDate := time.Now().Format("2006-01-02")
-	logFilePath = filepath.Join(logDir, fmt.Sprintf("controller-%s.log", currentDate))
-	// Create symlink "controller.log" -> current date log file
-	symlinkPath := filepath.Join(logDir, "controller.log")
-	// Remove existing symlink if it exists
-	os.Remove(symlinkPath)
-	// Create new symlink
-	err := os.Symlink(logFilePath, symlinkPath)
-	if err != nil {
-		fmt.Printf("Failed to create symlink: %v\n", err)
-	}
-
-	opts := ctrlzap.Options{
-		Development: true,
-	}
-
-	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
-
-	encoderConfig := zapcore.EncoderConfig{
-		TimeKey:        "timestamp",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		CallerKey:      "caller",
-		MessageKey:     "message",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.CapitalLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeDuration: zapcore.StringDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
-	}
-
-	// File encoder (JSON)
-	fileEncoder := zapcore.NewJSONEncoder(encoderConfig)
-
-	// Use lumberjack for log rotation
-	logFileWriter := &lumberjack.Logger{
-		Filename:   logFilePath,
-		MaxSize:    100,  // megabytes
-		MaxBackups: 90,   // number of old log files to keep
-		MaxAge:     30,   // days to retain old log files
-		Compress:   true, // compress old log files
-	}
-
-	writer := zapcore.AddSync(logFileWriter)
-
-	core := zapcore.NewTee(
-		zapcore.NewCore(fileEncoder, writer, zapcore.DebugLevel),
-		zapcore.NewCore(zapcore.NewConsoleEncoder(encoderConfig), zapcore.AddSync(os.Stdout), zapcore.DebugLevel),
-	)
-
-	// Create logger
-	logger := uberzap.New(core, uberzap.AddCaller(), uberzap.Development())
-
-	// Use logger
-	log.SetLogger(zapr.NewLogger(logger))
-	setupLog := logger.Sugar()
-
+	ctrl.SetLogger(zap.New(func(o *zap.Options) { *o = *options }))
 	watchNamespaces, err := getWatchNamespace()
 	if err != nil {
 		setupLog.Error(err, "Failed to get watch namespaces")
@@ -208,12 +138,10 @@ func main() {
 	// Get Cache
 	cache := mgr.GetCache()
 
-	logger.Info("Logger initialized and writing to both file and stdout")
-
 	// ADB family controllers
 	if err = (&databasecontroller.AutonomousDatabaseReconciler{
 		KubeClient: mgr.GetClient(),
-		Log:        zapr.NewLogger(logger).WithName("controllers").WithName("database").WithName("AutonomousDatabase"),
+		Log:        ctrl.Log.WithName("controllers").WithName("database").WithName("AutonomousDatabase"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabase"),
 	}).SetupWithManager(mgr); err != nil {
@@ -222,7 +150,7 @@ func main() {
 	}
 	if err = (&databasecontroller.AutonomousDatabaseBackupReconciler{
 		KubeClient: mgr.GetClient(),
-		Log:        zapr.NewLogger(logger).WithName("controllers").WithName("AutonomousDatabaseBackup"),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseBackup"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabaseBackup"),
 	}).SetupWithManager(mgr); err != nil {
@@ -231,16 +159,16 @@ func main() {
 	}
 	if err = (&databasecontroller.AutonomousDatabaseRestoreReconciler{
 		KubeClient: mgr.GetClient(),
-		Log:        zapr.NewLogger(logger).WithName("controllers").WithName("AutonomousDatabaseRestore"),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousDatabaseRestore"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("AutonomousDatabaseRestore"),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error("unable to create controller", "controller", "AutonomousDatabaseRestore", "error", err)
+		setupLog.Error(err, "unable to create controller", "controller", "AutonomousDatabaseRestore")
 		os.Exit(1)
 	}
 	if err = (&databasecontroller.AutonomousContainerDatabaseReconciler{
 		KubeClient: mgr.GetClient(),
-		Log:        zapr.NewLogger(logger).WithName("controllers").WithName("AutonomousContainerDatabase"),
+		Log:        ctrl.Log.WithName("controllers").WithName("AutonomousContainerDatabase"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("AutonomousContainerDatabase"),
 	}).SetupWithManager(mgr); err != nil {
@@ -250,7 +178,7 @@ func main() {
 
 	if err = (&databasecontroller.SingleInstanceDatabaseReconciler{
 		Client:   mgr.GetClient(),
-		Log:      zapr.NewLogger(logger).WithName("controllers").WithName("database").WithName("SingleInstanceDatabase"),
+		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("SingleInstanceDatabase"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Recorder: mgr.GetEventRecorderFor("SingleInstanceDatabase"),
@@ -260,7 +188,7 @@ func main() {
 	}
 	if err = (&databasecontroller.ShardingDatabaseReconciler{
 		Client:   mgr.GetClient(),
-		Log:      zapr.NewLogger(logger).WithName("controllers").WithName("database").WithName("ShardingDatabase"),
+		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("ShardingDatabase"),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("ShardingDatabase"),
 	}).SetupWithManager(mgr); err != nil {
@@ -269,7 +197,7 @@ func main() {
 	}
 	if err = (&databasecontroller.DbcsSystemReconciler{
 		KubeClient: mgr.GetClient(),
-		Logger:     zapr.NewLogger(logger).WithName("controllers").WithName("database").WithName("DbcsSystem"),
+		Logger:     ctrl.Log.WithName("controllers").WithName("database").WithName("DbcsSystem"),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorderFor("DbcsSystem"),
 	}).SetupWithManager(mgr); err != nil {
@@ -278,7 +206,7 @@ func main() {
 	}
 	if err = (&databasecontroller.OracleRestDataServiceReconciler{
 		Client:   mgr.GetClient(),
-		Log:      zapr.NewLogger(logger).WithName("controllers").WithName("OracleRestDataService"),
+		Log:      ctrl.Log.WithName("controllers").WithName("OracleRestDataService"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Recorder: mgr.GetEventRecorderFor("OracleRestDataService"),
@@ -289,7 +217,7 @@ func main() {
 
 	if err = (&databasecontroller.OracleRestartReconciler{
 		Client: mgr.GetClient(),
-		Log:    zapr.NewLogger(logger).WithName("controllers").WithName("OracleRestart"),
+		Log:    ctrl.Log.WithName("controllers").WithName("OracleRestart"),
 		Scheme: mgr.GetScheme(),
 		Config: mgr.GetConfig(),
 	}).SetupWithManager(mgr); err != nil {
@@ -421,7 +349,7 @@ func main() {
 	if err = (&databasecontroller.PDBReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Log:      zapr.NewLogger(logger).WithName("controllers").WithName("PDB"),
+		Log:      ctrl.Log.WithName("controllers").WithName("PDB"),
 		Interval: time.Duration(i),
 		Recorder: mgr.GetEventRecorderFor("PDB"),
 	}).SetupWithManager(mgr); err != nil {
@@ -433,7 +361,7 @@ func main() {
 	if err = (&databasecontroller.LRPDBReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Log:      zapr.NewLogger(logger).WithName("controllers").WithName("LRPDB"),
+		Log:      ctrl.Log.WithName("controllers").WithName("LRPDB"),
 		Interval: time.Duration(i),
 		Recorder: mgr.GetEventRecorderFor("LRPDB"),
 	}).SetupWithManager(mgr); err != nil {
@@ -446,7 +374,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
-		Log:      zapr.NewLogger(logger).WithName("controllers").WithName("CDB"),
+		Log:      ctrl.Log.WithName("controllers").WithName("CDB"),
 		Interval: time.Duration(i),
 		Recorder: mgr.GetEventRecorderFor("CDB"),
 	}).SetupWithManager(mgr); err != nil {
@@ -459,7 +387,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
-		Log:      zapr.NewLogger(logger).WithName("controllers").WithName("LREST"),
+		Log:      ctrl.Log.WithName("controllers").WithName("LREST"),
 		Interval: time.Duration(i),
 		Recorder: mgr.GetEventRecorderFor("LREST"),
 	}).SetupWithManager(mgr); err != nil {
@@ -469,7 +397,7 @@ func main() {
 
 	if err = (&dataguardcontroller.DataguardBrokerReconciler{
 		Client:   mgr.GetClient(),
-		Log:      zapr.NewLogger(logger).WithName("controllers").WithName("dataguard").WithName("DataguardBroker"),
+		Log:      ctrl.Log.WithName("controllers").WithName("dataguard").WithName("DataguardBroker"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Recorder: mgr.GetEventRecorderFor("DataguardBroker"),
@@ -490,7 +418,7 @@ func main() {
 	// Observability DatabaseObserver Reconciler
 	if err = (&observabilitycontroller.DatabaseObserverReconciler{
 		Client:   mgr.GetClient(),
-		Log:      zapr.NewLogger(logger).WithName("controllers").WithName("observability").WithName("DatabaseObserver"),
+		Log:      ctrl.Log.WithName("controllers").WithName("observability").WithName("DatabaseObserver"),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("DatabaseObserver"),
 	}).SetupWithManager(mgr); err != nil {

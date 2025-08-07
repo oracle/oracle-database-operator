@@ -1,0 +1,125 @@
+# API version of the custom resource definition
+apiVersion: database.oracle.com/v4
+
+# Kind of custom resource — OracleRestart for single-instance DB with ASM
+kind: OracleRestart
+
+# Metadata section: name and namespace of the resource
+metadata:
+  # Name of the OracleRestart custom resource
+  name: oraclerestart-sample
+  # Kubernetes namespace where it's deployed
+  namespace: orestart
+
+spec:
+  # Details about the Oracle instance and where it will be deployed
+  instDetails:
+    # Name of the instance or logical host name
+    name: dbmc1
+    # Path on the host for staging software
+    hostSwLocation: /scratch/orestart/
+    # List of worker node IPs where Oracle will run
+    workerNode:
+      - 10.0.10.108
+    # Port used for ONS (Oracle Notification Service)
+    onsTargetPort: 30200
+    # Kubernetes NodePort service details for listener access
+    nodePortSvc:
+      - svcType: nodeport   # Service type exposed via NodePort
+        name: dbmc1         # Name of the service
+
+    # Port mappings for Oracle listener
+    portMappings:
+      - port: 1521          # Port used inside the container
+        targetPort: 1521    # Target port for the service
+        protocol: TCP       # Protocol used
+        nodePort: 30007     # Exposed NodePort on Kubernetes
+
+  # ASM disk configuration — list of disks and sizes
+  asmStorageDetails:
+    disksBySize:
+      - storageSizeInGb: 50     # Size of each disk group in GB
+        diskNames:              # Physical disk device paths
+          - /dev/oracleoci/oraclevdd
+
+  # SSH key secret used for secure access during automation or install
+  sshKeySecret:
+    name: ssh-key-secret             # Name of the secret containing SSH keys
+    privKeySecretName: ssh-privkey  # Private key name in the secret
+    pubKeySecretName: ssh-pubkey    # Public key name in the secret
+
+  # Database user secret containing wallet and credentials
+  dbSecret:
+    name: db-user-pass-pkutl         # Name of the secret with DB credentials
+    keyFileName: key.pem             # Key file name in the secret
+    pwdFileName: pwdfile.enc         # Password file (encrypted)
+
+  # Container image for Oracle software
+  image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0803
+
+  # Always pull the latest image
+  imagePullPolicy: Always
+
+  # Optional: Service account name, required for OpenShift due to SCC enforcement
+  # serviceAccountName: oraclerestart
+
+  # Configuration for the PDB service inside the DB
+  serviceDetails:
+    name: soepdb  # Name of the PDB service
+
+  # Resource limits and requests for CPU and memory
+  resources:
+    requests:
+      memory: "16Gi"  # Minimum guaranteed memory
+      cpu: "2"        # Minimum guaranteed CPU
+    limits:
+      memory: "16Gi"  # Max memory limit
+      cpu: "2"        # Max CPU limit
+
+  # Security-related kernel parameters required by Oracle
+  securityContext:
+    sysctls:
+      - name: kernel.shmall       # Total shared memory (pages)
+        value: "2097152"
+      - name: kernel.sem          # Semaphore settings
+        value: "250 32000 100 128"
+      - name: kernel.shmmax       # Max size of one shared memory segment (bytes)
+        value: "8589934592"
+      - name: kernel.shmmni       # Max number of shared memory segments
+        value: "4096"
+
+  # Oracle Grid and Database configuration parameters
+  configParams:
+    gridHome: "/u01/app/19c/grid"   # ORACLE_HOME for Grid Infrastructure
+    gridBase: "/u01/app/grid"       # Base location for Grid
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"  # ORACLE_HOME for Database
+    dbBase: "/u01/app/oracle"       # Base location for Database
+
+    # ASM disk devices for CRS/ASM configuration
+    crsAsmDeviceList: /dev/oracleoci/oraclevdd
+
+    # Oracle Inventory location
+    inventory: "/u01/app/oraInventory"
+
+    # Software zip files to be staged and extracted during install
+    gridSwZipFile: "grid_home.zip"
+    dbSwZipFile: "db_home.zip"
+    oPatchSwZipFile: "p6880880_190000_Linux-x86-64.zip"
+
+    # Memory and process settings for the database
+    sgaSize: "3G"     # Shared Global Area size
+    pgaSize: "1G"     # Program Global Area size
+    processes: 2000   # Max number of Oracle processes
+    cpuCount: 4       # Number of CPUs to configure inside DB
+
+    # Database name (CDB)
+    dbName: "PORCLCDB"
+
+    # Path to staged Oracle software
+    hostSwStageLocation: "/scratch/software/19c/19.3.0/"
+
+    # Location for RU patching (Release Update)
+    ruPatchLocation: "/scratch/software/19c/19.28/37957391"
+
+    # Location where OPatch utility is available
+    oPatchLocation: "/scratch/software/19c"

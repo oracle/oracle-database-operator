@@ -131,6 +131,10 @@ spec:
                     type: string
                   oPatchSwZipFile:
                     type: string
+                  oneOffIds:
+                    type: string
+                  oneOffLocation:
+                    type: string
                   opType:
                     type: string
                   pdbName:
@@ -875,6 +879,10 @@ spec:
                   oPatchLocation:
                     type: string
                   oPatchSwZipFile:
+                    type: string
+                  oneOffIds:
+                    type: string
+                  oneOffLocation:
                     type: string
                   opType:
                     type: string
