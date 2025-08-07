@@ -39,6 +39,7 @@
 package v4
 
 import (
+	"context"
 	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -57,6 +58,8 @@ var shardingdatabaselog = logf.Log.WithName("shardingdatabase-resource")
 func (r *ShardingDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -64,10 +67,10 @@ func (r *ShardingDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-shardingdatabase,mutating=true,failurePolicy=fail,sideEffects=none,groups=database.oracle.com,resources=shardingdatabases,verbs=create;update,versions=v4,name=mshardingdatabasev4.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &ShardingDatabase{}
+var _ webhook.CustomDefaulter = &ShardingDatabase{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *ShardingDatabase) Default() {
+func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) error {
 	shardingdatabaselog.Info("default", "name", r.Name)
 
 	// TODO(user): fill in your defaulting logic.
@@ -84,15 +87,16 @@ func (r *ShardingDatabase) Default() {
 		}
 	}
 
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-shardingdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=shardingdatabases,versions=v4,name=vshardingdatabasev4.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.Validator = &ShardingDatabase{}
+var _ webhook.CustomValidator = &ShardingDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateCreate() (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	shardingdatabaselog.Info("validate create", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object creation.
@@ -198,7 +202,7 @@ func (r *ShardingDatabase) ValidateCreate() (admission.Warnings, error) {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
 	shardingdatabaselog.Info("validate update", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object update.
@@ -206,7 +210,7 @@ func (r *ShardingDatabase) ValidateUpdate(old runtime.Object) (admission.Warning
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateDelete() (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	shardingdatabaselog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.

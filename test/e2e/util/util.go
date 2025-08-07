@@ -44,8 +44,6 @@ import (
 	"strings"
 	"time"
 
-	goyaml "gopkg.in/yaml.v3"
-
 	dbv1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
 
 	corev1 "k8s.io/api/core/v1"
@@ -144,7 +142,7 @@ func GetTestConfig(filename string) (*testConfiguration, error) {
 		return nil, err
 	}
 
-	if err := goyaml.Unmarshal(yamlBytes, config); err != nil {
+	if err := yaml.Unmarshal(yamlBytes, config); err != nil {
 		return nil, err
 	}
 

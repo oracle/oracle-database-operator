@@ -43,6 +43,7 @@
 package v4
 
 import (
+	"context"
 	"reflect"
 	"strconv"
 	"strings"
@@ -63,15 +64,17 @@ var pdblog = logf.Log.WithName("pdb-webhook")
 func (r *PDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-pdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update,versions=v4,name=mpdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Defaulter = &PDB{}
+var _ webhook.CustomDefaulter = &PDB{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *PDB) Default() {
+func (r *PDB) Default(ctx context.Context, obj runtime.Object) error {
 	pdblog.Info("Setting default values in PDB spec for : " + r.Name)
 
 	action := strings.ToUpper(r.Spec.Action)
@@ -115,15 +118,17 @@ func (r *PDB) Default() {
 		*r.Spec.GetScript = false
 		pdblog.Info(" - getScript : " + strconv.FormatBool(*(r.Spec.GetScript)))
 	}
+
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:path=/validate-database-oracle-com-v4-pdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=pdbs,verbs=create;update,versions=v4,name=vpdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Validator = &PDB{}
+var _ webhook.CustomValidator = &PDB{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *PDB) ValidateCreate() (admission.Warnings, error) {
+func (r *PDB) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	pdblog.Info("ValidateCreate-Validating PDB spec for : " + r.Name)
 
 	var allErrs field.ErrorList
@@ -277,7 +282,7 @@ func (r *PDB) validateAction(allErrs *field.ErrorList) {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *PDB) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *PDB) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
 	pdblog.Info("ValidateUpdate-Validating PDB spec for : " + r.Name)
 
 	isPDBMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
@@ -315,7 +320,7 @@ func (r *PDB) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *PDB) ValidateDelete() (admission.Warnings, error) {
+func (r *PDB) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	pdblog.Info("ValidateDelete-Validating PDB spec for : " + r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
