@@ -52,6 +52,7 @@
 # 		map_pdb1_resource.yaml            : map the first pluggable database
 # 		config_map.yam                    : pdb parameters array
 # 		altersystem_pdb1_resource.yaml    : chage cpu_count count parameter for the first pdb
+# 		config_map_plsql.yaml             : plsql code 
 #
 DATE  := `date "+%y%m%d%H%M%S"`
 ######################
@@ -71,6 +72,9 @@ export LRSNAMESPACE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRSNAMESPACE|cut 
 export LRESTIMG=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRESTIMG|cut -d : -f 2,3)
 export COMPANY=$(shell cat $(PARAMETERS)|grep -v ^\#|grep COMPANY|cut -d : -f 2)
 export APIVERSION=$(shell cat $(PARAMETERS)|grep -v ^\#|grep APIVERSION|cut -d : -f 2)
+export SERVICENAM=$(shell cat $(PARAMETERS)|grep -v ^\#|grep SERVICENAMEACCOUNT|cut -d : -f 2)
+export OPENSHIFT=$(shell cat $(PARAMETERS)|grep -v ^\#|grep OPENSHIFT|cut -d : -f 2)
+export PLSQLMAP=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PLSQLMAP|cut -d : -f 2)
 export OPRNAMESPACE=oracle-database-operator-system
 export ORACLE_OPERATOR_YAML=../../../../oracle-database-operator.yaml
 export TEST_EXEC_TIMEOUT=3m
@@ -88,6 +92,12 @@ WBUSERFILE=wbuser.txt
 WBPASSFILE=wbpass.txt
 PDBUSRFILE=pdbusr.txt
 PDBPWDFILE=pdbpwd.txt
+
+#################
+## PARAMETERS  ##
+#################
+
+export ASSERTDELETION=true
 
 #################
 ### FILE LIST ###
@@ -124,8 +134,11 @@ export LRPDBMAP1=map_pdb1_resource.yaml
 export LRPDBMAP2=map_pdb2_resource.yaml
 export LRPDBMAP3=map_pdb3_resource.yaml
 
+export SECURITYCTX=security_context.yaml
+
 export ALTERSYSTEMYAML=altersystem_pdb1_resource.yaml
 export CONFIG_MAP=config_map_pdb.yaml
+export CONFIG_MAP_SQL=config_map_plsql.yaml
 
 
 
@@ -139,6 +152,8 @@ CP=/usr/bin/cp
 TAR=/usr/bin/tar
 MKDIR=/usr/bin/mkdir
 SED=/usr/bin/sed
+MAKE=/usr/bin/make
+MAKEFILE=./makefile
 
 check:
 	@printf "TNSALIAS...............:%.60s....\n" $(TNSALIAS)
@@ -151,7 +166,9 @@ check:
 	@printf "PDBNAMESPACE...........:%s\n" $(PDBNAMESPACE)
 	@printf "LRSNAMESPACE...........:%s\n" $(LRSNAMESPACE)
 	@printf "COMPANY................:%s\n" $(COMPANY)
+	@printf "SERVICENAMEACCOUNT.....:%s\n" $(SERVICENAM)
 	@printf "APIVERSION.............:%s\n" $(APIVERSION)
+	@printf "PLSQLMAP...............:%s\n" $(PLSQLMAP)
 
 define msg
 @printf "\033[31;7m%s\033[0m\r" "......................................]"
@@ -336,6 +353,20 @@ spec:
   dbTnsurl : ${TNSALIAS}
   replicas: 1
   deletePdbCascade: true
+  autodiscover: true
+  namespaceAutoDiscover: ${PDBNAMESPACE}
+  clusterIp: false
+  loadBalancer: false
+  trace_level_client : 16 
+EOF
+
+if [[ ${OPENSHIFT} == "true" ]];then 
+cat <<EOF >> ${LREST_POD}
+  serviceAccountName: ${SERVICENAM}
+EOF
+fi
+
+cat <<EOF >> ${LREST_POD}
   cdbAdminUser:
     secret:
       secretName: "dbuser"
@@ -360,6 +391,10 @@ spec:
     secret:
       secretName: "db-tls"
       key: "tls.crt"
+  cdbTlsCat:
+    secret:
+      secretName: "db-ca"
+      key: "ca.crt"
   cdbPubKey:
     secret:
       secretName: "pubkey"
@@ -389,14 +424,13 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbdev"
-  assertiveLrpdbDeletion: true
+  imperativeLrpdbDeletion: ${ASSERTDELETION}
   fileNameConversions: "NONE"
   unlimitedStorage: false
   pdbconfigmap: "config-map-pdb"
   tdeImport: false
   totalSize: "2G"
   tempSize: "800M"
-  action: "Create"
 EOF
 
 cat <<EOF > ${LRPDBCRE2}
@@ -412,14 +446,13 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbprd"
-  assertiveLrpdbDeletion: true
+  imperativeLrpdbDeletion: ${ASSERTDELETION}
   fileNameConversions: "NONE"
   unlimitedStorage: false
   pdbconfigmap: "config-map-pdb"
   tdeImport: false
   totalSize: "2G"
   tempSize: "800M"
-  action: "Create"
 EOF
 
 cat <<EOF >${LRPDBOPEN1}
@@ -435,7 +468,6 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbdev"
-  action: "Modify"
   pdbState: "OPEN"
   modifyOption: "READ WRITE"
 EOF
@@ -453,7 +485,6 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbprd"
-  action: "Modify"
   pdbState: "OPEN"
   modifyOption: "READ WRITE"
 EOF
@@ -471,7 +502,6 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "new_clone"
-  action: "Modify"
   pdbState: "OPEN"
   modifyOption: "READ WRITE"
 EOF
@@ -491,7 +521,6 @@ spec:
   pdbName: "pdbdev"
   pdbState: "CLOSE"
   modifyOption: "IMMEDIATE"
-  action: "Modify"
 EOF
 
 cat <<EOF >${LRPDBCLOSE2}
@@ -509,7 +538,6 @@ spec:
   pdbName: "pdbprd"
   pdbState: "CLOSE"
   modifyOption: "IMMEDIATE"
-  action: "Modify"
 EOF
 
 cat <<EOF >${LRPDBCLOSE3}
@@ -527,7 +555,6 @@ spec:
   pdbName: "new_clone"
   pdbState: "CLOSE"
   modifyOption: "IMMEDIATE"
-  action: "Modify"
 EOF
 
 cat <<EOF  > ${LRPDBCLONE1}
@@ -548,8 +575,7 @@ spec:
   totalSize: "UNLIMITED"
   tempSize: "UNLIMITED"
   pdbconfigmap: "config-map-pdb"
-  assertiveLrpdbDeletion: true
-  action: "Clone"
+  imperativeLrpdbDeletion: true
 EOF
 
 cat <<EOF  > ${LRPDBCLONE2}
@@ -570,8 +596,7 @@ spec:
   totalSize: "UNLIMITED"
   tempSize: "UNLIMITED"
   pdbconfigmap: "config-map-pdb"
-  assertiveLrpdbDeletion: true
-  action: "Clone"
+  imperativeLrpdbDeletion: ${ASSERTDELETION}
 EOF
 
 cat <<EOF > ${LRPDBDELETE1}
@@ -586,7 +611,7 @@ spec:
   cdbResName: "cdb-dev"
   cdbNamespace: "${LRSNAMESPACE}"
   pdbName: "pdbdev"
-  action: "Delete"
+  pdbState: "DELETE"
   dropAction: "INCLUDING"
 EOF
 
@@ -602,7 +627,22 @@ spec:
   cdbResName: "cdb-dev"
   cdbNamespace: "${LRSNAMESPACE}"
   pdbName: "pdbprd"
-  action: "Delete"
+  pdbState: "DELETE"
+  dropAction: "INCLUDING"
+EOF
+
+cat <<EOF > ${LRPDBDELETE3}
+apiVersion: database.oracle.com/${APIVERSION}
+kind: LRPDB
+metadata:
+  name: pdb3
+  namespace: ${PDBNAMESPACE}
+  labels:
+    cdb: cdb-dev
+spec:
+  cdbResName: "cdb-dev"
+  cdbNamespace: "${LRSNAMESPACE}"
+  pdbName: "new_clone"
   dropAction: "INCLUDING"
 EOF
 
@@ -619,8 +659,8 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbdev"
+  pdbState: "UNPLUG"
   xmlFileName: "/var/tmp/pdb.$$.xml"
-  action: "Unplug"
 EOF
 
 cat <<EOF >${LRPDBPLUG1}
@@ -636,16 +676,15 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbdev"
+  pdbState: "PLUG"
   xmlFileName: "/var/tmp/pdb.$$.xml"
-  action: "plug"
   fileNameConversions: "NONE"
   sourceFileNameConversions: "NONE"
   copyAction: "MOVE"
   totalSize: "1G"
   tempSize: "100M"
-  assertiveLrpdbDeletion: true
+  imperativeLrpdbDeletion: true
   pdbconfigmap: "config-map-pdb"
-  action: "Plug"
 EOF
 
 cat <<EOF >${LRPDBMAP1}
@@ -661,11 +700,10 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbdev"
-  assertiveLrpdbDeletion: true
+  imperativeLrpdbDeletion: true
   fileNameConversions: "NONE"
   totalSize: "1G"
   tempSize: "100M"
-  action: "Map"
 EOF
 
 cat <<EOF >${LRPDBMAP2}
@@ -681,11 +719,10 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbprd"
-  assertiveLrpdbDeletion: true
+  imperativeLrpdbDeletion: true
   fileNameConversions: "NONE"
   totalSize: "1G"
   tempSize: "100M"
-  action: "Map"
 EOF
 
 
@@ -702,11 +739,10 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "new_clone"
-  assertiveLrpdbDeletion: true
+  imperativeLrpdbDeletion: true
   fileNameConversions: "NONE"
   totalSize: "1G"
   tempSize: "100M"
-  action: "Map"
 EOF
 
 cat <<EOF >${CONFIG_MAP}
@@ -737,16 +773,47 @@ spec:
   cdbNamespace: "${LRSNAMESPACE}"
   cdbName: "DB12"
   pdbName: "pdbdev"
-  action: "Alter"
   alterSystemParameter : "cpu_count"
   alterSystemValue : "3"
   parameterScope : "memory"
-
-
 EOF
 
+
+cat <<EOF > ${CONFIG_MAP_SQL}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${PLSQLMAP}
+  namespace: ${PDBNAMESPACE}
+data:
+  plblock1.sql: |
+        create user k8stestuser identified by tkstestuser
+  plblock2.sql: |
+        grant dba to k8stestuser
+  plblock3.sql: |
+        create table k8stestuser.rndnum (c1 number ,c2 number)
+  plblock4.sql: |
+        alter session set events '942 trace name errorstack level  3'
+  plblock5.sql: |
+        create or replace  procedure k8stestuser.gennum 
+        as 
+        begin 
+        for cnt in 1..100 
+        loop 
+           insert into k8stestuser.rndnum values (dbms_random.value(1,100), 
+           dbms_random.value(1,100));
+           end loop;
+           commit;
+        end;
+  plblock6.sql: |
+        begin 
+        k8stestuser.gennum;
+        end;
+EOF
+
+
 ## Auth information
-for _file in ${LRPDBCRE1} ${LRPDBCRE2} ${LRPDBOPEN1} ${LRPDBOPEN2} ${LRPDBOPEN3} ${LRPDBCLOSE1} ${LRPDBCLOSE2} ${LRPDBCLOSE3} ${LRPDBCLONE1} ${LRPDBCLONE2} ${LRPDBDELETE1} ${LRPDBDELETE2} ${LRPDBUNPLUG1} ${LRPDBPLUG1} ${LRPDBMAP1} ${LRPDBMAP2} ${LRPDBMAP3} ${ALTERSYSTEMYAML}
+for _file in ${LRPDBCRE1} ${LRPDBCRE2} ${LRPDBOPEN1} ${LRPDBOPEN2} ${LRPDBOPEN3} ${LRPDBCLOSE1} ${LRPDBCLOSE2} ${LRPDBCLOSE3} ${LRPDBCLONE1} ${LRPDBCLONE2} ${LRPDBDELETE1} ${LRPDBDELETE2}  ${LRPDBDELETE3} ${LRPDBUNPLUG1} ${LRPDBPLUG1} ${LRPDBMAP1} ${LRPDBMAP2} ${LRPDBMAP3} ${ALTERSYSTEMYAML}
 do 
 ls -ltr ${_file}
      cat authsection.yaml >> ${_file}
@@ -754,14 +821,115 @@ done
 rm authsection.yaml
 endef
 
+define _script03
+cat <<EOF >${SECURITYCTX}
+#
+# Copyright (c) 2024, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+---
+
+# Create a Security Context Contraint
+kind: SecurityContextConstraints
+apiVersion: security.openshift.io/v1
+metadata:
+  name: lrest-scc
+allowPrivilegedContainer: false
+allowedCapabilities:
+  - SYS_NICE
+runAsUser:
+  type: MustRunAs
+  uid: 54321
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 54321
+    max: 54321
+supplementalGroups:
+   type: MustRunAs
+   ranges:
+   - min: 54321
+     max: 54321
+---
+
+# Create a Security Context Contraint
+kind: SecurityContextConstraints
+apiVersion: security.openshift.io/v1
+metadata:
+  name: lrest-root-user-scc
+allowPrivilegedContainer: false
+allowedCapabilities:
+  - SYS_NICE
+runAsUser:
+  type: MustRunAsRange
+  uidRangeMin: 0
+  uidRangeMax: 54321
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 0
+    max: 54325
+supplementalGroups:
+  type: MustRunAs
+  ranges:
+  - min: 0
+    max: 54321
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lrest-sa
+  namespace: ${LRSNAMESPACE}
+---
+
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: use-lrest-scc
+  namespace: ${LRSNAMESPACE}
+rules:
+  - apiGroups:
+    - security.openshift.io
+    verbs:
+    - use
+    resources:
+    - securitycontextconstraints
+    resourceNames:
+    - lrest-scc
+    - lrest-root-user-scc
+---
+
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: use-lrest-scc
+  namespace: ${LRSNAMESPACE}
+subjects:
+  - kind: ServiceAccount
+    name: lrest-sa
+    namespace: ${LRSNAMESPACE}
+roleRef:
+  kind: Role
+  name: use-lrest-scc
+  apiGroup: rbac.authorization.k8s.io
+EOF
+
+endef
+
 export script02 = $(value _script02)
+export script03 = $(value _script03)
 
 genyaml: secyaml
 	@ eval "$$script01"
 	@ eval "$$script02"
+	@ eval "$$script03"
 
 cleanyaml:
-	- $(RM) $(LRPDBMAP3) $(LRPDBMAP2) $(LRPDBMAP1) $(LRPDBPLUG1) $(LRPDBUNPLUG1) $(LRPDBDELETE2) $(LRPDBDELETE1) $(LRPDBCLONE2) $(LRPDBCLONE1) $(LRPDBCLOSE3) $(LRPDBCLOSE2) $(LRPDBCLOSE1) $(LRPDBOPEN3) $(LRPDBOPEN2) $(LRPDBOPEN1) $(LRPDBCRE2) $(LRPDBCRE1) $(LREST_POD) ${ALTERSYSTEMYAML}
+	- $(RM) $(LRPDBMAP3) $(LRPDBMAP2) $(LRPDBMAP1) $(LRPDBPLUG1) $(LRPDBUNPLUG1) $(LRPDBDELETE2) $(LRPDBDELETE1) $(LRPDBDELETE3) $(LRPDBCLONE2) $(LRPDBCLONE1) $(LRPDBCLOSE3) $(LRPDBCLOSE2) $(LRPDBCLOSE1) $(LRPDBOPEN3) $(LRPDBOPEN2) $(LRPDBOPEN1) $(LRPDBCRE2) $(LRPDBCRE1) $(LREST_POD) ${ALTERSYSTEMYAML}
 	- $(RM) ${CONFIG_MAP} ${PDBNAMESPACE}_binding.yaml ${LRSNAMESPACE}_binding.yaml
 
 
@@ -806,9 +974,21 @@ dump:
 	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPRNAMESPACE)|grep oracle-database-operator-controller|head -2|tail -1 | cut -d ' ' -f 1` -n $(OPRNAMESPACE) >>$(DIAGFILE)
 	$(KUBECTL) logs   pod/`$(KUBECTL) get pods -n $(OPRNAMESPACE)|grep oracle-database-operator-controller|tail -1|cut  -d ' ' -f 1` -n $(OPRNAMESPACE) >>$(DIAGFILE)
 
+listimage:
+	 $(KUBECTL) get pods --all-namespaces -o jsonpath="{.items[*].spec['initContainers', 'containers'][*].image}" | tr -s '[[:space:]]' '\n' | sort | uniq -c
+
+getvaliduid:
+	$(KUBECTL) get namespace  $(LRSNAMESPACE) -ojson | jq '.metadata.annotations | with_entries(select(.key | contains("sa.scc")))'
+
+
 #######################################################
 ####                 TEST SECTION                  ####
 #######################################################
+CREATEMSG="create:[op completed]"
+OPENMSG="open:[op. completed]"
+CLOSEMSG="close:[op. completed]"
+CLONEMSG="clone:[op. completed]"
+PLUGMSG="plug:[op. completed]"
 
 run00:
 	@$(call msg,"lrest pod creation")
@@ -822,28 +1002,79 @@ run00:
 run01.1:
 	@$(call msg,"lrpdb pdb1  creation")
 	$(KUBECTL) apply -f $(LRPDBCRE1)
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CREATEMSG) lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg, "lrpdb pdb1 creation completed")
 	$(KUBECTL) get lrpdb pdb1 -n $(PDBNAMESPACE) 
 
 run01.2:
 	@$(call msg, "lrpdb pdb2  creation")
 	$(KUBECTL) apply -f $(LRPDBCRE2)
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrpdb pdb2 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CREATEMSG) lrpdb pdb2 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg, "lrpdb pdb2  creation completed")
 	$(KUBECTL) get lrpdb pdb2 -n $(PDBNAMESPACE) 
+
+open:
+	@$(call msg, "lrpdb $(LRPDBNAME)  open")
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"pdbState":"OPEN","modifyOption":"READ WRITE","modifyOption2":"NONE"}}' --type=merge
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(OPENMSG) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	@$(call msg, "lrpdb $(LRPDBNAME)  completed")
+	$(KUBECTL) get lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) 
+
+openrestricted:
+	@$(call msg, "lrpdb $(LRPDBNAME)  open")
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"pdbState":"OPEN","modifyOption":"READ WRITE","modifyOption2":"RESTRICTED"}}' --type=merge
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(OPENMSG) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	@$(call msg, "lrpdb $(LRPDBNAME)  completed")
+	$(KUBECTL) get lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) 
+
+
+close:
+	@$(call msg, "lrpdb $(LRPDBNAME)  close")
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"pdbState":"CLOSE","modifyOption":"IMMEDIATE"}}' --type=merge
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CLOSEMSG) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	@$(call msg, "lrpdb $(LRPDBNAME)  completed")
+	$(KUBECTL) get lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) 
+
+openpdb1:
+	$(MAKE) -f $(MAKEFILE) open LRPDBNAME=pdb1 
+
+openpdb2:
+	$(MAKE) -f $(MAKEFILE) open LRPDBNAME=pdb2 
+
+openpdb3:
+	$(MAKE) -f $(MAKEFILE) open LRPDBNAME=pdb3
+
+openpdb1rs:
+	$(MAKE) -f $(MAKEFILE) openrestricted LRPDBNAME=pdb1
+
+openpdb2rs:
+	$(MAKE) -f $(MAKEFILE) openrestricted LRPDBNAME=pdb2
+
+closepdb1:
+	$(MAKE) -f $(MAKEFILE) close LRPDBNAME=pdb1 
+
+closepdb2:
+	$(MAKE) -f $(MAKEFILE) close LRPDBNAME=pdb2 
+
+closepdb3:
+	$(MAKE) -f $(MAKEFILE) close LRPDBNAME=pdb3 
+
 
 run02.1:
 	@$(call msg, "lrpdb pdb1  open")
 	$(KUBECTL) apply -f $(LRPDBOPEN1)
-	$(KUBECTL) wait --for jsonpath='{.status.openMode'}="READ WRITE" lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(OPENMSG) lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg, "lrpdb pdb1 open completed")
 	$(KUBECTL) get lrpdb pdb1 -n $(PDBNAMESPACE) 
+
 
 run02.2:
 	@$(call msg,"lrpdb pdb2  open")
 	$(KUBECTL) apply -f $(LRPDBOPEN2)
-	$(KUBECTL) wait --for jsonpath='{.status.openMode'}="READ WRITE" lrpdb pdb2 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(OPENMSG) lrpdb pdb2 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"lrpdb pdb2 open completed")
 	$(KUBECTL) get lrpdb pdb2 -n $(PDBNAMESPACE) 
 
@@ -851,7 +1082,7 @@ run02.2:
 run03.1:
 	@$(call msg,"clone pdb1-->pdb3")
 	$(KUBECTL) apply -f $(LRPDBCLONE1)
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrpdb pdb3 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CLONEMSG) lrpdb pdb3 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"clone pdb1-->pdb3 completed")
 	$(KUBECTL) get lrpdb pdb3 -n $(PDBNAMESPACE) 
 
@@ -859,7 +1090,7 @@ run03.1:
 run03.2:
 	@$(call msg,"clone pdb2-->pdb4")
 	$(KUBECTL) apply -f $(LRPDBCLONE2)
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrpdb pdb4 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CLONEMSG) lrpdb pdb4 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"clone pdb2-->pdb4 completed")
 	$(KUBECTL) get lrpdb pdb3 -n $(PDBNAMESPACE) 
 
@@ -867,14 +1098,14 @@ run03.2:
 run04.1:
 	@$(call msg,"lrpdb pdb1  close")
 	$(KUBECTL) apply -f $(LRPDBCLOSE1)
-	$(KUBECTL) wait --for jsonpath='{.status.openMode'}="MOUNTED" lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CLOSEMSG) lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg, "lrpdb pdb1 close completed")
 	$(KUBECTL) get lrpdb pdb1 -n $(PDBNAMESPACE)
 
 run04.2:
 	@$(call msg,"lrpdb pdb2  close")
 	$(KUBECTL) apply -f $(LRPDBCLOSE2)
-	$(KUBECTL) wait --for jsonpath='{.status.openMode'}="MOUNTED" lrpdb pdb2 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CLOSEMSG) lrpdb pdb2 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"lrpdb pdb2 close completed")
 	$(KUBECTL) get lrpdb pdb2 -n $(PDBNAMESPACE)
 
@@ -887,14 +1118,14 @@ run05.1:
 run06.1:
 	@$(call msg, "lrpdb pdb1  plug")
 	$(KUBECTL) apply -f $(LRPDBPLUG1)
-	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(PLUGMSG) lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg, "lrpdb pdb1 plug completed")
 	$(KUBECTL) get lrpdb pdb1 -n $(PDBNAMESPACE)
 
 run07.1:
 	@$(call msg,"lrpdb pdb1 delete ")
 	- $(KUBECTL) apply -f $(LRPDBCLOSE1)
-	$(KUBECTL) wait --for jsonpath='{.status.openMode'}="MOUNTED" lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CLOSEMSG) lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	$(KUBECTL) apply -f $(LRPDBDELETE1)
 	$(KUBECTL) wait --for=delete lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg,"lrpdb pdb1 delete")
@@ -906,6 +1137,80 @@ run99.1:
 	$(KUBECTL) get lrest -n $(LRSNAMESPACE)
 	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)
 	
-runall01:  run00 run01.1 run01.2 run02.1 run02.2 run03.1 run03.2 run04.1 run04.2 run05.1 run06.1 run07.1
+
+tklifecycle: runall01
+
+tkonepdbcre: runall02
+
+tkapplyinit:
+	@$(call msg," init config map creation")
+	-- $(KUBECTL) delete -f $(CONFIG_MAP) -n $(PDBNAMESPACE)
+	$(KUBECTL) apply -f $(CONFIG_MAP) -n $(PDBNAMESPACE)
+
+tkplsqlexec: 
+	@$(call msg,"==>PLSQL TESTING<==")
+	$(MAKE) -f $(MAKEFILE) run00 run01.1 run02.1
+	@$(call msg,"delete config map ")
+	-- $(KUBECTL) delete configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
+	@$(call msg,"recreating config sql map")
+	$(KUBECTL) apply -f $(CONFIG_MAP_SQL)
+	$(KUBECTL) describe configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
+	@$(call msg,"applying config sql map")
+	$(KUBECTL) patch lrpdb pdb1 -n $(PDBNAMESPACE) -p \
+	       '{"spec":{"codeconfigmap":"$(PLSQLMAP)"}}' --type=merge
+	sleep 10 
+	$(KUBECTL) get events --sort-by='.lastTimestamp' -n $(PDBNAMESPACE)
+	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
+	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
+
+
+
+tkaudosicov:
+	@$(call msg,"==>AUTODISCOVER TESTING<==")
+	$(MAKE) -f $(MAKEFILE) genyaml ASSERTDELETION=false
+	$(MAKE) -f $(MAKEFILE) run00 run01.1 run02.1
+	@$(call msg,"deleting pdb1 (imperativedeletion=false)")
+	$(KUBECTL) delete lrpdb pdb1 -n $(PDBNAMESPACE)
+	$(KUBECTL) wait --for=delete lrpdb pdb1 -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	 @$(call msg,"checking lrpdb pdb1 recreation")
+	$(KUBECTL) wait --for jsonpath='{.status.phase'}="Ready" \
+		lrpdb atd-pdbdev -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(MAKE) -f $(MAKEFILE) genyaml ASSERTDELETION=true
+
+pdbsize:
+	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.pdbName}{"\t"}{.spec.totalSize}{"\t"}{.status.totalSize}{"\n"}{end}'
+
+
+
+# tkapplyinit - config map creation
+# run00       - lrest pod creation 
+# run01.1     - pdb1 creation 
+# run01.2     - pdb2 creation
+# run02.1     - pdb1 open               - declarative  
+# run02.2     - pdb2 open               - declarative
+# run03.1     - pdb1 clone              - declarative
+# run04.1     - pdb1 close              - declarative
+# run04.2     - pdb2 close              - declatative  
+# run05.1     - pdb1 unplug             - declarative
+# run06.1     - pdb1 plug               - declarative
+# openpdb1    - pdb1 open               - imperative 
+# openpdb2    - pdb2 open               - imperative 
+# closepdb1   - pdb1 close              - imperative
+# closepdb2   - pdb2 close              - imperative 
+# openpdb1rs  - pdb1 open restrict      - imperative  
+# openpdb2rs  - pdb2 open restrict      - imperative  
+#
+
+runall01: tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 run03.1 run03.2 run04.1 run04.2 run05.1 run06.1 run07.1 
+runall02: tkapplyinit run00 run01.1 openpdb1
+runall03: tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 run04.1 run04.2 openpdb1 openpdb2 closepdb1 closepdb2 openpdb1rs
+	$(MAKE) -f $(MAKEFILE) close LRPDBNAME=pdb1
+	$(MAKE) -f $(MAKEFILE) open  LRPDBNAME=pdb1
+	$(MAKE) -f $(MAKEFILE) close LRPDBNAME=pdb1
+	$(MAKE) -f $(MAKEFILE) run05.1 run06.1
+
+runall04: tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 run04.1 run04.2 openpdb1 openpdb2 closepdb1 closepdb2 run05.1 run06.1 closepdb1 
+
+
 
 

@@ -44,14 +44,14 @@ import (
 
 // LRPDBSpec defines the desired state of LRPDB
 type LRPDBSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
+	// Secret: tls.key
 	LRPDBTlsKey LRPDBTLSKEY `json:"lrpdbTlsKey,omitempty"`
+	// Secret: tls.crt
 	LRPDBTlsCrt LRPDBTLSCRT `json:"lrpdbTlsCrt,omitempty"`
+	//	Secret: ca.crt
 	LRPDBTlsCat LRPDBTLSCAT `json:"lrpdbTlsCat,omitempty"`
+	// Secret for private key
 	LRPDBPriKey LRPDBPRVKEY `json:"cdbPrvKey,omitempty"`
-
 	// Namespace of the rest server
 	CDBNamespace string `json:"cdbNamespace,omitempty"`
 	// Name of the CDB Custom Resource that runs the LREST container
@@ -66,10 +66,11 @@ type LRPDBSpec struct {
 	AdminName LRPDBAdminName `json:"adminName,omitempty"`
 	// The administrator password for the new LRPDB. This property is required when the Action property is Create.
 	AdminPwd LRPDBAdminPassword `json:"adminPwd,omitempty"`
-	// Relevant for Create and Plug operations. As defined in the  Oracle Multitenant Database documentation. Values can be a filename convert pattern or NONE.
+	// PDB Admin user
 	AdminpdbUser AdminpdbUser `json:"adminpdbUser,omitempty"`
+	// PDB Admin user password
 	AdminpdbPass AdminpdbPass `json:"adminpdbPass,omitempty"`
-
+	// Use this parameter on non ASM storage '....path....','pdbname' e.g. '/u01/oradata','dborcl'
 	FileNameConversions string `json:"fileNameConversions,omitempty"`
 	// This property is required when the Action property is Plug. As defined in the Oracle Multitenant Database documentation. Values can be a source filename convert pattern or NONE.
 	SourceFileNameConversions string `json:"sourceFileNameConversions,omitempty"`
@@ -84,8 +85,10 @@ type LRPDBSpec struct {
 	// A Path specified for sparse clone snapshot copy. (Optional)
 	SparseClonePath string `json:"sparseClonePath,omitempty"`
 	// Whether to reuse temp file
+	// +kubebuilder:default=true
 	ReuseTempFile *bool `json:"reuseTempFile,omitempty"`
 	// Relevant for Create and Plug operations. True for unlimited storage. Even when set to true, totalSize and tempSize MUST be specified in the request if Action is Create.
+	// +kubebuilder:default=true
 	UnlimitedStorage *bool `json:"unlimitedStorage,omitempty"`
 	// Indicate if 'AS CLONE' option should be used in the command to plug in a LRPDB. This property is applicable when the Action property is PLUG but not required.
 	AsClone *bool `json:"asClone,omitempty"`
@@ -96,41 +99,60 @@ type LRPDBSpec struct {
 	// Web Server User with SQL Administrator role to allow us to authenticate to the PDB Lifecycle Management REST endpoints
 	WebLrpdbServerUser WebLrpdbServerUser `json:"webServerUser,omitempty"`
 	// Password for the Web Server User
-	WebLrpdbServerPwd WebLrpdbServerPassword `json:"webServerPwd,omitempt"`
+	WebLrpdbServerPwd WebLrpdbServerPassword `json:"webServerPwd,omitempty"`
 	// TDE import for plug operations
+	// +hidefromdoc
 	LTDEImport *bool `json:"tdeImport,omitempty"`
 	// LTDE export for unplug operations
+	// +hidefromdoc
 	LTDEExport *bool `json:"tdeExport,omitempty"`
 	// TDE password if the tdeImport or tdeExport flag is set to true. Can be used in create, plug or unplug operations
+	// +hidefromdoc
 	LTDEPassword LTDEPwd `json:"tdePassword,omitempty"`
 	// LTDE keystore path is required if the tdeImport or tdeExport flag is set to true. Can be used in plug or unplug operations.
+	// +hidefromdoc
 	LTDEKeystorePath string `json:"tdeKeystorePath,omitempty"`
 	// LTDE secret is required if the tdeImport or tdeExport flag is set to true. Can be used in plug or unplug operations.
+	// +hidefromdoc
 	LTDESecret LTDESecret `json:"tdeSecret,omitempty"`
-	// Whether you need the script only or execute the script
+	//  Whether you need the script only or execute the script - legacy parameter
+	//  +kubebuilder:default=false
 	GetScript *bool `json:"getScript,omitempty"`
 	// Action to be taken: Create/Clone/Plug/Unplug/Delete/Modify/Status/Map/Alter. Map is used to map a Databse LRPDB to a Kubernetes LRPDB CR.
-	// +kubebuilder:validation:Enum=Create;Clone;Plug;Unplug;Delete;Modify;Status;Map;Alter;Noaction
-	Action string `json:"action"`
+	// Mainted for backward compatibility. No longer need
+	Action string `json:"action,omitempty"`
 	// Extra options for opening and closing a LRPDB
 	// +kubebuilder:validation:Enum=IMMEDIATE;NORMAL;READ ONLY;READ WRITE;RESTRICTED
 	ModifyOption string `json:"modifyOption,omitempty"`
+	// Modify Option2 of the LRPDB
+	// +kubebuilder:default=NONE
+	ModifyOption2 string `json:"modifyOption2,omitempty"`
 	// to be used with ALTER option - obsolete do not use
 	AlterSystem string `json:"alterSystem,omitempty"`
-	// to be used with ALTER option - the name of the parameter
-	AlterSystemParameter string `json:"alterSystemParameter"`
-	// to be used with ALTER option - the  value of the parameter
-	AlterSystemValue string `json:"alterSystemValue"`
-	// parameter scope
+	// To be used with ALTER option - the name of the parameter
+	AlterSystemParameter string `json:"alterSystemParameter,omitempty"`
+	// To be used with ALTER option - the  value of the parameter
+	AlterSystemValue string `json:"alterSystemValue,omitempty"`
+	// Init parameter scope
 	ParameterScope string `json:"parameterScope,omitempty"`
 	// The target state of the LRPDB
-	// +kubebuilder:validation:Enum=OPEN;CLOSE;ALTER
+	// +kubebuilder:validation:Enum=OPEN;CLOSE;ALTER;DELETE;UNPLUG;PLUG;CLONE;RESET;NONE
 	LRPDBState string `json:"pdbState,omitempty"`
-	// turn on the assertive approach to delete pdb resource
-	// kubectl delete pdb ..... automatically triggers the pluggable database
+	// Turn on the imperative approach to delete pdb resource
+	// kubectl delete pdb command automatically triggers the pluggable database
 	// deletion
-	AssertiveLrpdbDeletion bool   `json:"assertiveLrpdbDeletion,omitempty"`
-	PDBConfigMap           string `json:"pdbconfigmap,omitempty"`
+	ImperativeLrpdbDeletion bool `json:"imperativeLrpdbDeletion,omitempty"`
+	// Config map containing the pdb parameters
+	PDBConfigMap string `json:"pdbconfigmap,omitempty"`
+	// Config map containing sql(ddl)/plsql code
+	PLSQLBlock string `json:"codeconfigmap,omitempty"`
+	// Spare filed not used
+	PLSQLExecMode int `json:"plsqlexemode,omitempty"`
+	// For future use - rest bitmask status
+	// ++kubebuilder:default=0
+	PDBBitMask int `json:"reststate,omitempty"`
+	// Debug option , not yet implemented
+	Debug int `json:"debug,omitempty"`
 }
 
 // LRPDBAdminName defines the secret containing Sys Admin User mapped to key 'adminName' for LRPDB
@@ -208,16 +230,21 @@ type LRPDBStatus struct {
 	OpenMode string `json:"openMode,omitempty"`
 	// Modify Option of the LRPDB
 	ModifyOption string `json:"modifyOption,omitempty"`
+	// Restricted
+	Restricted string `json:"restricted,omitempty"`
 	// Message
 	Msg string `json:"msg,omitempty"`
 	// Last Completed Action
 	Action string `json:"action,omitempty"`
 	// Last Completed alter system
-	AlterSystem string `json:"alterSystem,omitempty"`
+	PDBBitMask    int    `json:"pdbBitMask,omitempty"`
+	PDBBitMaskStr string `json:"pdbBitMaskStr,omitempty"`
+	AlterSystem   string `json:"alterSystem,omitempty"`
 	// Last ORA-
-	SqlCode    int    `json:"sqlCode"`
-	Bitstat    int    `json:"bitstat,omitempty"`    /* Bitmask */
-	BitStatStr string `json:"bitstatstr,omitempty"` /* Decoded bitmask */
+	SqlCode      int    `json:"sqlCode"`
+	LastPLSQL    string `json:"lastplsql,omitempty"`
+	CmBitstat    int    `json:"bitstat,omitempty"`    /* Bitmask */
+	CmBitStatStr string `json:"bitstatstr,omitempty"` /* Decoded bitmask */
 }
 
 // +kubebuilder:object:root=true
@@ -226,9 +253,11 @@ type LRPDBStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".spec.pdbName",name="PDB Name",type="string",description="Name of the PDB"
 // +kubebuilder:printcolumn:JSONPath=".status.openMode",name="PDB State",type="string",description="PDB Open Mode"
 // +kubebuilder:printcolumn:JSONPath=".status.totalSize",name="PDB Size",type="string",description="Total Size of the PDB"
-// +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the LRPDB Resource"
 // +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message, if any"
+// +kubebuilder:printcolumn:JSONPath=".status.restricted",name="Restricted",type="string",description="open restricted"
 // +kubebuilder:printcolumn:JSONPath=".status.sqlCode",name="last sqlcode",type="integer",description="last sqlcode"
+// +kubebuilder:printcolumn:JSONPath=".status.lastplsql",name="last PLSQL",type="string",description="last plsql applied"
+// +kubebuilder:printcolumn:JSONPath=".status.pdbBitMaskStr",name="BITMASK STATUS",type="string",description="Bitmask status"
 // +kubebuilder:printcolumn:JSONPath=".status.connString",name="Connect_String",type="string",description="The connect string to be used"
 // +kubebuilder:resource:path=lrpdbs,scope=Namespaced
 // +kubebuilder:storageversion

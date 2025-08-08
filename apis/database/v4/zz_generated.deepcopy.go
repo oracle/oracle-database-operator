@@ -2411,6 +2411,7 @@ func (in *LRESTSpec) DeepCopyInto(out *LRESTSpec) {
 	out.LRESTTlsCrt = in.LRESTTlsCrt
 	out.LRESTPubKey = in.LRESTPubKey
 	out.LRESTPriKey = in.LRESTPriKey
+	out.LRESTTlsCat = in.LRESTTlsCat
 	out.LRESTPwd = in.LRESTPwd
 	out.WebLrestServerUser = in.WebLrestServerUser
 	out.WebLrestServerPwd = in.WebLrestServerPwd

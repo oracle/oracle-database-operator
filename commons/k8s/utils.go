@@ -84,3 +84,12 @@ func Patch(kubeClient client.Client, obj client.Object, path string, value inter
 	patch := client.RawPatch(types.JSONPatchType, payloadBytes)
 	return kubeClient.Patch(context.TODO(), obj, patch)
 }
+
+func Int64Pointer(d int64) *int64 {
+        return &d
+}
+
+func BoolPointer(d bool) *bool {
+        return &d
+}
+

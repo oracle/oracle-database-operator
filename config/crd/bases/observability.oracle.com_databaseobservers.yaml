@@ -136,6 +136,8 @@ spec:
                               runAsUser:
                                 format: int64
                                 type: integer
+                              seLinuxChangePolicy:
+                                type: string
                               seLinuxOptions:
                                 properties:
                                   level:
@@ -524,7 +526,7 @@ spec:
                                 proxyFromEnvironment:
                                   type: boolean
                                 proxyUrl:
-                                  pattern: ^http(s)?://.+$
+                                  pattern: ^(http|https|socks5)://.+$
                                   type: string
                                 scopes:
                                   items:
@@ -1837,6 +1839,8 @@ spec:
                               - port
                               type: object
                           type: object
+                        stopSignal:
+                          type: string
                       type: object
                     livenessProbe:
                       properties:
@@ -2459,6 +2463,8 @@ spec:
                               runAsUser:
                                 format: int64
                                 type: integer
+                              seLinuxChangePolicy:
+                                type: string
                               seLinuxOptions:
                                 properties:
                                   level:
@@ -2847,7 +2853,7 @@ spec:
                                 proxyFromEnvironment:
                                   type: boolean
                                 proxyUrl:
-                                  pattern: ^http(s)?://.+$
+                                  pattern: ^(http|https|socks5)://.+$
                                   type: string
                                 scopes:
                                   items:
@@ -4160,6 +4166,8 @@ spec:
                               - port
                               type: object
                           type: object
+                        stopSignal:
+                          type: string
                       type: object
                     livenessProbe:
                       properties:
@@ -4782,6 +4790,8 @@ spec:
                               runAsUser:
                                 format: int64
                                 type: integer
+                              seLinuxChangePolicy:
+                                type: string
                               seLinuxOptions:
                                 properties:
                                   level:
@@ -5170,7 +5180,7 @@ spec:
                                 proxyFromEnvironment:
                                   type: boolean
                                 proxyUrl:
-                                  pattern: ^http(s)?://.+$
+                                  pattern: ^(http|https|socks5)://.+$
                                   type: string
                                 scopes:
                                   items:
@@ -6483,6 +6493,8 @@ spec:
                               - port
                               type: object
                           type: object
+                        stopSignal:
+                          type: string
                       type: object
                     livenessProbe:
                       properties:
