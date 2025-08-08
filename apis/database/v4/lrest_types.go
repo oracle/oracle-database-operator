@@ -51,22 +51,26 @@ type LRESTSpec struct {
 	LRESTName string `json:"cdbName,omitempty"`
 	// Name of the LREST Service
 	ServiceName string `json:"serviceName,omitempty"`
-
 	// Password for the LREST System Administrator
 	SysAdminPwd LRESTSysAdminPassword `json:"sysAdminPwd,omitempty"`
 	// User in the root container with sysdba priviledges to manage PDB lifecycle
 	LRESTAdminUser LRESTAdminUser `json:"cdbAdminUser,omitempty"`
 	// Password for the LREST Administrator to manage PDB lifecycle
 	LRESTAdminPwd LRESTAdminPassword `json:"cdbAdminPwd,omitempty"`
-
+	// Secret: tls.key
 	LRESTTlsKey LRESTTLSKEY `json:"cdbTlsKey,omitempty"`
+	// Secret: tls.crt
 	LRESTTlsCrt LRESTTLSCRT `json:"cdbTlsCrt,omitempty"`
+	// Secret: Pub.key
 	LRESTPubKey LRESTPUBKEY `json:"cdbPubKey,omitempty"`
+	// Secret: Priv.key
 	LRESTPriKey LRESTPRVKEY `json:"cdbPrvKey,omitempty"`
-
+	// Secret: Tls.cat
+	LRESTTlsCat LRPDBTLSCAT `json:"cdbTlsCat,omitempty"`
 	// Password for user LREST_PUBLIC_USER
 	LRESTPwd LRESTPassword `json:"lrestPwd,omitempty"`
 	// LREST server port. For now, keep it as 8888. TO BE USED IN FUTURE RELEASE.
+	// +kubebuilder:default=8888
 	LRESTPort int `json:"lrestPort,omitempty"`
 	// LREST Image Name
 	LRESTImage string `json:"lrestImage,omitempty"`
@@ -86,9 +90,30 @@ type LRESTSpec struct {
 	// DB server port
 	DBPort int `json:"dbPort,omitempty"`
 	// Node Selector for running the Pod
-	NodeSelector     map[string]string `json:"nodeSelector,omitempty"`
-	DBTnsurl         string            `json:"dbTnsurl,omitempty"`
-	DeletePDBCascade bool              `json:"deletePdbCascade,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Container database connect string
+	DBTnsurl string `json:"dbTnsurl,omitempty"`
+	// lrest server deletion automatically triggers associated pdb deletion
+	DeletePDBCascade bool `json:"deletePdbCascade,omitempty"`
+	// Name of the service account
+	SrvAccountName string `json:"serviceAccountName,omitempty"`
+	// Detection of pdb created manually via sqlplus or other cli db interface
+	// It automatically associates a resource to the new pdb
+	PdbAutoDiscover bool `json:"autodiscover,omitempty"`
+	// The namespace assigned by default to the new resource when autodiscover is turned on
+	NamesSpaceAutoDiscover string `json:"namespaceAutoDiscover,omitempty"`
+	// Specify if cluster ip is required when  corev1.Service starts. Note the lrest server
+	// it's an internal component that should never be visible from outside. Use this parameter
+	// only if you need to run the operator local.
+	// +kubebuilder:default=false
+	ClusterIP bool `json:"clusterIp,omitempty"`
+	// Create a load balancer: Use this parameter in conjunction with ClusterIP only if you need
+	// to run the operator local
+	// +kubebuilder:default=false
+	LoadBalancer bool `json:"loadBalancer,omitempty"`
+	// Turn on the  sqlnet.trace_level_client
+	// +kubebuilder:default=0
+	SqlNetTrace int `json:"trace_level_client,omitempty"`
 }
 
 // LRESTSecret defines the secretName

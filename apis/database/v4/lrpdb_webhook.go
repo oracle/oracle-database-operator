@@ -49,6 +49,7 @@ import (
 	"strconv"
 	"strings"
 
+	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -150,39 +151,18 @@ func (r *LRPDB) ValidateCreate(ctx context.Context, obj runtime.Object) (admissi
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "LRPDB"},
 		r.Name, allErrs)
-	return nil, nil
 }
 
 // Validate Action for required parameters
 func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pdb LRPDB) {
-	action := strings.ToUpper(pdb.Spec.Action)
 
-	lrpdblog.Info("Valdiating LRPDB Resource Action : " + action)
+	pdbstate := strings.ToUpper(pdb.Spec.LRPDBState)
+	scrdatabase := strings.ToUpper(pdb.Spec.SrcLRPDBName)
+	//plsql := strings.ToUpper(pdb.Spec.PLSQLBlock)
 
-	if reflect.ValueOf(pdb.Spec.LRPDBTlsKey).IsZero() {
-		*allErrs = append(*allErrs,
-			field.Required(field.NewPath("spec").Child("lrpdbTlsKey"), "Please specify LRPDB Tls Key(secret)"))
-	}
-
-	if reflect.ValueOf(pdb.Spec.LRPDBTlsCrt).IsZero() {
-		*allErrs = append(*allErrs,
-			field.Required(field.NewPath("spec").Child("lrpdbTlsCrt"), "Please specify LRPDB Tls Certificate(secret)"))
-	}
-
-	if reflect.ValueOf(pdb.Spec.LRPDBTlsCat).IsZero() {
-		*allErrs = append(*allErrs,
-			field.Required(field.NewPath("spec").Child("lrpdbTlsCat"), "Please specify LRPDB Tls Certificate Authority(secret)"))
-	}
-
-	switch action {
-	case "DELETE":
-		/* BUG 36752336 - LREST OPERATOR - DELETE NON-EXISTENT PDB SHOWS LRPDB CREATED MESSAGE */
-		if pdb.Status.OpenMode == "READ WRITE" {
-			lrpdblog.Info("Cannot delete: pdb is open ")
-			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
-		}
-		r.CheckObjExistence("DELETE", allErrs, ctx, pdb)
-	case "CREATE":
+	lrpdblog.Info("Valdiating LRPDB Resource ")
+	/* Parameters required by the creation */
+	if Bit(pdb.Status.PDBBitMask, PDBCRT) == false {
 		if reflect.ValueOf(pdb.Spec.AdminpdbUser).IsZero() {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("adminpdbUser"), "Please specify LRPDB System Administrator user"))
@@ -199,32 +179,32 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("totalSize"), "When the storage is not UNLIMITED the Total Size must be specified"))
 		}
-		if pdb.Spec.TempSize == "" {
-			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
-		}
-		if *(pdb.Spec.LTDEImport) {
-			r.validateTDEInfo(allErrs, ctx, pdb)
-		}
-	case "CLONE":
-		// Sample Err: The LRPDB "lrpdb1-clone" is invalid: spec.srcPdbName: Required value: Please specify source LRPDB for Cloning
-		if pdb.Spec.SrcLRPDBName == "" {
-			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("srcPdbName"), "Please specify source LRPDB name for Cloning"))
-		}
-		if pdb.Spec.TotalSize == "" {
-			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("totalSize"), "When the storage is not UNLIMITED the Total Size must be specified"))
-		}
-		if pdb.Spec.TempSize == "" {
-			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
-		}
-		if pdb.Status.OpenMode == "MOUNT" {
-			lrpdblog.Info("Cannot clone: pdb is mount ")
-			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
-		}
-	case "PLUG":
+		/*
+			if pdb.Spec.TempSize == "" {
+				*allErrs = append(*allErrs,
+					field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
+			}
+			if *(pdb.Spec.LTDEImport) {
+				r.validateTDEInfo(allErrs, ctx, pdb)
+			}
+		*/
+
+	}
+
+	/* We cannot open|close|delete|unplug a non existing pdb */
+	if (pdbstate == "OPEN" || pdbstate == "CLOSE" || pdbstate == "DELETE" || pdbstate == "UNPLUG") && Bit(pdb.Status.PDBBitMask, PDBCRT) == false {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("LRPDBState"), "PDB does not exists"))
+	}
+
+	/* Database already exists
+	if scrdatabase != "" && Bit(pdb.Status.PDBBitMask, PDBCRT) == true {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("SrcLRPDBName"), "PDB already exists/Cannot clone"))
+	}
+	*/
+
+	if pdbstate == "PLUG" && pdb.Spec.XMLFileName != "" && Bit(pdb.Status.PDBBitMask, PDBCRT) == false && Bit(pdb.Status.PDBBitMask, PDBPLE) == false {
 		if pdb.Spec.XMLFileName == "" {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("xmlFileName"), "Please specify XML metadata filename"))
@@ -244,7 +224,10 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 		if *(pdb.Spec.LTDEImport) {
 			r.validateTDEInfo(allErrs, ctx, pdb)
 		}
-	case "UNPLUG":
+
+	}
+
+	if pdbstate == "UNPLUG" && pdb.Spec.XMLFileName != "" && Bit(pdb.Status.PDBBitMask, PDBCRT) == true && Bit(pdb.Status.PDBBitMask, FNALAZ) == true && Bit(pdb.Status.PDBBitMask, PDBUPE) == false {
 		if pdb.Spec.XMLFileName == "" {
 			*allErrs = append(*allErrs,
 				field.Required(field.NewPath("spec").Child("xmlFileName"), "Please specify XML metadata filename"))
@@ -257,17 +240,53 @@ func (r *LRPDB) validateAction(allErrs *field.ErrorList, ctx context.Context, pd
 			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
 		}
 		r.CheckObjExistence("UNPLUG", allErrs, ctx, pdb)
-	case "MODIFY":
+	}
 
-		if pdb.Spec.LRPDBState == "" {
+	if reflect.ValueOf(pdb.Spec.LRPDBTlsKey).IsZero() {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("lrpdbTlsKey"), "Please specify LRPDB Tls Key(secret)"))
+	}
+
+	if reflect.ValueOf(pdb.Spec.LRPDBTlsCrt).IsZero() {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("lrpdbTlsCrt"), "Please specify LRPDB Tls Certificate(secret)"))
+	}
+
+	if reflect.ValueOf(pdb.Spec.LRPDBTlsCat).IsZero() {
+		*allErrs = append(*allErrs,
+			field.Required(field.NewPath("spec").Child("lrpdbTlsCat"), "Please specify LRPDB Tls Certificate Authority(secret)"))
+	}
+
+	/* Check clone parameters */
+	if scrdatabase != "" && Bit(pdb.Status.PDBBitMask, PDBCRT|FNALAZ|PDBCRE) == false {
+		if pdb.Spec.TotalSize == "" {
 			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("lrpdbState"), "Please specify target state of LRPDB"))
+				field.Required(field.NewPath("spec").Child("totalSize"), "When the storage is not UNLIMITED the Total Size must be specified"))
 		}
-		if pdb.Spec.ModifyOption == "" && pdb.Spec.AlterSystem == "" {
+		if pdb.Spec.TempSize == "" {
 			*allErrs = append(*allErrs,
-				field.Required(field.NewPath("spec").Child("modifyOption"), "Please specify an option for opening/closing a LRPDB or alter system parameter"))
+				field.Required(field.NewPath("spec").Child("tempSize"), "When the storage is not UNLIMITED the Temp Size must be specified"))
 		}
-		r.CheckObjExistence("MODIFY", allErrs, ctx, pdb)
+		if pdb.Status.OpenMode == "MOUNT" {
+			lrpdblog.Info("Cannot clone: pdb is mount ")
+			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
+		}
+
+	}
+
+	if pdbstate == "UNPLUG" {
+		if pdb.Spec.XMLFileName == "" {
+			*allErrs = append(*allErrs,
+				field.Required(field.NewPath("spec").Child("xmlFileName"), "Please specify XML metadata filename"))
+		}
+		if *(pdb.Spec.LTDEExport) {
+			r.validateTDEInfo(allErrs, ctx, pdb)
+		}
+		if pdb.Status.OpenMode == "READ WRITE" {
+			lrpdblog.Info("Cannot unplug: pdb is open ")
+			*allErrs = append(*allErrs, field.Invalid(field.NewPath("status").Child("OpenMode"), "READ WRITE", "pdb "+pdb.Spec.LRPDBName+" "+pdb.Status.OpenMode))
+		}
+		r.CheckObjExistence("UNPLUG", allErrs, ctx, pdb)
 	}
 }
 
@@ -317,7 +336,6 @@ func (r *LRPDB) ValidateUpdate(ctx context.Context, obj runtime.Object, old runt
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "LRPDB"},
 		r.Name, allErrs)
-	return nil, nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
@@ -332,10 +350,10 @@ func (r *LRPDB) ValidateDelete(ctx context.Context, obj runtime.Object) (admissi
 func (r *LRPDB) validateCommon(allErrs *field.ErrorList, ctx context.Context, pdb LRPDB) {
 	lrpdblog.Info("validateCommon", "name", pdb.Name)
 
-	if pdb.Spec.Action == "" {
+	/* if pdb.Spec.Action == "" {
 		*allErrs = append(*allErrs,
 			field.Required(field.NewPath("spec").Child("action"), "Please specify LRPDB operation to be performed"))
-	}
+	} */
 	if pdb.Spec.CDBResName == "" {
 		*allErrs = append(*allErrs,
 			field.Required(field.NewPath("spec").Child("cdbResName"), "Please specify the name of the CDB Kubernetes resource to use for LRPDB operations"))

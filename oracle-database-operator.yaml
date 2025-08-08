@@ -639,9 +639,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: Compute Count
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
@@ -974,9 +974,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: Compute Count
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
@@ -1928,6 +1928,8 @@ spec:
                               runAsUser:
                                 format: int64
                                 type: integer
+                              seLinuxChangePolicy:
+                                type: string
                               seLinuxOptions:
                                 properties:
                                   level:
@@ -2316,7 +2318,7 @@ spec:
                                 proxyFromEnvironment:
                                   type: boolean
                                 proxyUrl:
-                                  pattern: ^http(s)?://.+$
+                                  pattern: ^(http|https|socks5)://.+$
                                   type: string
                                 scopes:
                                   items:
@@ -3629,6 +3631,8 @@ spec:
                               - port
                               type: object
                           type: object
+                        stopSignal:
+                          type: string
                       type: object
                     livenessProbe:
                       properties:
@@ -4251,6 +4255,8 @@ spec:
                               runAsUser:
                                 format: int64
                                 type: integer
+                              seLinuxChangePolicy:
+                                type: string
                               seLinuxOptions:
                                 properties:
                                   level:
@@ -4639,7 +4645,7 @@ spec:
                                 proxyFromEnvironment:
                                   type: boolean
                                 proxyUrl:
-                                  pattern: ^http(s)?://.+$
+                                  pattern: ^(http|https|socks5)://.+$
                                   type: string
                                 scopes:
                                   items:
@@ -5952,6 +5958,8 @@ spec:
                               - port
                               type: object
                           type: object
+                        stopSignal:
+                          type: string
                       type: object
                     livenessProbe:
                       properties:
@@ -6574,6 +6582,8 @@ spec:
                               runAsUser:
                                 format: int64
                                 type: integer
+                              seLinuxChangePolicy:
+                                type: string
                               seLinuxOptions:
                                 properties:
                                   level:
@@ -6962,7 +6972,7 @@ spec:
                                 proxyFromEnvironment:
                                   type: boolean
                                 proxyUrl:
-                                  pattern: ^http(s)?://.+$
+                                  pattern: ^(http|https|socks5)://.+$
                                   type: string
                                 scopes:
                                   items:
@@ -8275,6 +8285,8 @@ spec:
                               - port
                               type: object
                           type: object
+                        stopSignal:
+                          type: string
                       type: object
                     livenessProbe:
                       properties:
@@ -9945,6 +9957,8 @@ spec:
             type: object
           spec:
             properties:
+              autodiscover:
+                type: boolean
               cdbAdminPwd:
                 properties:
                   secret:
@@ -10007,6 +10021,21 @@ spec:
                 required:
                 - secret
                 type: object
+              cdbTlsCat:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
               cdbTlsCrt:
                 properties:
                   secret:
@@ -10037,6 +10066,9 @@ spec:
                 required:
                 - secret
                 type: object
+              clusterIp:
+                default: false
+                type: boolean
               dbPort:
                 type: integer
               dbServer:
@@ -10044,6 +10076,9 @@ spec:
               dbTnsurl:
                 type: string
               deletePdbCascade:
+                type: boolean
+              loadBalancer:
+                default: false
                 type: boolean
               lrestImage:
                 type: string
@@ -10055,6 +10090,7 @@ spec:
               lrestImagePullSecret:
                 type: string
               lrestPort:
+                default: 8888
                 type: integer
               lrestPwd:
                 properties:
@@ -10071,12 +10107,16 @@ spec:
                 required:
                 - secret
                 type: object
+              namespaceAutoDiscover:
+                type: string
               nodeSelector:
                 additionalProperties:
                   type: string
                 type: object
               replicas:
                 type: integer
+              serviceAccountName:
+                type: string
               serviceName:
                 type: string
               sysAdminPwd:
@@ -10094,6 +10134,9 @@ spec:
                 required:
                 - secret
                 type: object
+              trace_level_client:
+                default: 0
+                type: integer
               webServerPwd:
                 properties:
                   secret:
@@ -10176,18 +10219,26 @@ spec:
       jsonPath: .status.totalSize
       name: PDB Size
       type: string
-    - description: Status of the LRPDB Resource
-      jsonPath: .status.phase
-      name: Status
-      type: string
     - description: Error message, if any
       jsonPath: .status.msg
       name: Message
+      type: string
+    - description: open restricted
+      jsonPath: .status.restricted
+      name: Restricted
       type: string
     - description: last sqlcode
       jsonPath: .status.sqlCode
       name: last sqlcode
       type: integer
+    - description: last plsql applied
+      jsonPath: .status.lastplsql
+      name: last PLSQL
+      type: string
+    - description: Bitmask status
+      jsonPath: .status.pdbBitMaskStr
+      name: BITMASK STATUS
+      type: string
     - description: The connect string to be used
       jsonPath: .status.connString
       name: Connect_String
@@ -10205,17 +10256,6 @@ spec:
           spec:
             properties:
               action:
-                enum:
-                - Create
-                - Clone
-                - Plug
-                - Unplug
-                - Delete
-                - Modify
-                - Status
-                - Map
-                - Alter
-                - Noaction
                 type: string
               adminName:
                 properties:
@@ -10285,8 +10325,6 @@ spec:
                 type: string
               asClone:
                 type: boolean
-              assertiveLrpdbDeletion:
-                type: boolean
               cdbName:
                 type: string
               cdbNamespace:
@@ -10308,12 +10346,16 @@ spec:
                 type: object
               cdbResName:
                 type: string
+              codeconfigmap:
+                type: string
               copyAction:
                 enum:
                 - COPY
                 - NOCOPY
                 - MOVE
                 type: string
+              debug:
+                type: integer
               dropAction:
                 enum:
                 - INCLUDING
@@ -10322,6 +10364,9 @@ spec:
               fileNameConversions:
                 type: string
               getScript:
+                default: false
+                type: boolean
+              imperativeLrpdbDeletion:
                 type: boolean
               lrpdbTlsCat:
                 properties:
@@ -10376,6 +10421,9 @@ spec:
                 - READ WRITE
                 - RESTRICTED
                 type: string
+              modifyOption2:
+                default: NONE
+                type: string
               parameterScope:
                 type: string
               pdbName:
@@ -10385,10 +10433,21 @@ spec:
                 - OPEN
                 - CLOSE
                 - ALTER
+                - DELETE
+                - UNPLUG
+                - PLUG
+                - CLONE
+                - RESET
+                - NONE
                 type: string
               pdbconfigmap:
                 type: string
+              plsqlexemode:
+                type: integer
+              reststate:
+                type: integer
               reuseTempFile:
+                default: true
                 type: boolean
               sourceFileNameConversions:
                 type: string
@@ -10437,6 +10496,7 @@ spec:
               totalSize:
                 type: string
               unlimitedStorage:
+                default: true
                 type: boolean
               webServerPwd:
                 properties:
@@ -10470,11 +10530,6 @@ spec:
                 type: object
               xmlFileName:
                 type: string
-            required:
-            - action
-            - alterSystemParameter
-            - alterSystemValue
-            - webServerPwd
             type: object
           status:
             properties:
@@ -10488,13 +10543,21 @@ spec:
                 type: string
               connString:
                 type: string
+              lastplsql:
+                type: string
               modifyOption:
                 type: string
               msg:
                 type: string
               openMode:
                 type: string
+              pdbBitMask:
+                type: integer
+              pdbBitMaskStr:
+                type: string
               phase:
+                type: string
+              restricted:
                 type: string
               sqlCode:
                 type: integer
@@ -11039,6 +11102,8 @@ spec:
                   runAsUser:
                     format: int64
                     type: integer
+                  seLinuxChangePolicy:
+                    type: string
                   seLinuxOptions:
                     properties:
                       level:
@@ -11798,6 +11863,8 @@ spec:
                   runAsUser:
                     format: int64
                     type: integer
+                  seLinuxChangePolicy:
+                    type: string
                   seLinuxOptions:
                     properties:
                       level:
@@ -16355,6 +16422,26 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-autonomousdatabase
+  failurePolicy: Fail
+  name: vautonomousdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   - v1beta1
   clientConfig:
     service:
@@ -16709,8 +16796,8 @@ spec:
         - /manager
         env:
         - name: WATCH_NAMESPACE
-          value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:restart-operator-sa
+          value: "oracle-database-operator-system,cdbnamespace,pdbnamespace"
+        image: lin.ocir.io/intsanjaysingh/operator/dboperator_master_250730:latest
         imagePullPolicy: Always
         name: manager
         ports:

@@ -91,20 +91,21 @@ var _ webhook.CustomValidator = &LREST{}
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	lrestlog.Info("ValidateCreate", "name", r.Name)
+	lrest := obj.(*LREST)
 
 	var allErrs field.ErrorList
 
-	if r.Spec.ServiceName == "" && r.Spec.DBServer != "" {
+	if lrest.Spec.ServiceName == "" && lrest.Spec.DBServer != "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("serviceName"), "Please specify LREST Service name"))
 	}
 
-	if reflect.ValueOf(r.Spec.LRESTTlsKey).IsZero() {
+	if reflect.ValueOf(lrest.Spec.LRESTTlsKey).IsZero() {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("lrestTlsKey"), "Please specify LREST Tls key(secret)"))
 	}
 
-	if reflect.ValueOf(r.Spec.LRESTTlsCrt).IsZero() {
+	if reflect.ValueOf(lrest.Spec.LRESTTlsCrt).IsZero() {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("lrestTlsCrt"), "Please specify LREST Tls Certificate(secret)"))
 	}
@@ -114,41 +115,41 @@ func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admissi
 			field.Required(field.NewPath("spec").Child("scanName"), "Please specify SCAN Name for LREST"))
 	}*/
 
-	if (r.Spec.DBServer == "" && r.Spec.DBTnsurl == "") || (r.Spec.DBServer != "" && r.Spec.DBTnsurl != "") {
+	if (lrest.Spec.DBServer == "" && lrest.Spec.DBTnsurl == "") || (lrest.Spec.DBServer != "" && lrest.Spec.DBTnsurl != "") {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbServer"), "Please specify Database Server Name/IP Address or tnsalias string"))
 	}
 
-	if r.Spec.DBTnsurl != "" && (r.Spec.DBServer != "" || r.Spec.DBPort != 0 || r.Spec.ServiceName != "") {
+	if lrest.Spec.DBTnsurl != "" && (lrest.Spec.DBServer != "" || lrest.Spec.DBPort != 0 || lrest.Spec.ServiceName != "") {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbServer"), "DBtnsurl is orthogonal to (DBServer,DBport,Services)"))
 	}
 
-	if r.Spec.DBPort == 0 && r.Spec.DBServer != "" {
+	if lrest.Spec.DBPort == 0 && lrest.Spec.DBServer != "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify DB Server Port"))
 	}
-	if r.Spec.DBPort < 0 && r.Spec.DBServer != "" {
+	if lrest.Spec.DBPort < 0 && lrest.Spec.DBServer != "" {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("dbPort"), "Please specify a valid DB Server Port"))
 	}
-	if r.Spec.LRESTPort < 0 {
+	if lrest.Spec.LRESTPort < 0 {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("ordsPort"), "Please specify a valid LREST Port"))
 	}
-	if r.Spec.Replicas < 0 {
+	if lrest.Spec.Replicas < 0 {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("replicas"), "Please specify a valid value for Replicas"))
 	}
-	if r.Spec.LRESTImage == "" {
+	if lrest.Spec.LRESTImage == "" {
 		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("ordsImage"), "Please specify name of LREST Image to be used"))
+			field.Required(field.NewPath("spec").Child("lrestImage"), "Please specify name of LREST Image to be used"))
 	}
-	if reflect.ValueOf(r.Spec.LRESTAdminUser).IsZero() {
+	if reflect.ValueOf(lrest.Spec.LRESTAdminUser).IsZero() {
 		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("lrestAdminUser"), "Please specify user in the root container with sysdba priviledges to manage PDB lifecycle"))
+			field.Required(field.NewPath("spec").Child("cdbAdminUser"), "Please specify user in the root container with sysdba priviledges to manage PDB lifecycle"))
 	}
-	if reflect.ValueOf(r.Spec.LRESTAdminPwd).IsZero() {
+	if reflect.ValueOf(lrest.Spec.LRESTAdminPwd).IsZero() {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("lrestAdminPwd"), "Please specify password for the LREST Administrator to manage PDB lifecycle"))
 	}
@@ -156,11 +157,11 @@ func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admissi
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("ordsPwd"), "Please specify password for user LREST_PUBLIC_USER"))
 	} */
-	if reflect.ValueOf(r.Spec.WebLrestServerUser).IsZero() {
+	if reflect.ValueOf(lrest.Spec.WebLrestServerUser).IsZero() {
 		allErrs = append(allErrs,
-			field.Required(field.NewPath("spec").Child("webLrestServerUser"), "Please specify the Web Server User having SQL Administrator role"))
+			field.Required(field.NewPath("spec").Child("webServerUser"), "Please specify the Web Server User having SQL Administrator role"))
 	}
-	if reflect.ValueOf(r.Spec.WebLrestServerPwd).IsZero() {
+	if reflect.ValueOf(lrest.Spec.WebLrestServerPwd).IsZero() {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("webServerPwd"), "Please specify password for the Web Server User having SQL Administrator role"))
 	}
