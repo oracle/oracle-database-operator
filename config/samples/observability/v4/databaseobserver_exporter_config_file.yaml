@@ -1,0 +1,42 @@
+# example
+apiVersion: observability.oracle.com/v4
+kind: DatabaseObserver
+metadata:
+  name: obs-sample
+spec:
+
+  deployment:
+    args:
+    - "--config.file=/config/config.yaml"
+
+    # alternatively, the CONFIG_FILE environment variable can be set
+    #env:
+    #  CONFIG_FILE: "/config/config.yaml"
+
+  exporterConfig:
+    configMap:
+      key: config.yaml
+      name: exporter-config-file
+
+  databases:
+    db1:
+      dbUser:
+        secret: db1-secret
+      dbPassword:
+        secret: db1-secret
+      dbConnectionString:
+        secret: db1-secret
+    db2:
+      dbUser:
+        secret: db2-secret
+      dbPassword:
+        secret: db2-secret
+      dbConnectionString:
+        secret: db2-secret
+  wallet:
+    secret: instance-wallet
+
+
+  serviceMonitor:
+    labels:
+      release: prometheus

@@ -40,8 +40,8 @@ func (resource *ObservabilityDeploymentResource) generate(a *api.DatabaseObserve
 	rReplicas := constants.GetExporterReplicas(a)
 	rEnvs := constants.GetExporterEnvs(a)
 
-	rLabels := constants.GetLabels(a, a.Spec.Exporter.Deployment.Labels)
-	rPodLabels := constants.GetLabels(a, a.Spec.Exporter.Deployment.DeploymentPodTemplate.Labels)
+	rLabels := constants.GetLabels(a, a.Spec.Deployment.Labels)
+	rPodLabels := constants.GetLabels(a, a.Spec.Deployment.DeploymentPodTemplate.Labels)
 	rSelector := constants.GetSelectorLabel(a)
 
 	rDeploymentSecurityContext := constants.GetExporterDeploymentSecurityContext(a)
@@ -108,7 +108,7 @@ func (resource *ObservabilityDeploymentResource) generate(a *api.DatabaseObserve
 
 func (resource *ObservabilityServiceResource) generate(a *api.DatabaseObserver, scheme *runtime.Scheme) (*unstructured.Unstructured, error) {
 	rServiceName := a.Name
-	rLabels := constants.GetLabels(a, a.Spec.Exporter.Service.Labels)
+	rLabels := constants.GetLabels(a, a.Spec.Service.Labels)
 	rSelector := constants.GetSelectorLabel(a)
 	rPorts := constants.GetExporterServicePort(a)
 
@@ -141,7 +141,7 @@ func (resource *ObservabilityServiceMonitorResource) generate(a *api.DatabaseObs
 	rEndpoints := constants.GetEndpoints(a)
 
 	rSelector := constants.GetSelectorLabel(a)
-	rLabels := constants.GetLabels(a, a.Spec.Prometheus.ServiceMonitor.Labels)
+	rLabels := constants.GetLabels(a, a.Spec.ServiceMonitor.Labels)
 
 	smSpec := monitorv1.ServiceMonitorSpec{
 		Endpoints: rEndpoints,

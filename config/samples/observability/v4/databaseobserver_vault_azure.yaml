@@ -5,21 +5,20 @@ metadata:
   name: obs-sample
 spec:
   database:
-    dbUser:
-      key: "username"
-      secret: db-secret
-
-    dbPassword:
-      key: "password"
-      secret: db-secret
-
     dbConnectionString:
-      key: "connection"
       secret: db-secret
+    azure:
+      vaultID: "..."
+      vaultUsernameSecret: sample_un_secret
+      vaultPasswordSecret: sample_pwd_secret
 
   wallet:
     secret: instance-wallet
 
   serviceMonitor:
-      labels:
-        release: prometheus
+    labels:
+      release: prometheus
+
+  azureConfig:
+    configMap:
+      name: azure-cred
