@@ -1,10 +1,13 @@
 # AutoUpgrade
 
 Each pool can be configured to automatically install and upgrade the ORDS and/or APEX schemas in the database.
-The ORDS and APEX version is based on the ORDS image used for the RestDataServices resource.
+The ORDS version is based on the ORDS image used for the RestDataServices resource.
+To get the APEX installation files, you can choose to download them from the latest version available or use the provided URL.
 
 For example, in the below manifest:
-* `Pool: pdb1` is configured to automatically install/ugrade both ORDS and APEX to version 24.1.0  
+* APEX installation files will be downloaded from latest version.
+* `Pool: pdb1` is configured to automatically install/ugrade both ORDS and APEX to version 25.1.0  
+* `Pool: pdb2` will install or upgrade ORDS
 * `Pool: pdb2` will not install or upgrade ORDS/APEX
 
 As an additional requirement for `Pool: pdb1`, the `spec.poolSettings.db.adminUser` and `spec.poolSettings.db.adminUser.secret`
@@ -16,10 +19,12 @@ kind: OrdsSrvs
 metadata:
     name: ordspoc-server
 spec:
-    image: container-registry.oracle.com/database/ords:24.1.0
+    image: container-registry.oracle.com/database/ords:25.1.0
     forceRestart: true
     globalSettings:
         database.api.enabled: true
+        downloadAPEX : true
+        downloadUrlAPEX : https://download.oracle.com/otn_software/apex/apex_24.2.zip
     encPrivKey:
         secretName: prvkey
         passwordKey: privateKey
@@ -35,11 +40,21 @@ spec:
         db.adminUser.secret:
             secretName:  pdb1-sys-auth-enc
       - poolName: pdb2
+        autoUpgradeORDS: true
         db.connectionType: customurl
         db.customURL: jdbc:oracle:thin:@//localhost:1521/PDB2
         db.secret:
             secretName:  pdb2-ords-auth-enc
+      - poolName: pdb3
+        db.connectionType: customurl
+        db.customURL: jdbc:oracle:thin:@//localhost:1521/PDB3
+        db.secret:
+            secretName:  pdb3-ords-auth-enc
 ```
+
+If you don't specify a download URL (downloadUrlAPEX), the default value will be used:
+https://download.oracle.com/otn_software/apex/apex-latest.zip
+
 
 ## Minimum Privileges for Admin User
 

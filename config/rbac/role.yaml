@@ -13,6 +13,7 @@ rules:
   - endpoints
   - events
   - namespaces
+  - persistentvolumeclaim
   - persistentvolumeclaims
   - persistentvolumes
   - pods
@@ -35,6 +36,7 @@ rules:
   - configmaps/status
   - daemonsets/status
   - deployments/status
+  - persistentvolumeclaim/status
   - services/status
   - statefulsets/status
   verbs:

@@ -8,5 +8,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: lin.ocir.io/intsanjaysingh/operator/dboperator_master_250730
-  newTag: latest
+  newName: lin.ocir.io/intsanjaysingh/marcstef/oo
+  newTag: 1.2.0.8

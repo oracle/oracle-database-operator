@@ -102,7 +102,7 @@ rm syspwdfile e_syspwdfile
       name: ords-multi-pool
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:24.1.1
+      image: container-registry.oracle.com/database/ords:25.1.0
       forceRestart: true
       encPrivKey:
         secretName: prvkey
@@ -112,7 +112,6 @@ rm syspwdfile e_syspwdfile
       poolSettings:
         - poolName: pdb1
           autoUpgradeORDS: true
-          autoUpgradeAPEX: true
           db.connectionType: tns
           db.tnsAliasName: PDB1
           tnsAdminSecret:
@@ -160,7 +159,8 @@ rm syspwdfile e_syspwdfile
           db.secret:
             secretName: multi-ords-auth-enc
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
+    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
+
 
 1. Apply the yaml file:
     ```bash
@@ -196,5 +196,4 @@ This example has multiple pools, named `pdb1`, `pdb2`, `pdb3`, and `pdb4`.
 * They all share the same `tnsAdminSecret` to connect using thier individual `db.tnsAliasName`
 * They will all automatically restart when the configuration changes: `forceRestart: true`
 * Only the `pdb1` pool will automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
-* Only the `pdb1` pool will automatically install/update APEX on startup, if required: `autoUpgradeAPEX: true`
 * The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)

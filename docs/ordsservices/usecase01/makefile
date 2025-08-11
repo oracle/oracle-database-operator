@@ -80,9 +80,9 @@ export PDB1_PRIV_AUTH_SECRET=pdb1-priv-auth-enc
 export PDB2_PRIV_AUTH_SECRET=pdb2-priv-auth-enc
 
 
-export SIDB_IMAGE=container-registry.oracle.com/database/free:23.4.0.0
-export ORDS_IMAGE=container-registry.oracle.com/database/ords:24.1.0
-export ORDS_IMAGE.1=container-registry.oracle.com/database/ords:24.1.1
+export SIDB_IMAGE=container-registry.oracle.com/database/free:23.7.0.0
+export ORDS_IMAGE=container-registry.oracle.com/database/ords:25.1.0
+export ORDS_IMAGE.1=container-registry.oracle.com/database/ords:25.1.0
 export SECRET_CONTAINER_REGISTRY=oracle-container-registry-secret
 export ORACLE_CONTAINER_REGISTRY=container-registry.oracle.com
 export REST_SERVER_NAME=ords-sidb
@@ -467,7 +467,6 @@ cat<<EOF|sed 's/^#//g' >$(REST_SERVER_CREATION)
 #  poolSettings:
 #    - poolName: default
 #      autoUpgradeORDS: true
-#      autoUpgradeAPEX: true
 #      restEnabledSql.active: true
 #      plsql.gateway.mode: direct
 #      db.connectionType: customurl
@@ -698,7 +697,7 @@ cat <<EOF |sed 's/^#//g' >$(MULTISRV_MANIFEST)
 #  name: ords-multi-pool
 #  namespace: $(ORDSNAMESPACE)
 #spec:
-#  image: container-registry.oracle.com/database/ords:24.1.1
+#  image: $(ORDS_IMAGE.1)
 #  forceRestart: true
 #  encPrivKey:
 #    secretName: prvkey
@@ -707,7 +706,6 @@ cat <<EOF |sed 's/^#//g' >$(MULTISRV_MANIFEST)
 #    database.api.enabled: true
 #  poolSettings:
 #    - poolName: pdb1
-#      autoUpgradeAPEX: false
 #      autoUpgradeORDS: false
 #      db.connectionType: tns
 #      db.tnsAliasName: pdb1
@@ -723,7 +721,6 @@ cat <<EOF |sed 's/^#//g' >$(MULTISRV_MANIFEST)
 #      db.adminUser.secret:
 #        secretName: $(PDB1_PRIV_AUTH_SECRET)
 #    - poolName: pdb2
-#      autoUpgradeAPEX: false
 #      autoUpgradeORDS: false
 #      db.connectionType: tns
 #      db.tnsAliasName: PDB2
