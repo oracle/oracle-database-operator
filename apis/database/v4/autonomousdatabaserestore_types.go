@@ -50,7 +50,7 @@ import (
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-type K8sADBBackupSpec struct {
+type K8sAdbBackupSpec struct {
 	Name *string `json:"name,omitempty"`
 }
 
@@ -60,7 +60,7 @@ type PITSpec struct {
 }
 
 type SourceSpec struct {
-	K8sAdbBackup K8sADBBackupSpec `json:"k8sADBBackup,omitempty"`
+	K8sAdbBackup K8sAdbBackupSpec `json:"k8sAdbBackup,omitempty"`
 	PointInTime  PITSpec          `json:"pointInTime,omitempty"`
 }
 

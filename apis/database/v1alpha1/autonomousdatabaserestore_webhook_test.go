@@ -68,20 +68,20 @@ var _ = Describe("test AutonomousDatabaseRestore webhook", func() {
 			}
 		})
 
-		It("Should specify at least one of the k8sADB and ociADB", func() {
+		It("Should specify at least one of the k8sAdb and ociAdb", func() {
 			var errMsg string = "target ADB is empty"
 
 			restore.Spec.Target.K8sAdb.Name = nil
-			restore.Spec.Target.OciAdb.Ocid = nil
+			restore.Spec.Target.OciAdb.Id = nil
 
 			validateInvalidTest(restore, false, errMsg)
 		})
 
-		It("Should specify either k8sADB.name or ociADB.ocid, but not both", func() {
-			var errMsg string = "specify either k8sADB.name or ociADB.ocid, but not both"
+		It("Should specify either k8sAdb.name or ociAdb.id, but not both", func() {
+			var errMsg string = "specify either k8sAdb.name or ociAdb.id, but not both"
 
 			restore.Spec.Target.K8sAdb.Name = common.String("fake-target-adb")
-			restore.Spec.Target.OciAdb.Ocid = common.String("fake.ocid1.autonomousdatabase.oc1...")
+			restore.Spec.Target.OciAdb.Id = common.String("fake.ocid1.autonomousdatabase.oc1...")
 
 			validateInvalidTest(restore, false, errMsg)
 		})
