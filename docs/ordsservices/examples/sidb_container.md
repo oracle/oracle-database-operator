@@ -12,7 +12,7 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
 
     ```bash
     DB_PWD=<specify password here>
-    kubectl create secret generic sidb-db-auth --from-literal=password=${DB_PWD} --namespace ordsnamespace
+    kubectl create secret generic sidb-db-auth --from-literal=oracle_pwd=${DB_PWD} --namespace ordsnamespace
     ```
 1. Create a manifest for the containerised Oracle Database.
 
@@ -73,7 +73,6 @@ rm sidb-db-auth e_sidb-db-auth
 
     As the DB in the Free image does not contain ORDS (or APEX), the following additional keys are specified for the pool:
     * `autoUpgradeORDS` - Boolean; when true the ORDS will be installed/upgraded in the database
-    * `autoUpgradeAPEX` - Boolean; when true the APEX will be installed/upgraded in the database
     * `db.adminUser` - User with privileges to install, upgrade or uninstall ORDS in the database (SYS).
     * `db.adminUser.secret` - Secret containing the password for `db.adminUser` (created in the first step)
 
@@ -87,7 +86,7 @@ rm sidb-db-auth e_sidb-db-auth
       name: ords-sidb
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:24.1.1
+      image: container-registry.oracle.com/database/ords:25.1.0
       forceRestart: true
       encPrivKey:
         secretName: prvkey
@@ -97,7 +96,6 @@ rm sidb-db-auth e_sidb-db-auth
       poolSettings:
         - poolName: default
           autoUpgradeORDS: true
-          autoUpgradeAPEX: true
           restEnabledSql.active: true
           plsql.gateway.mode: direct
           db.connectionType: customurl
@@ -112,7 +110,7 @@ rm sidb-db-auth e_sidb-db-auth
 
     kubectl apply -f ords-sidb.yaml
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
+    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
 
 1. Watch the ordssrvs resource until the status is **Healthy**:
     ```bash
@@ -147,6 +145,5 @@ This example has a single database pool, named `default`.  It is set to:
 
 * Automatically restart when the configuration changes: `forceRestart: true`
 * Automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
-* Automatically install/update APEX on startup, if required: `autoUpgradeAPEX: true`
 * Use a basic connection string to connect to the database: `db.customURL: jdbc:oracle:thin:@//${CONN_STRING}`
 * The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)

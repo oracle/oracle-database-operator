@@ -25,8 +25,7 @@ It supports the majority of ORDS configuration settings as per the [API Document
 The ORDS and APEX schemas can be [automatically installed/upgraded](./autoupgrade.md) into the Oracle Database by the ORDS controller.
 
 ORDS Version support: 
-* 24.1.1  
-(Newer versions of ORDS will be supported in the next update of OraOperator)
+* 25.1.0+  
 
 Oracle Database Version: 
 * 19c
@@ -49,7 +48,7 @@ Oracle Database Version:
     kubectl create namespace ordsnamespace
     ```
 
-    Apply namespace role binding [ordsnamespace-role-binding.yaml](./examples/ordsnamespace-role-binding.yaml):
+    Apply namespace role binding [ordsnamespace-role-binding.yaml](./ordsnamespace-role-binding.yaml):
     ```bash
     kubectl apply -f ordsnamespace-role-binding.yaml
     ```

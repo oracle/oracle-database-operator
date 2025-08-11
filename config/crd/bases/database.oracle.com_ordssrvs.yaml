@@ -68,22 +68,40 @@ spec:
                 type: boolean
               globalSettings:
                 properties:
+                  apex.download:
+                    default: false
+                    type: boolean
+                  apex.download.url:
+                    default: https://download.oracle.com/otn_software/apex/apex-latest.zip
+                    type: string
+                  apex.installation.persistence:
+                    properties:
+                      accessMode:
+                        default: ReadWriteOnce
+                        enum:
+                        - ReadWriteOnce
+                        - ReadWriteMany
+                        type: string
+                      size:
+                        default: 1Gi
+                        type: string
+                      storageClass:
+                        type: string
+                      volumeName:
+                        type: string
+                    type: object
                   cache.metadata.enabled:
                     type: boolean
                   cache.metadata.graphql.expireAfterAccess:
-                    format: int64
-                    type: integer
+                    type: string
                   cache.metadata.graphql.expireAfterWrite:
-                    format: int64
-                    type: integer
+                    type: string
                   cache.metadata.jwks.enabled:
                     type: boolean
                   cache.metadata.jwks.expireAfterAccess:
-                    format: int64
-                    type: integer
+                    type: string
                   cache.metadata.jwks.expireAfterWrite:
-                    format: int64
-                    type: integer
+                    type: string
                   cache.metadata.jwks.initialCapacity:
                     format: int32
                     type: integer
@@ -91,8 +109,7 @@ spec:
                     format: int32
                     type: integer
                   cache.metadata.timeout:
-                    format: int64
-                    type: integer
+                    type: string
                   certSecret:
                     properties:
                       cert:
@@ -111,8 +128,7 @@ spec:
                   database.api.management.services.disabled:
                     type: boolean
                   db.invalidPoolTimeout:
-                    format: int64
-                    type: integer
+                    type: string
                   debug.printDebugToScreen:
                     type: boolean
                   enable.mongo.access.log:
@@ -139,11 +155,9 @@ spec:
                   mongo.enabled:
                     type: boolean
                   mongo.idle.timeout:
-                    format: int64
-                    type: integer
+                    type: string
                   mongo.op.timeout:
-                    format: int64
-                    type: integer
+                    type: string
                   mongo.port:
                     default: 27017
                     format: int32
@@ -154,8 +168,7 @@ spec:
                     format: int32
                     type: integer
                   security.credentials.lock.time:
-                    format: int64
-                    type: integer
+                    type: string
                   security.disableDefaultExclusionList:
                     type: boolean
                   security.exclusionList:
@@ -187,8 +200,7 @@ spec:
                     format: int32
                     type: integer
                   standalone.stop.timeout:
-                    format: int64
-                    type: integer
+                    type: string
                 type: object
               image:
                 type: string
@@ -254,8 +266,7 @@ spec:
                     db.hostname:
                       type: string
                     db.poolDestroyTimeout:
-                      format: int64
-                      type: integer
+                      type: string
                     db.port:
                       format: int32
                       type: integer
@@ -313,8 +324,7 @@ spec:
                       format: int32
                       type: integer
                     jdbc.MaxConnectionReuseTime:
-                      format: int32
-                      type: integer
+                      type: string
                     jdbc.MaxLimit:
                       format: int32
                       type: integer
@@ -360,23 +370,18 @@ spec:
                     restEnabledSql.active:
                       type: boolean
                     security.jwks.connection.timeout:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwks.read.timeout:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwks.refresh.interval:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwks.size:
                       format: int32
                       type: integer
                     security.jwt.allowed.age:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwt.allowed.skew:
-                      format: int64
-                      type: integer
+                      type: string
                     security.jwt.profile.enabled:
                       type: boolean
                     security.requestAuthenticationFunction:
@@ -410,6 +415,8 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              serviceAccountName:
+                type: string
               workloadType:
                 default: Deployment
                 enum:
