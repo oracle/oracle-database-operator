@@ -73,24 +73,27 @@ func (r *AutonomousContainerDatabase) ValidateCreate(ctx context.Context, obj ru
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	var allErrs field.ErrorList
-	var oldACD *AutonomousContainerDatabase = oldObj.(*AutonomousContainerDatabase)
+	var (
+		allErrs field.ErrorList
+		oldAcd  *AutonomousContainerDatabase = oldObj.(*AutonomousContainerDatabase)
+		newAcd  *AutonomousContainerDatabase = newObj.(*AutonomousContainerDatabase)
+	)
 
-	autonomouscontainerdatabaselog.Info("validate update", "name", r.Name)
+	autonomouscontainerdatabaselog.Info("validate update", "name", newAcd.Name)
 
 	// skip the update of adding ADB OCID or binding
-	if oldACD.Status.LifecycleState == "" {
+	if oldAcd.Status.LifecycleState == "" {
 		return nil, nil
 	}
 
 	// cannot update when the old state is in intermediate state, except for the terminate operatrion
-	var copiedSpec *AutonomousContainerDatabaseSpec = r.Spec.DeepCopy()
-	changed, err := dbv4.RemoveUnchangedFields(oldACD.Spec, copiedSpec)
+	var copiedSpec *AutonomousContainerDatabaseSpec = newAcd.Spec.DeepCopy()
+	changed, err := dbv4.RemoveUnchangedFields(oldAcd.Spec, copiedSpec)
 	if err != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec"), err.Error()))
 	}
-	if dbv4.IsACDIntermediateState(oldACD.Status.LifecycleState) && changed {
+	if dbv4.IsACDIntermediateState(oldAcd.Status.LifecycleState) && changed {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec"),
 				"cannot change the spec when the lifecycleState is in an intermdeiate state"))
@@ -101,7 +104,7 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousContainerDatabase"},
-		r.Name, allErrs)
+		newAcd.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
