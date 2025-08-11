@@ -60,7 +60,7 @@ const (
 	AllowedExporterImage                       = "container-registry.oracle.com/database/observability-exporter"
 	ErrorSpecValidationMissingConnString       = "a required field for database connection string secret is missing or does not have a value"
 	ErrorSpecValidationMissingDBUser           = "a required field for database user secret is missing or does not have a value"
-	ErrorSpecValidationMissingDBVaultField     = "a field for the OCI vault has a value but the other required field is missing or does not have a value"
+	ErrorSpecValidationMissingVaultField       = "a field for configuring the vault has a value but the other required field(s) is missing or does not have a value"
 	ErrorSpecValidationMissingOCIConfig        = "a field(s) for the OCI Config is missing or does not have a value when fields for the OCI vault has values"
 	ErrorSpecValidationMissingDBPasswordSecret = "a required field for the database password secret is missing or does not have a value"
 	ErrorSpecExporterImageNotAllowed           = "a different exporter image was found, only official database exporter container images are currently supported"
@@ -107,54 +107,32 @@ func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Objec
 				"Oracle database operator doesn't watch over this namespace"))
 	}
 
-	// Check required secret for db user has value
-	if r.Spec.Database.DBUser.SecretName == "" {
-		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("database").Child("dbUser").Child("secret"), r.Spec.Database.DBUser.SecretName,
-				ErrorSpecValidationMissingDBUser))
-	}
+	// The other vault field must have value if one does
+	if (r.Spec.Database.OCIVault.VaultID != "" && r.Spec.Database.OCIVault.VaultPasswordSecret == "") ||
+		(r.Spec.Database.OCIVault.VaultPasswordSecret != "" && r.Spec.Database.OCIVault.VaultID == "") {
 
-	// Check required secret for db connection string has value
-	if r.Spec.Database.DBConnectionString.SecretName == "" {
 		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("database").Child("dbConnectionString").Child("secret"), r.Spec.Database.DBConnectionString.SecretName,
-				ErrorSpecValidationMissingConnString))
+			field.Invalid(field.NewPath("spec").Child("database").Child("oci"), r.Spec.Database.OCIVault,
+				ErrorSpecValidationMissingVaultField))
 	}
 
 	// The other vault field must have value if one does
-	if (r.Spec.Database.DBPassword.VaultOCID != "" && r.Spec.Database.DBPassword.VaultSecretName == "") ||
-		(r.Spec.Database.DBPassword.VaultSecretName != "" && r.Spec.Database.DBPassword.VaultOCID == "") {
+	if (r.Spec.Database.AzureVault.VaultID != "" && (r.Spec.Database.AzureVault.VaultPasswordSecret == "" && r.Spec.Database.AzureVault.VaultUsernameSecret == "")) ||
+		(r.Spec.Database.AzureVault.VaultPasswordSecret != "" && r.Spec.Database.AzureVault.VaultID == "") ||
+		(r.Spec.Database.AzureVault.VaultUsernameSecret != "" && r.Spec.Database.AzureVault.VaultID == "") {
 
 		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("database").Child("dbPassword"), r.Spec.Database.DBPassword,
-				ErrorSpecValidationMissingDBVaultField))
-	}
-
-	// if vault fields have value, ociConfig must have values
-	if r.Spec.Database.DBPassword.VaultOCID != "" && r.Spec.Database.DBPassword.VaultSecretName != "" &&
-		(r.Spec.OCIConfig.SecretName == "" || r.Spec.OCIConfig.ConfigMapName == "") {
-
-		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("ociConfig"), r.Spec.OCIConfig,
-				ErrorSpecValidationMissingOCIConfig))
-	}
-
-	// If all of {DB Password Secret Name and vaultOCID+vaultSecretName} have no value, then error out
-	if r.Spec.Database.DBPassword.SecretName == "" &&
-		r.Spec.Database.DBPassword.VaultOCID == "" &&
-		r.Spec.Database.DBPassword.VaultSecretName == "" {
-
-		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("database").Child("dbPassword").Child("secret"), r.Spec.Database.DBPassword.SecretName,
-				ErrorSpecValidationMissingDBPasswordSecret))
+			field.Invalid(field.NewPath("spec").Child("database").Child("azure"), r.Spec.Database.AzureVault,
+				ErrorSpecValidationMissingVaultField))
 	}
 
 	// disallow usage of any other image than the observability-exporter
-	if r.Spec.Exporter.Deployment.ExporterImage != "" && !strings.HasPrefix(r.Spec.Exporter.Deployment.ExporterImage, AllowedExporterImage) {
-		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), r.Spec.Exporter.Deployment.ExporterImage,
-				ErrorSpecExporterImageNotAllowed))
-	}
+	// temporarily disabled
+	//if r.Spec.Deployment.ExporterImage != "" && !strings.HasPrefix(r.Spec.Deployment.ExporterImage, AllowedExporterImage) {
+	//	e = append(e,
+	//		field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), r.Spec.Deployment.ExporterImage,
+	//			ErrorSpecExporterImageNotAllowed))
+	//}
 
 	// Return if any errors
 	if len(e) > 0 {
@@ -170,9 +148,9 @@ func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj ru
 	var e field.ErrorList
 
 	// disallow usage of any other image than the observability-exporter
-	if r.Spec.Exporter.Deployment.ExporterImage != "" && !strings.HasPrefix(r.Spec.Exporter.Deployment.ExporterImage, AllowedExporterImage) {
+	if r.Spec.Deployment.ExporterImage != "" && !strings.HasPrefix(r.Spec.Deployment.ExporterImage, AllowedExporterImage) {
 		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), r.Spec.Exporter.Deployment.ExporterImage,
+			field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), r.Spec.Deployment.ExporterImage,
 				ErrorSpecExporterImageNotAllowed))
 	}
 	// Return if any errors
