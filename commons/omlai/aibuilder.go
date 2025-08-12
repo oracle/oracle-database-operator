@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -65,7 +66,8 @@ func buildDeploymentSpecForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.De
 	}
 
 	return &appsv1.DeploymentSpec{
-		Replicas: &replicas,
+		Replicas:             &replicas,
+		RevisionHistoryLimit: pointer.Int32(0),
 		Selector: &metav1.LabelSelector{
 			MatchLabels: buildLabelsForPrivateAi(instance, "privateai", instance.Name),
 		},
