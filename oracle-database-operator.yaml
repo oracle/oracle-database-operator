@@ -639,9 +639,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: Compute Count
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
@@ -974,9 +974,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: Compute Count
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
@@ -16352,6 +16352,26 @@ webhooks:
     - UPDATE
     resources:
     - autonomousdatabaserestores
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-autonomousdatabase
+  failurePolicy: Fail
+  name: vautonomousdatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
