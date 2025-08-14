@@ -410,45 +410,47 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				err = nilErr
 				return result, err
 			}
-			if ready, err := checkDaemonSetStatus(ctx, r, oracleRestart); err != nil || !ready {
-				r.Log.Info("Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy.")
-				err = r.cleanupDaemonSet(oracleRestart, ctx)
-				if err != nil {
-					result = resultQ
-					r.Log.Info(err.Error())
-					err = nilErr
-					return result, err
-				}
-				addedAsmDisksMap := make(map[string]bool)
-				for _, disk := range addedAsmDisks {
-					addedAsmDisksMap[disk] = true
-				}
-				for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-					for index, diskName := range diskBySize.DiskNames {
-						if _, ok := addedAsmDisksMap[diskName]; ok {
-							r.Log.Info("Found disk at index", "index", index)
+			if len(oracleRestart.Spec.StorageClass) == 0 {
+				if ready, err := checkDaemonSetStatus(ctx, r, oracleRestart); err != nil || !ready {
+					r.Log.Info("Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy.")
+					err = r.cleanupDaemonSet(oracleRestart, ctx)
+					if err != nil {
+						result = resultQ
+						r.Log.Info(err.Error())
+						err = nilErr
+						return result, err
+					}
+					addedAsmDisksMap := make(map[string]bool)
+					for _, disk := range addedAsmDisks {
+						addedAsmDisksMap[disk] = true
+					}
+					for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
+						for index, diskName := range diskBySize.DiskNames {
+							if _, ok := addedAsmDisksMap[diskName]; ok {
+								r.Log.Info("Found disk at index", "index", index)
 
-							err = oraclerestartcommon.DelORestartPVC(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
-							if err != nil {
-								return resultQ, err
-							}
+								err = oraclerestartcommon.DelORestartPVC(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+								if err != nil {
+									return resultQ, err
+								}
 
-							err = oraclerestartcommon.DelORestartPv(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
-							if err != nil {
-								return resultQ, err
+								err = oraclerestartcommon.DelORestartPv(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+								if err != nil {
+									return resultQ, err
+								}
 							}
 						}
 					}
-				}
 
-				if err = r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
-					r.Log.Error(err, "Failed to set current spec annotation")
-					oracleRestart.Spec.IsFailed = true
+					if err = r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
+						r.Log.Error(err, "Failed to set current spec annotation")
+						oracleRestart.Spec.IsFailed = true
+						return resultQ, err
+					}
 					return resultQ, err
+				} else {
+					r.Log.Info("Provided ASM Disks are valid, proceeding further")
 				}
-				return resultQ, err
-			} else {
-				r.Log.Info("Provided ASM Disks are valid, proceeding further")
 			}
 			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
 			configMapDataAutoUpdate, err := r.generateConfigMapAutoUpdate(ctx, oracleRestart, cmName)
@@ -682,7 +684,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 		latestInstance := &oraclerestartdb.OracleRestart{}
 		err := r.Client.Get(ctx, req.NamespacedName, latestInstance)
 		if err != nil {
-			r.Log.Error(err, "Failed to fetch the latest version of RAC instance, retrying...")
+			r.Log.Error(err, "Failed to fetch the latest version of Oracle Restart instance, retrying...")
 			time.Sleep(retryDelay)
 			continue // Retry fetching the latest instance
 		}
@@ -712,13 +714,13 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 				time.Sleep(retryDelay)
 				continue // Retry on conflict
 			}
-			r.Log.Error(err, "Failed to update the RAC DB instance, retrying...")
+			r.Log.Error(err, "Failed to update the Oracle Restart DB instance, retrying...")
 			time.Sleep(retryDelay)
 			continue // Retry on other errors
 		}
 
 		// If update was successful, exit the loop
-		r.Log.Info("Updated RAC instance status successfully", "Instance", oracleRestart.Name)
+		r.Log.Info("Updated Oracle Restart instance status successfully", "Instance", oracleRestart.Name)
 		break
 	}
 
@@ -1507,7 +1509,7 @@ func (r *OracleRestartReconciler) updateOracleRestartInstTopologyStatus(oracleRe
 
 	if len(podNames) == 0 || len(nodeDetails) == 0 {
 		oracleRestart.Spec.IsFailed = true
-		return podNames, nodeDetails, errors.New("error occurred while collecting RAC pod or node details")
+		return podNames, nodeDetails, errors.New("error occurred while collecting Oracle Restart pod or node details")
 	} else {
 		oracleRestart.Spec.IsFailed = false
 	}
@@ -1547,14 +1549,14 @@ func (r *OracleRestartReconciler) validateoraclerestartdb(oracleRestart *oracler
 	const retryDelay = 2 * time.Second
 	oraclerestartcommon.UpdateoraclerestartdbStatusData(oracleRestart, ctx, req, podNames, r.kubeClient, r.kubeConfig, r.Log, nodeDetails)
 	// Log the start of the status update process
-	r.Log.Info("Updating RAC instance status with validateoraclerestartdb", "Instance", oracleRestart.Name)
+	r.Log.Info("Updating Oracle Restart instance status with validateoraclerestartdb", "Instance", oracleRestart.Name)
 
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// // Fetch the latest version of the object
 		latestInstance := &oraclerestartdb.OracleRestart{}
 		err := r.Client.Get(ctx, req.NamespacedName, latestInstance)
 		if err != nil {
-			r.Log.Error(err, "Failed to fetch the latest version of RAC instance")
+			r.Log.Error(err, "Failed to fetch the latest version of Oracle Restart instance")
 			return orestartSfSet, orestartPod, err // Return the error if fetching the latest version fails
 		}
 
@@ -1581,18 +1583,18 @@ func (r *OracleRestartReconciler) validateoraclerestartdb(oracleRestart *oracler
 				// Retry
 			}
 			// For other errors, log and continue the retry loop
-			r.Log.Error(err, "Failed to update the RAC DB instance, retrying")
+			r.Log.Error(err, "Failed to update the Oracle Restart DB instance, retrying")
 			continue
 		}
 
 		// If update was successful, exit the loop
-		r.Log.Info("Updated RAC instance status with validateoraclerestartdb", "Instance", oracleRestart.Name)
+		r.Log.Info("Updated Oracle Restart instance status with validateoraclerestartdb", "Instance", oracleRestart.Name)
 
 		return orestartSfSet, orestartPod, nil
 	}
 
 	// If all retries fail, return an error
-	return orestartSfSet, orestartPod, fmt.Errorf("failed to update RAC DB Status after %d attempts", maxRetries)
+	return orestartSfSet, orestartPod, fmt.Errorf("failed to update Oracle Restart DB Status after %d attempts", maxRetries)
 }
 
 // ======= Function to validate Shard
@@ -1624,12 +1626,12 @@ func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oracl
 		msg := ""
 		if notReadyPod != nil {
 			// Log the name of the first not ready pod
-			msg = "unable to validate RAC pod. The  pod not ready  is: " + notReadyPod.Name
+			msg = "unable to validate Oracle Restart pod. The  pod not ready  is: " + notReadyPod.Name
 			oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
 			return orestartSfSet, orestartPod, fmt.Errorf(msg)
 		} else {
 			// Handle the case where no pods were found at all
-			msg = "unable to validate RAC pod. No pods matching the criteria were found"
+			msg = "unable to validate Oracle Restart pod. No pods matching the criteria were found"
 			oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
 			return orestartSfSet, orestartPod, fmt.Errorf(msg)
 		}
@@ -1689,7 +1691,7 @@ func (r *OracleRestartReconciler) updateOracleRestartInstStatus(
 		latestInstance := &oraclerestartdb.OracleRestart{}
 		err := r.Client.Get(ctx, req.NamespacedName, latestInstance)
 		if err != nil {
-			r.Log.Error(err, "Failed to fetch the latest version of RAC instance")
+			r.Log.Error(err, "Failed to fetch the latest version of Oracle Restart instance")
 			lastErr = err
 			continue // Continue to retry
 		}
@@ -3117,11 +3119,11 @@ func (r *OracleRestartReconciler) cleanupOracleRestartInstance(req ctrl.Request,
 				if strings.ToUpper(oraRacSatus.Name) == (strings.ToUpper(OraRestartSpex.Name) + "-0") {
 					if !utils.CheckStatusFlag(oraRacSatus.NodeDetails.IsDelete) {
 						oraRacSatus.NodeDetails.IsDelete = "true"
-						log.Info("Setting RAC status instance " + oraRacSatus.Name + " delete flag true")
+						log.Info("Setting Oracle Restart status instance " + oraRacSatus.Name + " delete flag true")
 						err = r.deleteOracleRestartInst(OraRestartSpex, req, ctx, oracleRestart)
 						oraRacSatus.NodeDetails.IsDelete = "false"
 						if err != nil {
-							log.Info("Error occurred RAC instance " + oraRacSatus.Name + " deletion")
+							log.Info("Error occurred Oracle Restart instance " + oraRacSatus.Name + " deletion")
 							return 0, err // return value should be adjusted according to the function signature
 						}
 					}
@@ -3364,11 +3366,11 @@ func (r *OracleRestartReconciler) SetCurrentSpec(ctx context.Context, oracleRest
 			r.Log.Info("Conflict detected while updating annotations, retrying...")
 			return fmt.Errorf("conflict occurred while updating annotations: %w", err)
 		}
-		r.Log.Error(err, "Failed to update RAC instance annotations")
-		return fmt.Errorf("failed to update RAC instance annotations: %w", err)
+		r.Log.Error(err, "Failed to update Oracle Restart instance annotations")
+		return fmt.Errorf("failed to update Oracle Restart  instance annotations: %w", err)
 	}
 
-	r.Log.Info("RAC Object annotations updated with current spec annotation")
+	r.Log.Info("Oracle Restart Object annotations updated with current spec annotation")
 	return nil
 }
 
