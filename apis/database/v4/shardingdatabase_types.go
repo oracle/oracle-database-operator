@@ -58,7 +58,7 @@ import (
 type ShardingDatabaseSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Shard                     []ShardSpec         `json:"shard"`
+	Shard                     []ShardSpec         `json:"shard,omitempty"`
 	Catalog                   []CatalogSpec       `json:"catalog"`                      // The catalogSpes accept all the catalog parameters
 	Gsm                       []GsmSpec           `json:"gsm"`                          // The GsmSpec will accept all the Gsm parameter
 	StorageClass              string              `json:"storageClass,omitempty"`       // Optional Accept storage class name
@@ -95,6 +95,8 @@ type ShardingDatabaseSpec struct {
 	TdeWalletPvcMountLocation string              `json:"tdeWalletPvcMountLocation,omitempty"`
 	DbEdition                 string              `json:"dbEdition,omitempty"`
 	TopicId                   string              `json:"topicId,omitempty"`
+  SrvAccountName            string              `json:"serviceAccountName,omitempty"`
+  ShardInfo                 []ShardingDetails   `json:"shardInfo,omitempty"`
 }
 
 // To understand Metav1.Condition, please refer the link https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1
@@ -157,9 +159,9 @@ type ShardingDatabase struct {
 	Status ShardingDatabaseStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-
+// +kubebuilder:object:root=true
 // ShardingDatabaseList contains a list of ShardingDatabase
+// +kubebuilder:storageversion
 type ShardingDatabaseList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
@@ -167,7 +169,6 @@ type ShardingDatabaseList struct {
 }
 
 // ShardSpec is a specification of Shards for an application deployment.
-// +k8s:openapi-gen=true
 type ShardSpec struct {
 	Name            string                       `json:"name"`                                                      // Shard name that will be used deploy StatefulSet
 	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Shard Storage Size
@@ -185,26 +186,26 @@ type ShardSpec struct {
 	ShardGroup       string             `json:"shardGroup,omitempty"`
 	ShardRegion      string             `json:"shardRegion,omitempty"`
 	DeployAs         string             `json:"deployAs,omitempty"`
+	ShardConfigData  *ConfigMapData     `json:"shardConfigData,omitempty"`
 }
 
 // CatalogSpec defines the desired state of CatalogSpec
-// +k8s:openapi-gen=true
 type CatalogSpec struct {
-	Name             string                       `json:"name"`                                                      // Catalog name that will be used deploy StatefulSet
-	StorageSizeInGb  int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Catalog Storage Size and This parameter will not be used if you use PvcName
-	EnvVars          []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Catalog
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
-	PvcName          string                       `json:"pvcName,omitempty"`
-	Label            string                       `json:"label,omitempty"`
-	IsDelete         string                       `json:"isDelete,omitempty"`
-	NodeSelector     map[string]string            `json:"nodeSelector,omitempty"`
-	PvAnnotations    map[string]string            `json:"pvAnnotations,omitempty"`
-	PvMatchLabels    map[string]string            `json:"pvMatchLabels,omitempty"`
-	ImagePulllPolicy *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
+	Name              string                       `json:"name"`                                                      // Catalog name that will be used deploy StatefulSet
+	StorageSizeInGb   int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Catalog Storage Size and This parameter will not be used if you use PvcName
+	EnvVars           []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Catalog
+	Resources         *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
+	PvcName           string                       `json:"pvcName,omitempty"`
+	Label             string                       `json:"label,omitempty"`
+	IsDelete          string                       `json:"isDelete,omitempty"`
+	NodeSelector      map[string]string            `json:"nodeSelector,omitempty"`
+	PvAnnotations     map[string]string            `json:"pvAnnotations,omitempty"`
+	PvMatchLabels     map[string]string            `json:"pvMatchLabels,omitempty"`
+	ImagePulllPolicy  *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
+	CatalogConfigData *ConfigMapData               `json:"catalogConfigData,omitempty"`
 }
 
 // GsmSpec defines the desired state of GsmSpec
-// +k8s:openapi-gen=true
 type GsmSpec struct {
 	Name string `json:"name"` // Gsm name that will be used deploy StatefulSet
 
@@ -221,10 +222,10 @@ type GsmSpec struct {
 	ImagePulllPolicy *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
 	Region           string                       `json:"region,omitempty"`
 	DirectorName     string                       `json:"directorName,omitempty"`
+	GsmConfigData    *ConfigMapData               `json:"gsmConfigData,omitempty"`
 }
 
 // ShardGroupSpec Specification
-
 type GsmShardGroupSpec struct {
 	Name     string `json:"name"` // Name of the shardgroup.
 	Region   string `json:"region,omitempty"`
@@ -283,17 +284,17 @@ type SecretDetails struct {
 	KeyFileMountLocation string `json:"keyFileMountLocation,omitempty"`
 	KeySecretName        string `json:"keySecretName,omitempty"`
 	EncryptionType       string `json:"encryptionType,omitempty"`
+	TdeKeyFileName       string `json:"tdeKeyFileName,omitempty"` // Name of the key.
+	TdePwdFileName       string `json:"tdePwdFileName"`
 }
 
 // EnvironmentVariable represents a named variable accessible for containers.
-// +k8s:openapi-gen=true
 type EnvironmentVariable struct {
 	Name  string `json:"name"`  // Name of the variable. Must be a C_IDENTIFIER.
 	Value string `json:"value"` // Value of the variable, as defined in Kubernetes core API.
 }
 
 // PortMapping is a specification of port mapping for an application deployment.
-// +k8s:openapi-gen=true
 type PortMapping struct {
 	Port       int32           `json:"port"`       // Port that will be exposed on the service.
 	TargetPort int32           `json:"targetPort"` // Docker image port for the application.
@@ -307,6 +308,34 @@ const (
 	ShardingDelLabelTrueValue  SfsetLabel = "true"
 	ShardingDelLabelFalseValue SfsetLabel = "false"
 )
+
+type ConfigMapData struct {
+	Name      string `json:"name,omitempty"`
+	MountPath string `json:"mountPath,omitempty"`
+}
+
+// Shard structures based on managed Replicas
+type ShardingDetails struct {
+    ShardPreFixName   string      `json:"shardPreFixName"`
+    Shape             string      `json:"shape,omitempty"` 
+    Replicas          int32       `json:"replicas,omitempty"`
+    StorageSizeInGb   int32       `json:"storageSizeInGb,omitempty"`
+    ShardGroupDetails *ShardGroup `json:"shardGroupDetails,omitempty"`
+    ShardSpaceDetails *ShardSpace `json:"shardSpaceDetails,omitempty"`
+}
+type ShardGroup struct {
+    ShardGroupName string `json:"shardGroupName,omitempty"`
+    Region         string `json:"region,omitempty"`
+    RepFactor      int    `json:"repFactor,omitempty"`
+    ShardSpace     string `json:"ShardSpace,omitempty"`
+    DeployAs       string `json:"deployAs,omitempty"`
+	  IsDelete       string `json:"isDelete,omitempty"`
+}
+type ShardSpace struct {
+    ShardSpaceName string `json:"shardSpaceName,omitempty"`
+    Chunks         int    `json:"Chnuks,omitempty"`
+    ProtectMode    string `json:"protectMode,omitempty"` //Possible Values MAXPROTECTION, MAXAVAILABILITY,MAXPERFORMANCE
+}
 
 type ShardStatusMapKeys string
 
