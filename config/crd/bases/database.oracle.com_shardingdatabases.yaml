@@ -588,6 +588,13 @@ spec:
               catalog:
                 items:
                   properties:
+                    catalogConfigData:
+                      properties:
+                        mountPath:
+                          type: string
+                        name:
+                          type: string
+                      type: object
                     envVars:
                       items:
                         properties:
@@ -688,9 +695,14 @@ spec:
                     type: string
                   pwdFileName:
                     type: string
+                  tdeKeyFileName:
+                    type: string
+                  tdePwdFileName:
+                    type: string
                 required:
                 - name
                 - pwdFileName
+                - tdePwdFileName
                 type: object
               fssStorageClass:
                 type: string
@@ -711,6 +723,13 @@ spec:
                         - value
                         type: object
                       type: array
+                    gsmConfigData:
+                      properties:
+                        mountPath:
+                          type: string
+                        name:
+                          type: string
+                      type: object
                     imagePullPolicy:
                       type: string
                     isDelete:
@@ -915,6 +934,8 @@ spec:
                 type: string
               scriptsLocation:
                 type: string
+              serviceAccountName:
+                type: string
               shard:
                 items:
                   properties:
@@ -992,6 +1013,13 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    shardConfigData:
+                      properties:
+                        mountPath:
+                          type: string
+                        name:
+                          type: string
+                      type: object
                     shardGroup:
                       type: string
                     shardRegion:
@@ -1009,6 +1037,47 @@ spec:
                 type: string
               shardConfigName:
                 type: string
+              shardInfo:
+                items:
+                  properties:
+                    replicas:
+                      format: int32
+                      type: integer
+                    shape:
+                      type: string
+                    shardGroupDetails:
+                      properties:
+                        ShardSpace:
+                          type: string
+                        deployAs:
+                          type: string
+                        isDelete:
+                          type: string
+                        region:
+                          type: string
+                        repFactor:
+                          type: integer
+                        shardGroupName:
+                          type: string
+                      type: object
+                    shardPreFixName:
+                      type: string
+                    shardSpaceDetails:
+                      properties:
+                        Chnuks:
+                          type: integer
+                        protectMode:
+                          type: string
+                        shardSpaceName:
+                          type: string
+                      type: object
+                    storageSizeInGb:
+                      format: int32
+                      type: integer
+                  required:
+                  - shardPreFixName
+                  type: object
+                type: array
               shardRegion:
                 items:
                   type: string
@@ -1030,7 +1099,6 @@ spec:
             - dbImage
             - gsm
             - gsmImage
-            - shard
             type: object
           status:
             properties:

@@ -238,6 +238,11 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 		result = append(result, corev1.EnvVar{Name: "KEY_SECRET_VOLUME", Value: oraSecretMount})
 	}
 
+  if checkTdeWalletFlag(instance) {
+		result = append(result, corev1.EnvVar{Name: "TDE_PWD_KEY", Value: instance.Spec.DbSecret.TdeKeyFileName})
+		result = append(result, corev1.EnvVar{Name: "TDE_PWD_FILE", Value: instance.Spec.DbSecret.TdePwdFileName})
+  }
+
 	if restype == "GSM" {
 		if !sDirectParam {
 			//varinfo = "director_name=sharddirector" + sDirectorCounter + ";director_region=primary;director_port=1521"
@@ -865,21 +870,28 @@ func buildDirectorParams(instance *databasev4.ShardingDatabase, oraGsmSpex datab
 	var varinfo string
 	var dnameFlag bool = false
 	var dportFlag bool = false
+	var dname string
+	var dport string
 
 	// Get the GSM Spec and build director params. idx feild is very important to build the unique director name and regiod. Idx is GSM array index.
 	variables = oraGsmSpex.EnvVars
 	for _, variable := range variables {
 		if variable.Name == "DIRECTOR_NAME" {
 			dnameFlag = true
+      dname = variable.Value
 		}
 		if variable.Name == "DIRECTOR_PORT" {
 			dportFlag = true
+      dport = variable.Value
 		}
 	}
 	if !dnameFlag {
-		varinfo = "director_name=sharddirector" + strconv.Itoa(idx) + ";"
+		varinfo = "director_name=sharddirector" + oraGsmSpex.Name + ";"
 		result = result + varinfo
-	}
+	} else {
+		varinfo = "director_name=" + dname + ";"
+		result = result + varinfo
+  }
 
 	if oraGsmSpex.Region != "" {
 		varinfo = "director_region=" + oraGsmSpex.Region + ";"
@@ -901,7 +913,11 @@ func buildDirectorParams(instance *databasev4.ShardingDatabase, oraGsmSpex datab
 	if !dportFlag {
 		varinfo = "director_port=1522"
 		result = result + varinfo
-	}
+	} else {
+		varinfo = "director_port=" + dport
+		result = result + varinfo
+  }
+
 	result = strings.TrimSuffix(result, ";")
 	return result
 }
@@ -1166,6 +1182,16 @@ func getdeployShardCmd() []string {
 func getGsmvalidateCmd() []string {
 	var depCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--checkliveness=true", "--optype=gsm"}
 	return depCmd
+}
+
+func getExportTDEKeyCmd(sparamStr string) []string {
+	var exportTDEKeyCmd []string = []string{oraDbScriptMount + "/cmdExec", "/bin/python", oraDbScriptMount + "/main.py ", "--exporttdekey=" + strconv.Quote(sparamStr)}
+	return exportTDEKeyCmd
+}
+
+func getImportTDEKeyCmd(sparamStr string) []string {
+	var importTDEKeyCmd []string = []string{oraDbScriptMount + "/cmdExec", "/bin/python", oraDbScriptMount + "/main.py ", "--importtdekey=" + strconv.Quote(sparamStr)}
+	return importTDEKeyCmd
 }
 
 func getInitContainerCmd(resType string, name string,
@@ -1530,6 +1556,15 @@ func checkTdeWalletFlag(instance *databasev4.ShardingDatabase) bool {
 	return false
 }
 
+func CheckIsTDEWalletFlag(instance *databasev4.ShardingDatabase, logger logr.Logger) bool {
+	LogMessages("INFO", "CheckIsTDEWalletFlag():isTdeWallet=["+instance.Spec.IsTdeWallet+"].", nil, instance, logger)
+	if strings.ToLower(instance.Spec.IsTdeWallet) == "enable" {
+		LogMessages("INFO", "CheckIsTDEWalletFlag():Returning true", nil, instance, logger)
+		return true
+	}
+	return false
+}
+
 func CheckIsDeleteFlag(delStr string, instance *databasev4.ShardingDatabase, logger logr.Logger) bool {
 	if strings.ToLower(delStr) == "enable" {
 		return true
@@ -1545,4 +1580,12 @@ func getTdeWalletMountLoc(instance *databasev4.ShardingDatabase) string {
 		return instance.Spec.TdeWalletPvcMountLocation
 	}
 	return "/tdewallet/" + instance.Name
+}
+
+func Int64Pointer(d int64) *int64 {
+	return &d
+}
+
+func BoolPointer(d bool) *bool {
+	return &d
 }
