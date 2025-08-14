@@ -74,7 +74,7 @@ rm sidb-db-auth-enc e_sidb-db-auth-enc
       name: ords-sidb
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:24.1.1
+      image: container-registry.oracle.com/database/ords:25.1.0
       forceRestart: true
       encPrivKey:
         secretName: prvkey
@@ -101,7 +101,8 @@ rm sidb-db-auth-enc e_sidb-db-auth-enc
           db.adminUser.secret:
             secretName:  sidb-db-auth-enc" | kubectl apply -f -
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
+    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
+
     
 1. Watch the restdataservices resource until the status is **Healthy**:
     ```bash

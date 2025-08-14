@@ -35,7 +35,7 @@ Use the file: [oraclerestart_prov_onsport.yaml](./oraclerestart_prov_onsport.yam
     kubectl get all -n orestart
 
     # Check the logs of a particular pod. For example, to check status of pod "dbmc1-0":    
-    kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_rac_setup.log"
+    kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
     ===============================
     ORACLE DATABASE IS READY TO USE
     ===============================
@@ -74,7 +74,7 @@ Use the file: [oraclerestart_prov_onsport.yaml](./oraclerestart_prov_onsport.yam
     kubectl get all -n orestart
 
     # Check the logs of a particular pod. For example, to check status of pod "dbmc1-0":    
-    kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_rac_setup.log"
+    kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
     ===============================
     ORACLE DATABASE IS READY TO USE
     ===============================

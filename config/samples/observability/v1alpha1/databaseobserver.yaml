@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: observability-exporter
     app.kubernetes.io/instance: obs-sample
-    app.kubernetes.io/version: 1.5.1
+    app.kubernetes.io/version: 2.0.2
 spec:
   database:
     dbUser:
@@ -21,8 +21,9 @@ spec:
       key: "connection"
       secret: db-secret
 
-    dbWallet:
-      secret: instance-wallet
+  wallet:
+    secret: instance-wallet
+
 
 
   inheritLabels:
@@ -30,51 +31,57 @@ spec:
     - app.kubernetes.io/instance
     - app.kubernetes.io/version
 
-  sidecars: [ ]
-  sidecarVolumes: [ ]
+  sidecar:
+    containers: [ ]
+    volumes: [ ]
 
-  exporter:
-    deployment:
-      image: "container-registry.oracle.com/database/observability-exporter:1.5.1"
-      args: [ "--log.level=info" ]
-      commands: [ "/oracledb_exporter" ]
-      env:
-        TNS_ADMIN: /some/custom/path
-        ORACLE_HOME: /some/custom/path
+
+  deployment:
+    env:
+      TNS_ADMIN: /some/custom/path
+      ORACLE_HOME: /some/custom/path
+      DB_ROLE: SYSDBA
+    image: "container-registry.oracle.com/database/observability-exporter:2.0.2"
+    args: [ "--log.level=info" ]
+    commands: [ "/oracledb_exporter" ]
+
+    labels:
+      environment: dev
+    podTemplate:
       labels:
         environment: dev
-      podTemplate:
-        labels:
-          environment: dev
 
-    service:
-      labels:
-        environment: dev
+  service:
+    labels:
+      environment: dev
 
-  configuration:
+  metrics:
     configMap:
-      key: "config.toml"
-      name: "devcm-oradevdb-config"
+      - name: "devcm-oradevdb-config"
+        key: "config.toml"
 
-  prometheus:
-    serviceMonitor:
-      labels:
-        release: prometheus
+  serviceMonitor:
+    labels:
+      release: prometheus
 
 
   log:
     filename: "alert.log"
-    path: "/log"
+    destination: "/log"
 
     volume:
-      name: volume
       persistentVolumeClaim:
         claimName: "my-pvc"
 
+  ociConfig:
+    configMap:
+      key: config
+      name: oci-cred
+    privateKey:
+      secret: oci-privatekey
+    mountPath: "/.oci"
+    
   replicas: 1
 
-  ociConfig:
-    configMapName: oci-cred
-    secretName: oci-privatekey
 
 

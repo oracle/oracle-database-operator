@@ -131,6 +131,10 @@ spec:
                     type: string
                   oPatchSwZipFile:
                     type: string
+                  oneOffIds:
+                    type: string
+                  oneOffLocation:
+                    type: string
                   opType:
                     type: string
                   pdbName:
@@ -526,6 +530,8 @@ spec:
                   runAsUser:
                     format: int64
                     type: integer
+                  seLinuxChangePolicy:
+                    type: string
                   seLinuxOptions:
                     properties:
                       level:
@@ -881,6 +887,10 @@ spec:
                   oPatchLocation:
                     type: string
                   oPatchSwZipFile:
+                    type: string
+                  oneOffIds:
+                    type: string
+                  oneOffLocation:
                     type: string
                   opType:
                     type: string
@@ -1287,6 +1297,8 @@ spec:
                   runAsUser:
                     format: int64
                     type: integer
+                  seLinuxChangePolicy:
+                    type: string
                   seLinuxOptions:
                     properties:
                       level:

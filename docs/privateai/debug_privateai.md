@@ -12,10 +12,3 @@ Use the below command to get the logs of the PrivateAI Container Pod deployed in
     - Get the logs of the PrivateAI Container Pod deployed in the namespace "pai"
     kubectl logs -f pod/<name of the pod> -n pai
    ```
-
-## Details for HTTP request error
-
-If you get an HTTP request error when you make utl_to_embedding call, you can run the following to get more details:
-   ```sh
-   select utl_http.get_detailed_sqlerrm from dual;
-   ```

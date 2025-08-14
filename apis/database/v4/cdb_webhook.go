@@ -39,6 +39,7 @@
 package v4
 
 import (
+	"context"
 	"reflect"
 	"strings"
 
@@ -58,15 +59,17 @@ var cdblog = logf.Log.WithName("cdb-webhook")
 func (r *CDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-cdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=cdbs,verbs=create;update,versions=v4,name=mcdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Defaulter = &CDB{}
+var _ webhook.CustomDefaulter = &CDB{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *CDB) Default() {
+func (r *CDB) Default(ctx context.Context, obj runtime.Object) error {
 	cdblog.Info("Setting default values in CDB spec for : " + r.Name)
 
 	if r.Spec.ORDSPort == 0 {
@@ -76,15 +79,17 @@ func (r *CDB) Default() {
 	if r.Spec.Replicas == 0 {
 		r.Spec.Replicas = 1
 	}
+
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:path=/validate-database-oracle-com-v4-cdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=cdbs,verbs=create;update,versions=v4,name=vcdb.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Validator = &CDB{}
+var _ webhook.CustomValidator = &CDB{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *CDB) ValidateCreate() (admission.Warnings, error) {
+func (r *CDB) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	cdblog.Info("ValidateCreate", "name", r.Name)
 
 	var allErrs field.ErrorList
@@ -173,7 +178,7 @@ func (r *CDB) ValidateCreate() (admission.Warnings, error) {
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *CDB) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *CDB) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
 	cdblog.Info("validate update", "name", r.Name)
 
 	isCDBMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
@@ -216,7 +221,7 @@ func (r *CDB) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *CDB) ValidateDelete() (admission.Warnings, error) {
+func (r *CDB) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	cdblog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.

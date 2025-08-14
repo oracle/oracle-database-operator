@@ -55,11 +55,17 @@ import (
 func GetDbHomeDetails(kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, id string) (database.CreateDbHomeDetails, error) {
 
 	dbHomeDetails := database.CreateDbHomeDetails{}
-
-	dbHomeReq, err := GetDbLatestVersion(dbClient, dbcs, *dbcs.Spec.Id)
+	dbHomeReq, err := GetDbLatestVersion(dbClient, dbcs, "")
 	if err != nil {
 		return database.CreateDbHomeDetails{}, err
 	}
+	if dbcs.Spec.Id != nil {
+		dbHomeReq, err = GetDbLatestVersion(dbClient, dbcs, *dbcs.Spec.Id)
+		if err != nil {
+			return database.CreateDbHomeDetails{}, err
+		}
+	}
+
 	dbHomeDetails.DbVersion = &dbHomeReq
 
 	dbDetailsReq, err := GetDBDetails(kubeClient, dbcs)

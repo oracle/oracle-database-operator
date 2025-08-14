@@ -57,11 +57,11 @@ type K8sAdbSpec struct {
 }
 
 type OciAdbSpec struct {
-	Ocid *string `json:"ocid,omitempty"`
+	Id *string `json:"id,omitempty"`
 }
 
 // TargetSpec defines the spec of the target for backup/restore runs.
 type TargetSpec struct {
-	K8sAdb K8sAdbSpec `json:"k8sADB,omitempty"`
-	OciAdb OciAdbSpec `json:"ociADB,omitempty"`
+	K8sAdb K8sAdbSpec `json:"k8sAdb,omitempty"`
+	OciAdb OciAdbSpec `json:"ociAdb,omitempty"`
 }

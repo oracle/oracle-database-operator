@@ -10,13 +10,13 @@ spec:
   # Restore the database either from a backup or using point-in-time restore
   # The name of your AutonomousDatabaseBackup resource
   target:
-    k8sADB:
+    k8sAdb:
       name: autonomousdatabase-sample
     # # Uncomment the below block if you use ADB OCID as the input of the target ADB
-    # ociADB:
-    #   ocid: ocid1.autonomousdatabase...
+    # ociAdb:
+    #   id: ocid1.autonomousdatabase...
   source:
-    k8sADBBackup: 
+    k8sAdbBackup: 
       name: autonomousdatabasebackup-sample
     # # Uncomment the following field to perform point-in-time restore
     # pointInTime: 

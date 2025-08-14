@@ -58,6 +58,7 @@ var autonomousdatabasebackuplog = logf.Log.WithName("autonomousdatabasebackup-re
 func (r *AutonomousDatabaseBackup) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -67,7 +68,9 @@ var _ webhook.CustomValidator = &AutonomousDatabaseBackup{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	autonomousdatabasebackuplog.Info("validate create", "name", r.Name)
+	backup := obj.(*AutonomousDatabaseBackup)
+
+	autonomousdatabasebackuplog.Info("validate create", "name", backup.Name)
 
 	var allErrs field.ErrorList
 
@@ -75,23 +78,23 @@ func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj runti
 	_, hasEmptyString := namespaces[""]
 	isClusterScoped := len(namespaces) == 1 && hasEmptyString
 	if !isClusterScoped {
-		_, containsNamespace := namespaces[r.Namespace]
+		_, containsNamespace := namespaces[backup.Namespace]
 		// Check if the allowed namespaces maps contains the required namespace
 		if len(namespaces) != 0 && !containsNamespace {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+				field.Invalid(field.NewPath("metadata").Child("namespace"), backup.Namespace,
 					"Oracle database operator doesn't watch over this namespace"))
 		}
 	}
 
-	if r.Spec.Target.K8sAdb.Name == nil && r.Spec.Target.OciAdb.Ocid == nil {
+	if backup.Spec.Target.K8sAdb.Name == nil && backup.Spec.Target.OciAdb.Id == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
 	}
 
-	if r.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.OciAdb.Ocid != nil {
+	if backup.Spec.Target.K8sAdb.Name != nil && backup.Spec.Target.OciAdb.Id != nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB or ociADB, but not both"))
+			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sAdb or ociAdb, but not both"))
 	}
 
 	if len(allErrs) == 0 {
@@ -99,37 +102,40 @@ func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj runti
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseBackup"},
-		r.Name, allErrs)
+		backup.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *AutonomousDatabaseBackup) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	autonomousdatabasebackuplog.Info("validate update", "name", r.Name)
+	var (
+		allErrs   field.ErrorList
+		oldBackup = oldObj.(*AutonomousDatabaseBackup)
+		newBackup = oldObj.(*AutonomousDatabaseBackup)
+	)
 
-	var allErrs field.ErrorList
-	oldBackup := oldObj.(*AutonomousDatabaseBackup)
+	autonomousdatabasebackuplog.Info("validate update", "name", newBackup.Name)
 
-	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil && r.Spec.AutonomousDatabaseBackupOCID != nil &&
-		*oldBackup.Spec.AutonomousDatabaseBackupOCID != *r.Spec.AutonomousDatabaseBackupOCID {
+	if oldBackup.Spec.AutonomousDatabaseBackupOCID != nil && newBackup.Spec.AutonomousDatabaseBackupOCID != nil &&
+		*oldBackup.Spec.AutonomousDatabaseBackupOCID != *newBackup.Spec.AutonomousDatabaseBackupOCID {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("autonomousDatabaseBackupOCID"),
 				"cannot assign a new autonomousDatabaseBackupOCID to this backup"))
 	}
 
-	if oldBackup.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.K8sAdb.Name != nil &&
-		*oldBackup.Spec.Target.K8sAdb.Name != *r.Spec.Target.K8sAdb.Name {
+	if oldBackup.Spec.Target.K8sAdb.Name != nil && newBackup.Spec.Target.K8sAdb.Name != nil &&
+		*oldBackup.Spec.Target.K8sAdb.Name != *newBackup.Spec.Target.K8sAdb.Name {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target").Child("k8sADB").Child("name"), "cannot assign a new name to the target"))
+			field.Forbidden(field.NewPath("spec").Child("target").Child("k8sAdb").Child("name"), "cannot assign a new name to the target"))
 	}
 
-	if oldBackup.Spec.Target.OciAdb.Ocid != nil && r.Spec.Target.OciAdb.Ocid != nil &&
-		*oldBackup.Spec.Target.OciAdb.Ocid != *r.Spec.Target.OciAdb.Ocid {
+	if oldBackup.Spec.Target.OciAdb.Id != nil && newBackup.Spec.Target.OciAdb.Id != nil &&
+		*oldBackup.Spec.Target.OciAdb.Id != *newBackup.Spec.Target.OciAdb.Id {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target").Child("ociADB").Child("ocid"), "cannot assign a new ocid to the target"))
+			field.Forbidden(field.NewPath("spec").Child("target").Child("ociAdb").Child("id"), "cannot assign a new ocid to the target"))
 	}
 
-	if oldBackup.Spec.DisplayName != nil && r.Spec.DisplayName != nil &&
-		*oldBackup.Spec.DisplayName != *r.Spec.DisplayName {
+	if oldBackup.Spec.DisplayName != nil && newBackup.Spec.DisplayName != nil &&
+		*oldBackup.Spec.DisplayName != *newBackup.Spec.DisplayName {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("displayName"), "cannot assign a new displayName to this backup"))
 	}
@@ -139,7 +145,7 @@ func (r *AutonomousDatabaseBackup) ValidateUpdate(ctx context.Context, oldObj, n
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseBackup"},
-		r.Name, allErrs)
+		newBackup.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type

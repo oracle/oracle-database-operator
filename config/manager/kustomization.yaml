@@ -9,4 +9,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: phx.ocir.io/intsanjaysingh/db-repo/oracle/database
-  newTag: orestart-operator-mltp1
+  newTag: basedb-operator-sa

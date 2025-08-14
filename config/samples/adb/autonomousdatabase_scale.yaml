@@ -10,8 +10,8 @@ spec:
   action: Update
   details:
     id: ocid1.autonomousdatabase...
-    # Your database's OPCU core count
-    cpuCoreCount: 2
+    # Your database's compute count
+    computeCount: 2
     # Your database's storage size in TB
     dataStorageSizeInTBs: 2
     # Enable/Disable auto scaling for your database

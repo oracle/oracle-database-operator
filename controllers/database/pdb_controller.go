@@ -663,7 +663,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 		return err
 	}
 	privKey := string(secret.Data[pdb.Spec.PDBPriKey.Secret.Key])
-	pdbAdminName, err := lrcommons.CommonDecryptWithPrivKey(privKey, pdbAdminNameEnc, req)
+	pdbAdminName, err := lrcommons.CommonDecryptWithPrivKey2(privKey, pdbAdminNameEnc, req)
 
 	// Get Web Server User Password
 	secret = &corev1.Secret{}
@@ -678,7 +678,7 @@ func (r *PDBReconciler) createPDB(ctx context.Context, req ctrl.Request, pdb *db
 	}
 	pdbAdminPwdEnc := string(secret.Data[pdb.Spec.AdminPwd.Secret.Key])
 	pdbAdminPwdEnc = strings.TrimSpace(pdbAdminPwdEnc)
-	pdbAdminPwd, err := lrcommons.CommonDecryptWithPrivKey(privKey, pdbAdminPwdEnc, req)
+	pdbAdminPwd, err := lrcommons.CommonDecryptWithPrivKey2(privKey, pdbAdminPwdEnc, req)
 	pdbAdminName = strings.TrimSuffix(pdbAdminName, "\n")
 	pdbAdminPwd = strings.TrimSuffix(pdbAdminPwd, "\n")
 	/*** END GET ENCPASS ***/
@@ -1523,7 +1523,7 @@ func NewCallApi(intr interface{}, ctx context.Context, req ctrl.Request, pdb *db
 		return "", err
 	}
 	privKey := string(secret.Data[pdb.Spec.PDBPriKey.Secret.Key])
-	webUser, err := lrcommons.CommonDecryptWithPrivKey(privKey, webUserEnc, req)
+	webUser, err := lrcommons.CommonDecryptWithPrivKey2(privKey, webUserEnc, req)
 
 	// Get Web Server User Password
 	secret = &corev1.Secret{}
@@ -1538,7 +1538,7 @@ func NewCallApi(intr interface{}, ctx context.Context, req ctrl.Request, pdb *db
 	}
 	webUserPwdEnc := string(secret.Data[pdb.Spec.WebServerPwd.Secret.Key])
 	webUserPwdEnc = strings.TrimSpace(webUserPwdEnc)
-	webUserPwd, err := lrcommons.CommonDecryptWithPrivKey(privKey, webUserPwdEnc, req)
+	webUserPwd, err := lrcommons.CommonDecryptWithPrivKey2(privKey, webUserPwdEnc, req)
 	///////////////////////////////////////////////////////////////////////////////////
 
 	var httpreq *http.Request

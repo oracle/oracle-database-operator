@@ -1,0 +1,17 @@
+#
+# Copyright (c) 2022, 2025, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v4
+kind: AutonomousDatabase
+metadata:
+  name: autonomousdatabase-sample
+spec:
+  action: Failover
+  details:
+    id: ocid1.autonomousdatabase...
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred
+    # Comment out secretName if using OKE workload identity
+    secretName: oci-privatekey

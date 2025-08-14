@@ -137,6 +137,8 @@ type InitParams struct {
 	OPatchLocation          string       `json:"oPatchLocation,omitempty"`
 	SwStagePvc              string       `json:"swStagePvc,omitempty"`
 	SwStagePvcMountLocation string       `json:"swStagePvcMountLocation,omitempty"`
+	OneOffLocation          string       `json:"oneOffLocation,omitempty"`
+	OneOffIds               string       `json:"oneOffIds,omitempty"`
 }
 
 type OracleRestartInstDetailSpec struct {

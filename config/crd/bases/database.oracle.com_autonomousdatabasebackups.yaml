@@ -62,14 +62,14 @@ spec:
                 type: integer
               target:
                 properties:
-                  k8sADB:
+                  k8sAdb:
                     properties:
                       name:
                         type: string
                     type: object
-                  ociADB:
+                  ociAdb:
                     properties:
-                      ocid:
+                      id:
                         type: string
                     type: object
                 type: object
@@ -153,14 +153,14 @@ spec:
                 type: integer
               target:
                 properties:
-                  k8sADB:
+                  k8sAdb:
                     properties:
                       name:
                         type: string
                     type: object
-                  ociADB:
+                  ociAdb:
                     properties:
-                      ocid:
+                      id:
                         type: string
                     type: object
                 type: object

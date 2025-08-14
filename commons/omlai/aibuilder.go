@@ -12,6 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -65,7 +66,8 @@ func buildDeploymentSpecForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.De
 	}
 
 	return &appsv1.DeploymentSpec{
-		Replicas: &replicas,
+		Replicas:             &replicas,
+		RevisionHistoryLimit: pointer.Int32(0),
 		Selector: &metav1.LabelSelector{
 			MatchLabels: buildLabelsForPrivateAi(instance, "privateai", instance.Name),
 		},
@@ -329,6 +331,27 @@ func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svctype string
 	if svctype == "external" {
 		service.Spec.Type = corev1.ServiceTypeLoadBalancer
 		service.Spec.Selector = buildLabelsForPrivateAi(instance, "privateai", instance.Name)
+		// internal LB condition
+		if instance.Spec.PaiInternalLB {
+			if service.ObjectMeta.Annotations == nil {
+				service.ObjectMeta.Annotations = make(map[string]string)
+			}
+
+			// Use custom annotations if provided
+			if len(instance.Spec.PailbAnnotation) > 0 {
+				for k, v := range instance.Spec.PailbAnnotation {
+					service.ObjectMeta.Annotations[k] = v
+				}
+			}
+
+			// default internal LB annotations if not already set
+			if _, ok := service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"]; !ok {
+				service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"] = "lb"
+			}
+			if _, ok := service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"]; !ok {
+				service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"] = "true"
+			}
+		}
 	}
 
 	if svctype == "local" {

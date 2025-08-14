@@ -39,8 +39,6 @@
 package v4
 
 import (
-	"time"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -74,7 +72,8 @@ type OrdsSrvsSpec struct {
 	EncPrivKey   PasswordSecret  `json:"encPrivKey,omitempty"`
 	PoolSettings []*PoolSettings `json:"poolSettings,omitempty"`
 	// +k8s:openapi-gen=true
-
+	// ServiceAccount of the OrdsSrvs Pod
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 }
 
 type GlobalSettings struct {
@@ -82,15 +81,14 @@ type GlobalSettings struct {
 	CacheMetadataEnabled *bool `json:"cache.metadata.enabled,omitempty"`
 
 	// Specifies the duration after a GraphQL schema is not accessed from the cache that it expires.
-	CacheMetadataGraphQLExpireAfterAccess *time.Duration `json:"cache.metadata.graphql.expireAfterAccess,omitempty"`
+	CacheMetadataGraphQLExpireAfterAccess string `json:"cache.metadata.graphql.expireAfterAccess,omitempty"`
 
 	// Specifies the duration after a GraphQL schema is cached that it expires and has to be loaded again.
-	CacheMetadataGraphQLExpireAfterWrite *time.Duration `json:"cache.metadata.graphql.expireAfterWrite,omitempty"`
+	CacheMetadataGraphQLExpireAfterWrite string `json:"cache.metadata.graphql.expireAfterWrite,omitempty"`
 
 	// Specifies the setting to determine for how long a metadata record remains in the cache.
 	// Longer duration means, it takes longer to view the applied changes.
-	// The formats accepted are based on the ISO-8601 duration format.
-	CacheMetadataTimeout *time.Duration `json:"cache.metadata.timeout,omitempty"`
+	CacheMetadataTimeout string `json:"cache.metadata.timeout,omitempty"`
 
 	// Specifies the setting to enable or disable JWKS caching.
 	CacheMetadataJWKSEnabled *bool `json:"cache.metadata.jwks.enabled,omitempty"`
@@ -103,10 +101,10 @@ type GlobalSettings struct {
 
 	// Specifies the duration after a JWK is not accessed from the cache that it expires.
 	// By default this is disabled.
-	CacheMetadataJWKSExpireAfterAccess *time.Duration `json:"cache.metadata.jwks.expireAfterAccess,omitempty"`
+	CacheMetadataJWKSExpireAfterAccess string `json:"cache.metadata.jwks.expireAfterAccess,omitempty"`
 
 	// Specifies the duration after a JWK is cached, that is, it expires and has to be loaded again.
-	CacheMetadataJWKSExpireAfterWrite *time.Duration `json:"cache.metadata.jwks.expireAfterWrite,omitempty"`
+	CacheMetadataJWKSExpireAfterWrite string `json:"cache.metadata.jwks.expireAfterWrite,omitempty"`
 
 	// Specifies whether the Database API is enabled.
 	DatabaseAPIEnabled *bool `json:"database.api.enabled,omitempty"`
@@ -116,7 +114,7 @@ type GlobalSettings struct {
 	DatabaseAPIManagementServicesDisabled *bool `json:"database.api.management.services.disabled,omitempty"`
 
 	// Specifies how long to wait before retrying an invalid pool.
-	DBInvalidPoolTimeout *time.Duration `json:"db.invalidPoolTimeout,omitempty"`
+	DBInvalidPoolTimeout string `json:"db.invalidPoolTimeout,omitempty"`
 
 	// Specifies the maximum join nesting depth limit for GraphQL queries.
 	FeatureGraphQLMaxNestingDepth *int32 `json:"feature.grahpql.max.nesting.depth,omitempty"`
@@ -131,7 +129,7 @@ type GlobalSettings struct {
 	SecurityCredentialsAttempts *int32 `json:"security.credentials.attempts,omitempty"`
 
 	// Specifies the period to lock the account that has exceeded maximum attempts.
-	SecurityCredentialsLockTime *time.Duration `json:"security.credentials.lock.time,omitempty"`
+	SecurityCredentialsLockTime string `json:"security.credentials.lock.time,omitempty"`
 
 	// Specifies the HTTP listen port.
 	//+kubebuilder:default:=8080
@@ -145,7 +143,7 @@ type GlobalSettings struct {
 	StandaloneHTTPSPort *int32 `json:"standalone.https.port,omitempty"`
 
 	// Specifies the period for Standalone Mode to wait until it is gracefully shutdown.
-	StandaloneStopTimeout *time.Duration `json:"standalone.stop.timeout,omitempty"`
+	StandaloneStopTimeout string `json:"standalone.stop.timeout,omitempty"`
 
 	// Specifies whether to display error messages on the browser.
 	DebugPrintDebugToScreen *bool `json:"debug.printDebugToScreen,omitempty"`
@@ -181,10 +179,10 @@ type GlobalSettings struct {
 	MongoPort *int32 `json:"mongo.port,omitempty"`
 
 	// Specifies the maximum idle time for a Mongo connection in milliseconds.
-	MongoIdleTimeout *time.Duration `json:"mongo.idle.timeout,omitempty"`
+	MongoIdleTimeout string `json:"mongo.idle.timeout,omitempty"`
 
 	// Specifies the maximum time for a Mongo database operation in milliseconds.
-	MongoOpTimeout *time.Duration `json:"mongo.op.timeout,omitempty"`
+	MongoOpTimeout string `json:"mongo.op.timeout,omitempty"`
 
 	// If this value is set to true, then the Oracle REST Data Services internal exclusion list is not enforced.
 	// Oracle recommends that you do not set this value to true.
@@ -206,6 +204,19 @@ type GlobalSettings struct {
 	// Specifies the context path where ords is located.
 	//+kubebuilder:default:="/ords"
 	StandaloneContextPath string `json:"standalone.context.path,omitempty"`
+
+	// Specify whether to download APEX installation files
+	// This setting will be ignored for ADB
+	//+kubebuilder:default:=false
+	APEXDownload bool `json:"apex.download,omitempty"`
+
+	// Specify the url to download APEX installation files
+	// This setting will be ignored for ADB
+	//+kubebuilder:default:="https://download.oracle.com/otn_software/apex/apex-latest.zip"
+	APEXDownloadUrl string `json:"apex.download.url,omitempty"`
+
+	// Specify the storage attributes for PersistenceVolume and PersistenceVolumeClaim
+	APEXInstallationPersistence Persistence `json:"apex.installation.persistence,omitempty"`
 
 	/*************************************************
 	* Undocumented
@@ -303,6 +314,19 @@ type GlobalSettings struct {
 	// HARDCODED to global/logs
 }
 
+// Specify storage attributes of PV and PVC
+type Persistence struct {
+	//+kubebuilder:default="1Gi"
+	Size         string `json:"size,omitempty"`
+	StorageClass string `json:"storageClass,omitempty"`
+	//+kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
+	//+kubebuilder:default=ReadWriteOnce
+	AccessMode string `json:"accessMode,omitempty"`
+	VolumeName string `json:"volumeName,omitempty"`
+	//VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
+	//SetWritePermissions   *bool  `json:"setWritePermissions,omitempty"`
+}
+
 type PoolSettings struct {
 	// Specifies the Pool Name
 	PoolName string `json:"poolName"`
@@ -372,7 +396,7 @@ type PoolSettings struct {
 	DBCredentialsSource string `json:"db.credentialsSource,omitempty"`
 
 	// Indicates how long to wait to gracefully destroy a pool before moving to forcefully destroy all connections including borrowed ones.
-	DBPoolDestroyTimeout *time.Duration `json:"db.poolDestroyTimeout,omitempty"`
+	DBPoolDestroyTimeout string `json:"db.poolDestroyTimeout,omitempty"`
 
 	// Specifies to enable tracking of JDBC resources.
 	// If not released causes in resource leaks or exhaustion in the database.
@@ -411,21 +435,21 @@ type PoolSettings struct {
 	SecurityJWKSSize *int32 `json:"security.jwks.size,omitempty"`
 
 	// Specifies the maximum amount of time before timing-out when accessing a JWK url.
-	SecurityJWKSConnectionTimeout *time.Duration `json:"security.jwks.connection.timeout,omitempty"`
+	SecurityJWKSConnectionTimeout string `json:"security.jwks.connection.timeout,omitempty"`
 
 	// Specifies the maximum amount of time reading a response from the JWK url before timing-out.
-	SecurityJWKSReadTimeout *time.Duration `json:"security.jwks.read.timeout,omitempty"`
+	SecurityJWKSReadTimeout string `json:"security.jwks.read.timeout,omitempty"`
 
 	// Specifies the minimum interval between refreshing the JWK cached value.
-	SecurityJWKSRefreshInterval *time.Duration `json:"security.jwks.refresh.interval,omitempty"`
+	SecurityJWKSRefreshInterval string `json:"security.jwks.refresh.interval,omitempty"`
 
 	// Specifies the maximum skew the JWT time claims are accepted.
 	// This is useful if the clock on the JWT issuer and ORDS differs by a few seconds.
-	SecurityJWTAllowedSkew *time.Duration `json:"security.jwt.allowed.skew,omitempty"`
+	SecurityJWTAllowedSkew string `json:"security.jwt.allowed.skew,omitempty"`
 
 	// Specifies the maximum allowed age of a JWT in seconds, regardless of expired claim.
 	// The age of the JWT is taken from the JWT issued at claim.
-	SecurityJWTAllowedAge *time.Duration `json:"security.jwt.allowed.age,omitempty"`
+	SecurityJWTAllowedAge string `json:"security.jwt.allowed.age,omitempty"`
 
 	// Indicates the type of security.requestValidationFunction: javascript or plsql.
 	//+kubebuilder:validation:Enum=plsql;javascript
@@ -471,7 +495,7 @@ type PoolSettings struct {
 	JDBCMaxConnectionReuseCount *int32 `json:"jdbc.MaxConnectionReuseCount,omitempty"`
 
 	// Sets the maximum connection reuse time property.
-	JDBCMaxConnectionReuseTime *int32 `json:"jdbc.MaxConnectionReuseTime,omitempty"`
+	JDBCMaxConnectionReuseTime string `json:"jdbc.MaxConnectionReuseTime,omitempty"`
 
 	// Sets the time in seconds to trust an idle connection to skip a validation test.
 	JDBCSecondsToTrustIdleConnection *int32 `json:"jdbc.SecondsToTrustIdleConnection,omitempty"`
