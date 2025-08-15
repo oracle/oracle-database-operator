@@ -50,7 +50,8 @@ import (
 type PrivateAiSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	PaiConfigFile           *PaiConfigMap                `json:"paiConfigFile,omitempty"`
+	PaiConfigFile *PaiConfigMap `json:"paiConfigFile,omitempty"`
+	// +kubebuilder:default=true
 	PaiEnableAuthentication bool                         `json:"paiEnableAuthentication,omitempty"`
 	PaiSecret               *PaiSecretSpec               `json:"paiSecret,omitempty"`
 	IsExternalSvc           bool                         `json:"isExternalSvc,omitempty"`

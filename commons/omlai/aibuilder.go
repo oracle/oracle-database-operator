@@ -2,8 +2,10 @@ package commons
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -92,8 +94,9 @@ func buildPodSpecForPrivateAI(instance *privateaiv4.PrivateAi) *corev1.PodSpec {
 			RunAsUser:  int64Ptr(2001),
 			RunAsGroup: int64Ptr(2001),
 		},
-		Containers: buildContainerSpecForPrivateAI(instance),
-		Volumes:    buildVolumeSpecForPrivateAI(instance),
+		InitContainers: buildInitContainerSpecForPrivateAI(instance),
+		Containers:     buildContainerSpecForPrivateAI(instance),
+		Volumes:        buildVolumeSpecForPrivateAI(instance),
 	}
 
 	if len(instance.Spec.PaiImagePullSecret) > 0 {
@@ -108,6 +111,58 @@ func buildPodSpecForPrivateAI(instance *privateaiv4.PrivateAi) *corev1.PodSpec {
 	// }
 
 	return spec
+}
+
+// Init container: run as root, chown all pvcList mount paths
+func buildInitContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Container {
+	if len(instance.Spec.PvcList) == 0 {
+		return nil
+	}
+
+	// Build a single chown command across all mount paths
+	var cmds []string
+	for _, mountPath := range instance.Spec.PvcList {
+		if mountPath != "" {
+			cmds = append(cmds, fmt.Sprintf("chown -R 2001:2001 %q || true", mountPath))
+		}
+	}
+	chownCmd := strings.Join(cmds, " && ")
+
+	privileged := true
+	runAsRoot := int64(0)
+
+	return []corev1.Container{
+		{
+			Name:            instance.Name + "-init",
+			Image:           instance.Spec.PaiImage,
+			ImagePullPolicy: corev1.PullIfNotPresent,
+			Command:         []string{"/bin/sh", "-c", chownCmd},
+			SecurityContext: &corev1.SecurityContext{
+				Privileged: &privileged,
+				RunAsUser:  &runAsRoot,
+				RunAsGroup: &runAsRoot,
+			},
+			VolumeMounts: pvcOnlyVolumeMounts(instance), // mount only PVCs we need to chown
+		},
+	}
+}
+
+// only the pvcList mounts (used by the init container)
+func pvcOnlyVolumeMounts(instance *privateaiv4.PrivateAi) []corev1.VolumeMount {
+	var vms []corev1.VolumeMount
+	if len(instance.Spec.PvcList) > 0 {
+		for claimName, mountPath := range instance.Spec.PvcList {
+			if mountPath == "" {
+				continue
+			}
+			vms = append(vms, corev1.VolumeMount{
+				Name:      fmt.Sprintf("%s-%s-vol", instance.Name, claimName),
+				MountPath: mountPath,
+				ReadOnly:  false,
+			})
+		}
+	}
+	return vms
 }
 
 func buildContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Container {
@@ -189,6 +244,19 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 			VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Name + "-oradata-vol4"}},
 		})
 	}
+	if len(instance.Spec.PvcList) > 0 {
+		for claimName := range instance.Spec.PvcList {
+			vols = append(vols, corev1.Volume{
+				Name: fmt.Sprintf("%s-%s-vol", instance.Name, claimName),
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: claimName, // PVC name from CR
+						ReadOnly:  false,
+					},
+				},
+			})
+		}
+	}
 
 	vols = append(vols, corev1.Volume{
 		Name: instance.Name + "-logs-vol",
@@ -225,6 +293,18 @@ func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.
 			MountPath: instance.Spec.PaiConfigFile.MountLocation,
 			ReadOnly:  true,
 		})
+	}
+	if len(instance.Spec.PvcList) > 0 {
+		for claimName, mountPath := range instance.Spec.PvcList {
+			if mountPath == "" {
+				continue
+			}
+			vms = append(vms, corev1.VolumeMount{
+				Name:      fmt.Sprintf("%s-%s-vol", instance.Name, claimName),
+				MountPath: mountPath, // e.g /oml/models
+				ReadOnly:  false,
+			})
+		}
 	}
 
 	// NEW: Logs mount
@@ -294,7 +374,7 @@ func buildEnvVarsForPrivateAI(instance *privateaiv4.PrivateAi, envVars []private
 	}
 
 	if !omlConfigFileFlag {
-		if instance.Spec.PaiConfigFile.MountLocation != "" && instance.Spec.PaiConfigFile.Name != "" {
+		if instance.Spec.PaiConfigFile != nil && instance.Spec.PaiConfigFile.Name != "" && instance.Spec.PaiConfigFile.MountLocation != "" {
 			envs = append(envs, corev1.EnvVar{
 				Name:  "OML_CONFIG_FILE",
 				Value: instance.Spec.PaiConfigFile.MountLocation + "/" + "config.json",
@@ -309,6 +389,17 @@ func buildEnvVarsForPrivateAI(instance *privateaiv4.PrivateAi, envVars []private
 				Value: instance.Spec.PaiSecret.MountLocation,
 			})
 		}
+	}
+	if instance.Spec.PaiEnableAuthentication {
+		envs = append(envs, corev1.EnvVar{
+			Name:  "OML_AUTHENTICATION_ENABLED",
+			Value: "true",
+		})
+	} else {
+		envs = append(envs, corev1.EnvVar{
+			Name:  "OML_AUTHENTICATION_ENABLED",
+			Value: "false",
+		})
 	}
 
 	return envs

@@ -13919,6 +13919,7 @@ spec:
                     type: string
                 type: object
               paiEnableAuthentication:
+                default: true
                 type: boolean
               paiHTTPEnabled:
                 type: boolean

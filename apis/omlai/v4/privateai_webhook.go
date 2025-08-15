@@ -109,9 +109,9 @@ func (d *PrivateAiCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 		privateai.Spec.PaiHTTPPort = 0
 	}
 
-	if privateai.Spec.PaiAuthentication {
-		if privateai.Spec.PaiSecret.Name == "" {
-			return fmt.Errorf("PaiAuthentication is ture but paisecret is empty")
+	if privateai.Spec.PaiEnableAuthentication {
+		if privateai.Spec.PaiSecret == nil || privateai.Spec.PaiSecret.Name == "" {
+			return fmt.Errorf("paiEnableAuthentication is true but paiSecret.name is empty")
 		}
 	}
 
@@ -130,12 +130,17 @@ func (d *PrivateAiCustomDefaulter) Default(ctx context.Context, obj runtime.Obje
 		privateai.Spec.PaiService.PortMappings = append(privateai.Spec.PaiService.PortMappings, portInfo)
 	}
 	// set default MountLocation for PaiConfigFile
-	if privateai.Spec.PaiConfigFile.MountLocation == "" {
-		privateai.Spec.PaiConfigFile.MountLocation = "/oml/config"
+	if privateai.Spec.PaiConfigFile != nil {
+		if privateai.Spec.PaiConfigFile.MountLocation == "" {
+			privateai.Spec.PaiConfigFile.MountLocation = "/oml/config"
+		}
 	}
+
 	// set default MountLocation for PaiSecret
-	if privateai.Spec.PaiSecret.MountLocation == "" {
-		privateai.Spec.PaiSecret.MountLocation = "/oml/ssl"
+	if privateai.Spec.PaiSecret != nil {
+		if privateai.Spec.PaiSecret.MountLocation == "" {
+			privateai.Spec.PaiSecret.MountLocation = "/oml/ssl"
+		}
 	}
 
 	return nil
@@ -165,6 +170,12 @@ func (v *PrivateAiCustomValidator) ValidateCreate(ctx context.Context, obj runti
 	}
 	privateailog.Info("Validation for PrivateAi upon creation", "name", privateai.GetName())
 
+	if privateai.Spec.PaiEnableAuthentication {
+		if privateai.Spec.PaiSecret == nil || privateai.Spec.PaiSecret.Name == "" {
+			return nil, fmt.Errorf("paiEnableAuthentication=true requires paiSecret.name to be set")
+		}
+	}
+
 	// TODO(user): fill in your validation logic upon object creation.
 
 	return nil, nil
@@ -177,6 +188,11 @@ func (v *PrivateAiCustomValidator) ValidateUpdate(ctx context.Context, oldObj, n
 		return nil, fmt.Errorf("expected a PrivateAi object for the newObj but got %T", newObj)
 	}
 	privateailog.Info("Validation for PrivateAi upon update", "name", privateai.GetName())
+	if privateai.Spec.PaiEnableAuthentication {
+		if privateai.Spec.PaiSecret == nil || privateai.Spec.PaiSecret.Name == "" {
+			return nil, fmt.Errorf("paiEnableAuthentication=true requires paiSecret.name to be set")
+		}
+	}
 
 	// TODO(user): fill in your validation logic upon object update.
 
