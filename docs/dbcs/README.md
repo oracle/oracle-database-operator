@@ -108,21 +108,21 @@ kubectl create secret generic oci-privatekey --from-file=privatekey=/root/.oci/o
 ```
 
 
-## 3. Create a Kubernetes secret named `admin-password`; This passward must meet the minimum passward requirements for the OCI OBDS Service.
+## 3. Create a Kubernetes secret named `admin-password`; This password must meet the minimum password requirements for the OCI OBDS Service.
 For example:
 
 ```bash
-#-- assuming the passward has been added to a text file named "admin-password":
+#-- assuming the password has been added to a text file named "admin-password":
 
 kubectl create secret generic admin-password --from-file=./admin-password -n default
 ```
 
 
-## 4. Create a Kubernetes secret named `tde-password`; this passward must meet the minimum passward requirements for the OCI OBDS Service.
+## 4. Create a Kubernetes secret named `tde-password`; this password must meet the minimum password requirements for the OCI OBDS Service.
 For example:
 
 ```bash
-# -- assuming the passward has been added to a text file named "tde-password":
+# -- assuming the password has been added to a text file named "tde-password":
 
 kubectl create secret generic tde-password --from-file=./tde-password -n default
 ```

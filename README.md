@@ -4,107 +4,86 @@
 
 As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released the  _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating the management of the Oracle Database lifecycle.
 
-##  Supported Database Configurations in V2.0
-In this v2.0 production release, `OraOperator` supports the following database configurations, and controllers:
+## Supported Database Configurations v2.0.0
+In this v2.0 production release, `OraOperator` supports the following database configurations and controllers:
 
-* Oracle Autonomous Database:
+* **Oracle Autonomous Database:**
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
   * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
-  * Oracle Autonomous Container Database (ACD), the infrastructure for provisioning Autonomous Databases.
-* Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
-* Containerized Oracle Globally Distributed Databases(GDD) deployed in OKE and any k8s where OraOperator is deployed
-* Oracle Multitenant Databases (CDB/PDBs)
-* Oracle Base Database Service (OBDS) on Oracle Cloud Infrastructure (OCI)
-* Oracle Data Guard
-* Oracle Database Observability
-* Oracle Database Rest Service (ORDS) instances
-* Oracle Restart
+  * Oracle Autonomous Container Database (ACD), the infrastructure for provisioning Autonomous Databases
+* **Containerized Single Instance databases (SIDB)** deployed in the Oracle Kubernetes Engine (OKE) and any Kubernetes where OraOperator is deployed
+* **Containerized Oracle Globally Distributed Databases (GDD)** deployed in OKE and any Kubernetes where OraOperator is deployed
+* **Oracle Multitenant Databases (CDB/PDBs)**
+* **Oracle Base Database Service (OBDS)** on Oracle Cloud Infrastructure (OCI)
+* **Oracle Data Guard**
+* **Oracle Database Observability**
+* **Oracle Database Rest Service (ORDS) instances**
+* **Oracle Restart**
+* **Oracle Private AI Controller**
+* **Oracle Sharding**
 
-## New Lifecycle Features in V2.0 Release (Controllers Enhancements)
-* ORDSSERVICES
+---
+
+## Lifecycle Features (Controllers Enhancements)
+* **ORDS Services**
   - Install on SIDB and ADB
-  - Provision and Delete ORDS instances
-* SIDB
+  - Provision and delete ORDS instances
+* **SIDB**
   - Oracle Database 23ai Free support
   - Oracle Database 23ai Free-lite support
   - SIDB resource management
   - True Cache support for Free SIDB databases (Preview)
   - Observer for FastStartFailover with Data Guard
   - Snapshot Standby support in Data Guard setup
-* Globally Distributed Database : Support for Oracle Database 23ai Raft replication
-* Autonomous Database: support for Database cloning
-* Multitenant DB:
-  - ORDS-based Controller:  assertive deletion policy.
-  - New LRES based Controller  (ARM & AM)
+* **Globally Distributed Database**
+  - Support for Oracle Database 23ai Raft replication
+* **Autonomous Database**
+  - Support for Database cloning
+* **Multitenant DB**
+  - ORDS-based Controller: Assertive deletion policy
+  - New LRES-based Controller (ARM & AM)
     - PDBs settings with init parameters config map
-    - Assertive deletion policy.
-* Database Observability (preview)
+    - Assertive deletion policy
+* **Database Observability (Preview)**
   - Support for Database Logs (in addition to Metrics)
   - Support for the latest Exporter container images
+  - Bug Fix: Prometheus label config
+* **Oracle Base Database Service**
+  - Support for Oracle Database 23ai Cloning, using KMS Vaults
+  - PDB creation
+  - Clone, Backup, Restore
+  - Data Guard Setup
+  - Patching and Upgrade
+* **Oracle Restart**
+  - Support for Oracle Database 19c
+* **Oracle Private AI**
 
-* Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation, Clone, Backup, Restore, Dataguard Setup, Patching and Upgrade.
-* Prometheus label config (bug fix)
+---
 
-## New Product Features
-*The Operator itself, as a product, brings the following new features:
+## Product Features
+* Upgraded Kubernetes API version to v4
 * Published on `operatorhub.io`
 * Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
 * Validated on Google Kubernetes Engine
 
-## Overall Features Summary
-* Oracle Database Rest Service (ORDS) instances
-
-## New Product Features in V2.0
-The Operator itself, as a product, brings the following new features:
-* Upgraded Kubernetes API version to V4
-* Published on `operatorhub.io`
-* Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
-* Validated on Google Kubernetes Engine
-
-## New Services and Lifecycle Enhancements (Controllers Enhancements) in V2.0
-* ORDSSERVICES
-  - Install on SIDB and ADB
-  - Provision and Delete ORDS instances
-* SIDB
-  - Oracle Database 23ai Free support
-  - Oracle Database 23ai Free-lite support
-  - SIDB resource management
-  - True Cache support for Free SIDB databases (Preview)
-  - Observer for FastStartFailover with Data Guard
-  - Snapshot Standby support in Data Guard setup
-* Globally Distributed Database : Support for Oracle Database 23ai Raft replication
-* Autonomous Database: support for Database cloning
-* Multitenant DB:
-  - ORDS-based Controller:  assertive deletion policy.
-  - New LRES based Controller  (ARM & AM)
-    - PDBs settings with init parameters config map
-    - Assertive deletion policy.
-* Database Observability (preview)
-  - Support for Database Logs (in addition to Metrics)
-  - Support for the latest Exporter container images
-  - Bug Fix: Prometheus label config
-* Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation.
-
-## New Product Features
-* The Operator itself, as a product, brings the following new features:
-* Published on `operatorhub.io`
-* Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
-* Validated on Google Kubernetes Engine
+---
 
 ## Overall Features Summary
+As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) supports the following lifecycle operations:
 
-As of release v2.0, the Oracle Database Operator for Kubernetes ( OraOperator) supports the following lifecycle operations:
-
-* ADB-S/ADB-D: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning.
-* ACD: Provision, bind, restart, terminate (soft/hard)
-* SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), and Snapshot Standby (Data Guard)
-* ORDS Services: Provision and delete ORDS instances
-* Globally Distrib. (Sharded): Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard, Raft replication.
-* Oracle Multitenant Database (choice of controller): Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB, Assertive deletion policy
-* Oracle Base Database Service (OBDS): Provision, Scale Shape Up/Down, Scale Storage Up, Terminate and Update License, Cloning, PDB creation, using KMS Vaults on Oracle Cloud Infrastructure (OCI), Clone, Backup, Restore, Dataguard Setup, Patching and Upgrade
-* Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
-* Oracle Database Observability: create, patch, delete `databaseObserver` resources (Logs and Metrics)
-* Watch over a set of namespaces or all the namespaces in the cluster using the `WATCH_NAMESPACE` environment variable of the operator deployment
+* **ADB-S/ADB-D**: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning
+* **ACD**: Provision, bind, restart, terminate (soft/hard)
+* **SIDB**: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS), PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), Snapshot Standby (Data Guard)
+* **Oracle Restart**: Provision and manage Oracle Restart environments
+* **ORDS Services**: Provision and delete ORDS instances
+* **Globally Distributed (Sharded)**: Provision/deploy sharded databases and topology, add/delete shards, Raft replication
+* **Oracle Multitenant Database**: Bind to a CDB, create/plug/unplug/delete/clone/open/close PDBs, assertive deletion policy
+* **Oracle Base Database Service (OBDS)**: Provision, scale shape/storage, terminate/update license, cloning, PDB creation, using KMS Vaults, backup/restore, Data Guard setup, patching/upgrade
+* **Oracle Data Guard**: Provision standby for SIDB, create Data Guard configuration, perform switchover, patch primary/standby
+* **Oracle Database Observability**: Create, patch, delete `databaseObserver` (logs and metrics)
+* **Oracle Restart**: Provision, add & delete asm disks, enable ons ports, custom storage class support, existing pvc support
+* **Oracle Private AI**
+* Watch namespaces using the `WATCH_NAMESPACE` environment variable
 
 
 ## Release Status
@@ -237,7 +216,7 @@ The following quickstarts are designed for specific database configurations:
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Service (OBDS)](./docs/dbcs/README.md)
 * [ORDS Services (ORDSSRVS)](./docs/ordsservices/README.md)
-* [Oracle Restart Database](./docs/oraclerestart/README.md)
+* [Oracle Restart](./docs/oraclerestart/README.md)
 
 
 The following quickstart is designed for non-database configurations:
