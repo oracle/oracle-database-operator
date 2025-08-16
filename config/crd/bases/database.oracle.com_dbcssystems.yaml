@@ -471,9 +471,9 @@ spec:
                 properties:
                   dbAdminPasswordSecret:
                     type: string
-                  dbDbUniqueName:
-                    type: string
                   dbName:
+                    type: string
+                  dbUniqueName:
                     type: string
                   displayName:
                     type: string
@@ -502,7 +502,6 @@ spec:
                   tdeWalletPasswordSecret:
                     type: string
                 required:
-                - dbDbUniqueName
                 - dbName
                 - displayName
                 - hostName
@@ -742,9 +741,9 @@ spec:
                 properties:
                   dbAdminPasswordSecret:
                     type: string
-                  dbDbUniqueName:
-                    type: string
                   dbName:
+                    type: string
+                  dbUniqueName:
                     type: string
                   displayName:
                     type: string
@@ -762,9 +761,6 @@ spec:
                     type: array
                   subnetId:
                     type: string
-                required:
-                - dbDbUniqueName
-                - hostName
                 type: object
               dbEdition:
                 type: string
