@@ -218,7 +218,7 @@ type DbCloneConfig struct {
 	TdeWalletPasswordSecret    string   `json:"tdeWalletPasswordSecret,omitempty"`
 	DbName                     string   `json:"dbName"`
 	HostName                   string   `json:"hostName"`
-	DbUniqueName               string   `json:"dbDbUniqueName"`
+	DbUniqueName               string   `json:"dbUniqueName,omitempty"`
 	DisplayName                string   `json:"displayName"`
 	LicenseModel               string   `json:"licenseModel,omitempty"`
 	Domain                     string   `json:"domain,omitempty"`
@@ -256,8 +256,8 @@ type DbCloneStatus struct {
 	Id                    *string  `json:"id,omitempty"`
 	DbAdminPasswordSecret string   `json:"dbAdminPasswordSecret,omitempty"`
 	DbName                string   `json:"dbName,omitempty"`
-	HostName              string   `json:"hostName"`
-	DbUniqueName          string   `json:"dbDbUniqueName"`
+	HostName              string   `json:"hostName,omitempty"`
+	DbUniqueName          string   `json:"dbUniqueName,omitempty"`
 	DisplayName           string   `json:"displayName,omitempty"`
 	LicenseModel          string   `json:"licenseModel,omitempty"`
 	Domain                string   `json:"domain,omitempty"`
