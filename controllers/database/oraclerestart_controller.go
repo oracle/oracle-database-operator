@@ -1975,7 +1975,7 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	}
 
 	if instance.Spec.ConfigParams.OPatchLocation != "" {
-		data = append(data, "OPATCH_ZIP_FILE="+utils.OraOPatchStageLocation+"/"+instance.Spec.ConfigParams.OPatchSwZipFile)
+		data = append(data, "OPATCH_ZIP_FILE="+instance.Spec.ConfigParams.OPatchLocation+"/"+instance.Spec.ConfigParams.OPatchSwZipFile)
 	}
 	if instance.Spec.ConfigParams.OneOffLocation != "" {
 		data = append(data, "ONEOFF_FOLDER_NAME="+instance.Spec.ConfigParams.OneOffLocation)

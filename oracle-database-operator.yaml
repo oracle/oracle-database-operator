@@ -17124,7 +17124,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:Test-sharding-operator-V4
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-mltp1
         imagePullPolicy: Always
         name: manager
         ports:
