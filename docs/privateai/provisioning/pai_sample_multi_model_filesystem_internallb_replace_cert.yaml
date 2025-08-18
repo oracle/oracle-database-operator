@@ -1,0 +1,69 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+---
+# Specifies the custom resource API version
+apiVersion: omlai.oracle.com/v4
+
+# Defines the type of resource (Private AI)
+kind: PrivateAi
+
+# Provide identification and scoping metadata
+metadata:
+  # Name of Private AI resource
+  name: pai-sample
+  # Kubernetes Namespace where this resource will be deployed
+  namespace: pai
+
+# Main specification for Private AI
+spec:
+
+ # Configuration for Private AI
+ paiConfigFile:
+  # Configmap having the links for the AI Model Files
+  name: multiconfigjson
+  # Location inside the Pod to which the file containining the configmap will be mounted to
+  mountLocation: /oml/config
+
+ # Specify the Kubernetes Secret Details 
+ paiSecret:
+  name: paisecretnew
+  mountLocation: /oml/ssl
+ 
+ # If you want to enable Authentication for the Private AI Access
+ paiEnableAuthentication: true
+ 
+ # If LoadBalancer will be used
+ isExternalSvc: true
+
+ # OCI Cloud Storage Class
+ storageClass: oci-bv
+
+ # Details of the oci-fss storage class based PVC
+ pvcList:
+   oke-fsspvc: /oml/models
+
+ # Container Image of the Private AI Container
+ paiImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:omlai-1.10.0
+
+ # Name and port details of the Private AI Service once deployed
+ paiService:
+   name: paisvc
+   portMappings:
+   - port: 443
+     targetPort: 8443
+     protocol: TCP
+
+ # annotation to replace the certificate for the OCI Internal LoadBalancer
+ pailbAnnotation:
+  service.beta.kubernetes.io/oci-load-balancer-tls-secret: paisecretnew
+
+ # If Internal Load Balancer will be used
+ paiInternalLB: true
+
+ # Storage Allocation for the Pod
+ storageSizeInGb: 30
+
+ # Replica Count
+ replicas: 1
