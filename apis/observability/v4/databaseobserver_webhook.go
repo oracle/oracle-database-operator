@@ -40,8 +40,6 @@ package v4
 
 import (
 	"context"
-	"strings"
-
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -82,7 +80,8 @@ var _ webhook.CustomDefaulter = &DatabaseObserver{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the type
 func (r *DatabaseObserver) Default(ctx context.Context, obj runtime.Object) error {
-	databaseobserverlog.Info("default", "name", r.Name)
+	obs := obj.(*DatabaseObserver)
+	databaseobserverlog.Info("default", "name", obs.Name)
 
 	return nil
 }
@@ -93,34 +92,35 @@ var _ webhook.CustomValidator = &DatabaseObserver{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type
 func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	databaseobserverlog.Info("validate create", "name", r.Name)
+	obs := obj.(*DatabaseObserver)
+	databaseobserverlog.Info("validate create", "name", obs.Name)
 
 	var e field.ErrorList
 	ns := dbcommons.GetWatchNamespaces()
 
 	// Check for namespace/cluster scope access
-	if _, isDesiredNamespaceWithinScope := ns[r.Namespace]; !isDesiredNamespaceWithinScope && len(ns) > 0 {
+	if _, isDesiredNamespaceWithinScope := ns[obs.Namespace]; !isDesiredNamespaceWithinScope && len(ns) > 0 {
 		e = append(e,
-			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), obs.Namespace,
 				"Oracle database operator doesn't watch over this namespace"))
 	}
 
 	// The other vault field must have value if one does
-	if (r.Spec.Database.OCIVault.VaultID != "" && r.Spec.Database.OCIVault.VaultPasswordSecret == "") ||
-		(r.Spec.Database.OCIVault.VaultPasswordSecret != "" && r.Spec.Database.OCIVault.VaultID == "") {
+	if (obs.Spec.Database.OCIVault.VaultID != "" && obs.Spec.Database.OCIVault.VaultPasswordSecret == "") ||
+		(obs.Spec.Database.OCIVault.VaultPasswordSecret != "" && obs.Spec.Database.OCIVault.VaultID == "") {
 
 		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("database").Child("oci"), r.Spec.Database.OCIVault,
+			field.Invalid(field.NewPath("spec").Child("database").Child("oci"), obs.Spec.Database.OCIVault,
 				ErrorSpecValidationMissingVaultField))
 	}
 
 	// The other vault field must have value if one does
-	if (r.Spec.Database.AzureVault.VaultID != "" && (r.Spec.Database.AzureVault.VaultPasswordSecret == "" && r.Spec.Database.AzureVault.VaultUsernameSecret == "")) ||
-		(r.Spec.Database.AzureVault.VaultPasswordSecret != "" && r.Spec.Database.AzureVault.VaultID == "") ||
-		(r.Spec.Database.AzureVault.VaultUsernameSecret != "" && r.Spec.Database.AzureVault.VaultID == "") {
+	if (obs.Spec.Database.AzureVault.VaultID != "" && (obs.Spec.Database.AzureVault.VaultPasswordSecret == "" && obs.Spec.Database.AzureVault.VaultUsernameSecret == "")) ||
+		(obs.Spec.Database.AzureVault.VaultPasswordSecret != "" && obs.Spec.Database.AzureVault.VaultID == "") ||
+		(obs.Spec.Database.AzureVault.VaultUsernameSecret != "" && obs.Spec.Database.AzureVault.VaultID == "") {
 
 		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("database").Child("azure"), r.Spec.Database.AzureVault,
+			field.Invalid(field.NewPath("spec").Child("database").Child("azure"), obs.Spec.Database.AzureVault,
 				ErrorSpecValidationMissingVaultField))
 	}
 
@@ -134,7 +134,7 @@ func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Objec
 
 	// Return if any errors
 	if len(e) > 0 {
-		return nil, apierrors.NewInvalid(schema.GroupKind{Group: "observability.oracle.com", Kind: "DatabaseObserver"}, r.Name, e)
+		return nil, apierrors.NewInvalid(schema.GroupKind{Group: "observability.oracle.com", Kind: "DatabaseObserver"}, obs.Name, e)
 	}
 	return nil, nil
 
@@ -142,25 +142,27 @@ func (r *DatabaseObserver) ValidateCreate(ctx context.Context, obj runtime.Objec
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type
 func (r *DatabaseObserver) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	databaseobserverlog.Info("validate update", "name", r.Name)
+	obs := newObj.(*DatabaseObserver)
+	databaseobserverlog.Info("validate update", "name", obs.Name)
 	var e field.ErrorList
 
 	// disallow usage of any other image than the observability-exporter
-	if r.Spec.Deployment.ExporterImage != "" && !strings.HasPrefix(r.Spec.Deployment.ExporterImage, AllowedExporterImage) {
-		e = append(e,
-			field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), r.Spec.Deployment.ExporterImage,
-				ErrorSpecExporterImageNotAllowed))
-	}
+	//if r.Spec.Deployment.ExporterImage != "" && !strings.HasPrefix(obs.Spec.Deployment.ExporterImage, AllowedExporterImage) {
+	//	e = append(e,
+	//		field.Invalid(field.NewPath("spec").Child("exporter").Child("image"), obs.Spec.Deployment.ExporterImage,
+	//			ErrorSpecExporterImageNotAllowed))
+	//}
 	// Return if any errors
 	if len(e) > 0 {
-		return nil, apierrors.NewInvalid(schema.GroupKind{Group: "observability.oracle.com", Kind: "DatabaseObserver"}, r.Name, e)
+		return nil, apierrors.NewInvalid(schema.GroupKind{Group: "observability.oracle.com", Kind: "DatabaseObserver"}, obs.Name, e)
 	}
 	return nil, nil
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type
 func (r *DatabaseObserver) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	databaseobserverlog.Info("validate delete", "name", r.Name)
+	obs := obj.(*DatabaseObserver)
+	databaseobserverlog.Info("validate delete", "name", obs.Name)
 
 	return nil, nil
 }
