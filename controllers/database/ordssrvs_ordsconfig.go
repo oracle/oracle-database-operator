@@ -96,7 +96,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.Or
 				`  <entry key="standalone.https.cert.key">` + ordsSABase + `/config/certficate/` + ords.Spec.GlobalSettings.CertSecret.CertificateKey + `</entry>` + "\n"
 		}
 		defData = map[string]string{
-			"settings.xml": fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
+			"settings.xml": fmt.Sprint(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
 				`<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">` + "\n" +
 				`<properties>` + "\n" +
 				conditionalEntry("cache.metadata.graphql.expireAfterAccess", ords.Spec.GlobalSettings.CacheMetadataGraphQLExpireAfterAccess) +
@@ -168,7 +168,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.Or
 			defDBNetworkPath = `  <entry key="db.tnsDirectory">` + ordsSABase + `/config/databases/` + poolName + `/network/admin/</entry>` + "\n"
 		}
 		defData = map[string]string{
-			"pool.xml": fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
+			"pool.xml": fmt.Sprint(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
 				`<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">` + "\n" +
 				`<properties>` + "\n" +
 				`  <entry key="db.username">` + ords.Spec.PoolSettings[poolIndex].DBUsername + `</entry>` + "\n" +

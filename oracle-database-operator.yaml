@@ -17124,7 +17124,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: lin.ocir.io/intsanjaysingh/operator/dboperator_master_250730:latest
+        image: lin.ocir.io/intsanjaysingh/marcstef/oo:2.0-3
         imagePullPolicy: Always
         name: manager
         ports:
