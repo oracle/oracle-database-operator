@@ -555,7 +555,7 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 		fmt.Println("No Location is passed for the software storage in" + OracleRestartSpex.Name)
 	}
 
-	var mountLoc string
+	//var mountLoc string
 
 	// Check if ConfigParams is not nil
 	if instance.Spec.ConfigParams != nil {
@@ -580,7 +580,7 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 			if instance.Spec.ConfigParams.OPatchLocation != "" {
 				result = append(result, corev1.VolumeMount{
 					Name:      OracleRestartSpex.Name + "-oradata-opatch-vol",
-					MountPath: mountLoc,
+					MountPath: instance.Spec.ConfigParams.OPatchLocation,
 				})
 			}
 		}
