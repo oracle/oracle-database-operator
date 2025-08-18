@@ -1305,7 +1305,8 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 				"adminpdbPass":            WebUseObj, /* Place holder */
 				"fileNameConversions":     "NONE",
 				"imperativeLrpdbDeletion": true,
-				"pdbBitMask":              PDBCRT,
+				"reststate":               PDBAUT,
+				"pdbState":                "RESET",
 			},
 		},
 	}

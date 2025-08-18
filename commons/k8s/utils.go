@@ -86,10 +86,9 @@ func Patch(kubeClient client.Client, obj client.Object, path string, value inter
 }
 
 func Int64Pointer(d int64) *int64 {
-        return &d
+	return &d
 }
 
 func BoolPointer(d bool) *bool {
-        return &d
+	return &d
 }
-

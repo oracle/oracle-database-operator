@@ -185,23 +185,6 @@ type PLSQLPayLoad struct {
 	Sqltokens []string
 }
 
-var (
-	lrpdbPhaseCreate    = "Creating"
-	lrpdbPhasePlug      = "Plugging"
-	lrpdbPhaseUnplug    = "Unplugging"
-	lrpdbPhaseClone     = "Cloning"
-	lrpdbPhaseFinish    = "Finishing"
-	lrpdbPhaseReady     = "Ready"
-	lrpdbPhaseDelete    = "Deleting"
-	lrpdbPhaseModify    = "Modifying"
-	lrpdbPhaseMap       = "Mapping"
-	lrpdbPhaseStatus    = "CheckingState"
-	lrpdbPhaseFail      = "Failed"
-	lrpdbPhaseAlterPlug = "AlterPlugDb"
-	lrpdbPhaseSpare     = "NoAction"
-	lrpdbPhaseApplySql  = "ApplySqlCode"
-)
-
 const LRPDBFinalizer = "database.oracle.com/LRPDBfinalizer"
 
 var tde_Password string
@@ -765,8 +748,6 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 
 	}
 
-	lrpdb.Status.Msg = "open:[op. completed]"
-
 	log.Info("Successfully modified LRPDB state", "LRPDB Name", lrpdb.Spec.LRPDBName)
 
 	/* After database openining we reapply the config map if warning is present */
@@ -777,6 +758,7 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 
 		}
 	}
+	lrpdb.Status.Msg = "open:[op. completed]"
 	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBOPN)
 	lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 	r.UpdateStatus(ctx, req, lrpdb)
@@ -2338,8 +2320,13 @@ func (r *LRPDBReconciler) ApplyConfigMap(ctx context.Context, req ctrl.Request, 
 
 	}
 
+	if err := r.Update(ctx, lrpdb); err != nil {
+		log.Error(err, "Cannot rest lrpdb Spec  :"+lrpdb.Name, "err", err.Error())
+	}
+
 	lrpdb.Status.CmBitstat = bis(lrpdb.Status.CmBitstat, MPAPPL)
 	lrpdb.Status.CmBitStatStr = CMBitmaskprint(lrpdb.Status.CmBitstat)
+	r.UpdateStatus(ctx, req, lrpdb)
 
 	return Cardinality, nil
 }

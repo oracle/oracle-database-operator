@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: 
+  namespace: pdbnamespace
+data:
+  plblock1.sql: |
+        create user k8stestuser identified by tkstestuser
+  plblock2.sql: |
+        grant dba to k8stestuser
+  plblock3.sql: |
+        create table k8stestuser.rndnum (c1 number ,c2 number)
+  plblock4.sql: |
+        alter session set events '942 trace name errorstack level  3'
+  plblock5.sql: |
+        create or replace  procedure k8stestuser.gennum 
+        as 
+        begin 
+        for cnt in 1..100 
+        loop 
+           insert into k8stestuser.rndnum values (dbms_random.value(1,100), 
+           dbms_random.value(1,100));
+           end loop;
+           commit;
+        end;
+  plblock6.sql: |
+        begin 
+        k8stestuser.gennum;
+        end;
