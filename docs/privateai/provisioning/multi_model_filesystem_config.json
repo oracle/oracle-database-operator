@@ -1,0 +1,31 @@
+{
+  "environment": {
+    "OML_ONNX_INTRA_OP_NUM_THREADS": 1
+  },
+  "models": [
+    {
+      "modelname": "all_minilm_l12_v2",
+      "modelfile": "all_MiniLM_L12_v2.zip",
+      "modelfunction": "EMBEDDING",
+      "cache_on_startup": true
+    },
+    {
+      "modelname": "multilingual_e5_small",
+      "modelfile": "multilingual_e5_small.zip",
+      "modelfunction": "EMBEDDING",
+      "cache_on_startup": true
+    },
+    {
+      "modelname": "clip_vit_base_patch32_txt",
+      "modelfile": "clip_vit_base_patch32_txt.zip",
+      "modelfunction": "EMBEDDING",
+      "cache_on_startup": true
+    },
+    {
+      "modelname": "clip_vit_base_patch32_img",
+      "modelfile": "clip_vit_base_patch32_img.zip",
+      "modelfunction": "EMBEDDING",
+      "cache_on_startup": true
+    }
+  ]
+}

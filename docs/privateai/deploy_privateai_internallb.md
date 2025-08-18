@@ -8,7 +8,7 @@ Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In th
 
 If you want to use the OCI Internal LoadBalancer, then you will need to follow the below steps:
 
-1. Deploy the [pai_sample_internallb.yaml](./pai_sample_internallb.yaml) file:
+1. Deploy the [pai_sample_internallb.yaml](./provisioning/pai_sample_internallb.yaml) file:
     ```sh
     kubectl apply -f pai_sample_internallb.yaml
     ```
@@ -37,7 +37,7 @@ In case, you want the internal LoadBalancer to be created as an OCI load balance
 
 3. Use the file [pai_secret_new.sh](./pai_secret_new.sh) to generate a new Kubernetes secret `paisecretnew`. While using this script, use the IP noted in Step 2 for `common name` while generating the SSL certificate.
 
-4. Apply the modified file [pai_sample_internallb_replace_cert.yaml](./pai_sample_internallb_replace_cert.yaml) to replace the Internal LoadBalancer Certificate:
+4. Apply the modified file [pai_sample_internallb_replace_cert.yaml](./provisioning/pai_sample_internallb_replace_cert.yaml) to replace the Internal LoadBalancer Certificate:
    ```sh
     kubectl apply -f pai_sample_internallb_replace_cert.yaml
     ```

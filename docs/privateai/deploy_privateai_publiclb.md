@@ -6,7 +6,7 @@ Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In th
 
 **NOTE:** Modify the file `pai_sample_publiclb.yaml` with the actual Reserved Public IP before deployment.
 
-Use the file: [pai_sample_publiclb.yaml](./pai_sample_publiclb.yaml) for this use case as below:
+Use the file: [pai_sample_publiclb.yaml](./provisioning/pai_sample_publiclb.yaml) for this use case as below:
 
 1. Deploy the `pai_sample_publiclb.yaml` file:
     ```sh

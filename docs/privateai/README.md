@@ -65,17 +65,11 @@ The pre-built preivateAI container image is available on [Oracle Container Regis
 
 ### 5. Create a configmap for the Oracle PrivateAI Deployment
 
-Create a `config.json` file. This file has the link for the AI Model File. [config.json](./config.json) is an example of this file.
+In this step, a configmap will be created which has the details of the AI Model File. The configmap will be created according to the type of the PrivateAI Deployment. Below are examples of configmap used in the later examples:
 
-Create a configmap using the above file as below:
-```sh
-kubectl create configmap omlconfigjson --from-file=config.json -n pai
-```
-
-You can check the details of the configmap as below:
-```sh
-kubectl get configmap -n pai
-```
+- [Configmap using Single AI Model with HTTPS URL](./configmap_single_model_https.md) 
+- [Configmap using Multiple AI Models with HTTPS URL](./configmap_multi_model_https.md) 
+- [Configmap using Multiple AI Models on File System](./configmap_multi_model_filesystem.md) 
 
 ### 6. Reserve LoadBalancer Public IP
 
@@ -93,13 +87,15 @@ kubectl get configmap -n pai
 
 **IMPORTANT:** Make sure the version of `openssl` in the Oracle PrivateAI image is compatible with the `openssl` version on the machine where you will run the openssl commands to generate the encrypted password file during the deployment.
 
-Create a file `oml-ssl-pwd` with the password you want to use. This password will be used in the next step. The script [pai_secret.sh](./pai_secret.sh) has the command to generate the required keys and an SSL certificate.
+Create a file `oml-ssl-pwd` with the password you want to use. This password will be used in the next step. The script [pai_secret.sh](./provisioning/pai_secret.sh) has the command to generate the required keys and an SSL certificate.
 
 Use the Shell Script `pai_secret.sh` to create the required secrets for the Oracle PrivateAI Container Deployment. Run this file as below and enter the password when prompted.
 
 In case of the Public LoadBalancer, use the reserved Public IP as the `common name`.
 
 ```sh
+cd provisioning
+echo "<password>" > oml-ssl-pwd
 ./pai_secret.sh
 ```
 
@@ -117,9 +113,17 @@ After you have the above prerequisites completed, you can proceed to the next se
 
 ## Quick Start
 
-Please refer to [Deploy PrivateAI in OKE cluster using Public LB](./deploy_privateai_publiclb.md) for the details to deploy the PrivateAI Container Pod in an OKE Cluster using OCI Public LoadBalancer.
+There are multiple use case possible for deploying the PrivateAI container in Kubernetes Cluster covered by below examples:
 
-Please refer to [Deploy PrivateAI in OKE cluster using Internal LB](./deploy_privateai_internallb.md) for the details to deploy the PrivateAI Container Pod in an OKE Cluster using OCI Internal LoadBalancer.
+**NOTE:** All the below deployments are using an OCI OKE Cluster.
+
+- [PrivateAI Container using OCI Public LoadBalancer](./deploy_privateai_publiclb.md) 
+- PrivateAI Container using an Internal LoadBalancer 
+  - [PrivateAI Container using Single AI Model with HTTPS URL and an Internal LoadBalancer](./deploy_privateai_internallb.md) 
+  - [PrivateAI Container using Multiple AI Models with HTTPS URL and an Internal LoadBalancer](./deploy_privateai_multi_model_https_internallb.md) 
+    - [Add New Model](./deploy_privateai_multi_model_https_internallb_add_model.md) 
+    - [Remove an existing model](./deploy_privateai_multi_model_https_internallb_remove_model.md) 
+  - [PrivateAI Container using Multiple AI Models on File System and an Internal LoadBalancer](./deploy_privateai_multi_model_filesystem_internallb.md)   
 
 ## Accessing the PrivateAI Container Pod in Kubernetes
 
