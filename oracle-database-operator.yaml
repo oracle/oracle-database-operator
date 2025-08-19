@@ -11631,10 +11631,6 @@ spec:
                       type: object
                     type: array
                 type: object
-              clientEtcHost:
-                items:
-                  type: string
-                type: array
               conditions:
                 items:
                   properties:
@@ -11799,6 +11795,8 @@ spec:
                     type: string
                 type: object
               dbState:
+                type: string
+              externalConnectString:
                 type: string
               externalSvcType:
                 type: string
@@ -17124,7 +17122,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: lin.ocir.io/intsanjaysingh/marcstef/oo:2.0-3
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:restart-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

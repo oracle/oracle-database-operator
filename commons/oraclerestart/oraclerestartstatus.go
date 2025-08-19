@@ -229,7 +229,7 @@ func UpdateoraclerestartdbStatusData(OracleRestart *oraclerestartdb.OracleRestar
 	OracleRestart.Status.ReleaseUpdate = getDBVersion(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
 	OracleRestart.Status.ConnectString = getConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
 	OracleRestart.Status.PdbConnectString = getPdbConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ClientEtcHost = getClientEtcHost(podNames, OracleRestart, 0, kubeClient, kubeConfig, logger, nodeDetails)
+	OracleRestart.Status.ExternalConnectString = getExternalConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
 	OracleRestart.Status.DbSecret = OracleRestart.Spec.DbSecret
 	OracleRestart.Status.AsmDetails = getAsmInstState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
 
@@ -258,18 +258,6 @@ func contains(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerest
 
 	return index, false
 }
-
-// func getVipDetails(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client) map[string]string {
-// 	strMap := make(map[string]string)
-// 	_, err := CheckRacSvc(instance, "vip", oraRestartSpex, oraRestartSpex.VipSvcName, rclient)
-// 	if err == nil {
-// 		strMap["Name"] = oraRestartSpex.VipSvcName
-// 		// See if service already exists and create if it doesn't
-// 	}
-
-// 	return strMap
-
-// }
 
 func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
 	asmList := ""

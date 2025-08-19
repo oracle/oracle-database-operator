@@ -227,16 +227,16 @@ type ServiceSpec struct {
 type OracleRestartStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	DbName             string                     `json:"DbName,omitempty"`
-	ConnectString      string                     `json:"connectString,omitempty"`
-	PdbConnectString   string                     `json:"pdbConnectString,omitempty"`
-	OracleRestartNodes []*OracleRestartNodestatus `json:"OracleRestartNodes,omitempty"`
-	ReleaseUpdate      string                     `json:"releaseUpdate,omitempty"`
-	Role               string                     `json:"role,omitempty"`
-	DbState            string                     `json:"dbState,omitempty"`
-	State              string                     `json:"state,omitempty"`
-	InstallNode        string                     `json:"installNode,omitempty"`
-	ClientEtcHost      []string                   `json:"clientEtcHost,omitempty"`
+	DbName                string                     `json:"DbName,omitempty"`
+	ConnectString         string                     `json:"connectString,omitempty"`
+	PdbConnectString      string                     `json:"pdbConnectString,omitempty"`
+	ExternalConnectString string                     `json:"externalConnectString,omitempty"`
+	OracleRestartNodes    []*OracleRestartNodestatus `json:"OracleRestartNodes,omitempty"`
+	ReleaseUpdate         string                     `json:"releaseUpdate,omitempty"`
+	Role                  string                     `json:"role,omitempty"`
+	DbState               string                     `json:"dbState,omitempty"`
+	State                 string                     `json:"state,omitempty"`
+	InstallNode           string                     `json:"installNode,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
