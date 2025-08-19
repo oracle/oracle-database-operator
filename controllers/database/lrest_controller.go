@@ -304,6 +304,7 @@ func (r *LRESTReconciler) validateLRESTPods2(ctx context.Context, req ctrl.Reque
 
 }
 
+/* Un-used function
 func (r *LRESTReconciler) validateLRESTPods(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
 
 	log := r.Log.WithValues("validateLRESTPod", req.NamespacedName)
@@ -360,6 +361,7 @@ func (r *LRESTReconciler) validateLRESTPods(ctx context.Context, req ctrl.Reques
 	lrest.Status.Msg = ""
 	return nil
 }
+*/
 
 /*
 ***********************
@@ -474,7 +476,7 @@ func (r *LRESTReconciler) createReplicaSetSpec(lrest *dbapi.LREST) *appsv1.Repli
   - Evaluate change in Spec post creation and instantiation
     /*******************************************************
 */
-func (r *LRESTReconciler) deleteReplicaSet(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
+func (r *LRESTReconciler) deleteReplicaSet(req ctrl.Request, lrest *dbapi.LREST) error {
 	log := r.Log.WithValues("deleteReplicaSet", req.NamespacedName)
 
 	k_client, err := kubernetes.NewForConfig(r.Config)
@@ -538,7 +540,7 @@ func (r *LRESTReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Reque
 
 	if lrestSpecChange {
 		// Delete existing ReplicaSet
-		err = r.deleteReplicaSet(ctx, req, lrest)
+		err = r.deleteReplicaSet(req, lrest)
 		if err != nil {
 			return err
 		}
@@ -692,7 +694,7 @@ func (r *LRESTReconciler) manageLRESTDeletion(ctx context.Context, req ctrl.Requ
 			}
 		}
 
-		err := r.deleteLRESTInstance(ctx, req, lrest)
+		err := r.deleteLRESTInstance(req, lrest)
 		if err != nil {
 			log.Info("Could not delete LREST Resource", "LREST Name", lrest.Spec.LRESTName, "err", err.Error())
 			return err
@@ -708,7 +710,7 @@ func (r *LRESTReconciler) manageLRESTDeletion(ctx context.Context, req ctrl.Requ
 
 /***********************************************
 */
-func (r *LRESTReconciler) deleteLRESTInstance(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
+func (r *LRESTReconciler) deleteLRESTInstance(req ctrl.Request, lrest *dbapi.LREST) error {
 
 	log := r.Log.WithValues("deleteLRESTInstance", req.NamespacedName)
 
@@ -809,23 +811,15 @@ func (r *LRESTReconciler) checkSecret(ctx context.Context, req ctrl.Request, lre
 /*
 ************************************************
   - Delete Secrets
-    /***********************************************
-*/
+  - No longer used
+************************************************/
+/*
 func (r *LRESTReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) {
 
 	log := r.Log.WithValues("deleteSecrets", req.NamespacedName)
 
 	log.Info("Deleting LREST secrets")
 	secret := &corev1.Secret{}
-	/*
-		err := r.Get(ctx, types.NamespacedName{Name: lrest.Spec.SysAdminPwd.Secret.SecretName, Namespace: lrest.Namespace}, secret)
-		if err == nil {
-			err := r.Delete(ctx, secret)
-			if err == nil {
-				log.Info("Deleted the secret : " + lrest.Spec.SysAdminPwd.Secret.SecretName)
-			}
-		}
-	*/
 
 	err := r.Get(ctx, types.NamespacedName{Name: lrest.Spec.LRESTAdminUser.Secret.SecretName, Namespace: lrest.Namespace}, secret)
 	if err == nil {
@@ -842,15 +836,6 @@ func (r *LRESTReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, l
 			log.Info("Deleted the secret : " + lrest.Spec.LRESTAdminPwd.Secret.SecretName)
 		}
 	}
-	/*
-		err = r.Get(ctx, types.NamespacedName{Name: lrest.Spec.LRESTPwd.Secret.SecretName, Namespace: lrest.Namespace}, secret)
-		if err == nil {
-			err := r.Delete(ctx, secret)
-			if err == nil {
-				log.Info("Deleted the secret : " + lrest.Spec.LRESTPwd.Secret.SecretName)
-			}
-		}
-	*/
 
 	err = r.Get(ctx, types.NamespacedName{Name: lrest.Spec.WebLrestServerUser.Secret.SecretName, Namespace: lrest.Namespace}, secret)
 	if err == nil {
@@ -868,6 +853,7 @@ func (r *LRESTReconciler) deleteSecrets(ctx context.Context, req ctrl.Request, l
 		}
 	}
 }
+*/
 
 /*
 *************************************************************

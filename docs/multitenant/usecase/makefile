@@ -946,7 +946,7 @@ pkg:
 	- $(RM) -rf /tmp/pkgtestplan
 	$(MKDIR) /tmp/pkgtestplan
 	$(CP) -R * /tmp/pkgtestplan
-	$(CP) ../../../../oracle-database-operator.yaml /tmp/pkgtestplan/
+	$(CP) ../../../oracle-database-operator.yaml /tmp/pkgtestplan/
 	$(TAR) -C /tmp -cvf ~/pkgtestplan_$(DATE).tar pkgtestplan
 
 ################
@@ -1182,6 +1182,20 @@ tkplsqlexec:
 	sleep 10 
 	$(KUBECTL) get events --sort-by='.lastTimestamp' -n $(PDBNAMESPACE)
 	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
+	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
+
+
+tkplsqlexec01:
+	@$(call msg,"delete config map ")
+	-- $(KUBECTL) delete configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
+	@$(call msg,"recreating config sql map")
+	$(KUBECTL) apply -f $(CONFIG_MAP_SQL)
+	$(KUBECTL) describe configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
+	@$(call msg,"applying config sql map")
+	$(KUBECTL) patch lrpdb pdb1 -n $(PDBNAMESPACE) -p \
+	                '{"spec":{"codeconfigmap":"$(PLSQLMAP)"}}' --type=merge
+	sleep 10
+	$(KUBECTL) get events --sort-by='.lastTimestamp' -n $(PDBNAMESPACE)
 	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
 
 

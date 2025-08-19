@@ -134,6 +134,7 @@ func bis(bitmask int, bitval int) int {
 	return bitmask
 }
 
+/*
 func bit(bitmask int, bitval int) bool {
 	if bitmask&bitval != 0 {
 		return true
@@ -141,11 +142,14 @@ func bit(bitmask int, bitval int) bool {
 		return false
 	}
 }
+*/
 
+/*
 func bid(bitmask int, bitval int) int {
 	bitmask ^= ((bitval) & (bitmask))
 	return bitmask
 }
+*/
 
 // LRPDBReconciler reconciles a LRPDB object
 type LRPDBReconciler struct {
@@ -752,7 +756,7 @@ func (r *LRPDBReconciler) OpenLRPDB(ctx context.Context, req ctrl.Request, lrpdb
 
 	/* After database openining we reapply the config map if warning is present */
 	if lrpdb.Spec.LRPDBState == "OPEN" {
-		if bit(lrpdb.Status.CmBitstat, MPWARN|MPINIT) {
+		if Bit(lrpdb.Status.CmBitstat, MPWARN|MPINIT) {
 			log.Info("re-apply config map")
 			r.ApplyConfigMap(ctx, req, lrpdb)
 
@@ -1039,7 +1043,7 @@ func (r *LRPDBReconciler) DeleteLRPDBDeclarative(ctx context.Context, req ctrl.R
 
 *********************************************************************
 */
-func (r *LRPDBReconciler) checkPDBforCloninig(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB, targetPdbName string) (int, error) {
+func (r *LRPDBReconciler) checkPDBforCloninig(ctx context.Context, req ctrl.Request, targetPdbName string) (int, error) {
 	log := r.Log.WithValues("checkPDBforCloninig", req.NamespacedName)
 	var pdbCounter int
 	pdbCounter = 0
@@ -1117,7 +1121,7 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 
 	//* check the existence of lrpdb.Spec.SrcLRPDBName //
 	var allErrs field.ErrorList
-	pdbCounter, _ := r.checkPDBforCloninig(ctx, req, lrpdb, lrpdb.Spec.SrcLRPDBName)
+	pdbCounter, _ := r.checkPDBforCloninig(ctx, req, lrpdb.Spec.SrcLRPDBName)
 	if pdbCounter == 0 {
 		log.Info("target pdb " + lrpdb.Spec.SrcLRPDBName + " does not exists or is not open")
 		allErrs = append(allErrs, field.NotFound(field.NewPath("Spec").Child("LRPDBName"), " "+lrpdb.Spec.LRPDBName+" does not exist :  failure"))
@@ -1200,9 +1204,10 @@ func (r *LRPDBReconciler) CloneLRPDB(ctx context.Context, req ctrl.Request, lrpd
 /*
 **************************************************************
   - Check for Duplicate LRPDB. Same LRPDB name on the same LREST resource.
-
+  - Decomissioned function
 **************************************************************
 */
+/*
 func (r *LRPDBReconciler) checkDuplicateLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 
 	log := r.Log.WithValues("checkDuplicateLRPDB", req.NamespacedName)
@@ -1241,6 +1246,7 @@ func (r *LRPDBReconciler) checkDuplicateLRPDB(ctx context.Context, req ctrl.Requ
 	}
 	return nil
 }
+*/
 
 /*
 *********************************************************************
@@ -1280,9 +1286,10 @@ func (r *LRPDBReconciler) getLRESTResource(ctx context.Context, req ctrl.Request
 /*
 *********************************************************************
   - GET THE LREST POD FOR THE LREST MENTIONED IN THE LRPDB SPEC
-
+  - Decommissione function
 *********************************************************************
 */
+/*
 func (r *LRPDBReconciler) getLRESTPod(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) (corev1.Pod, error) {
 
 	log := r.Log.WithValues("getLRESTPod", req.NamespacedName)
@@ -1307,6 +1314,7 @@ func (r *LRPDBReconciler) getLRESTPod(ctx context.Context, req ctrl.Request, lrp
 	log.Info("Found LREST Pod for LREST", "Name", lrestResName, "Pod Name", lrestPod.Name, "LREST Container hostname", lrestPod.Spec.Hostname)
 	return lrestPod, nil
 }
+*/
 
 /*
 *********************************************************************
@@ -1634,10 +1642,6 @@ func (r *LRPDBReconciler) execPLSQL(ctx context.Context, req ctrl.Request, lrpdb
 			log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
 			return err
 		}
-		if err != nil {
-			log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
-			return err
-		}
 
 		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode))
 
@@ -1657,7 +1661,7 @@ func (r *LRPDBReconciler) execPLSQL(ctx context.Context, req ctrl.Request, lrpdb
 		r.Recorder.Eventf(lrpdb, EvLevel, formatted, " CODE:SQLCODE '%s':'%d'", skey, lrpdb.Status.SqlCode)
 
 		/* sql execution complete successfully than report the name of the tag */
-		if lrpdb.Status.SqlCode == 0 && err == nil {
+		if lrpdb.Status.SqlCode == 0 {
 			lrpdb.Status.LastPLSQL = skey
 			r.UpdateStatus(ctx, req, lrpdb)
 			/* reset code buffer */
@@ -1732,9 +1736,10 @@ func (r *LRPDBReconciler) getLRPDBState(ctx context.Context, req ctrl.Request, l
 /*
 ************************************************
   - Map Database LRPDB to Kubernetes LRPDB CR
+  - Decommissioned function
+************************************************/
 
-/***********************************************
-*/
+/*
 func (r *LRPDBReconciler) mapLRPDB(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 
 	log := r.Log.WithValues("mapLRPDB", req.NamespacedName)
@@ -1790,12 +1795,14 @@ func (r *LRPDBReconciler) mapLRPDB(ctx context.Context, req ctrl.Request, lrpdb 
 	log.Info("Successfully mapped LRPDB to Kubernetes resource", "LRPDB Name", lrpdb.Spec.LRPDBName)
 	return nil
 }
+*/
 
 /*
 ************************************************
   - Delete a LRPDB
-    /***********************************************
-*/
+  - Decommissioned function
+************************************************/
+/*
 func (r *LRPDBReconciler) deleteLRPDB2(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 
 	log := r.Log.WithValues("deleteLRPDB2", req.NamespacedName)
@@ -1803,7 +1810,6 @@ func (r *LRPDBReconciler) deleteLRPDB2(ctx context.Context, req ctrl.Request, lr
 	errstate := r.getLRPDBState(ctx, req, lrpdb)
 	if errstate != nil {
 		if lrpdb.Status.SqlCode == 1403 {
-			// BUG 36752336:
 			log.Info("Database does not exists ")
 			r.Delete(context.Background(), lrpdb, client.GracePeriodSeconds(1))
 			return nil
@@ -1815,7 +1821,6 @@ func (r *LRPDBReconciler) deleteLRPDB2(ctx context.Context, req ctrl.Request, lr
 		}
 		log.Error(errstate, "Failed to update status for :"+lrpdb.Name, "err", errstate.Error())
 		return errstate
-		//* if the pdb does not exists delete the crd *//
 
 	}
 
@@ -1858,17 +1863,17 @@ func (r *LRPDBReconciler) deleteLRPDB2(ctx context.Context, req ctrl.Request, lr
 	log.Info("Successfully deleted LRPDB resource")
 	return nil
 }
+*/
 
 /*
 ************************************************
   - Check LRPDB deletion
-    /***********************************************
-*/
+  - Decommissioned function
+***********************************************
+/*
 func (r *LRPDBReconciler) manageLRPDBDeletion(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 	log := r.Log.WithValues("manageLRPDBDeletion", req.NamespacedName)
 
-	// Check if the LRPDB instance is marked to be deleted, which is
-	// indicated by the deletion timestamp being set.
 	isLRPDBMarkedToBeDeleted := lrpdb.GetDeletionTimestamp() != nil
 	if isLRPDBMarkedToBeDeleted {
 		log.Info("Marked to be deleted")
@@ -1876,8 +1881,6 @@ func (r *LRPDBReconciler) manageLRPDBDeletion(ctx context.Context, req ctrl.Requ
 		r.Status().Update(ctx, lrpdb)
 
 		if controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
-			// Remove LRPDBFinalizer. Once all finalizers have been
-			// removed, the object will be deleted.
 			log.Info("Removing finalizer")
 			controllerutil.RemoveFinalizer(lrpdb, LRPDBFinalizer)
 			err := r.Update(ctx, lrpdb)
@@ -1890,7 +1893,6 @@ func (r *LRPDBReconciler) manageLRPDBDeletion(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	// Add finalizer for this CR
 	if !controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
 		log.Info("Adding finalizer")
 		controllerutil.AddFinalizer(lrpdb, LRPDBFinalizer)
@@ -1903,13 +1905,15 @@ func (r *LRPDBReconciler) manageLRPDBDeletion(ctx context.Context, req ctrl.Requ
 	}
 	return nil
 }
+*/
 
 /*
 ************************************************
   - Finalization logic for LRPDBFinalizer
-
+  - Decommisssioned function
 ***********************************************
 */
+/*
 func (r *LRPDBReconciler) deleteLRPDBInstance(req ctrl.Request, ctx context.Context, lrpdb *dbapi.LRPDB) error {
 
 	log := r.Log.WithValues("deleteLRPDBInstance", req.NamespacedName)
@@ -1949,6 +1953,7 @@ func (r *LRPDBReconciler) deleteLRPDBInstance(req ctrl.Request, ctx context.Cont
 	log.Info("Successfully dropped LRPDB", "LRPDB Name", lrpdbName)
 	return nil
 }
+*/
 
 /*
 ***********************************************************
@@ -2095,6 +2100,7 @@ func (r *LRPDBReconciler) getEncriptedSecret(ctx context.Context, req ctrl.Reque
 	return DecVal, nil
 }
 
+/*
 func (r *LRPDBReconciler) manageLRPDBDeletion2(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) error {
 	log := r.Log.WithValues("manageLRPDBDeletion", req.NamespacedName)
 	if lrpdb.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -2137,10 +2143,11 @@ func (r *LRPDBReconciler) manageLRPDBDeletion2(ctx context.Context, req ctrl.Req
 				log.Info("Call Delete()")
 				_, errdelete := r.callAPI(ctx, req, lrpdb, url, valuesdrop, "DELETE")
 				if errdelete != nil {
-					log.Error(errdelete, "Fail to delete lrpdb :"+lrpdb.Name, "err", err.Error())
+					log.Error(errdelete, "Fail to delete lrpdb :"+lrpdb.Name, "err", errdelete.Error())
 					return errdelete
 				}
-			} /* END OF ASSERTIVE SECTION */
+
+			}
 
 			log.Info("Marked to be deleted")
 			lrpdb.Status.Status = true
@@ -2159,6 +2166,7 @@ func (r *LRPDBReconciler) manageLRPDBDeletion2(ctx context.Context, req ctrl.Req
 
 	return nil
 }
+*/
 
 func (r *LRPDBReconciler) InitConfigMap(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB) *corev1.ConfigMap {
 	log := r.Log.WithValues("InitConfigMap", req.NamespacedName)
@@ -2339,7 +2347,7 @@ func (r *LRPDBReconciler) ManageConfigMapForCloningAndPlugin(ctx context.Context
 	   then we need to iniialized the init mask. This is the case for
 	   pdb generated by clone and plug action
 	*/
-	if lrpdb.Spec.Action != "CREATE" && lrpdb.Spec.Action != "APPLYSQL" && lrpdb.Spec.PDBConfigMap != "" && bit(lrpdb.Status.CmBitstat, MPINIT) == false {
+	if lrpdb.Spec.Action != "CREATE" && lrpdb.Spec.Action != "APPLYSQL" && lrpdb.Spec.PDBConfigMap != "" && Bit(lrpdb.Status.CmBitstat, MPINIT) == false {
 		if r.InitConfigMap(ctx, req, lrpdb) == nil {
 			log.Info("Cannot initialize config map for pdb.........:" + lrpdb.Spec.LRPDBName)
 			return nil
@@ -2994,7 +3002,7 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrpd
 			json.Unmarshal([]byte(TestBuffer), &jsonMap)
 			jsonValue, _ := json.Marshal(jsonMap)
 			Httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
-			if bit(lrpdb.Spec.Debug, DBGAPI) {
+			if Bit(lrpdb.Spec.Debug, DBGAPI) {
 				fmt.Println("=========================PLSQLDEBUG==============================")
 				fmt.Println(string(jsonValue))
 				fmt.Println("=========================PLSQLDEBUG==============================")
@@ -3009,7 +3017,7 @@ func NewCallAPISQL(intr interface{}, ctx context.Context, req ctrl.Request, lrpd
 		if ok3 {
 			jsonValue, _ := json.Marshal(payloadpdb)
 			Httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
-			if bit(lrpdb.Spec.Debug, DBGAPI) {
+			if Bit(lrpdb.Spec.Debug, DBGAPI) {
 				fmt.Println("=========================PLSQLDEBUG==============================")
 				fmt.Println(string(jsonValue))
 				fmt.Println("=========================PLSQLDEBUG==============================")
