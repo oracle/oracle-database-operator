@@ -775,10 +775,6 @@ spec:
                       type: object
                     type: array
                 type: object
-              clientEtcHost:
-                items:
-                  type: string
-                type: array
               conditions:
                 items:
                   properties:
@@ -943,6 +939,8 @@ spec:
                     type: string
                 type: object
               dbState:
+                type: string
+              externalConnectString:
                 type: string
               externalSvcType:
                 type: string

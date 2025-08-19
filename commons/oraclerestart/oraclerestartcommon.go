@@ -663,6 +663,26 @@ func getAsmInstState(podName string, instance *oraclerestart.OracleRestart, spec
 	}
 	return AsmStorageStatus
 }
+func GetAsmInstState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+) *oraclerestart.AsmInstanceStatus {
+	AsmStorageStatus := &oraclerestart.AsmInstanceStatus{}
+	diskGroup := getAsmDiskgroup(podName, instance, specidx, kubeClient, kubeConfig, logger)
+	if diskGroup == "Pending" {
+		return AsmStorageStatus
+	}
+	dglist := strings.Split(diskGroup, ",")
+	for _, dg := range dglist {
+		asmdg := oraclerestart.AsmDiskgroupStatus{}
+		disks := getAsmDisks(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
+		redundancy := getAsmDgRedundancy(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
+
+		asmdg.Name = string(dg)
+		asmdg.Disks = disks
+		asmdg.Redundancy = redundancy
+		AsmStorageStatus.Diskgroup = append(AsmStorageStatus.Diskgroup, asmdg)
+	}
+	return AsmStorageStatus
+}
 
 func getAsmDiskgroup(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
@@ -796,19 +816,19 @@ func getConnStr(podName string, instance *oraclerestart.OracleRestart, specidx i
 	return strings.TrimSpace(stdoutput)
 }
 
-func getExternalConnStr(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+func getExternalConnStr(
+	podName string,
+	instance *oraclerestart.OracleRestart,
+	specidx int,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	logger logr.Logger,
 ) string {
-	// stdoutput, _, err := ExecCommand(podName, getConnStrCmd(), kubeClient, kubeConfig, instance, logger)
-	// if err != nil {
-	// 	msg := "Pending"
-	// 	LogMessages("DEBUG", msg, err, instance, logger)
-	// 	return msg
-	// }
-	// return strings.TrimSpace(stdoutput)
-	// Fetch the OracleRestartNode-scan-lsnr service
-	svc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), "OracleRestartNode-scan-lsnr", metav1.GetOptions{})
+
+	// Get the dbmc1 NodePort service
+	svc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), instance.Spec.InstDetails.Name, metav1.GetOptions{})
 	if err != nil {
-		msg := "Failed to get OracleRestartNode-scan-lsnr service"
+		msg := "Failed to get dbmc1 service"
 		LogMessages("DEBUG", msg, err, instance, logger)
 		return "Pending"
 	}
@@ -821,15 +841,40 @@ func getExternalConnStr(podName string, instance *oraclerestart.OracleRestart, s
 			break
 		}
 	}
-
 	if nodePort == 0 {
-		msg := "Failed to find NodePort for port 1521 in OracleRestartNode-scan-lsnr service"
+		msg := "Failed to find NodePort for port 1521 in dbmc1 service"
 		LogMessages("DEBUG", msg, err, instance, logger)
 		return "Pending"
 	}
 
+	// Get the external IP of the first node in the cluster
+	nodeList, err := kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil || len(nodeList.Items) == 0 {
+		msg := "Failed to list cluster nodes"
+		LogMessages("DEBUG", msg, err, instance, logger)
+		return "Pending"
+	}
+	var nodeIP string
+	for _, addr := range nodeList.Items[0].Status.Addresses {
+		// Try to get an ExternalIP, fallback to InternalIP if needed
+		if addr.Type == corev1.NodeExternalIP {
+			nodeIP = addr.Address
+			break
+		} else if addr.Type == corev1.NodeInternalIP && nodeIP == "" {
+			nodeIP = addr.Address
+		}
+	}
+	if nodeIP == "" {
+		msg := "Failed to get node IP address"
+		LogMessages("DEBUG", msg, err, instance, logger)
+		return "Pending"
+	}
+
+	// Replace with your actual Oracle service name if different
+	serviceName := instance.Spec.ServiceDetails.Name
+
 	// Construct the external connect string
-	externalConnectString := fmt.Sprintf("OracleRestartNode-scan.%s.svc.cluster.local:%d/%s", instance.Namespace, nodePort, instance.Spec.ServiceDetails.Name)
+	externalConnectString := fmt.Sprintf("%s:%d/%s", nodeIP, nodePort, serviceName)
 	return externalConnectString
 }
 
@@ -852,9 +897,6 @@ func getClientEtcHost(podNames []string, instance *oraclerestart.OracleRestart, 
 		line := fmt.Sprintf("%s    %s.rac.svc.cluster.local %s-vip.rac.svc.cluster.local    OracleRestartNode-scan.rac.svc.cluster.local", nodeIP, podName, podName)
 		clientEtcHost = append(clientEtcHost, line)
 	}
-
-	// Update instance status with the new ClientEtcHost
-	instance.Status.ClientEtcHost = clientEtcHost
 
 	// Assuming you are returning clientEtcHost as well for any further processing
 	return clientEtcHost

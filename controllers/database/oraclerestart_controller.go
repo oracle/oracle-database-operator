@@ -161,7 +161,6 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		oracleRestart.Status.ReleaseUpdate = string(oraclerestartdb.OracleRestartFieldNotDefined)
 		oracleRestart.Status.ConfigParams.DbHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
 		oracleRestart.Status.ConfigParams.GridHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
-		oracleRestart.Status.ClientEtcHost = []string{string(oraclerestartdb.OracleRestartFieldNotDefined)}
 		r.Status().Update(ctx, oracleRestart)
 	}
 
@@ -403,53 +402,55 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 
 		case isDiskChanged && !isNewSetup:
-			err = r.validateASMDisks(oracleRestart, ctx)
-			if err != nil {
-				result = resultQ
-				r.Log.Info(err.Error())
-				err = nilErr
-				return result, err
-			}
-			if len(oracleRestart.Spec.StorageClass) == 0 {
-				if ready, err := checkDaemonSetStatus(ctx, r, oracleRestart); err != nil || !ready {
-					r.Log.Info("Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy.")
-					err = r.cleanupDaemonSet(oracleRestart, ctx)
-					if err != nil {
-						result = resultQ
-						r.Log.Info(err.Error())
-						err = nilErr
-						return result, err
-					}
-					addedAsmDisksMap := make(map[string]bool)
-					for _, disk := range addedAsmDisks {
-						addedAsmDisksMap[disk] = true
-					}
-					for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-						for index, diskName := range diskBySize.DiskNames {
-							if _, ok := addedAsmDisksMap[diskName]; ok {
-								r.Log.Info("Found disk at index", "index", index)
+			if len(addedAsmDisks) > 0 {
+				err = r.validateASMDisks(oracleRestart, ctx)
+				if err != nil {
+					result = resultQ
+					r.Log.Info(err.Error())
+					err = nilErr
+					return result, err
+				}
+				if len(oracleRestart.Spec.StorageClass) == 0 {
+					if ready, err := checkDaemonSetStatus(ctx, r, oracleRestart); err != nil || !ready {
+						r.Log.Info("Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy.")
+						err = r.cleanupDaemonSet(oracleRestart, ctx)
+						if err != nil {
+							result = resultQ
+							r.Log.Info(err.Error())
+							err = nilErr
+							return result, err
+						}
+						addedAsmDisksMap := make(map[string]bool)
+						for _, disk := range addedAsmDisks {
+							addedAsmDisksMap[disk] = true
+						}
+						for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
+							for index, diskName := range diskBySize.DiskNames {
+								if _, ok := addedAsmDisksMap[diskName]; ok {
+									r.Log.Info("Found disk at index", "index", index)
 
-								err = oraclerestartcommon.DelORestartPVC(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
-								if err != nil {
-									return resultQ, err
-								}
+									err = oraclerestartcommon.DelORestartPVC(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+									if err != nil {
+										return resultQ, err
+									}
 
-								err = oraclerestartcommon.DelORestartPv(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
-								if err != nil {
-									return resultQ, err
+									err = oraclerestartcommon.DelORestartPv(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+									if err != nil {
+										return resultQ, err
+									}
 								}
 							}
 						}
-					}
 
-					if err = r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
-						r.Log.Error(err, "Failed to set current spec annotation")
-						oracleRestart.Spec.IsFailed = true
+						if err = r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
+							r.Log.Error(err, "Failed to set current spec annotation")
+							oracleRestart.Spec.IsFailed = true
+							return resultQ, err
+						}
 						return resultQ, err
+					} else {
+						r.Log.Info("Provided ASM Disks are valid, proceeding further")
 					}
-					return resultQ, err
-				} else {
-					r.Log.Info("Provided ASM Disks are valid, proceeding further")
 				}
 			}
 			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
@@ -472,14 +473,16 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 		}
 	}
-	err = r.cleanupDaemonSet(oracleRestart, ctx)
-	if err != nil {
-		result = resultQ
-		r.Log.Info(err.Error())
-		err = nilErr
-		return result, err
-	}
+	if len(addedAsmDisks) > 0 {
 
+		err = r.cleanupDaemonSet(oracleRestart, ctx)
+		if err != nil {
+			result = resultQ
+			r.Log.Info(err.Error())
+			err = nilErr
+			return result, err
+		}
+	}
 	if oracleRestartInst.OnsTargetPort != nil {
 
 		OraRestartSpex := oracleRestart.Spec.InstDetails
@@ -499,7 +502,6 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		r.Log.Info("ONS Started")
 
 	}
 
@@ -1830,6 +1832,7 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	var addnodeFlag bool
 
 	data = append(data, "OP_TYPE=setuprac")
+	// removing this breaks HAS label build setup
 	data = append(data, "IGNORE_CRS_PREREQS=TRUE")
 	data = append(data, "IGNORE_DB_PREREQS=TRUE")
 
@@ -1966,8 +1969,6 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 
 	if instance.Spec.ConfigParams.RuPatchLocation != "" {
 		data = append(data, "APPLY_RU_LOCATION="+instance.Spec.ConfigParams.RuPatchLocation)
-	} else {
-		data = append(data, "APPLY_RU_LOCATION="+utils.OraRuPatchStageLocation)
 	}
 
 	if instance.Spec.ConfigParams.RuFolderName != "" {
@@ -2613,6 +2614,31 @@ func (r *OracleRestartReconciler) createOrReplaceSfsAsm(ctx context.Context, req
 	// isDelete := false
 	inUse := false
 	if len(removedAsmDisks) > 0 {
+		OraRacSpex := oracleRestart.Spec.InstDetails
+		racSfSet, err := oraclerestartcommon.CheckSfset(OraRacSpex.Name, oracleRestart, r.Client)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to retrieve StatefulSet for RAC database '%s': %w", OraRacSpex.Name, err)
+			r.Log.Error(err, errMsg.Error())
+			return reconcile.Result{}, errMsg
+		}
+
+		// Step 2: Get the Pod list
+		podList, err := oraclerestartcommon.GetPodList(racSfSet.Name, oracleRestart, r.Client, OraRacSpex)
+		if err != nil {
+			errMsg := fmt.Errorf("failed to retrieve pod list for StatefulSet '%s': %w", racSfSet.Name, err)
+			r.Log.Error(err, errMsg.Error())
+			return reconcile.Result{}, errMsg
+		}
+		if len(podList.Items) == 0 {
+			errMsg := fmt.Errorf("no pods found for StatefulSet '%s'", racSfSet.Name)
+			r.Log.Error(errMsg, "Empty pod list")
+			return reconcile.Result{}, errMsg
+		}
+
+		// Step 3: Use last pod to get ASM state
+		podName := podList.Items[len(podList.Items)-1].Name
+		oracleRestart.Status.AsmDetails = oraclerestartcommon.GetAsmInstState(podName, oracleRestart, 0, r.kubeClient, r.kubeConfig, r.Log)
+
 		// Check if removed disks are in use in any diskgroup
 		asmInstanceStatus := oracleRestart.Status.AsmDetails
 		// isDelete = true
@@ -3395,7 +3421,7 @@ func (r *OracleRestartReconciler) updateONS(ctx context.Context, podList *corev1
 		podName := pod.Name
 
 		cmd := fmt.Sprintf("python3 /opt/scripts/startup/scripts/main.py --ons=%s", onsState)
-		reqLogger.Info("Executing command to update ONS", "Pod.Name", podName, "Command", cmd)
+		// reqLogger.Info("Executing command to update ONS", "Pod.Name", podName, "Command", cmd)
 
 		stdout, stderr, err := oraclerestartcommon.ExecCommand(
 			podName,
@@ -3410,6 +3436,8 @@ func (r *OracleRestartReconciler) updateONS(ctx context.Context, podList *corev1
 			reqLogger.Error(err, "Failed to execute command", "Pod.Name", podName, "Command", cmd, "Stdout", stdout, "Stderr", stderr)
 			return err
 		}
+		r.Log.Info("ONS Running successfully", "podName", podName)
 	}
+
 	return nil
 }
