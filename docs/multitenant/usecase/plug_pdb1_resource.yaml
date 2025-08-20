@@ -11,7 +11,7 @@ spec:
   cdbName: "DB12"
   pdbName: "pdbdev"
   pdbState: "PLUG"
-  xmlFileName: "/var/tmp/pdb.4165325.xml"
+  xmlFileName: "/var/tmp/pdb.339548.xml"
   fileNameConversions: "NONE"
   sourceFileNameConversions: "NONE"
   copyAction: "MOVE"

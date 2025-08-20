@@ -15,7 +15,7 @@
 #           files. Edit parameters.txt with your enviroment 
 #           informartion and execute the following steps
 #
-#         1) make operator
+#         1) make opsetup
 #            it configures the operator yaml files with the 
 #            watch namelist required by the multitenant controllers
 #      
@@ -60,7 +60,8 @@ DATE  := `date "+%y%m%d%H%M%S"`
 ######################
    
 export PARAMETERS=parameters.txt
-export TNSALIAS=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSALIAS|cut -d :  -f 2)
+#export TNSALIAS=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSALIAS|cut -d :  -f 2)
+export TNSALIAS=$(shell cat $(PARAMETERS)  |grep -v ^\#|grep TNSALIAS|awk -F ':' '{$$1="" ;printf("%s",$$2) }')
 export DBUSER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep DBUSER|cut -d :  -f 2)
 export DBPASS=$(shell cat $(PARAMETERS)|grep -v ^\#|grep DBPASS|cut -d :  -f 2)
 export WBUSER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep WBUSER|cut -d :  -f 2)
@@ -76,8 +77,10 @@ export SERVICENAM=$(shell cat $(PARAMETERS)|grep -v ^\#|grep SERVICENAMEACCOUNT|
 export OPENSHIFT=$(shell cat $(PARAMETERS)|grep -v ^\#|grep OPENSHIFT|cut -d : -f 2)
 export PLSQLMAP=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PLSQLMAP|cut -d : -f 2)
 export OPRNAMESPACE=oracle-database-operator-system
-export ORACLE_OPERATOR_YAML=../../../../oracle-database-operator.yaml
+export CODE_TREE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep CODE_TREE|cut -d : -f 2)
+export ORACLE_OPERATOR_YAML=$(CODE_TREE)/oracle-database-operator.yaml
 export AUTODISCOVER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep AUTODISCOVER|cut -d : -f 2)
+export CERT_MANAGER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep CERT_MANAGER| awk -F ':' '{$$1="" ;printf("%s:%s",$$2,$$3) }')
 export TEST_EXEC_TIMEOUT=3m
 
 REST_SERVER=lrest
@@ -136,6 +139,7 @@ export LRPDBMAP2=map_pdb2_resource.yaml
 export LRPDBMAP3=map_pdb3_resource.yaml
 
 export SECURITYCTX=security_context.yaml
+export NODE_RBAC=node_rbac.yaml
 
 export ALTERSYSTEMYAML=altersystem_pdb1_resource.yaml
 export CONFIG_MAP=config_map_pdb.yaml
@@ -157,6 +161,7 @@ MAKE=/usr/bin/make
 MAKEFILE=./makefile
 
 check:
+	@printf "LRESTIMG...............:%s\n" $(LRESTIMG)
 	@printf "TNSALIAS...............:%.60s....\n" $(TNSALIAS)
 	@printf "DBUSER.................:%s\n" $(DBUSER)
 	@printf "DBPASS.................:%s\n" $(DBPASS)
@@ -171,6 +176,10 @@ check:
 	@printf "APIVERSION.............:%s\n" $(APIVERSION)
 	@printf "PLSQLMAP...............:%s\n" $(PLSQLMAP)
 	@printf "AUTODISCOVER...........:%s\n" $(AUTODISCOVER)
+	@printf "ORACLE_OPERATOR_YAML...:%s\n" $(ORACLE_OPERATOR_YAML)
+	@printf "CODE_TREE..............:%s\n" $(CODE_TREE)
+	@printf "CERT_MANAGER...........:%s\n" $(CERT_MANAGER)
+	@printf "OPENSHIFT..............:%s\n" $(OPENSHIFT)
 
 define msg
 @printf "\033[31;7m%s\033[0m\r" "......................................]"
@@ -258,11 +267,69 @@ endef
 
 export opr = $(value _opr)
 
-operator:
+opsetup: prsyaml crtmgrappl nscrt  bndappl opapply rbacap
+
+#opclean: rbacdl opdelete bnddel crtmgrdel
+opclean: rbacdl bnddel crtmgrdel opdelete
+
+opapply:
+	@$(call msg,"Applying operator yaml file")
+	$(KUBECTL) apply -f `basename ${ORACLE_OPERATOR_YAML}`
+
+opdelete:
+	- $(KUBECTL) delete -f `basename ${ORACLE_OPERATOR_YAML}`
+	
+prsyaml:
 #	@ eval "$$opr"	
 	$(CP) ${ORACLE_OPERATOR_YAML} .  
 	${CP} `basename ${ORACLE_OPERATOR_YAML}` `basename ${ORACLE_OPERATOR_YAML}`.ORG
 	$(SED) -i  's/value: ""/value: $(OPRNAMESPACE),$(PDBNAMESPACE),$(LRSNAMESPACE)/g'   `basename ${ORACLE_OPERATOR_YAML}` 
+
+### Certmanager ###
+crtmgrappl:
+	@$(call msg,"Install cert-manager")
+	$(KUBECTL) apply -f $(CERT_MANAGER)
+	$(KUBECTL) wait --for jsonpath='{.webhooks[0].clientConfig.caBundle'} \
+		validatingwebhookconfiguration cert-manager-webhook --timeout=$(TEST_EXEC_TIMEOUT)
+	@$(call msg,"Cert manager application completed")
+
+crtmgrdel:
+	@$(call msg,"Deleting cert manager $(CERT_MANAGER)")
+	- $(KUBECTL) delete -f $(CERT_MANAGER)
+
+### Namespaces creation ###
+nscrt:
+	@$(call msg,"Namespace scope: creating namespace")
+	- $(KUBECTL) create namespace $(LRSNAMESPACE)
+	- $(KUBECTL) create namespace $(PDBNAMESPACE)
+
+### Namespace deletion  ###
+nsdel:
+	@$(call msg,"Deleting namespaces $(LRSNAMESPACE) $(PDBNAMESPACE)")
+	$(KUBECTL) delete namespace $(LRSNAMESPACE)
+	$(KUBECTL) delete namespace $(PDBNAMESPACE)
+
+### Namespace Scoped Deployment ###
+bndappl:
+	@$(call msg," Namespace Scoped Deployment: Binding $(PDBNAMESPACE) $(LRSNAMESPACE)")
+	- $(KUBECTL) apply -f $(PDBNAMESPACE)_binding.yaml
+	- $(KUBECTL) apply -f $(LRSNAMESPACE)_binding.yaml
+
+### Namespace Scope Remove ###
+bnddel:
+	@$(call msg," Namespace Scoped remove $(PDBNAMESPACE) $(LRSNAMESPACE)")
+	- $(KUBECTL) delete -f $(PDBNAMESPACE)_binding.yaml
+	- $(KUBECTL) delete -f $(LRSNAMESPACE)_binding.yaml
+
+### Cluster Role Binfing ###
+rbacap:
+	@$(call msg," ClusterRole and ClusterRoleBinding for NodePort services")
+	- $(KUBECTL) apply -f ${NODE_RBAC}
+
+### Remove Cluster Role Binding ###
+rbacdl:
+	@$(call msg," Clean $(NODE_RBAC)")
+	- $(KUBECTL) delete -f ${NODE_RBAC}
 
 
 define _script00
@@ -332,6 +399,36 @@ subjects:
 - kind: ServiceAccount
   name: default
   namespace: oracle-database-operator-system
+EOF
+
+cat <<EOF > ${NODE_RBAC}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: oracle-database-operator-manager-role-node
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oracle-database-operator-manager-role-node-cluster-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: oracle-database-operator-manager-role-node
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: oracle-database-operator-system
+---
 EOF
 
 endef
@@ -816,7 +913,7 @@ EOF
 
 
 ## Auth information
-for _file in ${LRPDBCRE1} ${LRPDBCRE2} ${LRPDBOPEN1} ${LRPDBOPEN2} ${LRPDBOPEN3} ${LRPDBCLOSE1} ${LRPDBCLOSE2} ${LRPDBCLOSE3} ${LRPDBCLONE1} ${LRPDBCLONE2} ${LRPDBDELETE1} ${LRPDBDELETE2}  ${LRPDBDELETE3} ${LRPDBUNPLUG1} ${LRPDBPLUG1} ${LRPDBMAP1} ${LRPDBMAP2} ${LRPDBMAP3} ${ALTERSYSTEMYAML}
+for _file in ${LRPDBCRE1} ${LRPDBCRE2} ${LRPDBOPEN1} ${LRPDBOPEN2} ${LRPDBOPEN3} ${LRPDBCLOSE1} ${LRPDBCLOSE2} ${LRPDBCLOSE3} ${LRPDBCLONE1} ${LRPDBCLONE2} ${LRPDBDELETE1} ${LRPDBDELETE2}  ${LRPDBDELETE3} ${LRPDBUNPLUG1} ${LRPDBPLUG1} ${LRPDBMAP1} ${LRPDBMAP2} ${LRPDBMAP3} ${ALTERSYSTEMYAML} 
 do 
 ls -ltr ${_file}
      cat authsection.yaml >> ${_file}
@@ -989,6 +1086,9 @@ listimage:
 
 getvaliduid:
 	$(KUBECTL) get namespace  $(LRSNAMESPACE) -ojson | jq '.metadata.annotations | with_entries(select(.key | contains("sa.scc")))'
+
+mgrrestart:
+	$(KUBECTL) rollout restart -n $(OPRNAMESPACE) deployment oracle-database-operator-controller-manager
 
 
 #######################################################
@@ -1244,7 +1344,7 @@ runall03: genyaml tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 run04.1 run0
 	$(MAKE) -f $(MAKEFILE) close LRPDBNAME=pdb1
 	$(MAKE) -f $(MAKEFILE) run05.1 run06.1
 runall04: genyaml tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 run04.1 run04.2 openpdb1 openpdb2 closepdb1 closepdb2 run05.1 run06.1 closepdb1 
-
+runall05: genyaml tkapplyinit run00 run01.1 run02.1 run03.1
 
 
 

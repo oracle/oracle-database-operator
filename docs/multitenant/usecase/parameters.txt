@@ -2,7 +2,6 @@
 ########################
 ## REST SERVER IMAGE ###
 ########################
-
 LRESTIMG:container-registry.oracle.com/database/operator:lrest-241210-amd64
 
 ##############################
@@ -16,6 +15,22 @@ TNSALIAS:"(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRAN
 
 DBUSER:_username_
 DBPASS:_password_
+
+#########################
+## SERVICENAME ACCOUNT ##
+#########################
+SERVICENAMEACCOUNT:_your_service_account_
+
+
+#########################
+## OPENSHIFT           ##
+#########################
+OPENSHIFT:false
+
+#########################
+## PLSQL CONFIGMAP     ##
+#########################
+PLSQLMAP:sql-map-example1
 
 #######################
 ## HTTPS CREDENTIAL ###
@@ -34,19 +49,32 @@ PDBPWD:_password_
 ###################
 ### NAMESPACES ####
 ###################
-
 PDBNAMESPACE:pdbnamespace
 LRSNAMESPACE:cdbnamespace
-
 
 ####################
 ### COMPANY NAME ### 
 ####################
-
 COMPANY:oracle
+
+##########################
+### CODE TREE          ###
+##########################
+CODE_TREE:/path/oracle-database-operator
+
+##########################
+### PDB AUTODISCOVER   ###
+##########################
+AUTODISCOVER:false
 
 ####################
 ### APIVERSION   ### 
 ####################
-
 APIVERSION:v4
+
+##########################
+### CERT_MANAGER       ###
+##########################
+CERT_MANAGER:https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+
+

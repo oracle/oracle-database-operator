@@ -11,7 +11,7 @@ spec:
   cdbName: "DB12"
   pdbName: "pdbdev"
   pdbState: "UNPLUG"
-  xmlFileName: "/var/tmp/pdb.4165325.xml"
+  xmlFileName: "/var/tmp/pdb.339548.xml"
   adminpdbUser:
     secret:
       secretName: "pdbusr"

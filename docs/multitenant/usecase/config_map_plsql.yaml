@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: 
+  name: sql-map-example1
   namespace: pdbnamespace
 data:
   plblock1.sql: |
