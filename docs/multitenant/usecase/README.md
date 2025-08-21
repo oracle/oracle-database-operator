@@ -2,14 +2,36 @@
 
 
 # Use case directory 
+<!-- TOC -->
 
-The use case directory contains the `yaml` files to test the multitenant controller functionalities: create `lrest` pod, and create PDB operations  *create / open / close / unplug / plug / delete / clone /map / parameter session*  
+- [Use case directory](#use-case-directory)
+        - [Prerequisites](#prerequisites)
+        - [Operator setup](#operator-setup)
+        - [Secrets creation](#secrets-creation)
+        - [Yaml file creation](#yaml-file-creation)
+        - [Run testcase](#run-testcase)
+        - [Makefile targets table](#makefile-targets-table)
+    - [Diag commands and troubleshooting](#diag-commands-and-troubleshooting)
+            - [Connect to rest server pod](#connect-to-rest-server-pod)
+            - [Lrest pod log](#lrest-pod-log)
+            - [Monitor control plane](#monitor-control-plane)
+            - [Error decrypting credential](#error-decrypting-credential)
+            - [Crd details](#crd-details)
 
-## Makefile helper
+<!-- /TOC -->
 
-Customizing `yaml` files (tns alias / credential / namespaces name, and so on) is a long procedure that is prone to human error. A simple [`makefile`](../usecase/makefile) is available to quickly and safely configure `yaml` files with your system environment information. Just edit the [parameter file](../usecase/parameters.txt)  before proceding. 
 
+The use case directory contains a makefile to automatically install the Oracle Database Operator (namespace scope configuration) and generate the yaml files to test pdb life cycle management in two different namespaces (one for lrest pod the other one for pdb crd). To simplify and speed up the execution you just need to edit a [parameter file](../usecase/parameters.txt) with all the information about your environment. 
+Subsequent steps are the operator installation, the secret installation, the yaml files generation and finally the tests execution. 
+
+![generalschema](../images/usecaseschema.jpg)
+
+**parameter file table of contents**
 ```text 
+                                Check the latest version available<--------------+
+                                                                                 |           
+                                                                              +-----+
+LRESTIMG...............:container-registry.oracle.com/database/operator:lrest-241210-amd64
 TNSALIAS...............:[Tnsalias do not use quotes and avoid space in the string --> (DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELA....]
 DBUSER.................:[CDB admin user]
 DBPASS.................:[CDB admin user password]
@@ -20,43 +42,116 @@ PDBPWD.................:[PDB admin user password]
 PDBNAMESPACE...........:[pdb namespace]
 LRSNAMESPACE...........:[cdb namespace]
 COMPANY................:[your company name]
-APIVERSION.............:v4 --> do not edit 
+APIVERSION.............:[v4 --> do not edit]
+SERVICENAMEACCOUNT.....:[service account - for openshift ]
+AUTODISCOVER...........:[boolean: check for pdb with no crd ]
+CODE_TREE..............:[Is the path of the directory with the original operator yaml file]
+CERT_MANAGER...........:https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+OPENSHIFT..............:[boolean]
 ```
 
-⚠ **WARNING: The makefile is only intended to speed up the usecase directory configuration. Use of this file for production purposes is not supported. The editing and configuration of yaml files for production system is left up to the end user** 
+Verify parameters using ``make check`` command.
 
-### Prerequisistes:  
+### Prerequisites
 
-- Ensure that **kubectl** is properly configured.
-- Ensure that all requirements listed in the [operator installation page](../../../../docs/installation/OPERATOR_INSTALLATION_README.md) are implemented. (role binding,webcert,etc)
+- Ensure that **kubectl** is properly installed on your client.
+- Even if the takes care of the requirements setup read carefully the [operator installation page](../../../../docs/installation/OPERATOR_INSTALLATION_README.md) are implemented. (role binding,webcert,etc)
 - Ensure that the administrative user (admin) on the container database is configured as documented.
 
-```bash
-make operator
+eg
+
+```sql
+-- Connect to the  container and creates the administrative user 
+alter session set "_oracle_script"=true;
+create user [DBUSER] identified by [DBPASS];
+grant create session to restdba container=all;
+grant sysdba to restdba container=all;
 ```
-This command creates the `operator-database-operator.yaml` file in the local directory, and set up the `watchnamespace` list. Note that the `yaml` file is not applied.
+
+### Operator setup
+
+```bash
+make opsetup
+```
+The make target **make opsetup** does the following actions:
+- Creates a copy the original **oracle-database-operator.yaml** and updates the WATCH_NAMESPACE list with the pdbnamespace and cdbnamespace values.
+- [Applies the certmaneger](../../../README.md#install-cert-manager)
+- Creates two namespaces: one for the lrest pod and the other one for the pdb controller.
+- [Namespace Scoped Deployment](../../../README.md#2-namespace-scoped-deployment)
+- Applies the oracle-database-operator.yaml
+- [ClusterRole and ClusterRoleBinding for NodePort services](../../../README.md#clusterrole-and-clusterrolebinding-for-nodeport-services)
+
+👉 **If your are running on Openshift you need to manually apply the [service context file](./security_context.yaml)** 
+
+### Secrets creation 
 
 ```bash
 make secrets
 ```
-This command creates all of the Secrets with the encrypted credentials.  
+**make secrets** creates secrets encrypting the credential specified in the parameters
+
+### Yaml file creation 
 
 ```bash
 make genyaml
 ```
-*make genyaml* generates the required `yaml` files to work with multitenant controllers.
+**make genyaml** generates the required `yaml` files to work with multitenant controllers.
 
+### Run testcase 
 
-![image](../images/UsecaseSchema.jpg)
+```bash
+make runall00
+```
 
+You can run **make runall00** to test all the functionality the multitenant controller 
+
+### Makefile targets table
+
+ | target          | action              | additional info |
+ |-----------------|---------------------|-----------------|
+ |tkapplyinit      | config map creation |                 |
+ |run00            | lrest pod creation  |                 |
+ |run01.1          | pdb1 creation       |                 |
+ |run01.2          | pdb2 creation       |                 |
+ |run02.1          | pdb1 open           | declarative     |
+ |run02.2          | pdb2 open           | declarative     |
+ |run03.1          | pdb1 clone          | declarative     |
+ |run04.1          | pdb1 close          | declarative     |
+ |run04.2          | pdb2 close          | declatative     |
+ |run05.1          | pdb1 unplug         | declarative     |
+ |run06.1          | pdb1 plug           | declarative     |
+ |openpdb1         | pdb1 open           | imperative      |
+ |openpdb2         | pdb2 open           | imperative      |
+ |closepdb1        | pdb1 close          | imperative      |
+ |closepdb2        | pdb2 close          | imperative      |
+ |openpdb1rs       | pdb1 open restrict  | imperative      |
+ |openpdb2rs       | pdb2 open restrict  | imperative      |
+ |tkaudosicov      | test autodiscovery  |                 |
+ |tkplsqlexec      | test sql/plsql      |                 |
+ |tkapplyinit      | apply init map      |                 |
+ |listimage        | images available on the cluster|      |
+ |dumpoperator     | dump operator log   |                 |
+ |dumplrest        | dump lrest log      |                 |
+ |login            | connect to lrest pod|                 |
+ |reloadod         | reload operator img |                 | 
+ |mgrrestart       | manager restart     |                 |
+ |**opsetup**      | install the  operator|                |
+ |**secrets**      | create secrets      |                 |
+ |**genyaml**      | generate the yaml files|              |
+ |opclean          | deintall the operator|                |   
 ## Diag commands and troubleshooting
 
-### Connect to rest server pod
+#### Connect to rest server pod
 
 ```bash 
 /usr/bin/kubectl exec   <podname> -n <namespace> -it -- /bin/bash
 ```
 
+#### Lrest pod log
+
+```bash
+kubectl logs  `kubectl get pods -o custom-columns=:metadata.name -n cdbnamespace --no-headers ` -n cdbnamespace
+```
 
 ```bash 
 ## example ##
@@ -69,7 +164,7 @@ kubectl exec  cdb-dev-lrest-rs-fnw99 -n cdbnamespace -it -- /bin/bash
 [oracle@cdb-dev-lrest-rs-fnw99 ~]$
 ```
 
-### Monitor control plane
+#### Monitor control plane
 
 ```bash
 kubectl logs -f -l control-plane=controller-manager -n oracle-database-operator-system
@@ -92,24 +187,21 @@ I1029 10:07:20.189724       1 leaderelection.go:250] attempting to acquire leade
 
 ```
 
-### Error decrypting credential 
+#### Error decrypting credential 
 
-The following is an example of a resource creation failure due to decription error: 
+In the following example you can see a resource creation failure due to a decryption issue
 
 ```text 
 2024-10-30T10:09:08Z    INFO    controllers.LRPDB       getEncriptedSecret :pdbusr      {"getEncriptedSecret": {"name":"lrpdb1","namespace":"pdbnamespace"}}
 2024-10-30T10:09:08Z    ERROR   controllers.LRPDB       Failed to parse private key - x509: failed to parse private key (use ParsePKCS1PrivateKey instead for this key format)     {"DecryptWithPrivKey": {"name":"lrpdb1","namespace":"pdbnamespace"}, "error": "x509: failed to parse private key (use ParsePKCS1PrivateKey instead for this key format)"}
 ```
-</span>
 
 **Solution**: Ensure you use **PCKS8** format during private key generation. If you are not using `openssl3`, then run this command:
 
 ```bash
 openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > mykey
 ```
-
-### Crd details 
-
+#### Crd details 
 Use the **describe** option to obtain `crd` information
 
 ```bash
@@ -137,3 +229,5 @@ Events:
   Warning  Done       15s (x12 over 2m25s)  LRPDB  cdb-dev
 
 ```
+
+</span>

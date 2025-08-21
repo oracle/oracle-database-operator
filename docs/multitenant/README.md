@@ -1,47 +1,62 @@
 <span style="font-family:Liberation mono; font-size:0.9em; line-height: 1.1em">
 
 
-# LREST BASED MULTITENANT CONTROLLERS FOR PDB LIFE CYCLE MANAGEMENT 
+
 <!-- TOC -->
 
-- [LREST BASED MULTITENANT CONTROLLERS FOR PDB LIFE CYCLE MANAGEMENT](#lrest-based-multitenant-controllers-for-pdb-life-cycle-management)
-    - [WHAT'S NEW](#whats-new)
-        - [Kubectl get lrpdb format](#kubectl-get-lrpdb-format)
-        - [Pdb status table](#pdb-status-table)
-    - [STEP BY STEP CONFIGURATION](#step-by-step-configuration)
-        - [Multiple namespace setup](#multiple-namespace-setup)
-        - [Create the operator](#create-the-operator)
-        - [Container database setup](#container-database-setup)
-        - [Apply rolebinding](#apply-rolebinding)
-        - [Certificate and credentials](#certificate-and-credentials)
-            - [Private key 🔑](#private-key-)
-            - [Public Key 🔑](#public-key-)
-            - [Certificates](#certificates)
-        - [Create secrets for certificate and keys](#create-secrets-for-certificate-and-keys)
-        - [Create secrets with encrypted password](#create-secrets-with-encrypted-password)
-        - [Create lrest pod](#create-lrest-pod)
-        - [Openshift configuration](#openshift-configuration)
-        - [Create PDB](#create-pdb)
-            - [pdb config map](#pdb-config-map)
-        - [Open PDB](#open-pdb)
-        - [Close PDB](#close-pdb)
-        - [Clone PDB](#clone-pdb)
-        - [Unplug PDB](#unplug-pdb)
-        - [Plug PDB](#plug-pdb)
-        - [Delete PDB](#delete-pdb)
-    - [SQL/PLSQL SCRIPT EXECUTION](#sqlplsql-script-execution)
-        - [Apply plsql configmap](#apply-plsql-configmap)
-        - [Limitation](#limitation)
-    - [TROUBLESHOOTING](#troubleshooting)
-        - [Get rid of error status](#get-rid-of-error-status)
-    - [UPGRADE EXISTING INSTALLATION](#upgrade-existing-installation)
-    - [KNOWN ISSUE](#known-issue)
+- [WHAT'S NEW](#whats-new)
+    - [Kubectl get lrpdb format](#kubectl-get-lrpdb-format)
+    - [Pdb status table](#pdb-status-table)
+- [STEP BY STEP CONFIGURATION](#step-by-step-configuration)
+    - [Multiple namespace setup](#multiple-namespace-setup)
+    - [Apply rolebinding](#apply-rolebinding)
+    - [Create the operator](#create-the-operator)
+    - [ClusterRole and ClusterRoleBinding for NodePort services](#clusterrole-and-clusterrolebinding-for-nodeport-services)
+    - [Container database setup](#container-database-setup)
+        - [Public Key 🔑](#public-key-)
+        - [Certificates](#certificates)
+    - [Create secrets for certificate and keys](#create-secrets-for-certificate-and-keys)
+    - [Create secrets with encrypted password](#create-secrets-with-encrypted-password)
+    - [Create lrest pod](#create-lrest-pod)
+    - [Openshift configuration](#openshift-configuration)
+    - [Create PDB](#create-pdb)
+        - [pdb config map](#pdb-config-map)
+    - [Open PDB](#open-pdb)
+    - [Close PDB](#close-pdb)
+    - [Clone PDB](#clone-pdb)
+    - [Unplug PDB](#unplug-pdb)
+    - [Plug PDB](#plug-pdb)
+    - [Delete PDB](#delete-pdb)
+- [SQL/PLSQL SCRIPT EXECUTION](#sqlplsql-script-execution)
+    - [Apply plsql configmap](#apply-plsql-configmap)
+    - [Limitation](#limitation)
+- [TROUBLESHOOTING](#troubleshooting)
+    - [Get rid of error status](#get-rid-of-error-status)
+- [UPGRADE EXISTING INSTALLATION](#upgrade-existing-installation)
+- [KNOWN ISSUE](#known-issue)
+
+<!-- /TOC -->
+    - [Create PDB](#create-pdb)
+        - [pdb config map](#pdb-config-map)
+    - [Open PDB](#open-pdb)
+    - [Close PDB](#close-pdb)
+    - [Clone PDB](#clone-pdb)
+    - [Unplug PDB](#unplug-pdb)
+    - [Plug PDB](#plug-pdb)
+    - [Delete PDB](#delete-pdb)
+- [SQL/PLSQL SCRIPT EXECUTION](#sqlplsql-script-execution)
+    - [Apply plsql configmap](#apply-plsql-configmap)
+    - [Limitation](#limitation)
+- [TROUBLESHOOTING](#troubleshooting)
+    - [Get rid of error status](#get-rid-of-error-status)
+- [UPGRADE EXISTING INSTALLATION](#upgrade-existing-installation)
+- [KNOWN ISSUE](#known-issue)
 
 <!-- /TOC -->
 
 
 
-**Lrpdb** and **lrest** are two controllers for PDB lifecycle management (**PDBLCM**). They rely on a dedicated REST server (Lite Rest Server) Container image to run. The `lrest` controller is available on the Oracle Container Registry (OCR). The container database can be anywhere (on-premises or in the Cloud). 
+**Lrpdb** and **lrest** are two controllers for PDB lifecycle management (**PDBLCM**). They rely on a dedicated REST server (Lite Rest Server) container image. The `lrest` controller is available on the Oracle Container Registry (OCR). The container database can be anywhere (on-premises or in the Cloud). 
 
 ![generaleschema](./images/Generalschema2.jpg)
 
@@ -107,6 +122,14 @@ Configure the **WACTH_NAMESPACE** list of the operator `yaml` file
 ```bash 
 sed -i 's/value: ""/value: "oracle-database-operator-system,pdbnamespace,cdbnamespace"/g' oracle-database-operator.yaml
 ```
+### Apply rolebinding 
+
+
+Apply the following files : [`pdbnamespace_binding.yaml`](./usecase/pdbnamespace_binding.yaml) [`cdbnamespace_binding.yaml`](./usecase/cdbnamespace_binding.yaml)
+```bash
+kubectl apply -f pdbnamespace_binding.yaml
+kubectl apply -f cdbnamespace_binding.yaml
+```
 
 ### Create the operator
 Run the following command:
@@ -122,6 +145,16 @@ oracle-database-operator-controller-manager-796c9b87df-6xn7c   1/1     Running  
 oracle-database-operator-controller-manager-796c9b87df-sckf2   1/1     Running   0          22m
 oracle-database-operator-controller-manager-796c9b87df-t4qns   1/1     Running   0          22m
 ```
+
+### ClusterRole and ClusterRoleBinding for NodePort services
+
+To expose services on each node's IP and port (the NodePort), apply the node-rbac.yaml. Note that this step is not required for LoadBalancer services.
+
+```bash
+  kubectl apply -f rbac/node-rbac.yaml
+```
+
+
 ### Container database setup
 
 On the container database, use the following commands to configure the account for PDB administration: 
@@ -133,20 +166,13 @@ grant create session to <ADMINUSERNAME> container=all;
 grant sysdba to <ADMINUSERNAME> container=all;
 ```
 
-### Apply rolebinding 
-
-
-Apply the following files : [`pdbnamespace_binding.yaml`](./usecase/pdbnamespace_binding.yaml) [`cdbnamespace_binding.yaml`](./usecase/cdbnamespace_binding.yaml)
-```bash
-kubectl apply -f pdbnamespace_binding.yaml
-kubectl apply -f cdbnamespace_binding.yaml
 ```
 
 ### Certificate and credentials
 You must create the public key, private key, certificates and Kubernetes Secrets for the security configuration. 
 
 #### Private key 🔑
-> Note: Only private key **PCKS8**  format is supported by LREST controllers. Before you start configuration, ensure that you can use it. If you are using [`openssl3`](https://docs.openssl.org/master/) then `pcks8` is generated by default. If it is not already generated, then use the following command to create a `pcks8` private key
+> Note: Only private key **PCKS8** format is supported by LREST controllers. Before you start configuration, ensure that you can use it. If you are using [`openssl3`](https://docs.openssl.org/master/) then `pcks8` is generated by default. If it is not already generated, then use the following command to create a `pcks8` private key
 
 ```bash
 openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 -out private.key
@@ -350,7 +376,7 @@ Parsing sqltext=select count(*) from pdb_plug_in_violations where name =:b1
 ### Openshift configuration 
 
 For the open shift installation you need to do the following
-- Before lrest pod creation; create a security context by appling the following yaml file [security_context.yaml](./usecase/security_context.yaml) mind to specify the correnct namespace and the service name account.
+- Before lrest pod creation; create a security context by appling the following yaml file [security_context.yaml](./usecase/security_context.yaml) mind to specify the correnct **namespace** and the **service name account**.
 
 ```yaml 
 [...]
@@ -421,12 +447,12 @@ SQL>
 
 🔥 **assertiveLrpdbDeletion** drops pluggable database using **INCLUDE DATAFILES** option
 
-All of the parameters **adminpdbUser** **adminpdbPass** **lrpdbTlsKey** **lrpdbTlsCrt** **lrpdbTlsCat** **webServerUser** **webServerPwd** **cdbPrvKey** **cdbPubKey** must be specified in all PDB lifecycle management `yaml` files. To simplify presentation of requirements, we will not include them in the subsequent tables.
+The following parameters **adminpdbUser** **adminpdbPass** **lrpdbTlsKey** **lrpdbTlsCrt** **lrpdbTlsCat** **webServerUser** **webServerPwd** **cdbPrvKey** **cdbPubKey** must be specified in all PDB lifecycle management `yaml` files. For the sake of presentation they will be omitted in the subsequent tables.
 
 
 #### pdb config map 
 
-By using **pdbconfigmap** it is possible to specify a kubernetes `configmap` with init PDB parameters. The config map payload has the following format:
+**pdbconfigmap** parameters specifies a kubernetes `configmap` with init PDB parameters. The config map payload has the following format:
 
 
 ```
@@ -710,6 +736,8 @@ pdb1   DB12       pdbdev     MOUNTED     0.80G      close:[ORA-65170]    NONE   
                                                                                                                   [READY TO BE UNPLUGGED]
 ```
 ## UPGRADE EXISTING INSTALLATION 
+
+In order to migrante an existing installation to the new version of controller you can laverage on the autodiscover installation. Patch all your lrpdb resources by setting **assertiveLrpdbDeletion** fasle. After that you can delete lrest resource and all lrpdbs. Upgrade the operator and create lrest server paying attenction to set **autodiscover** true and   the namespace  used by the autodiscovery mechanism (**namespaceAutoDiscover**). 
 
 ## KNOWN ISSUE 
 
