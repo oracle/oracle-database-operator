@@ -1,12 +1,32 @@
-apiVersion: database.oracle.com/v4
-kind: DbcsSystem
-metadata:
-  name: dbcssystem-existing
-spec:
-  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq"
-  ociConfigMap: "oci-cred-mumbai"
-  ociSecret: "oci-privatekey"
-  isUpgrade: true
-  databaseId: "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htya2mo5an5blhlvx5euyqnazi45hli7zqs5uig7juzgme5a"
-  dbSystem:
-    dbUpgradeVersion: "23.6.0.24.10"
+# API group and version for Oracle DBCS operator
+apiVersion: database.oracle.com/v4  
+
+# Kubernetes resource kind — represents a DB system in OCI
+kind: DbcsSystem  
+
+# Standard Kubernetes metadata (object name, namespace, labels etc.)
+metadata:  
+  # The name of this DbcsSystem object inside the cluster
+  name: dbcssystem-existing  
+
+# Specification of the DBCS system
+spec:  
+  # OCID of the existing DB System in OCI (the one we want to manage/upgrade)
+  id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq"  
+
+  # Name of the ConfigMap that holds OCI credentials (tenancy, user, fingerprint, region)
+  ociConfigMap: "oci-cred-mumbai"  
+
+  # Name of the Secret that contains the private key for authentication
+  ociSecret: "oci-privatekey"  
+
+  # Flag indicating this spec is meant to perform an upgrade on the DB system
+  isUpgrade: true  
+
+  # OCID of the specific database inside the DB System (not the DB system itself)
+  databaseId: "ocid1.database.oc1.ap-mumbai-1.anrg6ljrabf7htya2mo5an5blhlvx5euyqnazi45hli7zqs5uig7juzgme5a"  
+
+  # dbSystem section holds DB system upgrade target details
+  dbSystem:  
+    # Target database version for upgrade (new GI/DB version)
+    dbUpgradeVersion: "23.6.0.24.10"  

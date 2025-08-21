@@ -1,11 +1,29 @@
+# The API group and version this custom resource belongs to (Oracle Database Operator CRD v4)
 apiVersion: database.oracle.com/v4
+
+# The type of resource (DbcsSystem manages an OCI DB System)
 kind: DbcsSystem
+
+# Standard Kubernetes object metadata
 metadata:
+  # The name of this DbcsSystem resource (must be unique within the namespace)
   name: dbcssystem-existing
+
+# Specification of the desired state for the DbcsSystem
 spec:
+  # The OCID of the existing DB System in OCI that this resource manages
   id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyagag6vwgkdcf5g6srfykrsqnfnryfskfhblntsjypiajq"
+
+  # The name of the ConfigMap containing OCI credentials (tenancy, region, etc.)
   ociConfigMap: "oci-cred-mumbai"
+
+  # The name of the Secret containing the OCI private key used for authentication
   ociSecret: "oci-privatekey"
+
+  # Indicates that this CR should apply a patch/update instead of creating a new DB system
   isPatch: true
+
+  # DB system-specific configuration (nested object)
   dbSystem:
+    # The OCID of the database patch (db update) you want to apply to this DB system
     dbPatchOcid: "ocid1.dbupdate.oc1.ap-mumbai-1.anrg6ljrt5t4sqqa2z6zz3vxd4u2gmkvrofeatpufsbw332yksvuzc2xmgxq"

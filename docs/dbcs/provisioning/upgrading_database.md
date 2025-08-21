@@ -38,6 +38,8 @@ NOTE: Check the DB Operator Pod name in your environment.
 [root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
 
-## Sample Output
-
-[Here](./upgrade_dbcs_system_sample_output.log) is the sample output for cloning an existing DBCS System deployed in OCI using Oracle DB Operator DBCS Controller.
+3. Describe kubernetes object to see correct Db Version post upgrade is completed-
+```bash
+kubectl get dbcssystems.database.oracle.com dbcssystem-existing
+kubectl get dbcssystems.database.oracle.com dbcssystem-existing -o jsonpath='{.status.dbVersion}'
+```

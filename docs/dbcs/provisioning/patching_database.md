@@ -26,7 +26,7 @@ Use the file: [patch_dbcs_system.yaml](./patch_dbcs_system.yaml) for this use ca
 1. Deploy the .yaml file:  
 ```sh
 [root@docker-test-server DBCS]# kubectl apply -f patch_dbcs_system.yaml
-dbcssystem.database.oracle.com/dbcssystem-patch configured
+dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
 2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the DBCS VMDB creation of PDBs. 
@@ -36,7 +36,10 @@ NOTE: Check the DB Operator Pod name in your environment.
 ```
 [root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
+3. Check details of kubernetes object post patching is complete and verify patched version is same as expected-
+```bash
+kubectl describe dbcssystems.database.oracle.com dbcssystem-existing
 
-## Sample Output
-
-[Here](./patch_dbcs_system_sample_output.log) is the sample output for cloning an existing DBCS System deployed in OCI using Oracle DB Operator DBCS Controller.
+kubectl get dbcssystems.database.oracle.com dbcssystem-existing -o jsonpath='{.status.dbVersion}'
+19.28.0.0.0
+```

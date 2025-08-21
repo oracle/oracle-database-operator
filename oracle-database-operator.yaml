@@ -10072,6 +10072,8 @@ spec:
                       type: string
                   type: object
                 type: array
+              dbVersion:
+                type: string
               displayName:
                 type: string
               id:
@@ -17122,7 +17124,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:restart-operator-sa
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:basedb-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:
