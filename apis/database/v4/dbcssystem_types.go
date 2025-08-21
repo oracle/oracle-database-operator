@@ -161,6 +161,7 @@ type DbcsSystemStatus struct {
 	StorageManagement  string  `json:"storageManagement,omitempty"`
 	NodeCount          int     `json:"nodeCount,omitempty"`
 	CpuCoreCount       int     `json:"cpuCoreCount,omitempty"`
+	DbVersion          string  `json:"dbVersion,omitempty"`
 
 	DbEdition             string `json:"dbEdition,omitempty"`
 	TimeZone              string `json:"timeZone,omitempty"`
@@ -177,7 +178,7 @@ type DbcsSystemStatus struct {
 	KMSDetailsStatus KMSDetailsStatus   `json:"kmsDetailsStatus,omitempty"`
 	DbCloneStatus    DbCloneStatus      `json:"dbCloneStatus,omitempty"`
 	PdbDetailsStatus []PDBDetailsStatus `json:"pdbDetailsStatus,omitempty"`
-	DataGuardStatus  DataGuardStatus    `json:"dataGuardStatus,omitempty"`
+	DataGuardStatus  *DataGuardStatus   `json:"dataGuardStatus,omitempty"`
 	Backups          []BackupInfo       `json:"backups,omitempty"`
 	Message          string             `json:"message,omitempty"`
 }
@@ -296,12 +297,13 @@ type DbcsSystemList struct {
 type LifecycleState string
 
 const (
-	Available LifecycleState = "AVAILABLE"
-	Failed    LifecycleState = "FAILED"
-	Update    LifecycleState = "UPDATING"
-	Provision LifecycleState = "PROVISIONING"
-	Terminate LifecycleState = "TERMINATED"
-	Upgrade   LifecycleState = "UPGRADING"
+	Available       LifecycleState = "AVAILABLE"
+	Failed          LifecycleState = "FAILED"
+	Update          LifecycleState = "UPDATING"
+	Provision       LifecycleState = "PROVISIONING"
+	Terminate       LifecycleState = "TERMINATING"
+	TerminatedState LifecycleState = "TERMINATED"
+	Upgrade         LifecycleState = "UPGRADING"
 )
 
 const lastSuccessfulSpec = "lastSuccessfulSpec"

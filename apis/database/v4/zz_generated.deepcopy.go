@@ -1776,7 +1776,11 @@ func (in *DbcsSystemStatus) DeepCopyInto(out *DbcsSystemStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	in.DataGuardStatus.DeepCopyInto(&out.DataGuardStatus)
+	if in.DataGuardStatus != nil {
+		in, out := &in.DataGuardStatus, &out.DataGuardStatus
+		*out = new(DataGuardStatus)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.Backups != nil {
 		in, out := &in.Backups, &out.Backups
 		*out = make([]BackupInfo, len(*in))

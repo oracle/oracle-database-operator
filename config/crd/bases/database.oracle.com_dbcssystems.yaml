@@ -783,6 +783,8 @@ spec:
                       type: string
                   type: object
                 type: array
+              dbVersion:
+                type: string
               displayName:
                 type: string
               id:

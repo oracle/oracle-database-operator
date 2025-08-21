@@ -27,7 +27,14 @@ NOTE: Check the DB Operator Pod name in your environment.
 ```
 [root@docker-test-server DBCS]# kubectl logs -f pod/oracle-database-operator-controller-manager-665874bd57-g2cgw -n  oracle-database-operator-system
 ```
+3. Describe the Kubernetes object to see more details
+```bash
+kubectl describe dbcssystems.database.oracle.com dbcssystem-existing
+```
+More precisely
+```bash
+kubectl get dbcssystems.database.oracle.com dbcssystem-existing  -o jsonpath='{.status.dataGuardStatus.lifecycleState}'
+TERMINATED
+```
 
-## Sample Output
 
-[Here](./disable_dataguard_in_database_sample_output.log) is the sample output for cloning an existing DBCS System deployed in OCI using Oracle DB Operator DBCS Controller.
