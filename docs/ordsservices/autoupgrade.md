@@ -1,10 +1,114 @@
-# AutoUpgrade
+# ORDS and APEX AutoUpgrade
 
-Each pool can be configured to automatically install and upgrade the ORDS and/or APEX schemas in the database.
-The ORDS version is based on the ORDS image used for the RestDataServices resource.
-To get the APEX installation files, you can choose to download them from the latest version available or use the provided URL.
+Each pool can be configured to automatically install and upgrade the ORDS and/or APEX schemas in the database.  
 
-For example, in the below manifest:
+## ORDS autoUpgrade
+
+The ORDS version is determined by the ORDS image used for the RestDataServices resource.
+ORDS schema installation and upgrade can be activated at the pool level:  
+
+```yaml
+apiVersion: database.oracle.com/v1
+kind: OrdsSrvs
+metadata:
+    name: ordspoc-server
+spec:
+    ...
+    poolSettings:
+      - poolName: pdb1
+        autoUpgradeORDS: true
+```
+
+## APEX autoUpgrade
+
+ORDS image does **not** contain APEX installation files.  
+APEX installation files can be provided to the pod in two ways:  
+
+ - automatic download
+ - external storage (PersistenceVolume)
+
+
+### APEX installation automatic download
+
+The ORDS container can download the latest APEX version from the Oracle Container Registry (OCR) or a custom URL.  
+Downloading APEX installation files requires the Kubernetes worker node to have internet access.  
+APEX download is performed at the container level and may be enabled or disabled for each pool.  
+
+```yaml
+apiVersion: database.oracle.com/v1
+kind: OrdsSrvs
+metadata:
+    name: ordspoc-server
+spec:
+    ...
+    globalSettings:
+        downloadAPEX : true
+        downloadUrlAPEX : https://download.oracle.com/otn_software/apex/apex_24.2.zip
+    encPrivKey:
+      ...
+    poolSettings:
+      - poolName: pdb1
+        autoUpgradeAPEX: true
+        ...
+      - poolName: pdb2
+        autoUpgradeAPEX: false
+        ...
+```
+
+If you do not specify a download URL (downloadUrlAPEX), the default value is used:
+https://download.oracle.com/otn_software/apex/apex-latest.zip
+
+
+### APEX installation files on external storage
+
+Alternatively, you can provide APEX installation files in a dedicated PersistentVolume containing a single apex.zip file.  
+
+You can download apex.zip from:  
+https://www.oracle.com/tools/downloads/apex-downloads/
+
+```yaml
+apiVersion: database.oracle.com/v4
+kind: OrdsSrvs
+metadata:
+  name: ordssrvs
+  namespace: testcase
+spec:
+  ...
+  globalSettings:
+    apex.download : false
+    apex.installation.persistence:
+      volumeName : apexpv
+      storageClass :
+      size : 20Gi
+      accessMode : ReadWriteMany
+    ...  
+  poolSettings:
+    - poolName: default
+      autoUpgradeAPEX: true
+```
+
+The OrdsSrvs controller will create a PersistentVolumeClaim (PVC) for the PV and mount it in the pod’s container at /opt/oracle/apex.
+
+The volume can be static or dynamic. If the volume is empty, the init container will wait until it finds apex.zip at the mount point.   
+The init container logs the following message:  
+
+``` bash
+Missing /opt/oracle/apex/apex.zip, manually copy apex.zip in /opt/oracle/apex on the init container of the pod
+```
+
+You can copy the apex.zip file into the container while the init script is waiting:  
+
+``` bash
+kubectl cp /tmp/apex.zip <ordspod>:/tmp -c ordssrvs-init -n ordsnamespace
+kubectl exec -c ordssrvs-init -n ordsnamespace <ordspod> -- mv /tmp/apex.zip /opt/oracle/apex
+```
+
+
+
+## Example: ORDS autoUpgrade and APEX download/autoUpgrade
+
+In the following manifest example:  
+
 * APEX installation files will be downloaded from latest version.
 * `Pool: pdb1` is configured to automatically install/ugrade both ORDS and APEX to version 25.1.0  
 * `Pool: pdb2` will install or upgrade ORDS
@@ -52,8 +156,6 @@ spec:
             secretName:  pdb3-ords-auth-enc
 ```
 
-If you don't specify a download URL (downloadUrlAPEX), the default value will be used:
-https://download.oracle.com/otn_software/apex/apex-latest.zip
 
 
 ## Minimum Privileges for Admin User
