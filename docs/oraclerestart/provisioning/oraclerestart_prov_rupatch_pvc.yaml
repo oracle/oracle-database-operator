@@ -22,6 +22,11 @@ spec:
     # IP address of the worker node where the instance should run
     workerNode:
       - 10.0.10.108
+    envVars:
+      - name: IGNORE_CRS_PREREQS
+        value: "true"
+      - name: IGNORE_DB_PREREQS
+        value: "true"
     # Service definition to expose the DB
     nodePortSvc:
       - # Type of Kubernetes service

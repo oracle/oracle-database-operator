@@ -18,6 +18,12 @@ spec:
     workerNode:
       - 02-00-17-01-73-a0            # Node hostname where the pod should be scheduled
 
+    envVars:
+      - name: IGNORE_CRS_PREREQS
+        value: "true"
+      - name: IGNORE_DB_PREREQS
+        value: "true"
+
     # NodePort service configuration
     nodePortSvc:
       - svcType: nodeport            # Type of Kubernetes service to expose the Oracle DB

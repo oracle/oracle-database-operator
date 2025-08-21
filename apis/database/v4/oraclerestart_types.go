@@ -142,7 +142,7 @@ type InitParams struct {
 }
 
 type OracleRestartInstDetailSpec struct {
-	Name                 string                       `json:"name"`
+	Name                 string                       `json:"name,omitempty"` // Name of the Oracle Restart Instance
 	HostSwLocation       string                       `json:"hostSwLocation,omitempty"`
 	SwLocStorageSizeInGb int                          `json:"swLocStorageSizeInGb,omitempty"`
 	WorkerNode           []string                     `json:"workerNode,omitempty"`
@@ -243,7 +243,7 @@ type OracleRestartStatus struct {
 	// +listType=map
 	// +listMapKey=type
 	Conditions         []metav1.Condition               `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
-	InstDetails        OracleRestartInstDetailSpec      `json:"instDetails,omitempty"`
+	InstDetails        *OracleRestartInstDetailSpec     `json:"instDetails,omitempty"`
 	ConfigParams       *InitParams                      `json:"configParams,omitempty"`
 	AsmDetails         *AsmInstanceStatus               `json:"asmDetails,omitempty"`
 	NfsStorageDetails  *corev1.NFSVolumeSource          `json:"nfsStorageDetails,omitempty"`

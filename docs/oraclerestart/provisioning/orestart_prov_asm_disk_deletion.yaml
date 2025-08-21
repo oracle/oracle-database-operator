@@ -21,6 +21,11 @@ spec:
     # List of worker node IPs where Oracle will run
     workerNode:
       - 10.0.10.108
+    envVars:
+      - name: IGNORE_CRS_PREREQS
+        value: "true"
+      - name: IGNORE_DB_PREREQS
+        value: "true"
     # Port used for ONS (Oracle Notification Service)
     onsTargetPort: 30200
     # Kubernetes NodePort service details for listener access

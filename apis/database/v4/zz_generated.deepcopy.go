@@ -3387,7 +3387,11 @@ func (in *OracleRestartStatus) DeepCopyInto(out *OracleRestartStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	in.InstDetails.DeepCopyInto(&out.InstDetails)
+	if in.InstDetails != nil {
+		in, out := &in.InstDetails, &out.InstDetails
+		*out = new(OracleRestartInstDetailSpec)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.ConfigParams != nil {
 		in, out := &in.ConfigParams, &out.ConfigParams
 		*out = new(InitParams)

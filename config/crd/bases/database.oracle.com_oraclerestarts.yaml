@@ -363,8 +363,6 @@ spec:
                     items:
                       type: string
                     type: array
-                required:
-                - name
                 type: object
               isDebug:
                 type: string
@@ -1122,8 +1120,6 @@ spec:
                     items:
                       type: string
                     type: array
-                required:
-                - name
                 type: object
               installNode:
                 type: string

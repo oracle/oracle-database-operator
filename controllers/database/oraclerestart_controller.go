@@ -158,6 +158,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		oracleRestart.Status.Role = string(oraclerestartdb.OracleRestartFieldNotDefined)
 		oracleRestart.Status.ConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
 		oracleRestart.Status.PdbConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
+		oracleRestart.Status.ExternalConnectString = string(oraclerestartdb.OracleRestartFieldNotDefined)
 		oracleRestart.Status.ReleaseUpdate = string(oraclerestartdb.OracleRestartFieldNotDefined)
 		oracleRestart.Status.ConfigParams.DbHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
 		oracleRestart.Status.ConfigParams.GridHome = string(oraclerestartdb.OracleRestartFieldNotDefined)
@@ -625,20 +626,15 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 		r.Log.Info("Error during Oracle Restart update", "err1", err1)
 	}
 
-	errMsg := func() string {
-		if *err != nil {
-			return (*err).Error()
-		}
-		return "no reconcile errors"
-	}()
 	var condition metav1.Condition
+
 	if *completed {
 		condition = metav1.Condition{
 			Type:               string(oraclerestartdb.CrdReconcileCompeleteState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
 			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileCompleteReason),
-			Message:            errMsg,
+			Message:            "reconcile completed successfully", // no error text
 			Status:             metav1.ConditionTrue,
 		}
 	} else if *blocked {
@@ -647,7 +643,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
 			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileWaitingReason),
-			Message:            errMsg,
+			Message:            "reconcile is waiting on dependencies", // neutral message
 			Status:             metav1.ConditionTrue,
 		}
 	} else if result.Requeue {
@@ -656,7 +652,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
 			Reason:             string(oraclerestartdb.CrdReconcileQueuedReason),
-			Message:            errMsg,
+			Message:            "reconcile has been queued", // neutral message
 			Status:             metav1.ConditionTrue,
 		}
 	} else if err != nil && *err != nil {
@@ -665,7 +661,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
 			Reason:             string(oraclerestartdb.CrdReconcileErrorReason),
-			Message:            errMsg,
+			Message:            (*err).Error(), // show actual error only here
 			Status:             metav1.ConditionTrue,
 		}
 	} else {
@@ -677,10 +673,12 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 	}
 	meta.SetStatusCondition(&oracleRestart.Status.Conditions, condition)
 
-	if oracleRestart.Status.State == string(oraclerestartdb.OracleRestartPodAvailableState) && condition.Type == string(oraclerestartdb.CrdReconcileCompeleteState) {
+	if oracleRestart.Status.State == string(oraclerestartdb.OracleRestartPodAvailableState) &&
+		condition.Type == string(oraclerestartdb.CrdReconcileCompeleteState) {
 		r.Log.Info("All validations and updation are completed. Changing State to AVAILABLE")
 		oracleRestart.Status.State = string(oraclerestartdb.OracleRestartAvailableState)
 	}
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Fetch the latest version of the object
 		latestInstance := &oraclerestartdb.OracleRestart{}
@@ -1833,8 +1831,12 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 
 	data = append(data, "OP_TYPE=setuprac")
 	// removing this breaks HAS label build setup
-	data = append(data, "IGNORE_CRS_PREREQS=TRUE")
-	data = append(data, "IGNORE_DB_PREREQS=TRUE")
+	// data = append(data, "IGNORE_CRS_PREREQS=TRUE")
+	// data = append(data, "IGNORE_DB_PREREQS=TRUE")
+	// --- Pick ALL envVars directly from CR spec ---
+	for _, e := range instance.Spec.InstDetails.EnvVars {
+		data = append(data, fmt.Sprintf("%s=%s", e.Name, e.Value))
+	}
 
 	// Service Parameters
 	if instance.Spec.ServiceDetails.Name != "" {
