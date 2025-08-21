@@ -824,7 +824,10 @@ func getExternalConnStr(
 	kubeConfig clientcmd.ClientConfig,
 	logger logr.Logger,
 ) string {
-
+	// If NodePort service not defined in spec, don’t expose external conn
+	if len(instance.Spec.InstDetails.NodePortSvc) == 0 {
+		return ""
+	}
 	// Get the dbmc1 NodePort service
 	svc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), instance.Spec.InstDetails.Name, metav1.GetOptions{})
 	if err != nil {

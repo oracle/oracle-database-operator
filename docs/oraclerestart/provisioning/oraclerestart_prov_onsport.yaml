@@ -24,6 +24,12 @@ spec:
     # List of worker node IPs where instance will be deployed
     workerNode:
       - 10.0.10.108
+    
+    envVars:
+      - name: IGNORE_CRS_PREREQS
+        value: "true"
+      - name: IGNORE_DB_PREREQS
+        value: "true"
     # NodePort service configuration
     nodePortSvc:
       - svcType: nodeport  # Type of service (NodePort)

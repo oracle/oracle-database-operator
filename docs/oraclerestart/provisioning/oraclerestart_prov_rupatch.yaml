@@ -19,6 +19,12 @@ spec:
     workerNode:
       - 10.0.10.108                   # IP address of the node where DB will run
 
+    envVars:
+      - name: IGNORE_CRS_PREREQS
+        value: "true"
+      - name: IGNORE_DB_PREREQS
+        value: "true"
+
     # NodePort service configuration for exposing DB port externally
     nodePortSvc:
       - svcType: nodeport             # Service type (NodePort to expose externally)

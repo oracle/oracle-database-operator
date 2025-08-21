@@ -18,6 +18,11 @@ spec:
     # Worker nodes where the instance should be scheduled
     workerNode:
       - 10.0.10.108                   # IP address of the target node for deployment
+    envVars:
+      - name: IGNORE_CRS_PREREQS
+        value: "true"
+      - name: IGNORE_DB_PREREQS
+        value: "true"
 
   # ASM (Automatic Storage Management) storage configuration
   asmStorageDetails:
