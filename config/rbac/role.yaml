@@ -99,7 +99,6 @@ rules:
   resources:
   - autonomouscontainerdatabases
   - autonomousdatabases
-  - cdbs
   - dataguardbrokers
   - dbcssystems
   - events
@@ -108,7 +107,6 @@ rules:
   - oraclerestarts
   - oraclerestdataservices
   - ordssrvs
-  - pdbs
   - shardingdatabases
   - singleinstancedatabases
   verbs:
@@ -125,7 +123,6 @@ rules:
   - autonomouscontainerdatabases/status
   - autonomousdatabasebackups/status
   - autonomousdatabaserestores/status
-  - cdbs/status
   - dataguardbrokers/status
   - dbcssystems/status
   - lrests/status
@@ -133,7 +130,6 @@ rules:
   - oraclerestarts/status
   - oraclerestdataservices/status
   - ordssrvs/status
-  - pdbs/status
   - shardingdatabases/status
   - singleinstancedatabases/status
   verbs:
@@ -162,7 +158,6 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
-  - cdbs/finalizers
   - dataguardbrokers/finalizers
   - lrests/finalizers
   - oraclerestdataservices/finalizers
@@ -176,7 +171,6 @@ rules:
   - dbcssystems/finalizers
   - lrpdbs/finalizers
   - oraclerestarts/finalizers
-  - pdbs/finalizers
   - shardingdatabases/finalizers
   verbs:
   - create

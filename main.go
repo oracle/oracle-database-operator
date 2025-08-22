@@ -248,16 +248,8 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
 			os.Exit(1)
 		}
-		if err = (&databasev4.PDB{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "PDB")
-			os.Exit(1)
-		}
 		if err = (&databasev4.LRPDB{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "LRPDB")
-			os.Exit(1)
-		}
-		if err = (&databasev4.CDB{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "CDB")
 			os.Exit(1)
 		}
 		if err = (&databasev4.LREST{}).SetupWebhookWithManager(mgr); err != nil {
@@ -350,18 +342,6 @@ func main() {
 		}
 	}
 
-	// PDB Reconciler
-	if err = (&databasecontroller.PDBReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Log:      ctrl.Log.WithName("controllers").WithName("PDB"),
-		Interval: time.Duration(i),
-		Recorder: mgr.GetEventRecorderFor("PDB"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PDB")
-		os.Exit(1)
-	}
-
 	// LRPDBR Reconciler
 	if err = (&databasecontroller.LRPDBReconciler{
 		Client:   mgr.GetClient(),
@@ -371,19 +351,6 @@ func main() {
 		Recorder: mgr.GetEventRecorderFor("LRPDB"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LRPDB")
-		os.Exit(1)
-	}
-
-	// CDB Reconciler
-	if err = (&databasecontroller.CDBReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Config:   mgr.GetConfig(),
-		Log:      ctrl.Log.WithName("controllers").WithName("CDB"),
-		Interval: time.Duration(i),
-		Recorder: mgr.GetEventRecorderFor("CDB"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CDB")
 		os.Exit(1)
 	}
 
@@ -446,15 +413,6 @@ func main() {
 		}
 	}
 	// +kubebuilder:scaffold:builder
-
-	// Add index for PDB CR to enable mgr to cache PDBs
-	indexFunc := func(obj client.Object) []string {
-		return []string{obj.(*databasev4.PDB).Spec.PDBName}
-	}
-	if err = cache.IndexField(context.TODO(), &databasev4.PDB{}, "spec.pdbName", indexFunc); err != nil {
-		setupLog.Error(err, "unable to create index function for ", "controller", "PDB")
-		os.Exit(1)
-	}
 
 	indexFunc2 := func(obj client.Object) []string {
 		return []string{obj.(*databasev4.LRPDB).Spec.LRPDBName}

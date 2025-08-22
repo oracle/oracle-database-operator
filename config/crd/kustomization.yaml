@@ -11,8 +11,6 @@ resources:
 - bases/database.oracle.com_autonomousdatabaserestores.yaml
 - bases/database.oracle.com_singleinstancedatabases.yaml
 - bases/database.oracle.com_shardingdatabases.yaml
-- bases/database.oracle.com_pdbs.yaml
-- bases/database.oracle.com_cdbs.yaml
 - bases/database.oracle.com_oraclerestdataservices.yaml
 - bases/database.oracle.com_autonomouscontainerdatabases.yaml
 - bases/database.oracle.com_dbcssystems.yaml
@@ -32,8 +30,6 @@ patches:
 #- patches/webhook_in_provshards.yaml
 #- patches/webhook_in_singleinstancedatabases.yaml
 #- patches/webhook_in_shardingdatabases.yaml
-#- patches/webhook_in_pdbs.yaml
-#- patches/webhook_in_cdbs.yaml
 #- patches/webhook_in_oraclerestdataservices.yaml
 #- patches/webhook_in_dbcssystems.yaml
 #- patches/webhook_in_dataguardbrokers.yaml
@@ -58,8 +54,6 @@ patches:
 #- patches/cainjection_in_ordssrvs.yaml
 - path: patches/cainjection_in_singleinstancedatabases.yaml
 - path: patches/cainjection_in_shardingdatabases.yaml
-- path: patches/cainjection_in_pdbs.yaml
-- path: patches/cainjection_in_cdbs.yaml
 - path: patches/cainjection_in_dbcssystems.yaml
 - path: patches/cainjection_in_autonomousdatabases.yaml
 - path: patches/cainjection_in_autonomousdatabasebackups.yaml
@@ -80,8 +74,6 @@ patches:
 - path: patches/webhook_in_autonomouscontainerdatabases.yaml
 - path: patches/cainjection_in_singleinstancedatabases.yaml
 - path: patches/cainjection_in_shardingdatabases.yaml
-- path: patches/cainjection_in_pdbs.yaml
-- path: patches/cainjection_in_cdbs.yaml
 - path: patches/cainjection_in_dbcssystems.yaml
 - path: patches/cainjection_in_autonomousdatabases.yaml
 - path: patches/cainjection_in_autonomousdatabasebackups.yaml
