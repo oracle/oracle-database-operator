@@ -397,17 +397,8 @@ spec:
     - jsonPath: .status.state
       name: State
       type: string
-    - jsonPath: .status.cpuCoreCount
-      name: OCPUs
-      type: integer
-    - jsonPath: .status.dataStorageSizeInGBs
-      name: Storage (TB)
-      type: integer
-    - jsonPath: .status.recoStorageSizeInGB
-      name: Reco Storage (GB)
-      type: integer
-    - jsonPath: .status.storageManagement
-      name: Storage Mgmt
+    - jsonPath: .status.dbInfo[0].dbVersion
+      name: DB Version
       type: string
     - jsonPath: .status.dbInfo[0].connectionString
       name: ConnString

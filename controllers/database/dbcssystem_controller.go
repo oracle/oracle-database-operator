@@ -607,8 +607,9 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			dbSystemId, err = dbcsv4.CloneFromDatabaseAndGetDbcsId(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
 			if err != nil {
 				r.Logger.Error(err, "Fail to clone db system from DatabaseID provided")
+				dbcsInst.Status.Message = err.Error()
 				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
-					dbcsInst.Status.Message = err.Error()
+
 					return ctrl.Result{}, statusErr
 				}
 
@@ -834,9 +835,6 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, nil
 		}
 
-	default:
-		// Skip Data Guard handling
-		r.Logger.Info("Skipping Data Guard setup and deletion - no action required")
 	}
 
 	// Update the last succesful spec
@@ -852,7 +850,6 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	} else if setupDataguard {
 		dbSystemId = *dbcsInst.Status.DataGuardStatus.PeerDbSystemId
 	}
-	//assignDBCSID(dbcsInst,dbcsI)k get pods -n $odo
 
 	// Change the phase to "Available"
 	assignDBCSID(dbcsInst, dbSystemId)
@@ -1056,7 +1053,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 	// Populate Status from Spec (if present)
 	status.DbAdminPasswordSecret = spec.DbAdminPasswordSecret
-	status.PeerDbSystemId = spec.PeerDbSystemId
+	// status.PeerDbSystemId = spec.PeerDbSystemId
 	status.PrimaryDatabaseId = dbcsInst.Spec.Id
 	status.ProtectionMode = spec.ProtectionMode
 	status.TransportType = spec.TransportType
@@ -1064,16 +1061,139 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 	status.Shape = spec.Shape
 	status.SubnetId = spec.SubnetId
 
-	// Get peer DB system state
 	getDbSystemResp, err := dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
 		DbSystemId: peerDbSystemId,
 	})
 	if err != nil {
+		if svcErr, ok := err.(common.ServiceError); ok && svcErr.GetHTTPStatusCode() == 404 {
+			msg := fmt.Sprintf("Peer DB System %s already terminated or not found, cleaning up Data Guardstatus",
+				func(s *string) string {
+					if s == nil {
+						return "<nil>"
+					}
+					return *s
+				}(peerDbSystemId),
+			)
+			log.Info(msg)
+			dbcsInst.Status.Message = msg
+			dbcsInst.Status.DataGuardStatus = nil
+			_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+			return nil
+		}
+
 		log.Error(err, "Failed to fetch peer DB system status")
 		dbcsInst.Status.Message = "Failed to fetch peer DB system status"
 		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
 		return err
 	}
+
+	var primaryDatabaseId *string
+
+	// List DB Homes
+	dbHomesResp, err := dbClient.ListDbHomes(ctx, database.ListDbHomesRequest{
+		CompartmentId: &compartmentId,
+		DbSystemId:    dbcsInst.Spec.Id,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list DB Homes for system %s: %w", *dbcsInst.Spec.Id, err)
+	}
+
+	// Iterate DB Homes
+	for _, home := range dbHomesResp.Items {
+		dbsResp, err := dbClient.ListDatabases(ctx, database.ListDatabasesRequest{
+			CompartmentId: &compartmentId,
+			DbHomeId:      home.Id,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list databases for DB Home %s: %w", *home.Id, err)
+		}
+
+		for _, db := range dbsResp.Items {
+			// List DG associations for this DB
+			dgResp, err := dbClient.ListDataGuardAssociations(ctx, database.ListDataGuardAssociationsRequest{
+				DatabaseId: db.Id,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to list Data Guard associations for DB %s: %w", *db.Id, err)
+			}
+
+			for _, assoc := range dgResp.Items {
+				if assoc.Role == database.DataGuardAssociationSummaryRolePrimary {
+					primaryDatabaseId = db.Id
+					if dbcsInst.Status.DataGuardStatus == nil {
+						dbcsInst.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
+					}
+					dbcsInst.Status.DataGuardStatus.PrimaryDatabaseId = primaryDatabaseId
+					dbcsInst.Status.DataGuardStatus.PeerDbSystemId = assoc.PeerDbSystemId
+					break
+				}
+			}
+
+			if primaryDatabaseId != nil {
+				break
+			}
+		}
+
+		if primaryDatabaseId != nil {
+			break
+		}
+	}
+
+	if primaryDatabaseId == nil {
+		msg := fmt.Sprintf(
+			"Skipping Data Guard deletion — peer DB %s is not associated with primary DB %s",
+			strVal(peerDbSystemId),
+			strVal(primaryDatabaseId),
+		)
+		log.Info(msg)
+
+		dbcsInst.Status.Message = msg
+
+		dbcsInst.Status.Message = msg
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+		return fmt.Errorf(msg)
+	}
+
+	// Verify Data Guard association exists
+	listAssocResp, err := dbClient.ListDataGuardAssociations(ctx, database.ListDataGuardAssociationsRequest{
+		DatabaseId: primaryDatabaseId,
+	})
+	if err != nil {
+		log.Error(err, "Failed to list Data Guard associations for primary DB")
+		dbcsInst.Status.Message = "Failed to list Data Guard associations"
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+		return err
+	}
+
+	var association *database.DataGuardAssociationSummary
+	for _, assoc := range listAssocResp.Items {
+		if assoc.PeerDbSystemId != nil && *assoc.PeerDbSystemId == *peerDbSystemId {
+			association = &assoc
+			break
+		}
+	}
+
+	if association == nil {
+		msg := fmt.Sprintf(
+			"Skipping Data Guard deletion — peer DB %s is not associated with primary DB %s",
+			*peerDbSystemId, primaryDatabaseId,
+		)
+		log.Info(msg)
+		dbcsInst.Status.Message = msg
+		if dbcsInst.Status.DataGuardStatus == nil {
+			dbcsInst.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
+		}
+		dbcsInst.Status.DataGuardStatus.LifecycleDetails = &msg
+
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+
+		return fmt.Errorf(msg)
+	}
+
+	// At this point, we know the primary and peer DB are actually in Data Guard
+	log.Info("Confirmed Data Guard association, proceeding with deletion",
+		"primary", primaryDatabaseId,
+		"peer", *peerDbSystemId)
 
 	switch getDbSystemResp.DbSystem.LifecycleState {
 
@@ -1107,7 +1227,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 		// Populate Status from Spec (if present)
 		status.DbAdminPasswordSecret = spec.DbAdminPasswordSecret
-		status.PeerDbSystemId = spec.PeerDbSystemId
+		// status.PeerDbSystemId = spec.PeerDbSystemId
 		status.PrimaryDatabaseId = dbcsInst.Spec.Id
 		status.ProtectionMode = spec.ProtectionMode
 		status.TransportType = spec.TransportType
@@ -1175,7 +1295,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 		// Populate Status from Spec (if present)
 		status.DbAdminPasswordSecret = spec.DbAdminPasswordSecret
-		status.PeerDbSystemId = spec.PeerDbSystemId
+		// status.PeerDbSystemId = spec.PeerDbSystemId
 		status.PrimaryDatabaseId = dbcsInst.Spec.Id
 		status.ProtectionMode = spec.ProtectionMode
 		status.TransportType = spec.TransportType
@@ -1226,6 +1346,12 @@ Cleanup:
 	}
 	log.Info("Successfully deleted Data Guard association")
 	return nil
+}
+func strVal(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func (r *DbcsSystemReconciler) waitForWorkRequest(
@@ -1873,26 +1999,50 @@ func (r *DbcsSystemReconciler) EnableDataGuard(
 		}
 
 		r.Logger.Info("Data Guard association creation started")
+		if dbcsSystem.Status.DataGuardStatus == nil {
+			dbcsSystem.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
+		}
 		status := dbcsSystem.Status.DataGuardStatus
 
 		// Use Spec to fill necessary details
 		spec := dbcsSystem.Spec.DataGuard
 
 		// Populate Status from Spec (if present)
-		if dbcsSystem.Spec.DataGuard.DbAdminPasswordSecret != nil {
-			status.DbAdminPasswordSecret = dbcsSystem.Spec.DataGuard.DbAdminPasswordSecret
+		if spec.DbAdminPasswordSecret != nil {
+			status.DbAdminPasswordSecret = spec.DbAdminPasswordSecret
 		}
 
-		status.PeerDbSystemId = spec.PeerDbSystemId
-		status.PrimaryDatabaseId = dbcsSystem.Spec.Id
-		status.ProtectionMode = spec.ProtectionMode
-		status.TransportType = spec.TransportType
-		status.PeerRole = spec.PeerRole
-		status.Shape = spec.Shape
-		status.SubnetId = spec.SubnetId
+		if spec.PeerDbSystemId != nil {
+			status.PeerDbSystemId = spec.PeerDbSystemId
+		}
+		if dbcsSystem.Spec.Id != nil {
+			status.PrimaryDatabaseId = dbcsSystem.Spec.Id
+		}
+		if spec.ProtectionMode != nil {
+			status.ProtectionMode = spec.ProtectionMode
+		}
+
+		if spec.TransportType != nil {
+			status.TransportType = spec.TransportType
+		}
+
+		if spec.PeerRole != nil {
+			status.PeerRole = spec.PeerRole
+		}
+
+		if spec.Shape != nil {
+			status.Shape = spec.Shape
+		}
+
+		if spec.SubnetId != nil {
+			status.SubnetId = spec.SubnetId
+		}
+
+		// Mark lifecycle as provisioning
 		provisioningState := string(database.DbSystemLifecycleStateProvisioning)
 		status.LifecycleState = &provisioningState
 		status.LifecycleDetails = common.String("Dataguard Peer DB system is Provisioning...")
+
 		dbcsSystem.Status.State = databasev4.Update
 		dbcsSystem.Status.Message = "Peer DB system is provisioning..."
 

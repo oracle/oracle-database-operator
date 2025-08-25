@@ -273,10 +273,7 @@ type DbCloneStatus struct {
 // +kubebuilder:printcolumn:name="Display Name",type="string",JSONPath=".status.displayName"
 // +kubebuilder:printcolumn:name="DB Name",type="string",JSONPath=".status.dbInfo[0].dbName"
 // +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state"
-// +kubebuilder:printcolumn:name="OCPUs",type="integer",JSONPath=".status.cpuCoreCount"
-// +kubebuilder:printcolumn:name="Storage (TB)",type="integer",JSONPath=".status.dataStorageSizeInGBs"
-// +kubebuilder:printcolumn:name="Reco Storage (GB)",type="integer",JSONPath=".status.recoStorageSizeInGB"
-// +kubebuilder:printcolumn:name="Storage Mgmt",type="string",JSONPath=".status.storageManagement"
+// +kubebuilder:printcolumn:name="DB Version",type="string",JSONPath=".status.dbInfo[0].dbVersion"
 // +kubebuilder:printcolumn:name="ConnString",type="string",JSONPath=".status.dbInfo[0].connectionString"
 type DbcsSystem struct {
 	metav1.TypeMeta   `json:",inline"`
