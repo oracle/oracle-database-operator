@@ -15914,7 +15914,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:basedb-operator-sa
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:restart-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

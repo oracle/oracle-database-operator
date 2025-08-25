@@ -469,7 +469,12 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			oracleRestart.Spec.InstDetails.EnvFile = cmName
 			result, err = r.createOrReplaceSfsAsm(ctx, req, oracleRestart, oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client), autoUpdate, index, isLast, oldSpec)
 			if err != nil {
-				result = resultNq
+				if autoUpdate {
+					result = resultQ
+				} else {
+					result = resultNq
+				}
+				result = resultQ
 				return result, err
 			}
 		}
