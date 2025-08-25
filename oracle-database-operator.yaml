@@ -9193,17 +9193,8 @@ spec:
     - jsonPath: .status.state
       name: State
       type: string
-    - jsonPath: .status.cpuCoreCount
-      name: OCPUs
-      type: integer
-    - jsonPath: .status.dataStorageSizeInGBs
-      name: Storage (TB)
-      type: integer
-    - jsonPath: .status.recoStorageSizeInGB
-      name: Reco Storage (GB)
-      type: integer
-    - jsonPath: .status.storageManagement
-      name: Storage Mgmt
+    - jsonPath: .status.dbInfo[0].dbVersion
+      name: DB Version
       type: string
     - jsonPath: .status.dbInfo[0].connectionString
       name: ConnString
@@ -15609,6 +15600,27 @@ webhooks:
     - autonomousdatabases
   sideEffects: None
 - admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v4-dbcssystem
+  failurePolicy: Fail
+  name: vdbcssystemv4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - dbcssystems
+  sideEffects: None
+- admissionReviewVersions:
   - v4
   - v1beta1
   clientConfig:
@@ -15902,7 +15914,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: lin.ocir.io/intsanjaysingh/operator/dboperator_master_orahub:250822
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:basedb-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

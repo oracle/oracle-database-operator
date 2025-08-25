@@ -745,6 +745,7 @@ func CloneFromBackupAndGetDbcsId(
 	var dbAdminPassword string
 	var tdePassword string
 	logger.Info("Starting the clone process for DBCS from backup", "dbcs", dbcs)
+	// time.Sleep(600 * time.Second)
 	backupResp, err := dbClient.GetBackup(ctx, database.GetBackupRequest{
 		BackupId: dbcs.Spec.DbBackupId,
 	})
@@ -937,6 +938,51 @@ func CloneFromDatabaseAndGetDbcsId(compartmentId string, logger logr.Logger, kub
 		logger.Error(err, "Failed to get SSH public key")
 		return "", err
 	}
+	// Before creating the clone request payload, check if a valid backup exists
+	backupsResp, err := dbClient.ListBackups(ctx, database.ListBackupsRequest{
+		DatabaseId: dbcs.Spec.DatabaseId,
+	})
+	if err != nil {
+		logger.Error(err, "Failed to list backups for database", "DatabaseId", dbcs.Spec.DatabaseId)
+		return "", fmt.Errorf("failed to list backups for database %s: %w", dbcs.Spec.DatabaseId, err)
+	}
+
+	if len(backupsResp.Items) == 0 {
+		msg := fmt.Sprintf("no backups found for database %s, cannot proceed with cloning", dbcs.Spec.DatabaseId)
+		logger.Error(nil, msg)
+		return "", fmt.Errorf(msg)
+	}
+
+	// Optional: ensure at least one backup is in the same AD
+	validBackupFound := false
+	for _, backup := range backupsResp.Items {
+		if backup.LifecycleState == database.BackupSummaryLifecycleStateActive &&
+			backup.AvailabilityDomain != nil &&
+			*backup.AvailabilityDomain == *existingDbSystem.DbSystem.AvailabilityDomain {
+
+			validBackupFound = true
+			logger.Info("Found valid backup for cloning",
+				"BackupId", *backup.Id,
+				"AvailabilityDomain", *backup.AvailabilityDomain,
+				"LifecycleState", backup.LifecycleState)
+			break
+		}
+
+	}
+
+	if !validBackupFound {
+		msg := fmt.Sprintf("no valid backups for database %s found in same AD %s, cannot proceed with cloning",
+			*dbcs.Spec.DatabaseId, *existingDbSystem.DbSystem.AvailabilityDomain)
+		logger.Error(nil, msg)
+		return "", fmt.Errorf(msg)
+	}
+
+	logger.Info("Valid backup found for cloning", "DatabaseId", dbcs.Spec.DatabaseId)
+
+	// Change the phase to "Provisioning"
+	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+		return "", statusErr
+	}
 
 	// Change the phase to "Provisioning"
 	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
@@ -998,7 +1044,7 @@ func CloneFromDatabaseAndGetDbcsId(compartmentId string, logger logr.Logger, kub
 	if err != nil {
 		// Change the phase to "Provisioning"
 		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
-			return "", statusErr
+			return "", err
 		}
 		return "", err
 	}
@@ -2018,7 +2064,12 @@ func SetDBCSStatus(state databasev4.LifecycleState, compartmentId string, dbClie
 	dbcs.Status.Network.ListenerPort = resp.ListenerPort
 	dbcs.Status.Network.HostName = *resp.Hostname
 	dbcs.Status.Network.DomainName = *resp.Domain
-	dbcs.Status.DbVersion = *resp.Version
+	if resp.Version != nil {
+		dbcs.Status.DbVersion = *resp.Version
+	} else {
+		dbcs.Status.DbVersion = ""
+	}
+
 	if dbcs.Spec.KMSConfig != nil && dbcs.Spec.KMSConfig.CompartmentId != "" {
 		dbcs.Status.KMSDetailsStatus.CompartmentId = dbcs.Spec.KMSConfig.CompartmentId
 		dbcs.Status.KMSDetailsStatus.VaultName = dbcs.Spec.KMSConfig.VaultName
