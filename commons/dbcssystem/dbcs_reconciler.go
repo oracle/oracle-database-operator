@@ -745,7 +745,6 @@ func CloneFromBackupAndGetDbcsId(
 	var dbAdminPassword string
 	var tdePassword string
 	logger.Info("Starting the clone process for DBCS from backup", "dbcs", dbcs)
-	// time.Sleep(600 * time.Second)
 	backupResp, err := dbClient.GetBackup(ctx, database.GetBackupRequest{
 		BackupId: dbcs.Spec.DbBackupId,
 	})
@@ -804,6 +803,11 @@ func CloneFromBackupAndGetDbcsId(
 		return "", err
 	}
 
+	// Change the phase to "Provisioning"
+	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+		return "", statusErr
+	}
+
 	// Create the clone request payload
 	cloneRequest := database.LaunchDbSystemFromBackupDetails{
 		CompartmentId:      existingDbSystem.DbSystem.CompartmentId,
@@ -857,15 +861,19 @@ func CloneFromBackupAndGetDbcsId(
 		LaunchDbSystemDetails: cloneRequest,
 	})
 	if err != nil {
+		// Change the phase to "Provisioning"
+		if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Failed, nwClient, wrClient); statusErr != nil {
+			return "", err
+		}
 		return "", err
 	}
 
 	dbcs.Status.DbCloneStatus.Id = response.DbSystem.Id
 
-	// Change the phase to "Provisioning"
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
-		return "", statusErr
-	}
+	// // Change the phase to "Provisioning"
+	// if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
+	// 	return "", statusErr
+	// }
 
 	// Check the state
 	_, err = CheckResourceState(logger, dbClient, *response.DbSystem.Id, string(databasev4.Provision), string(databasev4.Available))
@@ -978,11 +986,6 @@ func CloneFromDatabaseAndGetDbcsId(compartmentId string, logger logr.Logger, kub
 	}
 
 	logger.Info("Valid backup found for cloning", "DatabaseId", dbcs.Spec.DatabaseId)
-
-	// Change the phase to "Provisioning"
-	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
-		return "", statusErr
-	}
 
 	// Change the phase to "Provisioning"
 	if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.Provision, nwClient, wrClient); statusErr != nil {
