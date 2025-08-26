@@ -753,6 +753,7 @@ func CloneFromBackupAndGetDbcsId(
 		fmt.Println("Error getting backup details:", err)
 		return "", err
 	}
+	// Extract the DatabaseId from the backup details
 	databaseId := backupResp.Backup.DatabaseId
 	// Fetch the existing Database details
 	existingDatabase, err := dbClient.GetDatabase(ctx, database.GetDatabaseRequest{
@@ -769,6 +770,8 @@ func CloneFromBackupAndGetDbcsId(
 		logger.Error(err, "DBSystemId not found")
 		return "", err
 	}
+	dbcs.Spec.Id = dbSystemId
+
 	if compartmentId == "" {
 		compartmentId = *existingDatabase.CompartmentId
 	}

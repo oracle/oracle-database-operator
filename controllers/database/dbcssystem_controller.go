@@ -105,11 +105,9 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	var err error
 	resultNq := ctrl.Result{Requeue: false}
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}
-
 	// Get the dbcs instance from the cluster
 	dbcsInst := &databasev4.DbcsSystem{}
 	r.Logger.Info("Reconciling DbSystemDetails", "name", req.NamespacedName)
-	// time.Sleep(200000 * time.Second) // to avoid conflict condition during rapid changes
 	if err := r.KubeClient.Get(ctx, req.NamespacedName, dbcsInst); err != nil {
 		if errors.IsNotFound(err) {
 			// CR was deleted → stop reconciling
