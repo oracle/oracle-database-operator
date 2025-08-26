@@ -109,7 +109,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Get the dbcs instance from the cluster
 	dbcsInst := &databasev4.DbcsSystem{}
 	r.Logger.Info("Reconciling DbSystemDetails", "name", req.NamespacedName)
-
+	// time.Sleep(200000 * time.Second) // to avoid conflict condition during rapid changes
 	if err := r.KubeClient.Get(ctx, req.NamespacedName, dbcsInst); err != nil {
 		if errors.IsNotFound(err) {
 			// CR was deleted → stop reconciling
@@ -494,23 +494,6 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
-	setupCloning := false
-	// Check if SetupDBCloning is true and ensure one of the required fields is provided
-	if dbcsInst.Spec.SetupDBCloning {
-		// If SetupDBCloning is true, at least one of Id, DbBackupId, or DatabaseId must be non-nil
-		if dbcsInst.Spec.Id == nil && dbcsInst.Spec.DbBackupId == nil && dbcsInst.Spec.DatabaseId == nil {
-			// If none of the required fields are set, log an error and exit the function
-			r.Logger.Error(err, "SetupDBCloning is defined but other necessary details (Id, DbBackupId, DatabaseId) are not present. Refer README.md file for instructions.")
-			dbcsInst.Status.Message = "SetupDBCloning is defined but other necessary details (Id, DbBackupId, DatabaseId) are not present. Refer README.md file for instructions."
-			return ctrl.Result{}, nil
-		}
-		// If the condition is met, proceed with cloning setup
-		setupCloning = true
-	} else {
-		// If SetupDBCloning is false, continue as usual without cloning
-		setupCloning = false
-	}
-
 	switch {
 	case dbcsInst.Spec.IsPatch && dbcsInst.Spec.IsUpgrade:
 		errMsg := "Both IsPatch and IsUpgrade are set. Only one operation can be performed at a time."
@@ -582,6 +565,25 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		// All required fields are present, enable setup
 		setupDataguard = true
+	}
+
+	//-----------------Clone Setup---------------------------------//
+
+	setupCloning := false
+	// Check if SetupDBCloning is true and ensure one of the required fields is provided
+	if dbcsInst.Spec.SetupDBCloning {
+		// If SetupDBCloning is true, at least one of Id, DbBackupId, or DatabaseId must be non-nil
+		if dbcsInst.Spec.Id == nil && dbcsInst.Spec.DbBackupId == nil && dbcsInst.Spec.DatabaseId == nil {
+			// If none of the required fields are set, log an error and exit the function
+			r.Logger.Error(err, "SetupDBCloning is defined but other necessary details (Id, DbBackupId, DatabaseId) are not present. Refer README.md file for instructions.")
+			dbcsInst.Status.Message = "SetupDBCloning is defined but other necessary details (Id, DbBackupId, DatabaseId) are not present. Refer README.md file for instructions."
+			return ctrl.Result{}, nil
+		}
+		// If the condition is met, proceed with cloning setup
+		setupCloning = true
+	} else {
+		// If SetupDBCloning is false, continue as usual without cloning
+		setupCloning = false
 	}
 	var dbSystemId string
 	// Executing DB Cloning Process, if defined. Do not repeat cloning again when Status has Id present.
