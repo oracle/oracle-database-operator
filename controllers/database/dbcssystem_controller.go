@@ -750,11 +750,28 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
+				// Example: assume you have dataGuardRetryCount as an int
 
-				err = r.getDataGuardStatusAndUpdate(ctx, dbcsInst, databaseIds[0], *dbcsInst.Spec.Id)
-				if err != nil {
-					fmt.Printf("Failed to get dataguard details: %v\n", err)
-					return ctrl.Result{}, err
+				if len(databaseIds) > 0 && dbcsInst.Spec.Id != nil {
+					dataGuardRetryCount := 0
+					if dataGuardRetryCount < 5 {
+						err = r.getDataGuardStatusAndUpdate(ctx, dbcsInst, databaseIds[0], *dbcsInst.Spec.Id)
+						if err != nil {
+							dataGuardRetryCount++
+							// persist the updated retry count
+
+							fmt.Printf("Failed to get dataguard details (attempt %d/5): %v\n",
+								dataGuardRetryCount, err)
+							return ctrl.Result{Requeue: true}, err
+						}
+						// reset retry count on success
+						dataGuardRetryCount = 0
+					} else {
+						fmt.Println("Max retries (5) reached. Failing DataGuard status update.")
+						return ctrl.Result{}, fmt.Errorf("max retries reached for DataGuard status update")
+					}
+				} else {
+					fmt.Println("Skipping DataGuard status update as DatabaseIds or DbcsSystem ID is nil")
 				}
 
 				if err := dbcsv4.UpdateDbcsSystemIdInst(compartmentId, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient, databaseIds[0]); err != nil {
@@ -1041,7 +1058,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 		dbcsInst.Status.Message = msg
 		dbcsInst.Status.DataGuardStatus = nil
 		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
-		return fmt.Errorf(msg)
+		return nil
 	}
 	if dbcsInst.Status.DataGuardStatus == nil {
 		dbcsInst.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
@@ -1151,7 +1168,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 		dbcsInst.Status.Message = msg
 		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
-		return fmt.Errorf(msg)
+		return nil
 	}
 
 	// Verify Data Guard association exists
@@ -1242,7 +1259,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
 
 		pollInterval := 30 * time.Second
-		maxWait := 30 * time.Minute
+		maxWait := 120 * time.Minute
 		timeout := time.After(maxWait)
 
 		for {
@@ -1364,7 +1381,7 @@ func (r *DbcsSystemReconciler) waitForWorkRequest(
 	}
 
 	log.Info("Waiting for work request to complete", "workRequestID", *workRequestID)
-	timeout := time.After(60 * time.Minute)
+	timeout := time.After(120 * time.Minute)
 	pollInterval := 30 * time.Second
 
 	for {
@@ -2242,7 +2259,7 @@ func (r *DbcsSystemReconciler) createKMSVault(ctx context.Context, kmsConfig *da
 		return nil, err
 	}
 	// Wait until vault becomes active or timeout
-	timeout := time.After(5 * time.Minute) // Example timeout: 5 minutes
+	timeout := time.After(15 * time.Minute) // Example timeout: 5 minutes
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
