@@ -440,7 +440,7 @@ func PatchDBSystem(
 // It polls the patch history until the patch is SUCCEEDED or FAILED.
 func CheckPatchState(ctx context.Context, logger logr.Logger, dbClient database.DatabaseClient, dbSystemId *string, patchId string) error {
 	// Maximum wait duration: 120 minutes
-	timeout := 120 * time.Minute
+	timeout := 240 * time.Minute
 	start := time.Now()
 
 	for {
@@ -1754,7 +1754,7 @@ func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient data
 
 			// // Wait for the database to reach the desired state after migration, timeout for 2 hours
 			// Define timeout and check interval
-			timeout := 2 * time.Hour
+			timeout := 4 * time.Hour
 			checkInterval := 1 * time.Minute
 
 			err = WaitForDatabaseState(log, dbClient, databaseID, "AVAILABLE", timeout, checkInterval)
@@ -1976,7 +1976,7 @@ func CheckResourceState(logger logr.Logger, dbClient database.DatabaseClient, id
 	var state string
 	var err error
 
-	timeout := 120 * time.Minute
+	timeout := 240 * time.Minute
 	start := time.Now()
 
 	for {
@@ -2410,7 +2410,7 @@ func CreateDbcsBackup(
 	// ---- Wait for backup to complete ----
 	logger.Info("Waiting for backup to reach ACTIVE state...")
 
-	waitDuration := 60 * time.Minute
+	waitDuration := 240 * time.Minute
 	pollInterval := 30 * time.Second
 	timeout := time.After(waitDuration)
 	ticker := time.NewTicker(pollInterval)
@@ -2543,7 +2543,7 @@ func RestoreDbcsToPoint(
 	workRequestId := restoreResp.OpcWorkRequestId
 	logger.Info("Restore initiated", "WorkRequestID", *workRequestId)
 
-	timeout := time.After(60 * time.Minute)
+	timeout := time.After(240 * time.Minute)
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
