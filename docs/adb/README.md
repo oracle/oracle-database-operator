@@ -623,3 +623,24 @@ To check the logs, use these steps:
     ```sh
     kubectl logs -f pod/oracle-database-operator-controller-manager-78666fdddb-s4xcm -n oracle-database-operator-system
     ```
+
+## Known Issues
+
+### Failed to validate Wallet: "read-only file system"
+
+In some environments, e.g. OKE using the Operator add-on, the operator fails to validate the wallet due to encountering a **read-only file system** error. This prevents successful wallet validation and can disrupt operator functionality.
+
+For example, logs from the controller pod may show:
+
+```text
+"error": "Failed to validate Wallet: open /tmp/wallet1208873634.zip: read-only file system"
+```
+
+#### Workaround
+
+* Ensure wallet directories and mounted volumes have correct **read-write** permissions.
+* Confirm that file system mounts used by the operator are writable.
+
+#### Reference
+
+See GitHub issue **#193** in the [oracle-database-operator repository](https://github.com/oracle/oracle-database-operator/issues/193) for details and steps to work around.
