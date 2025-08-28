@@ -514,7 +514,7 @@ func AddSingleDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source 
 	}
 
 	// Add OCI Vault Required Values
-	if IsUsingOCIVault(o) && a.Spec.OCIConfig.ConfigMap.Name != "" {
+	if a.Spec.OCIConfig.ConfigMap.Name != "" {
 		ociConfig := a.Spec.OCIConfig.ConfigMap.Name
 		source = AddEnv(source, e, EnvVarOCIVaultPrivateKeyPath, DefaultVaultPrivateKeyAbsolutePath)
 		source = AddEnvFromConfigMap(source, e, EnvVarOCIVaultFingerprint, DefaultOCIConfigFingerprintKey, ociConfig)
@@ -523,8 +523,8 @@ func AddSingleDatabaseEnvs(a *api.DatabaseObserver, e map[string]string, source 
 		source = AddEnvFromConfigMap(source, e, EnvVarOCIVaultRegion, DefaultOCIConfigRegionKey, ociConfig)
 	}
 
-	// Add OCI Vault Required Values
-	if IsUsingAzureVault(z, VaultIDProvided) && a.Spec.AzureConfig.ConfigMap.Name != "" {
+	// Add Azure Vault Required Values
+	if a.Spec.AzureConfig.ConfigMap.Name != "" {
 		azureConfig := a.Spec.AzureConfig.ConfigMap.Name
 		source = AddEnvFromConfigMap(source, e, EnvVarAzureTenantID, DefaultAzureConfigTenantId, azureConfig)
 		source = AddEnvFromConfigMap(source, e, EnvVarAzureClientID, DefaultAzureConfigClientId, azureConfig)
