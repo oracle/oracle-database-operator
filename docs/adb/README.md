@@ -596,6 +596,18 @@ Autonomous Database controller uses Kubernetes objects such as:
 
 The defintion of all the Kubernetes Objects, which are to be used by the Oracle Autonomous Database Controller, comes from the `oracle-database-operator.yaml` file which is applied to deploy the **Oracle Database Operator**.
 
+## OpenShift Support
+
+The Autonomous Database (ADB) Controller has been tested on OpenShift clusters and verified to work with the following use cases:
+
+* **Create** – Provision a new Autonomous Database
+* **Sync (Binding)** – Synchronize with existing Autonomous Database resources
+* **Update** – Apply configuration changes
+* **Stop** – Stop an Autonomous Database instance
+* **Start** – Start an Autonomous Database instance
+* **Terminate** – Delete an Autonomous Database instance
+* **Clone** – Create a clone from an existing Autonomous Database
+
 ## Debugging and troubleshooting
 
 ### Show the details of the resource

@@ -38,7 +38,7 @@ In this v2.0 production release, `OraOperator` supports the following database c
 * **Globally Distributed Database**
   - Support for Oracle Database 23ai Raft replication
 * **Autonomous Database**
-  - Support for Database cloning
+  - Support for Database manual failover and switchover
 * **Multitenant DB**
   - ORDS-based Controller: Assertive deletion policy
   - New LRES-based Controller (ARM & AM)
@@ -71,7 +71,7 @@ In this v2.0 production release, `OraOperator` supports the following database c
 ## Overall Features Summary
 As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) supports the following lifecycle operations:
 
-* **ADB-S/ADB-D**: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning
+* **ADB-S/ADB-D**: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning, manual failover, switchover
 * **ACD**: Provision, bind, restart, terminate (soft/hard)
 * **SIDB**: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS), PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), Snapshot Standby (Data Guard)
 * **Oracle Restart**: Provision and manage Oracle Restart environments
