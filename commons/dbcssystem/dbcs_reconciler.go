@@ -567,7 +567,7 @@ func UpgradeDatabaseVersion(
 		}
 
 		// Step 4: Check status
-		_, err = CheckResourceState(logger, dbClient, databaseId, string(databasev4.Provision), string(databasev4.Available))
+		_, err = CheckResourceState(logger, dbClient, *upgradeResp.Id, string(databasev4.Provision), string(databasev4.Available))
 		if err != nil {
 			logger.Error(err, "Failed to verify database state post upgrade")
 			dbcs.Status.Message = "Failed to verify database state post upgrade"
@@ -716,7 +716,7 @@ func UpgradeDatabaseVersion(
 	}
 
 	// Step 4: Check status
-	_, err = CheckResourceState(logger, dbClient, databaseId, string(databasev4.Provision), string(databasev4.Available))
+	_, err = CheckResourceState(logger, dbClient, *upgradeRespDb.DbSystemId, string(databasev4.Provision), string(databasev4.Available))
 	if err != nil {
 		logger.Error(err, "Failed to verify database state post upgrade")
 		dbcs.Status.Message = "Upgrade Database Completed successfully."
