@@ -278,6 +278,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 				if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, desiredAdb, ADB_FINALIZER); err != nil {
 					return emptyResult, fmt.Errorf("Failed to remove finalizer to Autonomous Database "+desiredAdb.Name+": %w", err)
 				}
+				return emptyResult, nil
 			} else {
 				// Remove the Autonomous Database in OCI.
 				// Change the action to Terminate and proceed with the rest of the reconcile logic
@@ -329,7 +330,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	/******************************************************************
 	* Update the Autonomous Database at the end of every reconcile.
 	******************************************************************/
-	if specChanged {
+	if specChanged && desiredAdb.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminating {
 		if err := r.KubeClient.Update(context.TODO(), desiredAdb); err != nil {
 			return r.manageError(
 				logger.WithName("updateSpec"),
