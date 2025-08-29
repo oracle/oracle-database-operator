@@ -1,5 +1,3 @@
-<span style="font-family:Liberation mono; font-size:0.9em; line-height: 1.1em">
-
 
 
 <!-- TOC -->
@@ -13,6 +11,8 @@
     - [Create the operator](#create-the-operator)
     - [ClusterRole and ClusterRoleBinding for NodePort services](#clusterrole-and-clusterrolebinding-for-nodeport-services)
     - [Container database setup](#container-database-setup)
+    - [Certificate and credentials](#certificate-and-credentials)
+        - [Private key 🔑](#private-key-)
         - [Public Key 🔑](#public-key-)
         - [Certificates](#certificates)
     - [Create secrets for certificate and keys](#create-secrets-for-certificate-and-keys)
@@ -36,41 +36,26 @@
 - [KNOWN ISSUE](#known-issue)
 
 <!-- /TOC -->
-    - [Create PDB](#create-pdb)
-        - [pdb config map](#pdb-config-map)
-    - [Open PDB](#open-pdb)
-    - [Close PDB](#close-pdb)
-    - [Clone PDB](#clone-pdb)
-    - [Unplug PDB](#unplug-pdb)
-    - [Plug PDB](#plug-pdb)
-    - [Delete PDB](#delete-pdb)
-- [SQL/PLSQL SCRIPT EXECUTION](#sqlplsql-script-execution)
-    - [Apply plsql configmap](#apply-plsql-configmap)
-    - [Limitation](#limitation)
-- [TROUBLESHOOTING](#troubleshooting)
-    - [Get rid of error status](#get-rid-of-error-status)
-- [UPGRADE EXISTING INSTALLATION](#upgrade-existing-installation)
-- [KNOWN ISSUE](#known-issue)
 
-<!-- /TOC -->
 
+<span style="font-family:Liberation mono; font-size:0.9em; line-height: 1.1em">
 
 
 **Lrpdb** and **lrest** are two controllers for PDB lifecycle management (**PDBLCM**). They rely on a dedicated REST server (Lite Rest Server) container image. The `lrest` controller is available on the Oracle Container Registry (OCR). The container database can be anywhere (on-premises or in the Cloud). 
 
 ![generaleschema](./images/Generalschema2.jpg)
 
-## WHAT'S NEW
+##  1. <a name='WHATSNEW'></a>WHAT'S NEW
 
-- Version 2.0 introduces the semplification requested by the [issue 170](https://github.com/oracle/oracle-database-operator/issues/170). The **action** fileds no longer exists. This change brings a big semplification in terms of code and symplifies the life cycle command  execution. The *kubectl get lrpdb*  commands exposes the status of CRD which is reppresented by a bitmask.      
+- Version 2.0 mplements the request described in the github [issue 170](https://github.com/oracle/oracle-database-operator/issues/170): remove The **action** fileds to reduce the number of input directives and  simplif the logic of the reconciliation loop. In addition to that the *kubectl get lrpdb*  commands exposes a bitmask which represent the CRD status.      
 
 ![kubectlget_format](./images/KubectlGetSchema2.jpg)
 
-- **Map** command is no longer available; start the lrest using the **autodoscovery** option. If a pluggable database is created manually via command line then the lrest  detects the new pdb and automatically creates the CRD.
+-  The **Map** action has been replaced by the **autodoscovery** option. If a pluggable database is created manually via command line then the lrest  detects the new pdb and automatically creates the CRD.
 
 - [sql/plsql sript execution](#sqlplsql-script-execution) this functionality enables the capability of sql/plsql code execution. 
 
-### Kubectl get lrpdb format
+###  1.1. <a name='Kubectlgetlrpdbformat'></a>Kubectl get lrpdb format
 | Name          | Description                                             | 
 |---------------|---------------------------------------------------------|
 | NAME          | The name of the **CRD**                                 |     
@@ -85,7 +70,7 @@
 | BITMASK STATUS| The status of pdb represented using a bitmask           | 
 | CONNECT_STRING| The tns string for pdb connection                       |
 
-### Pdb status table 
+###  1.2. <a name='Pdbstatustable'></a>Pdb status table 
 
 | Name    | Value     | Description                                       |
 |---------|-----------|---------------------------------------------------|
@@ -106,23 +91,23 @@
 | **OTHER INFO**                                                          |
 | PDBAUT | 0x01000000 | Autodisover                                       |
 
-> Note that in case of error codes the reconciliation loop does  not take any action see 
+> In case of error codes the reconciliation loop does  not take any action see 
 [Get rid of error status](#get-rid-of-error-status); human action is required.
 
-## STEP BY STEP CONFIGURATION
+##  2. <a name='STEPBYSTEPCONFIGURATION'></a>STEP BY STEP CONFIGURATION
 Complete each of these steps in the order given. 
 
-### Multiple namespace setup
+###  2.1. <a name='Multiplenamespacesetup'></a>Multiple namespace setup
 
 Before proceeding with controllers setup, ensure that the Oracle Database Operator (operator) is configured to work with multiple namespaces, as specified in the [README](../../../README.md).
-In this document, each controller is running in a dedicated namespace: lrest controller is running in **cdbnamespace** , lrpdb controller is running in **pdbnamespace**. The [usecase directory](./usecase/README.md) contains all the files reported in this document.
+In this document, each controller is running in a dedicated namespace: lrest controller is running in **cdbnamespace** , lrpdb controller is running in **pdbnamespace**. The [usecase directory](./usecase/README.md) contains sample files and additional scripts for yaml files customization. 
 
 Configure the **WACTH_NAMESPACE** list of the operator `yaml` file 
 
 ```bash 
 sed -i 's/value: ""/value: "oracle-database-operator-system,pdbnamespace,cdbnamespace"/g' oracle-database-operator.yaml
 ```
-### Apply rolebinding 
+###  2.2. <a name='Applyrolebinding'></a>Apply rolebinding 
 
 
 Apply the following files : [`pdbnamespace_binding.yaml`](./usecase/pdbnamespace_binding.yaml) [`cdbnamespace_binding.yaml`](./usecase/cdbnamespace_binding.yaml)
@@ -131,7 +116,7 @@ kubectl apply -f pdbnamespace_binding.yaml
 kubectl apply -f cdbnamespace_binding.yaml
 ```
 
-### Create the operator
+###  2.3. <a name='Createtheoperator'></a>Create the operator
 Run the following command:
 
 ```bash
@@ -146,7 +131,7 @@ oracle-database-operator-controller-manager-796c9b87df-sckf2   1/1     Running  
 oracle-database-operator-controller-manager-796c9b87df-t4qns   1/1     Running   0          22m
 ```
 
-### ClusterRole and ClusterRoleBinding for NodePort services
+###  2.4. <a name='ClusterRoleandClusterRoleBindingforNodePortservices'></a>ClusterRole and ClusterRoleBinding for NodePort services
 
 To expose services on each node's IP and port (the NodePort), apply the node-rbac.yaml. Note that this step is not required for LoadBalancer services.
 
@@ -155,7 +140,7 @@ To expose services on each node's IP and port (the NodePort), apply the node-rba
 ```
 
 
-### Container database setup
+###  2.5. <a name='Containerdatabasesetup'></a>Container database setup
 
 On the container database, use the following commands to configure the account for PDB administration: 
 
@@ -164,8 +149,6 @@ alter session set "_oracle_script"=true;
 create user <ADMINUSERNAME> identified by <PASSWORD>;
 grant create session to <ADMINUSERNAME> container=all;
 grant sysdba to <ADMINUSERNAME> container=all;
-```
-
 ```
 
 ### Certificate and credentials
@@ -235,7 +218,7 @@ echo "[WEBUSER PASSWORD]"        > wbpass.txt
 echo "[PDBUSERNAME]"             > pdbusr.txt 
 echo "[PDBUSERNAME PASSWORD]"    > pdbpwd.txt 
 
-## Encrypt the credentials
+##  3. <a name='Encryptthecredentials'></a>Encrypt the credentials
 openssl rsautl -encrypt -pubin -inkey public.pem -in dbuser.txt |base64 > e_dbuser.txt 
 openssl rsautl -encrypt -pubin -inkey public.pem -in dbpass.txt |base64 > e_dbpass.txt 
 openssl rsautl -encrypt -pubin -inkey public.pem -in wbuser.txt |base64 > e_wbuser.txt 
@@ -376,7 +359,7 @@ Parsing sqltext=select count(*) from pdb_plug_in_violations where name =:b1
 ### Openshift configuration 
 
 For the open shift installation you need to do the following
-- Before lrest pod creation; create a security context by appling the following yaml file [security_context.yaml](./usecase/security_context.yaml) mind to specify the correnct **namespace** and the **service name account**.
+- Before lrest pod creation; create a security context by appling the yaml file [security_context.yaml](./usecase/security_context.yaml): mind to specify the correnct **namespace** and the **service name account**.
 
 ```yaml 
 [...]
@@ -421,7 +404,8 @@ SQL> show pdbs
          3 PDBDEV                         MOUNTED
 SQL> 
 ```
-``Note that after creation, the PDB is not open. You must explicitly open it using a dedicated `yaml` file.
+
+> Note that after creation, the PDB is not open. You must explicitly open it using a dedicated `yaml` file.
 
 **pdb creation** - parameters list
 
@@ -443,7 +427,7 @@ SQL>
 |cdbPubKey                | Secret: public key                                                            |
 |pdbconfigmap             | kubernetes config map that contains the PDB initialization (init) parameters  |
 
-> NOTE: **assertiveLrpdbDeletion** must be specified for the following PDB actions **CLONE** **CREATE** **PLUG** **MAP**.  
+> NOTE: **assertiveLrpdbDeletion** needs to be explicitly set for PDB  **CLONE** **CREATE** **PLUG** .  
 
 🔥 **assertiveLrpdbDeletion** drops pluggable database using **INCLUDE DATAFILES** option
 
@@ -494,9 +478,9 @@ test_invalid_parameter;16;spfile
 - If specified, the `configmap` is applied during PDB **cloning**, **opening** and **plugging**
 - The `configmap` is not monitored by the reconciliation loop; this feature will be available in future releases. This means that if someone decides to manually alter an init parameter, then the operator does not take any actions to syncronize PDB configuration with the `configmap`.
 - **Alter system parameter feature** will be available in future releases. 
-- An application error with the `configmap` (for whatever reason) does not stop processes from completing. A warning with the associated SQL code is reported in the log file.
+- A `configmap` misconfiguration (typo, invalid parameter, invalid value) does not stop the operation. A warning with the associated SQL code is written in the log file.
 
-- **PDB configmap bitmap** status is not reported by the *kubectl get lrpdb* command; in order to verifiy configmap status you need to describe the resource. 
+- **PDB configmap bitmap** status is not reported by the *kubectl get lrpdb* command; You can describe the resource to verify the bitmap status (*kubectl describe lrpdb ....*).
 
 | Name    | Value     | Description                                       |
 |---------|-----------|---------------------------------------------------|
@@ -634,11 +618,11 @@ kubectl delete lrpdb <pdbname> -n <namespace>
 ## SQL/PLSQL SCRIPT EXECUTION
 
 
-Plsql and sql script can be stored in a kubernetes configmap, each block can be tagged with a label as describe in the following example. 
+Plsql and sql script can be stored in a kubernetes configmap, each block can be tagged with a label as describe in the example. 
 
 ```yaml 
 
-## PLSQL / SQL Block config schema
+##  4. <a name='PLSQLSQLBlockconfigschema'></a>PLSQL / SQL Block config schema
 
 apiVersion 
 kind CofigMap
@@ -664,8 +648,7 @@ The sql and plsqlcode must be indented using tab (makefile stile). The code bloc
 kubectl patch lrpdb pdb1 -n pdbnamespace -p '{"spec":{"codeconfigmap":"<config_map_name>"}}' --type=merge
 ```
 
-The **kubectl get** commands shows only the return code of the last plsql code executed. 
-If you need to see the overall status of the whole config map execution  check the events history as reported in the following example 
+The **kubectl get** commands shows only the return code of the last plsql code executed.  Describe the resource if you need to verify the overall status of the whole config map execution; see the events history in the example 
 
 ```bash
 /usr/bin/kubectl patch lrpdb pdb1 -n pdbnamespace -p \
@@ -702,7 +685,7 @@ The message format for the **APPLYSQL** is `CODE:SQLCODE '[<tagname>]':'<PLSQL R
 
 ```
 
-- The nummber of code lines is limited the configmap capability. To workaround this limitation you can use mode configmap. 
+- The nummber of code lines is limited by the configmap capability. To workaround this limitation you can use more configmaps. 
 
 ## TROUBLESHOOTING 
 
@@ -737,9 +720,9 @@ pdb1   DB12       pdbdev     MOUNTED     0.80G      close:[ORA-65170]    NONE   
 ```
 ## UPGRADE EXISTING INSTALLATION 
 
-In order to migrante an existing installation to the new version of controller you can laverage on the autodiscover installation. Patch all your lrpdb resources by setting **assertiveLrpdbDeletion** fasle. After that you can delete lrest resource and all lrpdbs. Upgrade the operator and create lrest server paying attenction to set **autodiscover** true and   the namespace  used by the autodiscovery mechanism (**namespaceAutoDiscover**). 
+In order to migrante an existing installation to the new version of controller you can laverage on the autodiscover installation. Patch all your lrpdb resources by setting **assertiveLrpdbDeletion** false. After that you can delete lrest resource and all lrpdbs. Upgrade the operator and create lrest server paying attenction to set **autodiscover** true and  the namespace  used by the autodiscovery mechanism (**namespaceAutoDiscover**). 
 
-## KNOWN ISSUE 
+## KNOWN ISSUES 
 
 - Error message `ORA-01005` is not reported in the lrest database login phase if password is mistakenly null. Trace log shows the message ORA-1012.
 

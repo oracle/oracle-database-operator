@@ -1,28 +1,31 @@
+<!-- vscode-markdown-toc -->
+* 1. [Prerequisites](#Prerequisites)
+* 2. [Operator setup](#Operatorsetup)
+* 3. [Secrets creation](#Secretscreation)
+* 4. [Yaml file creation](#Yamlfilecreation)
+* 5. [Run testcase](#Runtestcase)
+* 6. [Makefile targets table](#Makefiletargetstable)
+* 7. [Diag commands and troubleshooting](#Diagcommandsandtroubleshooting)
+	* 7.1. [Connect to rest server pod](#Connecttorestserverpod)
+	* 7.2. [Lrest pod log](#Lrestpodlog)
+	* 7.3. [Monitor control plane](#Monitorcontrolplane)
+	* 7.4. [Error decrypting credential](#Errordecryptingcredential)
+	* 7.5. [Crd details](#Crddetails)
+
+<!-- vscode-markdown-toc-config
+	numbering=true
+	autoSave=true
+	/vscode-markdown-toc-config -->
+<!-- /vscode-markdown-toc -->
+
 <span style="font-family:Liberation mono; font-size:0.9em; line-height: 1.1em">
 
 
+
 # Use case directory 
-<!-- TOC -->
 
-- [Use case directory](#use-case-directory)
-        - [Prerequisites](#prerequisites)
-        - [Operator setup](#operator-setup)
-        - [Secrets creation](#secrets-creation)
-        - [Yaml file creation](#yaml-file-creation)
-        - [Run testcase](#run-testcase)
-        - [Makefile targets table](#makefile-targets-table)
-    - [Diag commands and troubleshooting](#diag-commands-and-troubleshooting)
-            - [Connect to rest server pod](#connect-to-rest-server-pod)
-            - [Lrest pod log](#lrest-pod-log)
-            - [Monitor control plane](#monitor-control-plane)
-            - [Error decrypting credential](#error-decrypting-credential)
-            - [Crd details](#crd-details)
-
-<!-- /TOC -->
-
-
-The use case directory contains a makefile to automatically install the Oracle Database Operator (namespace scope configuration) and generate the yaml files to test pdb life cycle management in two different namespaces (one for lrest pod the other one for pdb crd). To simplify and speed up the execution you just need to edit a [parameter file](../usecase/parameters.txt) with all the information about your environment. 
-Subsequent steps are the operator installation, the secret installation, the yaml files generation and finally the tests execution. 
+The use case directory contains a makefile to automatically install the Oracle Database Operator (namespace scope configuration) and generate the yaml files to test pdb life cycle management in two different namespaces (one for lrest pod the other one for pdb crd). To simplify and speed up the execution you just need to edit a [parameter file](../usecase/parameters.txt) with all the information about your environment. The makefile script uses parameter file to generate all the yaml file required to test the controllers. 
+After parameters setup there is the operator installation (**make opsetup**) , the secrets installation (**make secrets**), the yaml file generation (**make genyaml**).
 
 ![generalschema](../images/usecaseschema.jpg)
 
@@ -52,10 +55,10 @@ OPENSHIFT..............:[boolean]
 
 Verify parameters using ``make check`` command.
 
-### Prerequisites
+##  1. <a name='Prerequisites'></a>Prerequisites
 
 - Ensure that **kubectl** is properly installed on your client.
-- Even if the takes care of the requirements setup read carefully the [operator installation page](../../../../docs/installation/OPERATOR_INSTALLATION_README.md) are implemented. (role binding,webcert,etc)
+- Even if the makefile automation, read carefully the [operator installation page](../../../../docs/installation/OPERATOR_INSTALLATION_README.md). (role binding,webcert,etc)
 - Ensure that the administrative user (admin) on the container database is configured as documented.
 
 eg
@@ -68,7 +71,7 @@ grant create session to restdba container=all;
 grant sysdba to restdba container=all;
 ```
 
-### Operator setup
+##  2. <a name='Operatorsetup'></a>Operator setup
 
 ```bash
 make opsetup
@@ -83,21 +86,21 @@ The make target **make opsetup** does the following actions:
 
 👉 **If your are running on Openshift you need to manually apply the [service context file](./security_context.yaml)** 
 
-### Secrets creation 
+##  3. <a name='Secretscreation'></a>Secrets creation 
 
 ```bash
 make secrets
 ```
 **make secrets** creates secrets encrypting the credential specified in the parameters
 
-### Yaml file creation 
+##  4. <a name='Yamlfilecreation'></a>Yaml file creation 
 
 ```bash
 make genyaml
 ```
 **make genyaml** generates the required `yaml` files to work with multitenant controllers.
 
-### Run testcase 
+##  5. <a name='Runtestcase'></a>Run testcase 
 
 ```bash
 make runall00
@@ -105,7 +108,7 @@ make runall00
 
 You can run **make runall00** to test all the functionality the multitenant controller 
 
-### Makefile targets table
+##  6. <a name='Makefiletargetstable'></a>Makefile targets table
 
  | target          | action              | additional info |
  |-----------------|---------------------|-----------------|
@@ -139,15 +142,16 @@ You can run **make runall00** to test all the functionality the multitenant cont
  |**secrets**      | create secrets      |                 |
  |**genyaml**      | generate the yaml files|              |
  |opclean          | deintall the operator|                |   
-## Diag commands and troubleshooting
 
-#### Connect to rest server pod
+##  7. <a name='Diagcommandsandtroubleshooting'></a>Diag commands and troubleshooting
+
+###  7.1. <a name='Connecttorestserverpod'></a>Connect to rest server pod
 
 ```bash 
 /usr/bin/kubectl exec   <podname> -n <namespace> -it -- /bin/bash
 ```
 
-#### Lrest pod log
+###  7.2. <a name='Lrestpodlog'></a>Lrest pod log
 
 ```bash
 kubectl logs  `kubectl get pods -o custom-columns=:metadata.name -n cdbnamespace --no-headers ` -n cdbnamespace
@@ -164,7 +168,7 @@ kubectl exec  cdb-dev-lrest-rs-fnw99 -n cdbnamespace -it -- /bin/bash
 [oracle@cdb-dev-lrest-rs-fnw99 ~]$
 ```
 
-#### Monitor control plane
+###  7.3. <a name='Monitorcontrolplane'></a>Monitor control plane
 
 ```bash
 kubectl logs -f -l control-plane=controller-manager -n oracle-database-operator-system
@@ -187,7 +191,7 @@ I1029 10:07:20.189724       1 leaderelection.go:250] attempting to acquire leade
 
 ```
 
-#### Error decrypting credential 
+###  7.4. <a name='Errordecryptingcredential'></a>Error decrypting credential 
 
 In the following example you can see a resource creation failure due to a decryption issue
 
@@ -201,7 +205,7 @@ In the following example you can see a resource creation failure due to a decryp
 ```bash
 openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > mykey
 ```
-#### Crd details 
+###  7.5. <a name='Crddetails'></a>Crd details 
 Use the **describe** option to obtain `crd` information
 
 ```bash
