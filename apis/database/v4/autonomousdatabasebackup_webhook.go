@@ -93,11 +93,6 @@ func (r *AutonomousDatabaseBackup) ValidateCreate(ctx context.Context, obj runti
 			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
 	}
 
-	if backup.Spec.Target.K8sAdb.Name != nil && backup.Spec.Target.OciAdb.Id != nil {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sAdb or ociAdb, but not both"))
-	}
-
 	if len(allErrs) == 0 {
 		return nil, nil
 	}

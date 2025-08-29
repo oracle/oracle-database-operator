@@ -80,15 +80,6 @@ var _ = Describe("test AutonomousDatabaseBackup webhook", func() {
 
 			validateInvalidTest(backup, false, errMsg)
 		})
-
-		It("Should specify either k8sAdb or ociAdb, but not both", func() {
-			var errMsg string = "specify either k8sAdb or ociAdb, but not both"
-
-			backup.Spec.Target.K8sAdb.Name = common.String("fake-target-adb")
-			backup.Spec.Target.OciAdb.Id = common.String("fake.ocid1.autonomousdatabase.oc1...")
-
-			validateInvalidTest(backup, false, errMsg)
-		})
 	})
 
 	Describe("Test ValidateUpdate of the AutonomousDatabaseBackup validating webhook", func() {

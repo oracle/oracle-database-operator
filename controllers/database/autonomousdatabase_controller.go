@@ -303,6 +303,18 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 			specChanged = true
 		}
 
+		/******************************************************************
+		*	Sync AutonomousDatabase Backups from OCI.
+		* The backups will not be synced when the lifecycle state is
+		* TERMINATING or TERMINATED.
+		******************************************************************/
+		if desiredAdb.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminating &&
+			desiredAdb.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminated {
+			if err := r.syncBackupResources(logger, desiredAdb); err != nil {
+				return r.manageError(logger.WithName("syncBackupResources"), desiredAdb, err)
+			}
+		}
+
 		/*****************************************************
 		*	Validate Wallet
 		*****************************************************/
