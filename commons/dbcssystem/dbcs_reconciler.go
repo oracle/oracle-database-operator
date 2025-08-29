@@ -2003,6 +2003,10 @@ func CheckResourceState(logger logr.Logger, dbClient database.DatabaseClient, id
 			logger.Info("DB System is still updating ", "State", state, "Id", id)
 			time.Sleep(60 * time.Second)
 			continue
+		case string(database.DbSystemLifecycleStateUpgrading):
+			logger.Info("DB System is still upgrading ", "State", state, "Id", id)
+			time.Sleep(60 * time.Second)
+			continue
 		case transientState:
 			logger.Info("DB System still in transient state", "State", state, "Id", id)
 			time.Sleep(60 * time.Second) // sleep before re-checking
