@@ -1080,6 +1080,9 @@ dumplrest:
 	@>$(DIAGFILE)
 	$(KUBECTL) logs  `$(KUBECTL) get pods -o custom-columns=:metadata.name -n $(LRSNAMESPACE) --no-headers ` -n $(LRSNAMESPACE) |strings > $(DIAGFILE)
 
+loglrest:
+	$(KUBECTL) logs -f `$(KUBECTL) get pods -o custom-columns=:metadata.name -n $(LRSNAMESPACE) --no-headers ` -n $(LRSNAMESPACE)
+
 
 listimage:
 	 $(KUBECTL) get pods --all-namespaces -o jsonpath="{.items[*].spec['initContainers', 'containers'][*].image}" | tr -s '[[:space:]]' '\n' | sort | uniq -c
@@ -1158,6 +1161,11 @@ close:
 	$(KUBECTL) wait --for jsonpath='{.status.msg'}=$(CLOSEMSG) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	@$(call msg, "lrpdb $(LRPDBNAME)  completed")
 	$(KUBECTL) get lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) 
+
+altercpu:
+	@$(call msg, "lrpdb $(LRPDBNAME)  alter cpu")
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
+		'{"spec":{"alterSystemParameter":"cpu_count","alterSystemValue":"3","parameterScope":"memory"}}' --type=merge
 
 openpdb1:
 	$(MAKE) -f $(MAKEFILE) open LRPDBNAME=pdb1 
@@ -1292,11 +1300,11 @@ tkplsqlexec01:
 	$(KUBECTL) apply -f $(CONFIG_MAP_SQL)
 	$(KUBECTL) describe configmap $(PLSQLMAP) -n $(PDBNAMESPACE)
 	@$(call msg,"applying config sql map")
-	$(KUBECTL) patch lrpdb pdb1 -n $(PDBNAMESPACE) -p \
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) -p \
 	                '{"spec":{"codeconfigmap":"$(PLSQLMAP)"}}' --type=merge
 	sleep 10
 	$(KUBECTL) get events --sort-by='.lastTimestamp' -n $(PDBNAMESPACE)
-	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=pdb1|grep APPLYSQL
+	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=$(LRPDBNAME)|grep APPLYSQL
 
 
 
@@ -1312,8 +1320,49 @@ tkaudosicov:
 		lrpdb atd-pdbdev -n $(PDBNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
 	$(MAKE) -f $(MAKEFILE) genyaml ASSERTDELETION=true
 
+# Proceudure to recreate restserver
+tklrestew:
+	@$(call msg,"Recrete resetserver")
+	@$(call msg,"disable autodiscover and delete cascade")
+	$(KUBECTL) patch lrest cdb-dev -n $(LRSNAMESPACE) -p '{"spec":{"autodiscover":false,"deletePdbCascade":false}}'  --type=merge
+	$(KUBECTL) wait --for jsonpath='{.spec.autodiscover'}=false lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	$(KUBECTL) wait --for jsonpath='{.spec.deletePdbCascade'}=false lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+	sleep 10
+	$(MAKE) -f $(MAKEFILE) run00
+
+# Turn ON/OFF autodiscovery 
+#          ON:    make tkautd AUTOD=true
+#          OFF:   make tkautd AUTOD=false
+tkautd:
+	@$(call msg,"autodiscover $(AUTOD)")
+	$(KUBECTL) patch lrest cdb-dev -n $(LRSNAMESPACE) -p '{"spec":{"autodiscover":$(AUTOD)}}'  --type=merge
+	$(KUBECTL) wait --for jsonpath='{.spec.autodiscover'}=$(AUTOD) lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+
+# Turn ON/OFF lrest pdb delete cascade
+#          ON:    make tkdelcs DELETECS=true
+#          OFF:   make tkdelcs DELETECS=false
+tkdelcs:
+	@$(call msg,"delete pdb cascade $(DELETECS)")
+	$(KUBECTL) patch lrest cdb-dev -n $(LRSNAMESPACE) -p '{"spec":{"deletePdbCascade":$(DELETECS)}}'  --type=merge
+	$(KUBECTL) wait --for jsonpath='{.spec.deletePdbCascade'}=$(DELETECS) lrest cdb-dev -n $(LRSNAMESPACE) --timeout=$(TEST_EXEC_TIMEOUT)
+
+# Turn ON/OFF lrest pdb imperativeLrpdb deletion (delete CRD & PDB)
+#          ON:    make tkdelcrd DELETECRD=true  LRPDBNAME=<crdname>
+#          OFF:   make tkdelcrd DELETECRD=false LRPDNNAME=<crdname>
+tkdelcrd:
+	@$(call msg,"imperativeLrpdbDeletion $(DELETECRD)")
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) \
+                -p '{"spec":{"imperativeLrpdbDeletion":$(DELETECRD)}}' --type=merge
+	$(KUBECTL) wait --for jsonpath='{.spec.imperativeLrpdbDeletion'}=$(DELETECRD) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)  --timeout=$(TEST_EXEC_TIMEOUT)
+
 pdbsize:
 	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.pdbName}{"\t"}{.spec.totalSize}{"\t"}{.status.totalSize}{"\n"}{end}'
+
+reset:
+	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) \
+		-p '{"spec":{"pdbState":"RESET","reststate":$(RESETVALUE)}}' --type=merge
+	$(KUBECTL) get  lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)
+ 
 
 
 

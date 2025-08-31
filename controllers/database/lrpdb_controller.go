@@ -208,6 +208,7 @@ var globalsqlcode int
 //+kubebuilder:rbac:groups=database.oracle.com,resources=events,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=lrpdbs/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=database.oracle.com,resources=lrpdbs/finalizers,verbs=get;create;update;patch;delete
+//+kubebuilder:rbac:groups=database.oracle.com,resources=lrpdbs/configmaps,verbs=get;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -243,7 +244,7 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	/****  CREATE ****/
-	if Bit(lrpdb.Status.PDBBitMask, PDBCRT|PDBCRE) == false && lrpdb.Spec.SrcLRPDBName == "" && lrpdb.Spec.XMLFileName == "" {
+	if Bit(lrpdb.Status.PDBBitMask, PDBCRT) == false && Bit(lrpdb.Status.PDBBitMask, PDBCRE) == false && lrpdb.Spec.SrcLRPDBName == "" && lrpdb.Spec.XMLFileName == "" {
 		log.Info("REC. LOOP: create pdb")
 		err = r.CreateLRPDB(ctx, req, lrpdb)
 		if err != nil {
@@ -263,7 +264,7 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if Bit(lrpdb.Status.PDBBitMask, FNALAZ) == false && Bit(lrpdb.Status.PDBBitMask, PDBCRT) == true {
 		if lrpdb.ObjectMeta.DeletionTimestamp.IsZero() {
 			if !controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
-				log.Info("REC. LOOP: add finalizer")
+				log.Info("add finalizer:" + lrpdb.Spec.LRPDBName)
 				controllerutil.AddFinalizer(lrpdb, LRPDBFinalizer)
 				if err := r.Update(ctx, lrpdb); err != nil {
 					log.Info("Cannot add finalizer")
@@ -278,7 +279,7 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	/**** OPEN ****/
-	if lrpdb.Spec.LRPDBState == "OPEN" && Bit(lrpdb.Status.PDBBitMask, PDBOPN|PDBOPE) == false {
+	if lrpdb.Spec.LRPDBState == "OPEN" && Bit(lrpdb.Status.PDBBitMask, PDBOPN) == false && Bit(lrpdb.Status.PDBBitMask, PDBOPE) == false {
 		log.Info("REC. LOOP: open pdb")
 		err = r.OpenLRPDB(ctx, req, lrpdb)
 		if err != nil {
@@ -402,8 +403,19 @@ func (r *LRPDBReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if lrpdb.Spec.PDBBitMask != 0 && lrpdb.Spec.LRPDBState == "RESET" {
 		log.Info("REC. LOOP: reset state")
 		lrpdb.Status.PDBBitMask = lrpdb.Spec.PDBBitMask
+		log.Info("lrpdb.Status.PDBBitMask:" + strconv.Itoa(lrpdb.Status.PDBBitMask))
+		log.Info("lrpdb.Spec.PDBBitMask:" + strconv.Itoa(lrpdb.Spec.PDBBitMask))
+		if Bit(lrpdb.Spec.PDBBitMask, PDBAUT) == true {
+			log.Info("reset state PDBAUT")
+			if controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
+				lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAZ)
+			}
+
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT)
+		}
 		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 		r.UpdateStatus(ctx, req, lrpdb)
+
 		lrpdb.Spec.PDBBitMask = 0
 		lrpdb.Spec.LRPDBState = "NONE"
 
@@ -871,65 +883,68 @@ func (r *LRPDBReconciler) DeleteLRPDB(ctx context.Context, req ctrl.Request, lrp
 		return err
 	}
 
-	/* Close the pdb if it's open */
-	if Bit(lrpdb.Status.PDBBitMask, PDBOPN) == true {
-		valuesclose := map[string]string{
-			"state":        "CLOSE",
-			"modifyOption": "IMMEDIATE",
-			"getScript":    "FALSE"}
+	if lrpdb.Spec.ImperativeLrpdbDeletion == true {
+		/* Close the pdb if it's open */
+		if Bit(lrpdb.Status.PDBBitMask, PDBOPN) == true {
+			valuesclose := map[string]string{
+				"state":        "CLOSE",
+				"modifyOption": "IMMEDIATE",
+				"getScript":    "FALSE"}
+			lrpdbName := lrpdb.Spec.LRPDBName
+			url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
+			respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, valuesclose, "POST")
+			r.GetSqlCode(respData, &(lrpdb.Status.SqlCode))
+			if lrpdb.Status.SqlCode != 0 {
+				oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
+				lrpdb.Status.Msg = "close:[" + oer + "]"
+				r.UpdateStatus(ctx, req, lrpdb)
+			}
+			if err != nil {
+				log.Info("Warning error closing lrpdb continue anyway")
+
+			}
+			lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBOPN)
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCLS)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+			r.UpdateStatus(ctx, req, lrpdb)
+
+		}
+
+		values := map[string]string{
+			"action":    "INCLUDING",
+			"getScript": strconv.FormatBool(*(lrpdb.Spec.GetScript))}
+
+		if lrpdb.Spec.DropAction != "" {
+			values["action"] = lrpdb.Spec.DropAction
+		}
+
 		lrpdbName := lrpdb.Spec.LRPDBName
 		url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
-		respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, valuesclose, "POST")
+
+		respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "DELETE")
+		if err != nil {
+			log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
+			return err
+		}
+
 		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode))
+		globalsqlcode = lrpdb.Status.SqlCode
 		if lrpdb.Status.SqlCode != 0 {
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAE)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 			oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
-			lrpdb.Status.Msg = "close:[" + oer + "]"
+			lrpdb.Status.Msg = "delete:[" + oer + "]"
+			r.UpdateStatus(ctx, req, lrpdb)
+			return err
+		} else {
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBDIC)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 			r.UpdateStatus(ctx, req, lrpdb)
 		}
-		if err != nil {
-			log.Info("Warning error closing lrpdb continue anyway")
-
-		}
-		lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBOPN)
-		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCLS)
-		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
-		r.UpdateStatus(ctx, req, lrpdb)
 
 	}
 
-	values := map[string]string{
-		"action":    "INCLUDING",
-		"getScript": strconv.FormatBool(*(lrpdb.Spec.GetScript))}
-
-	if lrpdb.Spec.DropAction != "" {
-		values["action"] = lrpdb.Spec.DropAction
-	}
-
-	lrpdbName := lrpdb.Spec.LRPDBName
-	url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
-
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "DELETE")
-	if err != nil {
-		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
-		return err
-	}
-
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode))
-	globalsqlcode = lrpdb.Status.SqlCode
-	if lrpdb.Status.SqlCode != 0 {
-		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAE)
-		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
-		oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
-		lrpdb.Status.Msg = "delete:[" + oer + "]"
-		r.UpdateStatus(ctx, req, lrpdb)
-		return err
-	} else {
-		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBDIC)
-		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
-		r.UpdateStatus(ctx, req, lrpdb)
-	}
-
-	log.Info("Successfully dropped LRPDB", "LRPDB Name", lrpdbName)
+	log.Info("Successfully dropped LRPDB", "LRPDB Name", lrpdb.Spec.LRPDBName)
 
 	controllerutil.RemoveFinalizer(lrpdb, LRPDBFinalizer)
 	if err := r.Update(ctx, lrpdb); err != nil {
@@ -958,65 +973,66 @@ func (r *LRPDBReconciler) DeleteLRPDBDeclarative(ctx context.Context, req ctrl.R
 		return err
 	}
 
-	/* Close the pdb if it's open */
-	if Bit(lrpdb.Status.PDBBitMask, PDBOPN) == true {
-		valuesclose := map[string]string{
-			"state":        "CLOSE",
-			"modifyOption": "IMMEDIATE",
-			"getScript":    "FALSE"}
+	if lrpdb.Spec.ImperativeLrpdbDeletion == true {
+		/* Close the pdb if it's open */
+		if Bit(lrpdb.Status.PDBBitMask, PDBOPN) == true {
+			valuesclose := map[string]string{
+				"state":        "CLOSE",
+				"modifyOption": "IMMEDIATE",
+				"getScript":    "FALSE"}
+			lrpdbName := lrpdb.Spec.LRPDBName
+			url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
+			respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, valuesclose, "POST")
+			r.GetSqlCode(respData, &(lrpdb.Status.SqlCode))
+			if lrpdb.Status.SqlCode != 0 {
+				oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
+				lrpdb.Status.Msg = "close:[" + oer + "]"
+				r.UpdateStatus(ctx, req, lrpdb)
+			}
+			if err != nil {
+				log.Info("Warning error closing lrpdb continue anyway")
+
+			}
+			lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBOPN)
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCLS)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
+			r.UpdateStatus(ctx, req, lrpdb)
+
+		}
+
+		values := map[string]string{
+			"action":    "INCLUDING",
+			"getScript": strconv.FormatBool(*(lrpdb.Spec.GetScript))}
+
+		if lrpdb.Spec.DropAction != "" {
+			values["action"] = lrpdb.Spec.DropAction
+		}
+
 		lrpdbName := lrpdb.Spec.LRPDBName
 		url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
-		respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, valuesclose, "POST")
+
+		respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "DELETE")
+		if err != nil {
+			log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
+			return err
+		}
+
 		r.GetSqlCode(respData, &(lrpdb.Status.SqlCode))
+		globalsqlcode = lrpdb.Status.SqlCode
 		if lrpdb.Status.SqlCode != 0 {
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAE)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 			oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
-			lrpdb.Status.Msg = "close:[" + oer + "]"
+			lrpdb.Status.Msg = "delete:[" + oer + "]"
+			r.UpdateStatus(ctx, req, lrpdb)
+			return err
+		} else {
+			lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBDIC)
+			lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 			r.UpdateStatus(ctx, req, lrpdb)
 		}
-		if err != nil {
-			log.Info("Warning error closing lrpdb continue anyway")
-
-		}
-		lrpdb.Status.PDBBitMask = Bid(lrpdb.Status.PDBBitMask, PDBOPN)
-		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCLS)
-		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
-		r.UpdateStatus(ctx, req, lrpdb)
-
 	}
-
-	values := map[string]string{
-		"action":    "INCLUDING",
-		"getScript": strconv.FormatBool(*(lrpdb.Spec.GetScript))}
-
-	if lrpdb.Spec.DropAction != "" {
-		values["action"] = lrpdb.Spec.DropAction
-	}
-
-	lrpdbName := lrpdb.Spec.LRPDBName
-	url := r.BaseUrl(ctx, req, lrpdb, lrest) + lrpdbName
-
-	respData, err := NewCallAPISQL(r, ctx, req, lrpdb, url, values, "DELETE")
-	if err != nil {
-		log.Error(err, "Failure NewCallAPISQL( "+url+")", "err", err.Error())
-		return err
-	}
-
-	r.GetSqlCode(respData, &(lrpdb.Status.SqlCode))
-	globalsqlcode = lrpdb.Status.SqlCode
-	if lrpdb.Status.SqlCode != 0 {
-		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, FNALAE)
-		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
-		oer := fmt.Sprintf("ORA-%d", lrpdb.Status.SqlCode)
-		lrpdb.Status.Msg = "delete:[" + oer + "]"
-		r.UpdateStatus(ctx, req, lrpdb)
-		return err
-	} else {
-		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBDIC)
-		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
-		r.UpdateStatus(ctx, req, lrpdb)
-	}
-
-	log.Info("Successfully dropped LRPDB", "LRPDB Name", lrpdbName)
+	log.Info("Successfully dropped LRPDB", "LRPDB Name", lrpdb.Spec.LRPDBName)
 
 	if controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
 		log.Info("Removing finalizer")
@@ -1356,7 +1372,7 @@ func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrp
 		return err
 	}
 	/* If it's not created by lrest autodiscover */
-	if Bit(lrpdb.Status.PDBBitMask, PDBAUT) == false {
+	if Bit(lrpdb.Status.PDBBitMask, PDBAUT) == false && lrpdb.Spec.PDBBitMask == 0 {
 
 		var err error
 		var tde_Password string
@@ -1477,6 +1493,7 @@ func (r *LRPDBReconciler) CreateLRPDB(ctx context.Context, req ctrl.Request, lrp
 	} else {
 		log.Info("CRD created by autodiscover")
 		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBCRT)
+		lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBAUT)
 		lrpdb.Status.PDBBitMaskStr = Bitmaskprint(lrpdb.Status.PDBBitMask)
 		lrpdb.Status.ConnString = strings.TrimSpace(lrest.Spec.DBTnsurl)
 		parseTnsAlias(&(lrpdb.Status.ConnString), &(lrpdb.Spec.LRPDBName))
@@ -2186,6 +2203,10 @@ func (r *LRPDBReconciler) InitConfigMap(ctx context.Context, req ctrl.Request, l
 
 		log.Info("Generating an empty configmap")
 		globalconfigmap = "configmap-" + lrpdb.Spec.LRPDBName + "-default"
+		// RFC 1123
+		globalconfigmap = strings.ToLower(globalconfigmap)
+		globalconfigmap = strings.ReplaceAll(globalconfigmap, "_", "-")
+
 		DbParameters := &corev1.ConfigMap{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "configmap",
@@ -2203,8 +2224,14 @@ func (r *LRPDBReconciler) InitConfigMap(ctx context.Context, req ctrl.Request, l
 			return nil
 		}
 
+		if err := r.Create(ctx, DbParameters); err != nil {
+			log.Error(err, "Failed to create the default configmap", "Namespace", lrpdb.Namespace, "Default configmap", globalconfigmap)
+			return nil
+		}
+
 		/* Update Spec.PDBConfigMap */
-		lrpdb.Spec.PDBConfigMap = "configmap" + lrpdb.Spec.LRPDBName + "default"
+		//lrpdb.Spec.PDBConfigMap = "configmap" + lrpdb.Spec.LRPDBName + "default"
+		lrpdb.Spec.PDBConfigMap = globalconfigmap
 		if err := r.Update(ctx, lrpdb); err != nil {
 			log.Error(err, "Failure updating Spec.PDBConfigMap ", "err", err.Error())
 			return nil

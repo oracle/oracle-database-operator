@@ -291,8 +291,24 @@ func (r *LRESTReconciler) validateLRESTPods2(ctx context.Context, req ctrl.Reque
 	log := r.Log.WithValues("validateLRESTPod2", req.NamespacedName)
 	log.Info("Validating Pod creation for :" + lrest.Name)
 
-	/* Just check the number of pdbs to verify lrest server status */
-	_, err := r.SelectFromVpdbs(ctx, req, lrest)
+	/*
+		_, err := r.SelectFromVpdbs(ctx, req, lrest)
+		if err != nil {
+			log.Info("LREST is not ready ", "Namespace", req.Namespace)
+			lrest.Status.Msg = "Waiting for LREST Pod(s) to be read"
+			return errors.New("Waiting for LREST pods to be ready")
+		}
+	*/
+
+	/* Using a smarter and ligther method to validate the pod
+	   No need  to read the whole v$pdbs*/
+	RestPort := lrest.Spec.LRESTPort
+	RestName := lrest.Name + "-lrest"
+	RestNmsp := lrest.Namespace
+	Ip := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
+
+	url := "https://" + Ip + "/database/pdbs/PDB$SEED/status/"
+	_, err := NewCallAPIAllPdbs(r, ctx, req, lrest, url, nil, "GET")
 	if err != nil {
 		log.Info("LREST is not ready ", "Namespace", req.Namespace)
 		lrest.Status.Msg = "Waiting for LREST Pod(s) to be read"
@@ -1265,12 +1281,15 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 	}
 	log.Info("NamesSpaceAutoDiscover := " + NamesSpaceAutoDiscover)
 
+	Resname := "atd-" + strings.ToLower(dbinfo[idx].(map[string]interface{})["name"].(string))
+	Resname = strings.ReplaceAll(Resname, "_", "-")
+
 	obj := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "database.oracle.com/v4",
 			"kind":       "LRPDB",
 			"metadata": map[string]interface{}{
-				"name":      "atd-" + strings.ToLower(dbinfo[idx].(map[string]interface{})["name"].(string)),
+				"name":      Resname,
 				"namespace": NamesSpaceAutoDiscover,
 			},
 			"spec": map[string]interface{}{
@@ -1313,7 +1332,7 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 	} else {
 		log.Info("Custom resource created successfully ")
 		fmt.Printf("obj:%s\n", result)
-		r.Recorder.Eventf(lrest, corev1.EventTypeNormal, "LrpdbCreation", "created lrpdb:%s", "atd-"+dbinfo[idx].(map[string]interface{})["name"].(string))
+		r.Recorder.Eventf(lrest, corev1.EventTypeNormal, "LrpdbCreation", "created lrpdb:%s", Resname)
 
 	}
 
@@ -1321,7 +1340,7 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 
 	err = r.Get(context.Background(), client.ObjectKey{
 		Namespace: NamesSpaceAutoDiscover,
-		Name:      "atd-" + strings.ToLower(dbinfo[idx].(map[string]interface{})["name"].(string)),
+		Name:      Resname,
 	}, &lrpdb)
 
 	lrpdb.Status.PDBBitMask = Bis(lrpdb.Status.PDBBitMask, PDBAUT)
