@@ -274,8 +274,8 @@ type OracleRestartNodePortSvc struct {
 	PortMappings  []OracleRestartPortMapping `json:"portMappings,omitempty"`
 	SvcName       string                     `json:"name,omitempty"`
 	SvcType       string                     `json:"svcType,omitempty"`
-	SvcLBIP       string                     `json:"paiLBIP,omitempty"`
-	SvcAnnotation map[string]string          `json:"pailbAnnotation,omitempty"`
+	SvcLBIP       string                     `json:"svcLBIP,omitempty"`
+	SvcAnnotation map[string]string          `json:"svcAnnotation,omitempty"`
 }
 
 type OracleRestartPortMapping struct {
