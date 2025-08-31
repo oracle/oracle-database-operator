@@ -79,6 +79,7 @@ type OracleRestartSpec struct {
 	IsManual           bool                             `json:"isManual,omitempty"`
 	SrvAccountName     string                           `json:"serviceAccountName,omitempty"`
 	StorageClass       string                           `json:"storageClass,omitempty"`
+	LbService          OracleRestartNodePortSvc         `json:"lbService,omitempty"`
 }
 
 type AsmDiskDetails struct {
@@ -270,9 +271,11 @@ type OracleRestartStatus struct {
 }
 
 type OracleRestartNodePortSvc struct {
-	PortMappings []OracleRestartPortMapping `json:"portMappings,omitempty"`
-	SvcName      string                     `json:"name,omitempty"`
-	SvcType      string                     `json:"svcType,omitempty"`
+	PortMappings  []OracleRestartPortMapping `json:"portMappings,omitempty"`
+	SvcName       string                     `json:"name,omitempty"`
+	SvcType       string                     `json:"svcType,omitempty"`
+	SvcLBIP       string                     `json:"paiLBIP,omitempty"`
+	SvcAnnotation map[string]string          `json:"pailbAnnotation,omitempty"`
 }
 
 type OracleRestartPortMapping struct {

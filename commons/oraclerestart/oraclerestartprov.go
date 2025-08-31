@@ -694,52 +694,44 @@ func BuildExternalServiceDefForOracleRestart(instance *oraclerestart.OracleResta
 
 	var npSvc oraclerestart.OracleRestartNodePortSvc
 
-	if OracleRestartSpex.PortMappings != nil {
-		npSvc = OracleRestartSpex.NodePortSvc[index]
-		npSvc.PortMappings = OracleRestartSpex.PortMappings
-	}
-
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForOracleRestart(instance, index, OracleRestartSpex, opType),
 		Spec:       corev1.ServiceSpec{},
 	}
-	var exSvcPorts oraclerestart.OracleRestartPortMapping
-	var exSvc oraclerestart.OracleRestartNodePortSvc
 
+	// If user is setting Node Port Service
 	if opType == "nodeport" {
-		// service.Spec.ClusterIP = string(corev1.ServiceTypeNodePort)
-		if strings.EqualFold(npSvc.SvcType, "vip") {
-			service.Spec.Selector = getSvcLabelsForOracleRestart(0, OracleRestartSpex)
-		} else if strings.EqualFold(npSvc.SvcType, "scan") {
-			service.Spec.Selector = buildLabelsForOracleRestart(instance, "OracleRestart")
-		} else {
-			service.Spec.Selector = getSvcLabelsForOracleRestart(0, OracleRestartSpex)
+		if OracleRestartSpex.PortMappings != nil {
+			npSvc = OracleRestartSpex.NodePortSvc[index]
+			npSvc.PortMappings = OracleRestartSpex.PortMappings
 		}
-	}
-	if opType == "onssvc" {
-		//exSvc.SvcName = OracleRestartSpex.Name + "-0-ons"
-		exSvc.SvcType = svctype
+		service.Spec.Type = corev1.ServiceTypeNodePort
+	} else if opType == "lbsvc" {
+		npSvc = instance.Spec.LbService
+		npSvc.PortMappings = instance.Spec.LbService.PortMappings
+		service.Spec.Type = corev1.ServiceTypeClusterIP
+	} else if opType == "onssvc" {
+		var exSvcPorts oraclerestart.OracleRestartPortMapping
+		var exSvc oraclerestart.OracleRestartNodePortSvc
+		npSvc.SvcType = svctype
 		exSvcPorts.NodePort = *OracleRestartSpex.OnsTargetPort
+		npSvc.PortMappings[index].NodePort = *OracleRestartSpex.OnsTargetPort
 		if OracleRestartSpex.OnsLocalPort != nil {
 			exSvcPorts.Port = *OracleRestartSpex.OnsLocalPort
 		} else {
 			exSvcPorts.Port = 6200
 		}
-
 		exSvc.PortMappings = append(exSvc.PortMappings, exSvcPorts)
-		service.Spec.Selector = getSvcLabelsForOracleRestart(0, OracleRestartSpex)
 		npSvc = exSvc
 	}
 
+	//service.Name = npSvc.SvcName
+	if len(instance.Spec.LbService.SvcAnnotation) != 0 {
+		service.Annotations = instance.Spec.LbService.SvcAnnotation
+	}
+
+	service.Spec.Selector = getSvcLabelsForOracleRestart(0, OracleRestartSpex)
 	service.Spec.Ports = buildOracleRestartSvcPortsDef(npSvc)
-
-	if svctype == "nodeport" {
-		service.Spec.Type = corev1.ServiceTypeNodePort
-	}
-
-	if svctype == "lbservice" {
-		service.Spec.Type = corev1.ServiceTypeClusterIP
-	}
 
 	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
 
@@ -752,21 +744,12 @@ func buildSvcObjectMetaForOracleRestart(instance *oraclerestart.OracleRestart, r
 	//var svcName string
 
 	var labelStr map[string]string
-	if strings.ToUpper(svctype) == "VIP" || strings.ToUpper(svctype) == "LOCAL" || strings.ToUpper(svctype) == "ONSSVC" || strings.ToUpper(svctype) == "LSNRSVC" {
-		labelStr = getSvcLabelsForOracleRestart(replicaCount, OracleRestartSpex)
-	} else if strings.ToUpper(svctype) == "SCAN" {
-		labelStr = nil
-	} else {
-		labelStr = nil
-	}
+	labelStr = getSvcLabelsForOracleRestart(replicaCount, OracleRestartSpex)
 
 	objmeta := metav1.ObjectMeta{
 		Name:      getOracleRestartSvcName(instance, OracleRestartSpex, svctype),
 		Namespace: instance.Namespace,
-	}
-
-	if labelStr != nil {
-		objmeta.Labels = labelStr
+		Labels:    labelStr,
 	}
 
 	return objmeta
@@ -777,16 +760,12 @@ func getOracleRestartSvcName(instance *oraclerestart.OracleRestart, OracleRestar
 	switch svcType {
 	case "local":
 		return OracleRestartSpex.Name + "-0"
-	// case "vip":
-	// 	return OracleRestartSpex.VipSvcName
-	// case "scan":
-	// 	return instance.Spec.ScanSvcName
 	case "onssvc":
 		return OracleRestartSpex.Name + "-0-ons"
-	case "lsnrsvc":
-		return OracleRestartSpex.Name + "-0-lsnr"
-	// case "scansvc":
-	// 	return instance.Spec.ScanSvcName + "-lsnr"
+	case "lbsvc":
+		return OracleRestartSpex.Name + "-0-lbsvc"
+	case "nodeport":
+		return OracleRestartSpex.Name + "-0-npsvc"
 	default:
 		return OracleRestartSpex.Name
 
