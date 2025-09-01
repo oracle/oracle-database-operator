@@ -242,7 +242,9 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if oracleRestart.Spec.ExternalSvcType != nil {
 		svcType = *oracleRestart.Spec.ExternalSvcType
 	} else {
-		svcType = "nodeport"
+		if len(oracleRestart.Spec.LbService.PortMappings) == 0 {
+			svcType = "nodeport"
+		}
 	}
 	result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, "local"))
 	if err != nil {
@@ -270,7 +272,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	}
 
-	if len(oracleRestart.Spec.LbService.SvcName) != 0 && len(oracleRestart.Spec.LbService.PortMappings) != 0 {
+	if len(oracleRestart.Spec.LbService.PortMappings) != 0 {
 		result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, svcType, "lbservice"))
 		if err != nil {
 			result = resultNq

@@ -706,10 +706,10 @@ func BuildExternalServiceDefForOracleRestart(instance *oraclerestart.OracleResta
 			npSvc.PortMappings = OracleRestartSpex.PortMappings
 		}
 		service.Spec.Type = corev1.ServiceTypeNodePort
-	} else if opType == "lbsvc" {
+	} else if opType == "lbservice" {
 		npSvc = instance.Spec.LbService
 		npSvc.PortMappings = instance.Spec.LbService.PortMappings
-		service.Spec.Type = corev1.ServiceTypeClusterIP
+		service.Spec.Type = corev1.ServiceTypeLoadBalancer
 	} else if opType == "onssvc" {
 		var exSvcPorts oraclerestart.OracleRestartPortMapping
 		var exSvc oraclerestart.OracleRestartNodePortSvc

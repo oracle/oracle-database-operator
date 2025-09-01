@@ -10650,6 +10650,12 @@ spec:
                                 type: integer
                             type: object
                           type: array
+                        svcAnnotation:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        svcLBIP:
+                          type: string
                         svcType:
                           type: string
                       type: object
@@ -10730,6 +10736,35 @@ spec:
                 type: boolean
               isManual:
                 type: boolean
+              lbService:
+                properties:
+                  name:
+                    type: string
+                  portMappings:
+                    items:
+                      properties:
+                        nodePort:
+                          format: int32
+                          type: integer
+                        port:
+                          format: int32
+                          type: integer
+                        protocol:
+                          type: string
+                        targetPort:
+                          format: int32
+                          type: integer
+                      type: object
+                    type: array
+                  svcAnnotation:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  svcLBIP:
+                    type: string
+                  svcType:
+                    type: string
+                type: object
               nfsStorageDetails:
                 properties:
                   path:
@@ -11082,6 +11117,12 @@ spec:
                                       type: integer
                                   type: object
                                 type: array
+                              svcAnnotation:
+                                additionalProperties:
+                                  type: string
+                                type: object
+                              svcLBIP:
+                                type: string
                               svcType:
                                 type: string
                             type: object
@@ -11407,6 +11448,12 @@ spec:
                                 type: integer
                             type: object
                           type: array
+                        svcAnnotation:
+                          additionalProperties:
+                            type: string
+                          type: object
+                        svcLBIP:
+                          type: string
                         svcType:
                           type: string
                       type: object
@@ -15078,6 +15125,7 @@ rules:
   - database.oracle.com
   resources:
   - dbcssystems/finalizers
+  - lrpdbs/configmaps
   - lrpdbs/finalizers
   - oraclerestarts/finalizers
   - shardingdatabases/finalizers
@@ -15914,7 +15962,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:basedb-operator-sa
+        image: dbcs-dev-docker.dockerhub-phx.oci.oraclecorp.com/oracle/database-operator:5dba2bde
         imagePullPolicy: Always
         name: manager
         ports:
