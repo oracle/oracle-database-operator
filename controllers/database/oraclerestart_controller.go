@@ -2125,19 +2125,19 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 			data = append(data, "DB_RECOVERY_FILE_DEST_SIZE="+instance.Spec.ConfigParams.DbRecoveryFileDestSize)
 		}
 		if instance.Spec.ConfigParams.DBAsmDiskDgRedundancy != "" {
-			data = append(data, "DB_ASMDG_PROPERTIES="+"redudancy:"+instance.Spec.ConfigParams.DBAsmDiskDgRedundancy)
+			data = append(data, "DB_ASMDG_PROPERTIES="+"redundancy:"+instance.Spec.ConfigParams.DBAsmDiskDgRedundancy)
 		}
 
 		if instance.Spec.ConfigParams.RedoAsmDiskDgRedudancy != "" {
-			data = append(data, "REDO_ASMDG_PROPETRIES="+"redudancy:"+instance.Spec.ConfigParams.RedoAsmDiskDgRedudancy)
+			data = append(data, "REDO_ASMDG_PROPETRIES="+"redundancy:"+instance.Spec.ConfigParams.RedoAsmDiskDgRedudancy)
 		}
 
 		if instance.Spec.ConfigParams.RecoAsmDiskDgRedundancy != "" {
-			data = append(data, "RECO_ASMDG_PROPETRIES="+"redudancy:"+instance.Spec.ConfigParams.RecoAsmDiskDgRedundancy)
+			data = append(data, "RECO_ASMDG_PROPETRIES="+"redundancy:"+instance.Spec.ConfigParams.RecoAsmDiskDgRedundancy)
 		}
 
 		if instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy != "" {
-			data = append(data, "CRS_ASMDG_REDUNDANCY="+"redudancy:"+instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy)
+			data = append(data, "CRS_ASMDG_REDUNDANCY="+"redundancy:"+instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy)
 		}
 	}
 
