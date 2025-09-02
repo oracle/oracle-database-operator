@@ -2137,7 +2137,7 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 		}
 
 		if instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy != "" {
-			data = append(data, "CRS_ASMDG_REDUNDANCY="+"redundancy:"+instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy)
+			data = append(data, "CRS_ASMDG_REDUNDANCY="+"redundancy="+instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy)
 		}
 	}
 
