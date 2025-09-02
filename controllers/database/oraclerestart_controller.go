@@ -2129,11 +2129,11 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 		}
 
 		if instance.Spec.ConfigParams.RedoAsmDiskDgRedudancy != "" {
-			data = append(data, "REDO_ASMDG_PROPETRIES="+"redundancy:"+instance.Spec.ConfigParams.RedoAsmDiskDgRedudancy)
+			data = append(data, "REDO_ASMDG_PROPERTIES="+"redundancy:"+instance.Spec.ConfigParams.RedoAsmDiskDgRedudancy)
 		}
 
 		if instance.Spec.ConfigParams.RecoAsmDiskDgRedundancy != "" {
-			data = append(data, "RECO_ASMDG_PROPETRIES="+"redundancy:"+instance.Spec.ConfigParams.RecoAsmDiskDgRedundancy)
+			data = append(data, "RECO_ASMDG_PROPERTIES="+"redundancy:"+instance.Spec.ConfigParams.RecoAsmDiskDgRedundancy)
 		}
 
 		if instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy != "" {
