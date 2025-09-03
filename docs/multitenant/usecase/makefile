@@ -712,6 +712,7 @@ spec:
   pdbName: "pdbdev"
   pdbState: "DELETE"
   dropAction: "INCLUDING"
+  imperativeLrpdbDeletion: ${ASSERTDELETION}
 EOF
 
 cat <<EOF > ${LRPDBDELETE2}
@@ -728,6 +729,7 @@ spec:
   pdbName: "pdbprd"
   pdbState: "DELETE"
   dropAction: "INCLUDING"
+  imperativeLrpdbDeletion: ${ASSERTDELETION}
 EOF
 
 cat <<EOF > ${LRPDBDELETE3}
@@ -744,6 +746,7 @@ spec:
   pdbName: "new_clone"
   pdbState: "DELETE"
   dropAction: "INCLUDING"
+  imperativeLrpdbDeletion: ${ASSERTDELETION}
 EOF
 
 cat <<EOF > ${LRPDBUNPLUG1}
@@ -1355,12 +1358,20 @@ tkdelcrd:
                 -p '{"spec":{"imperativeLrpdbDeletion":$(DELETECRD)}}' --type=merge
 	$(KUBECTL) wait --for jsonpath='{.spec.imperativeLrpdbDeletion'}=$(DELETECRD) lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)  --timeout=$(TEST_EXEC_TIMEOUT)
 
-pdbsize:
+checkpdbsize:
 	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE)  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.pdbName}{"\t"}{.spec.totalSize}{"\t"}{.status.totalSize}{"\n"}{end}'
 
+checkimpdel:
+	$(KUBECTL) get lrpdb -n $(PDBNAMESPACE) \
+	       	-o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.pdbName}{" "}{.status.openMode}{" "}{.spec.imperativeLrpdbDeletion}{" "}{"\t\t"}{"\n"}{end}'| sed 's/READ WRITE/READ_WRITE/g' |awk ' BEGIN { printf( "%-20s %-10s %-10s %10s\n","CRD","PDB NAME","OPEN MODE","IMPERATIVELRPDBDELETION"); \
+		 printf( "%-20s %-10s %-10s %-23s\n","--------------------","----------","----------","-----------------------");\
+		 } { printf("%-20s %-10s %-10s %-23s\n",$$1,$$2,$$3,$$4) }'
+
 reset:
+	@$(call msg,"Reset state $(LRPDBNAME):$(RESETVALUE)")
 	$(KUBECTL) patch lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE) \
-		-p '{"spec":{"pdbState":"RESET","reststate":$(RESETVALUE)}}' --type=merge
+		-p '{"spec":{"pdbState":"RESET","reststate":$(RESETVALUE)}}'  \
+		--type=merge
 	$(KUBECTL) get  lrpdb $(LRPDBNAME) -n $(PDBNAMESPACE)
  
 
@@ -1385,15 +1396,29 @@ reset:
 # openpdb2rs  - pdb2 open restrict      - imperative  
 #
 
-runall01: genyaml tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 run03.1 run03.2 run04.1 run04.2 run05.1 run06.1 run07.1 
+runall01: genyaml tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 \
+	  run03.1 run03.2 run04.1 run04.2 run05.1 run06.1 run07.1 
 runall02: genyaml tkapplyinit run00 run01.1 openpdb1
-runall03: genyaml tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 run04.1 run04.2 openpdb1 openpdb2 closepdb1 closepdb2 openpdb1rs
+runall03: genyaml tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 \
+       	run04.1 run04.2 openpdb1 openpdb2 closepdb1 closepdb2 openpdb1rs
 	$(MAKE) -f $(MAKEFILE) close LRPDBNAME=pdb1
 	$(MAKE) -f $(MAKEFILE) open  LRPDBNAME=pdb1
 	$(MAKE) -f $(MAKEFILE) close LRPDBNAME=pdb1
 	$(MAKE) -f $(MAKEFILE) run05.1 run06.1
-runall04: genyaml tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 run04.1 run04.2 openpdb1 openpdb2 closepdb1 closepdb2 run05.1 run06.1 closepdb1 
+runall04: genyaml tkapplyinit run00 run01.1 run01.2 run02.1 run02.2 run04.1 \
+       	run04.2 openpdb1 \
+          openpdb2 closepdb1 closepdb2 run05.1 run06.1 closepdb1 
 runall05: genyaml tkapplyinit run00 run01.1 run02.1 run03.1
+## Delete cloned pdb
+## setup:create/open/clone
+runall06: run01.1 run02.1 run03.1
+	$(KUBECTL) apply -f $(LRPDBDELETE3)
+	$(KUBECTL) apply -f $(LRPDBDELETE1)
+
+
+
+
+
 
 
 

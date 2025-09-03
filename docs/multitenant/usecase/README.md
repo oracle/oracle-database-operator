@@ -18,6 +18,7 @@
 	/vscode-markdown-toc-config -->
 <!-- /vscode-markdown-toc -->
 
+
 <span style="font-family:Liberation mono; font-size:0.9em; line-height: 1.1em">
 
 
@@ -132,6 +133,9 @@ You can run **make runall00** to test all the functionality the multitenant cont
  |tkaudosicov      | test autodiscovery  |                 |
  |tkplsqlexec      | test sql/plsql      |                 |
  |tkapplyinit      | apply init map      |                 |
+ |altercpu         | alter cpu_count     | make  altercpu LRPDBNAME=_lrpdb resource_ CPU_COUNT=_cpu count value_   |
+ |open             | open pdb  [imperative]| make open LRPDBNAME=_lrpdb resource_ |
+ |close            | close pdb [imperative]| make close LRPDBNAME=_lrpdb resource_ |
  |listimage        | images available on the cluster|      |
  |dumpoperator     | dump operator log   |                 |
  |dumplrest        | dump lrest log      |                 |
@@ -142,6 +146,13 @@ You can run **make runall00** to test all the functionality the multitenant cont
  |**secrets**      | create secrets      |                 |
  |**genyaml**      | generate the yaml files|              |
  |opclean          | deintall the operator|                |   
+ |cleanlrest       | drop lrest resource | **lrest name hard coded** | 
+ |rest             | rest status bitmask | make rest LRPDBNAME=_resname_ RESETVALUE=_new bitmask value_ |
+ |tkautd           | Turn on/off autodiscover |  make tkautd AUTOD=true/false |
+ |tkdelcs          | Turn on/off pdb delete cascade | make tkdelcs DELETECS=true/false |
+ |tkdelcrd         |Turn ON/OFF lrest pdb imperativeLrpdb deletion |  make tkdelcrd DELETECRD=true/false  LRPDBNAME=_lrpdb resource name_ |
+ | checkimpdel     | report of imperative delete setting ||
+
 
 ##  7. <a name='Diagcommandsandtroubleshooting'></a>Diag commands and troubleshooting
 

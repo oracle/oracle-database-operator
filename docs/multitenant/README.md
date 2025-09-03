@@ -345,7 +345,8 @@ Parsing sqltext=select count(*) from pdb_plug_in_violations where name =:b1
 |lrestImage (DO NOT EDIT) | **container-registry.oracle.com/database/lrest-dboper:latest** use the latest label availble on OCR |
 |dbTnsurl                 | The string of the tns alias to connect to cdb. Attention: remove all white space from string  |
 |deletePdbCascade         | Delete all of the PDBs associated to a CDB resource when the CDB resource is dropped   |
-|autodiscover             | boolean parameter: enable the capability of automatic CRD/LRPDB creation if a PDB is manually created via CLI | 
+|autodiscover             | boolean parameter: enable the capability of automatic CRD/LRPDB creation if a PDB is manually created via CLI |
+|namespaceAutoDiscover    | Namespace name used by autodiscery                  |
 |cdbAdminUser             | Secret: the administrative (admin) user             |
 |cdbAdminPwd              | Secret: the admin user password                     |
 |webServerUser            | Secret: the HTTPS user                              |
@@ -610,12 +611,30 @@ To delete the PDB, use the file [`delete_pdb1_resource.yaml`](./usecase/delete_p
 |cdbName                  | Name of the container database (CDB)                                          |
 |pdbState                 | `DELETE`                                                                      |
 |dropAction               | **INCLUDING** - Including datafiles or **NONE**                               |
+|imperativeLrpdbDeletion  | boolean:  if true pdb and k8s resource will be deleted if false only resource is deleted|
+
+
+In order to delete crd and pdbs using yaml file the **imperativeLrpdbDeletion: true** must be specified in the yaml. **If the parameter is not specified  PDB will not be deleted; regardless the setting during creation**.  Imperative command (kubectl delete lrpdb <resname>) acts according to imperativeLrdbDeletion setting. You can check the imperativeLrpdbDeletion setting using 
 
 **Imperative command**
 
 ```bash
 kubectl delete lrpdb <pdbname> -n <namespace>
 ```
+
+**Check imperativelrpdbdeletion setting**
+```bash
+/usr/bin/kubectl get lrpdb -n pdbnamespace \
+        -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.pdbName}{" "}{.status.openMode}{" "}{.spec.imperativeLrpdbDeletion}{" "}{"\t\t"}{"\n"}{end}'| sed 's/READ WRITE/READ_WRITE/g' |awk ' BEGIN { printf( "%-20s %-10s %-10s %10s\n","CRD","PDB NAME","OPEN MODE","IMPERATIVELRPDBDELETION"); \
+         printf( "%-20s %-10s %-10s %-23s\n","--------------------","----------","----------","-----------------------");\
+         } { printf("%-20s %-10s %-10s %-23s\n",$1,$2,$3,$4) }'
+
+CRD                  PDB NAME   OPEN MODE  IMPERATIVELRPDBDELETION
+-------------------- ---------- ---------- -----------------------
+pdb1                 pdbdev     READ_WRITE true                  
+pdb2                 pdbprd     MOUNTED    true	 
+```
+
 ##  3. <a name='SQLPLSQLSCRIPTEXECUTION'></a>SQL/PLSQL SCRIPT EXECUTION
 
 
@@ -721,10 +740,59 @@ pdb1   DB12       pdbdev     MOUNTED     0.80G      close:[ORA-65170]    NONE   
 ```
 ##  5. <a name='UPGRADEEXISTINGINSTALLATION'></a>UPGRADE EXISTING INSTALLATION 
 
-In order to migrante an existing installation to the new version of controller you can laverage on the autodiscover installation. Patch all your lrpdb resources by setting **assertiveLrpdbDeletion** false. After that you can delete lrest resource and all lrpdbs. Upgrade the operator and create lrest server paying attenction to set **autodiscover** true and  the namespace  used by the autodiscovery mechanism (**namespaceAutoDiscover**). 
+In order to migrante an existing installation to the new version of controller you can laverage on the autodiscover installation. Patch all your lrpdb resources by setting **assertiveLrpdbDeletion** false. After that you can delete lrest resource and all lrpdbs. Upgrade the operator and create lrest server with **autodiscover** and **namespaceAutoDiscover** configured. 
+
+- For each CRD/LRPDB turn off **assertiveLrpdbDeletion** 
+
+```bash
+kubectl patch lrpdb <resourcename> -n <namespace> -p '{"spec":{"imperativeLrpdbDeletion":false}}' --type=merge
+
+kubectl wait --for jsonpath='{.spec.imperativeLrpdbDeletion'}=false lrpdb <resourcename> -n <namespace>  --timeout=3m
+
+```
+
+- Delete **LRPDB** resource 
+
+```bash 
+kubectl delete lrpdb <resourcename> -n <namespace>  
+```
+
+- Delete **LREST** resource
+```bash
+kubectl delete rest <ressourcename> -n <namespace>
+```
+- Upgrade the operator
+
+```bash 
+kubectl replace -f oracle-database-database.yaml 
+```
+
+- (**A**) deploy **LREST** controller 
+
+```
+kubectl apply -f create_lrest_pod.yaml
+```
+- Turn on the **autodiscover**
+
+```bash
+kubectl patch lrest <lrestresname> -n <lrestnamespace> -p '{"spec":{"autodiscover":true}}' --type=merge
+kubectl patch lrest <lrestresname> -n <lrestnamespace> -p '{"spec":{"namespaceAutoDiscover":"<namespace>}}' --type=merge
+```
+Check the lrpdb resource existence 
+
+- Turn off the **autodiscover**
+
+```bash
+kubectl patch lrest cdb-dev -n <lrestresname> -p '{"spec":{"autodiscover":false}}' --type=merge
+```
+
+## DEPLOY MULTITENANT CONTROLLERS ON CDB WITH EXISTINGS PDBS
+
+- To deploy multitenant controllers on a container database with existing pdbs start the previous procedure at point (**A**)
 
 ##  6. <a name='KNOWNISSUES'></a>KNOWN ISSUES 
 
 - Error message `ORA-01005` is not reported in the lrest database login phase if password is mistakenly null. Trace log shows the message ORA-1012.
 
+- 
 </span>

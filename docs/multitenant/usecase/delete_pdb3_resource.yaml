@@ -11,6 +11,7 @@ spec:
   pdbName: "new_clone"
   pdbState: "DELETE"
   dropAction: "INCLUDING"
+  imperativeLrpdbDeletion: true
   adminpdbUser:
     secret:
       secretName: "pdbusr"

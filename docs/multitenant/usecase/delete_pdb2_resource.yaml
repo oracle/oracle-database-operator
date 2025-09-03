@@ -11,6 +11,7 @@ spec:
   pdbName: "pdbprd"
   pdbState: "DELETE"
   dropAction: "INCLUDING"
+  imperativeLrpdbDeletion: true
   adminpdbUser:
     secret:
       secretName: "pdbusr"
