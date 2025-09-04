@@ -423,7 +423,7 @@ func DelORestartPVC(instance *oraclerestart.OracleRestart, index int, diskName s
 
 func DelRestartSwPvc(instance *oraclerestart.OracleRestart, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec, kClient client.Client, logger logr.Logger) error {
 
-	pvcName := OraRestartSpex.Name + "-oradata-sw-vol-" + OraRestartSpex.Name + "-0"
+	pvcName := OraRestartSpex.Name + "-oradata-sw-vol-pvc-" + OraRestartSpex.Name + "-0"
 	LogMessages("DEBUG", "Inside the delPvc and received param: "+GetFmtStr(pvcName), nil, instance, logger)
 	pvcFound, err := checkPvc(pvcName, instance, kClient)
 	if err != nil {

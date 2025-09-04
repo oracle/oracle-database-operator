@@ -3101,7 +3101,7 @@ func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 		}
 	}
 
-	svcTypes := []string{"onssvc", "lbservice", "nodeport"}
+	svcTypes := []string{"local", "lbservice", "nodeport"}
 	for _, svcType := range svcTypes {
 		svcFound, err := oraclerestartcommon.CheckORestartSvc(oracleRestart, svcType, oraRestartSpex, "", r.Client)
 		if err == nil {
