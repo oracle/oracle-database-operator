@@ -1831,6 +1831,8 @@ spec:
                                 type: string
                             type: object
                           type: array
+                        noProxy:
+                          type: string
                         oauth2:
                           properties:
                             clientId:
@@ -2018,7 +2020,28 @@ spec:
                           type: string
                         port:
                           type: string
+                        proxyConnectHeader:
+                          additionalProperties:
+                            items:
+                              properties:
+                                key:
+                                  type: string
+                                name:
+                                  default: ""
+                                  type: string
+                                optional:
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            type: array
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        proxyFromEnvironment:
+                          type: boolean
                         proxyUrl:
+                          pattern: ^(http|https|socks5)://.+$
                           type: string
                         relabelings:
                           items:
@@ -2241,6 +2264,23 @@ spec:
                                         type: string
                                     required:
                                     - fieldPath
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  fileKeyRef:
+                                    properties:
+                                      key:
+                                        type: string
+                                      optional:
+                                        default: false
+                                        type: boolean
+                                      path:
+                                        type: string
+                                      volumeName:
+                                        type: string
+                                    required:
+                                    - key
+                                    - path
+                                    - volumeName
                                     type: object
                                     x-kubernetes-map-type: atomic
                                   resourceFieldRef:
@@ -2671,6 +2711,29 @@ spec:
                           type: object
                         restartPolicy:
                           type: string
+                        restartPolicyRules:
+                          items:
+                            properties:
+                              action:
+                                type: string
+                              exitCodes:
+                                properties:
+                                  operator:
+                                    type: string
+                                  values:
+                                    items:
+                                      format: int32
+                                      type: integer
+                                    type: array
+                                    x-kubernetes-list-type: set
+                                required:
+                                - operator
+                                type: object
+                            required:
+                            - action
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
                         securityContext:
                           properties:
                             allowPrivilegeEscalation:
@@ -3473,6 +3536,25 @@ spec:
                                           type: object
                                         type: array
                                         x-kubernetes-list-type: atomic
+                                    type: object
+                                  podCertificate:
+                                    properties:
+                                      certificateChainPath:
+                                        type: string
+                                      credentialBundlePath:
+                                        type: string
+                                      keyPath:
+                                        type: string
+                                      keyType:
+                                        type: string
+                                      maxExpirationSeconds:
+                                        format: int32
+                                        type: integer
+                                      signerName:
+                                        type: string
+                                    required:
+                                    - keyType
+                                    - signerName
                                     type: object
                                   secret:
                                     properties:
@@ -4252,6 +4334,8 @@ spec:
                                 type: string
                             type: object
                           type: array
+                        noProxy:
+                          type: string
                         oauth2:
                           properties:
                             clientId:
@@ -4439,7 +4523,28 @@ spec:
                           type: string
                         port:
                           type: string
+                        proxyConnectHeader:
+                          additionalProperties:
+                            items:
+                              properties:
+                                key:
+                                  type: string
+                                name:
+                                  default: ""
+                                  type: string
+                                optional:
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            type: array
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        proxyFromEnvironment:
+                          type: boolean
                         proxyUrl:
+                          pattern: ^(http|https|socks5)://.+$
                           type: string
                         relabelings:
                           items:
@@ -4662,6 +4767,23 @@ spec:
                                         type: string
                                     required:
                                     - fieldPath
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  fileKeyRef:
+                                    properties:
+                                      key:
+                                        type: string
+                                      optional:
+                                        default: false
+                                        type: boolean
+                                      path:
+                                        type: string
+                                      volumeName:
+                                        type: string
+                                    required:
+                                    - key
+                                    - path
+                                    - volumeName
                                     type: object
                                     x-kubernetes-map-type: atomic
                                   resourceFieldRef:
@@ -5092,6 +5214,29 @@ spec:
                           type: object
                         restartPolicy:
                           type: string
+                        restartPolicyRules:
+                          items:
+                            properties:
+                              action:
+                                type: string
+                              exitCodes:
+                                properties:
+                                  operator:
+                                    type: string
+                                  values:
+                                    items:
+                                      format: int32
+                                      type: integer
+                                    type: array
+                                    x-kubernetes-list-type: set
+                                required:
+                                - operator
+                                type: object
+                            required:
+                            - action
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
                         securityContext:
                           properties:
                             allowPrivilegeEscalation:
@@ -5894,6 +6039,25 @@ spec:
                                           type: object
                                         type: array
                                         x-kubernetes-list-type: atomic
+                                    type: object
+                                  podCertificate:
+                                    properties:
+                                      certificateChainPath:
+                                        type: string
+                                      credentialBundlePath:
+                                        type: string
+                                      keyPath:
+                                        type: string
+                                      keyType:
+                                        type: string
+                                      maxExpirationSeconds:
+                                        format: int32
+                                        type: integer
+                                      signerName:
+                                        type: string
+                                    required:
+                                    - keyType
+                                    - signerName
                                     type: object
                                   secret:
                                     properties:
@@ -6673,6 +6837,8 @@ spec:
                                 type: string
                             type: object
                           type: array
+                        noProxy:
+                          type: string
                         oauth2:
                           properties:
                             clientId:
@@ -6860,7 +7026,28 @@ spec:
                           type: string
                         port:
                           type: string
+                        proxyConnectHeader:
+                          additionalProperties:
+                            items:
+                              properties:
+                                key:
+                                  type: string
+                                name:
+                                  default: ""
+                                  type: string
+                                optional:
+                                  type: boolean
+                              required:
+                              - key
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            type: array
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        proxyFromEnvironment:
+                          type: boolean
                         proxyUrl:
+                          pattern: ^(http|https|socks5)://.+$
                           type: string
                         relabelings:
                           items:
@@ -7083,6 +7270,23 @@ spec:
                                         type: string
                                     required:
                                     - fieldPath
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  fileKeyRef:
+                                    properties:
+                                      key:
+                                        type: string
+                                      optional:
+                                        default: false
+                                        type: boolean
+                                      path:
+                                        type: string
+                                      volumeName:
+                                        type: string
+                                    required:
+                                    - key
+                                    - path
+                                    - volumeName
                                     type: object
                                     x-kubernetes-map-type: atomic
                                   resourceFieldRef:
@@ -7513,6 +7717,29 @@ spec:
                           type: object
                         restartPolicy:
                           type: string
+                        restartPolicyRules:
+                          items:
+                            properties:
+                              action:
+                                type: string
+                              exitCodes:
+                                properties:
+                                  operator:
+                                    type: string
+                                  values:
+                                    items:
+                                      format: int32
+                                      type: integer
+                                    type: array
+                                    x-kubernetes-list-type: set
+                                required:
+                                - operator
+                                type: object
+                            required:
+                            - action
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
                         securityContext:
                           properties:
                             allowPrivilegeEscalation:
@@ -8315,6 +8542,25 @@ spec:
                                           type: object
                                         type: array
                                         x-kubernetes-list-type: atomic
+                                    type: object
+                                  podCertificate:
+                                    properties:
+                                      certificateChainPath:
+                                        type: string
+                                      credentialBundlePath:
+                                        type: string
+                                      keyPath:
+                                        type: string
+                                      keyType:
+                                        type: string
+                                      maxExpirationSeconds:
+                                        format: int32
+                                        type: integer
+                                      signerName:
+                                        type: string
+                                    required:
+                                    - keyType
+                                    - signerName
                                     type: object
                                   secret:
                                     properties:
@@ -10539,11 +10785,19 @@ spec:
                   pwdFileName:
                     type: string
                 type: object
-              externalSvcType:
+              enableOns:
+                default: enable
+                enum:
+                - enable
+                - disable
                 type: string
               image:
                 type: string
               imagePullPolicy:
+                enum:
+                - Always
+                - IfNotPresent
+                - Never
                 type: string
               imagePullSecret:
                 type: string
@@ -10581,6 +10835,23 @@ spec:
                                   type: string
                               required:
                               - fieldPath
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            fileKeyRef:
+                              properties:
+                                key:
+                                  type: string
+                                optional:
+                                  default: false
+                                  type: boolean
+                                path:
+                                  type: string
+                                volumeName:
+                                  type: string
+                              required:
+                              - key
+                              - path
+                              - volumeName
                               type: object
                               x-kubernetes-map-type: atomic
                             resourceFieldRef:
@@ -10629,37 +10900,29 @@ spec:
                     type: string
                   name:
                     type: string
-                  nodePortSvc:
+                  pvcName:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  swLocStorageSizeInGb:
+                    type: integer
+                  workerNode:
                     items:
-                      properties:
-                        name:
-                          type: string
-                        portMappings:
-                          items:
-                            properties:
-                              nodePort:
-                                format: int32
-                                type: integer
-                              port:
-                                format: int32
-                                type: integer
-                              protocol:
-                                type: string
-                              targetPort:
-                                format: int32
-                                type: integer
-                            type: object
-                          type: array
-                        svcAnnotation:
-                          additionalProperties:
-                            type: string
-                          type: object
-                        svcLBIP:
-                          type: string
-                        svcType:
-                          type: string
-                      type: object
+                      type: string
                     type: array
+                type: object
+              isDebug:
+                type: string
+              isDeleteTopology:
+                type: string
+              isFailed:
+                type: boolean
+              isManual:
+                type: boolean
+              lbService:
+                properties:
+                  name:
+                    type: string
                   onsLocalPort:
                     format: int32
                     type: integer
@@ -10676,80 +10939,11 @@ spec:
                           format: int32
                           type: integer
                         protocol:
-                          type: string
-                        targetPort:
-                          format: int32
-                          type: integer
-                      type: object
-                    type: array
-                  pvcName:
-                    additionalProperties:
-                      type: string
-                    type: object
-                  resources:
-                    properties:
-                      claims:
-                        items:
-                          properties:
-                            name:
-                              type: string
-                            request:
-                              type: string
-                          required:
-                          - name
-                          type: object
-                        type: array
-                        x-kubernetes-list-map-keys:
-                        - name
-                        x-kubernetes-list-type: map
-                      limits:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                      requests:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                    type: object
-                  swLocStorageSizeInGb:
-                    type: integer
-                  workerNode:
-                    items:
-                      type: string
-                    type: array
-                type: object
-              isDebug:
-                type: string
-              isDeleteOraPvc:
-                type: string
-              isDeleteTopology:
-                type: string
-              isFailed:
-                type: boolean
-              isManual:
-                type: boolean
-              lbService:
-                properties:
-                  name:
-                    type: string
-                  portMappings:
-                    items:
-                      properties:
-                        nodePort:
-                          format: int32
-                          type: integer
-                        port:
-                          format: int32
-                          type: integer
-                        protocol:
+                          default: TCP
+                          enum:
+                          - TCP
+                          - UDP
+                          - SCTP
                           type: string
                         targetPort:
                           format: int32
@@ -10765,17 +10959,45 @@ spec:
                   svcType:
                     type: string
                 type: object
-              nfsStorageDetails:
+              nodePortSvc:
                 properties:
-                  path:
+                  name:
                     type: string
-                  readOnly:
-                    type: boolean
-                  server:
+                  onsLocalPort:
+                    format: int32
+                    type: integer
+                  onsTargetPort:
+                    format: int32
+                    type: integer
+                  portMappings:
+                    items:
+                      properties:
+                        nodePort:
+                          format: int32
+                          type: integer
+                        port:
+                          format: int32
+                          type: integer
+                        protocol:
+                          default: TCP
+                          enum:
+                          - TCP
+                          - UDP
+                          - SCTP
+                          type: string
+                        targetPort:
+                          format: int32
+                          type: integer
+                      type: object
+                    type: array
+                  svcAnnotation:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  svcLBIP:
                     type: string
-                required:
-                - path
-                - server
+                  svcType:
+                    type: string
                 type: object
               readinessProbe:
                 properties:
@@ -11048,8 +11270,6 @@ spec:
                 type: object
               storageClass:
                 type: string
-              storageSizeInGB:
-                type: integer
               tdeWalletSecret:
                 properties:
                   encryptionType:
@@ -11067,8 +11287,6 @@ spec:
                   pwdFileName:
                     type: string
                 type: object
-              useNfsforSwStorage:
-                type: string
             required:
             - instDetails
             - securityContext
@@ -11101,6 +11319,12 @@ spec:
                             properties:
                               name:
                                 type: string
+                              onsLocalPort:
+                                format: int32
+                                type: integer
+                              onsTargetPort:
+                                format: int32
+                                type: integer
                               portMappings:
                                 items:
                                   properties:
@@ -11111,6 +11335,11 @@ spec:
                                       format: int32
                                       type: integer
                                     protocol:
+                                      default: TCP
+                                      enum:
+                                      - TCP
+                                      - UDP
+                                      - SCTP
                                       type: string
                                     targetPort:
                                       format: int32
@@ -11137,6 +11366,11 @@ spec:
                                 format: int32
                                 type: integer
                               protocol:
+                                default: TCP
+                                enum:
+                                - TCP
+                                - UDP
+                                - SCTP
                                 type: string
                               targetPort:
                                 format: int32
@@ -11381,6 +11615,23 @@ spec:
                               - fieldPath
                               type: object
                               x-kubernetes-map-type: atomic
+                            fileKeyRef:
+                              properties:
+                                key:
+                                  type: string
+                                optional:
+                                  default: false
+                                  type: boolean
+                                path:
+                                  type: string
+                                volumeName:
+                                  type: string
+                              required:
+                              - key
+                              - path
+                              - volumeName
+                              type: object
+                              x-kubernetes-map-type: atomic
                             resourceFieldRef:
                               properties:
                                 containerName:
@@ -11427,95 +11678,9 @@ spec:
                     type: string
                   name:
                     type: string
-                  nodePortSvc:
-                    items:
-                      properties:
-                        name:
-                          type: string
-                        portMappings:
-                          items:
-                            properties:
-                              nodePort:
-                                format: int32
-                                type: integer
-                              port:
-                                format: int32
-                                type: integer
-                              protocol:
-                                type: string
-                              targetPort:
-                                format: int32
-                                type: integer
-                            type: object
-                          type: array
-                        svcAnnotation:
-                          additionalProperties:
-                            type: string
-                          type: object
-                        svcLBIP:
-                          type: string
-                        svcType:
-                          type: string
-                      type: object
-                    type: array
-                  onsLocalPort:
-                    format: int32
-                    type: integer
-                  onsTargetPort:
-                    format: int32
-                    type: integer
-                  portMappings:
-                    items:
-                      properties:
-                        nodePort:
-                          format: int32
-                          type: integer
-                        port:
-                          format: int32
-                          type: integer
-                        protocol:
-                          type: string
-                        targetPort:
-                          format: int32
-                          type: integer
-                      type: object
-                    type: array
                   pvcName:
                     additionalProperties:
                       type: string
-                    type: object
-                  resources:
-                    properties:
-                      claims:
-                        items:
-                          properties:
-                            name:
-                              type: string
-                            request:
-                              type: string
-                          required:
-                          - name
-                          type: object
-                        type: array
-                        x-kubernetes-list-map-keys:
-                        - name
-                        x-kubernetes-list-type: map
-                      limits:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                      requests:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
                     type: object
                   swLocStorageSizeInGb:
                     type: integer
@@ -15962,7 +16127,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: dbcs-dev-docker.dockerhub-phx.oci.oraclecorp.com/oracle/database-operator:5dba2bde
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-mltp1
         imagePullPolicy: Always
         name: manager
         ports:

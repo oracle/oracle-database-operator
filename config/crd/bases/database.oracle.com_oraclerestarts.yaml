@@ -183,11 +183,19 @@ spec:
                   pwdFileName:
                     type: string
                 type: object
-              externalSvcType:
+              enableOns:
+                default: enable
+                enum:
+                - enable
+                - disable
                 type: string
               image:
                 type: string
               imagePullPolicy:
+                enum:
+                - Always
+                - IfNotPresent
+                - Never
                 type: string
               imagePullSecret:
                 type: string
@@ -225,6 +233,23 @@ spec:
                                   type: string
                               required:
                               - fieldPath
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            fileKeyRef:
+                              properties:
+                                key:
+                                  type: string
+                                optional:
+                                  default: false
+                                  type: boolean
+                                path:
+                                  type: string
+                                volumeName:
+                                  type: string
+                              required:
+                              - key
+                              - path
+                              - volumeName
                               type: object
                               x-kubernetes-map-type: atomic
                             resourceFieldRef:
@@ -273,31 +298,29 @@ spec:
                     type: string
                   name:
                     type: string
-                  nodePortSvc:
+                  pvcName:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  swLocStorageSizeInGb:
+                    type: integer
+                  workerNode:
                     items:
-                      properties:
-                        name:
-                          type: string
-                        portMappings:
-                          items:
-                            properties:
-                              nodePort:
-                                format: int32
-                                type: integer
-                              port:
-                                format: int32
-                                type: integer
-                              protocol:
-                                type: string
-                              targetPort:
-                                format: int32
-                                type: integer
-                            type: object
-                          type: array
-                        svcType:
-                          type: string
-                      type: object
+                      type: string
                     type: array
+                type: object
+              isDebug:
+                type: string
+              isDeleteTopology:
+                type: string
+              isFailed:
+                type: boolean
+              isManual:
+                type: boolean
+              lbService:
+                properties:
+                  name:
+                    type: string
                   onsLocalPort:
                     format: int32
                     type: integer
@@ -314,77 +337,65 @@ spec:
                           format: int32
                           type: integer
                         protocol:
+                          default: TCP
+                          enum:
+                          - TCP
+                          - UDP
+                          - SCTP
                           type: string
                         targetPort:
                           format: int32
                           type: integer
                       type: object
                     type: array
-                  pvcName:
+                  svcAnnotation:
                     additionalProperties:
                       type: string
                     type: object
-                  resources:
-                    properties:
-                      claims:
-                        items:
-                          properties:
-                            name:
-                              type: string
-                            request:
-                              type: string
-                          required:
-                          - name
-                          type: object
-                        type: array
-                        x-kubernetes-list-map-keys:
-                        - name
-                        x-kubernetes-list-type: map
-                      limits:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                      requests:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                    type: object
-                  swLocStorageSizeInGb:
-                    type: integer
-                  workerNode:
-                    items:
-                      type: string
-                    type: array
+                  svcLBIP:
+                    type: string
+                  svcType:
+                    type: string
                 type: object
-              isDebug:
-                type: string
-              isDeleteOraPvc:
-                type: string
-              isDeleteTopology:
-                type: string
-              isFailed:
-                type: boolean
-              isManual:
-                type: boolean
-              nfsStorageDetails:
+              nodePortSvc:
                 properties:
-                  path:
+                  name:
                     type: string
-                  readOnly:
-                    type: boolean
-                  server:
+                  onsLocalPort:
+                    format: int32
+                    type: integer
+                  onsTargetPort:
+                    format: int32
+                    type: integer
+                  portMappings:
+                    items:
+                      properties:
+                        nodePort:
+                          format: int32
+                          type: integer
+                        port:
+                          format: int32
+                          type: integer
+                        protocol:
+                          default: TCP
+                          enum:
+                          - TCP
+                          - UDP
+                          - SCTP
+                          type: string
+                        targetPort:
+                          format: int32
+                          type: integer
+                      type: object
+                    type: array
+                  svcAnnotation:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  svcLBIP:
                     type: string
-                required:
-                - path
-                - server
+                  svcType:
+                    type: string
                 type: object
               readinessProbe:
                 properties:
@@ -657,8 +668,6 @@ spec:
                 type: object
               storageClass:
                 type: string
-              storageSizeInGB:
-                type: integer
               tdeWalletSecret:
                 properties:
                   encryptionType:
@@ -676,8 +685,6 @@ spec:
                   pwdFileName:
                     type: string
                 type: object
-              useNfsforSwStorage:
-                type: string
             required:
             - instDetails
             - securityContext
@@ -710,6 +717,12 @@ spec:
                             properties:
                               name:
                                 type: string
+                              onsLocalPort:
+                                format: int32
+                                type: integer
+                              onsTargetPort:
+                                format: int32
+                                type: integer
                               portMappings:
                                 items:
                                   properties:
@@ -720,12 +733,23 @@ spec:
                                       format: int32
                                       type: integer
                                     protocol:
+                                      default: TCP
+                                      enum:
+                                      - TCP
+                                      - UDP
+                                      - SCTP
                                       type: string
                                     targetPort:
                                       format: int32
                                       type: integer
                                   type: object
                                 type: array
+                              svcAnnotation:
+                                additionalProperties:
+                                  type: string
+                                type: object
+                              svcLBIP:
+                                type: string
                               svcType:
                                 type: string
                             type: object
@@ -740,6 +764,11 @@ spec:
                                 format: int32
                                 type: integer
                               protocol:
+                                default: TCP
+                                enum:
+                                - TCP
+                                - UDP
+                                - SCTP
                                 type: string
                               targetPort:
                                 format: int32
@@ -984,6 +1013,23 @@ spec:
                               - fieldPath
                               type: object
                               x-kubernetes-map-type: atomic
+                            fileKeyRef:
+                              properties:
+                                key:
+                                  type: string
+                                optional:
+                                  default: false
+                                  type: boolean
+                                path:
+                                  type: string
+                                volumeName:
+                                  type: string
+                              required:
+                              - key
+                              - path
+                              - volumeName
+                              type: object
+                              x-kubernetes-map-type: atomic
                             resourceFieldRef:
                               properties:
                                 containerName:
@@ -1030,89 +1076,9 @@ spec:
                     type: string
                   name:
                     type: string
-                  nodePortSvc:
-                    items:
-                      properties:
-                        name:
-                          type: string
-                        portMappings:
-                          items:
-                            properties:
-                              nodePort:
-                                format: int32
-                                type: integer
-                              port:
-                                format: int32
-                                type: integer
-                              protocol:
-                                type: string
-                              targetPort:
-                                format: int32
-                                type: integer
-                            type: object
-                          type: array
-                        svcType:
-                          type: string
-                      type: object
-                    type: array
-                  onsLocalPort:
-                    format: int32
-                    type: integer
-                  onsTargetPort:
-                    format: int32
-                    type: integer
-                  portMappings:
-                    items:
-                      properties:
-                        nodePort:
-                          format: int32
-                          type: integer
-                        port:
-                          format: int32
-                          type: integer
-                        protocol:
-                          type: string
-                        targetPort:
-                          format: int32
-                          type: integer
-                      type: object
-                    type: array
                   pvcName:
                     additionalProperties:
                       type: string
-                    type: object
-                  resources:
-                    properties:
-                      claims:
-                        items:
-                          properties:
-                            name:
-                              type: string
-                            request:
-                              type: string
-                          required:
-                          - name
-                          type: object
-                        type: array
-                        x-kubernetes-list-map-keys:
-                        - name
-                        x-kubernetes-list-type: map
-                      limits:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
-                      requests:
-                        additionalProperties:
-                          anyOf:
-                          - type: integer
-                          - type: string
-                          pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                          x-kubernetes-int-or-string: true
-                        type: object
                     type: object
                   swLocStorageSizeInGb:
                     type: integer

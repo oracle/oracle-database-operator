@@ -169,6 +169,7 @@ rules:
   - database.oracle.com
   resources:
   - dbcssystems/finalizers
+  - lrpdbs/configmaps
   - lrpdbs/finalizers
   - oraclerestarts/finalizers
   - shardingdatabases/finalizers

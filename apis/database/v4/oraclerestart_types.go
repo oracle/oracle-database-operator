@@ -77,8 +77,8 @@ type OracleRestartSpec struct {
 	StorageClass    string                           `json:"storageClass,omitempty"`
 	LbService       OracleRestartNodePortSvc         `json:"lbService,omitempty"`
 	NodePortSvc     OracleRestartNodePortSvc         `json:"nodePortSvc,omitempty"` // Port mappings for the service that is created. The service is created if
-	// +kubebuilder:validation:Enum=true;false
-	// +kubebuilder:default=true
+	// +kubebuilder:validation:Enum=enable;disable
+	// +kubebuilder:default="enable"
 	EnableOns string `json:"enableOns,omitempty"`
 }
 

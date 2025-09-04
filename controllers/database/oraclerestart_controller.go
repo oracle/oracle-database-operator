@@ -481,7 +481,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	if oracleRestart.Spec.EnableOns == "true" {
+	if oracleRestart.Spec.EnableOns == "enable" {
 		OraRestartSpex := oracleRestart.Spec.InstDetails
 		orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
 		if err != nil {
