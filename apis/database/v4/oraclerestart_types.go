@@ -52,34 +52,34 @@ import (
 type OracleRestartSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-
-	InstDetails        OracleRestartInstDetailSpec      `json:"instDetails"`
-	ConfigParams       *InitParams                      `json:"configParams,omitempty"`
-	AsmStorageDetails  *AsmDiskDetails                  `json:"asmStorageDetails,omitempty"`
-	NfsStorageDetails  *corev1.NFSVolumeSource          `json:"nfsStorageDetails,omitempty"`
-	UseNfsforSwStorage string                           `json:"useNfsforSwStorage,omitempty"`
-	StorageSizeInGB    int                              `json:"storageSizeInGB,omitempty"`
-	Image              string                           `json:"image,omitempty"`
-	ImagePullSecret    string                           `json:"imagePullSecret,omitempty"`
-	ScriptsLocation    string                           `json:"scriptsLocation,omitempty"`
-	IsDeleteOraPvc     string                           `json:"isDeleteOraPvc,omitempty"`
-	SshKeySecret       *OracleRestartSshSecretDetails   `json:"sshKeySecret,omitempty"`
-	ImagePullPolicy    *corev1.PullPolicy               `json:"imagePullPolicy,omitempty"`
-	ReadinessProbe     *corev1.Probe                    `json:"readinessProbe,omitempty"`
-	ScriptsGetCmd      string                           `json:"scriptsGetCmd,omitempty"`
-	IsDebug            string                           `json:"isDebug,omitempty"`
-	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext"`
-	IsDeleteTopolgy    string                           `json:"isDeleteTopology,omitempty"`
-	ExternalSvcType    *string                          `json:"externalSvcType,omitempty"`
-	DbSecret           *OracleRestartDbPwdSecretDetails `json:"dbSecret,omitempty"`
-	TdeWalletSecret    *OracleRestartDbPwdSecretDetails `json:"tdeWalletSecret,omitempty"`
-	ServiceDetails     ServiceSpec                      `json:"serviceDetails,omitempty"`
-	Resources          *corev1.ResourceRequirements     `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
-	IsFailed           bool                             `json:"isFailed,omitempty"`
-	IsManual           bool                             `json:"isManual,omitempty"`
-	SrvAccountName     string                           `json:"serviceAccountName,omitempty"`
-	StorageClass       string                           `json:"storageClass,omitempty"`
-	LbService          OracleRestartNodePortSvc         `json:"lbService,omitempty"`
+	InstDetails       OracleRestartInstDetailSpec    `json:"instDetails"`
+	ConfigParams      *InitParams                    `json:"configParams,omitempty"`
+	AsmStorageDetails *AsmDiskDetails                `json:"asmStorageDetails,omitempty"`
+	Image             string                         `json:"image,omitempty"`
+	ImagePullSecret   string                         `json:"imagePullSecret,omitempty"`
+	ScriptsLocation   string                         `json:"scriptsLocation,omitempty"`
+	SshKeySecret      *OracleRestartSshSecretDetails `json:"sshKeySecret,omitempty"`
+	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
+	// +kubebuilder:validation:default="Always"
+	ImagePullPolicy *corev1.PullPolicy               `json:"imagePullPolicy,omitempty"`
+	ReadinessProbe  *corev1.Probe                    `json:"readinessProbe,omitempty"`
+	ScriptsGetCmd   string                           `json:"scriptsGetCmd,omitempty"`
+	IsDebug         string                           `json:"isDebug,omitempty"`
+	SecurityContext *corev1.PodSecurityContext       `json:"securityContext"`
+	IsDeleteTopolgy string                           `json:"isDeleteTopology,omitempty"`
+	DbSecret        *OracleRestartDbPwdSecretDetails `json:"dbSecret,omitempty"`
+	TdeWalletSecret *OracleRestartDbPwdSecretDetails `json:"tdeWalletSecret,omitempty"`
+	ServiceDetails  ServiceSpec                      `json:"serviceDetails,omitempty"`
+	Resources       *corev1.ResourceRequirements     `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	IsFailed        bool                             `json:"isFailed,omitempty"`
+	IsManual        bool                             `json:"isManual,omitempty"`
+	SrvAccountName  string                           `json:"serviceAccountName,omitempty"`
+	StorageClass    string                           `json:"storageClass,omitempty"`
+	LbService       OracleRestartNodePortSvc         `json:"lbService,omitempty"`
+	NodePortSvc     OracleRestartNodePortSvc         `json:"nodePortSvc,omitempty"` // Port mappings for the service that is created. The service is created if
+	// +kubebuilder:validation:Enum=true;false
+	// +kubebuilder:default=true
+	EnableOns string `json:"enableOns,omitempty"`
 }
 
 type AsmDiskDetails struct {
@@ -143,38 +143,24 @@ type InitParams struct {
 }
 
 type OracleRestartInstDetailSpec struct {
-	Name                 string                       `json:"name,omitempty"` // Name of the Oracle Restart Instance
-	HostSwLocation       string                       `json:"hostSwLocation,omitempty"`
-	SwLocStorageSizeInGb int                          `json:"swLocStorageSizeInGb,omitempty"`
-	WorkerNode           []string                     `json:"workerNode,omitempty"`
-	EnvVars              []corev1.EnvVar              `json:"envVars,omitempty"`                                         //Optional Env variables for Shards
-	Resources            *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requiremen
-	Label                string                       `json:"label,omitempty"`
-	IsDelete             string                       `json:"isDelete,omitempty"`
-	IsForceDelete        string                       `json:"isForceDelete,omitempty"`
-	IsKeepPVC            string                       `json:"isKeepPVC,omitempty"`
-	PvcName              map[string]string            `json:"pvcName,omitempty"`
-	NodePortSvc          []OracleRestartNodePortSvc   `json:"nodePortSvc,omitempty"`  // Port mappings for the service that is created. The service is created if
-	PortMappings         []OracleRestartPortMapping   `json:"portMappings,omitempty"` // Port mappings for the service that is created. The service is created if there is at least
-	EnvFile              string                       `json:"envFile,omitempty"`
-	OnsTargetPort        *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
-	OnsLocalPort         *int32                       `json:"onsLocalPort,omitempty"`  // Port that will be exposed on the service.
+	Name                 string          `json:"name,omitempty"` // Name of the Oracle Restart Instance
+	HostSwLocation       string          `json:"hostSwLocation,omitempty"`
+	SwLocStorageSizeInGb int             `json:"swLocStorageSizeInGb,omitempty"`
+	WorkerNode           []string        `json:"workerNode,omitempty"`
+	EnvVars              []corev1.EnvVar `json:"envVars,omitempty"` //Optional Env variables for Shards
+	Label                string          `json:"label,omitempty"`
+	IsDelete             string          `json:"isDelete,omitempty"`
+	IsForceDelete        string          `json:"isForceDelete,omitempty"`
+	EnvFile              string          `json:"envFile,omitempty"`
+	// +kubebuilder:validation:default="delete"
+	IsKeepPVC string            `json:"isKeepPVC,omitempty"`
+	PvcName   map[string]string `json:"pvcName,omitempty"`
 }
 
 // Responsefile Name
 type ResponseFile struct {
 	ConfigMapName string `json:"configMapName,omitempty"`
 	Name          string `json:"name,omitempty"`
-}
-
-// NetworkDetailsSPec defines the OracleRestart network
-
-type NetworkDetailSpec struct {
-	Name      string   `json:"name,omitempty"`
-	IPs       []string `json:"ips,omitempty"`
-	Interface string   `json:"interface,omitempty"`
-	Namespace string   `json:"namespace,omitempty"`
-	Mac       string   `json:"mac,omitempty"`
 }
 
 // OracleRestart DB Secret Details
@@ -276,13 +262,17 @@ type OracleRestartNodePortSvc struct {
 	SvcType       string                     `json:"svcType,omitempty"`
 	SvcLBIP       string                     `json:"svcLBIP,omitempty"`
 	SvcAnnotation map[string]string          `json:"svcAnnotation,omitempty"`
+	OnsTargetPort *int32                     `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
+	OnsLocalPort  *int32                     `json:"onsLocalPort,omitempty"`  // Port that will be exposed on the service.
 }
 
 type OracleRestartPortMapping struct {
-	Port       int32           `json:"port,omitempty"`
-	TargetPort int32           `json:"targetPort,omitempty"`
-	Protocol   corev1.Protocol `json:"protocol,omitempty"`
-	NodePort   int32           `json:"nodePort,omitempty"`
+	Port       int32 `json:"port,omitempty"`
+	TargetPort int32 `json:"targetPort,omitempty"`
+	// +kubebuilder:validation:Enum=TCP;UDP;SCTP
+	// +kubebuilder:default=TCP
+	Protocol corev1.Protocol `json:"protocol,omitempty"`
+	NodePort int32           `json:"nodePort,omitempty"`
 }
 
 type OracleRestartNodestatus struct {

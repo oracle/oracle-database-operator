@@ -112,7 +112,6 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	blocked := false
 	// var svcType string
 	var nilErr error = nil
-	var oracleRestartInst oraclerestartdb.OracleRestartInstDetailSpec
 
 	resultNq := ctrl.Result{Requeue: false}
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}
@@ -133,7 +132,6 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		oracleRestart.Spec.IsFailed = true
 		return resultQ, err
 	}
-	oracleRestartInst = oracleRestart.Spec.InstDetails
 
 	// Retrieve the old spec from annotations
 	oldSpec, err := r.GetOldSpec(oracleRestart)
@@ -181,12 +179,14 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// cleanup RAC Instance
+	// This is a special case if user wants just delete the pod and recreate it
 	_, err = r.cleanupOracleRestartInstance(req, ctx, oracleRestart)
 	if err != nil {
 		result = resultQ
 		r.Log.Info(err.Error())
 		return result, nilErr
 	}
+
 	// debugging
 	err = checkOracleRestartState(oracleRestart)
 	if err != nil {
@@ -239,37 +239,18 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 	var svcType string
 
-	if oracleRestart.Spec.ExternalSvcType != nil {
-		svcType = *oracleRestart.Spec.ExternalSvcType
-	} else {
-		if len(oracleRestart.Spec.LbService.PortMappings) == 0 {
-			svcType = "nodeport"
-		}
-	}
 	result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, "local"))
 	if err != nil {
 		result = resultNq
 		return result, err
 	}
 
-	if oracleRestartInst.NodePortSvc != nil {
-		for index := range oracleRestartInst.NodePortSvc {
-			result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, int32(index), oracleRestart.Spec.InstDetails, svcType, "nodeport"))
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-
-		}
-	}
-
-	if oracleRestartInst.OnsTargetPort != nil {
-		result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, svcType, "onssvc"))
+	if len(oracleRestart.Spec.NodePortSvc.PortMappings) != 0 {
+		result, err = r.createOrReplaceService(ctx, oracleRestart, oraclerestartcommon.BuildExternalServiceDefForOracleRestart(oracleRestart, 0, oracleRestart.Spec.InstDetails, svcType, "nodeport"))
 		if err != nil {
 			result = resultNq
 			return result, err
 		}
-
 	}
 
 	if len(oracleRestart.Spec.LbService.PortMappings) != 0 {
@@ -499,8 +480,8 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return result, err
 		}
 	}
-	if oracleRestartInst.OnsTargetPort != nil {
 
+	if oracleRestart.Spec.EnableOns == "true" {
 		OraRestartSpex := oracleRestart.Spec.InstDetails
 		orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
 		if err != nil {
@@ -514,11 +495,11 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			r.Log.Error(err, "Failed to list pods")
 			return ctrl.Result{}, err
 		}
+
 		err = r.updateONS(ctx, podList, oracleRestart, "start")
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-
 	}
 
 	completed = true
@@ -3120,7 +3101,7 @@ func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 		}
 	}
 
-	svcTypes := []string{"local"}
+	svcTypes := []string{"onssvc", "lbservice", "nodeport"}
 	for _, svcType := range svcTypes {
 		svcFound, err := oraclerestartcommon.CheckORestartSvc(oracleRestart, svcType, oraRestartSpex, "", r.Client)
 		if err == nil {
@@ -3130,28 +3111,6 @@ func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 			}
 		}
 	}
-	svcFound, err := oraclerestartcommon.CheckORestartSvc(oracleRestart, "onssvc", oracleRestart.Spec.InstDetails, "", r.Client)
-	if err == nil {
-		// See if service already exists and create if it doesn't
-		err = r.Client.Delete(context.Background(), svcFound)
-		if err != nil {
-			return err
-		}
-	}
-
-	if oraRestartSpex.NodePortSvc != nil {
-		for index := range oraRestartSpex.NodePortSvc {
-			svcFound, err := oraclerestartcommon.CheckORestartSvc(oracleRestart, "nodeport", oraRestartSpex, oraRestartSpex.NodePortSvc[index].SvcName, r.Client)
-			if err == nil {
-				log.Info("Deleting ORestart Service " + svcFound.Name)
-				if err := r.Client.Delete(context.Background(), svcFound); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	// Delete ConfigMap
 
 	log.Info("Successfully cleaned up OracleRestart")
 	return nil
@@ -3250,15 +3209,6 @@ func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oracler
 		}
 	}
 
-	svcFound, err = oraclerestartcommon.CheckORestartSvc(oracleRestart, "vip", OraRestartSpex, "", r.Client)
-	if err == nil {
-		// See if service already exists and create if it doesn't
-		err = r.Client.Delete(context.Background(), svcFound)
-		if err != nil {
-			return err
-		}
-	}
-
 	svcFound, err = oraclerestartcommon.CheckORestartSvc(oracleRestart, "local", OraRestartSpex, "", r.Client)
 	if err == nil {
 		// See if service already exists and create if it doesn't
@@ -3268,34 +3218,26 @@ func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oracler
 		}
 	}
 
-	svcFound, err = oraclerestartcommon.CheckORestartSvc(oracleRestart, "onssvc", OraRestartSpex, "", r.Client)
-	if err == nil {
-		// See if service already exists and create if it doesn't
-		err = r.Client.Delete(context.Background(), svcFound)
-		if err != nil {
-			return err
-		}
-	}
-
-	svcFound, err = oraclerestartcommon.CheckORestartSvc(oracleRestart, "lsnrsvc", OraRestartSpex, "", r.Client)
-	if err == nil {
-		// See if service already exists and create if it doesn't
-		err = r.Client.Delete(context.Background(), svcFound)
-		if err != nil {
-			return err
+	//NodePort Service
+	if len(oracleRestart.Spec.NodePortSvc.PortMappings) != 0 {
+		svcFound, err = oraclerestartcommon.CheckORestartSvc(oracleRestart, "nodeport", OraRestartSpex, "", r.Client)
+		if err == nil {
+			// See if service already exists and create if it doesn't
+			err = r.Client.Delete(context.Background(), svcFound)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
 	//NodePort Service
-	if OraRestartSpex.NodePortSvc != nil {
-		for index := range OraRestartSpex.NodePortSvc {
-			svcFound, err = oraclerestartcommon.CheckORestartSvc(oracleRestart, "nodeport", OraRestartSpex, OraRestartSpex.NodePortSvc[index].SvcName, r.Client)
-			if err == nil {
-				// See if service already exists and create if it doesn't
-				err = r.Client.Delete(context.Background(), svcFound)
-				if err != nil {
-					return err
-				}
+	if len(oracleRestart.Spec.LbService.PortMappings) != 0 {
+		svcFound, err = oraclerestartcommon.CheckORestartSvc(oracleRestart, "lbservice", OraRestartSpex, "", r.Client)
+		if err == nil {
+			// See if service already exists and create if it doesn't
+			err = r.Client.Delete(context.Background(), svcFound)
+			if err != nil {
+				return err
 			}
 		}
 	}

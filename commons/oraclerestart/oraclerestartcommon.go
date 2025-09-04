@@ -85,29 +85,32 @@ func checkAbsPath(location string) bool {
 }
 
 // FUnction to build the svc definition for RAC
-func buildContainerPortsDef(instance *oraclerestart.OracleRestart, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.ContainerPort {
+func buildContainerPortsDef(instance *oraclerestart.OracleRestart) []corev1.ContainerPort {
 	var result []corev1.ContainerPort
-	if len(OraRestartSpex.PortMappings) > 0 {
-		for _, portMapping := range OraRestartSpex.PortMappings {
-			name := generatePortMapping(portMapping)
-			if len(name) > 15 {
-				name = name[:15]
-			}
-			containerPort :=
-				corev1.ContainerPort{
-					Protocol:      portMapping.Protocol,
-					ContainerPort: portMapping.Port,
-					Name:          name,
+
+	/*
+		if len(OraRestartSpexPorts) > 0 {
+			for _, portMapping := range OraRestartSpexPorts {
+				name := generatePortMapping(portMapping)
+				if len(name) > 15 {
+					name = name[:15]
 				}
-			result = append(result, containerPort)
-		}
-	} else {
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraDBPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraDBPort))})
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraLsnrPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraLsnrPort))})
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraSSHPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraSSHPort))})
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraLocalOnsPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraLocalOnsPort))})
-		result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraOemPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraOemPort))})
-	}
+				containerPort :=
+					corev1.ContainerPort{
+						Protocol:      portMapping.Protocol,
+						ContainerPort: portMapping.Port,
+						Name:          name,
+					}
+				result = append(result, containerPort)
+			}
+		} else {
+	*/
+
+	result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraDBPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraDBPort))})
+	result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraLsnrPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraLsnrPort))})
+	result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraSSHPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraSSHPort))})
+	result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraLocalOnsPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraLocalOnsPort))})
+	result = append(result, corev1.ContainerPort{Protocol: corev1.ProtocolTCP, ContainerPort: utils.OraOemPort, Name: truncateName(fmt.Sprintf("%s-%d", "tcp", utils.OraOemPort))})
 
 	return result
 }
@@ -455,11 +458,8 @@ func DelORestartPv(instance *oraclerestart.OracleRestart, index int, diskName st
 func CheckORestartSvc(instance *oraclerestart.OracleRestart, svcType string, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec, svcName string, kClient client.Client) (*corev1.Service, error) {
 	svcFound := &corev1.Service{}
 	var name string
-	if svcType == "nodeport" {
-		name = svcName
-	} else {
-		name = getOracleRestartSvcName(instance, OraRestartSpex, svcType)
-	}
+
+	name = getOracleRestartSvcName(instance, OraRestartSpex, svcType)
 
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      name,
@@ -825,7 +825,7 @@ func getExternalConnStr(
 	logger logr.Logger,
 ) string {
 	// If NodePort service not defined in spec, don’t expose external conn
-	if len(instance.Spec.InstDetails.NodePortSvc) == 0 {
+	if len(instance.Spec.NodePortSvc.PortMappings) == 0 {
 		return ""
 	}
 	// Get the dbmc1 NodePort service

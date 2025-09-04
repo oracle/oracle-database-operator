@@ -436,7 +436,7 @@ func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, O
 		containerSpec.ReadinessProbe = instance.Spec.ReadinessProbe
 	}
 	// building Complete Container Spec
-	containerSpec.Ports = buildContainerPortsDef(instance, OracleRestartSpex)
+	containerSpec.Ports = buildContainerPortsDef(instance)
 
 	result = []corev1.Container{
 		containerSpec,
@@ -701,34 +701,22 @@ func BuildExternalServiceDefForOracleRestart(instance *oraclerestart.OracleResta
 
 	// If user is setting Node Port Service
 	if opType == "nodeport" {
-		if OracleRestartSpex.PortMappings != nil {
-			npSvc = OracleRestartSpex.NodePortSvc[index]
-			npSvc.PortMappings = OracleRestartSpex.PortMappings
-		}
+		npSvc = instance.Spec.NodePortSvc
+		npSvc.PortMappings = instance.Spec.NodePortSvc.PortMappings
 		service.Spec.Type = corev1.ServiceTypeNodePort
+		if len(instance.Spec.NodePortSvc.SvcAnnotation) != 0 {
+			service.Annotations = instance.Spec.NodePortSvc.SvcAnnotation
+		}
 	} else if opType == "lbservice" {
 		npSvc = instance.Spec.LbService
 		npSvc.PortMappings = instance.Spec.LbService.PortMappings
 		service.Spec.Type = corev1.ServiceTypeLoadBalancer
-	} else if opType == "onssvc" {
-		var exSvcPorts oraclerestart.OracleRestartPortMapping
-		var exSvc oraclerestart.OracleRestartNodePortSvc
-		npSvc.SvcType = svctype
-		exSvcPorts.NodePort = *OracleRestartSpex.OnsTargetPort
-		npSvc.PortMappings[index].NodePort = *OracleRestartSpex.OnsTargetPort
-		if OracleRestartSpex.OnsLocalPort != nil {
-			exSvcPorts.Port = *OracleRestartSpex.OnsLocalPort
-		} else {
-			exSvcPorts.Port = 6200
+		if len(instance.Spec.LbService.SvcAnnotation) != 0 {
+			service.Annotations = instance.Spec.LbService.SvcAnnotation
 		}
-		exSvc.PortMappings = append(exSvc.PortMappings, exSvcPorts)
-		npSvc = exSvc
 	}
 
 	//service.Name = npSvc.SvcName
-	if len(instance.Spec.LbService.SvcAnnotation) != 0 {
-		service.Annotations = instance.Spec.LbService.SvcAnnotation
-	}
 
 	service.Spec.Selector = getSvcLabelsForOracleRestart(0, OracleRestartSpex)
 	service.Spec.Ports = buildOracleRestartSvcPortsDef(npSvc)
@@ -759,16 +747,21 @@ func getOracleRestartSvcName(instance *oraclerestart.OracleRestart, OracleRestar
 
 	switch svcType {
 	case "local":
-		return OracleRestartSpex.Name + "-0"
-	case "onssvc":
-		return OracleRestartSpex.Name + "-0-ons"
-	case "lbsvc":
-		return OracleRestartSpex.Name + "-0-lbsvc"
+		return OracleRestartSpex.Name + "-0-local"
+	case "lbservice":
+		if instance.Spec.LbService.SvcName != "" {
+			return instance.Spec.LbService.SvcName + "-0-lbsvc"
+		} else {
+			return OracleRestartSpex.Name + "-0-lbsvc"
+		}
 	case "nodeport":
-		return OracleRestartSpex.Name + "-0-npsvc"
+		if instance.Spec.NodePortSvc.SvcName != "" {
+			return instance.Spec.NodePortSvc.SvcName + "-0-npsvc"
+		} else {
+			return OracleRestartSpex.Name + "-0-npsvc"
+		}
 	default:
 		return OracleRestartSpex.Name
-
 	}
 }
 

@@ -545,12 +545,10 @@ func (r *OracleRestart) validateGeneric() field.ErrorList {
 				"DbSwZipFile cannot be empty"))
 	}
 
-	if !utils.CheckStatusFlag(r.Spec.UseNfsforSwStorage) {
-		if cfg.HostSwStageLocation == "" && r.Spec.StorageClass == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(cfgPath.Child("HostSwStageLocation"), cfg.HostSwStageLocation,
-					"Either HostSwStageLocation or StorageClass must be specified"))
-		}
+	if cfg.HostSwStageLocation == "" && r.Spec.StorageClass == "" {
+		validationErrs = append(validationErrs,
+			field.Invalid(cfgPath.Child("HostSwStageLocation"), cfg.HostSwStageLocation,
+				"Either HostSwStageLocation or StorageClass must be specified"))
 	}
 
 	if r.Spec.ConfigParams.RuPatchLocation != "" {

@@ -136,7 +136,7 @@ func CheckStringInList(str1 string, arr []string) bool {
 
 func CheckStatusFlag(flagStr string) bool {
 
-	if strings.ToLower(flagStr) == "force" {
+	if strings.ToLower(flagStr) == "delete" {
 		return true
 	}
 
