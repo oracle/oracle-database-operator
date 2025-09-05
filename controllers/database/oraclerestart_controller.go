@@ -387,7 +387,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 			oracleRestart.Spec.InstDetails.EnvFile = cmName
 			dep := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
-			result, err = r.createOrReplaceSfs(ctx, req, oracleRestart, dep, index, isLast, oldState)
+			result, err = r.createOrReplaceSfs(ctx, req, *oracleRestart, dep, index, isLast, oldState)
 			if err != nil {
 				result = resultNq
 				return result, err
@@ -2547,12 +2547,16 @@ func checkDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracl
 }
 
 // ================================== CREATE FUNCTIONS =============================
-// This function create a PVC set in the yaml file
-func (r *OracleRestartReconciler) createOrReplaceSfs(ctx context.Context, req ctrl.Request, oracleRestart *oraclerestartdb.OracleRestart,
-	dep *appsv1.StatefulSet, index int, isLast bool, oldState string,
+func (r *OracleRestartReconciler) createOrReplaceSfs(
+	ctx context.Context,
+	req ctrl.Request,
+	oracleRestart oraclerestartdb.OracleRestart,
+	dep *appsv1.StatefulSet,
+	index int,
+	isLast bool,
+	oldState string,
 ) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", oracleRestart.Namespace, "Instance.Name", oracleRestart.Name)
-
 	found := &appsv1.StatefulSet{}
 
 	err := r.Get(ctx, types.NamespacedName{
@@ -2561,15 +2565,15 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(ctx context.Context, req ct
 	}, found)
 
 	jsn, _ := json.Marshal(dep)
-	oraclerestartcommon.LogMessages("DEBUG", string(jsn), nil, oracleRestart, r.Log)
+	oraclerestartcommon.LogMessages("DEBUG", string(jsn), nil, &oracleRestart, r.Log)
+
 	if err != nil && apierrors.IsNotFound(err) {
-		// Create the StatefulSet
-		r.updateOracleRestartInstStatus(oracleRestart, ctx, req, oracleRestart.Spec.InstDetails, string(oraclerestartdb.OracleRestartProvisionState), r.Client, true)
+		// CREATE
+		r.updateOracleRestartInstStatus(&oracleRestart, ctx, req, oracleRestart.Spec.InstDetails,
+			string(oraclerestartdb.OracleRestartProvisionState), r.Client, true)
 		reqLogger.Info("Creating a StatefulSet Normally", "StatefulSetName", dep.Name)
 		err = r.Create(ctx, dep)
-
 		if err != nil {
-			// StatefulSet creation failed
 			oracleRestart.Spec.IsFailed = true
 			reqLogger.Error(err, "Failed to create StatefulSet", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
 			return ctrl.Result{}, err
@@ -2578,13 +2582,33 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(ctx context.Context, req ct
 			return ctrl.Result{}, nil
 		}
 	} else if err != nil {
-		// Error that isn't due to the StatefulSet not existing
+		// Any other Get error
 		reqLogger.Error(err, "Failed to find the StatefulSet details")
 		return ctrl.Result{}, err
+	} else {
+		// UPDATE only if resource requirements have changed
+		foundRes := found.Spec.Template.Spec.Containers[0].Resources
+		depRes := dep.Spec.Template.Spec.Containers[0].Resources
+
+		if !reflect.DeepEqual(foundRes, depRes) {
+			// Copy metadata fields that must be preserved
+			dep.ResourceVersion = found.ResourceVersion
+			dep.UID = found.UID
+			dep.CreationTimestamp = found.CreationTimestamp
+			dep.ManagedFields = found.ManagedFields
+			dep.Status = found.Status
+
+			reqLogger.Info("Updating StatefulSet due to resource change", "StatefulSetName", dep.Name)
+			err = r.Update(ctx, dep)
+			if err != nil {
+				oracleRestart.Spec.IsFailed = true
+				reqLogger.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	return ctrl.Result{}, nil
-
 }
 
 // ================================== CREATE FUNCTIONS =============================

@@ -59,7 +59,7 @@ spec:
 
   # Image for Oracle Restart database container
   # image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0703
-  image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0723  # Latest image to use
+  image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim  # Latest image to use
   imagePullPolicy: Always        # Always pull the image when starting the pod
 
   # Optional: ServiceAccount for RBAC and security policies (mandatory in OpenShift)
@@ -100,6 +100,7 @@ spec:
     inventory: "/u01/app/oraInventory"                    # Path to oraInventory
     gridSwZipFile: "grid_home.zip"                        # Grid software ZIP file
     dbSwZipFile: "db_home.zip"                            # Database software ZIP file
+    oPatchSwZipFile: "p6880880_190000_Linux-x86-64.zip"
     sgaSize: "3G"                                         # Size of SGA memory
     pgaSize: "1G"                                         # Size of PGA memory
     processes: 2000                                       # Number of Oracle processes
@@ -111,3 +112,5 @@ spec:
 
     # Directory containing the unzipped RU patch (includes PatchSearch.xml)
     ruPatchLocation: /scratch/software/ru_patch        #<--- RU patch unzipped folder
+
+    oPatchLocation: "/scratch/software/19c/19.28"
