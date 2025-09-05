@@ -30,9 +30,9 @@ APEX installation files can be provided to the pod in two ways:
 
 ### APEX installation automatic download
 
-The ORDS container can download the latest APEX version from the Oracle Container Registry (OCR) or a custom URL.  
-Downloading APEX installation files requires the Kubernetes worker node to have internet access.  
-APEX download is performed at the container level and may be enabled or disabled for each pool.  
+The ORDS container can download the latest APEX version either from "Oracle APEX Downloads" or a specified custom URL.  
+To download APEX installation files, the Kubernetes worker node must have internet access.  
+The APEX download is defined globally, and upgrades can be enabled or disabled for each pool individually.
 
 ```yaml
 apiVersion: database.oracle.com/v1
