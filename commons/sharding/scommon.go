@@ -238,10 +238,10 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 		result = append(result, corev1.EnvVar{Name: "KEY_SECRET_VOLUME", Value: oraSecretMount})
 	}
 
-  if checkTdeWalletFlag(instance) {
+	if checkTdeWalletFlag(instance) {
 		result = append(result, corev1.EnvVar{Name: "TDE_PWD_KEY", Value: instance.Spec.DbSecret.TdeKeyFileName})
 		result = append(result, corev1.EnvVar{Name: "TDE_PWD_FILE", Value: instance.Spec.DbSecret.TdePwdFileName})
-  }
+	}
 
 	if restype == "GSM" {
 		if !sDirectParam {
@@ -283,11 +283,14 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 		if len(instance.Spec.GsmService) > 0 {
 			svc = ""
 			for i := 0; i < len(instance.Spec.GsmService); i++ {
-				svc = svc + "service_name=" + instance.Spec.GsmService[i].Name + ";"
+				svc = svc + "service_name=" + instance.Spec.GsmService[i].Name
 				if len(instance.Spec.GsmService[i].Role) != 0 {
-					svc = svc + "service_role=" + instance.Spec.GsmService[i].Role
+					svc = svc + ";service_role=" + instance.Spec.GsmService[i].Role
 				} else {
-					svc = svc + "service_role=primary"
+					svc = svc + ";service_role=primary"
+				}
+				if len(instance.Spec.GsmService[i].RuMode) != 0 {
+					svc = svc + ";service_mode=" + instance.Spec.GsmService[i].Role
 				}
 				result = append(result, corev1.EnvVar{Name: "SERVICE" + fmt.Sprint(i) + "_PARAMS", Value: svc})
 				svc = ""
@@ -878,11 +881,11 @@ func buildDirectorParams(instance *databasev4.ShardingDatabase, oraGsmSpex datab
 	for _, variable := range variables {
 		if variable.Name == "DIRECTOR_NAME" {
 			dnameFlag = true
-      dname = variable.Value
+			dname = variable.Value
 		}
 		if variable.Name == "DIRECTOR_PORT" {
 			dportFlag = true
-      dport = variable.Value
+			dport = variable.Value
 		}
 	}
 	if !dnameFlag {
@@ -891,7 +894,7 @@ func buildDirectorParams(instance *databasev4.ShardingDatabase, oraGsmSpex datab
 	} else {
 		varinfo = "director_name=" + dname + ";"
 		result = result + varinfo
-  }
+	}
 
 	if oraGsmSpex.Region != "" {
 		varinfo = "director_region=" + oraGsmSpex.Region + ";"
@@ -916,7 +919,7 @@ func buildDirectorParams(instance *databasev4.ShardingDatabase, oraGsmSpex datab
 	} else {
 		varinfo = "director_port=" + dport
 		result = result + varinfo
-  }
+	}
 
 	result = strings.TrimSuffix(result, ";")
 	return result
