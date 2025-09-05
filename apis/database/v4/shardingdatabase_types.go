@@ -95,8 +95,8 @@ type ShardingDatabaseSpec struct {
 	TdeWalletPvcMountLocation string              `json:"tdeWalletPvcMountLocation,omitempty"`
 	DbEdition                 string              `json:"dbEdition,omitempty"`
 	TopicId                   string              `json:"topicId,omitempty"`
-  SrvAccountName            string              `json:"serviceAccountName,omitempty"`
-  ShardInfo                 []ShardingDetails   `json:"shardInfo,omitempty"`
+	SrvAccountName            string              `json:"serviceAccountName,omitempty"`
+	ShardInfo                 []ShardingDetails   `json:"shardInfo,omitempty"`
 }
 
 // To understand Metav1.Condition, please refer the link https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1
@@ -271,6 +271,7 @@ type GsmServiceSpec struct {
 	TableFamily          string `json:"tableFamily,omitempty"`
 	Retention            string `json:"retention,omitempty"`
 	TfaPolicy            string `json:"tfaPolicy,omitempty"`
+	RuMode               string `json:"ruMode,omitempty"`
 }
 
 // Secret Details
@@ -316,25 +317,25 @@ type ConfigMapData struct {
 
 // Shard structures based on managed Replicas
 type ShardingDetails struct {
-    ShardPreFixName   string      `json:"shardPreFixName"`
-    Shape             string      `json:"shape,omitempty"` 
-    Replicas          int32       `json:"replicas,omitempty"`
-    StorageSizeInGb   int32       `json:"storageSizeInGb,omitempty"`
-    ShardGroupDetails *ShardGroup `json:"shardGroupDetails,omitempty"`
-    ShardSpaceDetails *ShardSpace `json:"shardSpaceDetails,omitempty"`
+	ShardPreFixName   string      `json:"shardPreFixName"`
+	Shape             string      `json:"shape,omitempty"`
+	Replicas          int32       `json:"replicas,omitempty"`
+	StorageSizeInGb   int32       `json:"storageSizeInGb,omitempty"`
+	ShardGroupDetails *ShardGroup `json:"shardGroupDetails,omitempty"`
+	ShardSpaceDetails *ShardSpace `json:"shardSpaceDetails,omitempty"`
 }
 type ShardGroup struct {
-    ShardGroupName string `json:"shardGroupName,omitempty"`
-    Region         string `json:"region,omitempty"`
-    RepFactor      int    `json:"repFactor,omitempty"`
-    ShardSpace     string `json:"ShardSpace,omitempty"`
-    DeployAs       string `json:"deployAs,omitempty"`
-	  IsDelete       string `json:"isDelete,omitempty"`
+	ShardGroupName string `json:"shardGroupName,omitempty"`
+	Region         string `json:"region,omitempty"`
+	RepFactor      int    `json:"repFactor,omitempty"`
+	ShardSpace     string `json:"ShardSpace,omitempty"`
+	DeployAs       string `json:"deployAs,omitempty"`
+	IsDelete       string `json:"isDelete,omitempty"`
 }
 type ShardSpace struct {
-    ShardSpaceName string `json:"shardSpaceName,omitempty"`
-    Chunks         int    `json:"Chnuks,omitempty"`
-    ProtectMode    string `json:"protectMode,omitempty"` //Possible Values MAXPROTECTION, MAXAVAILABILITY,MAXPERFORMANCE
+	ShardSpaceName string `json:"shardSpaceName,omitempty"`
+	Chunks         int    `json:"Chnuks,omitempty"`
+	ProtectMode    string `json:"protectMode,omitempty"` //Possible Values MAXPROTECTION, MAXAVAILABILITY,MAXPERFORMANCE
 }
 
 type ShardStatusMapKeys string
