@@ -196,6 +196,30 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 	deviceWarnings = append(deviceWarnings, w...)
 	validationErrs = append(validationErrs, errs...)
 
+	if cr.Spec.ConfigParams != nil {
+		// CRS
+		validationErrs = append(validationErrs,
+			cr.validateAsmRedundancyAndDisks(
+				cr.Spec.ConfigParams.CrsAsmDeviceList,
+				cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy,
+				"crsAsmDeviceList")...,
+		)
+		// DB
+		validationErrs = append(validationErrs,
+			cr.validateAsmRedundancyAndDisks(
+				cr.Spec.ConfigParams.DbAsmDeviceList,
+				cr.Spec.ConfigParams.DBAsmDiskDgRedundancy,
+				"dbAsmDeviceList")...,
+		)
+		// RECO
+		validationErrs = append(validationErrs,
+			cr.validateAsmRedundancyAndDisks(
+				cr.Spec.ConfigParams.RecoAsmDeviceList,
+				cr.Spec.ConfigParams.RecoAsmDiskDgRedundancy,
+				"recoAsmDeviceList")...,
+		)
+	}
+
 	for _, warning := range deviceWarnings {
 		warnings = append(warnings, warning)
 	}
@@ -268,6 +292,31 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 	validationErrs = append(validationErrs, newCr.validateUpdateAsmStorage(old)...)
 	validationErrs = append(validationErrs, newCr.validateUpdateGeneric(old)...)
 
+	if old.Spec.ConfigParams != nil && newCr.Spec.ConfigParams != nil {
+
+		// CRS
+		if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.CrsAsmDiskDgRedundancy, newCr.Spec.ConfigParams.CrsAsmDiskDgRedundancy, "crsAsmDiskDgRedundancy"); err != nil {
+			validationErrs = append(validationErrs, err)
+		}
+		// DB
+		if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.DBAsmDiskDgRedundancy, newCr.Spec.ConfigParams.DBAsmDiskDgRedundancy, "dbAsmDiskDgRedundancy"); err != nil {
+			validationErrs = append(validationErrs, err)
+		}
+		// RECO
+		if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.RecoAsmDiskDgRedundancy, newCr.Spec.ConfigParams.RecoAsmDiskDgRedundancy, "recoAsmDiskDgRedundancy"); err != nil {
+			validationErrs = append(validationErrs, err)
+		}
+	}
+
+	if old.Spec.AsmStorageDetails != nil && newCr.Spec.AsmStorageDetails != nil {
+		errs := validateAsmNoDiskResize(
+			old.Spec.AsmStorageDetails.DisksBySize,
+			newCr.Spec.AsmStorageDetails.DisksBySize,
+			field.NewPath("spec").Child("asmStorageDetails").Child("disksBySize"),
+		)
+		validationErrs = append(validationErrs, errs...)
+	}
+
 	if len(validationErrs) > 0 {
 		return nil, apierrors.NewInvalid(
 			schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestart"},
@@ -275,6 +324,74 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 	}
 
 	return nil, nil
+}
+
+func redundancyChanged(oldRed, newRed string) bool {
+	// Normalize and compare (case-insensitive, trim spaces)
+	return strings.ToUpper(strings.TrimSpace(oldRed)) != strings.ToUpper(strings.TrimSpace(newRed))
+}
+
+func validateRedundancyOnUpdate(
+	oldRed, newRed, fieldName string,
+) *field.Error {
+	normalizedOld := strings.ToUpper(strings.TrimSpace(oldRed))
+	normalizedNew := strings.ToUpper(strings.TrimSpace(newRed))
+
+	if normalizedOld == "" {
+		// Old value not set, treat as EXTERNAL only
+		if normalizedNew != "" && normalizedNew != "EXTERNAL" {
+			return field.Invalid(
+				field.NewPath("spec").Child("configParams").Child(fieldName),
+				newRed,
+				"Redundancy was not set before (treated as EXTERNAL); it can only be EXTERNAL now.",
+			)
+		}
+	} else {
+		// Old value set; do not allow changes
+		if redundancyChanged(normalizedOld, normalizedNew) {
+			return field.Invalid(
+				field.NewPath("spec").Child("configParams").Child(fieldName),
+				newRed,
+				fmt.Sprintf("Changing redundancy value for ASM diskgroup (%s) is not allowed on update.", fieldName),
+			)
+		}
+	}
+	return nil
+}
+
+func validateAsmNoDiskResize(
+	oldDisks, newDisks []DiskBySize,
+	fieldPath *field.Path,
+) field.ErrorList {
+	var errs field.ErrorList
+
+	// Build map of disk name -> size for old and new
+	oldDiskMap := make(map[string]int)
+	for _, disk := range oldDisks {
+		for _, name := range disk.DiskNames {
+			oldDiskMap[name] = disk.StorageSizeInGb
+		}
+	}
+	newDiskMap := make(map[string]int)
+	for _, disk := range newDisks {
+		for _, name := range disk.DiskNames {
+			newDiskMap[name] = disk.StorageSizeInGb
+		}
+	}
+
+	// For disks present in both old and new, size must not change
+	for name, oldSize := range oldDiskMap {
+		if newSize, exists := newDiskMap[name]; exists {
+			if newSize != oldSize {
+				errs = append(errs, field.Invalid(
+					fieldPath,
+					name,
+					fmt.Sprintf("cannot change size of existing ASM disk %s (old: %dGB, new: %dGB)", name, oldSize, newSize),
+				))
+			}
+		}
+	}
+	return errs
 }
 
 func (r *OracleRestart) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
@@ -841,6 +958,61 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+func getDeviceCount(deviceList string) int {
+	if deviceList == "" {
+		return 0
+	}
+	devices := strings.Split(deviceList, ",")
+	count := 0
+	for _, d := range devices {
+		if strings.TrimSpace(d) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func (r *OracleRestart) validateAsmRedundancyAndDisks(
+	devList, redundancy, paramField string,
+) field.ErrorList {
+	var errs field.ErrorList
+	diskCount := getDeviceCount(devList)
+
+	// Only validate if at least ONE of devList or redundancy is set/non-empty
+	if strings.TrimSpace(redundancy) == "" {
+		// Both are empty, nothing to validate
+		return errs
+	}
+
+	switch strings.ToUpper(redundancy) {
+	case "EXTERNAL":
+		// No restrictions
+		return errs
+	case "NORMAL":
+		if diskCount < 2 || diskCount%2 != 0 {
+			errs = append(errs, field.Invalid(
+				field.NewPath("spec").Child("configParams").Child(paramField),
+				devList,
+				"NORMAL redundancy requires disk count in multiples of 2 (min 2)",
+			))
+		}
+	case "HIGH":
+		if diskCount < 3 || diskCount%3 != 0 {
+			errs = append(errs, field.Invalid(
+				field.NewPath("spec").Child("configParams").Child(paramField),
+				devList,
+				"HIGH redundancy requires disk count in multiples of 3 (min 3)",
+			))
+		}
+	default:
+		errs = append(errs, field.Invalid(
+			field.NewPath("spec").Child("configParams").Child(paramField),
+			redundancy,
+			"Invalid redundancy type; must be EXTERNAL, NORMAL, or HIGH",
+		))
+	}
+	return errs
 }
 
 // =========================== Update specs checks block ends Here =======================

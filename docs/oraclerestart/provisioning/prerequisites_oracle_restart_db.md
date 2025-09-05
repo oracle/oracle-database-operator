@@ -97,6 +97,7 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
       net.core.wmem_default = 262144
       net.core.wmem_max = 1048576
       fs.aio-max-nr = 1048576
+      vm.nr_hugepages=16384
       ```
   3. Run the following commands:
       * `# sysctl -a`

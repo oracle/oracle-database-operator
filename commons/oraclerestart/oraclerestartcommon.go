@@ -824,61 +824,92 @@ func getExternalConnStr(
 	kubeConfig clientcmd.ClientConfig,
 	logger logr.Logger,
 ) string {
-	// If NodePort service not defined in spec, don’t expose external conn
-	if len(instance.Spec.NodePortSvc.PortMappings) == 0 {
+	switch {
+	// Case 1: Neither service defined
+	case len(instance.Spec.NodePortSvc.PortMappings) == 0 && len(instance.Spec.LbService.PortMappings) == 0:
 		return ""
-	}
-	// Get the dbmc1 NodePort service
-	svc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), instance.Spec.InstDetails.Name, metav1.GetOptions{})
-	if err != nil {
-		msg := "Failed to get dbmc1 service"
-		LogMessages("DEBUG", msg, err, instance, logger)
-		return "Pending"
-	}
 
-	// Find the NodePort for port 1521
-	var nodePort int32
-	for _, port := range svc.Spec.Ports {
-		if port.Port == 1521 {
-			nodePort = port.NodePort
-			break
+	// Case 2: LoadBalancer service defined, try to use it
+	case len(instance.Spec.LbService.PortMappings) != 0:
+		lbServiceName := instance.Spec.LbService.SvcName
+		lbSvc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), lbServiceName, metav1.GetOptions{})
+		lbExtIP := ""
+		var lbPort int32
+		if err == nil && lbSvc.Spec.Type == corev1.ServiceTypeLoadBalancer {
+			// Extract external IP or hostname
+			for _, ingress := range lbSvc.Status.LoadBalancer.Ingress {
+				if ingress.IP != "" {
+					lbExtIP = ingress.IP
+					break
+				} else if ingress.Hostname != "" {
+					lbExtIP = ingress.Hostname
+					break
+				}
+			}
+			// Find port 1521
+			for _, port := range lbSvc.Spec.Ports {
+				if port.Port == 1521 {
+					lbPort = port.Port
+					break
+				}
+			}
 		}
-	}
-	if nodePort == 0 {
-		msg := "Failed to find NodePort for port 1521 in dbmc1 service"
-		LogMessages("DEBUG", msg, err, instance, logger)
-		return "Pending"
-	}
-
-	// Get the external IP of the first node in the cluster
-	nodeList, err := kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
-	if err != nil || len(nodeList.Items) == 0 {
-		msg := "Failed to list cluster nodes"
-		LogMessages("DEBUG", msg, err, instance, logger)
-		return "Pending"
-	}
-	var nodeIP string
-	for _, addr := range nodeList.Items[0].Status.Addresses {
-		// Try to get an ExternalIP, fallback to InternalIP if needed
-		if addr.Type == corev1.NodeExternalIP {
-			nodeIP = addr.Address
-			break
-		} else if addr.Type == corev1.NodeInternalIP && nodeIP == "" {
-			nodeIP = addr.Address
+		// Prefer LoadBalancer if available
+		if lbExtIP != "" && lbPort != 0 {
+			serviceName := instance.Spec.ServiceDetails.Name
+			return fmt.Sprintf("EXTERNAL: %s:%d/%s", lbExtIP, lbPort, serviceName)
 		}
-	}
-	if nodeIP == "" {
-		msg := "Failed to get node IP address"
-		LogMessages("DEBUG", msg, err, instance, logger)
-		return "Pending"
-	}
+		// fallthrough to NodePort if LB unavailable
+		fallthrough
 
-	// Replace with your actual Oracle service name if different
-	serviceName := instance.Spec.ServiceDetails.Name
+	// Case 3: NodePort defined or fallback
+	default:
+		svc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), instance.Spec.InstDetails.Name, metav1.GetOptions{})
+		if err != nil {
+			msg := "Failed to get dbmc1 service"
+			LogMessages("DEBUG", msg, err, instance, logger)
+			return "Pending"
+		}
 
-	// Construct the external connect string
-	externalConnectString := fmt.Sprintf("%s:%d/%s", nodeIP, nodePort, serviceName)
-	return externalConnectString
+		// Find NodePort for 1521
+		var nodePort int32
+		for _, port := range svc.Spec.Ports {
+			if port.Port == 1521 {
+				nodePort = port.NodePort
+				break
+			}
+		}
+		if nodePort == 0 {
+			msg := "Failed to find NodePort for port 1521 in dbmc1 service"
+			LogMessages("DEBUG", msg, err, instance, logger)
+			return "Pending"
+		}
+
+		// Get first node external/internal IP
+		nodeList, err := kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+		if err != nil || len(nodeList.Items) == 0 {
+			msg := "Failed to list cluster nodes"
+			LogMessages("DEBUG", msg, err, instance, logger)
+			return "Pending"
+		}
+		var nodeIP string
+		for _, addr := range nodeList.Items[0].Status.Addresses {
+			if addr.Type == corev1.NodeExternalIP {
+				nodeIP = addr.Address
+				break
+			} else if addr.Type == corev1.NodeInternalIP && nodeIP == "" {
+				nodeIP = addr.Address
+			}
+		}
+		if nodeIP == "" {
+			msg := "Failed to get node IP address"
+			LogMessages("DEBUG", msg, err, instance, logger)
+			return "Pending"
+		}
+
+		serviceName := instance.Spec.ServiceDetails.Name
+		return fmt.Sprintf("%s:%d/%s", nodeIP, nodePort, serviceName)
+	}
 }
 
 func getClientEtcHost(podNames []string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node) []string {
@@ -987,95 +1018,6 @@ func getGridHome(podName string, instance *oraclerestart.OracleRestart, kubeClie
 
 	return strings.TrimSpace(stdoutput), nil
 }
-
-// func getASMListDisks(podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) []string {
-// 	gridHome, err := getGridHome(podName, instance, kubeClient, kubeConfig, logger)
-// 	if err != nil {
-// 		msg := "Error retrieving GRID_HOME"
-// 		LogMessages("DEBUG", msg, err, instance, logger)
-// 		return []string{msg}
-// 	}
-// 	stdoutput, _, err := ExecCommand(podName, getASMListDisksCommand(gridHome), kubeClient, kubeConfig, instance, logger)
-// 	if err != nil {
-// 		msg := "Error retrieving ASM disks"
-// 		LogMessages("DEBUG", msg, err, instance, logger)
-// 		return []string{msg}
-// 	}
-
-// 	// Split the output by new lines, remove carriage returns and filter out the header
-// 	var disks []string
-// 	lines := strings.Split(strings.TrimSpace(stdoutput), "\n")
-// 	for _, line := range lines {
-// 		// Remove any carriage returns and trim spaces
-// 		line = strings.TrimSpace(strings.Trim(line, "\r"))
-// 		if line == "Path" {
-// 			continue // Skip the header
-// 		}
-// 		if line != "" {
-// 			disks = append(disks, line)
-// 		}
-// 	}
-
-// 	return disks
-// }
-
-// func GetCrsNodes(instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kClient client.Client) (string, string, string, string, string) {
-
-// 	var new_crs_nodes []string
-// 	var new_crs_nodes_list []string
-// 	var existing_crs_nodes_healthy []string
-// 	var existing_crs_nodes_not_healthy []string
-// 	var install_node string
-// 	var install_node_flag bool
-
-// 	if len(instance.Spec.InstDetails) > 0 {
-// 		for _, OraRestartSpex := range instance.Spec.InstDetails {
-// 			if !utils.CheckStatusFlag(OraRestartSpex.IsDelete) {
-// 				_, err := CheckSfset(OraRestartSpex.Name, instance, kClient)
-// 				if err != nil {
-// 					new_crs_nodes = append(new_crs_nodes, ("pubhost:" + OraRestartSpex.Name + "-0" + "," + "viphost:" + OraRestartSpex.VipSvcName))
-// 					new_crs_nodes_list = append(new_crs_nodes_list, OraRestartSpex.Name+"-0")
-// 					if !install_node_flag {
-// 						install_node = OraRestartSpex.Name + "-0"
-// 						install_node_flag = true
-// 					}
-// 				}
-// 			}
-// 		}
-// 		// Updating OracleRestartNode status
-
-// 		if len(instance.Status.OracleRestartNodes) > 0 {
-// 			for _, oraRacStatusSpex := range instance.Status.OracleRestartNodes {
-// 				_, err := CheckSfset(strings.Split(oraRacStatusSpex.Name, "-")[0], instance, kClient)
-// 				if err != nil {
-// 					newRacStatus := delOracleRestartNodestatus(instance, oraRacStatusSpex.Name)
-// 					instance.Status.OracleRestartNodes = newRacStatus
-// 				}
-// 			}
-// 			// ====Updating the OracleRestartNode status block ends here====
-
-// 			/// The loop check for healthy and non healthy nodes
-
-// 			for _, oraRacStatusSpex := range instance.Status.OracleRestartNodes {
-// 				if oraRacStatusSpex.NodeDetails.ClusterState == "HEALTHY" {
-// 					if !checkElem(existing_crs_nodes_healthy, oraRacStatusSpex.Name) {
-// 						existing_crs_nodes_healthy = append(existing_crs_nodes_healthy, oraRacStatusSpex.Name)
-// 					}
-// 				} else {
-// 					if !checkElem(existing_crs_nodes_not_healthy, oraRacStatusSpex.Name) {
-// 						existing_crs_nodes_not_healthy = append(existing_crs_nodes_not_healthy, oraRacStatusSpex.Name)
-// 					}
-// 				}
-// 			}
-// 		}
-
-// 	}
-// 	//External for loop ends here
-
-// 	// Main if condition ends here
-// 	return strings.Join(new_crs_nodes[:], ";"), strings.Join(existing_crs_nodes_healthy, ","), strings.Join(existing_crs_nodes_not_healthy, ","), install_node, strings.Join(new_crs_nodes_list, ",")
-
-// }
 
 func GetAsmDevices(instance *oraclerestart.OracleRestart) string {
 	var asmDisk []string
