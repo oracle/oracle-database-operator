@@ -987,22 +987,27 @@ func (r *OracleRestart) validateAsmRedundancyAndDisks(
 
 	switch strings.ToUpper(redundancy) {
 	case "EXTERNAL":
-		// No restrictions
-		return errs
-	case "NORMAL":
-		if diskCount < 2 || diskCount%2 != 0 {
+		if diskCount < 1 {
 			errs = append(errs, field.Invalid(
 				field.NewPath("spec").Child("configParams").Child(paramField),
 				devList,
-				"NORMAL redundancy requires disk count in multiples of 2 (min 2)",
+				"EXTERNAL redundancy requires disk count minimum 1",
+			))
+		}
+	case "NORMAL":
+		if diskCount < 2 {
+			errs = append(errs, field.Invalid(
+				field.NewPath("spec").Child("configParams").Child(paramField),
+				devList,
+				"NORMAL redundancy requires disk count minimum 2",
 			))
 		}
 	case "HIGH":
-		if diskCount < 3 || diskCount%3 != 0 {
+		if diskCount < 3 {
 			errs = append(errs, field.Invalid(
 				field.NewPath("spec").Child("configParams").Child(paramField),
 				devList,
-				"HIGH redundancy requires disk count in multiples of 3 (min 3)",
+				"HIGH redundancy requires disk count minimum 3",
 			))
 		}
 	default:
