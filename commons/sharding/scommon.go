@@ -290,7 +290,7 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 					svc = svc + ";service_role=primary"
 				}
 				if len(instance.Spec.GsmService[i].RuMode) != 0 {
-					svc = svc + ";service_mode=" + instance.Spec.GsmService[i].Role
+					svc = svc + ";service_mode=" + instance.Spec.GsmService[i].RuMode
 				}
 				result = append(result, corev1.EnvVar{Name: "SERVICE" + fmt.Sprint(i) + "_PARAMS", Value: svc})
 				svc = ""
