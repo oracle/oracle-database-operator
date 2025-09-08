@@ -6,12 +6,12 @@ You can use the example file [single_model_https_config.json](./provisioning/sin
 
 Rename the file `single_model_https_config.json` to `config.json`.
 
-Create a configmap using the above file as below:
+Create a configmap using the renamed file. Example:
 ```sh
 kubectl create configmap omlconfigjson --from-file=config.json -n pai
 ```
 
-You can check the details of the configmap as below:
+You can check the details of the configmap. Example:
 ```sh
 kubectl get configmap -n pai
 ```
