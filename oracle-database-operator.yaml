@@ -10689,6 +10689,8 @@ spec:
                     type: string
                   dbName:
                     type: string
+                  dbOneOffIds:
+                    type: string
                   dbRecoveryFileDest:
                     type: string
                   dbRecoveryFileDestSize:
@@ -10716,6 +10718,8 @@ spec:
                     type: string
                   gridHome:
                     type: string
+                  gridOneOffIds:
+                    type: string
                   gridResponseFile:
                     properties:
                       configMapName:
@@ -10732,8 +10736,6 @@ spec:
                   oPatchLocation:
                     type: string
                   oPatchSwZipFile:
-                    type: string
-                  oneOffIds:
                     type: string
                   oneOffLocation:
                     type: string
@@ -11469,6 +11471,8 @@ spec:
                     type: string
                   dbName:
                     type: string
+                  dbOneOffIds:
+                    type: string
                   dbRecoveryFileDest:
                     type: string
                   dbRecoveryFileDestSize:
@@ -11496,6 +11500,8 @@ spec:
                     type: string
                   gridHome:
                     type: string
+                  gridOneOffIds:
+                    type: string
                   gridResponseFile:
                     properties:
                       configMapName:
@@ -11512,8 +11518,6 @@ spec:
                   oPatchLocation:
                     type: string
                   oPatchSwZipFile:
-                    type: string
-                  oneOffIds:
                     type: string
                   oneOffLocation:
                     type: string
@@ -14035,6 +14039,8 @@ spec:
                     retention:
                       type: string
                     role:
+                      type: string
+                    ruMode:
                       type: string
                     sessionState:
                       type: string
