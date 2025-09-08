@@ -53,7 +53,6 @@ import (
 	oraclerestartdb "github.com/oracle/oracle-database-operator/apis/database/v4"
 	oraclerestartcommon "github.com/oracle/oracle-database-operator/commons/oraclerestart"
 	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
-	"github.com/prometheus/common/log"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -3453,11 +3452,10 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 					}
 
 					pvc.Spec.Resources.Requests["storage"] = resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")
-					log.Info("Updating PVC", "pvc", pvc.Name, "volume", pvc.Spec.VolumeName)
+					fmt.Printf("Updating PVC", "pvc", pvc.Name, "volume", pvc.Spec.VolumeName)
 					r.Recorder.Eventf(instance, corev1.EventTypeNormal, "Updating PVC - volume expansion", "Resizing the pvc for storage expansion")
 					err = r.Update(ctx, pvc)
 					if err != nil {
-						log.Error(err, "Error while updating the PVCs")
 						return fmt.Errorf("error while updating the PVCs")
 					}
 
