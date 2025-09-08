@@ -19,8 +19,7 @@ In this v2.0 production release, `OraOperator` supports the following database c
 * **Oracle Database Observability**
 * **Oracle Database Rest Service (ORDS) instances**
 * **Oracle Restart**
-* **Oracle Private AI Controller**
-* **Oracle Sharding**
+* **Oracle Globally Distributed Database**
 
 ---
 
@@ -37,6 +36,7 @@ In this v2.0 production release, `OraOperator` supports the following database c
   - Snapshot Standby support in Data Guard setup
 * **Globally Distributed Database**
   - Support for Oracle Database 23ai Raft replication
+  - Oracle Database 23ai Free support
 * **Autonomous Database**
   - Support for Database manual failover and switchover
 * **Multitenant DB**
@@ -56,7 +56,6 @@ In this v2.0 production release, `OraOperator` supports the following database c
   - Patching and Upgrade
 * **Oracle Restart**
   - Support for Oracle Database 19c
-* **Oracle Private AI**
 
 ---
 
@@ -81,8 +80,7 @@ As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) suppor
 * **Oracle Base Database Service (OBDS)**: Provision, scale shape/storage, terminate/update license, cloning, PDB creation, using KMS Vaults, backup/restore, Data Guard setup, patching/upgrade
 * **Oracle Data Guard**: Provision standby for SIDB, create Data Guard configuration, perform switchover, patch primary/standby
 * **Oracle Database Observability**: Create, patch, delete `databaseObserver` (logs and metrics)
-* **Oracle Restart**: Provision, add & delete asm disks, enable ons ports, custom storage class support, existing pvc support
-* **Oracle Private AI**
+* **Oracle Restart**: Provision, add & delete asm disks, enable ons ports, custom storage class support, existing pvc support, load balancer  support
 * Watch namespaces using the `WATCH_NAMESPACE` environment variable
 
 
@@ -93,13 +91,14 @@ This production release has been installed and tested on:
 
 The previous releases were tested on the following platforms:
 
-* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.24
-* [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.6
+* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.30 or later
+* [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.9 or later
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
 * [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Red Hat OKD](https://www.okd.io/)
 * [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.29.0
+* [Redhat Openshift](https://www.redhat.com/en/technologies/cloud-computing/openshift) with version v4.16 or later
 
 ## Prerequisites
 
@@ -294,6 +293,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 * [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
 * [Oracle Globally Distributed Database](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
 * [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
+
 
 ## Contributing
 
