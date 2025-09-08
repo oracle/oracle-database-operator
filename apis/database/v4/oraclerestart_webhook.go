@@ -258,7 +258,7 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 			newCr.Name, fmt.Errorf("updates to the storageclass is forbidden: %s", old.Spec.StorageClass))
 	}
 
-	if old.Spec.InstDetails.SwLocStorageSizeInGb < newCr.Spec.InstDetails.SwLocStorageSizeInGb {
+	if newCr.Spec.InstDetails.SwLocStorageSizeInGb < old.Spec.InstDetails.SwLocStorageSizeInGb {
 
 		return nil, apierrors.NewForbidden(
 			schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},

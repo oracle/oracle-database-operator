@@ -851,6 +851,8 @@ spec:
                       type: string
                     role:
                       type: string
+                    ruMode:
+                      type: string
                     sessionState:
                       type: string
                     sqlTransactionProfile:
