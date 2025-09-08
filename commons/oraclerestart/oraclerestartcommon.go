@@ -1366,3 +1366,6 @@ func GetHealthyNodeCounts(instance *oraclerestart.OracleRestart) (int, error) {
 	}
 	return 0, fmt.Errorf("healthy cluster node counts are not matching with total cluster nodes")
 }
+func GetSwPvcName(name string) string {
+	return name + "-oradata-sw-vol-pvc"
+}

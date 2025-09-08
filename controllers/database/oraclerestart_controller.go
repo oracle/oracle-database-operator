@@ -53,11 +53,13 @@ import (
 	oraclerestartdb "github.com/oracle/oracle-database-operator/apis/database/v4"
 	oraclerestartcommon "github.com/oracle/oracle-database-operator/commons/oraclerestart"
 	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
+	"github.com/prometheus/common/log"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -500,6 +502,11 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if err != nil {
 			return ctrl.Result{}, err
 		}
+	}
+
+	err = r.expandStorageClassSWVolume(ctx, oracleRestart, oldSpec)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	completed = true
@@ -3180,13 +3187,11 @@ func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oracler
 	// delete steps that the operator needs to do before the CR can be deleted.
 
 	//var i int32
-	var nodeCount int
 	var err error
 	var cmName string
-	var healthyNode string
 
-	nodeCount, err = oraclerestartcommon.GetHealthyNodeCounts(oracleRestart)
-	healthyNode, err = oraclerestartcommon.GetHealthyNode(oracleRestart)
+	//nodeCount, err = oraclerestartcommon.GetHealthyNodeCounts(oracleRestart)
+	//healthyNode, err = oraclerestartcommon.GetHealthyNode(oracleRestart)
 	if err != nil {
 		return fmt.Errorf("no healthy node found in the cluster to perform delete node operator. manual intervention required")
 	}
@@ -3263,16 +3268,6 @@ func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oracler
 			if err != nil {
 				return err
 			}
-		}
-	}
-
-	// This block will execute only if asm cardinailty is set to 3.
-	if nodeCount == 3 {
-		err = oraclerestartcommon.UpdateAsmCount(oracleRestart.Spec.ConfigParams.GridHome, healthyNode, oracleRestart, r.kubeClient, r.kubeConfig, r.Log)
-		if err != nil {
-			log.Info("erorr occurred while updating the asm count")
-		} else {
-			log.Info("Updated the asm cardinality successfully")
 		}
 	}
 
@@ -3422,5 +3417,53 @@ func (r *OracleRestartReconciler) updateONS(ctx context.Context, podList *corev1
 		r.Log.Info("ONS Running successfully", "podName", podName)
 	}
 
+	return nil
+}
+func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context, instance *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec) error {
+
+	if oldSpec != nil {
+		if instance.Spec.InstDetails.SwLocStorageSizeInGb > oldSpec.InstDetails.SwLocStorageSizeInGb {
+			storageClass := &storagev1.StorageClass{}
+			pvc := &corev1.PersistentVolumeClaim{}
+
+			if instance.Spec.StorageClass != "" {
+
+				err := r.Get(ctx, types.NamespacedName{Name: instance.Spec.StorageClass}, storageClass)
+				if err != nil {
+					return fmt.Errorf("error while fetching the storage class")
+				}
+
+				err = r.Get(ctx, types.NamespacedName{
+					Name:      oraclerestartcommon.GetSwPvcName(instance.Name),
+					Namespace: instance.Namespace,
+				}, pvc)
+
+				if err == nil {
+					if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
+						r.Recorder.Eventf(instance, corev1.EventTypeWarning, "PVC not resizable", "The storage class doesn't support volume expansion")
+						return fmt.Errorf("the storage class %s doesn't support volume expansion", instance.Spec.StorageClass)
+					}
+
+					newPVCSize := resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")
+					newPVCSizeAdd := &newPVCSize
+
+					if newPVCSizeAdd.Cmp(pvc.Spec.Resources.Requests["storage"]) < 0 {
+						r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Cannot Resize PVC", "Forbidden: field can not be less than previous value")
+						return fmt.Errorf("Resizing PVC to lower size volume not allowed")
+					}
+
+					pvc.Spec.Resources.Requests["storage"] = resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")
+					log.Info("Updating PVC", "pvc", pvc.Name, "volume", pvc.Spec.VolumeName)
+					r.Recorder.Eventf(instance, corev1.EventTypeNormal, "Updating PVC - volume expansion", "Resizing the pvc for storage expansion")
+					err = r.Update(ctx, pvc)
+					if err != nil {
+						log.Error(err, "Error while updating the PVCs")
+						return fmt.Errorf("error while updating the PVCs")
+					}
+
+				}
+			}
+		}
+	}
 	return nil
 }

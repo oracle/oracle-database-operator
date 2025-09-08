@@ -251,6 +251,20 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 		}
 	}
 
+	if old.Spec.StorageClass != newCr.Spec.StorageClass {
+
+		return nil, apierrors.NewForbidden(
+			schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},
+			newCr.Name, fmt.Errorf("updates to the storageclass is forbidden: %s", old.Spec.StorageClass))
+	}
+
+	if old.Spec.InstDetails.SwLocStorageSizeInGb < newCr.Spec.InstDetails.SwLocStorageSizeInGb {
+
+		return nil, apierrors.NewForbidden(
+			schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},
+			newCr.Name, fmt.Errorf("SwLocStorageSizeInGb Storage size shrink is not allowed. Old value : %d and New value: %d. ", old.Spec.InstDetails.SwLocStorageSizeInGb, newCr.Spec.InstDetails.SwLocStorageSizeInGb))
+	}
+
 	isDiskChanged := !reflect.DeepEqual(old.Spec.AsmStorageDetails.DisksBySize, newCr.Spec.AsmStorageDetails.DisksBySize)
 	if isDiskChanged {
 		if old.Spec.ConfigParams.HostSwStageLocation != newCr.Spec.ConfigParams.HostSwStageLocation ||
@@ -554,6 +568,14 @@ func (r *OracleRestart) validateGeneric() field.ErrorList {
 			validationErrs = append(validationErrs,
 				field.Invalid(field.NewPath("spec").Child("InstDetails").Child("HostSwLocation"), r.Spec.InstDetails.HostSwLocation,
 					"Either HostSwLocation or SwStorageClass must be specified"))
+		}
+	}
+
+	if r.Spec.StorageClass != "" {
+		if r.Spec.InstDetails.SwLocStorageSizeInGb < 60 {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("InstDetails").Child("SwLocStorageSizeInGb"), r.Spec.InstDetails.SwLocStorageSizeInGb,
+					"SwLocStorageSizeInGb must be greater than 60GB"))
 		}
 	}
 

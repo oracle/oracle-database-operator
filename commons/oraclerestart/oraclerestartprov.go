@@ -1006,7 +1006,7 @@ func IsStaticProvisioning(k8sClient client.Client, instance *oraclerestart.Oracl
 func SwVolumeClaimTemplatesForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) corev1.PersistentVolumeClaim {
 
 	// If user-provided PVC name exists, skip volume claim template creation
-	pvcName := OracleRestartSpex.Name + "-oradata-sw-vol-pvc"
+	pvcName := GetSwPvcName(OracleRestartSpex.Name)
 	return corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      pvcName,
