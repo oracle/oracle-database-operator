@@ -375,7 +375,10 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		case isNewSetup || !isDiskChanged:
 			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
 			cm := oraclerestartcommon.ConfigMapSpecs(oracleRestart, configMapData, cmName)
-			result, err = r.createConfigMap(ctx, oracleRestart, cm)
+			result, configmapEnvKeyChanged, err := r.createConfigMap(ctx, *oracleRestart, cm)
+			if err != nil {
+				// handle error
+			}
 			if err != nil {
 				result = resultNq
 				return result, err
@@ -388,7 +391,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 			oracleRestart.Spec.InstDetails.EnvFile = cmName
 			dep := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
-			result, err = r.createOrReplaceSfs(ctx, req, *oracleRestart, dep, index, isLast, oldState)
+			result, err = r.createOrReplaceSfs(ctx, req, *oracleRestart, dep, index, isLast, oldState, configmapEnvKeyChanged)
 			if err != nil {
 				result = resultNq
 				return result, err
@@ -482,11 +485,10 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	if oracleRestart.Spec.EnableOns == "enable" {
+	if oracleRestart.Spec.EnableOns == "enable" || oracleRestart.Spec.EnableOns == "disable" {
 		OraRestartSpex := oracleRestart.Spec.InstDetails
 		orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
 		if err != nil {
-			//msg := "Unable to find Oracle Restart statefulset " + oraclerestartcommon.GetFmtStr(OraRestartSpex.Name) + "."
 			r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
 			return ctrl.Result{}, err
 		}
@@ -496,8 +498,13 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			r.Log.Error(err, "Failed to list pods")
 			return ctrl.Result{}, err
 		}
+		// default is to start
+		onsOp := "start"
+		if oracleRestart.Spec.EnableOns == "disable" {
+			onsOp = "stop"
+		}
 
-		err = r.updateONS(ctx, podList, oracleRestart, "start")
+		err = r.updateONS(ctx, podList, oracleRestart, onsOp)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -1832,9 +1839,6 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	var addnodeFlag bool
 
 	data = append(data, "OP_TYPE=setuprac")
-	// removing this breaks HAS label build setup
-	// data = append(data, "IGNORE_CRS_PREREQS=TRUE")
-	// data = append(data, "IGNORE_DB_PREREQS=TRUE")
 	// --- Pick ALL envVars directly from CR spec ---
 	for _, e := range instance.Spec.InstDetails.EnvVars {
 		data = append(data, fmt.Sprintf("%s=%s", e.Name, e.Value))
@@ -1985,8 +1989,12 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	if instance.Spec.ConfigParams.OneOffLocation != "" {
 		data = append(data, "ONEOFF_FOLDER_NAME="+instance.Spec.ConfigParams.OneOffLocation)
 	}
-	if instance.Spec.ConfigParams.OneOffIds != "" {
-		data = append(data, "ONEOFF_IDS="+instance.Spec.ConfigParams.OneOffIds)
+	if instance.Spec.ConfigParams.DbOneOffIds != "" {
+		data = append(data, "DB_ONEOFF_IDS="+instance.Spec.ConfigParams.DbOneOffIds)
+	}
+
+	if instance.Spec.ConfigParams.GridOneOffIds != "" {
+		data = append(data, "GRID_ONEOFF_IDS="+instance.Spec.ConfigParams.GridOneOffIds)
 	}
 
 	if instance.Spec.ConfigParams.DbSwZipFile != "" {
@@ -2137,36 +2145,46 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 
 // Create the configmap
 
-func (r *OracleRestartReconciler) createConfigMap(ctx context.Context, instance *oraclerestartdb.OracleRestart, cm *corev1.ConfigMap) (ctrl.Result, error) {
+func (r *OracleRestartReconciler) createConfigMap(
+	ctx context.Context,
+	instance oraclerestartdb.OracleRestart,
+	cm *corev1.ConfigMap,
+) (ctrl.Result, bool, error) { // Added `bool` return
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 
 	found := &corev1.ConfigMap{}
-
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      cm.Name,
 		Namespace: instance.Namespace,
 	}, found)
-
 	if err != nil && apierrors.IsNotFound(err) {
-		// Create the Service
+		// ConfigMap does not exist - create it
 		reqLogger.Info("Creating Configmap Normally")
-		err = r.Create(ctx, cm)
-		if err != nil {
-			// Service creation failed
-			reqLogger.Error(err, "failed to create configmap", " namespace", instance.Namespace)
-			return ctrl.Result{}, nil
-		} else {
-			// Service creation was successful
-			return ctrl.Result{Requeue: true}, nil
+		if err = r.Create(ctx, cm); err != nil {
+			reqLogger.Error(err, "failed to create configmap", "namespace", instance.Namespace)
+			return ctrl.Result{}, false, err
 		}
+		return ctrl.Result{Requeue: true}, true, nil // Indicate configmap was created
 	} else if err != nil {
-		// Error that isn't due to the Service not existing
-		reqLogger.Error(err, "failed to find the  configmap details")
-		return ctrl.Result{}, err
+		// Error getting ConfigMap
+		reqLogger.Error(err, "failed to find the configmap details")
+		return ctrl.Result{}, false, err
 	}
 
-	return ctrl.Result{}, nil
+	// At this point, ConfigMap exists: found
+	// Compare data and update if needed only for environment variables changes
+	if found.Data["envfile"] != cm.Data["envfile"] {
+		reqLogger.Info("ConfigMap env key changed, updating")
+		found.Data["envfile"] = cm.Data["envfile"]
+		if err := r.Update(ctx, found); err != nil {
+			reqLogger.Error(err, "failed to update configmap", "namespace", instance.Namespace)
+			return ctrl.Result{}, false, err
+		}
+		return ctrl.Result{Requeue: true}, true, nil // Indicate data was changed
+	}
 
+	// No changes needed
+	return ctrl.Result{}, false, nil
 }
 
 // This function create a service based isExtern parameter set in the yaml file
@@ -2561,6 +2579,7 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(
 	index int,
 	isLast bool,
 	oldState string,
+	configmapChanged bool,
 ) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", oracleRestart.Namespace, "Instance.Name", oracleRestart.Name)
 	found := &appsv1.StatefulSet{}
@@ -2592,11 +2611,13 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(
 		reqLogger.Error(err, "Failed to find the StatefulSet details")
 		return ctrl.Result{}, err
 	} else {
-		// UPDATE only if resource requirements have changed
+		// Compare resource requirements
 		foundRes := found.Spec.Template.Spec.Containers[0].Resources
 		depRes := dep.Spec.Template.Spec.Containers[0].Resources
+		resourcesChanged := !reflect.DeepEqual(foundRes, depRes)
 
-		if !reflect.DeepEqual(foundRes, depRes) {
+		// Compare configMap relevant data (example: pass in variable configmapChanged)
+		if resourcesChanged || configmapChanged {
 			// Copy metadata fields that must be preserved
 			dep.ResourceVersion = found.ResourceVersion
 			dep.UID = found.UID
@@ -2604,7 +2625,16 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(
 			dep.ManagedFields = found.ManagedFields
 			dep.Status = found.Status
 
-			reqLogger.Info("Updating StatefulSet due to resource change", "StatefulSetName", dep.Name)
+			reason := "unknown"
+			if resourcesChanged && configmapChanged {
+				reason = "resource and configmap change"
+			} else if resourcesChanged {
+				reason = "resource change"
+			} else if configmapChanged {
+				reason = "configmap change"
+			}
+
+			reqLogger.Info("Updating StatefulSet due to "+reason, "StatefulSetName", dep.Name)
 			err = r.Update(ctx, dep)
 			if err != nil {
 				oracleRestart.Spec.IsFailed = true

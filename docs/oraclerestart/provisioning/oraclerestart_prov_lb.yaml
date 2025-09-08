@@ -80,7 +80,6 @@ spec:
  lbService:
    name: orestartsvc
    svcType: lbservice
-   onsTargetPort: 30200
    portMappings:
    - port: 1521
      targetPort: 1521
@@ -88,8 +87,6 @@ spec:
    - port: 6200
      targetPort: 6200
      protocol: TCP
-      # Target port for Oracle Notification Services (ONS)
-  enableOns: "enable"
   # Configuration parameters for Oracle software
   configParams:
     gridHome: "/u01/app/19c/grid"                          # Path to Grid Infrastructure home

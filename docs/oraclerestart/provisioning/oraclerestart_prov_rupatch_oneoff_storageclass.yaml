@@ -1,0 +1,154 @@
+# API version for the Oracle Database operator
+apiVersion: database.oracle.com/v4
+# Specifies the resource type
+kind: OracleRestart
+# Metadata section for naming and scoping
+metadata:
+  # Name of the OracleRestart instance
+  name: oraclerestart-sample
+  # Kubernetes namespace to deploy in
+  namespace: orestart
+# Specification for the OracleRestart custom resource
+spec:
+  # Instance details section
+  instDetails:
+    # The logical/cluster name for the instance
+    name: dbmc1
+    # List of worker nodes IPs for deployment
+    workerNode:
+      - 10.0.10.108
+  # Storage size for Oracle software location, in GB
+  swLocStorageSizeInGb: 300
+  # Environment variables passed to the container
+  envVars:
+    # Ignore CRS prerequisites
+    - name: IGNORE_CRS_PREREQS
+      value: "true"
+    # Ignore Database prerequisites
+    - name: IGNORE_DB_PREREQS
+      value: "true"
+  # StorageClass for block volumes
+  storageClass: "oci-bv"
+  # ASM Storage configuration for Oracle Automatic Storage Management
+  asmStorageDetails:
+    # List ASM disks by size in GB
+    disksBySize:
+      - storageSizeInGb: 50
+    # Physical device names for ASM disks
+    diskNames:
+      - /dev/asm-disk1
+      - /dev/asm-disk2
+  # SSH key secrets (for setup and access)
+  sshKeySecret:
+    # Kubernetes secret containing SSH keys
+    name: ssh-key-secret
+    # Secret name for private key
+    privKeySecretName: ssh-privkey
+    # Secret name for public key
+    pubKeySecretName: ssh-pubkey
+  # Database user/password secret info
+  dbSecret:
+    # Secret containing DB user credentials
+    name: db-user-pass-pkutl
+    # Private key filename (for decrypting password)
+    keyFileName: key.pem
+    # Encrypted password file name
+    pwdFileName: pwdfile.enc
+  # Database Docker image to use
+  image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-oneoff
+  # Pull policy for the image: always pull
+  imagePullPolicy: Always
+  # Details for the Oracle service
+  serviceDetails:
+    # Oracle DB service name
+    name: soepdb
+    # Kubernetes resource requests (guaranteed) for container
+    resources:
+      requests:
+        # Requested memory
+        memory: "16Gi"
+        # Requested vCPU
+        cpu: "2"
+      # Resource limits (max allowed)
+      limits:
+        # Maximum memory
+        memory: "16Gi"
+        # Maximum CPU
+        cpu: "2"
+    # Define sysctls for the container security context
+    securityContext:
+      # Kernel parameter: max shared memory pages
+      sysctls:
+        - name: kernel.shmall
+          value: "2097152"
+        # Kernel parameter: semaphores
+        - name: kernel.sem
+          value: "250 32000 100 128"
+        # Kernel parameter: max shared memory size (bytes)
+        - name: kernel.shmmax
+          value: "8589934592"
+        # Kernel parameter: max shared memory segments
+        - name: kernel.shmmni
+          value: "4096"
+  # Load balancer service configuration
+  lbService:
+    # Service name
+    name: orestartsvc
+    # Type of service: load balancer
+    svcType: lbservice
+    # Port mappings for service
+    portMappings:
+      # Oracle listener port
+      - port: 1521
+        targetPort: 1521
+        protocol: TCP
+      # Additional database port
+      - port: 6200
+        targetPort: 6200
+        protocol: TCP
+  # Extra configuration parameters for grid and database
+  configParams:
+    # Grid Infrastructure home path
+    gridHome: "/u01/app/19c/grid"
+    # Grid base directory
+    gridBase: "/u01/app/grid"
+    # Oracle DB home path
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"
+    # Oracle base directory
+    dbBase: "/u01/app/oracle"
+    # Comma-separated list of ASM device paths
+    crsAsmDeviceList: "/dev/asm-disk1,/dev/asm-disk2"
+    # Inventory location for Oracle software
+    inventory: "/u01/app/oraInventory"
+    # Grid software installation archive
+    gridSwZipFile: "grid_home.zip"
+    # Oracle database software archive
+    dbSwZipFile: "db_home.zip"
+    # OPatch (Oracle patch tool) archive
+    oPatchSwZipFile: "p6880880_190000_Linux-x86-64.zip"
+    # SGA (System Global Area) size for Oracle DB
+    sgaSize: "3G"
+    # PGA (Program Global Area) size for Oracle DB
+    pgaSize: "1G"
+    # Maximum number of DB processes
+    processes: 2000
+    # Number of CPUs allocated for DB
+    cpuCount: 4
+    # Oracle database name (CDB)
+    dbName: "PORCLCDB"
+    # PVC for software staging area
+    swStagePvc: pv-stage-vol-claim
+    # Mount location for the software stage
+    swStagePvcMountLocation: "/stage"
+    # Host path for software staging
+    hostSwStageLocation: "/stage/software/19c/19.3.0"
+    # RU patch file location
+    ruPatchLocation: "/stage/software/19c/new/RU/37957391"
+    # OPatch working directory
+    oPatchLocation: "/stage/software/19c"
+    # One-off patch files directory
+    oneOffLocation: "/stage/software/19c/new/oneoff"
+    # Comma-separated DB one-off patch IDs
+    dbOneOffIds: "34436514"                     # DB one-offs comma separated
+    # Comma-separated Grid one-off patch IDs
+    gridOneOffIds: "38336965"                   # Grid one-offs comma separated
