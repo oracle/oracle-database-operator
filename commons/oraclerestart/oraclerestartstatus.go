@@ -40,6 +40,7 @@ package commons
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -114,8 +115,6 @@ func UpdateOracleRestartInstStatusData(
 		orestartNodeDetails.PodState = state
 		orestartNodeDetails.State = "OPEN"
 		oracleRestart.Name = podName
-
-		// orestartNodeDetails.VipDetails = getVipDetails(OracleRestart, oracleRestart, oraRestartSpex, kClient)
 		orestartNodeDetails.InstanceState = getDbInstState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
 		orestartNodeDetails.MountedDevices = getMountedDevices(podName, OracleRestart.Namespace, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
 		oracleRestart.NodeDetails = orestartNodeDetails
@@ -192,10 +191,12 @@ func UpdateOracleRestartInstState(instance *oraclerestartdb.OracleRestart, podNa
 
 func UpdateoraclerestartdbTopologyState(instance *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) {
 	OracleRestart := &oraclerestartdb.OracleRestart{}
+	fmt.Printf("I m inUpdateoraclerestartdbTopologyState")
 	if len(instance.Status.OracleRestartNodes) > 0 {
 		state := map[string]struct{}{}
 		for _, v := range instance.Status.OracleRestartNodes {
 			inst_state := strings.ToLower(strings.TrimSpace(v.NodeDetails.State))
+			fmt.Printf("inst_state", inst_state)
 			state[inst_state] = struct{}{}
 		}
 		if len(state) == 0 {
@@ -216,6 +217,7 @@ func UpdateoraclerestartdbTopologyState(instance *oraclerestartdb.OracleRestart,
 			OracleRestart.Status.State = string(oraclerestartdb.OracleRestartAvailableState)
 		}
 		instance.Status.State = OracleRestart.Status.State
+		fmt.Printf("instance.Status.State", instance.Status.State)
 	}
 
 }

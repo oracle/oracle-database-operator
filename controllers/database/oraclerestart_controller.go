@@ -3450,8 +3450,10 @@ func (r *OracleRestartReconciler) updateONS(ctx context.Context, podList *corev1
 }
 func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context, instance *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec) error {
 
+	fmt.Printf("Received OldSpec", oldSpec.InstDetails.SwLocStorageSizeInGb)
 	if oldSpec != nil {
 		if instance.Spec.InstDetails.SwLocStorageSizeInGb > oldSpec.InstDetails.SwLocStorageSizeInGb {
+			fmt.Printf("Inside OldSpec and newSpec Change", oldSpec.InstDetails.SwLocStorageSizeInGb, instance.Spec.InstDetails.SwLocStorageSizeInGb)
 			storageClass := &storagev1.StorageClass{}
 			pvc := &corev1.PersistentVolumeClaim{}
 
@@ -3467,6 +3469,8 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 					Namespace: instance.Namespace,
 				}, pvc)
 
+				fmt.Printf("PvcName set to ", pvc.Name)
+
 				if err == nil {
 					if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
 						r.Recorder.Eventf(instance, corev1.EventTypeWarning, "PVC not resizable", "The storage class doesn't support volume expansion")
@@ -3476,6 +3480,7 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 					newPVCSize := resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")
 					newPVCSizeAdd := &newPVCSize
 
+					fmt.Printf("New PvcSize set to ", newPVCSizeAdd)
 					if newPVCSizeAdd.Cmp(pvc.Spec.Resources.Requests["storage"]) < 0 {
 						r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Cannot Resize PVC", "Forbidden: field can not be less than previous value")
 						return fmt.Errorf("Resizing PVC to lower size volume not allowed")
