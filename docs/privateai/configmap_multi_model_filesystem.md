@@ -6,12 +6,12 @@ You can use the example file [multi_model_filesystem_config.json](./provisioning
 
 Rename the file `multi_model_filesystem_config.json` to `config.json`.
 
-Create a configmap using the above file as below:
+Create a configmap using that renamed file. Example:
 ```sh
 kubectl create configmap multiconfigjson --from-file=config.json -n pai
 ```
 
-You can check the details of the configmap as below:
+You can check the details of the configmap. Example:
 ```sh
 kubectl get configmap -n pai
 ```
