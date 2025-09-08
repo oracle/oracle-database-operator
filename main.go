@@ -72,10 +72,7 @@ import (
 	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
 	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
-	omlaiv4 "github.com/oracle/oracle-database-operator/apis/omlai/v4"
-	webhookomlaiv4 "github.com/oracle/oracle-database-operator/apis/omlai/v4"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
-	omlaicontroller "github.com/oracle/oracle-database-operator/controllers/omlai"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -92,7 +89,6 @@ func init() {
 	utilruntime.Must(databasev4.AddToScheme(scheme))
 	utilruntime.Must(observabilityv1.AddToScheme(scheme))
 	utilruntime.Must(observabilityv4.AddToScheme(scheme))
-	utilruntime.Must(omlaiv4.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -396,21 +392,6 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DatabaseObserver")
 		os.Exit(1)
-	}
-	if err = (&omlaicontroller.PrivateAiReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Config: mgr.GetConfig(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PrivateAi")
-		os.Exit(1)
-	}
-	// nolint:goconst
-	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err = webhookomlaiv4.SetupPrivateAiWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "PrivateAi")
-			os.Exit(1)
-		}
 	}
 	// +kubebuilder:scaffold:builder
 
