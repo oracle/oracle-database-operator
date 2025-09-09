@@ -1,10 +1,10 @@
 # Managing Oracle Autonomous Container Databases on Dedicated Exadata Infrastructure
 
-Oracle Database Operator for Kubernetes (`OraOperator`) includes the Oracle Autonomous Container Database Controller. Autonomous Container Database is one of the resources of Oracle Autonomous Database dedicated Exadata infrastructure feature. You can create multiple Autonomous Container Database resources in a single Autonomous Exadata VM Cluster resource, but you must create at least one before you can create any Autonomous Databases.
+Oracle Database Operator for Kubernetes (`OraOperator`) includes the Oracle Autonomous Container Database Controller. Autonomous Container Database is one of the resources of the Oracle Autonomous Database on Dedicated Exadata Infrastructure feature. You can create multiple Autonomous Container Database resources in a single Autonomous Exadata VM Cluster resource, but you must create at least one before you can create any Autonomous Databases.
 
-Before you use the Oracle Database Operator for Kubernetes (the operator), ensure your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./../adb/ADB_PREREQUISITES.md).
+Before you use the Oracle Database Operator for Kubernetes (the operator), ensure that your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./../adb/ADB_PREREQUISITES.md).
 
-As indicated in the prerequisites (see above), to interact with OCI services, either the cluster has to be authorized using Principal Instance, or using the API Key Authentication by specifying the configMap and the secret under the `ociConfig` field.
+As indicated in the prerequisites (see above), to interact with OCI services, either the cluster must be authorized by using Principal Instance, or by using the API Key Authentication and specifying the configMap and the secret under the `ociConfig` field.
 
 ## Required Permissions
 
