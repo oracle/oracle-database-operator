@@ -77,18 +77,18 @@ The `DatabaseObserver` custom resource has the following prerequisites:
      kubectl api-resources | grep smon
      ```
 
-2. A pre-existing Oracle Database and the proper database grants and privileges.
+2. A preexisting Oracle Database, and the proper database grants and privileges.
 
     - The controller exports metrics through SQL queries that the user can control 
-       and specify through _toml_ files. The necessary access privileges to the tables used in the queries
+       and specify through the _toml_ files. The necessary access privileges to the tables used in the queries
        are not provided and applied automatically.
 
 ## The DatabaseObserver Custom Resource
-The Oracle Database Operator (__v1.0.0__ or later) includes the Oracle Database Observability controller, which automates
-the deployment and setting up of the Oracle Database exporter and the related resources to make Oracle Databases observable.
+Oracle Database Operator (__v1.0.0__ or later) includes the Oracle Database Observability controller, which automates
+the deployment and configuration of the Oracle Database exporter and the related resources to make Oracle Databases observable.
 The Observability Controller introduces the `databaseobserver` APIs.
 
-To list the available APIs  included in the
+To list the available APIs included in the
 Database Operator, you can run the following command:
 
 ```bash
@@ -102,7 +102,7 @@ Learn about the different and configurable fields available in this release of t
 
 
 ### Configuration Fields Related to Managing Database Credentials
-The following fields below are available for configuring the exporter to successfully connect to your database(s).
+The following fields are available for configuring the exporter to successfully connect to databases:
 
 | Attribute                                         | Type   | Required?   | Example              |
 |---------------------------------------------------|--------|:------------|----------------------|
@@ -130,25 +130,25 @@ The following fields below are available for configuring the exporter to success
 | `spec.wallet.additional[].secret`                 | string | Conditional | _db02-wallet_        |
 | `spec.wallet.additional[].mountPath`              | string | Conditional | _"/wallet/db02"_     |
 
-These fields enable you to define connection details for a single or multiple databases. For default values, environment variables and default behavior, see [defaults](#environment-variables-and-default-values).
+These fields enable you to define connection details for a single database, or for multiple databases. For default values, environment variables and default behavior, see [defaults](#environment-variables-and-default-values).
 
-1. About `spec.database` - For configuring the database username, password and connection string. 
+1. `spec.database` - Use to configure the database username, password and connection string. 
 The environment variables set by the controller can be customized through the `envName` field.
 Both `envName` and `key` fields are optional.
 
 
-2. About `spec.databases` - For configuring multiple database credentials. The keys are used as a prefix for environment
-variables, for example, a key of `MYDB` will produce environment variables `MYDB_USERNAME` and `MYDB_PASSWORD`.
+2. `spec.databases` - Use to configure multiple database credentials. The keys are used as a prefix for environment
+variables. For example, a key of `MYDB` will produce the environment variables `MYDB_USERNAME` and `MYDB_PASSWORD`.
 
 
-3. About `spec.wallet` - You can configure the wallet with which to connect to the Oracle database, if applicable. The field `mountPath`
-allows you to control where the wallet is to be mounted. Meanwhile, additional wallets can be mounted in the array `additional`, used for multi
+3. `spec.wallet` - Use to configure the wallet with which you want to connect to the Oracle Database, if applicable. The field `mountPath`
+enables you to control where the wallet is to be mounted. Meanwhile, additional wallets can be mounted in the array `additional`, used for multi
 database configuration.
 
-To learn more about configuring the database connection, proceed to the section on [Connecting to the Database](#connecting-to-the-database).
+To learn more about configuring the database connection, see [Connecting to the Database](#connecting-to-the-database).
 
 ### Configuration Fields Related to Vault Usage
-The following fields below are available for configuring the exporter to use the vault when connecting to your database(s).
+The following fields are available for configuring the exporter to use the vault when connecting to databases.
 
 | Attribute                                 | Type   | Required?   | Example                                 |
 |-------------------------------------------|--------|:------------|-----------------------------------------|
@@ -170,17 +170,17 @@ These fields enable you to define vault details for OCI or Azure. For default va
 
 > Note: For multiple database configuration with Vault integration, use the exporter config file. See instructions on the [Exporter Config File](#defining-an-exporter-config-file).
 
-2. About `spec.database.azure.` - for configuring the Azure Vault details for the default database.
+2. `spec.database.azure.` - Use to configure the Azure Vault details for the default database.
 
 
-3. About `spec.ociConfig` - for configuring the authentication of requests made to the Oracle Cloud done by the exporter. The configMap should contain
-the actual _config_ file use by the OCI CLI (usually found in ~/.oci/config). See the official documentation on [configuring the OCI CLI (external link)](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliconfigure.htm#Configuring_the_CLI).
+3. `spec.ociConfig` - Use to configure the authentication of requests made to the Oracle Cloud performed by the exporter. The configMap should contain
+the actual _config_ file use by the OCI CLI (usually found in ~/.oci/config). See the Oracle Cloud Infrastructure documentation on [configuring the OCI CLI (external link)](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliconfigure.htm#Configuring_the_CLI).
 > Note: The OCI profile used is [DEFAULT]. Under the profile DEFAULT, set `key_file=/.oci/<your-file-name>.pem`.
 
 4. About `spec.azureConfig` - for configuring the authentication of requests made to the Azure Cloud done by the exporter. 
 The configMap should contain the keys `tenantId`, `clientId` and `clientSecret`, which are used to create the related environment variables.
 
-To learn more about configuring an integration with a vault for database authentication, proceed to the section on [Authenticating with Vaults](#database-authentication-with-vaults-in-the-cloud).
+To learn more about configuring an integration with a vault for database authentication, see [Authenticating with Vaults](#database-authentication-with-vaults-in-the-cloud).
 
 ### Configuration Fields Related to the Deployment, Pod, Service and ServiceMonitor Resources
 When you create a `DatabaseObserver` resource, the controller creates and manages the following resources:
@@ -209,28 +209,28 @@ The following fields below are available for configuring the controller-managed 
 
 These fields enable you to define deployment, service and serviceMonitor details. For default values, environment variables and default behavior, see [defaults](#environment-variables-and-default-values).
 
-1. About `spec.deployment` - for configuring deployment details such as custom environment variables through `env` and arguments through `args`.
+1. `spec.deployment` - Use to configure deployment details such as custom environment variables through `env` and arguments through `args`.
 The container image can also be replaced with a later or older version of the exporter using the `image` field. For security related configurations,
 the `securityContext` and `podSecurityContext` are available.
 
-2. About `spec.service` - for configuring a customized service resource.
+2. `spec.service` - Use to configure a customized service resource.
 
 
-3. About `spec.serviceMonitor` - for configuring the serviceMonitor resource.
+3. `spec.serviceMonitor` - Use to configure the serviceMonitor resource.
 
-> Note: It is important and required to set the prometheus label inside `serviceMonitor.labels`. Make sure the label set is included in the serviceMonitorSelector field of your Prometheus CR. 
-
-
-5. About `spec.replicas` - for configuring the number of replicas to deploy
+> Note: It is an essential requirement that you set the Prometheus label inside `serviceMonitor.labels`. Ensure that the label set is included in the serviceMonitorSelector field of your Prometheus CR. 
 
 
-6. About `spec.inheritLabels` - for configuring all resources created and managed to inherit the labels from databaseobserver CR.
+5. `spec.replicas` - Use to configure the number of replicas to deploy
 
 
-To learn more about configuring the managed resources like the Deployment, Service and more, proceed to the section on [Customizing Resources and Available Configuration Options](#customizing-resources-and-available-configuration-options)
+6. `spec.inheritLabels` - Use to configure all resources created and managed so that they inherit the labels from databaseobserver CR.
+
+
+To learn more about configuring managed resources, such as the Deployment, Service and other services, see [Customizing Resources and Available Configuration Options](#customizing-resources-and-available-configuration-options)
 
 ### Configuration Fields Related to Metrics Export
-The following fields below are available for configuring the metrics exported from the database.
+The following fields are available for configuring the metrics exported from the database.
 
 | Attribute                       | Type   | Required?   | Example                 |
 |---------------------------------|--------|:------------|-------------------------|
@@ -238,12 +238,12 @@ The following fields below are available for configuring the metrics exported fr
 | `spec.metrics.configMap[].name` | string | Conditional | _custom-metrics-config_ |
 
 These fields enable you to define configMap sources for metrics. For default values, environment variables and default behavior, see [defaults](#environment-variables-and-default-values).
-1. About `metrics.configMap[]` - for configuring an array of configs which contain the TOML files. This creates a volume with multiple source files mounted in the same directory.
+1. `metrics.configMap[]` - Use to configure an array of configs that will contain the TOML files. This field creates a volume with multiple source files mounted in the same directory.
 
-To learn more about configuring the metrics export, proceed to the section on [Defining an Exporter Config File](#defining-an-exporter-config-file).
+To learn more about configuring the metrics export, see [Defining an Exporter Config File](#defining-an-exporter-config-file).
 
 ### Configuration Fields Related to Logs Export
-The following fields below are available for configuring how the alert.log is exported from the database.
+The following fields are available for configuring how the `alert.log` is exported from the database.
 
 | Attribute                                        | Type   | Required?   | Example      |
 |--------------------------------------------------|--------|:------------|--------------|
@@ -256,30 +256,29 @@ The following fields below are available for configuring how the alert.log is ex
 | `spc.sidecar.volumes[]`                          | array  | Conditional | -            |
 
 These fields enable you to define log details and sidecar resources. For default values, environment variables and default behavior, see [defaults](#environment-variables-and-default-values).
-1. About `spec.sidecar.containers` - for configuring an array of containers as a sidecar to the observability 
-exporter container, such as promtail. The field `sidecar.containers` enable you to list containers as you would normally for deployments.
+1. `spec.sidecar.containers` - Use to configure an array of containers as a sidecar to the observability 
+exporter container, such as promtail. The field `sidecar.containers` enables you to list containers as you would normally for deployments.
+
+2. `spec.sidecar.volumes` - Use to configure extra volumes related to your sidecar containers.
 
 
-2. About `spec.sidecar.volumes` - for configuring extra volumes related to your sidecar containers.
+3. `spec.log.disable` - Use to disable the log volume creation
 
 
-3. About `spec.log.disable` - for disabling the log volume creation
+4. `spec.log.filename` - Use to specify a custom filename for the log file
 
 
-4. About `spec.log.filename` - for specifying a custom filename for the log file
+5. `spec.log.destination` - Use to configure a custom destination for the log volume.
 
 
-5. About `spec.log.destination` - for configuring a custom destination for the log volume.
-
-
-6. About `spec.log.volume` - for configuring the log volume in which the logs are extracted into by the exporter and read from. 
-If a persistentVolumeClaim is not provided, an emptyDir is created instead. Meanwhile, the field `log.volume.name` can be used to define the name of the volume
+6. `spec.log.volume` - Use to configure the log volume into which the exporter extracts the logs, and from which the logs are read. 
+If a persistentVolumeClaim is not provided, then an emptyDir is created instead. Meanwhile, the field `log.volume.name` can be used to define the name of the volume
 to reference.
 
-To learn more about configuring the log export, proceed to the section on [Scraping Logs](#scraping-logs).
+To learn more about configuring the log export, see [Scraping Logs](#scraping-logs).
 
 ### Configuration Fields Related to the Exporter Config File
-The following fields below are available for configuring the exporter through a config-file.
+The following fields are available for configuring the exporter through a config-file:
 
 | Attribute                           | Type   | Required?   | Example           |
 |-------------------------------------|--------|:------------|-------------------|
@@ -288,18 +287,18 @@ The following fields below are available for configuring the exporter through a 
 
 These fields enable you to define the exporter config-file. For default values, environment variables and default behavior, see [defaults](#environment-variables-and-default-values).
 
-1. About `spec.exporterConfig` - for configuring the exporter with a config file containing database, log and metrics details. You can use
+1. `spec.exporterConfig` - Use to configure the exporter with a config file containing database, log and metrics details. You can use
 the `mountPath` field to define a custom location for the config file.
 
 > Note: The CONFIG_FILE environment variable or the --config.file args must be set to the desired location of the config file.
 
-To learn more about configuring the config-file for the exporter, proceed to the section on [Defining an Exporter Config File](#defining-an-exporter-config-file).
+To learn more about configuring the config-file for the exporter, see [Defining an Exporter Config File](#defining-an-exporter-config-file).
 
 ## DatabaseObserver Operations
 ### Create Resource
-Follow the steps below to create a new `databaseObserver` resource object.
+Use the following steps to create a new `databaseObserver` resource object.
 
-1. To begin, creating a `databaseObserver` requires you to create and to provide Kubernetes Secrets containing your database connection details. Replace the values and
+1. When you create a `databaseObserver`, you are required to create and to provide Kubernetes Secrets containing your database connection details. Replace the values and
 create a single secret by running the following command:
 ```bash
 kubectl create secret generic db-secret \
@@ -319,7 +318,7 @@ You can also choose to create the wallet secret from a local directory containin
 kubectl create secret generic db-wallet --from-file=<wallet_dir>
 ```
 
-3. Finally, update the `databaseObserver` manifest with the resources you have created. You can use the example _minimal_ manifest 
+3. Update the `databaseObserver` manifest with the resources that you have created. You can use the example _minimal_ manifest 
 inside [config/samples/observability/v4](../../config/samples/observability/v4/databaseobserver_minimal.yaml) to specify and create your databaseObserver object with a 
 YAML file.
 
@@ -479,9 +478,9 @@ kubectl create cm config-file --from-file=config.yaml
 ```
 
 ### Multiple Database Configuration
-To configure the observability exporter to export metrics and logs from multiple Oracle Databases, it is required to use an exporter config file, 
-configure the _databaseobserver_ YAML file with a combined wallet (if applicable) and use the
-`spec.databases` field __instead__ of `spec.database`. The field `spec.databases` is a map with keys used for naming environment variables
+To configure the observability exporter to export metrics and logs from multiple Oracle Databases, __instead__ of `spec.database`, you must use an exporter config file, 
+configure the _databaseobserver_ YAML file with a combined wallet (if applicable), and then use the
+`spec.databases` field . The field `spec.databases` is a map with keys used for naming environment variables
 and identifying groups of credentials.
 
 For example, to define two databases, in the _databaseobserver_ YAML file, you can have the following configuration:
@@ -522,8 +521,8 @@ spec:
     configMap:
       name: config-file
 ```
-Each database is configured under `spec.databases` and multiple wallets are defined in the shared directory `/dbwallet` 
-as an example. See the next section on [configuring a combined wallet](#configuring-wallets-for-multiple-databases).
+Each database is configured under `spec.databases`, and multiple wallets are defined in the shared directory `/dbwallet` 
+as an example. To configure a combined wallet for multiple databases, see [configuring a combined wallet](#configuring-wallets-for-multiple-databases).
 
 In the configuration file _config-file_, db1 and db2 are configured with the credentials provided as environment variables through the
 __databaseobserver__ YAML file as secrets.
@@ -543,7 +542,7 @@ databases:
     url: db2_tp
 ```
 
-Run the following command, to create the configMap:
+To create the configMap, run the following command:
 
 ```bash
 kubectl create cm config-file --from-file=config.yaml
@@ -565,13 +564,13 @@ create a combined wallet:
 ```
 
 
-3. Place the combined tnsnames.ora file and one of the sqlnet.ora inside a combined directory.
+3. Place the combined `tnsnames.ora` file and one of the `sqlnet.ora` files inside a combined directory.
 
 
-4. Take wallet files (.sso, .p12, .pem) and place them in separate directories.
+4. Take wallet files (`.sso`, `.p12`, `.pem`) and place them in separate directories.
 
 
-The resulting wallet directory structure should look like the following, where wallet files for each database are in separate directories:
+The resulting wallet directory structure should look similar to the following, where wallet files for each database are in separate directories:
 ```bash
 #
 example_dbwallet
@@ -587,27 +586,27 @@ example_dbwallet
     ├── ewallet.p12
     └── ewallet.pem
 ```
-Now returning to the YAML file, for this example:
+Return to the YAML file for the next example.
 
-5. Set the combined _tnsnames.ora_ is set under `spec.wallet.secret` and the 
-specific database wallet files (.sso, .p12, .pem) are set under `.spec.wallet.additional`.
+5. Set the combined _tnsnames.ora_ under `spec.wallet.secret` and set the 
+specific database wallet files (.sso, .p12, .pem) under `.spec.wallet.additional`.
 
-6. Finally, set the TNS_ADMIN to the location of the tnsnames.ora.
+6. Finally, set the TNS_ADMIN to the location of the `tnsnames.ora`.
 
-> Note: When setting the name under `spec.wallets.additional[].name`, provide a unique name other than `creds`, as this is the default volume name.
+> Note: When setting the name under `spec.wallets.additional[].name`, you must provide a unique name other than `creds`,  because this is the default volume name.
 
 To learn more about this requirement, you can consult the [official documentation of the exporter](https://github.com/oracle/oracle-db-appdev-monitoring?tab=readme-ov-file#configuring-connections-for-multiple-databases-using-oracle-database-wallets).
 
 
 ## Database Authentication with Vaults in the Cloud
-Cloud vault resources can be used for storing sensitive database credentials. In this release, the following vaults are supported:
+You can use Cloud Vault resources to store sensitive database credentials. In this release, the following vaults are supported:
 - OCI Vault
 - Azure Vault
 
 ### OCI Vault Configuration
 The OCI Vault can be used to store the database credentials. This release supports storing the Oracle Database password in the OCI Vault.
 
-Now when configuring the vault, the following are required for you to provide:
+When you configure the Vault, you must provide the following:
 - Vault details:
   - The string OCID of the Vault used
   - The string name of the OCI Vault Secret containing the password
@@ -619,7 +618,7 @@ The observability exporter needs to authenticate requests to retrieve the databa
 the OCI CLI config file and the __DEFAULT profile is used__. 
 > Note: The exporter uses the DEFAULT profile.
 
-For example, the OCI CLI config file could appear as follows:
+For example, the OCI CLI config file can appear as follows:
 ```bash
 [DEFAULT]
 user=<ocid1.user.oc1..>
@@ -629,7 +628,7 @@ tenancy=<ocid1.tenancy.oc1..>
 region=<us-ashburn-1>
 ```
 
-> Note: Ensure the key_file is in `/.oci` and the private key file matches.
+> Note: Ensure that the key_file is in `/.oci` and that the private key file matches.
 
 You can create the configmap with the following command:
 ```bash
@@ -641,7 +640,7 @@ You can create the secret with the following command:
 kubectl create secret generic oci-privatekey --from-file=private.pem
 ```
 
-Finally, to configure the exporter to use OCI Vault for retrieving the password, you can configure the following fields in the YAML file:
+Finally, to configure the exporter to use an OCI Vault for retrieving the password, you can configure the following fields in the YAML file:
 ```yaml
 spec:
     database:
@@ -1074,7 +1073,7 @@ spec:
 
 
 ### Security Contexts
-The security context defines privilege and access control settings for a pod container, If these privileges and access control setting need to be updated in the pod, then the same field is available on the `databaseObserver` spec. You can set this object under deployment: `spec.deployment.securityContext`.
+The security context defines privilege and access control settings for a pod container. If these privileges and access control setting need to be updated in the pod, then the same field is available on the `databaseObserver` spec. You can set this object under deployment: `spec.deployment.securityContext`.
 
 ```yaml
 spec:
@@ -1184,15 +1183,15 @@ Follow these steps to check the logs.
 > Using the Azure Vault to store only the username or the password will likely produce the same error.
 
 __WORKAROUND:__<br/>
-As the OCI Vault feature is not functioning for v2 to v2.0.2 of the exporter, please use kubernetes secrets. 
-For Azure users, only retrieval of both username and password from the vault is supported. 
+Because the OCI Vault feature is not functioning for v2 to v2.0.2 of the exporter, Oracle recomends that you use Kubernetes secrets. 
+For Azure users, only retrieval of both username and password from the Vault is supported. 
 Retrieving only one (username or password) of the credentials will lead to an error.
 
 __WORKAROUND AFTER V2.0.2__:
-Once a new version of the exporter is released with the fix, set the field `deployment.image` to the new version of the exporter.
+When a new version of the exporter is released with the fix, set the field `deployment.image` to the new version of the exporter.
 
 ## Resources
-For further information on the Oracle Databases logs and metrics Exporter container image, 
+For further information about the Oracle Databases logs and metrics Exporter container image, 
 consult the official repository documentations:
 - [GitHub - Unified Observability for Oracle Database Project](https://github.com/oracle/oracle-db-appdev-monitoring)
 
