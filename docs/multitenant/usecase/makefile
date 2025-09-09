@@ -215,12 +215,12 @@ secrets: tls delsecrets
 	@$(ECHO) $(WBPASS) > $(WBPASSFILE)
 	@$(ECHO) $(PDBUSR) > $(PDBUSRFILE)
 	@$(ECHO) $(PDBPWD) > $(PDBPWDFILE)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(DBUSERFILE) |base64 > e_$(DBUSERFILE)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(DBPASSFILE) |base64 > e_$(DBPASSFILE)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(WBUSERFILE) |base64 > e_$(WBUSERFILE)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(WBPASSFILE) |base64 > e_$(WBPASSFILE)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(PDBUSRFILE) |base64 > e_$(PDBUSRFILE)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(PDBPWDFILE) |base64 > e_$(PDBPWDFILE)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(DBUSERFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(DBUSERFILE)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(DBPASSFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(DBPASSFILE)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(WBUSERFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(WBUSERFILE)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(WBPASSFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(WBPASSFILE)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(PDBUSRFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(PDBUSRFILE)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(PDBPWDFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_$(PDBPWDFILE)
 	$(KUBECTL) create secret generic dbuser --from-file=e_$(DBUSERFILE) -n  $(LRSNAMESPACE)
 	$(KUBECTL) create secret generic dbpass --from-file=e_$(DBPASSFILE) -n  $(LRSNAMESPACE)
 	$(KUBECTL) create secret generic wbuser --from-file=e_$(WBUSERFILE) -n  $(LRSNAMESPACE)
@@ -456,7 +456,7 @@ spec:
   namespaceAutoDiscover: ${PDBNAMESPACE}
   clusterIp: false
   loadBalancer: false
-  trace_level_client : 16 
+  trace_level_client : 0 
 EOF
 
 if [[ ${OPENSHIFT} == "true" ]];then 
