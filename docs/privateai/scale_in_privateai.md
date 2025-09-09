@@ -2,9 +2,9 @@
 
 **IMPORTANT:** This example assumes that you have an existing Oracle PrivateAI Container Deployment with `replicas=3` using the file [pai_sample_scale_up.yaml](./provisioning/pai_sample_scale_up.yaml)
 
-In this example, we will Scale In an existing deployment with `replicas=3` to `replicas=2`.
+In this example, we will Reduce the number of allocated resources by using the `scale in` command an existing deployment. We will update `replicas=3` to `replicas=2`.
 
-Use the file: [pai_sample_scale_in.yaml](./provisioning/pai_sample_scale_in.yaml) for this use case as below:
+For this use case, we will update the following file: [pai_sample_scale_in.yaml](./provisioning/pai_sample_scale_in.yaml). Example:
 
 1. Check the status of the deployment:
     ```sh
@@ -21,5 +21,5 @@ Use the file: [pai_sample_scale_in.yaml](./provisioning/pai_sample_scale_in.yaml
     kubectl get all -n pai
     ```
 
-    You will see, Kubernetes Pods are reduced in number once the scale in is done automatically.
+ As a result of this procedure, the Kubernetes Pods are reduced in number after the scale in is completed automatically.
   
