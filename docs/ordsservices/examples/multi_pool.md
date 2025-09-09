@@ -55,7 +55,7 @@ The following secret will be used for PDB1:
 
 ```bash
 echo "THIS_IS_A_PASSWORD"     > ordspwdfile
-openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_ordspwdfile
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in ordspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
 kubectl create secret generic pdb1-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
 rm ordspwdfile e_ordspwdfile
 ```
@@ -64,7 +64,7 @@ The following secret will be used for PDB2:
 
 ```bash
 echo "THIS_IS_A_PASSWORD"     > ordspwdfile
-openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_ordspwdfile
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in ordspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
 kubectl create secret generic pdb2-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
 rm ordspwdfile e_ordspwdfile
 ```
@@ -73,7 +73,7 @@ The following secret will be used for PDB3 and PDB4:
 
 ```bash
 echo "THIS_IS_A_PASSWORD"     > ordspwdfile
-openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_ordspwdfile
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in ordspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
 kubectl create secret generic multi-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
 rm ordspwdfile e_ordspwdfile
 ```
@@ -86,7 +86,7 @@ In this example, only PDB1 will be set for [AutoUpgrade](../autoupgrade.md), the
 
 ```bash
 echo "THIS_IS_A_PASSWORD"     > syspwdfile
-openssl rsautl -encrypt -pubin -inkey public.pem -in syspwdfile |base64 > e_syspwdfile
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in syspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_syspwdfile
 kubectl create secret generic pdb1-priv-auth-enc --from-file=password=e_syspwdfile -n  ordsnamespace
 rm syspwdfile e_syspwdfile
 ```

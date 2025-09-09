@@ -25,16 +25,16 @@ ORDS Version supported : 25.1.0+
 OrdsSrvs controller supports the majority of ORDS configuration settings as per the [API Documentation](./api.md).
 
 
-### Prerequisites
+## Prerequisites
 
  This chapter outlines the necessary requirements that must be satisfied to successfully deploy and operate the OrdsSrvs controller within your Kubernetes cluster.
 
-#### Oracle Database Operator  
+### Oracle Database Operator  
 
 Before installing the OrdsSrvs controller, ensure that the Oracle Database Operator (OraOperator) is installed in your Kubernetes environment. Please follow the detailed installation steps provided in the [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) to complete this process. The OraOperator must be properly configured and running, as OrdsSrvs depends on its services for functionality.
 
 
-#### Namespace Namespace Scoped Deployment
+### Namespace Namespace Scoped Deployment
 
 For a dedicated namespace deployment of the OrdsSrvs controller, refer to the "Namespace Scoped Deployment" section in the OraOperator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md#2-namespace-scoped-deployment).
 The following examples demonstrate deploying the controller to the ordsnamespace namespace. 
@@ -57,11 +57,11 @@ Edit OraOperator to add the namespace under WATCH_NAMESPACE:
     value: "default,<your namespaces>,ordsnamespace"
 ```
 
-### OpenShift Security Context Constraints
+## OpenShift Security Context Constraints
 
 If you are deploying the OrdsSrvs controller on OpenShift, ensure that the appropriate Security Context Constraints (SCCs) are configured. This involves assigning privileged SCCs to the service accounts used by OrdsSrvs to permit required operations.
 
-#### Create a Service Account
+### Create a Service Account
 
 This account will be used to assign the necessary Security Context Constraints (SCCs) for the controller’s operation.
 Below is an example [YAML](./examples/ordssrvs-sa.yaml) manifest to create a service account named "ordssrvs-sa" in the "ordsnamespace" namespace:
@@ -74,12 +74,12 @@ metadata:
   namespace: ordsnamespace
 ```
 
-#### Create a Custom Security Context Constraint (SCC)
+### Create a Custom Security Context Constraint (SCC)
 
 To configure the required security permissions, use the attached [YAML](./examples/ordssrvs-sa-scc.yaml) file to create a custom Security Context Constraint (SCC) and bind it to the "ordssrvs-sa" service account. 
 This will ensure the service account has the necessary permissions for the OrdsSrvs controller to operate on OpenShift.
 
-#### Set serviceAccountName in OrdsSrvs 
+### Set serviceAccountName in OrdsSrvs 
 
 Ensure that the OrdsSrvs controller uses the dedicated service account you created. In the deployment manifest for OrdsSrvs, specify the serviceAccountName field with the name of your service account (e.g., ordssrvs-sa) as in this [example](./examples/ordssrvs.yaml).
 
@@ -99,7 +99,7 @@ spec:
 ```
 
 
-### Common configuration examples
+## Common configuration examples
 
 A few common configuration examples can be used to quickly familiarise yourself with the OrdsSrvs Custom Resource Definition.
 The "Conclusion" section of each example highlights specific settings to enable functionality that maybe of interest.
@@ -114,11 +114,27 @@ The "Conclusion" section of each example highlights specific settings to enable 
 
 Running through all examples in the same Kubernetes cluster illustrates the ability to run multiple ORDS instances with a variety of different configurations.
 
-### Limitations
+
+## Change Log
+
+### Version 2.0
+
+  - ORDS image 25.1+ 
+  - OpenShift installation 
+  - APEX installation files from download url or PersistenceVolume
+  - BUGFIX [#181 enhancement, init script refactoring and improved logging](https://github.com/oracle/oracle-database-operator/issues/181)
+  - BUGFIX [#186 autoUpgradeORDS: true and autoUpgradeAPEX: false not working](https://github.com/oracle/oracle-database-operator/issues/186)
+  - BUGFIX [#188 int64 for configuration settings of type Duration](https://github.com/oracle/oracle-database-operator/issues/188)
+
+### Upgrading from 1.2 to 2.0
+Password secrets must be recreated when upgrading the operator from version 1.2 to 2.0.  
+Secrets can be recreated either before or after the operator upgrade. Restarting the OrdsSrvs deployment is not required for this procedure; however, if the deployment does need to be restarted for any reason, ensure secrets are recreated first.
+
+## Limitations
 
 When connecting to a mTLS enabled ADB and using the Oracontroller to retreive the Wallet, it is currently not supported to have multiple, different databases supported by the single RestDataServices resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-controller/issues/97)).
 
-### Troubleshooting 
+## Troubleshooting 
 See [Troubleshooting](./TROUBLESHOOTING.md)
 
 ## Contributing
