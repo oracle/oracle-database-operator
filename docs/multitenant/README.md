@@ -220,12 +220,12 @@ echo "[PDBUSERNAME]"             > pdbusr.txt
 echo "[PDBUSERNAME PASSWORD]"    > pdbpwd.txt 
 
 ##  3. <a name='Encryptthecredentials'></a>Encrypt the credentials
-openssl rsautl -encrypt -pubin -inkey public.pem -in dbuser.txt |base64 > e_dbuser.txt 
-openssl rsautl -encrypt -pubin -inkey public.pem -in dbpass.txt |base64 > e_dbpass.txt 
-openssl rsautl -encrypt -pubin -inkey public.pem -in wbuser.txt |base64 > e_wbuser.txt 
-openssl rsautl -encrypt -pubin -inkey public.pem -in wbpass.txt |base64 > e_wbpass.txt 
-openssl rsautl -encrypt -pubin -inkey public.pem -in pdbusr.txt |base64 > e_pdbusr.txt 
-openssl rsautl -encrypt -pubin -inkey public.pem -in pdbpwd.txt |base64 > e_pdbpwd.txt 
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in dbuser.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_dbuser.txt 
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in dbpass.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_dbpass.txt 
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in wbuser.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_wbuser.txt 
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in wbpass.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_wbpass.txt 
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in pdbusr.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_pdbusr.txt 
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in pdbpwd.txt -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_pdbpwd.txt 
 
 kubectl create secret generic dbuser --from-file=e_dbuser.txt -n  cdbnamespace 
 kubectl create secret generic dbpass --from-file=e_dbpass.txt -n  cdbnamespace 

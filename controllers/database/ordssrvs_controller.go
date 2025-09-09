@@ -40,6 +40,7 @@ package controllers
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -1244,7 +1245,7 @@ func CommonDecryptWithPrivKey(Key string, Buffer string) (string, error) {
 		fmt.Printf("======================================\n")
 	}
 
-	decryptedB, err := rsa.DecryptPKCS1v15(nil, pkcs8PrivateKey.(*rsa.PrivateKey), encString64)
+	decryptedB, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, pkcs8PrivateKey.(*rsa.PrivateKey), encString64, nil)
 	if err != nil {
 		fmt.Printf("Failed to decrypt string %s\n", err.Error())
 		return "", err

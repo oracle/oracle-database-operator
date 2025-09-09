@@ -41,7 +41,9 @@ package controllers
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -2054,7 +2056,7 @@ func (r *LRPDBReconciler) DecryptWithPrivKey(Key string, Buffer string, req ctrl
 		return "", err
 	}
 
-	decryptedB, err := rsa.DecryptPKCS1v15(nil, pkcs8PrivateKey.(*rsa.PrivateKey), encString64)
+	decryptedB, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, pkcs8PrivateKey.(*rsa.PrivateKey), encString64, nil)
 	if err != nil {
 		log.Error(err, "Failed to decrypt string - "+err.Error())
 		return "", err
