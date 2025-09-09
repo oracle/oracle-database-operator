@@ -3449,9 +3449,10 @@ func (r *OracleRestartReconciler) updateONS(ctx context.Context, podList *corev1
 	return nil
 }
 func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context, instance *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec) error {
+	//reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 
-	fmt.Printf("Received OldSpec", oldSpec.InstDetails.SwLocStorageSizeInGb)
 	if oldSpec != nil {
+		fmt.Printf("Received OldSpec", oldSpec.InstDetails.SwLocStorageSizeInGb)
 		if instance.Spec.InstDetails.SwLocStorageSizeInGb > oldSpec.InstDetails.SwLocStorageSizeInGb {
 			fmt.Printf("Inside OldSpec and newSpec Change", oldSpec.InstDetails.SwLocStorageSizeInGb, instance.Spec.InstDetails.SwLocStorageSizeInGb)
 			storageClass := &storagev1.StorageClass{}
@@ -3464,8 +3465,9 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 					return fmt.Errorf("error while fetching the storage class")
 				}
 
+				pvcName := oraclerestartcommon.GetSwPvcName(instance.Spec.InstDetails.Name) + "-" + instance.Spec.InstDetails.Name + "-0"
 				err = r.Get(ctx, types.NamespacedName{
-					Name:      oraclerestartcommon.GetSwPvcName(instance.Name),
+					Name:      pvcName,
 					Namespace: instance.Namespace,
 				}, pvc)
 
@@ -3482,13 +3484,11 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 
 					fmt.Printf("New PvcSize set to ", newPVCSizeAdd)
 					if newPVCSizeAdd.Cmp(pvc.Spec.Resources.Requests["storage"]) < 0 {
-						r.Recorder.Eventf(instance, corev1.EventTypeWarning, "Cannot Resize PVC", "Forbidden: field can not be less than previous value")
 						return fmt.Errorf("Resizing PVC to lower size volume not allowed")
 					}
 
 					pvc.Spec.Resources.Requests["storage"] = resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")
 					fmt.Printf("Updating PVC", "pvc", pvc.Name, "volume", pvc.Spec.VolumeName)
-					r.Recorder.Eventf(instance, corev1.EventTypeNormal, "Updating PVC - volume expansion", "Resizing the pvc for storage expansion")
 					err = r.Update(ctx, pvc)
 					if err != nil {
 						return fmt.Errorf("error while updating the PVCs")
