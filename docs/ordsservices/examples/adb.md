@@ -21,13 +21,13 @@ kubectl create secret generic adb-wallet \
 Create a Secret for the ADB ADMIN password, replacing <ADMIN_PASSWORD> with the real password:
 
 ```bash
-echo ${ADMIN_PASSWORD} > adb-db-auth-enc
-openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
+echo ${ADMIN_PASSWORD} > db-auth
+openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
 kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
-openssl rsautl -encrypt -pubin -inkey public.pem -in adb-db-auth-enc |base64 > e_adb-db-auth-enc
-kubectl create secret generic adb-oraoper-db-auth-enc  --from-file=password=e_adb-db-auth-enc -n  ordsnamespace
-rm adb-db-auth-enc e_adb-db-auth-enc
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in db-auth -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
+kubectl create secret generic adb-oraoper-db-auth-enc  --from-file=password=e_db-auth -n  ordsnamespace
+rm db-auth e_db-auth
 ```
 
 ### Create RestDataServices Resource
