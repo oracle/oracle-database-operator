@@ -2,9 +2,9 @@
 
 **IMPORTANT:** This example assumes that you have an existing Oracle PrivateAI Container Deployment with `replicas=1` using the file [pai_sample_publiclb.yaml](./provisioning/pai_sample_publiclb.yaml)
 
-In this example, we will Scale Up an existing deployment with `replicas=1` to `replicas=3`.
+In this example, we will increase the allocated resources in an existing deployment by using the Kubernetees scale up option from  `replicas=1` to `replicas=3`.
 
-Use the file: [pai_sample_scale_up.yaml](./provisioning/pai_sample_scale_up.yaml) for this use case as below:
+Use the file: [pai_sample_scale_up.yaml](./provisioning/pai_sample_scale_up.yaml) for this use case. Example:
 
 1. Check the status of the deployment:
     ```sh
@@ -21,5 +21,5 @@ Use the file: [pai_sample_scale_up.yaml](./provisioning/pai_sample_scale_up.yaml
     kubectl get all -n pai
     ```
 
-    You will see, additional Kubernetes Pods getting deployed once the scale up is done automatically.
+As a result of this procedure, you will see additional Kubernetes Pods being deployed after the scale up operation is automatically completed.
   
