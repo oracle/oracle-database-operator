@@ -332,7 +332,6 @@ cleanCert:
 define _opr
 
 
-cp ${ORACLE_OPERATOR_YAML} .
 export OPBASENAME=`basename ${ORACLE_OPERATOR_YAML}`
 echo "code path..........: ${ORACLE_OPERATOR_YAML}"
 echo "basename...........: ${OPBASENAME}"
@@ -348,8 +347,9 @@ else
 echo "code tree..........: ${CODE_TREE}"
 cp ${ORACLE_OPERATOR_YAML} .
 cp ${OPBASENAME} ${OPBASENAME}.ORIG
-sed -i  's/value: ""/value: '${OPRNAMESPACE}','${PDBNAMESPACE}','${LRSNAMESPACE}'/g'   `basename ${ORACLE_OPERATOR_YAML}` 
 fi
+
+sed -i  's/value: ""/value: '${OPRNAMESPACE}','${PDBNAMESPACE}','${LRSNAMESPACE}'/g'   `basename ${ORACLE_OPERATOR_YAML}` 
 
 if [[ ${OPRIMG:-"OFF"} != "OFF" ]] ; then 
 	export IMG=`cat ${OPBASENAME}| awk '( $1 == "image:" ) && ( NF == 2)    { printf("%s",$2); }'`
