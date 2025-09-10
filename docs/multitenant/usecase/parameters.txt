@@ -60,7 +60,14 @@ COMPANY:oracle
 ##########################
 ### CODE TREE          ###
 ##########################
-CODE_TREE:/path/oracle-database-operator
+CODE_TREE:../../../../oracle-database-operator
+
+########################
+##  OPERATOR IMAGE   ###
+########################
+#Use this parameter if you need to change the image
+#OPRIMG:lin.ocir.io/intsanjaysingh/operator/dboperator_master_orahub:test
+
 
 ##########################
 ### PDB AUTODISCOVER   ###

@@ -54,6 +54,62 @@
 # 		altersystem_pdb1_resource.yaml    : chage cpu_count count parameter for the first pdb
 # 		config_map_plsql.yaml             : plsql code 
 #
+#[BEGIN TABLE]
+#               
+# TARGETS DEPENDENCIES                                  
+#          
+#|level 1         |level 2         |level 3        |description                          |
+#|----------------|----------------|---------------|-------------------------------------|
+#|**opsetup**     |                |               |install the operator                 |
+#|                | prsyaml        |               |configure the watch list             |
+#|                | crtmgrappl     |               |apply the certmanager                |
+#|                | nscrt          |               |namespace creation                   |
+#|                | bndappl        |               |role binding                         |
+#|                | opapply        |               |apply operator yaml file             |
+#|                | rbacap         |               |apply rbac                           |
+#+----------------+----------------+---------------+-------------------------------------+
+#|**secrets**     |                |               |create certificates and secrets      |
+#|                | tkl            |               |tls cert for https                   |
+#|                | delsecres      |               |cleanup existing secrets             |
+#+----------------+----------------+---------------+-------------------------------------+
+#|**genyaml**     |                |               |generate yaml files                  |
+#|                | secyaml        |               |not documented                       |
+#+----------------+----------------+---------------+-------------------------------------+
+#
+# OTHER TARGETS
+#
+#|target          | description                                                          |
+#+----------------+----------------------------------------------------------------------+
+#|dumplrest       | dump lrest                                                           |
+#+----------------+----------------------------------------------------------------------+
+#|dumpoperator    | dump operator logs                                                   |
+#+----------------+----------------------------------------------------------------------+
+#|check           | print parameters value                                               |
+#+----------------+----------------------------------------------------------------------+
+#|tklrestnew      | online rest server recreation                                        |
+#+----------------+----------------------------------------------------------------------+
+#|mgrrestart      | restart manager                                                      |
+#+----------------+----------------------------------------------------------------------+
+#|listimage       | list images available on the cluster                                 |
+#+----------------+----------------------------------------------------------------------+
+#|loglrest        | tail -f log lrest                                                    |
+#+----------------+----------------------------------------------------------------------+
+#|cleanyaml       | clean yaml files                                                     |
+#+----------------+----------------------------------------------------------------------+
+#|pkg             | tar this directory                                                   |
+#+----------------+----------------------------------------------------------------------+
+#|run00           | delete and recreate the lrest pod                                    |
+#+----------------+----------------------------------------------------------------------+
+#|tkautd          | autodiscovery turn on/off *make tkautd AUTOD=false/true*             |
+#+----------------+----------------------------------------------------------------------+
+#|tkdelcs         | lrest pdb delete cascade (on/off) *make tkdelcs DELETECS=true/false* |
+#+----------------+----------------------------------------------------------------------+
+#|tkdelcrd        | imperative deletion  *make tkdelcrd DELETECRD=false LRPDNNAME=<crd>* |
+#+----------------+----------------------------------------------------------------------+
+
+#[END TABLE]
+
+
 DATE  := `date "+%y%m%d%H%M%S"`
 ######################
 # PARAMETER SECTIONS #
@@ -71,6 +127,7 @@ export PDBPWD=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PDBPWD|cut -d :  -f 2)
 export PDBNAMESPACE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep PDBNAMESPACE|cut -d :  -f 2)
 export LRSNAMESPACE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRSNAMESPACE|cut -d :  -f 2)
 export LRESTIMG=$(shell cat $(PARAMETERS)|grep -v ^\#|grep LRESTIMG|cut -d : -f 2,3)
+export OPRIMG=$(shell cat $(PARAMETERS)|grep -v ^\#|grep OPRIMG|cut -d : -f 2,3)
 export COMPANY=$(shell cat $(PARAMETERS)|grep -v ^\#|grep COMPANY|cut -d : -f 2)
 export APIVERSION=$(shell cat $(PARAMETERS)|grep -v ^\#|grep APIVERSION|cut -d : -f 2)
 export SERVICENAM=$(shell cat $(PARAMETERS)|grep -v ^\#|grep SERVICENAMEACCOUNT|cut -d : -f 2)
@@ -80,7 +137,8 @@ export OPRNAMESPACE=oracle-database-operator-system
 export CODE_TREE=$(shell cat $(PARAMETERS)|grep -v ^\#|grep CODE_TREE|cut -d : -f 2)
 export ORACLE_OPERATOR_YAML=$(CODE_TREE)/oracle-database-operator.yaml
 export AUTODISCOVER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep AUTODISCOVER|cut -d : -f 2)
-export CERT_MANAGER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep CERT_MANAGER| awk -F ':' '{$$1="" ;printf("%s:%s",$$2,$$3) }')
+export CERT_MANAGER=$(shell cat $(PARAMETERS)|grep -v ^\#|grep CERT_MANAGER| awk -F ':' '{$$1="" ;\
+	if ($$2 == "https" ) {printf("%s:%s",$$2,$$3) } else {printf ("%s",$$2)}}')
 export TEST_EXEC_TIMEOUT=3m
 
 REST_SERVER=lrest
@@ -103,9 +161,9 @@ PDBPWDFILE=pdbpwd.txt
 
 export ASSERTDELETION=true
 
-#################
-### FILE LIST ###
-#################
+#######################
+### BEGIN FILE LIST ###
+#######################
 
 export LREST_POD=create_lrest_pod.yaml
 
@@ -157,11 +215,13 @@ CP=/usr/bin/cp
 TAR=/usr/bin/tar
 MKDIR=/usr/bin/mkdir
 SED=/usr/bin/sed
+DIFF=/usr/bin/diff
 MAKE=/usr/bin/make
 MAKEFILE=./makefile
 
 check:
 	@printf "LRESTIMG...............:%s\n" $(LRESTIMG)
+	@printf "OPRIMG.................:%s\n" $(OPRIMG)
 	@printf "TNSALIAS...............:%.60s....\n" $(TNSALIAS)
 	@printf "DBUSER.................:%s\n" $(DBUSER)
 	@printf "DBPASS.................:%s\n" $(DBPASS)
@@ -185,6 +245,21 @@ define msg
 @printf "\033[31;7m%s\033[0m\r" "......................................]"
 @printf "\033[31;7m[\xF0\x9F\x91\x89 %s\033[0m\n" $(1)
 endef
+
+define _gendoc
+echo producing markdown tables
+cat ./makefile |awk 'BEGIN { PRINTLINE=0; }
+{ 
+if (( PRINTLINE==1 ) && ( $0 !~ /+-----/ ) && ( $0 !~ / TABLE/)) { print; }
+if ( $0 ~ /BEGIN TABLE/ ) { PRINTLINE=1; }
+if ( $0 ~ /END TABLE/ )   { PRINTLINE=0; }  
+} ' |sed 's/#//g' > toc_targets.md
+cat toc_targets.md
+endef
+
+export gendoc = $(value _gendoc)
+docs:
+	eval "$$gendoc"
 
 tls:
 	$(call msg,"TLS GENERATION")
@@ -255,14 +330,35 @@ cleanCert:
 
 ### YAML FILE SECTION ###
 define _opr
+
+
 cp ${ORACLE_OPERATOR_YAML} .
 export OPBASENAME=`basename ${ORACLE_OPERATOR_YAML}`
-#export PDBNAMESPACE=$(cat ${PARAMETERS}|grep -v ^\#|grep PDBNAMESPACE|cut -d :  -f 2)
+echo "code path..........: ${ORACLE_OPERATOR_YAML}"
+echo "basename...........: ${OPBASENAME}"
 
-cp ${OPBASENAME} ${OPBASENAME}.ORIGNINAL
-printf "\n\t\xF0\x9F\x91\x89 ${OPBASENAME}\n\n"
-printf "\n\t\xF0\x9F\x91\x89 ${PDBNAMESPACE}\n\n"
-sed -i  's/value: ""/value: ${OPRNAMESPACE},$PDBNAMESPACE,${LRSNAMESPACE}/g'   ${OPBASENAME} 
+if [[ ${CODE_TREE:-"OFF"} == "OFF" ]] ; then
+echo "code tree not available"
+if [[ ! -f ${OPBASENAME} ]]; then 
+    echo "ERROR: oracle-database-operator.yaml not available"
+    exit 1
+    fi 
+cp ${OPBASENAME} ${OPBASENAME}.ORIG
+else
+echo "code tree..........: ${CODE_TREE}"
+cp ${ORACLE_OPERATOR_YAML} .
+cp ${OPBASENAME} ${OPBASENAME}.ORIG
+sed -i  's/value: ""/value: '${OPRNAMESPACE}','${PDBNAMESPACE}','${LRSNAMESPACE}'/g'   `basename ${ORACLE_OPERATOR_YAML}` 
+fi
+
+if [[ ${OPRIMG:-"OFF"} != "OFF" ]] ; then 
+	export IMG=`cat ${OPBASENAME}| awk '( $1 == "image:" ) && ( NF == 2)    { printf("%s",$2); }'`
+	echo "ORIGINALIMG........: ${IMG}"
+        echo "NEWIMAG............: ${OPRIMG}"
+	sed -i 's!image: '${IMG}'!image: '${OPRIMG}'!g' ${OPBASENAME}
+fi
+
+diff ${OPBASENAME} ${OPBASENAME}.ORIG||true
 endef
 
 export opr = $(value _opr)
@@ -280,10 +376,7 @@ opdelete:
 	- $(KUBECTL) delete -f `basename ${ORACLE_OPERATOR_YAML}`
 	
 prsyaml:
-#	@ eval "$$opr"	
-	$(CP) ${ORACLE_OPERATOR_YAML} .  
-	${CP} `basename ${ORACLE_OPERATOR_YAML}` `basename ${ORACLE_OPERATOR_YAML}`.ORG
-	$(SED) -i  's/value: ""/value: $(OPRNAMESPACE),$(PDBNAMESPACE),$(LRSNAMESPACE)/g'   `basename ${ORACLE_OPERATOR_YAML}` 
+	@ eval "$$opr"	
 
 ### Certmanager ###
 crtmgrappl:
@@ -1023,13 +1116,43 @@ EOF
 
 endef
 
+define _envfile
+cat <<EOF >tkpc_mmk8slenv.sh
+export TNSALIAS=${TNSALIAS}
+export DBUSER=${DBUSER}
+export DBPASS=${DBPASS}
+export WBUSER=${WBUSER}
+export WBPASS=${WBPASS}
+export PDBUSR=${PDBUSR}
+export PDBPWD=${PDBPWD}
+export PDBNAMESPACE=${PDBNAMESPACE}
+export LRSNAMESPACE=${LRSNAMESPACE}
+export LRESTIMG=${LRESTIMG}
+export COMPANY=${COMPANY}
+export APIVERSION=${APIVERSION}
+export SERVICENAM=${SERVICENAM}
+export OPENSHIFT=${OPENSHIFT}
+export PLSQLMAP=${PLSQLMAP}
+export OPRNAMESPACE=oracle-database-operator-system
+export CODE_TREE=${CODE_TREE}
+export ORACLE_OPERATOR_YAML=${ORACLE_OPERATOR_YAML}
+export AUTODISCOVER=${AUTODISCOVER}
+export CERT_MANAGER=${CERT_MANAGER}
+export TEST_EXEC_TIMEOUT=3m
+EOF
+endef
+
 export script02 = $(value _script02)
 export script03 = $(value _script03)
+export script04 = $(value _envfile)
+
+
 
 genyaml: secyaml
 	@ eval "$$script01"
 	@ eval "$$script02"
 	@ eval "$$script03"
+	@ eval "$$script04"
 
 cleanyaml:
 	- $(RM) $(LRPDBMAP3) $(LRPDBMAP2) $(LRPDBMAP1) $(LRPDBPLUG1) $(LRPDBUNPLUG1) $(LRPDBDELETE2) $(LRPDBDELETE1) $(LRPDBDELETE3) $(LRPDBCLONE2) $(LRPDBCLONE1) $(LRPDBCLOSE3) $(LRPDBCLOSE2) $(LRPDBCLOSE1) $(LRPDBOPEN3) $(LRPDBOPEN2) $(LRPDBOPEN1) $(LRPDBCRE2) $(LRPDBCRE1) $(LREST_POD) ${ALTERSYSTEMYAML}
@@ -1046,7 +1169,7 @@ pkg:
 	- $(RM) -rf /tmp/pkgtestplan
 	$(MKDIR) /tmp/pkgtestplan
 	$(CP) -R * /tmp/pkgtestplan
-	$(CP) ../../../oracle-database-operator.yaml /tmp/pkgtestplan/
+	$(CP) $(ORACLE_OPERATOR_YAML) /tmp/pkgtestplan/
 	$(TAR) -C /tmp -cvf ~/pkgtestplan_$(DATE).tar pkgtestplan
 
 ################
@@ -1309,8 +1432,6 @@ tkplsqlexec01:
 	$(KUBECTL) get events --sort-by='.lastTimestamp' -n $(PDBNAMESPACE)
 	$(KUBECTL) get events -n $(PDBNAMESPACE) --sort-by='.lastTimestamp' --field-selector involvedObject.name=$(LRPDBNAME)|grep APPLYSQL
 
-
-
 tkaudosicov:
 	@$(call msg,"==>AUTODISCOVER TESTING<==")
 	$(MAKE) -f $(MAKEFILE) genyaml ASSERTDELETION=false
@@ -1324,7 +1445,7 @@ tkaudosicov:
 	$(MAKE) -f $(MAKEFILE) genyaml ASSERTDELETION=true
 
 # Proceudure to recreate restserver
-tklrestew:
+tklrestnew:
 	@$(call msg,"Recrete resetserver")
 	@$(call msg,"disable autodiscover and delete cascade")
 	$(KUBECTL) patch lrest cdb-dev -n $(LRSNAMESPACE) -p '{"spec":{"autodiscover":false,"deletePdbCascade":false}}'  --type=merge
