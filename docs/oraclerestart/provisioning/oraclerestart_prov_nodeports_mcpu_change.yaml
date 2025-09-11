@@ -81,11 +81,11 @@ spec:
   # Resource requests and limits for memory and CPU
   resources:
     requests:
-      memory: "16Gi"                 # Minimum memory required
-      cpu: "2"                       # Minimum CPU required
+      memory: "20Gi"                 # Minimum memory required
+      cpu: "4"                       # Minimum CPU required
     limits:
-      memory: "16Gi"                 # Max memory allowed
-      cpu: "2"                       # Max CPU allowed
+      memory: "20Gi"                 # Max memory allowed
+      cpu: "4"                       # Max CPU allowed
 
   # Kernel-level system control parameters for Oracle
   securityContext:
@@ -114,7 +114,4 @@ spec:
     processes: 2000                                           # Oracle process limit
     cpuCount: 4                                               # Number of CPUs to allocate
     dbName: "PORCLCDB"                                        # Oracle database name
-    oPatchSwZipFile: "p6880880_190000_Linux-x86-64.zip"       # Opatch software ZIP
-    hostSwStageLocation: /scratch/software/stage/19.3.0       # Host location where Oracle software ZIPs are staged, same location will be mounted inside the Oracle Restart Pod
-    ruPatchLocation: /scratch/software/ru_patch/37957391      # Directory containing the unzipped RU patch, same location will be mounted inside the Oracle Restart Pod
-    oPatchLocation: /scratch/software/opatch                  # Location of the Opatch Software, same location will be mounted inside the Oracle Restart Pod
+    hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged, same location will be mounted inside the Oracle Restart Pod

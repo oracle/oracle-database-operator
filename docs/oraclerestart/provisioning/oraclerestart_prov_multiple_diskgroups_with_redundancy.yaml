@@ -50,6 +50,14 @@ spec:
         diskNames:
           - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
           - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
+          - /dev/disk/by-partlabel/asm-disk3  # ASM disk device path 3
+          - /dev/disk/by-partlabel/asm-disk4  # ASM disk device path 4
+          - /dev/disk/by-partlabel/asm-disk5  # ASM disk device path 5
+          - /dev/disk/by-partlabel/asm-disk6  # ASM disk device path 6
+          - /dev/disk/by-partlabel/asm-disk7  # ASM disk device path 7
+          - /dev/disk/by-partlabel/asm-disk8  # ASM disk device path 8
+          - /dev/disk/by-partlabel/asm-disk9  # ASM disk device path 9
+          - /dev/disk/by-partlabel/asm-disk10  # ASM disk device path 10
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
@@ -105,7 +113,15 @@ spec:
     gridBase: "/u01/app/grid"                                 # Grid base directory
     dbHome: "/u01/app/oracle/product/19c/dbhome_1"            # Oracle DB home path
     dbBase: "/u01/app/oracle"                                 # Oracle base directory
-    crsAsmDeviceList: /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2   # Comma-separated list of ASM device files
+    crsAsmDeviceList: /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2   # Comma-separated list of ASM devices for CRSDATA Diskgroup
+    dbAsmDeviceList: /dev/disk/by-partlabel/asm-disk3,/dev/disk/by-partlabel/asm-disk4,/dev/disk/by-partlabel/asm-disk5,/dev/disk/by-partlabel/asm-disk6    # Comma-separated list of ASM devices for DATA Diskgroup
+    recoAsmDeviceList: /dev/disk/by-partlabel/asm-disk7,/dev/disk/by-partlabel/asm-disk8,/dev/disk/by-partlabel/asm-disk9,/dev/disk/by-partlabel/asm-disk10  # Comma-separated list of ASM devices for RECO Diskgroup
+    crsAsmDiskDg: "+CRSDATA"                                  # Name of the Diskgroup for Voting Disks
+    dbRecoveryFileDest: "+RECO"                               # Name of the Diskgroup for Recovery Files
+    dbDataFileDestDg: "+DBDATA"                               # Name of the Diskgroup for Database Files
+    crsAsmDiskDgRedundancy: "EXTERNAL"                        # Specify the Redudancy for the diskgroup with CRS Files
+    dbAsmDiskDgRedundancy: "NORMAL"                           # Specify the Redudancy for the diskgroup with Database Files
+    recoAsmDiskDgRedudancy: "NORMAL"                         # Specify the Redudancy for the diskgroup with Recovery Files
     inventory: "/u01/app/oraInventory"                        # Inventory location
     gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
     dbSwZipFile: "db_home.zip"                                # Database software ZIP
@@ -114,7 +130,4 @@ spec:
     processes: 2000                                           # Oracle process limit
     cpuCount: 4                                               # Number of CPUs to allocate
     dbName: "PORCLCDB"                                        # Oracle database name
-    oPatchSwZipFile: "p6880880_190000_Linux-x86-64.zip"       # Opatch software ZIP
-    hostSwStageLocation: /scratch/software/stage/19.3.0       # Host location where Oracle software ZIPs are staged, same location will be mounted inside the Oracle Restart Pod
-    ruPatchLocation: /scratch/software/ru_patch/37957391      # Directory containing the unzipped RU patch, same location will be mounted inside the Oracle Restart Pod
-    oPatchLocation: /scratch/software/opatch                  # Location of the Opatch Software, same location will be mounted inside the Oracle Restart Pod
+    hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged, same location will be mounted inside the Oracle Restart Pod

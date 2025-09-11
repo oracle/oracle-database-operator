@@ -1,5 +1,6 @@
 # Prerequisites for running Oracle Restart Database Controller
  * [Kubernetes Cluster Requirements](#kubernetes-cluster-requirements)
+    * [Mandatory roles and privileges requirements for Oracle Restart Database Controller](#mandatory-roles-and-privileges-requirements-for-oracle-restart-database-controller)
     * [Prerequisites for Oracle Restart on OKE](#prerequisites-for-oracle-restart-on-oke)
     * [Preparing to Install Oracle Restart on OKE](#preparing-to-install-oracle-restart-on-oke)
     * [Worker Node Preparation for Oracle Restart on OKE](#worker-node-preparation-for-oracle-restart-on-oke)
@@ -8,7 +9,7 @@
         + [Set up SELinux Module on Worker Nodes](#set-up-selinux-module-on-worker-nodes)
     * [Create a namespace for the Oracle Restart Setup](#create-a-namespace-for-the-oracle-restart-setup)
     * [Install Cert Manager and Setup Access Permissions](#install-cert-manager-and-setup-access-permissions)
-    * [OpenShift Security Context Constraints](#openshift-security-context-constraints)
+    * [Additional requirements for OpenShift Security Context Constraints](#additional-requirements-for-openshift-security-context-constraints)
     * [Deploy Oracle Database Operator](#deploy-oracle-database-operator)
     * [Oracle Restart Database Slim Image](#oracle-restart-database-slim-image)
     * [Create a Kubernetes secret for the Oracle Restart Database installation owner for the Oracle Restart Database Deployment](#create-a-kubernetes-secret-for-the-oracle-restart-database-installation-owner-for-the-oracle-restart-database-deployment)
@@ -17,10 +18,23 @@ To deploy Oracle Restart Database using Oracle Restart Database Controller in Or
 
 If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will require:
 
-  #### Kubernetes Cluster Requirements
+  ## Kubernetes Cluster Requirements
   You must ensure that your Kubernetes Cluster meets the necessary requirements for Oracle Restart Database deployment. The minimum required OKE cluster version is 1.33.1 or higher. Refer documentation for details [Oracle Kubernetes Engine](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengoverview.htm) cluster.
 
-  #### Prerequisites for Oracle Restart on OKE
+  ## Mandatory roles and privileges requirements for Oracle Restart Database Controller
+
+  Oracle Sharding Database Controller uses Kubernetes objects such as :-
+
+  | Resources | Verbs |
+  | --- | --- |
+  | Pods | create delete get list patch update watch |
+  | Containers | create delete get list patch update watch |
+  | PersistentVolumeClaims | create delete get list patch update watch |
+  | Services | create delete get list patch update watch |
+  | Secrets | create delete get list patch update watch |
+  | Events | create patch |
+
+  ## Prerequisites for Oracle Restart on OKE
   Before proceeding with the Oracle Restart Database deployment, ensure that you have completed the necessary prerequisites on your OKE cluster. This includes setting up the required infrastructure and configuring the necessary components. To use these instructions, you should have background knowledge of the technology and operating system.
   * Verify that all necessary dependencies are installed and up-to-date. You should be familiar with the following technologies:
     * Linux
@@ -31,7 +45,7 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
     * Oracle Automatic Storage Management (Oracle ASM)
 
 
-  #### Preparing to Install Oracle Restart on OKE
+  ## Preparing to Install Oracle Restart on OKE
   To prepare for the Oracle Restart Database installation, follow these steps:
   * Ensure that your OKE cluster is properly configured and meets the necessary requirements. 
   Each pod that you deploy as part of your cluster must satisfy the minimum hardware requirements of the Oracle Restart Database and Oracle Grid Infrastructure software. If you are planning to install Oracle Grid Infrastructure and Oracle Restart database software on data volumes exposed from your environment, then you must have at least 50 GB space allocated for the Oracle Restart on OKE Pod.
@@ -48,14 +62,14 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
     * Oracle Linux for Operator, control plane, and Worker nodes on Oracle Linux 8 (Linux-x86-64) Update 10 or later updates
   
 
-  #### Worker Node Preparation for Oracle Restart on OKE
+  ## Worker Node Preparation for Oracle Restart on OKE
   * When configuring your Worker Nodes, follow these guidelines, and see the configuration Oracle used for testing.
 
     Each OKE worker node must have sufficient resources to support the intended number of Oracle Database Pods, each of which must meet at least the minimum requirements for Oracle Grid Infrastructure servers hosting an Oracle Database node.
 
-  * The Oracle Database Pods in this example configuration were created on the machine worker-1 for Oracle Restart:
+  * The Oracle Database Pods in this example configuration were created on the machine `10.0.10.58` for Oracle Restart:
     - Oracle Database Node
-      - Worker Node: worker-1
+      - Worker Node: 10.0.10.58
       - Container Pod: dbmc1-0
 
   * Worker node has the following configuration:
@@ -78,13 +92,13 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
         - **If you want to use the devices from the worker nodes for ASM storage, you will need to mark any default StorageClass as non-default in your Kubernetes Cluster.**
 
 
-  ##### Download Oracle Grid Infrastructure and Oracle Database Software
+  ### Download Oracle Grid Infrastructure and Oracle Database Software
   You need to download the Oracle Grid Infrastructure and Oracle Database software and stage it on the worker nodes. The Oracle Restart Database Controller will handle mounting the software inside the Pod.
   * The Oracle Database Container does not contain any Oracle software binaries. Download the following software from the [Oracle Technology Network](https://www.oracle.com/technetwork/database/enterprise-edition/downloads/index.html).
     - Oracle Grid Infrastructure 19c (19.28) for Linux x86-64
     - Oracle Database 19c (19.28) for Linux x86-64
 
-  ##### Prepare the Worker Node for Oracle Restart Deployment
+  ### Prepare the Worker Node for Oracle Restart Deployment
   To prepare the worker node for Oracle Restart Database deployment, follow these steps:
   Before you install Oracle Restart inside the OKE Pods, you must update the system configuration.
 
@@ -103,11 +117,11 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
       * `# sysctl -a`
       * `# sysctl –p`
   4. Verify that the swap memory is disabled by running:  
-  ```sh
-  [root@worker-1~]# free -m
-  .....
-  Swap:             0           0           0
-  ```
+      ```sh
+      # free -m
+      .....
+      Swap:             0           0           0
+      ```
   5. Enable kernel parameters at the Kubelet level, so that kernel parameters can be set at the Pod level. This is a one-time activity.
       * In the `/etc/systemd/system/kubelet.service.d/00-default.conf` file of OKE Worker nodes, add below environment variable: 
       ```txt
@@ -130,20 +144,25 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
       * On worker node:
           + `# mkdir -p /scratch/orestart/`
           + `# mkdir -p /scratch/software/stage`
+     
+     For the case where you are installing Oracle Base Release with RU Patch, create the required mount points for Base Release Software, for the location to unzip the RU Patch etc:
+      * For Example, for Release 19c with 19.28 RU, on worker node:
+          + `# mkdir -p /stage/software/19c/19.3.0`
+          + `# mkdir -p /stage/software/19c/19.28`     
   
   7. Download the Oracle Grid Infrastructure and Oracle RDBMS Software .zip files. Copy those files to the worker node at the staging location `/scratch/software/stage/`
 
-  ##### Set up SELinux Module on Worker Nodes
+  ### Set up SELinux Module on Worker Nodes
   Traditional Unix security uses discretionary access control (DAC). SELinux is an example of mandatory access control. SELinux restricts many commands from the Oracle Restart Pod that are not allowed to run, which results in permission denied errors. To avoid such errors, you must create an SELinux policy package to allow certain commands.
 
   To set up the SELinux module on the worker node, follow these steps as `root` user to create an SELinux policy package on the worker node: 
 
   1. Verify that SELinux is enabled on the Worker node. For example: 
   ```sh
-  [root@worker-1]# getenforce
+  # getenforce
   enforcing
   ```
-  2. Install the SELinux devel package on the Worker nodes: `[root@worker-1]# dnf install selinux-policy-devel`
+  2. Install the SELinux devel package on the Worker nodes: `# dnf install selinux-policy-devel`
   3. Create a file `oradb-oke.te` under `/var/opt` on the Worker nodes with the below content:
     ```sh
     module oradb-oke 1.0;
@@ -176,7 +195,7 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
       * `semodule -i oradb-oke.pp`
       * `semodule -l | grep oradb-oke`
 5. Configure the SELinux context for the required worker node directory and files:
-      * On worker-1:
+      * On worker node:
           + `# semanage fcontext -a -t container_file_t /scratch/orestart`
           + `# sudo restorecon -vF /scratch/orestart`
           + `# semanage fcontext -a -t container_file_t  /scratch/software/stage/grid_home.zip`
@@ -184,11 +203,13 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
           + `# semanage fcontext -a -t container_file_t  /scratch/software/stage/db_home.zip`
           + `# sudo restorecon -vF /scratch/software/stage/db_home.zip`
 
-**Note**: Change these paths and file names as per location of your environment for setting Oracle Restart and names of the software .zip files.
+**Note:** Change these paths and file names as per location of your environment for setting Oracle Restart and names of the software .zip files.
+
+**Note:** In case of Oracle Base Release and RU Patch software, you will need to run similar commands for the corresponding .zip files.
 
 **Note**: To use Oracle Restart Database Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Release Status Section](../../README.md#release-status).
 
-### Create a namespace for the Oracle Restart Setup
+## Create a namespace for the Oracle Restart Setup
 
 Create a Kubernetes namespace named `orestart`. All the resources belonging to the Oracle Restart Database will be provisioned in this namespace named `orestart`. For example:
 
@@ -201,7 +222,7 @@ Create a Kubernetes namespace named `orestart`. All the resources belonging to t
   ```
 If you want, you can choose any name for the namespace to deploy Oracle Restart Database.
 
-### Install Cert Manager and Setup Access Permissions
+## Install Cert Manager and Setup Access Permissions
 
 Before using Oracle Restart Database Controller, ensure you have completed the prerequisites which includes:
 
@@ -210,23 +231,25 @@ Before using Oracle Restart Database Controller, ensure you have completed the p
 
 Refer to the section [Prerequisites](../../../README.md#prerequisites)
 
-### OpenShift Security Context Constraints
+## Additional requirements for OpenShift Security Context Constraints
+
+Apart from the same steps listed above for setting up Oracle Restart Database using Oracle Restart Database Controller on an OKE Cluster, there are some additional steps required to setup Oracle Restart Database using Oracle Restart Database Controller on an OpenShift Cluster.
 
 OpenShift requires additional Security Context Constraints (SCC) for deploying and managing the `oraclerestarts.database.oracle.com` resource. To create the appropriate SCCs before deploying the `oraclerestarts.database.oracle.com` resource, complete these steps:
 
   1. Apply the file [custom-kubeletconfig.yaml](../../config/samples/orestart/custom-kubeletconfig.yaml) with cluster-admin user privileges.
 
   ```sh
-    oc apply -f custom-kubeletconfig.yaml
+  oc apply -f custom-kubeletconfig.yaml
   ```
   Watch the worker MCP update:
   ```sh
-   watch oc get mcp
-   # Wait for: UPDATING = False ,UPDATED = True ,DEGRADED = False
-   oc label mcp worker custom-kubelet=enable-unsafe-sysctls
-   oc get kubeletconfig
-   NAME                    AGE
-   enable-unsafe-sysctls   10m
+  watch oc get mcp
+  # Wait for: UPDATING = False ,UPDATED = True ,DEGRADED = False
+  oc label mcp worker custom-kubelet=enable-unsafe-sysctls
+  oc get kubeletconfig
+  NAME                    AGE
+  enable-unsafe-sysctls   10m
    ```
 
   **Note:** OpenShift recommends that you should not deploy in namespaces starting with `kube`, `openshift` and the `default` namespace.
@@ -240,11 +263,11 @@ OpenShift requires additional Security Context Constraints (SCC) for deploying a
   3. Apply the file [custom-scc.yaml](../../config/samples/orestart/custom-scc.yaml) with cluster-admin user privileges.
 
   ```sh
-    oc apply -f custom-scc.yaml
-    oc adm policy add-scc-to-user privileged -z oraclerestart -n orestart
+  oc apply -f custom-scc.yaml
+  oc adm policy add-scc-to-user privileged -z oraclerestart -n orestart
   ```
 
-### Deploy Oracle Database Operator
+## Deploy Oracle Database Operator
 
 After you have completed the prerequisite steps, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the previous step.
 
@@ -254,27 +277,17 @@ kubectl apply -f oracle-database-operator.yaml
 
 For more details, please refer to [Install Oracle DB Operator](../../../README.md#install-oracle-db-operator)
 
-### Oracle Restart Database Slim Image
-Choose one of the following deployment options: 
+## Oracle Restart Database Slim Image
 
-  **Use Oracle-Supplied Container Images:**
-   The Oracle Restart Database Controller uses Oracle Restart Database Slim Image to provision the Oracle Restart Database.
-
-   You can also download the pre-built Oracle Restart Database Slim Image `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0630`. This image is functionally tested and evaluated with various use cases of Oracle Restart Database on an OKE Kubernetes Cluster.
-
-   You can either download this image and push it to your Container Images Repository, or, if your Kubernetes cluster can reach OCR, you can download this image directly from OCR.
-   
-   **OR**
-
-  **Build your own Oracle Restart Database Slim Image:**
-   You can build this image using instructions provided on Oracle's official OraHub Repositories:
-   * [Oracle Restart Database Image](https://orahub.oci.oraclecorp.com/rac-docker-dev/rac-docker-images)
+  #### Build your own Oracle Restart Database Slim Image
+   You can build this image using instructions provided in below documentation:
+   * [Building Oracle RAC Database Container Slim Image](https://github.com/oracle/docker-images/blob/main/OracleDatabase/RAC/OracleRealApplicationClusters/README.md#building-oracle-rac-database-container-slim-image)
 
 After the image is ready, push it to your Container Images Repository, so that you can pull this image during Oracle Restart Database provisioning..
 
-**Note**: In the Oracle Restart Database provisioning sample .yaml files, we are using Oracle Restart Database slim image available on `phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0630`.
+**Note**: In the Oracle Restart Database provisioning sample .yaml files, we are using Oracle Restart Database slim image `localhost/oracle/database-orestart:19.3.0-slim`.
 
-### Create a Kubernetes secret for the Oracle Restart Database installation owner for the Oracle Restart Database Deployment
+## Create a Kubernetes secret for the Oracle Restart Database installation owner for the Oracle Restart Database Deployment
 
 Create a Kubernetes secret named `db-user-pass` in `orestart` namespace using these steps: [Create Kubernetes Secret](./create_kubernetes_secret_for_db_user.md)
 

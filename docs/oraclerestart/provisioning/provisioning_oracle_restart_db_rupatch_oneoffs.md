@@ -8,16 +8,21 @@ This example uses `oraclerestart_prov_rupatch_oneoff_storageclass.yaml` to provi
 * 1 Node Oracle Restart
 * Headless services for Oracle Restart
   * Oracle Restart node hostname
-* Persistent volumes created automatically based on specified disks for Oracle Restart storage
-* Software Persistent Volumes and Staged Software Persistent Volumes using the specified location on the corresponding worker nodes
+* Node Port 30007 mapped to port 1521 for Database Listener.  
+* Persistent volumes created automatically based on specified disks for Oracle ASM storage.
+* Software location and Staged Software location using a mount location which is using a pre created Persistent Volume from a network file system(NFS).
 * Namespace: `orestart`
-* Staged Software location on the worker nodes is specified by `hostSwStageLocation` and we have copied the Grid Infrastructure and RDBMS Binaries to this location on the worker nodes
-* Software location on the worker nodes is specified by `hostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using this location on the worker node.
-* Directory where the **Release Update (RU) patch** has been unzipped as `ruPatchLocation`. This folder **must contain `PatchSearch.xml`**, which is used by the installer to detect and apply the patch. Example: `ruPatchLocation: "/stage/software/19c/new/RU/37957391"`
-* Directory where latest opatch zip file is kept e.g `oPatchLocation: "/stage/software/19c"`
-* Directory where One-off patch files is kept e.g `oneOffLocation: "/stage/software/19c/new/oneoff"`
-* Comma-separated DB one-off patch IDs to be applied e.g `dbOneOffIds: "34436514"`
-* Comma-separated Grid one-off patch IDs to be applied e.g `gridOneOffIds: "38336965"`
+* Mount point for the Software Stage Location inside the Pod is specified by `swStagePvcMountLocation`.
+* Staged Software location inside the Pod is specified by `hostSwStageLocation`. It is assumed that the Grid Infrastructure and RDBMS Binaries are already available in this path on the Persistent Volume used.
+* The GI HOME and the RDBMS HOME in the Oracle Restart Pod are mounted using a Persistent Volume created using the Storage Class (specified using `storageClass`). This Persistent Volume is mounted to `/u01` inside the Pod. Size of this Persistent Volume is specified using `swLocStorageSizeInGb`.
+* Directory where the **Release Update (RU) patch** has been unzipped is specified by `ruPatchLocation`. 
+  * For Example: To apply the 19.28 RU Patch `37957391`, if you have unzipped the RU Patch .zip file `p37957391_190000_Linux-x86-64.zip` to location `/scratch/software/19c/19.28/` on the worker node, then set this parameter `ruPatchLocation` to value `/scratch/software/ru_patch/37957391`.
+  * Set the permission on the unzipped RU software directory to be `755` recursively.
+* Directory, where latest opatch zip file is available, is specified by `oPatchLocation`.
+* Directory, where unzipped One-off patch files are available, is specified by `oneOffLocation`.
+* Specify Comma-separated one-off patch IDs to be applied to the GI HOME using `gridOneOffIds`. For Example: `gridOneOffIds: "38336965,34436514"`
+* Specify Comma-separated one-off patch IDs to be applied to the RDBMS HOME using `dbOneOffIds`. For Example: `dbOneOffIds: "38336965,34436514"`
+
 
 In this example, 
   * We are using Oracle Restart Database slim image by building it from Git location(./https://orahub.oci.oraclecorp.com/rac-docker-dev/rac-docker-images/-/blob/master/OracleRealApplicationClusters/README.md#building-oracle-rac-database-container-slim-image) i.e. `localhost/oracle/database-rac:19.3.0-slim`. To use this in your in own environment, update the image value in the `oraclerestart_prov_rupatch_oneoff_storageclass.yaml` file to point to your own container registry base container image.
@@ -43,4 +48,4 @@ Use the file: [oraclerestart_prov_rupatch_oneoff_storageclass.yaml](./oraclerest
     ORACLE DATABASE IS READY TO USE
     ===============================
     ```
-3. Check Details of Kubernetes CRD Object as in this [example](./orestart_oneoffs_object.txt)
+3. Check Details of Kubernetes CRD Object as in this [example](./orestart_db_rupatch_oneoffs_object.txt)
