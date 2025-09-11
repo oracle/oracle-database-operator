@@ -14,16 +14,16 @@
     * [Oracle Restart Database Slim Image](#oracle-restart-database-slim-image)
     * [Create a Kubernetes secret for the Oracle Restart Database installation owner for the Oracle Restart Database Deployment](#create-a-kubernetes-secret-for-the-oracle-restart-database-installation-owner-for-the-oracle-restart-database-deployment)
 
-To deploy Oracle Restart Database using Oracle Restart Database Controller in Oracle Database Operator, you need a Kubernetes Cluster like an Oracle Kubernetes Engine(OKE). 
+To deploy an Oracle Database using the Oracle Restart Database Controller in the Oracle Database Operator, you require a Kubernetes cluster such as Oracle Kubernetes Engine (OKE).
 
 If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will require:
 
   ## Kubernetes Cluster Requirements
-  You must ensure that your Kubernetes Cluster meets the necessary requirements for Oracle Restart Database deployment. The minimum required OKE cluster version is 1.33.1 or higher. Refer documentation for details [Oracle Kubernetes Engine](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengoverview.htm) cluster.
+  You must ensure that your Kubernetes Cluster meets the necessary requirements for Oracle Restart Database deployment. The minimum required OKE cluster version is 1.33 or higher. Refer documentation for details [Oracle Kubernetes Engine](https://docs.oracle.com/en-us/iaas/Content/ContEng/Concepts/contengoverview.htm) cluster.
 
   ## Mandatory roles and privileges requirements for Oracle Restart Database Controller
 
-  Oracle Sharding Database Controller uses Kubernetes objects such as :-
+  Oracle Restart Database Controller uses Kubernetes objects such as :-
 
   | Resources | Verbs |
   | --- | --- |
@@ -35,7 +35,7 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
   | Events | create patch |
 
   ## Prerequisites for Oracle Restart on OKE
-  Before proceeding with the Oracle Restart Database deployment, ensure that you have completed the necessary prerequisites on your OKE cluster. This includes setting up the required infrastructure and configuring the necessary components. To use these instructions, you should have background knowledge of the technology and operating system.
+ Before proceeding with the Oracle Database deployment, ensure that you have completed all required prerequisites on your Oracle Kubernetes Engine (OKE) cluster. This includes setting up the necessary infrastructure and configuring all relevant components. To effectively use these instructions, you should have background knowledge of both Kubernetes technology and the underlying operating system.
   * Verify that all necessary dependencies are installed and up-to-date. You should be familiar with the following technologies:
     * Linux
     * Kubernetes
@@ -44,47 +44,41 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
     * Oracle Grid Infrastructure installation
     * Oracle Automatic Storage Management (Oracle ASM)
 
-
   ## Preparing to Install Oracle Restart on OKE
   To prepare for the Oracle Restart Database installation, follow these steps:
   * Ensure that your OKE cluster is properly configured and meets the necessary requirements. 
-  Each pod that you deploy as part of your cluster must satisfy the minimum hardware requirements of the Oracle Restart Database and Oracle Grid Infrastructure software. If you are planning to install Oracle Grid Infrastructure and Oracle Restart database software on data volumes exposed from your environment, then you must have at least 50 GB space allocated for the Oracle Restart on OKE Pod.
-  
+  Each pod that you deploy as part of your cluster must satisfy the minimum hardware requirements of the Oracle Restart Database and Oracle Grid Infrastructure software. If you are planning to install Oracle Grid Infrastructure and Oracle Restart database software on host local volumes exposed from your environment, then you must have at least 50 GB space allocated for the Oracle Restart on OKE Pod.
   * In addition to the standard memory (RAM) required for Oracle Linux (Linux-x86-64), the Oracle Grid Infrastructure and Oracle Database instances, Oracle recommends that you provide an additional 2 GB of RAM to each Kubernetes node for the control plane. 
-  
   * Database storage for Oracle Database on OKE must use Oracle Automatic Storage Management (Oracle ASM) configured on block storage.
     
-  * Oracle Database on Kubernetes is currently supported with the following releases:
-    * Oracle Grid Infrastructure Release 19.28 or later release updates
-    * Oracle Database Release 19.28 or later
-    * Oracle Kubernetes Engine Environment 1.33.1 or later
-    * Unbreakable Enterprise Kernel Release 7 UEKR7 (Kernel Release 5.15.0-202.135.2.el9uek.x86_64 ) or later updates
-    * Oracle Linux for Operator, control plane, and Worker nodes on Oracle Linux 8 (Linux-x86-64) Update 10 or later updates
-  
-
+  Prerequisite Software and Environment Versions: 
+    * Oracle Grid Infrastructure: Release 19.28 or later
+    * Oracle Database: Release 19.28 or later
+    * Oracle Kubernetes Engine (OKE): Version 1.33 or later
+    * Unbreakable Enterprise Kernel (UEK): Release 7 UEKR7 (Kernel Release 5.15.0-202.135.2.el9uek.x86_64) or later
+    * Oracle Linux: For Operator, control plane, and worker nodes—Oracle Linux 8 (Linux-x86-64) Update 10 or later
+       
   ## Worker Node Preparation for Oracle Restart on OKE
   * When configuring your Worker Nodes, follow these guidelines, and see the configuration Oracle used for testing.
-
     Each OKE worker node must have sufficient resources to support the intended number of Oracle Database Pods, each of which must meet at least the minimum requirements for Oracle Grid Infrastructure servers hosting an Oracle Database node.
-
   * The Oracle Database Pods in this example configuration were created on the machine `10.0.10.58` for Oracle Restart:
     - Oracle Database Node
       - Worker Node: 10.0.10.58
       - Container Pod: dbmc1-0
-
   * Worker node has the following configuration:
-    - RAM:16GB
+    - RAM:32GB
     - Operating system disk:
     - Ensure that your storage has at least the following available space:
         - / (Root): 40 GB
         - /scratch/orestart/: 80 GB (the worker node directory which will be used for /u01 to store Oracle Grid Infrastructure and Oracle Database homes)
-        - /var/lib/containers: 50 GB xfs
-        - /scratch/software/stage (the worker node directory for staging Oracle Grid Infrastructure and Oracle RDBMS software)
+        - /var/lib/containers: 100 GB xfs
     - Oracle Linux 8.10 with Unbreakable Enterprise Kernel Release UEKR7 (Kernel Release 5.15.0-308.179.6.el8uek.x86_64) or later
     - Network Cards:
         - ens3: Default network interface. The Oracle Restart pod will use this network interface for cluster public network.
-
-    - Block devices:
+    **Notes**
+    - You only need to configure the following storage locations on the worker node **if you are not using a StorageClass** for the software volume and ASM disks.    
+      - /scratch/software/stage (the worker node directory will be exposed as local host volume to the Oracle Restart pod for staging Oracle Grid Infrastructure and Oracle RDBMS software)
+      - Block devices:
         - You can use any supported storage options for Oracle Grid Infrastructure. Ensure that your storage has at least the following space available:
           - /dev/oracleoci/oraclevdd (50 GB)
           - /dev/oracleoci/oraclevde (50 GB)
@@ -140,7 +134,7 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
       * Restart Kubelet: `# systemctl restart kubelet`
       * Check the Kubelet status: `# systemctl status kubelet`
 
-  6. Create the mount points on the worker node to be mounted to Oracle Restart Pod for Oracle GI + RDBMS HOME and the Software Staging Location
+  6.Skip this step if you are using a StorageClass.Otherwise, create the necessary mount points on the worker node. These mount points will be used by the Oracle Restart pod for Oracle Grid Infrastructure and RDBMS Home, as well as for the software staging location.
       * On worker node:
           + `# mkdir -p /scratch/orestart/`
           + `# mkdir -p /scratch/software/stage`

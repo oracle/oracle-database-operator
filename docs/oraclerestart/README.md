@@ -4,18 +4,16 @@ Oracle Restart is an option to the award-winning Oracle Database Enterprise Edit
 
 For more information on Oracle Restart Database 19c refer to the [Oracle Database Documentation](http://docs.oracle.com/en/database/).
 
-Kubernetes provides infrastructure building blocks such as compute, storage and networks. Kubernetes makes the infrastructure available as code. It enables rapid provisioning of multi-node topolgies. Additionally, Kubernetes also provides statefulsets, which are the workload API objects that are used to manage stateful applications like Oracle Restarts, Single Instance Oracle Database, and other Oracle features and configurations.
+Kubernetes provides essential infrastructure building blocks, including compute, storage, and networking resources, and exposes them as code for infrastructure automation. This approach enables rapid provisioning of multi-node topologies. Additionally, Kubernetes offers the **StatefulSet** workload API object—ideal for managing stateful applications such as Oracle Restart, Single Instance Oracle Databases, and other Oracle features or configurations that require persistent storage and stable network identities.
 
-The Oracle Restart Controller in Oracle Database Operator deploys Oracle Restart Database as a statefulset in the Kubernetes Clusters, using Oracle Restart Slim Image. The Oracle Restart Controller manages the typical lifecycle of Oracle Restart Database in a Kubernetes cluster, as shown below:
+The Oracle Restart Controller in the Oracle Database Operator deploys Oracle Databases as a StatefulSet within Kubernetes clusters, utilizing the Oracle Restart Slim Image. The Oracle Restart Controller manages the typical lifecycle operations of an Oracle Database in a Kubernetes environment, including deployment, monitoring, scaling, upgrades, and deletion, as illustrated below:
 
-* Create Oracle Restart Database
+* Create Oracle Database
   * Install and Configure Oracle Grid Infrastructure
   * Install and Configure Oracle Database
 * Create Persistent Storage, along with Statefulset
 * Create Services
 * Oracle Restart Instances Cleanup
-
-The Oracle Restart Controller provides end-to-end automation for the deployment of Oracle Restart Database in a Kubernetes Cluster.
 
 ## Using Oracle Restart Controller
 
@@ -34,7 +32,7 @@ To create an Oracle Database, complete the steps in the following sections:
 
 **IMPORTANT :** You must make the changes specified in this section before you proceed to the next section.
 
-In order to become familiar with Oracle Restart on containers, you can refer [this documentation](https://github.com/oracle/docker-images/blob/main/OracleDatabase/RAC/OracleRealApplicationClusters/docs/orestart/README.md) before proceeding further.
+To become familiar with Oracle Restart in containerized environments, review the [this documentation](https://github.com/oracle/docker-images/blob/main/OracleDatabase/RAC/OracleRealApplicationClusters/docs/orestart/README.md) before proceeding further
 
 [Pre-requisites for running Oracle Restart Controller](./provisioning/prerequisites_oracle_restart_db.md)
 
