@@ -3,18 +3,27 @@
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
 ---
+# API version of the ShardingDatabase Custom Resource
 apiVersion: database.oracle.com/v4
+
+# Resource type being created
 kind: ShardingDatabase
+
+# Metadata section to define the resource's name and namespace
 metadata:
-  name: shardingdatabase-sample
-  namespace: shns
+  name: shardingdatabase-sample                                             # Name of the ShardingDatabase instance
+  namespace: shns                                                           # Kubernetes namespace to deploy into
+
+# Specs for the ShardingDatabase instance
 spec:
+
+ # Details of the individual shard databases
  shard:
-    - name: shard1
-      storageSizeInGb: 50
-      imagePullPolicy: "Always"
-      shardGroup: shardgroup1
-      shardRegion: primary
+    - name: shard1                                                          # Name of the shard database
+      storageSizeInGb: 50                                                   # Size of the Disk Storage allocated to the Shard Database pod
+      imagePullPolicy: "Always"                                             # Image Pull Policy for the Database Container Image
+      shardGroup: shardgroup1                                               # Shard Group name for the Shard Database
+      shardRegion: primary                                                  # Name of the region for the Shard Database
     - name: shard2
       storageSizeInGb: 50
       imagePullPolicy: "Always"
@@ -25,30 +34,53 @@ spec:
       imagePullPolicy: "Always"
       shardGroup: shardgroup1
       shardRegion: primary
+
+ # Details of the individual shard databases     
  catalog:
-    - name: catalog
-      storageSizeInGb: 50
-      imagePullPolicy: "Always"
+    - name: catalog                                                         # Name of the Catalog database
+      storageSizeInGb: 50                                                   # Size of the Disk Storage allocated to the Shard Database pod
+      imagePullPolicy: "Always"                                             # Image Pull Policy for the Database Container Image
+
+ # Details of the GSM Pods     
  gsm:
-    - name: gsm1
-      imagePullPolicy: "Always"
-      storageSizeInGb: 50
-      region: primary
-    - name: gsm2
-      imagePullPolicy: "Always"
-      storageSizeInGb: 50
-      region: standby
+    - name: gsm1                                                            # Name of the Primary Global Service Manager
+      imagePullPolicy: "Always"                                             # Image Pull Policy for the GSM Container Image
+      storageSizeInGb: 50                                                   # Size of the Disk Storage allocated to the GSM pod
+      region: primary                                                       # Name of the Primary region for the Shard Database
+
+    - name: gsm2                                                            # Name of the Standby Global Service Manager
+      imagePullPolicy: "Always"                                             # Image Pull Policy for the GSM Container Image
+      storageSizeInGb: 50                                                   # Size of the Disk Storage allocated to the GSM pod
+      region: standby                                                       # Name of the Standby region for the Shard Database
+
+ # Kubernetes Storage Class Name
  storageClass: oci
- dbImage: container-registry.oracle.com/database/enterprise_ru:19.25.0.0
+
+ # Database Container Image to be used for Catalog and Shard Database
+ dbImage: container-registry.oracle.com/database/enterprise_ru:19.28.0.0
+
+ # Database Conrainer Image Pull Secret
  dbImagePullSecret: ocr-reg-cred
- gsmImage: container-registry.oracle.com/database/gsm_ru:19.25.0.0
+
+ # GSM Container Image to be used for GSM Pods
+ gsmImage: container-registry.oracle.com/database/gsm_ru:19.28.0.0
+
+ # GSM Conrainer Image Pull Secret
  gsmImagePullSecret: ocr-reg-cred
+ 
+ # Whether an External Load Balancer has to be configured for the Catalog, Shard and GSM Pods
  isExternalSvc: False
+
+ # If set to true, the Persistent Volumes will be deleted when the deployment for the Oracle Globally Distributed Database is deleted
  isDeleteOraPvc: True
+
+ # Details of the Database Secret 
  dbSecret:
    name: db-user-pass-rsa
    pwdFileName: pwdfile.enc
    keyFileName: key.pem
+
+ # Details of Services to be created for the Oracle Globally Distributed Database Resource
  gsmService:
    - name: oltp_rw_svc
      role: primary
