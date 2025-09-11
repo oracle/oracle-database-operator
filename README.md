@@ -73,7 +73,6 @@ As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) suppor
 * **ADB-S/ADB-D**: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning, manual failover, switchover
 * **ACD**: Provision, bind, restart, terminate (soft/hard)
 * **SIDB**: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS), PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), Snapshot Standby (Data Guard)
-* **Oracle Restart**: Provision and manage Oracle Restart environments
 * **ORDS Services**: Provision and delete ORDS instances
 * **Globally Distributed (Sharded)**: Provision/deploy sharded databases and topology, add/delete shards, Raft replication
 * **Oracle Multitenant Database**: Bind to a CDB, create/plug/unplug/delete/clone/open/close PDBs, assertive deletion policy
@@ -92,13 +91,14 @@ This production release has been installed and tested on:
 The previous releases were tested on the following platforms:
 
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.30 or later
+* [Redhat Openshift](https://www.redhat.com/en/technologies/cloud-computing/openshift) with version v4.16 or later
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.9 or later
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
 * [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Red Hat OKD](https://www.okd.io/)
 * [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.29.0
-* [Redhat Openshift](https://www.redhat.com/en/technologies/cloud-computing/openshift) with version v4.16 or later
+
 
 ## Prerequisites
 
