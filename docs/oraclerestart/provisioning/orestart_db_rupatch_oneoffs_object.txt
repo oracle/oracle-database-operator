@@ -3,26 +3,26 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","...
+                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","value":"tru...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-08-27T03:31:52Z
+  Creation Timestamp:  2025-09-11T04:55:37Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  227759597
-  UID:               41235735-cadc-49d3-b198-56e6bb4a1d9f
+  Resource Version:  234329900
+  UID:               5ed0c257-dfb3-40da-9e97-46dabf65e5ac
 Spec:
   Asm Storage Details:
     Disks By Size:
       Disk Names:
-        /dev/disk/by-partlabel/asm-disk1
-        /dev/disk/by-partlabel/asm-disk2
+        /dev/asm-disk1
+        /dev/asm-disk2
       Storage Size In Gb:  50
   Config Params:
     Cpu Count:                   4
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
     Crs Asm Disk Dg:             +DATA
     Crs Asm Disk Dg Redundancy:  external
     Db Base:                     /u01/app/oracle
@@ -30,37 +30,59 @@ Spec:
     Db Data File Dest Dg:        +DATA
     Db Home:                     /u01/app/oracle/product/19c/dbhome_1
     Db Name:                     PORCLCDB
+    Db One Off Ids:              38336965,34436514
     Db Recovery File Dest:       +DATA
     Db Response File:
-    Db Sw Zip File:  db_home.zip
-    Grid Base:       /u01/app/grid
-    Grid Home:       /u01/app/19c/grid
+    Db Sw Zip File:    db_home.zip
+    Grid Base:         /u01/app/grid
+    Grid Home:         /u01/app/19c/grid
+    Grid One Off Ids:  38336965,34436514
     Grid Response File:
-    Grid Sw Zip File:        grid_home.zip
-    Host Sw Stage Location:  /scratch/software/stage
-    Inventory:               /u01/app/oraInventory
-    Pga Size:                1G
-    Processes:               2000
-    Sga Size:                3G
-    Sw Mount Location:       /u01
+    Grid Sw Zip File:             grid_home.zip
+    Host Sw Stage Location:       /stage/software/19c/19.3.0
+    Inventory:                    /u01/app/oraInventory
+    O Patch Location:             /stage/software/19c
+    O Patch Sw Zip File:          p6880880_190000_Linux-x86-64.zip
+    One Off Location:             /stage/software/19c/oneoff
+    Pga Size:                     1G
+    Processes:                    2000
+    Ru Patch Location:            /stage/software/19c/19.28/37957391
+    Sga Size:                     3G
+    Sw Mount Location:            /u01
+    Sw Stage Pvc:                 pv-stage-vol-claim
+    Sw Stage Pvc Mount Location:  /stage
   Db Secret:
     Key File Mount Location:  /mnt/.dbsecrets
     Key File Name:            key.pem
     Name:                     db-user-pass-pkutl
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
+  Enable Ons:                 enable
   Image:                      localhost/oracle/database-orestart:19.3.0-slim
   Image Pull Policy:          IfNotPresent
   Inst Details:
     Env Vars:
-      Name:            IGNORE_CRS_PREREQS
-      Value:           true
-      Name:            IGNORE_DB_PREREQS
-      Value:           true
-    Host Sw Location:  /scratch/orestart/
-    Name:              dbmc1
+      Name:                     IGNORE_CRS_PREREQS
+      Value:                    true
+      Name:                     IGNORE_DB_PREREQS
+      Value:                    true
+    Name:                       dbmc1
+    Sw Loc Storage Size In Gb:  300
     Worker Node:
       10.0.10.58
+  Lb Service:
+  Node Port Svc:
+    Name:  dbmc1-service-nodeport
+    Port Mappings:
+      Node Port:    30007
+      Port:         1521
+      Protocol:     TCP
+      Target Port:  1521
+      Node Port:    30200
+      Port:         6200
+      Protocol:     TCP
+      Target Port:  6200
+    Svc Type:       nodeport
   Resources:
     Limits:
       Cpu:     2
@@ -85,6 +107,7 @@ Spec:
     Name:                  ssh-key-secret
     Priv Key Secret Name:  ssh-privkey
     Pub Key Secret Name:   ssh-pubkey
+  Storage Class:           oci-bv
 Status:
   Oracle Restart Nodes:
     Name:  dbmc1-0
@@ -93,30 +116,30 @@ Status:
       Pod State:       AVAILABLE
       Cluster State:   HEALTHY
       Mounted Devices:
-        /dev/disk/by-partlabel/asm-disk1
-        /dev/disk/by-partlabel/asm-disk2
+        /dev/asm-disk1
+        /dev/asm-disk2
       State:  AVAILABLE
   Asm Details:
     Diskgroup:
       Disks:
-        /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
+        /dev/asm-disk1,/dev/asm-disk2
       Name:        DATA
       Redundancy:  EXTERN
   Conditions:
-    Last Transition Time:  2025-08-27T03:43:52Z
-    Message:               reconcile has been queued
-    Observed Generation:   1
-    Reason:                LastReconcileCycleQueued
-    Status:                True
-    Type:                  ReconcileQueued
-    Last Transition Time:  2025-08-27T03:58:18Z
+    Last Transition Time:  2025-09-11T04:55:37Z
     Message:               reconcile completed successfully
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
+    Last Transition Time:  2025-09-11T14:46:43Z
+    Message:               reconcile has been queued
+    Observed Generation:   1
+    Reason:                LastReconcileCycleQueued
+    Status:                True
+    Type:                  ReconcileQueued
   Config Params:
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
     Crs Asm Disk Dg:             +DATA
     Crs Asm Disk Dg Redundancy:  external
     Db Base:                     /u01/app/oracle
@@ -137,6 +160,7 @@ Status:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Db State:                   OPEN
+  External Connect String:    Pending
   Pdb Connect String:         dbmc1-0:1521/ORCLPDB
   Release Update:             19.28.0.0.0
   Role:                       PRIMARY
@@ -145,3 +169,25 @@ Status:
     Svc State:  service soepdb is running
   State:        AVAILABLE
 Events:         <none>
+
+
+
+[grid@dbmc1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches
+34436514;DBCA REPORTS INCORRECT MEMORY IN PODMAN CONTAINERS
+38336965;OCW Interim patch for 38336965
+38124772;TOMCAT RELEASE UPDATE 19.0.0.0.0 (38124772)
+37962938;ACFS RELEASE UPDATE 19.28.0.0.0 (37962938)
+37960098;Database Release Update : 19.28.0.0.250715 (37960098)
+36758186;DBWLM RELEASE UPDATE 19.0.0.0.0 (36758186)
+
+OPatch succeeded.
+
+
+
+
+[oracle@dbmc1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches
+37962946;OCW RELEASE UPDATE 19.28.0.0.0 (37962946)
+37960098;Database Release Update : 19.28.0.0.250715 (37960098)
+
+OPatch succeeded.
+[oracle@dbmc1-0 ~]$

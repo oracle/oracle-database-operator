@@ -1,28 +1,28 @@
-kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
+$ kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
 Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.108"],"nodePortSvc":[{"name":"dbmc1-service-no...
+                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"nodePortSvc":[{"name":"dbmc1-service-nod...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-07-21T06:32:13Z
+  Creation Timestamp:  2025-08-20T01:53:13Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  8946152
-  UID:               c861883d-285b-47ef-ae14-032540149729
+  Resource Version:  224754865
+  UID:               f9404b92-c1b2-400d-8fff-9bda472a7d54
 Spec:
   Asm Storage Details:
     Disks By Size:
       Disk Names:
-        /dev/oracleoci/oraclevdd
-        /dev/oracleoci/oraclevde
+        /dev/disk/by-partlabel/asm-disk1
+        /dev/disk/by-partlabel/asm-disk2
       Storage Size In Gb:  50
   Config Params:
     Cpu Count:                   4
-    Crs Asm Device List:         /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde
+    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
     Crs Asm Disk Dg:             +DATA
     Crs Asm Disk Dg Redundancy:  external
     Db Base:                     /u01/app/oracle
@@ -37,7 +37,7 @@ Spec:
     Grid Home:       /u01/app/19c/grid
     Grid Response File:
     Grid Sw Zip File:        grid_home.zip
-    Host Sw Stage Location:  /scratch/software/19c/HAS_19.28.0.0.0OCWRU_LINUX.X64_250626/
+    Host Sw Stage Location:  /scratch/software/stage
     Inventory:               /u01/app/oraInventory
     Pga Size:                1G
     Processes:               2000
@@ -49,7 +49,7 @@ Spec:
     Name:                     db-user-pass-pkutl
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
-  Image:                      phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0718
+  Image:                      localhost/oracle/database-orestart:19.3.0-slim
   Image Pull Policy:          Always
   Inst Details:
     Host Sw Location:  /scratch/orestart/
@@ -63,7 +63,7 @@ Spec:
       Protocol:     TCP
       Target Port:  1521
     Worker Node:
-      10.0.10.108
+      10.0.10.58
   Resources:
     Limits:
       Cpu:     2
@@ -96,32 +96,30 @@ Status:
       Pod State:       AVAILABLE
       Cluster State:   HEALTHY
       Mounted Devices:
-        /dev/oracleoci/oraclevdd
-        /dev/oracleoci/oraclevde
+        /dev/disk/by-partlabel/asm-disk1
+        /dev/disk/by-partlabel/asm-disk2
       State:  AVAILABLE
   Asm Details:
     Diskgroup:
       Disks:
-        /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde
+        /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
       Name:        DATA
       Redundancy:  EXTERN
-  Client Etc Host:
-    150.136.178.0    dbmc1-0.rac.svc.cluster.local dbmc1-0-vip.rac.svc.cluster.local    OracleRestartNode-scan.rac.svc.cluster.local
   Conditions:
-    Last Transition Time:  2025-07-21T06:45:22Z
+    Last Transition Time:  2025-08-20T02:04:46Z
     Message:               oracle restart database is in a restricted state: PROVISIONING
     Observed Generation:   1
     Reason:                LastReconcileCycleQueued
     Status:                True
     Type:                  ReconcileQueued
-    Last Transition Time:  2025-07-21T06:58:29Z
+    Last Transition Time:  2025-08-20T04:22:18Z
     Message:               no reconcile errors
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde
+    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
     Crs Asm Disk Dg:             +DATA
     Crs Asm Disk Dg Redundancy:  external
     Db Base:                     /u01/app/oracle
@@ -142,8 +140,9 @@ Status:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Db State:                   OPEN
+  External Connect String:    129.146.0.149:30007/soepdb
   Inst Details:
-    Name:              
+    Name:
   Pdb Connect String:  dbmc1-0:1521/ORCLPDB
   Release Update:      19.28.0.0.0
   Role:                PRIMARY

@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-stage-vol1
+  namespace: orestart
+spec:
+  storageClassName: fss-dyn-storage
+  capacity:
+    storage: 500Gi
+  accessModes:
+  - ReadOnlyMany
+  nfs:
+    path: /stage
+    server: 10.0.10.212
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - rw
+    - nointr
+    - hard
+    - bg
+    - tcp
+    - actimeo=0
+    - vers=3
+    - rsize=1048576
+    - wsize=1048576
+    - timeo=600
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pv-stage-vol-claim
+  namespace: orestart
+spec:
+  storageClassName: fss-dyn-storage
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 500Gi

@@ -1,157 +1,127 @@
-# API group and version of the custom resource
+# API version of the OracleRestart Custom Resource
 apiVersion: database.oracle.com/v4
 
-# Specifies the kind of custom resource
+# Resource type being created
 kind: OracleRestart
 
-# Metadata about the custom resource
+# Metadata section to define the resource's name and namespace
 metadata:
-  # Name of the OracleRestart instance
-  name: oraclerestart-sample
-  # Namespace in which the instance will be deployed
-  namespace: orestart
+  name: oraclerestart-sample          # Name of the OracleRestart instance
+  namespace: orestart                 # Kubernetes namespace to deploy into
 
-# Specification of the OracleRestart instance
 spec:
-  # Instance-specific configuration
+  # Instance details for Oracle Restart
   instDetails:
-    # Logical name of the OracleRestart DB instance
-    name: dbmc1
-    # Base path on the host where software will be installed
-    hostSwLocation: /scratch/orestart/
-    # IP address of the worker node where the instance should run
+    name: dbmc1                       # Logical name of the OracleRestart instance
+
+    # Worker nodes where the instance should be scheduled
     workerNode:
-      - 10.0.10.108
+      - 10.0.10.58                   # IP address of the target node for deployment
+
+    # Size of the storage location for software. This parameter will be effective when the local SW location is NOT specified by hostSwLocation
+    swLocStorageSizeInGb: 300  
+
+    # Environment variables in case you want to want to ignore prerequisite checks during the GI/RDBSMS Install
     envVars:
-      - name: IGNORE_CRS_PREREQS
+      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
         value: "true"
-      - name: IGNORE_DB_PREREQS
+      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
         value: "true"
-    # Service definition to expose the DB
-    nodePortSvc:
-      - # Type of Kubernetes service
-        svcType: nodeport
-        # Name of the service
-        name: dbmc1
-    # Port mappings for the service
+
+  # NodePort service configuration for exposing DB port externally
+  nodePortSvc:
+    name: dbmc1-service-nodeport  # Name of the Kubernetes Service
+    svcType: nodeport             # Service type (NodePort to expose externally)
+
+    # Mapping between container and host ports
     portMappings:
-      - # Port exposed by the service
-        port: 1521
-        # Container port
-        targetPort: 1521
-        # Protocol used for communication
-        protocol: TCP
-        # Node port exposed on the worker node
-        nodePort: 30007
-
+      - port: 1521                    # Port inside container (Oracle Listener port)
+        targetPort: 1521              # Target port for the service
+        protocol: TCP                 # Protocol type (TCP for Oracle)
+        nodePort: 30007               # Host port exposed on worker node (must be in NodePort range)
+      - port: 6200                    # Port inside container (for ONS)
+        targetPort: 6200              # Target port for the service
+        protocol: TCP                 # Protocol type (TCP for Oracle)
+        nodePort: 30200               # Host port exposed on worker node (must be in NodePort range)        
+  enableOns: "enable"                 # If you want to have ONS notification configured on the specified port. Default value is "enable"        
+    
   # Optional: Set this to enable dynamic provisioning of PVCs
-  # storageClass: "oci-bv"
+  storageClass: "oci-bv"        
 
-  # PVCs for RU patch and staged host software
-  pvcName:
-    # Mount path for the RU patch files
-    rupatch-location-pvc: "/scratch/software/19c/19.28/"
-    # Mount path for the staged host software
-    hostsw-stage-pvc: "/scratch/stage/software"
-
-  # ASM disk configuration
+  # ASM (Automatic Storage Management) storage configuration
   asmStorageDetails:
-    # Disks grouped by size
     disksBySize:
-      - # Size (in Gi) of each ASM disk
-        storageSizeInGb: 50
-        # List of block devices to be used as ASM disks
+      - storageSizeInGb: 50          # Each disk in this group has 50Gi of storage
         diskNames:
-          - /dev/oracleoci/oraclevdd
-          - /dev/oracleoci/oraclevde
+          - /dev/asm-disk1           # Device for ASM disk 1
+          - /dev/asm-disk2           # Device for ASM disk 2
 
-  # SSH key secret configuration
+  # SSH key secret used for remote access and automation
   sshKeySecret:
-    # Name of the secret containing SSH keys
-    name: ssh-key-secret
-    # Private key filename inside the secret
-    privKeySecretName: ssh-privkey
-    # Public key filename inside the secret
-    pubKeySecretName: ssh-pubkey
+    name: ssh-key-secret          # Kubernetes secret name
+    privKeySecretName: ssh-privkey  # Private key inside secret
+    pubKeySecretName: ssh-pubkey    # Public key inside secret
 
-  # Secret for database passwords and key files
+  # Secret containing DB user credentials
   dbSecret:
-    # Name of the Kubernetes secret
-    name: db-user-pass-pkutl
-    # Encrypted key file name inside the secret
-    keyFileName: key.pem
-    # Encrypted password file name inside the secret
-    pwdFileName: pwdfile.enc
+    name: db-user-pass-pkutl     # Secret name
+    keyFileName: key.pem         # Key file name inside secret
+    pwdFileName: pwdfile.enc     # Password file name inside secret
 
-  # Podman image to use for the Oracle database
-  image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-0725
+  # Image for Oracle Restart container
+  image: localhost/oracle/database-orestart:19.3.0-slim  # <-- Replace with your image registry
 
-  # Always pull the latest image
-  imagePullPolicy: Always
+  # Policy to pull image
+  # Use the value as "Always" if you want use the latest version of the image from the container registry.
+  # Use the value as "IfNotPresent" it the image is not already present locally.
+  imagePullPolicy: IfNotPresent
 
-  # Service details for database registration
+  # Optional service account for security context permissions
+  # serviceAccountName: oraclerestart   # <-- Required for OpenShift; optional for vanilla Kubernetes
+
+  # Service-specific database name and related details
   serviceDetails:
-    # Name of the database service
-    name: soepdb
+    name: soepdb                     # Name of the Oracle service (pluggable DB)
 
-  # Resource requests and limits for the pod
+  # Resource requests and limits for memory and CPU
   resources:
     requests:
-      # Minimum memory allocation
-      memory: "16Gi"
-      # Minimum CPU allocation
-      cpu: "2"
+      memory: "16Gi"                 # Minimum memory required
+      cpu: "2"                       # Minimum CPU required
     limits:
-      # Maximum memory allocation
-      memory: "16Gi"
-      # Maximum CPU allocation
-      cpu: "2"
+      memory: "16Gi"                 # Max memory allowed
+      cpu: "2"                       # Max CPU allowed
 
-  # Security settings and kernel parameters
+  # Kernel-level system control parameters for Oracle
   securityContext:
     sysctls:
-      - # Shared memory pages
-        name: kernel.shmall
+      - name: kernel.shmall
         value: "2097152"
-      - # Semaphore settings
-        name: kernel.sem
+      - name: kernel.sem
         value: "250 32000 100 128"
-      - # Maximum shared memory segment size
-        name: kernel.shmmax
+      - name: kernel.shmmax
         value: "8589934592"
-      - # Number of shared memory segments
-        name: kernel.shmmni
+      - name: kernel.shmmni
         value: "4096"
 
-  # Configuration parameters for Oracle Grid and DB
+  # Configuration parameters for Oracle Grid and Database homes
   configParams:
-    # Path to the Oracle Grid home
-    gridHome: "/u01/app/19c/grid"
-    # Path to the Oracle Grid base
-    gridBase: "/u01/app/grid"
-    # Path to the Oracle DB home
-    dbHome: "/u01/app/oracle/product/19c/dbhome_1"
-    # Path to the Oracle DB base
-    dbBase: "/u01/app/oracle"
-    # Comma-separated list of block devices for ASM
-    crsAsmDeviceList: /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde
-    # Path to Oracle Inventory
-    inventory: "/u01/app/oraInventory"
-    # Filename of the Grid software ZIP
-    gridSwZipFile: "grid_home.zip"
-    # Filename of the DB software ZIP
-    dbSwZipFile: "db_home.zip"
-    # SGA memory size
-    sgaSize: "3G"
-    # PGA memory size
-    pgaSize: "1G"
-    # Number of database processes
-    processes: 2000
-    # Number of CPUs Oracle will see
-    cpuCount: 4
-    # Name of the Oracle database
-    dbName: "PORCLCDB"
-    # Reference to PVC for software staging
-    hostSwStageLocation: "hostsw-stage-pvc"
-    # Reference to PVC for patch files
-    ruPatchLocation: "rupatch-location-pvc"
+    gridHome: "/u01/app/19c/grid"                             # Oracle Grid home path
+    gridBase: "/u01/app/grid"                                 # Grid base directory
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"            # Oracle DB home path
+    dbBase: "/u01/app/oracle"                                 # Oracle base directory
+    crsAsmDeviceList: /dev/asm-disk1,/dev/asm-disk2           # Comma-separated list of ASM device files
+    inventory: "/u01/app/oraInventory"                        # Inventory location
+    gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
+    dbSwZipFile: "db_home.zip"                                # Database software ZIP
+    oPatchSwZipFile: "p6880880_190000_Linux-x86-64.zip"       # Opatch software ZIP
+    sgaSize: "3G"                                             # Size of the System Global Area
+    pgaSize: "1G"                                             # Size of the Program Global Area
+    processes: 2000                                           # Oracle process limit
+    cpuCount: 4                                               # Number of CPUs to allocate
+    dbName: "PORCLCDB"                                        # Oracle database name
+    swStagePvc: pv-stage-vol-claim                            # PVC name for the Software Location mounting the NFS
+    swStagePvcMountLocation: "/stage"                         # Mount point for the Software Location inside the Pod
+    hostSwStageLocation: /stage/software/19c/19.3.0           # Base Release Software Location on the NFS based Persistent Volume, Pod will also have this software in the same path
+    ruPatchLocation: /stage/software/19c/19.28/37957391       # Directory containing the unzipped RU patch on the NFS based Persistent Volume, Pod will also have this software in the same path
+    oPatchLocation: /stage/software/19c                       # Location of the Opatch Software on the NFS based Persistent Volume, Pod will also have this software in the same path

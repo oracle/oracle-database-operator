@@ -37,5 +37,5 @@ kubectl logs -f pod/dbmc1-0 -n orestart
 To check the details of the CRS logs or the RDBMS instance logs at the host level, switch to the corresponding Kubernetes container using the command like below:
 
 ```sh
-kubectl exec -it dbmc1-0 -n orestart -- tail -f /tmp/orod/oracle_rac_setup.log
+kubectl exec -it dbmc1-0 -n orestart -- tail -f /tmp/orod/oracle_db_setup.log
 ```
