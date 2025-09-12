@@ -63,7 +63,7 @@ In this v2.0 production release, `OraOperator` supports the following database c
 * Upgraded Kubernetes API version to v4
 * Published on `operatorhub.io`
 * Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
-* Validated on Google Kubernetes Engine
+* OpenShift certified
 
 ---
 
