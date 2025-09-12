@@ -44,10 +44,10 @@ In this v2.0 production release, `OraOperator` supports the following database c
   - New LRES-based Controller (ARM & AM)
     - PDBs settings with init parameters config map
     - Assertive deletion policy
-* **Database Observability (Preview)**
-  - Support for Database Logs (in addition to Metrics)
+* **Database Observability **
+  - Support for Database Logs and Metrics
   - Support for the latest Exporter container images
-  - Bug Fix: Prometheus label config
+ 
 * **Oracle Base Database Service**
   - Support for Oracle Database 23ai Cloning, using KMS Vaults
   - PDB creation
@@ -86,13 +86,10 @@ As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) suppor
 ## Release Status
 
 This production release has been installed and tested on:
-* [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
-
-The previous releases were tested on the following platforms:
-
 * [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.30 or later
 * [Redhat Openshift](https://www.redhat.com/en/technologies/cloud-computing/openshift) with version v4.16 or later
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.9 or later
+* [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
 * [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
