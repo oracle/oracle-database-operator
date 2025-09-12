@@ -357,6 +357,16 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 				},
 			})
 		}
+		if instance.Spec.ConfigParams.OneOffLocation != "" {
+			result = append(result, corev1.Volume{
+				Name: OracleRestartSpex.Name + "-oradata-oneoff-vol",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: instance.Spec.ConfigParams.OneOffLocation,
+					},
+				},
+			})
+		}
 	}
 
 	if len(OracleRestartSpex.PvcName) != 0 {
@@ -581,6 +591,12 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 				result = append(result, corev1.VolumeMount{
 					Name:      OracleRestartSpex.Name + "-oradata-opatch-vol",
 					MountPath: instance.Spec.ConfigParams.OPatchLocation,
+				})
+			}
+			if instance.Spec.ConfigParams.OneOffLocation != "" {
+				result = append(result, corev1.VolumeMount{
+					Name:      OracleRestartSpex.Name + "-oradata-oneoff-vol",
+					MountPath: instance.Spec.ConfigParams.OneOffLocation,
 				})
 			}
 		}

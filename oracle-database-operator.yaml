@@ -15761,7 +15761,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-mltp1
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

@@ -247,7 +247,7 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 		if !reflect.DeepEqual(old.Spec, newCr.Spec) {
 			return nil, apierrors.NewForbidden(
 				schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},
-				newCr.Name, fmt.Errorf("updates to RAC Spec are not allowed while RAC is in state %s", newCr.Status.State))
+				newCr.Name, fmt.Errorf("updates to Oracle Restart Spec is not allowed while its in state %s", newCr.Status.State))
 		}
 	}
 
