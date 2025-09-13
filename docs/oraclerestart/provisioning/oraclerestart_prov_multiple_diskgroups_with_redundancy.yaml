@@ -72,7 +72,7 @@ spec:
     pwdFileName: pwdfile.enc     # Password file name inside secret
 
   # Image for Oracle Restart container
-  image: localhost/oracle/database-orestart:19.3.0-slim  # <-- Replace with your image registry
+  image: dbocir/oracle/database-orestart:19.3.0-slim  # <-- Replace with your image registry
 
   # Policy to pull image
   # Use the value as "Always" if you want use the latest version of the image from the container registry.
