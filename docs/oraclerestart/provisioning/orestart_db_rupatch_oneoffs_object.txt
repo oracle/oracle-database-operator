@@ -7,12 +7,12 @@ Annotations:  OracleRestarts.database.oracle.com/old-spec:
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-09-11T04:55:37Z
+  Creation Timestamp:  2025-09-12T14:19:42Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  234329900
-  UID:               5ed0c257-dfb3-40da-9e97-46dabf65e5ac
+  Resource Version:  234821692
+  UID:               a8f02440-e8ed-40d3-9b85-85110f4065f4
 Spec:
   Asm Storage Details:
     Disks By Size:
@@ -36,7 +36,7 @@ Spec:
     Db Sw Zip File:    db_home.zip
     Grid Base:         /u01/app/grid
     Grid Home:         /u01/app/19c/grid
-    Grid One Off Ids:  38336965,34436514
+    Grid One Off Ids:  38336965
     Grid Response File:
     Grid Sw Zip File:             grid_home.zip
     Host Sw Stage Location:       /stage/software/19c/19.3.0
@@ -113,12 +113,12 @@ Status:
     Name:  dbmc1-0
     Node Details:
       Instance State:  OPEN
-      Pod State:       AVAILABLE
+      Pod State:       PODAVAILABLE
       Cluster State:   HEALTHY
       Mounted Devices:
         /dev/asm-disk1
         /dev/asm-disk2
-      State:  AVAILABLE
+      State:  FAILED
   Asm Details:
     Diskgroup:
       Disks:
@@ -126,13 +126,13 @@ Status:
       Name:        DATA
       Redundancy:  EXTERN
   Conditions:
-    Last Transition Time:  2025-09-11T04:55:37Z
+    Last Transition Time:  2025-09-12T15:33:28Z
     Message:               reconcile completed successfully
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
-    Last Transition Time:  2025-09-11T14:46:43Z
+    Last Transition Time:  2025-09-12T18:06:27Z
     Message:               reconcile has been queued
     Observed Generation:   1
     Reason:                LastReconcileCycleQueued
@@ -170,10 +170,8 @@ Status:
   State:        AVAILABLE
 Events:         <none>
 
-
-
+-- Patches Details for GI HOME and RDBMS HOME:
 [grid@dbmc1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches
-34436514;DBCA REPORTS INCORRECT MEMORY IN PODMAN CONTAINERS
 38336965;OCW Interim patch for 38336965
 38124772;TOMCAT RELEASE UPDATE 19.0.0.0.0 (38124772)
 37962938;ACFS RELEASE UPDATE 19.28.0.0.0 (37962938)
@@ -186,8 +184,8 @@ OPatch succeeded.
 
 
 [oracle@dbmc1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches
-37962946;OCW RELEASE UPDATE 19.28.0.0.0 (37962946)
+34436514;DBCA REPORTS INCORRECT MEMORY IN PODMAN CONTAINERS
+38336965;OCW Interim patch for 38336965
 37960098;Database Release Update : 19.28.0.0.250715 (37960098)
 
 OPatch succeeded.
-[oracle@dbmc1-0 ~]$

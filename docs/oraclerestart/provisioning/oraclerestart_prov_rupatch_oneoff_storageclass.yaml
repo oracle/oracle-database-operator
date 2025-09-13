@@ -69,7 +69,7 @@ spec:
     pwdFileName: pwdfile.enc     # Password file name inside secret
 
   # Image for Oracle Restart container
-  image: localhost/oracle/database-orestart:19.3.0-slim  # <-- Replace with your image registry
+  image: dbocir/oracle/database-orestart:19.3.0-slim  # <-- Replace with your image registry
 
   # Policy to pull image
   # Use the value as "Always" if you want use the latest version of the image from the container registry.
@@ -126,5 +126,5 @@ spec:
     ruPatchLocation: /stage/software/19c/19.28/37957391       # Directory containing the unzipped RU patch on the NFS based Persistent Volume, Pod will also have this software in the same path
     oPatchLocation: /stage/software/19c                       # Location of the Opatch Software on the NFS based Persistent Volume, Pod will also have this software in the same path    
     oneOffLocation: /stage/software/19c/oneoff                # One-off patch files directory where all the one-off patches for GI and RDBMS Home are unzipped
-    gridOneOffIds: "38336965,34436514"                        # Comma-separated Grid one-off patch IDs
+    gridOneOffIds: "38336965"                                 # Comma-separated Grid one-off patch IDs
     dbOneOffIds: "38336965,34436514"                          # Comma-separated DB one-off patch IDs    
