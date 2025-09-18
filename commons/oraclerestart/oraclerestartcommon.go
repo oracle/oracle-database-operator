@@ -824,6 +824,7 @@ func getExternalConnStr(
 	kubeConfig clientcmd.ClientConfig,
 	logger logr.Logger,
 ) string {
+
 	switch {
 	// Case 1: Neither service defined
 	case len(instance.Spec.NodePortSvc.PortMappings) == 0 && len(instance.Spec.LbService.PortMappings) == 0:
@@ -831,12 +832,11 @@ func getExternalConnStr(
 
 	// Case 2: LoadBalancer service defined, try to use it
 	case len(instance.Spec.LbService.PortMappings) != 0:
-		lbServiceName := instance.Spec.LbService.SvcName
+		lbServiceName := instance.Spec.LbService.SvcName + "-0-lbsvc"
 		lbSvc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), lbServiceName, metav1.GetOptions{})
-		lbExtIP := ""
-		var lbPort int32
 		if err == nil && lbSvc.Spec.Type == corev1.ServiceTypeLoadBalancer {
 			// Extract external IP or hostname
+			var lbExtIP string
 			for _, ingress := range lbSvc.Status.LoadBalancer.Ingress {
 				if ingress.IP != "" {
 					lbExtIP = ingress.IP
@@ -847,50 +847,42 @@ func getExternalConnStr(
 				}
 			}
 			// Find port 1521
+			var lbPort int32
 			for _, port := range lbSvc.Spec.Ports {
 				if port.Port == 1521 {
 					lbPort = port.Port
 					break
 				}
 			}
+			if lbExtIP != "" && lbPort != 0 {
+				serviceName := instance.Spec.ServiceDetails.Name
+				return fmt.Sprintf("EXTERNAL: %s:%d/%s", lbExtIP, lbPort, serviceName)
+			}
 		}
-		// Prefer LoadBalancer if available
-		if lbExtIP != "" && lbPort != 0 {
-			serviceName := instance.Spec.ServiceDetails.Name
-			return fmt.Sprintf("EXTERNAL: %s:%d/%s", lbExtIP, lbPort, serviceName)
-		}
-		// fallthrough to NodePort if LB unavailable
-		fallthrough
+		return ""
 
-	// Case 3: NodePort defined or fallback
-	default:
-		svc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), instance.Spec.InstDetails.Name, metav1.GetOptions{})
-		if err != nil {
-			msg := "Failed to get dbmc1 service"
-			LogMessages("DEBUG", msg, err, instance, logger)
-			return "Pending"
+	// Case 3: NodePort service defined, try to use it
+	case len(instance.Spec.NodePortSvc.PortMappings) != 0:
+		npServiceName := instance.Spec.NodePortSvc.SvcName + "-0-npsvc"
+		npSvc, err := kubeClient.CoreV1().Services(instance.Namespace).Get(context.TODO(), npServiceName, metav1.GetOptions{})
+		if err != nil || npSvc.Spec.Type != corev1.ServiceTypeNodePort {
+			return ""
 		}
-
-		// Find NodePort for 1521
+		// Find port 1521
 		var nodePort int32
-		for _, port := range svc.Spec.Ports {
+		for _, port := range npSvc.Spec.Ports {
 			if port.Port == 1521 {
 				nodePort = port.NodePort
 				break
 			}
 		}
 		if nodePort == 0 {
-			msg := "Failed to find NodePort for port 1521 in dbmc1 service"
-			LogMessages("DEBUG", msg, err, instance, logger)
-			return "Pending"
+			return ""
 		}
-
 		// Get first node external/internal IP
 		nodeList, err := kubeClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 		if err != nil || len(nodeList.Items) == 0 {
-			msg := "Failed to list cluster nodes"
-			LogMessages("DEBUG", msg, err, instance, logger)
-			return "Pending"
+			return ""
 		}
 		var nodeIP string
 		for _, addr := range nodeList.Items[0].Status.Addresses {
@@ -902,14 +894,13 @@ func getExternalConnStr(
 			}
 		}
 		if nodeIP == "" {
-			msg := "Failed to get node IP address"
-			LogMessages("DEBUG", msg, err, instance, logger)
-			return "Pending"
+			return ""
 		}
-
 		serviceName := instance.Spec.ServiceDetails.Name
 		return fmt.Sprintf("%s:%d/%s", nodeIP, nodePort, serviceName)
 	}
+
+	return ""
 }
 
 func getClientEtcHost(podNames []string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node) []string {
