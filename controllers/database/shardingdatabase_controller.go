@@ -161,13 +161,13 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-  if len(importedTDEKeys) == 0 {
-     importedTDEKeys = make([]bool, int32(len(instance.Spec.Shard)), int32(len(instance.Spec.Shard)))
-	   for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
-         importedTDEKeys[i] = false
-			   shardingv1.LogMessages("INFO", "Initializing importedTDEKeys to false", nil, instance, r.Log)
-     }
-  }
+	if len(importedTDEKeys) == 0 {
+		importedTDEKeys = make([]bool, int32(len(instance.Spec.Shard)), int32(len(instance.Spec.Shard)))
+		for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
+			importedTDEKeys[i] = false
+			shardingv1.LogMessages("INFO", "Initializing importedTDEKeys to false", nil, instance, r.Log)
+		}
+	}
 
 	// ======================== Validate Specs ==============
 	err = r.validateSpex(instance)
@@ -358,12 +358,12 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return result, err
 		}
 
-    if shardingv1.CheckIsTDEWalletFlag(instance,r.Log) && !exportedTDEKeys {
-       exportTDEfname := "expTDEFile"
-		   shardingv1.LogMessages("INFO", "Catalog calling ExportTDEKey", nil, instance, r.Log)
-       shardingv1.ExportTDEKey(OraCatalogSpex.Name+"-0",exportTDEfname, instance, r.kubeClient, r.kubeConfig, r.Log)
-       exportedTDEKeys = true
-    }
+		if shardingv1.CheckIsTDEWalletFlag(instance, r.Log) && !exportedTDEKeys {
+			exportTDEfname := "expTDEFile"
+			shardingv1.LogMessages("INFO", "Catalog calling ExportTDEKey", nil, instance, r.Log)
+			shardingv1.ExportTDEKey(OraCatalogSpex.Name+"-0", exportTDEfname, instance, r.kubeClient, r.kubeConfig, r.Log)
+			exportedTDEKeys = true
+		}
 	}
 
 	// ====================== Update Setup for Shard ==============================
@@ -383,14 +383,14 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				return result, err
 			}
 		}
-    if shardingv1.CheckIsTDEWalletFlag(instance,r.Log) && exportedTDEKeys {
-       importTDEfname := "impTDEFile"
-		   shardingv1.LogMessages("INFO", "Calling ImportTDEKey()", nil, instance, r.Log)
-       if !importedTDEKeys[i] {
-           shardingv1.ImportTDEKey(OraShardSpex.Name+"-0",importTDEfname, instance, r.kubeClient, r.kubeConfig, r.Log)
-       }
-       importedTDEKeys[i] = true
-    }
+		if shardingv1.CheckIsTDEWalletFlag(instance, r.Log) && exportedTDEKeys {
+			importTDEfname := "impTDEFile"
+			shardingv1.LogMessages("INFO", "Calling ImportTDEKey()", nil, instance, r.Log)
+			if !importedTDEKeys[i] {
+				shardingv1.ImportTDEKey(OraShardSpex.Name+"-0", importTDEfname, instance, r.kubeClient, r.kubeConfig, r.Log)
+			}
+			importedTDEKeys[i] = true
+		}
 	}
 
 	// ====================== Update Setup for Gsm ==============================
@@ -443,21 +443,6 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			instance := &databasev4.ShardingDatabase{}
-			if old, ok := e.ObjectOld.(*corev1.Secret); ok {
-				if new, ok := e.ObjectNew.(*corev1.Secret); ok {
-					oshInst := instance
-					if (new.Name == oshInst.Spec.DbSecret.Name) && (new.Name == old.Name) {
-						_, ok := old.Data[oshInst.Spec.DbSecret.PwdFileName]
-						if ok {
-							if !reflect.DeepEqual(old.Data[oshInst.Spec.DbSecret.PwdFileName], new.Data[oshInst.Spec.DbSecret.PwdFileName]) {
-								shardingv1.LogMessages("INFO", "Secret Changed", nil, oshInst, r.Log)
-							}
-						}
-						shardingv1.LogMessages("INFO", "Secret update block", nil, oshInst, r.Log)
-					}
-				}
-			}
 			return true
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
