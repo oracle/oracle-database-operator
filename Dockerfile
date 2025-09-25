@@ -48,6 +48,11 @@ WORKDIR /
 COPY --from=builder /workspace/manager .
 COPY ords/ords_init.sh .
 COPY ords/ords_start.sh .
+COPY bundle/metadata/annotations.yaml /metadata/annotations.yaml
+COPY bundle/manifests/*.yaml /manifests/
+COPY LICENSE.txt /licenses/
+COPY THIRD_PARTY_LICENSES_DOCKER.txt /licenses/
+COPY THIRD_PARTY_LICENSES.txt /licenses/
 RUN useradd -u 1002 nonroot
 USER nonroot
 
