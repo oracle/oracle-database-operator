@@ -446,29 +446,29 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 			return true
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
-			//instance := &databasev4.ShardingDatabase{}
-			_, podOk := e.Object.GetLabels()["statefulset.kubernetes.io/pod-name"]
-			instance, _ := e.Object.DeepCopyObject().(*databasev4.ShardingDatabase)
-			if e.Object.GetDeletionTimestamp() == nil {
-				if e.Object.GetLabels()[string(databasev4.ShardingDelLabelKey)] == string(databasev4.ShardingDelLabelTrueValue) {
-				}
-				if podOk {
-					delObj := e.Object.(*corev1.Pod)
-					if e.Object.GetLabels()["type"] == "Shard" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == instance.Name {
-						if delObj.DeletionTimestamp != nil {
-							go r.gsmInvitedNodeOp(instance, delObj.Name)
-						}
-					}
+			// //instance := &databasev4.ShardingDatabase{}
+			// _, podOk := e.Object.GetLabels()["statefulset.kubernetes.io/pod-name"]
+			// instance, _ := e.Object.DeepCopyObject().(*databasev4.ShardingDatabase)
+			// if e.Object.GetDeletionTimestamp() == nil {
+			// 	if e.Object.GetLabels()[string(databasev4.ShardingDelLabelKey)] == string(databasev4.ShardingDelLabelTrueValue) {
+			// 	}
+			// 	if podOk {
+			// 		delObj := e.Object.(*corev1.Pod)
+			// 		if e.Object.GetLabels()["type"] == "Shard" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == instance.Name {
+			// 			if delObj.DeletionTimestamp != nil {
+			// 				go r.gsmInvitedNodeOp(instance, delObj.Name)
+			// 			}
+			// 		}
 
-					if e.Object.GetLabels()["type"] == "Catalog" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == instance.Name {
+			// 		if e.Object.GetLabels()["type"] == "Catalog" && e.Object.GetLabels()["app"] == "OracleSharding" && e.Object.GetLabels()["oralabel"] == instance.Name {
 
-						if delObj.DeletionTimestamp != nil {
-							go r.gsmInvitedNodeOp(instance, delObj.Name)
-						}
-					}
-				}
+			// 			if delObj.DeletionTimestamp != nil {
+			// 				go r.gsmInvitedNodeOp(instance, delObj.Name)
+			// 			}
+			// 		}
+			// 	}
 
-			}
+			// }
 			return true
 		},
 	}
