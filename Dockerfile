@@ -40,6 +40,17 @@ RUN --mount=type=cache,target=/go-cache --mount=type=cache,target=/gomod-cache C
 
 # Use oraclelinux:9-slim as default base image to package the manager binary
 FROM ${RUNNER_IMG}
+# Labels
+# ------
+LABEL "provider"="Oracle"                                                                                                        \
+      "issues"="https://github.com/oracle/oracle-database-operator/issues"                                                       \
+      "maintainer"="paramdeep.saini@oracle.com, sanjay.singh@oracle.com, kuassi.mensah@oracle.com"                               \
+      "version"="2.0"                                                                                                            \
+      "description"="DB Operator Image V2.0"                                                                                     \
+      "vendor"="Oracle Coporation"                                                                                               \
+      "release"="2.0"                                                                                                            \
+      "summary"="Oracle Database Operator 2.0"                                                                                  \
+      "name"="oracle-database-operator.v2.0"
 ARG CI_COMMIT_SHA 
 ARG CI_COMMIT_BRANCH
 ENV COMMIT_SHA=${CI_COMMIT_SHA} \

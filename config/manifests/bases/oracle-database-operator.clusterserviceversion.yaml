@@ -5,10 +5,10 @@ metadata:
     alm-examples: '[]'
     capabilities: Seamless Upgrades
     categories: Database
-    containerImage: container-registry.oracle.com/database/operator:1.2.0
+    containerImage: container-registry.oracle.com/database/operator:2.0
     operators.operatorframework.io/builder: operator-sdk-v1.39.2
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
-  name: oracle-database-operator.v1.2.0
+  name: oracle-database-operator.v2.0
   namespace: oracle-database-operator-system
 spec:
   apiservicedefinitions: {}
