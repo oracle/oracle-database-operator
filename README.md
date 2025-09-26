@@ -4,6 +4,24 @@
 
 As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released the  _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating the management of the Oracle Database lifecycle.
 
+## WHat's New in v2.0.0
+
+* **RedHat OpenShift Certification**
+  * Validation of OraOperator and Controllers
+  * Inclusion in RedHat Operators Catalog
+* **Restart Controller**
+  * Provision, add & delete asm disks, and more
+* **ORDS Service**
+  * ServiceAccount and OpenShift support
+  * Auto download of APEX installation files and APEX image on a Persistent Volume
+* **Integrations**
+  * Private Cloud Appliance (PCA)
+  * Compute Cloud@Customer (C3)
+* **Bug fixes**
+  * Bugs filed through Oracle Support
+  * GitHub issues
+ 
+
 ## Supported Database Configurations v2.0.0
 In this v2.0 production release, `OraOperator` supports the following database configurations and controllers:
 
