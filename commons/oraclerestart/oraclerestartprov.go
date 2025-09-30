@@ -633,17 +633,38 @@ func VolumePVCForASM(instance *oraclerestart.OracleRestart, index int, diskName 
 			},
 		},
 	}
-
-	// Check if a StorageClass is defined and set it
+	var scName *string
 	if len(instance.Spec.StorageClass) != 0 {
-		asmPvc.Spec.StorageClassName = &instance.Spec.StorageClass
+		scName = &instance.Spec.StorageClass
 	} else {
-		// If no StorageClass, use the LabelSelector based on disk size
-		asmPvc.Spec.Selector = &metav1.LabelSelector{MatchLabels: buildLabelsForAsmPv(instance, string(diskName), index)}
-		asmPvc.Spec.StorageClassName = nil
+
+		// Try to fetch the cluster's default StorageClass
+		if defaultSC, err := GetDefaultStorageClass(context.TODO(), k8sClient); err == nil && defaultSC != "" {
+			scName = &defaultSC
+		} else {
+			// No StorageClass, so use label selector and statically bound PVs
+			asmPvc.Spec.Selector = &metav1.LabelSelector{
+				MatchLabels: buildLabelsForAsmPv(instance, string(diskName), index),
+			}
+			scName = nil
+		}
 	}
+	asmPvc.Spec.StorageClassName = scName
 
 	return asmPvc
+}
+func GetDefaultStorageClass(ctx context.Context, k8sClient client.Client) (string, error) {
+	var scList storagev1.StorageClassList
+	if err := k8sClient.List(ctx, &scList); err != nil {
+		return "", err
+	}
+	for _, sc := range scList.Items {
+		if sc.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" ||
+			sc.Annotations["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
+			return sc.Name, nil
+		}
+	}
+	return "", nil // No default StorageClass found
 }
 
 func VolumePVForASM(instance *oraclerestart.OracleRestart, index int, diskName string, size int, asmStorage *oraclerestart.AsmDiskDetails, k8sClient client.Client) *corev1.PersistentVolume {
@@ -665,16 +686,25 @@ func VolumePVForASM(instance *oraclerestart.OracleRestart, index int, diskName s
 		},
 	}
 
+	var scName *string
 	if len(instance.Spec.StorageClass) != 0 {
-		asmPvc.Spec.StorageClassName = instance.Spec.StorageClass
+		scName = &instance.Spec.StorageClass
 		asmPvc.Spec.NodeAffinity = getAsmNodeAffinity(instance, index, asmStorage)
 		asmPvc.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: diskName}}
-
 	} else {
 
+		// Try to fetch the cluster's default StorageClass
+		if defaultSC, err := GetDefaultStorageClass(context.TODO(), k8sClient); err == nil && defaultSC != "" {
+			scName = &defaultSC
+		} else {
+			// No StorageClass, so use label selector and statically bound PVs
+			scName = nil
+		}
 		asmPvc.Spec.NodeAffinity = getAsmNodeAffinity(instance, index, asmStorage)
 		asmPvc.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: diskName}}
 	}
+	asmPvc.Spec.StorageClassName = *scName
+
 	return asmPvc
 }
 
@@ -892,7 +922,6 @@ func BuildDiskCheckDaemonSet(OracleRestart *oraclerestart.OracleRestart) *appsv1
 		})
 	}
 
-	// Join the disk names into a space-separated string
 	// Flatten the DisksBySize map to get a single slice of all disk names
 	diskNamesSlice := flattenDisksBySize(&OracleRestart.Spec)
 
@@ -947,6 +976,7 @@ func BuildDiskCheckDaemonSet(OracleRestart *oraclerestart.OracleRestart) *appsv1
 									"done; " +
 									"sleep 3600",
 							},
+
 							VolumeDevices: volumeDevices,
 						},
 					},
@@ -1009,12 +1039,12 @@ func IsStaticProvisioning(k8sClient client.Client, instance *oraclerestart.Oracl
 		return true // fallback to static if we can't query SCs
 	}
 
-	for _, sc := range scList.Items {
-		if sc.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" ||
-			sc.Annotations["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
-			return false // dynamic provisioning is available
-		}
-	}
+	// for _, sc := range scList.Items {
+	// 	if sc.Annotations["storageclass.kubernetes.io/is-default-class"] == "true" ||
+	// 		sc.Annotations["storageclass.beta.kubernetes.io/is-default-class"] == "true" {
+	// 		return false // dynamic provisioning is available
+	// 	}
+	// }
 
 	return true // no default SC → use static
 }
