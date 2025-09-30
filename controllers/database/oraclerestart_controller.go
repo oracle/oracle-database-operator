@@ -264,8 +264,13 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	r.ensureAsmStorageStatus(oracleRestart)
 	isNewSetup := true
-	for _, diskgroup := range oracleRestart.Status.AsmDetails.Diskgroup {
-		if len(diskgroup.Disks) > 0 && oracleRestart.Status.AsmDetails.Diskgroup[0].Name != "Pending" {
+	for _, n := range oracleRestart.Status.OracleRestartNodes {
+		if n.NodeDetails.State == "AVAILABLE" &&
+			n.NodeDetails.InstanceState == "OPEN" &&
+			n.NodeDetails.PodState == "AVAILABLE" &&
+			n.NodeDetails.ClusterState == "HEALTHY" &&
+			len(n.NodeDetails.MountedDevices) > 0 {
+			// Found at least one node that is healthy and operational
 			isNewSetup = false
 			break
 		}
@@ -372,7 +377,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	oldState := oracleRestart.Status.State
 	if !utils.CheckStatusFlag(oracleRestart.Spec.InstDetails.IsDelete) {
 		switch {
-		case isNewSetup || !isDiskChanged:
+		case isNewSetup && !isDiskChanged:
 			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
 			cm := oraclerestartcommon.ConfigMapSpecs(oracleRestart, configMapData, cmName)
 			result, configmapEnvKeyChanged, err := r.createConfigMap(ctx, *oracleRestart, cm)
@@ -408,7 +413,8 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				}
 				if len(oracleRestart.Spec.StorageClass) == 0 {
 					if ready, err := checkDaemonSetStatus(ctx, r, oracleRestart); err != nil || !ready {
-						r.Log.Info("Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy.")
+						msg := "Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy."
+						r.Log.Info(msg)
 						err = r.cleanupDaemonSet(oracleRestart, ctx)
 						if err != nil {
 							result = resultQ
@@ -423,7 +429,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 						for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
 							for index, diskName := range diskBySize.DiskNames {
 								if _, ok := addedAsmDisksMap[diskName]; ok {
-									r.Log.Info("Found disk at index", "index", index)
+									// r.Log.Info("Found disk at index", "index", index)
 
 									err = oraclerestartcommon.DelORestartPVC(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
 									if err != nil {
@@ -443,7 +449,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 							oracleRestart.Spec.IsFailed = true
 							return resultQ, err
 						}
-						return resultQ, err
+						return result, errors.New(msg)
 					} else {
 						r.Log.Info("Provided ASM Disks are valid, proceeding further")
 					}
@@ -710,13 +716,6 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 		oracleRestart.ResourceVersion = latestInstance.ResourceVersion
 		err = r.Client.Status().Patch(ctx, oracleRestart, client.MergeFrom(latestInstance))
 
-		// patchData, err1 := json.Marshal(map[string]interface{}{
-		// 	"status": oracleRestart.Status,
-		// })
-		// if err1 != nil {
-		// 	r.Log.Error(err1, "Failed to marshal Status field")
-		// }
-		// err2 := r.Client.Status().Patch(ctx, OracleRestart, client.RawPatch(types.MergePatchType, patchData))
 		if err != nil {
 			if apierrors.IsConflict(err) {
 				r.Log.Info("Conflict detected, retrying update...", "attempt", attempt+1)
@@ -3452,7 +3451,7 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 	//reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 
 	if oldSpec != nil {
-		fmt.Printf("Received OldSpec", oldSpec.InstDetails.SwLocStorageSizeInGb)
+		// fmt.Printf("Received OldSpec", oldSpec.InstDetails.SwLocStorageSizeInGb)
 		if instance.Spec.InstDetails.SwLocStorageSizeInGb > oldSpec.InstDetails.SwLocStorageSizeInGb {
 			fmt.Printf("Inside OldSpec and newSpec Change", oldSpec.InstDetails.SwLocStorageSizeInGb, instance.Spec.InstDetails.SwLocStorageSizeInGb)
 			storageClass := &storagev1.StorageClass{}
@@ -3471,7 +3470,7 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 					Namespace: instance.Namespace,
 				}, pvc)
 
-				fmt.Printf("PvcName set to ", pvc.Name)
+				// fmt.Printf("PvcName set to ", pvc.Name)
 
 				if err == nil {
 					if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
