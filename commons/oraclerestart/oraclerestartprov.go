@@ -703,7 +703,9 @@ func VolumePVForASM(instance *oraclerestart.OracleRestart, index int, diskName s
 		asmPvc.Spec.NodeAffinity = getAsmNodeAffinity(instance, index, asmStorage)
 		asmPvc.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: diskName}}
 	}
-	asmPvc.Spec.StorageClassName = *scName
+	if scName != nil {
+		asmPvc.Spec.StorageClassName = *scName
+	}
 
 	return asmPvc
 }
