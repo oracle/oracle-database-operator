@@ -3550,6 +3550,14 @@ func (in *PoolSettings) DeepCopyInto(out *PoolSettings) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.JDBCMinLimit != nil {
+		in, out := &in.JDBCMinLimit, &out.JDBCMinLimit
+		*out = new(int32)
+		**out = **in
+	}
+	if in.JDBCStatementTimeout != nil {
+		in, out := &in.JDBCStatementTimeout, &out.JDBCStatementTimeout
+		*out = new(int32)
 		**out = **in
 	}
 	if in.MiscPaginationMaxRows != nil {
