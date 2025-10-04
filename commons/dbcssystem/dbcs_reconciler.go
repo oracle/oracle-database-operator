@@ -1348,6 +1348,7 @@ func mergeInstancesFromLatest(instance, latestInstance *databasev4.DbcsSystem) e
 func mergeStructFields(instanceField, latestField reflect.Value) {
 	for i := 0; i < instanceField.NumField(); i++ {
 		subField := instanceField.Type().Field(i)
+
 		instanceSubField := instanceField.Field(i)
 		latestSubField := latestField.Field(i)
 
@@ -1371,6 +1372,7 @@ func mergeStructFields(instanceField, latestField reflect.Value) {
 			}
 		}
 	}
+
 }
 
 func isExported(field reflect.StructField) bool {
@@ -1770,6 +1772,7 @@ func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient data
 	}
 
 	log.Info("Details of updateFlag after validations is " + fmt.Sprint(updateFlag))
+
 	if updateFlag {
 		cdbId := *dbcs.Status.DbInfo[0].Id
 		// Ensure DB system is AVAILABLE

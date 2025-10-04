@@ -3241,6 +3241,7 @@ func (r *SingleInstanceDatabaseReconciler) manageConvPhysicalToSnapshot(ctx cont
 	if err != nil {
 		return requeueY, err
 	}
+
 	if sidbReadyPod.Name == "" {
 		log.Info("No ready Pod for the requested singleinstancedatabase")
 		return requeueY, nil

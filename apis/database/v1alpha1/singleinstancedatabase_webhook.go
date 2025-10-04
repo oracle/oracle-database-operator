@@ -40,10 +40,10 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
+	"fmt"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
@@ -561,7 +561,7 @@ func (r *SingleInstanceDatabase) ValidateDelete(ctx context.Context, obj runtime
 	if !ok {
 		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to SingleInstanceDatabase"))
 	}
-
+	
 	singleinstancedatabaselog.Info("validate delete", "name", sidb.Name)
 	var allErrs field.ErrorList
 	if sidb.Status.OrdsReference != "" {

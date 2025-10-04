@@ -142,14 +142,14 @@ func buildPodSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databa
 	group := oraFsGroup
 	spec := &corev1.PodSpec{
 		SecurityContext: &corev1.PodSecurityContext{
-			RunAsNonRoot: BoolPointer(true),
-			RunAsUser:    &user,
-			RunAsGroup:   &group,
-			FSGroup:      &group,
+      RunAsNonRoot: BoolPointer(true),
+			RunAsUser: &user,
+      RunAsGroup: &group,
+			FSGroup:   &group,
 		},
-		Containers:         buildContainerSpecForGsm(instance, OraGsmSpex),
-		Volumes:            buildVolumeSpecForGsm(instance, OraGsmSpex),
-		ServiceAccountName: instance.Spec.SrvAccountName,
+		Containers: buildContainerSpecForGsm(instance, OraGsmSpex),
+		Volumes:    buildVolumeSpecForGsm(instance, OraGsmSpex),
+    ServiceAccountName: instance.Spec.SrvAccountName,
 	}
 
 	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
@@ -193,8 +193,8 @@ func buildVolumeSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex dat
 	}
 
 	if OraGsmSpex.GsmConfigData != nil && len(OraGsmSpex.GsmConfigData.Name) != 0 {
-		result = append(result, corev1.Volume{Name: OraGsmSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraGsmSpex.GsmConfigData.Name}}}})
-	}
+                result = append(result, corev1.Volume{Name: OraGsmSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraGsmSpex.GsmConfigData.Name}}}})
+        }
 
 	if len(OraGsmSpex.PvcName) != 0 {
 		result = append(result, corev1.Volume{Name: OraGsmSpex.Name + "oradata-vol4", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OraGsmSpex.PvcName}}})
@@ -232,13 +232,13 @@ func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex 
 		Name:  OraGsmSpex.Name,
 		Image: instance.Spec.GsmImage,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             BoolPointer(true),
-			RunAsUser:                &user,
-			RunAsGroup:               &group,
-			AllowPrivilegeEscalation: BoolPointer(false),
+      RunAsNonRoot: BoolPointer(true),
+      RunAsUser: &user,
+      RunAsGroup: &group,
+      AllowPrivilegeEscalation: BoolPointer(false),
 			Capabilities: &corev1.Capabilities{
-				Add:  []corev1.Capability{"NET_RAW"},
-				Drop: []corev1.Capability{"ALL"},
+				Add: []corev1.Capability{"NET_RAW"},
+				Drop: []corev1.Capability{"ALL",},
 			},
 		},
 		Resources: corev1.ResourceRequirements{
@@ -302,12 +302,12 @@ func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmS
 		Name:  OraGsmSpex.Name + "-init1",
 		Image: instance.Spec.GsmImage,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             BoolPointer(true),
-			AllowPrivilegeEscalation: BoolPointer(false),
-			Privileged:               &privFlag,
-			RunAsUser:                &uid,
+      RunAsNonRoot: BoolPointer(true),
+      AllowPrivilegeEscalation: BoolPointer(false),
+			Privileged: &privFlag,
+			RunAsUser:  &uid,
 			Capabilities: &corev1.Capabilities{
-				Drop: []corev1.Capability{"ALL"},
+				Drop: []corev1.Capability{"ALL",},
 			},
 		},
 		Command: []string{
@@ -337,9 +337,9 @@ func buildVolumeMountSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpe
 	}
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "oradshm-vol6", MountPath: oraShm})
 
-	if OraGsmSpex.GsmConfigData != nil && len(OraGsmSpex.GsmConfigData.Name) != 0 {
-		result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "-oradata-configdata", MountPath: OraGsmSpex.GsmConfigData.MountPath})
-	}
+        if OraGsmSpex.GsmConfigData != nil && len(OraGsmSpex.GsmConfigData.Name) != 0 {
+                result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "-oradata-configdata", MountPath: OraGsmSpex.GsmConfigData.MountPath})
+        }
 
 	if len(instance.Spec.StagePvcName) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "orastage-vol7", MountPath: oraStage})

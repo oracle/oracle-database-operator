@@ -252,10 +252,6 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "LREST")
 			os.Exit(1)
 		}
-		if err = (&databasev4.LREST{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "LREST")
-			os.Exit(1)
-		}
 		if err = (&databasev1alpha1.AutonomousDatabase{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "AutonomousDatabase")
 			os.Exit(1)
@@ -398,14 +394,6 @@ func main() {
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
-
-	indexFunc2 := func(obj client.Object) []string {
-		return []string{obj.(*databasev4.LRPDB).Spec.LRPDBName}
-	}
-	if err = cache.IndexField(context.TODO(), &databasev4.LRPDB{}, "spec.pdbName", indexFunc2); err != nil {
-		setupLog.Error(err, "unable to create index function for ", "controller", "LRPDB")
-		os.Exit(1)
-	}
 
 	indexFunc2 := func(obj client.Object) []string {
 		return []string{obj.(*databasev4.LRPDB).Spec.LRPDBName}

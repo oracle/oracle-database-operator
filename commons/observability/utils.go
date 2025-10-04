@@ -1,13 +1,12 @@
 package observability
 
 import (
-	"path/filepath"
-	"strings"
-
 	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	monitorv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"path/filepath"
+	"strings"
 )
 
 func AddSidecarContainers(a *api.DatabaseObserver, listing *[]corev1.Container) {

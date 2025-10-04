@@ -443,21 +443,6 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			instance := &databasev4.ShardingDatabase{}
-			if old, ok := e.ObjectOld.(*corev1.Secret); ok {
-				if new, ok := e.ObjectNew.(*corev1.Secret); ok {
-					oshInst := instance
-					if (new.Name == oshInst.Spec.DbSecret.Name) && (new.Name == old.Name) {
-						_, ok := old.Data[oshInst.Spec.DbSecret.PwdFileName]
-						if ok {
-							if !reflect.DeepEqual(old.Data[oshInst.Spec.DbSecret.PwdFileName], new.Data[oshInst.Spec.DbSecret.PwdFileName]) {
-								shardingv1.LogMessages("INFO", "Secret Changed", nil, oshInst, r.Log)
-							}
-						}
-						shardingv1.LogMessages("INFO", "Secret update block", nil, oshInst, r.Log)
-					}
-				}
-			}
 			return true
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {

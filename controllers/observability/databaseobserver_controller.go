@@ -41,8 +41,6 @@ package controllers
 import (
 	"context"
 	"errors"
-	"time"
-
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -56,6 +54,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"time"
 
 	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	constants "github.com/oracle/oracle-database-operator/commons/observability"
@@ -504,6 +503,7 @@ func (r *DatabaseObserverReconciler) validateCustomResourceReadiness(ctx context
 			Message: constants.MessageCRValidationWaiting,
 		})
 		a.Status.Status = string(constants.StatusObservabilityPending)
+
 	} else if meta.IsStatusConditionFalse(a.Status.Conditions, constants.IsExporterDeploymentReady) ||
 		meta.IsStatusConditionFalse(a.Status.Conditions, constants.IsExporterServiceReady) ||
 		meta.IsStatusConditionFalse(a.Status.Conditions, constants.IsExporterServiceMonitorReady) {

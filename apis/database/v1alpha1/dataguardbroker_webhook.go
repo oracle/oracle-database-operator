@@ -40,9 +40,9 @@ package v1alpha1
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
+	"fmt"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -113,7 +113,7 @@ var _ webhook.CustomValidator = &DataguardBroker{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *DataguardBroker) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	dg, ok := obj.(*DataguardBroker)
+    dg, ok := obj.(*DataguardBroker)
 	if !ok {
 		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to DataguardBroker"))
 	}

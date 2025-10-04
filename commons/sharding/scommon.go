@@ -920,6 +920,7 @@ func buildDirectorParams(instance *databasev4.ShardingDatabase, oraGsmSpex datab
 		varinfo = "director_port=" + dport
 		result = result + varinfo
 	}
+
 	result = strings.TrimSuffix(result, ";")
 	return result
 }

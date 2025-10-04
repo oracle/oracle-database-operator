@@ -595,4 +595,3 @@ func (in *WalletSecret) DeepCopy() *WalletSecret {
 	in.DeepCopyInto(out)
 	return out
 }
-

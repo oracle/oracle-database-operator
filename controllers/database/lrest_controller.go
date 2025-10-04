@@ -241,6 +241,7 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if err := r.Status().Update(ctx, lrest); err != nil {
 			log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
 		}
+
 		return requeueY, nil
 	}
 

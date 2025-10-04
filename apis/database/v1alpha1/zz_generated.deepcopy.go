@@ -2486,4 +2486,3 @@ func (in *WalletSpec) DeepCopy() *WalletSpec {
 	in.DeepCopyInto(out)
 	return out
 }
-
