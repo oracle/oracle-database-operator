@@ -307,7 +307,8 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Container {
 	var result []corev1.Container
 	privFlag := false
-	var uid int64 = 0
+	// var uid int64 = 0
+	uid := oraRunAsUser
 
 	// building the init Container Spec
 	var scriptLoc string
