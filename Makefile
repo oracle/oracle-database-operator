@@ -124,8 +124,7 @@ operator-yaml: manifests kustomize
 	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "$(OPERATOR_YAML)"
 	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_YAML).bak")  >>  "$(OPERATOR_YAML)"
 	rm "$(OPERATOR_YAML).bak"
-	
-minikube-operator-yaml: IMG:=localhost:5000/$(IMG)
+
 minikube-operator-yaml: operator-yaml
 	sed -i.bak 's/\(replicas.\) 3/\1 1/g' "$(OPERATOR_YAML)"
 	rm "$(OPERATOR_YAML).bak"
