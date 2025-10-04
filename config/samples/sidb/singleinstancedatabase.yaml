@@ -118,6 +118,9 @@ spec:
   ## memory is measured in bytes and can be expressed in plain integer or as a fixed-point number
   ## using one of these quantity suffixes: E, P, T, G, M, k.
   ## You can also use the power-of-two equivalents: Ei, Pi, Ti, Gi, Mi, Ki.
+  ## For Enterprise Edition, the recommended values are:
+  ## cpu="2"
+  ## memory="16Gi"
   resources:
     ## requests denotes minimum node resources required/to be utilized by the database pod
     requests:

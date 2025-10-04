@@ -39,6 +39,8 @@
 package v1alpha1
 
 import (
+	"context"
+
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -57,18 +59,35 @@ var autonomousdatabaserestorelog = logf.Log.WithName("autonomousdatabaserestore-
 func (r *AutonomousDatabaseRestore) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomousdatabaserestore,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabaserestores,versions=v1alpha1,name=vautonomousdatabaserestorev1alpha1.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &AutonomousDatabaseRestore{}
+var _ webhook.CustomValidator = &AutonomousDatabaseRestore{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error) {
-	autonomousdatabaserestorelog.Info("validate create", "name", r.Name)
+func (r *AutonomousDatabaseRestore) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	var (
+		allErrs field.ErrorList
+		restore = obj.(*AutonomousDatabaseRestore)
+	)
 
-	var allErrs field.ErrorList
+	autonomousdatabaserestorelog.Info("validate create", "name", restore.Name)
+
+	namespaces := dbcommons.GetWatchNamespaces()
+	_, hasEmptyString := namespaces[""]
+	isClusterScoped := len(namespaces) == 1 && hasEmptyString
+	if !isClusterScoped {
+		_, containsNamespace := namespaces[restore.Namespace]
+		// Check if the allowed namespaces maps contains the required namespace
+		if len(namespaces) != 0 && !containsNamespace {
+			allErrs = append(allErrs,
+				field.Invalid(field.NewPath("metadata").Child("namespace"), restore.Namespace,
+					"Oracle database operator doesn't watch over this namespace"))
+		}
+	}
 
 	namespaces := dbcommons.GetWatchNamespaces()
 	_, hasEmptyString := namespaces[""]
@@ -84,32 +103,32 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error)
 	}
 
 	// Validate the target ADB
-	if r.Spec.Target.K8sAdb.Name == nil && r.Spec.Target.OciAdb.Ocid == nil {
+	if restore.Spec.Target.K8sAdb.Name == nil && restore.Spec.Target.OciAdb.Id == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("target"), "target ADB is empty"))
 	}
 
-	if r.Spec.Target.K8sAdb.Name != nil && r.Spec.Target.OciAdb.Ocid != nil {
+	if restore.Spec.Target.K8sAdb.Name != nil && restore.Spec.Target.OciAdb.Id != nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sADB.name or ociADB.ocid, but not both"))
+			field.Forbidden(field.NewPath("spec").Child("target"), "specify either k8sAdb.name or ociAdb.id, but not both"))
 	}
 
 	// Validate the restore source
-	if r.Spec.Source.K8sAdbBackup.Name == nil &&
-		r.Spec.Source.PointInTime.Timestamp == nil {
+	if restore.Spec.Source.K8sAdbBackup.Name == nil &&
+		restore.Spec.Source.PointInTime.Timestamp == nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("source"), "retore source is empty"))
 	}
 
-	if r.Spec.Source.K8sAdbBackup.Name != nil &&
-		r.Spec.Source.PointInTime.Timestamp != nil {
+	if restore.Spec.Source.K8sAdbBackup.Name != nil &&
+		restore.Spec.Source.PointInTime.Timestamp != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("source"), "cannot apply backupName and the PITR parameters at the same time"))
 	}
 
 	// Verify the timestamp format if it's PITR
-	if r.Spec.Source.PointInTime.Timestamp != nil {
-		_, err := dbv4.ParseDisplayTime(*r.Spec.Source.PointInTime.Timestamp)
+	if restore.Spec.Source.PointInTime.Timestamp != nil {
+		_, err := dbv4.ParseDisplayTime(*restore.Spec.Source.PointInTime.Timestamp)
 		if err != nil {
 			allErrs = append(allErrs,
 				field.Forbidden(field.NewPath("spec").Child("source").Child("pointInTime").Child("timestamp"), "invalid timestamp format"))
@@ -121,27 +140,15 @@ func (r *AutonomousDatabaseRestore) ValidateCreate() (admission.Warnings, error)
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseRestore"},
-		r.Name, allErrs)
+		restore.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	autonomousdatabaserestorelog.Info("validate update", "name", r.Name)
-
-	var allErrs field.ErrorList
-
-	if len(allErrs) == 0 {
-		return nil, nil
-	}
-	return nil, apierrors.NewInvalid(
-		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabaseRestore"},
-		r.Name, allErrs)
+func (r *AutonomousDatabaseRestore) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	return nil, nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabaseRestore) ValidateDelete() (admission.Warnings, error) {
-	autonomousdatabaserestorelog.Info("validate delete", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object deletion.
+func (r *AutonomousDatabaseRestore) ValidateDelete(context.Context, runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }

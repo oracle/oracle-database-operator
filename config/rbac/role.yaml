@@ -10,9 +10,12 @@ rules:
   - configmaps
   - containers
   - deployments
+  - endpoints
   - events
   - namespaces
+  - persistentvolumeclaim
   - persistentvolumeclaims
+  - persistentvolumes
   - pods
   - pods/exec
   - pods/log
@@ -27,6 +30,25 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - ""
+  resources:
+  - configmaps/status
+  - daemonsets/status
+  - deployments/status
+  - persistentvolumeclaim/status
+  - services/status
+  - statefulsets/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - secrets/status
+  verbs:
+  - get
 - apiGroups:
   - ""
   resources:
@@ -103,15 +125,14 @@ rules:
   resources:
   - autonomouscontainerdatabases
   - autonomousdatabases
-  - cdbs
   - dataguardbrokers
   - dbcssystems
   - events
   - lrests
   - lrpdbs
+  - oraclerestarts
   - oraclerestdataservices
   - ordssrvs
-  - pdbs
   - shardingdatabases
   - singleinstancedatabases
   verbs:
@@ -128,14 +149,13 @@ rules:
   - autonomouscontainerdatabases/status
   - autonomousdatabasebackups/status
   - autonomousdatabaserestores/status
-  - cdbs/status
   - dataguardbrokers/status
   - dbcssystems/status
   - lrests/status
   - lrpdbs/status
+  - oraclerestarts/status
   - oraclerestdataservices/status
   - ordssrvs/status
-  - pdbs/status
   - shardingdatabases/status
   - singleinstancedatabases/status
   verbs:
@@ -164,7 +184,6 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
-  - cdbs/finalizers
   - dataguardbrokers/finalizers
   - lrests/finalizers
   - oraclerestdataservices/finalizers
@@ -176,8 +195,9 @@ rules:
   - database.oracle.com
   resources:
   - dbcssystems/finalizers
+  - lrpdbs/configmaps
   - lrpdbs/finalizers
-  - pdbs/finalizers
+  - oraclerestarts/finalizers
   - shardingdatabases/finalizers
   verbs:
   - create

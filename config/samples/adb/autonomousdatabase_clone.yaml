@@ -2,7 +2,7 @@
 # Copyright (c) 2022, 2024, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
@@ -16,7 +16,8 @@ spec:
     # The dbName must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy.
     dbName: ClonedADB
     displayName: ClonedADB
-    cpuCoreCount: 1
+    computeModel: ECPU
+    computeCount: 1
     adminPassword:
       # Comment out k8sSecret and uncomment ociSecret if you pass the admin password using OCI Secret.
       k8sSecret:

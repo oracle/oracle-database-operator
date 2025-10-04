@@ -39,9 +39,11 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"regexp"
 	"strings"
@@ -276,6 +278,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 				if err := k8s.RemoveFinalizerAndPatch(r.KubeClient, desiredAdb, ADB_FINALIZER); err != nil {
 					return emptyResult, fmt.Errorf("Failed to remove finalizer to Autonomous Database "+desiredAdb.Name+": %w", err)
 				}
+				return emptyResult, nil
 			} else {
 				// Remove the Autonomous Database in OCI.
 				// Change the action to Terminate and proceed with the rest of the reconcile logic
@@ -327,7 +330,7 @@ func (r *AutonomousDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.R
 	/******************************************************************
 	* Update the Autonomous Database at the end of every reconcile.
 	******************************************************************/
-	if specChanged {
+	if specChanged && desiredAdb.Status.LifecycleState != database.AutonomousDatabaseLifecycleStateTerminating {
 		if err := r.KubeClient.Update(context.TODO(), desiredAdb); err != nil {
 			return r.manageError(
 				logger.WithName("updateSpec"),
@@ -568,6 +571,30 @@ func (r *AutonomousDatabaseReconciler) performOperation(
 		}
 		return true, nil
 
+	case "Switchover":
+		l.Info("Sending SwitchoverAutonomousDatabase request to OCI")
+
+		resp, err := r.dbService.SwitchoverAutonomousDatabase(*adb.Spec.Details.Id)
+		if err != nil {
+			return false, err
+		}
+
+		adb.Spec.Action = ""
+		adb.Status.LifecycleState = resp.LifecycleState
+		return true, nil
+
+	case "Failover":
+		l.Info("Sending FailOverAutonomousDatabase request to OCI")
+
+		resp, err := r.dbService.FailoverAutonomousDatabase(*adb.Spec.Details.Id)
+		if err != nil {
+			return false, err
+		}
+
+		adb.Spec.Action = ""
+		adb.Status.LifecycleState = resp.LifecycleState
+		return true, nil
+
 	case "":
 		// No-op
 		return false, nil
@@ -697,10 +724,17 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 		return err
 	}
 
-	data, err := oci.ExtractWallet(resp.Content)
+	walletBytes, err := io.ReadAll(resp.Content)
+
+	data, err := oci.ExtractWallet(io.NopCloser(bytes.NewReader(walletBytes)))
 	if err != nil {
 		return err
 	}
+
+	// Include the unextracted zip file
+	// https://github.com/oracle/oracle-database-operator/issues/97
+	zipFileName := fmt.Sprintf("Wallet_%s.zip", *adb.Spec.Details.DbName)
+	data[zipFileName] = walletBytes
 
 	adb.Status.WalletExpiringDate = oci.WalletExpiringDate(data)
 

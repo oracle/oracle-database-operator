@@ -1,0 +1,38 @@
+build-operator: 
+  stage: build
+  variables:
+    IMAGE: "$DOCKER_REPO:$CI_COMMIT_SHORT_SHA"
+    OP_YAML: oracle-database-operator.yaml
+    BUILD_INTERNAL: "true"
+  script:
+    - export GOLANG_VERSION=1.25.1
+    - export GOROOT=$(go${GOLANG_VERSION} env GOROOT)
+    - export PATH="${GOROOT}/bin:${PATH}"
+    - make operator-yaml IMG=$IMAGE GOLANG_VERSION=$GOLANG_VERSION
+    - if [ "$CI_COMMIT_BRANCH" = "master" ]; then
+        podman run --rm --privileged multiarch/qemu-user-static --reset -p yes;
+        make image-build image-push IMG="$IMAGE" BUILD_MANIFEST=true GOLANG_VERSION=$GOLANG_VERSION;
+        podman manifest rm "$IMAGE";
+      else
+        make image-build image-push IMG="$IMAGE" GOLANG_VERSION=$GOLANG_VERSION;
+        podman rmi "$IMAGE";
+        sed -i "s/\(replicas.\) 3/\1 1/g" ./$OP_YAML;
+      fi
+    - buildah containers -q | xargs -n1 buildah rm || true
+    - podman system prune -f
+    - curl -s --netrc-file $HOME/.netrc_gitlab $ARTIFACTORY_REPO/$CI_COMMIT_BRANCH/$OP_YAML -T ./$OP_YAML
+  only:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /\#run-pipeline/
+      - $CI_COMMIT_BRANCH =~ /master/
+      - $CI_MERGE_REQUEST_ID != ""
+  except:
+    variables:
+      - $CI_COMMIT_MESSAGE =~ /\#skip-pipeline/
+      - $CI_COMMIT_TAG != null
+
+cleanup:
+  stage: .post
+  script:
+    - echo "Clean up downloaded binaries"
+    - rm -rf bin/

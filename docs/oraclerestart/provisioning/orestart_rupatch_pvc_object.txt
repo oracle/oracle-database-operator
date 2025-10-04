@@ -1,0 +1,198 @@
+$ kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
+Name:         oraclerestart-sample
+Namespace:    orestart
+Labels:       <none>
+Annotations:  OracleRestarts.database.oracle.com/old-spec:
+                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"],"nodePortSvc":[{"name":"dbmc1-service-nodeport","svc...
+API Version:  database.oracle.com/v4
+Kind:         OracleRestart
+Metadata:
+  Creation Timestamp:  2025-08-21T22:09:44Z
+  Finalizers:
+    database.oracle.com/oraclerestartfinalizer
+  Generation:        1
+  Resource Version:  225580366
+  UID:               3ce94373-a848-4b0c-8191-55783f146b8a
+Spec:
+  Asm Storage Details:
+    Disks By Size:
+      Disk Names:
+        /dev/asm-disk1
+        /dev/asm-disk2
+      Storage Size In Gb:  50
+  Config Params:
+    Cpu Count:                   4
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
+    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Char Set:                 AL32UTF8
+    Db Data File Dest Dg:        +DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       +DATA
+    Db Response File:
+    Db Sw Zip File:  db_home.zip
+    Grid Base:       /u01/app/grid
+    Grid Home:       /u01/app/19c/grid
+    Grid Response File:
+    Grid Sw Zip File:             grid_home.zip
+    Host Sw Stage Location:       /stage/software/19c/19.3.0
+    Inventory:                    /u01/app/oraInventory
+    O Patch Location:             /stage/software/19c
+    O Patch Sw Zip File:          p6880880_190000_Linux-x86-64.zip
+    Pga Size:                     1G
+    Processes:                    2000
+    Ru Patch Location:            /stage/software/19c/19.28/37957391
+    Sga Size:                     3G
+    Sw Mount Location:            /u01
+    Sw Stage Pvc:                 pv-stage-vol-claim
+    Sw Stage Pvc Mount Location:  /stage
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image Pull Policy:          Always
+  Inst Details:
+    Name:  dbmc1
+    Node Port Svc:
+      Name:      dbmc1-service-nodeport
+      Svc Type:  nodeport
+    Port Mappings:
+      Node Port:                30007
+      Port:                     1521
+      Protocol:                 TCP
+      Target Port:              1521
+    Sw Loc Storage Size In Gb:  300
+    Worker Node:
+      10.0.10.58
+  Resources:
+    Limits:
+      Cpu:     2
+      Memory:  16Gi
+    Requests:
+      Cpu:     2
+      Memory:  16Gi
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmall
+      Value:  2097152
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmax
+      Value:  8589934592
+      Name:   kernel.shmmni
+      Value:  4096
+  Service Details:
+    Name:  soepdb
+  Ssh Key Secret:
+    Key Mount Location:    /mnt/.ssh
+    Name:                  ssh-key-secret
+    Priv Key Secret Name:  ssh-privkey
+    Pub Key Secret Name:   ssh-pubkey
+  Storage Class:           oci-bv
+Status:
+  Oracle Restart Nodes:
+    Name:  dbmc1-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/asm-disk1
+        /dev/asm-disk2
+      State:  AVAILABLE
+  Asm Details:
+    Diskgroup:
+      Disks:
+        /dev/asm-disk1,/dev/asm-disk2
+      Name:        DATA
+      Redundancy:  EXTERN
+  Conditions:
+    Last Transition Time:  2025-08-22T01:09:05Z
+    Message:               oracle restart database is in a restricted state: PROVISIONING
+    Observed Generation:   1
+    Reason:                LastReconcileCycleQueued
+    Status:                True
+    Type:                  ReconcileQueued
+    Last Transition Time:  2025-08-22T02:12:50Z
+    Message:               no reconcile errors
+    Observed Generation:   1
+    Reason:                LastReconcileCycleCompleted
+    Status:                True
+    Type:                  ReconcileComplete
+  Config Params:
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
+    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Data File Dest Dg:        +DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       +DATA
+    Db Response File:
+    Grid Base:  /u01/app/grid
+    Grid Home:  /u01/app/19c/grid
+    Grid Response File:
+    Inventory:     /u01/app/oraInventory
+  Connect String:  dbmc1-0:1521/PORCLCDB
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Db State:                   OPEN
+  External Connect String:    129.146.0.149:30007/soepdb
+  Inst Details:
+    Name:
+  Pdb Connect String:  dbmc1-0:1521/ORCLPDB
+  Release Update:      19.28.0.0.0
+  Role:                PRIMARY
+  Service Details:
+    Name:       soepdb
+    Svc State:  service soepdb is running
+  State:        AVAILABLE
+Events:         <none>
+
+
+
+$ kubectl get pvc -n orestart
+NAME                                  STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      VOLUMEATTRIBUTESCLASS   AGE
+asm-pvc-disk-0-oraclerestart-sample   Bound    csi-ce9f7e26-d889-40bc-97c0-1e16bc63d949   50Gi       RWO            oci-bv            <unset>                 4h3m
+asm-pvc-disk-1-oraclerestart-sample   Bound    csi-35c89048-7aba-460e-ad19-a0c1356f75a3   50Gi       RWO            oci-bv            <unset>                 4h3m
+dbmc1-oradata-sw-vol-pvc-dbmc1-0      Bound    csi-62f17e8a-1d0b-43a8-9d82-9ae81648ca07   300Gi      RWO            oci-bv            <unset>                 4h3m
+pv-stage-vol-claim                    Bound    pv-stage-vol1                              500Gi      ROX            fss-dyn-storage   <unset>                 8h
+
+
+
+[root@dbmc1-0 rac-work-dir]# ls -lrt /stage/software/19c/
+total 71681
+drwxr-xr-x. 3 root root        3 Aug 19 01:20 19.28
+-rw-r--r--. 1 root root 72539776 Aug 19 01:21 p6880880_190000_Linux-x86-64.zip
+drwxr-xr-x. 2 root root        3 Aug 19 03:56 19.3.0
+[root@dbmc1-0 rac-work-dir]#
+[root@dbmc1-0 rac-work-dir]# ls -lrt /stage/software/19c/19.3.0/
+total 6774784
+-rw-r--r--. 1 root root 3059705302 Aug 19 01:10 db_home.zip
+-rw-r--r--. 1 root root 2889184573 Aug 19 01:11 grid_home.zip
+[root@dbmc1-0 rac-work-dir]# ls -lrt /stage/software/19c/19.28/
+total 3851265
+drwxr-xr-x. 8 root root          9 May 28 05:03 37957391
+-rw-rw-r--. 1 root root    2921864 May 28 05:41 PatchSearch.xml
+-rw-r--r--. 1 root root 3940126990 Aug 19 01:14 p37957391_190000_Linux-x86-64.zip
+[root@dbmc1-0 rac-work-dir]# ls -lrt /stage/software/19c/19.28/37957391/
+total 171
+drwxr-xr-x. 5 root root      4 May 28 05:03 37962946
+drwxr-xr-x. 5 root root      4 May 28 05:04 37962938
+drwxr-xr-x. 5 root root      5 May 28 05:04 37960098
+drwxr-xr-x. 4 root root      3 May 28 05:04 37954209
+drwxr-xr-x. 4 root root      3 May 28 05:04 36758186
+drwxr-xr-x. 2 root root     13 May 28 05:08 automation
+-rwxr-xr-x. 1 root root      0 May 28 05:08 README.txt
+-rwxr-xr-x. 1 root root 152522 May 28 05:18 README.html
+-rwxr-xr-x. 1 root root   5824 May 28 05:35 bundle.xml
+[root@dbmc1-0 rac-work-dir]#

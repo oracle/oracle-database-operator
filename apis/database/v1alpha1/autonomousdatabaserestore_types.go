@@ -61,7 +61,7 @@ type PitSpec struct {
 }
 
 type SourceSpec struct {
-	K8sAdbBackup K8sAdbBackupSpec `json:"k8sADBBackup,omitempty"`
+	K8sAdbBackup K8sAdbBackupSpec `json:"k8sAdbBackup,omitempty"`
 	PointInTime  PitSpec          `json:"pointInTime,omitempty"`
 }
 

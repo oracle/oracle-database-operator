@@ -52,14 +52,20 @@ import (
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 )
 
-func GetDbHomeDetails(kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem) (database.CreateDbHomeDetails, error) {
+func GetDbHomeDetails(kubeClient client.Client, dbClient database.DatabaseClient, dbcs *databasev4.DbcsSystem, id string) (database.CreateDbHomeDetails, error) {
 
 	dbHomeDetails := database.CreateDbHomeDetails{}
-
 	dbHomeReq, err := GetDbLatestVersion(dbClient, dbcs, "")
 	if err != nil {
 		return database.CreateDbHomeDetails{}, err
 	}
+	if dbcs.Spec.Id != nil {
+		dbHomeReq, err = GetDbLatestVersion(dbClient, dbcs, *dbcs.Spec.Id)
+		if err != nil {
+			return database.CreateDbHomeDetails{}, err
+		}
+	}
+
 	dbHomeDetails.DbVersion = &dbHomeReq
 
 	dbDetailsReq, err := GetDBDetails(kubeClient, dbcs)
@@ -180,16 +186,18 @@ func GetDBDetails(kubeClient client.Client, dbcs *databasev4.DbcsSystem) (databa
 		dbDetails.PdbName = &dbcs.Spec.DbSystem.PdbName
 	}
 
-	//backup configuration
-	if dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupEnabled != nil {
-		if *dbcs.Spec.DbSystem.DbBackupConfig.AutoBackupEnabled {
-			backupConfig, err := getBackupConfig(kubeClient, dbcs)
-			if err != nil {
-				return dbDetails, err
-			} else {
-				dbDetails.DbBackupConfig = &backupConfig
-			}
+	backupCfg := dbcs.Spec.DbSystem.DbBackupConfig
+	if dbcs != nil &&
+		dbcs.Spec.DbSystem != nil &&
+		backupCfg != nil &&
+		backupCfg.AutoBackupEnabled != nil &&
+		*backupCfg.AutoBackupEnabled {
+
+		backupConfig, err := getBackupConfig(kubeClient, dbcs)
+		if err != nil {
+			return dbDetails, err
 		}
+		dbDetails.DbBackupConfig = &backupConfig
 	}
 
 	return dbDetails, nil
@@ -383,10 +391,10 @@ func GetDBbDiskRedundancy(
 	return database.LaunchDbSystemDetailsDiskRedundancyNormal
 }
 
-func getWorkRequest(workId string, wrClient workrequests.WorkRequestClient, dbcs *databasev4.DbcsSystem) ([]workrequests.WorkRequestSummary, error) {
+func getWorkRequest(compartmentId string, workId string, wrClient workrequests.WorkRequestClient, dbcs *databasev4.DbcsSystem) ([]workrequests.WorkRequestSummary, error) {
 	var workReq []workrequests.WorkRequestSummary
 
-	req := workrequests.ListWorkRequestsRequest{CompartmentId: &dbcs.Spec.DbSystem.CompartmentId, OpcRequestId: &workId, ResourceId: dbcs.Spec.Id}
+	req := workrequests.ListWorkRequestsRequest{CompartmentId: &compartmentId, OpcRequestId: &workId, ResourceId: dbcs.Spec.Id}
 	resp, err := wrClient.ListWorkRequests(context.Background(), req)
 	if err != nil {
 		return workReq, err

@@ -1,6 +1,7 @@
 operator.tgz
 cover.out
 bin
+bin/*
 testbin/*
 onpremtest/*
 ords/*zip

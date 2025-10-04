@@ -39,6 +39,9 @@
 package v1alpha1
 
 import (
+	"context"
+	"fmt"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,6 +59,8 @@ var oraclerestdataservicelog = logf.Log.WithName("oraclerestdataservice-resource
 func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -63,68 +68,78 @@ func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error 
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-oraclerestdataservice,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestdataservices,verbs=create;update,versions=v1alpha1,name=moraclerestdataservice.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Defaulter = &OracleRestDataService{}
+var _ webhook.CustomDefaulter = &OracleRestDataService{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *OracleRestDataService) Default() {
-	oraclerestdataservicelog.Info("default", "name", r.Name)
+func (r *OracleRestDataService) Default(ctx context.Context, obj runtime.Object) error {
+	ords, ok := obj.(*OracleRestDataService)
+	if !ok {
+		return apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to OracleRestDataService"))
+	}
+	oraclerestdataservicelog.Info("default", "name", ords.Name)
 	// OracleRestDataService Currently supports single replica
-	r.Spec.Replicas = 1
+	ords.Spec.Replicas = 1
 	keepSecret := true
-	if r.Spec.OrdsPassword.KeepSecret == nil {
-		r.Spec.OrdsPassword.KeepSecret = &keepSecret
+	if ords.Spec.OrdsPassword.KeepSecret == nil {
+		ords.Spec.OrdsPassword.KeepSecret = &keepSecret
 	}
-	if r.Spec.AdminPassword.KeepSecret == nil {
-		r.Spec.AdminPassword.KeepSecret = &keepSecret
+	if ords.Spec.AdminPassword.KeepSecret == nil {
+		ords.Spec.AdminPassword.KeepSecret = &keepSecret
 	}
+
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-oraclerestdataservice,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestdataservices,versions=v1alpha1,name=voraclerestdataservice.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Validator = &OracleRestDataService{}
+var _ webhook.CustomValidator = &OracleRestDataService{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateCreate() (admission.Warnings, error) {
-	oraclerestdataservicelog.Info("validate create", "name", r.Name)
+func (r *OracleRestDataService) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	ords, ok := obj.(*OracleRestDataService)
+	if !ok {
+		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to OracleRestDataService"))
+	}
+	oraclerestdataservicelog.Info("validate create", "name", ords.Name)
 
 	var allErrs field.ErrorList
 
 	namespaces := dbcommons.GetWatchNamespaces()
-	_, containsNamespace := namespaces[r.Namespace]
+	_, containsNamespace := namespaces[ords.Namespace]
 	// Check if the allowed namespaces maps contains the required namespace
 	if len(namespaces) != 0 && !containsNamespace {
 		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), ords.Namespace,
 				"Oracle database operator doesn't watch over this namespace"))
 	}
 
 	// Persistence spec validation
-	if r.Spec.Persistence.Size == "" && (r.Spec.Persistence.AccessMode != "" ||
-		r.Spec.Persistence.StorageClass != "" || r.Spec.Persistence.VolumeName != "") {
+	if ords.Spec.Persistence.Size == "" && (ords.Spec.Persistence.AccessMode != "" ||
+		ords.Spec.Persistence.StorageClass != "" || ords.Spec.Persistence.VolumeName != "") {
 		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), r.Spec.Persistence,
+			field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), ords.Spec.Persistence,
 				"invalid persistence specification, specify required size"))
 	}
 
-	if r.Spec.Persistence.Size != "" {
-		if r.Spec.Persistence.AccessMode == "" {
+	if ords.Spec.Persistence.Size != "" {
+		if ords.Spec.Persistence.AccessMode == "" {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), r.Spec.Persistence,
+				field.Invalid(field.NewPath("spec").Child("persistence").Child("size"), ords.Spec.Persistence,
 					"invalid persistence specification, specify accessMode"))
 		}
-		if r.Spec.Persistence.AccessMode != "ReadWriteMany" && r.Spec.Persistence.AccessMode != "ReadWriteOnce" {
+		if ords.Spec.Persistence.AccessMode != "ReadWriteMany" && ords.Spec.Persistence.AccessMode != "ReadWriteOnce" {
 			allErrs = append(allErrs,
 				field.Invalid(field.NewPath("spec").Child("persistence").Child("accessMode"),
-					r.Spec.Persistence.AccessMode, "should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
+					ords.Spec.Persistence.AccessMode, "should be either \"ReadWriteOnce\" or \"ReadWriteMany\""))
 		}
 	}
 
 	// Validating databaseRef and ORDS kind name not to be same
-	if r.Spec.DatabaseRef == r.Name {
+	if ords.Spec.DatabaseRef == ords.Name {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("Name"),
-				"cannot be same as DatabaseRef: "+r.Spec.DatabaseRef))
+				"cannot be same as DatabaseRef: "+ords.Spec.DatabaseRef))
 
 	}
 
@@ -133,32 +148,36 @@ func (r *OracleRestDataService) ValidateCreate() (admission.Warnings, error) {
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
-		r.Name, allErrs)
+		ords.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateUpdate(oldRuntimeObject runtime.Object) (admission.Warnings, error) {
-	oraclerestdataservicelog.Info("validate update", "name", r.Name)
+func (r *OracleRestDataService) ValidateUpdate(ctx context.Context, oldRuntimeObject, newRuntimeObject runtime.Object) (admission.Warnings, error) {
+	new, ok := newRuntimeObject.(*OracleRestDataService)
+	if !ok {
+		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast newRuntimeObject object to OracleRestDataService"))
+	}
+	oraclerestdataservicelog.Info("validate update", "name", new.Name)
 
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	warnings, err := r.ValidateCreate()
+	warnings, err := new.ValidateCreate(ctx, newRuntimeObject)
 	if err != nil {
 		return warnings, err
 	}
 
 	// Now check for updation errors
-	old, ok := oldRuntimeObject.(*OracleRestDataService)
-	if !ok {
-		return nil, nil
+	old, okay := oldRuntimeObject.(*OracleRestDataService)
+	if !okay {
+		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast oldRuntimeObject object to OracleRestDataService"))
 	}
 
-	if old.Status.DatabaseRef != "" && old.Status.DatabaseRef != r.Spec.DatabaseRef {
+	if old.Status.DatabaseRef != "" && old.Status.DatabaseRef != new.Spec.DatabaseRef {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("databaseRef"), "cannot be changed"))
 	}
-	if old.Status.Image.PullFrom != "" && old.Status.Image != r.Spec.Image {
+	if old.Status.Image.PullFrom != "" && old.Status.Image != new.Spec.Image {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("image"), "cannot be changed"))
 	}
@@ -168,12 +187,12 @@ func (r *OracleRestDataService) ValidateUpdate(oldRuntimeObject runtime.Object) 
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "OracleRestDataService"},
-		r.Name, allErrs)
+		new.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestDataService) ValidateDelete() (admission.Warnings, error) {
+func (r *OracleRestDataService) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	oraclerestdataservicelog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.

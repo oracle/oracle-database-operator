@@ -39,6 +39,8 @@
 package v1alpha1
 
 import (
+	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -59,6 +61,8 @@ var dataguardbrokerlog = logf.Log.WithName("dataguardbroker-resource")
 func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -66,52 +70,61 @@ func (r *DataguardBroker) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-dataguardbroker,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dataguardbrokers,verbs=create;update,versions=v1alpha1,name=mdataguardbroker.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Defaulter = &DataguardBroker{}
+var _ webhook.CustomDefaulter = &DataguardBroker{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *DataguardBroker) Default() {
-	dataguardbrokerlog.Info("default", "name", r.Name)
+func (r *DataguardBroker) Default(ctx context.Context, obj runtime.Object) error {
+	dg, ok := obj.(*DataguardBroker)
+	if !ok {
+		return apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to DataguardBroker"))
+	}
+	dataguardbrokerlog.Info("default", "name", dg.Name)
 
-	if r.Spec.LoadBalancer {
-		if r.Spec.ServiceAnnotations == nil {
-			r.Spec.ServiceAnnotations = make(map[string]string)
+	if dg.Spec.LoadBalancer {
+		if dg.Spec.ServiceAnnotations == nil {
+			dg.Spec.ServiceAnnotations = make(map[string]string)
 		}
 		// Annotations required for a flexible load balancer on oci
-		_, ok := r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"]
+		_, ok := dg.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"]
 		if !ok {
-			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"] = "flexible"
+			dg.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape"] = "flexible"
 		}
-		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
+		_, ok = dg.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"]
 		if !ok {
-			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"] = "10"
+			dg.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-min"] = "10"
 		}
-		_, ok = r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
+		_, ok = dg.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"]
 		if !ok {
-			r.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
+			dg.Spec.ServiceAnnotations["service.beta.kubernetes.io/oci-load-balancer-shape-flex-max"] = "100"
 		}
 	}
 
-	if r.Spec.SetAsPrimaryDatabase != "" {
-		r.Spec.SetAsPrimaryDatabase = strings.ToUpper(r.Spec.SetAsPrimaryDatabase)
+	if dg.Spec.SetAsPrimaryDatabase != "" {
+		dg.Spec.SetAsPrimaryDatabase = strings.ToUpper(dg.Spec.SetAsPrimaryDatabase)
 	}
+
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-dataguardbroker,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=dataguardbrokers,versions=v1alpha1,name=vdataguardbroker.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.Validator = &DataguardBroker{}
+var _ webhook.CustomValidator = &DataguardBroker{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateCreate() (admission.Warnings, error) {
-
-	dataguardbrokerlog.Info("validate create", "name", r.Name)
+func (r *DataguardBroker) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+	dg, ok := obj.(*DataguardBroker)
+	if !ok {
+		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast obj object to DataguardBroker"))
+	}
+	dataguardbrokerlog.Info("validate create", "name", dg.Name)
 	var allErrs field.ErrorList
 	namespaces := dbcommons.GetWatchNamespaces()
-	_, containsNamespace := namespaces[r.Namespace]
+	_, containsNamespace := namespaces[dg.Namespace]
 	// Check if the allowed namespaces maps contains the required namespace
 	if len(namespaces) != 0 && !containsNamespace {
 		allErrs = append(allErrs,
-			field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+			field.Invalid(field.NewPath("metadata").Child("namespace"), dg.Namespace,
 				"Oracle database operator doesn't watch over this namespace"))
 	}
 
@@ -121,46 +134,49 @@ func (r *DataguardBroker) ValidateCreate() (admission.Warnings, error) {
 
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "Dataguard"},
-		r.Name, allErrs)
+		dg.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	dataguardbrokerlog.Info("validate update", "name", r.Name)
+func (r *DataguardBroker) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
+	new, ok := newObj.(*DataguardBroker)
+	if !ok {
+		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast newObj object to DataguardBroker"))
+	}
 
-	dataguardbrokerlog.Info("validate update", "name", r.Name)
+	dataguardbrokerlog.Info("validate update", "name", new.Name)
 	var allErrs field.ErrorList
 
 	// check creation validations first
-	_, err := r.ValidateCreate()
+	_, err := new.ValidateCreate(ctx, newObj)
 	if err != nil {
 		return nil, err
 	}
 
 	// Validate Deletion
-	if r.GetDeletionTimestamp() != nil {
-		warnings, err := r.ValidateDelete()
+	if new.GetDeletionTimestamp() != nil {
+		warnings, err := new.ValidateDelete(ctx, newObj)
 		if err != nil {
 			return warnings, err
 		}
 	}
 
 	// Now check for updation errors
-	oldObj, ok := old.(*DataguardBroker)
-	if !ok {
-		return nil, nil
+	oldObj, okay := old.(*DataguardBroker)
+	if !okay {
+		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast old object to DataguardBroker"))
 	}
 
-	if oldObj.Status.ProtectionMode != "" && !strings.EqualFold(r.Spec.ProtectionMode, oldObj.Status.ProtectionMode) {
+	if oldObj.Status.ProtectionMode != "" && !strings.EqualFold(new.Spec.ProtectionMode, oldObj.Status.ProtectionMode) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("protectionMode"), "cannot be changed"))
 	}
-	if oldObj.Status.PrimaryDatabaseRef != "" && !strings.EqualFold(oldObj.Status.PrimaryDatabaseRef, r.Spec.PrimaryDatabaseRef) {
+	if oldObj.Status.PrimaryDatabaseRef != "" && !strings.EqualFold(oldObj.Status.PrimaryDatabaseRef, new.Spec.PrimaryDatabaseRef) {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("primaryDatabaseRef"), "cannot be changed"))
 	}
 	fastStartFailoverStatus, _ := strconv.ParseBool(oldObj.Status.FastStartFailover)
-	if (fastStartFailoverStatus || r.Spec.FastStartFailover) && r.Spec.SetAsPrimaryDatabase != "" {
+	if (fastStartFailoverStatus || new.Spec.FastStartFailover) && new.Spec.SetAsPrimaryDatabase != "" {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec").Child("setAsPrimaryDatabase"), "switchover not supported when fastStartFailover is true"))
 	}
@@ -170,12 +186,12 @@ func (r *DataguardBroker) ValidateUpdate(old runtime.Object) (admission.Warnings
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "DataguardBroker"},
-		r.Name, allErrs)
+		new.Name, allErrs)
 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *DataguardBroker) ValidateDelete() (admission.Warnings, error) {
+func (r *DataguardBroker) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	dataguardbrokerlog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.

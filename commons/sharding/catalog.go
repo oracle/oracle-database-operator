@@ -49,6 +49,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -137,11 +139,14 @@ func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpe
 	group := oraFsGroup
 	spec := &corev1.PodSpec{
 		SecurityContext: &corev1.PodSecurityContext{
-			RunAsUser: &user,
-			FSGroup:   &group,
+			RunAsNonRoot: BoolPointer(true),
+			RunAsUser:    &user,
+			RunAsGroup:   &group,
+			FSGroup:      &group,
 		},
-		Containers: buildContainerSpecForCatalog(instance, OraCatalogSpex),
-		Volumes:    buildVolumeSpecForCatalog(instance, OraCatalogSpex),
+		Containers:         buildContainerSpecForCatalog(instance, OraCatalogSpex),
+		Volumes:            buildVolumeSpecForCatalog(instance, OraCatalogSpex),
+		ServiceAccountName: instance.Spec.SrvAccountName,
 	}
 
 	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
@@ -185,6 +190,10 @@ func buildVolumeSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalog
 		},
 	}
 
+	if OraCatalogSpex.CatalogConfigData != nil && len(OraCatalogSpex.CatalogConfigData.Name) != 0 {
+		result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraCatalogSpex.CatalogConfigData.Name}}}})
+	}
+
 	if len(OraCatalogSpex.PvcName) != 0 {
 		result = append(result, corev1.Volume{Name: OraCatalogSpex.Name + "oradata-vol4", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OraCatalogSpex.PvcName}}})
 	}
@@ -210,12 +219,19 @@ func buildVolumeSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalog
 func buildContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.Container {
 	// building Continer spec
 	var result []corev1.Container
+	user := oraRunAsUser
+	group := oraFsGroup
 	containerSpec := corev1.Container{
 		Name:  OraCatalogSpex.Name,
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot:             BoolPointer(true),
+			RunAsUser:                &user,
+			RunAsGroup:               &group,
+			AllowPrivilegeEscalation: BoolPointer(false),
 			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
+				Add:  []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
+				Drop: []corev1.Capability{"ALL"},
 			},
 		},
 		Resources: corev1.ResourceRequirements{
@@ -299,8 +315,13 @@ func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, Ora
 		Name:  OraCatalogSpex.Name + "-init1",
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: &privFlag,
-			RunAsUser:  &uid,
+			RunAsNonRoot:             BoolPointer(true),
+			AllowPrivilegeEscalation: BoolPointer(false),
+			Privileged:               &privFlag,
+			RunAsUser:                &uid,
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
 		},
 		Command: []string{
 			"/bin/bash",
@@ -328,6 +349,10 @@ func buildVolumeMountSpecForCatalog(instance *databasev4.ShardingDatabase, OraCa
 		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})
 	}
 	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "oradshm-vol6", MountPath: oraShm})
+
+	if OraCatalogSpex.CatalogConfigData != nil && len(OraCatalogSpex.CatalogConfigData.Name) != 0 {
+		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "-oradata-configdata", MountPath: OraCatalogSpex.CatalogConfigData.MountPath})
+	}
 
 	if len(instance.Spec.StagePvcName) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "orastage-vol7", MountPath: oraStage})
@@ -525,4 +550,17 @@ func UpdateProvForCatalog(instance *databasev4.ShardingDatabase,
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func ExportTDEKey(podName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) error {
+	var msg string
+
+	msg = ""
+	_, _, err := ExecCommand(podName, getExportTDEKeyCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	if err != nil {
+		msg = "Error executing getExportTDEKeyCmd : podName=[" + podName + "]. errMsg=" + err.Error()
+		LogMessages("INFO", msg, nil, instance, logger)
+		return err
+	}
+	return nil
 }

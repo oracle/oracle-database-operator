@@ -1,0 +1,32 @@
+apiVersion: database.oracle.com/v4
+kind: OrdsSrvs
+metadata:
+  name: ordssrvs
+  namespace: ordsnamespace
+spec:
+  image: container-registry.oracle.com/database/ords:latest
+  forceRestart: true
+  encPrivKey:
+    secretName: prvkey
+    passwordKey: privateKey
+  globalSettings:
+    database.api.enabled: true
+    mongo.enabled: true
+    apex.download : false
+    db.invalidPoolTimeout: 1m
+  poolSettings:
+    - poolName: default
+      autoUpgradeORDS: true
+      autoUpgradeAPEX: false
+      feature.sdw: true
+      restEnabledSql.active: true
+      plsql.gateway.mode: direct
+      db.connectionType: customurl
+      db.customURL: jdbc:oracle:thin:@//<db_ip>:1521/FREEPDB1
+      db.username: ORDS_PUBLIC_USER
+      db.secret:
+        secretName:  db-auth-enc
+      db.adminUser: SYS
+      db.adminUser.secret:
+        secretName:  db-auth-enc
+  serviceAccountName: ordssrvs-sa

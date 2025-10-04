@@ -3,6 +3,7 @@ kind: DbcsSystem
 metadata:
   name: dbcssystem-existing
 spec:
+
   id: "ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa"
   ociConfigMap: "oci-cred"
   ociSecret: "oci-privatekey"
@@ -12,7 +13,8 @@ spec:
     dbAdminPasswordSecret: "admin-password"
     hostName: "host1234"
     shape: "VM.Standard2.2"
-    domain: "subdda0b5eaa.cluster1.oraclevcn.com"
+    domain: "sub0ea2e07ef.cluster1.oraclevcn.com"
     sshPublicKeys:
      - "oci-publickey"
-    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq"
+    subnetId: "ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaaklvzufcgma65ibn4al7xukjmyfz7nnrpaewfzbffz5zrnz3htweq"
+

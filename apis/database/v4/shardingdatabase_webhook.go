@@ -39,8 +39,12 @@
 package v4
 
 import (
+	"context"
+	"fmt"
+	"strconv"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -51,54 +55,97 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
+var totalShard int32 = 0
+
 // log is for logging in this package.
 var shardingdatabaselog = logf.Log.WithName("shardingdatabase-resource")
 
 func (r *ShardingDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+		For(&ShardingDatabase{}).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
+
+var _ webhook.CustomDefaulter = &ShardingDatabase{}
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-shardingdatabase,mutating=true,failurePolicy=fail,sideEffects=none,groups=database.oracle.com,resources=shardingdatabases,verbs=create;update,versions=v4,name=mshardingdatabasev4.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &ShardingDatabase{}
-
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *ShardingDatabase) Default() {
-	shardingdatabaselog.Info("default", "name", r.Name)
+func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) error {
+
+	cr, ok := obj.(*ShardingDatabase)
+
+	if !ok {
+		return fmt.Errorf("xpected  obj.*ShardingDatabase but got %T", obj)
+	}
+
+	shardingdatabaselog.Info("default", "name", cr.Name)
+
+	var replicas int32
 
 	// TODO(user): fill in your defaulting logic.
-	if r.Spec.GsmDevMode != "" {
-		r.Spec.GsmDevMode = "dev"
+	if cr.Spec.GsmDevMode != "" {
+		cr.Spec.GsmDevMode = "dev"
 	}
 
-	if r.Spec.IsTdeWallet == "" {
-		r.Spec.IsTdeWallet = "disable"
+	if cr.Spec.IsTdeWallet == "" {
+		cr.Spec.IsTdeWallet = "disable"
 	}
-	for pindex := range r.Spec.Shard {
-		if strings.ToLower(r.Spec.Shard[pindex].IsDelete) == "" {
-			r.Spec.Shard[pindex].IsDelete = "disable"
+	for pindex := range cr.Spec.Shard {
+		if strings.ToLower(cr.Spec.Shard[pindex].IsDelete) == "" {
+			cr.Spec.Shard[pindex].IsDelete = "disable"
 		}
 	}
 
+	for pindex := range cr.Spec.ShardInfo {
+		if strings.ToLower(cr.Spec.ShardInfo[pindex].ShardGroupDetails.IsDelete) == "" {
+			cr.Spec.ShardInfo[pindex].ShardGroupDetails.IsDelete = "disable"
+		}
+	}
+
+	totalShard = 0
+	for pindex := range cr.Spec.ShardInfo {
+		replicas = 2
+		if cr.Spec.ShardInfo[pindex].Replicas != 0 {
+			replicas = cr.Spec.ShardInfo[pindex].Replicas
+		}
+		totalShard = totalShard + replicas
+	}
+
+	if totalShard > 0 {
+		cr.Spec.Shard = make([]ShardSpec, totalShard)
+		cr.initShardsSpec()
+	}
+
+	return nil
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-shardingdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=shardingdatabases,versions=v4,name=vshardingdatabasev4.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.Validator = &ShardingDatabase{}
+var _ webhook.CustomValidator = &ShardingDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateCreate() (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	shardingdatabaselog.Info("validate create", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object creation.
 	// Check Secret configuration
 	var validationErr field.ErrorList
 	var validationErrs1 field.ErrorList
+	cr, ok := obj.(*ShardingDatabase)
+
+	if !ok {
+		//    return fmt.Errorf("xpected  obj.*ShardingDatabase but got %T", obj)
+		validationErr = append(validationErr, field.Invalid(field.NewPath("obj"), "obj", "Expected  obj.*ShardingDatabase."))
+		return nil, apierrors.NewInvalid(
+			schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
+			cr.Name, validationErr)
+	}
 
 	//namespaces := db.GetWatchNamespaces()
 	//_, containsNamespace := namespaces[r.Namespace]
@@ -109,25 +156,25 @@ func (r *ShardingDatabase) ValidateCreate() (admission.Warnings, error) {
 	//			"Oracle database operator doesn't watch over this namespace"))
 	//}
 
-	if r.Spec.DbSecret == nil {
+	if cr.Spec.DbSecret == nil {
 		validationErr = append(validationErr,
-			field.Invalid(field.NewPath("spec").Child("DbSecret"), r.Spec.DbSecret,
+			field.Invalid(field.NewPath("spec").Child("DbSecret"), cr.Spec.DbSecret,
 				"DbSecret cannot be set to nil"))
 	} else {
-		if len(r.Spec.DbSecret.Name) == 0 {
+		if len(cr.Spec.DbSecret.Name) == 0 {
 			validationErr = append(validationErr,
-				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("Name"), r.Spec.DbSecret.Name,
+				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("Name"), cr.Spec.DbSecret.Name,
 					"Secret name cannot be set empty"))
 		}
-		if len(r.Spec.DbSecret.PwdFileName) == 0 {
+		if len(cr.Spec.DbSecret.PwdFileName) == 0 {
 			validationErr = append(validationErr,
-				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("PwdFileName"), r.Spec.DbSecret.PwdFileName,
+				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("PwdFileName"), cr.Spec.DbSecret.PwdFileName,
 					"Password file name cannot be set empty"))
 		}
-		if strings.ToLower(r.Spec.DbSecret.EncryptionType) != "base64" {
-			if strings.ToLower(r.Spec.DbSecret.KeyFileName) == "" {
+		if strings.ToLower(cr.Spec.DbSecret.EncryptionType) != "base64" {
+			if strings.ToLower(cr.Spec.DbSecret.KeyFileName) == "" {
 				validationErr = append(validationErr,
-					field.Invalid(field.NewPath("spec").Child("DbSecret").Child("KeyFileName"), r.Spec.DbSecret.KeyFileName,
+					field.Invalid(field.NewPath("spec").Child("DbSecret").Child("KeyFileName"), cr.Spec.DbSecret.KeyFileName,
 						"Key file name cannot be empty"))
 			}
 		}
@@ -147,45 +194,54 @@ func (r *ShardingDatabase) ValidateCreate() (admission.Warnings, error) {
 		**/
 	}
 
-	if r.Spec.IsTdeWallet == "enable" {
-		if (len(r.Spec.FssStorageClass) == 0) && (len(r.Spec.TdeWalletPvc) == 0) {
+	if cr.Spec.IsTdeWallet == "enable" {
+		if (len(cr.Spec.FssStorageClass) == 0) && (len(cr.Spec.TdeWalletPvc) == 0) {
 			validationErr = append(validationErr,
-				field.Invalid(field.NewPath("spec").Child("FssStorageClass"), r.Spec.FssStorageClass,
+				field.Invalid(field.NewPath("spec").Child("FssStorageClass"), cr.Spec.FssStorageClass,
 					"FssStorageClass or TdeWalletPvc cannot be set empty if isTdeWallet set to true"))
 
 			validationErr = append(validationErr,
-				field.Invalid(field.NewPath("spec").Child("TdeWalletPvc"), r.Spec.TdeWalletPvc,
+				field.Invalid(field.NewPath("spec").Child("TdeWalletPvc"), cr.Spec.TdeWalletPvc,
 					"FssStorageClass or TdeWalletPvc cannot be set empty if isTdeWallet set to true"))
 		}
 	}
 
-	if r.Spec.IsTdeWallet != "" {
-		if (strings.ToLower(strings.TrimSpace(r.Spec.IsTdeWallet)) != "enable") && (strings.ToLower(strings.TrimSpace(r.Spec.IsTdeWallet)) != "disable") {
+	if cr.Spec.IsTdeWallet != "" {
+		if (strings.ToLower(strings.TrimSpace(cr.Spec.IsTdeWallet)) != "enable") && (strings.ToLower(strings.TrimSpace(cr.Spec.IsTdeWallet)) != "disable") {
 			validationErr = append(validationErr,
-				field.Invalid(field.NewPath("spec").Child("isTdeWallet"), r.Spec.IsTdeWallet,
+				field.Invalid(field.NewPath("spec").Child("isTdeWallet"), cr.Spec.IsTdeWallet,
 					"isTdeWallet can be set to only \"enable\" or \"disable\""))
 		}
 	}
 
-	validationErrs1 = r.validateShardIsDelete()
+	validationErrs1 = cr.validateShardIsDelete()
 	if validationErrs1 != nil {
 		validationErr = append(validationErr, validationErrs1...)
 	}
 
-	validationErrs1 = r.validateFreeEdition()
+	validationErrs1 = cr.validateFreeEdition()
 	if validationErrs1 != nil {
 		validationErr = append(validationErr, validationErrs1...)
 	}
 
-	validationErrs1 = r.validateCatalogName()
+	validationErrs1 = cr.validateCatalogName()
 	if validationErrs1 != nil {
 		validationErr = append(validationErr, validationErrs1...)
 	}
 
-	validationErrs1 = r.validateShardName()
+	//	validationErrs1 = r.validateShardName()
+	//	if validationErrs1 != nil {
+	//		validationErr = append(validationErr, validationErrs1...)
+	//	}
+
+	validationErrs1 = cr.validateShardInfo()
 	if validationErrs1 != nil {
 		validationErr = append(validationErr, validationErrs1...)
 	}
+
+	fmt.Println("TotalShard=[" + strconv.Itoa(int(totalShard)) + "]")
+	fmt.Println("Original shard buffer len=[" + strconv.Itoa(len(cr.Spec.Shard)) + "]")
+	fmt.Println("Original shard buffer capacity=[" + strconv.Itoa(cap(cr.Spec.Shard)) + "]")
 
 	// TODO(user): fill in your validation logic upon object creation.
 	if len(validationErr) == 0 {
@@ -194,11 +250,11 @@ func (r *ShardingDatabase) ValidateCreate() (admission.Warnings, error) {
 
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
-		r.Name, validationErr)
+		cr.Name, validationErr)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
 	shardingdatabaselog.Info("validate update", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object update.
@@ -206,7 +262,7 @@ func (r *ShardingDatabase) ValidateUpdate(old runtime.Object) (admission.Warning
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateDelete() (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	shardingdatabaselog.Info("validate delete", "name", r.Name)
 
 	// TODO(user): fill in your validation logic upon object deletion.
@@ -310,5 +366,70 @@ func (r *ShardingDatabase) validateCatalogName() field.ErrorList {
 	if len(validationErrs) > 0 {
 		return validationErrs
 	}
+	return nil
+}
+
+func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
+	var validationErrs field.ErrorList
+	var replicas int32
+
+	totalShard = 0
+	for pindex := range r.Spec.ShardInfo {
+		replicas = 2
+		if r.Spec.ShardInfo[pindex].Replicas != 0 {
+			replicas = r.Spec.ShardInfo[pindex].Replicas
+		} else {
+			r.Spec.ShardInfo[pindex].Replicas = replicas
+		}
+
+		totalShard = totalShard + replicas
+		if r.Spec.ShardInfo[pindex].ShardGroupDetails != nil {
+			if r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs == "" {
+				r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs = "primary"
+			}
+			if (r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs == "primary") && (replicas > 1) {
+				validationErrs = append(validationErrs,
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("replicas"), r.Spec.ShardInfo[pindex].Replicas,
+						"Primary++ Shard Group can have only one replicas"))
+			}
+		} else {
+			if replicas > 1 {
+				validationErrs = append(validationErrs,
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("replicas"), r.Spec.ShardInfo[pindex].Replicas,
+						"Primary!! Shard Group can have only one replicas"))
+			}
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return validationErrs
+	}
+	return nil
+}
+
+func (r *ShardingDatabase) initShardsSpec() error {
+	var shardIndex int
+
+	shardIndex = 0
+	for pindex := range r.Spec.ShardInfo {
+		for i := 0; i < int(r.Spec.ShardInfo[pindex].Replicas); i++ {
+			r.Spec.Shard[shardIndex].Name = r.Spec.ShardInfo[pindex].ShardPreFixName + strconv.Itoa(shardIndex+1)
+			r.Spec.Shard[shardIndex].StorageSizeInGb = r.Spec.ShardInfo[pindex].StorageSizeInGb
+			r.Spec.Shard[shardIndex].ShardGroup = r.Spec.ShardInfo[pindex].ShardGroupDetails.ShardGroupName
+			r.Spec.Shard[shardIndex].ShardRegion = r.Spec.ShardInfo[pindex].ShardGroupDetails.Region
+			r.Spec.Shard[shardIndex].DeployAs = r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs
+			r.Spec.Shard[shardIndex].IsDelete = r.Spec.ShardInfo[pindex].ShardGroupDetails.IsDelete
+			r.Spec.Shard[shardIndex].ImagePulllPolicy = new(corev1.PullPolicy)
+			*(r.Spec.Shard[shardIndex].ImagePulllPolicy) = corev1.PullPolicy("Always")
+			fmt.Println("ShardName=[" + r.Spec.Shard[shardIndex].Name + "]")
+			if r.Spec.ShardInfo[pindex].ShardSpaceDetails != nil {
+				r.Spec.Shard[shardIndex].ShardSpace = r.Spec.ShardInfo[pindex].ShardSpaceDetails.ShardSpaceName
+			}
+
+			shardIndex++
+		}
+
+	}
+
 	return nil
 }

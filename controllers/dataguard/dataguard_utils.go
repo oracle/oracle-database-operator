@@ -545,6 +545,8 @@ func patchService(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, c
 				lbAddress = svc.Status.LoadBalancer.Ingress[0].IP
 			}
 			broker.Status.ExternalConnectString = lbAddress + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/DATAGUARD"
+		} else {
+			return errors.New("load balancer ingress IP not available")
 		}
 	} else {
 		nodeip := dbcommons.GetNodeIp(r, ctx, req)

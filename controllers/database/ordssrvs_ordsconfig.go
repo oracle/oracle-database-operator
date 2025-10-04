@@ -49,20 +49,38 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.OrdsSrvs, configMapName string, poolIndex int) *corev1.ConfigMap {
+
+	log := ctrllog.FromContext(ctx).WithName("ConfigMapDefine")
+
 	var defData map[string]string
-	if configMapName == ords.Name+"-init-script" {
+	switch configMapName {
+	case ords.Name + "-init-script":
 		// Read the file from controller's filesystem
 		filePath := "/ords_init.sh"
 		scriptData, err := os.ReadFile(filePath)
 		if err != nil {
+			log.Error(err, "Error reading /ords_init.sh")
 			return nil
 		}
+		log.Info("adding ords_init.sh")
 		defData = map[string]string{
-			"init_script.sh": string(scriptData)}
-	} else if configMapName == ords.Name+"-"+globalConfigMapName {
+			"ords_init.sh": string(scriptData)}
+	case ords.Name + "-start-script":
+		// Read the file from controller's filesystem
+		filePath := "/ords_start.sh"
+		scriptData, err := os.ReadFile(filePath)
+		if err != nil {
+			log.Error(err, "Error reading /ords_start.sh")
+			return nil
+		}
+		log.Info("adding ords_start.sh")
+		defData = map[string]string{
+			"ords_start.sh": string(scriptData)}
+	case ords.Name + "-" + globalConfigMapName:
 		// GlobalConfigMap
 		var defStandaloneAccessLog string
 		if ords.Spec.GlobalSettings.EnableStandaloneAccessLog {
@@ -78,7 +96,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.Or
 				`  <entry key="standalone.https.cert.key">` + ordsSABase + `/config/certficate/` + ords.Spec.GlobalSettings.CertSecret.CertificateKey + `</entry>` + "\n"
 		}
 		defData = map[string]string{
-			"settings.xml": fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
+			"settings.xml": fmt.Sprint(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
 				`<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">` + "\n" +
 				`<properties>` + "\n" +
 				conditionalEntry("cache.metadata.graphql.expireAfterAccess", ords.Spec.GlobalSettings.CacheMetadataGraphQLExpireAfterAccess) +
@@ -139,7 +157,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.Or
 				`java.util.logging.FileHandler.pattern = ` + ordsSABase + `/log/global/debug.log` + "\n" +
 				`java.util.logging.FileHandler.formatter = java.util.logging.SimpleFormatter`),
 		}
-	} else {
+	default:
 		// PoolConfigMap
 		poolName := strings.ToLower(ords.Spec.PoolSettings[poolIndex].PoolName)
 		var defDBNetworkPath string
@@ -150,7 +168,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.Or
 			defDBNetworkPath = `  <entry key="db.tnsDirectory">` + ordsSABase + `/config/databases/` + poolName + `/network/admin/</entry>` + "\n"
 		}
 		defData = map[string]string{
-			"pool.xml": fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
+			"pool.xml": fmt.Sprint(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
 				`<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">` + "\n" +
 				`<properties>` + "\n" +
 				`  <entry key="db.username">` + ords.Spec.PoolSettings[poolIndex].DBUsername + `</entry>` + "\n" +

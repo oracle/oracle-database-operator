@@ -1,0 +1,453 @@
+#### Status before the ASM Disk deletion
+
+$ kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
+Name:         oraclerestart-sample
+Namespace:    orestart
+Labels:       <none>
+Annotations:  OracleRestarts.database.oracle.com/old-spec:
+                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"nodePortSvc":[{"name":"dbmc1-service-nod...
+API Version:  database.oracle.com/v4
+Kind:         OracleRestart
+Metadata:
+  Creation Timestamp:  2025-08-21T15:36:59Z
+  Finalizers:
+    database.oracle.com/oraclerestartfinalizer
+  Generation:        1
+  Resource Version:  225402792
+  UID:               872a653b-2751-475d-848e-b0d2af5504b6
+Spec:
+  Asm Storage Details:
+    Disks By Size:
+      Disk Names:
+        /dev/disk/by-partlabel/asm-disk1
+        /dev/disk/by-partlabel/asm-disk2
+      Storage Size In Gb:  50
+  Config Params:
+    Cpu Count:                   4
+    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
+    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Char Set:                 AL32UTF8
+    Db Data File Dest Dg:        +DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       +DATA
+    Db Response File:
+    Db Sw Zip File:  db_home.zip
+    Grid Base:       /u01/app/grid
+    Grid Home:       /u01/app/19c/grid
+    Grid Response File:
+    Grid Sw Zip File:        grid_home.zip
+    Host Sw Stage Location:  /scratch/software/stage
+    Inventory:               /u01/app/oraInventory
+    Pga Size:                1G
+    Processes:               2000
+    Sga Size:                3G
+    Sw Mount Location:       /u01
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image Pull Policy:          Always
+  Inst Details:
+    Host Sw Location:  /scratch/orestart/
+    Name:              dbmc1
+    Node Port Svc:
+      Name:      dbmc1-service-nodeport
+      Svc Type:  nodeport
+    Port Mappings:
+      Node Port:    30007
+      Port:         1521
+      Protocol:     TCP
+      Target Port:  1521
+    Worker Node:
+      10.0.10.58
+  Resources:
+    Limits:
+      Cpu:     2
+      Memory:  16Gi
+    Requests:
+      Cpu:     2
+      Memory:  16Gi
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmall
+      Value:  2097152
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmax
+      Value:  8589934592
+      Name:   kernel.shmmni
+      Value:  4096
+  Service Details:
+    Name:  soepdb
+  Ssh Key Secret:
+    Key Mount Location:    /mnt/.ssh
+    Name:                  ssh-key-secret
+    Priv Key Secret Name:  ssh-privkey
+    Pub Key Secret Name:   ssh-pubkey
+Status:
+  Oracle Restart Nodes:
+    Name:  dbmc1-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/asm-disk1
+        /dev/disk/by-partlabel/asm-disk2
+      State:  AVAILABLE
+  Asm Details:
+    Diskgroup:
+      Disks:
+        /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
+      Name:        DATA
+      Redundancy:  EXTERN
+  Conditions:
+    Last Transition Time:  2025-08-21T15:49:46Z
+    Message:               oracle restart database is in a restricted state: PROVISIONING
+    Observed Generation:   1
+    Reason:                LastReconcileCycleQueued
+    Status:                True
+    Type:                  ReconcileQueued
+    Last Transition Time:  2025-08-21T16:21:04Z
+    Message:               no reconcile errors
+    Observed Generation:   1
+    Reason:                LastReconcileCycleCompleted
+    Status:                True
+    Type:                  ReconcileComplete
+  Config Params:
+    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
+    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Data File Dest Dg:        +DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       +DATA
+    Db Response File:
+    Grid Base:  /u01/app/grid
+    Grid Home:  /u01/app/19c/grid
+    Grid Response File:
+    Inventory:     /u01/app/oraInventory
+  Connect String:  dbmc1-0:1521/PORCLCDB
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Db State:                   OPEN
+  External Connect String:    129.146.0.149:30007/soepdb
+  Inst Details:
+    Name:
+  Pdb Connect String:  dbmc1-0:1521/ORCLPDB
+  Release Update:      19.28.0.0.0
+  Role:                PRIMARY
+  Service Details:
+    Name:       soepdb
+    Svc State:  service soepdb is running
+  State:        AVAILABLE
+Events:         <none>
+
+
+[grid@dbmc1-0 ~]$ export ORACLE_SID=+ASM
+[grid@dbmc1-0 ~]$ asmcmd lsdsk
+Path
+/dev/disk/by-partlabel/asm-disk1
+/dev/disk/by-partlabel/asm-disk2
+
+[grid@dbmc1-0 ~]$ ls -lrt /dev/disk/by-partlabel/asm-disk*
+brw-rw----. 1 grid asmadmin 8, 33 Aug 21 16:21 /dev/disk/by-partlabel/asm-disk2
+brw-rw----. 1 grid asmadmin 8, 49 Aug 21 16:21 /dev/disk/by-partlabel/asm-disk1
+
+
+### Drop the disk the ASM Level using "ALTER DISKGROUP DROP DISK" command as below:
+
+[grid@dbmc1-0 ~]$ sqlplus "/ as sysasm"
+
+SQL*Plus: Release 19.0.0.0.0 - Production on Thu Aug 21 16:23:43 2025
+Version 19.28.0.0.0
+
+Copyright (c) 1982, 2025, Oracle.  All rights reserved.
+
+
+Connected to:
+Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production
+Version 19.28.0.0.0
+
+SQL> set lines 200
+SQL> col path format a50
+SQL> select group_number, disk_number, name, total_mb, free_mb, path from v$asm_disk;
+
+GROUP_NUMBER DISK_NUMBER NAME				  TOTAL_MB    FREE_MB PATH
+------------ ----------- ------------------------------ ---------- ---------- --------------------------------------------------
+	   1	       1 DATA_0001			     51196	46452 /dev/disk/by-partlabel/asm-disk2
+	   1	       0 DATA_0000			     51196	46464 /dev/disk/by-partlabel/asm-disk1
+
+SQL> ALTER DISKGROUP DATA DROP DISK 'DATA_0001' REBALANCE POWER 10;
+
+Diskgroup altered.
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  0	  1183	       10	 122
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  0	  1183	       10	 723
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+no rows selected
+
+SQL> select group_number, disk_number, name, total_mb, free_mb, path from v$asm_disk;
+
+GROUP_NUMBER DISK_NUMBER NAME				  TOTAL_MB    FREE_MB PATH
+------------ ----------- ------------------------------ ---------- ---------- --------------------------------------------------
+	   0	       0					 0	    0 /dev/disk/by-partlabel/asm-disk2
+	   1	       0 DATA_0000			     51196	41732 /dev/disk/by-partlabel/asm-disk1
+
+
+### Apply the file "orestart_prov_asm_disk_deletion.yaml" to delete an exising ASM Disk
+
+$ kubectl logs -f pod/oracle-database-operator-controller-manager-bc8dd8f68-pwfdk -n oracle-database-operator-system
+.
+.
+2025-08-21T16:31:12Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
+2025-08-21T16:31:12Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
+2025-08-21T16:31:12Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
+2025-08-21T16:31:12Z	INFO	controllers.OracleRestart	Updating existing configmap
+2025-08-21T16:31:12Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
+2025-08-21T16:31:15Z	INFO	controllers.OracleRestart	Change State to UPDATING
+2025-08-21T16:31:15Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
+2025-08-21T16:31:15Z	INFO	controllers.OracleRestart	StatefulSet spec differs for volume devices, updating StatefulSet (pods may be recreated)	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
+2025-08-21T16:31:15Z	INFO	controllers.OracleRestart	StatefulSet update applied, waiting for pod recreation	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
+2025-08-21T16:31:15Z	INFO	controllers.OracleRestart	StatefulSet update is applied successfully	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
+
+
+2025-08-21T16:32:15Z	INFO	controllers.OracleRestart	All Pods are running	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
+2025-08-21T16:32:30Z	INFO	controllers.OracleRestart	Pod is not ready yet	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
+2025-08-21T16:33:00Z	INFO	controllers.OracleRestart	Pod is not ready yet	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
+2025-08-21T16:33:30Z	INFO	controllers.OracleRestart	Pod is not ready yet	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
+2025-08-21T16:34:00Z	INFO	controllers.OracleRestart	Pod is not ready yet	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
+2025-08-21T16:34:30Z	INFO	controllers.OracleRestart	Pod is ready	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
+2025-08-21T16:34:30Z	INFO	controllers.OracleRestart	Successfully deleted PVC	{"PVC.Name": "asm-pvc-disk-1-oraclerestart-sample"}
+2025-08-21T16:34:30Z	INFO	controllers.OracleRestart	Successfully deleted PV	{"PV.Name": "asm-pv-disk-1-oraclerestart-sample"}
+2025-08-21T16:34:30Z	INFO	OracleRestart-resource	validate update	{"name": "oraclerestart-sample"}
+2025-08-21T16:34:30Z	INFO	OracleRestart-resource	validate create	{"name": "oraclerestart-sample"}
+2025-08-21T16:34:30Z	INFO	controllers.OracleRestart	Oracle Restart Object annotations updated with current spec annotation
+2025-08-21T16:34:30Z	INFO	controllers.OracleRestart	Reconcile completed. Requeuing....
+2025-08-21T16:34:42Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
+2025-08-21T16:34:42Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status successfully	{"Instance": "oraclerestart-sample"}
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Returning from updateReconcileStatus
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Reconcile requested
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Entering reconcile validation
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Completed reconcile validation
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
+2025-08-21T16:35:01Z	INFO	OracleRestart-resource	validate update	{"name": "oraclerestart-sample"}
+2025-08-21T16:35:01Z	INFO	OracleRestart-resource	validate create	{"name": "oraclerestart-sample"}
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Oracle Restart Object annotations updated with current spec annotation
+2025-08-21T16:35:01Z	INFO	controllers.OracleRestart	Reconcile completed. Requeuing....
+2025-08-21T16:35:12Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
+2025-08-21T16:35:12Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status successfully	{"Instance": "oraclerestart-sample"}
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Returning from updateReconcileStatus
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Reconcile requested
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Entering reconcile validation
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Completed reconcile validation
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Annotations are already up to date. Skipping update.
+2025-08-21T16:35:31Z	INFO	controllers.OracleRestart	Reconcile completed. Requeuing....
+2025-08-21T16:35:42Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
+2025-08-21T16:35:42Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
+
+
+
+###############################################################
+### During this operation, the "pod/dbmc1-0" will be recreated
+###############################################################
+
+
+
+### Status after the Disk removed:
+
+$ kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
+Name:         oraclerestart-sample
+Namespace:    orestart
+Labels:       <none>
+Annotations:  OracleRestarts.database.oracle.com/old-spec:
+                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"nodePortSvc":[{"name":"dbmc1-service-nod...
+API Version:  database.oracle.com/v4
+Kind:         OracleRestart
+Metadata:
+  Creation Timestamp:  2025-08-21T15:36:59Z
+  Finalizers:
+    database.oracle.com/oraclerestartfinalizer
+  Generation:        2
+  Resource Version:  225407022
+  UID:               872a653b-2751-475d-848e-b0d2af5504b6
+Spec:
+  Asm Storage Details:
+    Disks By Size:
+      Disk Names:
+        /dev/disk/by-partlabel/asm-disk1
+      Storage Size In Gb:  50
+  Config Params:
+    Cpu Count:                   4
+    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1
+    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Char Set:                 AL32UTF8
+    Db Data File Dest Dg:        +DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       +DATA
+    Db Response File:
+    Db Sw Zip File:  db_home.zip
+    Grid Base:       /u01/app/grid
+    Grid Home:       /u01/app/19c/grid
+    Grid Response File:
+    Grid Sw Zip File:        grid_home.zip
+    Host Sw Stage Location:  /scratch/software/stage
+    Inventory:               /u01/app/oraInventory
+    Pga Size:                1G
+    Processes:               2000
+    Sga Size:                3G
+    Sw Mount Location:       /u01
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image Pull Policy:          Always
+  Inst Details:
+    Host Sw Location:  /scratch/orestart/
+    Name:              dbmc1
+    Node Port Svc:
+      Name:      dbmc1-service-nodeport
+      Svc Type:  nodeport
+    Port Mappings:
+      Node Port:    30007
+      Port:         1521
+      Protocol:     TCP
+      Target Port:  1521
+    Worker Node:
+      10.0.10.58
+  Resources:
+    Limits:
+      Cpu:     2
+      Memory:  16Gi
+    Requests:
+      Cpu:     2
+      Memory:  16Gi
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmall
+      Value:  2097152
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmax
+      Value:  8589934592
+      Name:   kernel.shmmni
+      Value:  4096
+  Service Details:
+    Name:  soepdb
+  Ssh Key Secret:
+    Key Mount Location:    /mnt/.ssh
+    Name:                  ssh-key-secret
+    Priv Key Secret Name:  ssh-privkey
+    Pub Key Secret Name:   ssh-pubkey
+Status:
+  Oracle Restart Nodes:
+    Name:  dbmc1-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       PODAVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/asm-disk1
+      State:  AVAILABLE
+  Asm Details:
+    Diskgroup:
+      Disks:
+        /dev/disk/by-partlabel/asm-disk1
+      Name:        DATA
+      Redundancy:  EXTERN
+  Conditions:
+    Last Transition Time:  2025-08-21T15:49:46Z
+    Message:               oracle restart database is in a restricted state: PROVISIONING
+    Observed Generation:   1
+    Reason:                LastReconcileCycleQueued
+    Status:                True
+    Type:                  ReconcileQueued
+    Last Transition Time:  2025-08-21T16:35:01Z
+    Message:               no reconcile errors
+    Observed Generation:   2
+    Reason:                LastReconcileCycleCompleted
+    Status:                True
+    Type:                  ReconcileComplete
+  Config Params:
+    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1
+    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Data File Dest Dg:        +DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       +DATA
+    Db Response File:
+    Grid Base:  /u01/app/grid
+    Grid Home:  /u01/app/19c/grid
+    Grid Response File:
+    Inventory:     /u01/app/oraInventory
+  Connect String:  dbmc1-0:1521/PORCLCDB
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Db State:                   OPEN
+  External Connect String:    129.146.0.149:30007/soepdb
+  Inst Details:
+    Name:
+  Pdb Connect String:  dbmc1-0:1521/ORCLPDB
+  Release Update:      19.28.0.0.0
+  Role:                PRIMARY
+  Service Details:
+    Name:       soepdb
+    Svc State:  service soepdb is running
+  State:        AVAILABLE
+Events:         <none>
+
+
+
+[grid@dbmc1-0 ~]$ export ORACLE_SID=+ASM
+[grid@dbmc1-0 ~]$ asmcmd lsdsk
+Path
+/dev/disk/by-partlabel/asm-disk1
+
+
+[grid@dbmc1-0 ~]$ ls -lrt /dev/disk/by-partlabel/asm-disk*
+brw-rw----. 1 grid asmadmin 8, 49 Aug 21 16:36 /dev/disk/by-partlabel/asm-disk1

@@ -41,6 +41,8 @@ package controllers
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -54,7 +56,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
 
 	api "github.com/oracle/oracle-database-operator/apis/observability/v4"
 	constants "github.com/oracle/oracle-database-operator/commons/observability"
@@ -197,7 +198,7 @@ func (r *DatabaseObserverReconciler) initialize(ctx context.Context, a *api.Data
 		})
 
 		a.Status.Status = string(constants.StatusObservabilityPending)
-		a.Status.ExporterConfig = constants.UnknownValue
+		a.Status.MetricsConfig = constants.UnknownValue
 		a.Status.Version = constants.UnknownValue
 		if e := r.Status().Update(ctx, a); e != nil {
 			r.Log.WithName(constants.LogReconcile).Error(e, constants.ErrorStatusUpdate)
@@ -212,42 +213,74 @@ func (r *DatabaseObserverReconciler) initialize(ctx context.Context, a *api.Data
 // validateSpecs method checks the values and secrets passed in the spec
 func (r *DatabaseObserverReconciler) validateSpecs(a *api.DatabaseObserver) error {
 
-	// If either Vault Fields are empty, then assume a DBPassword secret is supplied. If the DBPassword secret not found, then error out
-	if a.Spec.Database.DBPassword.VaultOCID == "" || a.Spec.Database.DBPassword.VaultSecretName == "" {
-		dbSecret := &corev1.Secret{}
-		if e := r.Get(context.TODO(), types.NamespacedName{Name: a.Spec.Database.DBPassword.SecretName, Namespace: a.Namespace}, dbSecret); e != nil {
-			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPasswordSecretMissing)
+	// if Database Wallet is defined, validate resource
+
+	// if Sidecar volumes set, validate volumeSource
+
+	// if Custom Exporter is defined, validate resource
+	if exporterConfig := a.Spec.ExporterConfig.ConfigMap.Name; exporterConfig != "" {
+		configMap := &corev1.ConfigMap{}
+		resource := types.NamespacedName{Name: exporterConfig, Namespace: a.Namespace}
+
+		if e := r.Get(context.TODO(), resource, configMap); e != nil {
+			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorConfigMapSpecifiedMissing)
 			return e
 		}
 	}
 
+	// if metrics custom is set, check configMaps
+	for _, cm := range a.Spec.Metrics.Configmap {
+		configMap := &corev1.ConfigMap{}
+		resource := types.NamespacedName{Name: cm.Name, Namespace: a.Namespace}
+
+		if e := r.Get(context.TODO(), resource, configMap); e != nil {
+			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorConfigMapSpecifiedMissing)
+			return e
+		}
+	}
+
+	checked := map[string]bool{}
 	// Does DB Connection String Secret Name actually exist
-	dbConnectSecret := &corev1.Secret{}
-	if e := r.Get(context.TODO(), types.NamespacedName{Name: a.Spec.Database.DBConnectionString.SecretName, Namespace: a.Namespace}, dbConnectSecret); e != nil {
-		r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBConnectionStringSecretMissing)
-		return e
+	if connectionString := a.Spec.Database.DBConnectionString.SecretName; connectionString != "" {
+		secret := &corev1.Secret{}
+		resource := types.NamespacedName{Name: connectionString, Namespace: a.Namespace}
+
+		if e := r.Get(context.TODO(), resource, secret); e != nil {
+			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBConnectionStringSecretMissing)
+			return e
+		}
+		checked[connectionString] = true
 	}
 
 	// Does DB User String Secret Name actually exist
-	dbUserSecret := &corev1.Secret{}
-	if e := r.Get(context.TODO(), types.NamespacedName{Name: a.Spec.Database.DBUser.SecretName, Namespace: a.Namespace}, dbUserSecret); e != nil {
-		r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPUserSecretMissing)
-		return e
-	}
+	if usernameString := a.Spec.Database.DBUser.SecretName; usernameString != "" && !checked[usernameString] {
+		secret := &corev1.Secret{}
+		resource := types.NamespacedName{Name: usernameString, Namespace: a.Namespace}
 
-	// Does a custom configuration configmap actually exist, if provided
-	if configurationCMName := a.Spec.ExporterConfig.Configmap.Name; configurationCMName != "" {
-		configurationCM := &corev1.ConfigMap{}
-		if e := r.Get(context.TODO(), types.NamespacedName{Name: configurationCMName, Namespace: a.Namespace}, configurationCM); e != nil {
-			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorConfigmapMissing)
+		if e := r.Get(context.TODO(), resource, secret); e != nil {
+			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPUserSecretMissing)
 			return e
 		}
+		checked[usernameString] = true
+	}
+
+	// Does DB Password String Secret Name actually exist
+	if passwordString := a.Spec.Database.DBPassword.SecretName; passwordString != "" && !checked[passwordString] {
+		secret := &corev1.Secret{}
+		resource := types.NamespacedName{Name: passwordString, Namespace: a.Namespace}
+
+		if e := r.Get(context.TODO(), resource, secret); e != nil {
+			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBPwdSecretMissing)
+			return e
+		}
+		checked[passwordString] = true
 	}
 
 	// Does DBWallet actually exist, if provided
-	if dbWalletSecretName := a.Spec.Database.DBWallet.SecretName; dbWalletSecretName != "" {
-		dbWalletSecret := &corev1.Secret{}
-		if e := r.Get(context.TODO(), types.NamespacedName{Name: dbWalletSecretName, Namespace: a.Namespace}, dbWalletSecret); e != nil {
+	if walletString := a.Spec.Wallet.SecretName; walletString != "" {
+		secret := &corev1.Secret{}
+		resource := types.NamespacedName{Name: walletString, Namespace: a.Namespace}
+		if e := r.Get(context.TODO(), resource, secret); e != nil {
 			r.Recorder.Event(a, corev1.EventTypeWarning, constants.EventReasonSpecError, constants.EventMessageSpecErrorDBWalletSecretMissing)
 			return e
 		}
@@ -446,7 +479,7 @@ func (r *DatabaseObserverReconciler) validateDeploymentReadiness(a *api.Database
 		Message: constants.MessageExporterDeploymentSuccessful,
 	})
 	a.Status.Version = constants.GetExporterVersion(a)
-	a.Status.ExporterConfig = constants.GetExporterConfig(a)
+	a.Status.MetricsConfig = constants.GetMetricsConfig(a)
 	return ctrl.Result{}, nil
 }
 

@@ -42,6 +42,7 @@ import (
 	"context"
 	"reflect"
 	"strconv"
+	"strings"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
@@ -50,6 +51,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -138,11 +141,14 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 	group := oraFsGroup
 	spec := &corev1.PodSpec{
 		SecurityContext: &corev1.PodSecurityContext{
-			RunAsUser: &user,
-			FSGroup:   &group,
+			RunAsNonRoot: BoolPointer(true),
+			RunAsUser:    &user,
+			RunAsGroup:   &group,
+			FSGroup:      &group,
 		},
-		Containers: buildContainerSpecForShard(instance, OraShardSpex),
-		Volumes:    buildVolumeSpecForShard(instance, OraShardSpex),
+		Containers:         buildContainerSpecForShard(instance, OraShardSpex),
+		Volumes:            buildVolumeSpecForShard(instance, OraShardSpex),
+		ServiceAccountName: instance.Spec.SrvAccountName,
 	}
 
 	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
@@ -187,6 +193,10 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 		},
 	}
 
+	if OraShardSpex.ShardConfigData != nil && len(OraShardSpex.ShardConfigData.Name) != 0 {
+		result = append(result, corev1.Volume{Name: OraShardSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraShardSpex.ShardConfigData.Name}}}})
+	}
+
 	if len(OraShardSpex.PvcName) != 0 {
 		result = append(result, corev1.Volume{Name: OraShardSpex.Name + "oradata-vol4", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OraShardSpex.PvcName}}})
 	}
@@ -211,12 +221,19 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Container {
 	// building Continer spec
 	var result []corev1.Container
+	user := oraRunAsUser
+	group := oraFsGroup
 	containerSpec := corev1.Container{
 		Name:  OraShardSpex.Name,
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot:             BoolPointer(true),
+			RunAsUser:                &user,
+			RunAsGroup:               &group,
+			AllowPrivilegeEscalation: BoolPointer(false),
 			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
+				Add:  []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
+				Drop: []corev1.Capability{"ALL"},
 			},
 		},
 		Resources: corev1.ResourceRequirements{
@@ -304,8 +321,13 @@ func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraSh
 		Name:  OraShardSpex.Name + "-init1",
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
-			Privileged: &privFlag,
-			RunAsUser:  &uid,
+			RunAsNonRoot:             BoolPointer(true),
+			AllowPrivilegeEscalation: BoolPointer(false),
+			Privileged:               &privFlag,
+			RunAsUser:                &uid,
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
 		},
 		Command: []string{
 			"/bin/bash",
@@ -333,6 +355,10 @@ func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShar
 		result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})
 	}
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "oradshm-vol6", MountPath: oraShm})
+
+	if OraShardSpex.ShardConfigData != nil && len(OraShardSpex.ShardConfigData.Name) != 0 {
+		result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "-oradata-configdata", MountPath: OraShardSpex.ShardConfigData.MountPath})
+	}
 
 	if len(instance.Spec.StagePvcName) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "orastage-vol7", MountPath: oraStage})
@@ -509,4 +535,22 @@ func UpdateProvForShard(instance *databasev4.ShardingDatabase, OraShardSpex data
 
 	}
 	return ctrl.Result{}, nil
+}
+
+func ImportTDEKey(podName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) error {
+	var msg string
+
+	msg = ""
+	_, _, err := ExecCommand(podName, getImportTDEKeyCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	if err != nil {
+		msg = "Error executing getImportTDEKeyCmd : podName=[" + podName + "]. errMsg=" + err.Error()
+		LogMessages("INFO", msg, nil, instance, logger)
+		return err
+	}
+
+	importArr := getImportTDEKeyCmd(sparams)
+	importCmd := strings.Join(importArr, " ")
+	msg = "Executed getImportTDEKeyCmd[" + importCmd + "] on pod " + podName
+	LogMessages("INFO", msg, nil, instance, logger)
+	return nil
 }

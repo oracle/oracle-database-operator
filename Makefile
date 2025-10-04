@@ -4,7 +4,7 @@
 #
 
 # Current Operator version
-VERSION ?= 0.0.1
+VERSION ?= 2.0
 # Default bundle image tag
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
 # Options for 'bundle-build'
@@ -23,7 +23,7 @@ IMG ?= controller:latest
 # https://github.com/kubernetes-sigs/kubebuilder/issues/1140 
 CRD_OPTIONS ?= "crd:maxDescLen=0,allowDangerousTypes=true"
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.29.0
+ENVTEST_K8S_VERSION = 1.31.0
 # Operator YAML file
 OPERATOR_YAML=$$(basename $$(pwd)).yaml
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
@@ -70,12 +70,14 @@ build: generate fmt vet ## Build manager binary.
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
  
-GOLANG_VERSION ?= 1.23.3
+GOLANG_VERSION ?= 1.25.1
+DOCKER ?= podman
 ## Download golang in the Dockerfile if BUILD_INTERNAL is set to true.
 ## Otherwise, use golang image from docker hub as the builder.
 ifeq ($(BUILD_INTERNAL), true)
 BUILDER_IMG = oraclelinux:9
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg GOLANG_VERSION=$(GOLANG_VERSION) --build-arg INSTALL_GO=true
+DOCKER = podman
 else
 BUILDER_IMG = golang:$(GOLANG_VERSION)
 BUILD_ARGS = --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg INSTALL_GO="false" --build-arg GOLANG_VERSION=$(GOLANG_VERSION)
@@ -86,18 +88,18 @@ PUSH_ARGS := manifest
 else
 BUILD_ARGS := $(BUILD_ARGS) --platform=linux/amd64 --tag
 endif
-docker-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
-	docker build --no-cache=true --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
+image-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
+	$(DOCKER) build --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
                      --build-arg CI_COMMIT_SHA=$(CI_COMMIT_SHA) --build-arg CI_COMMIT_BRANCH=$(CI_COMMIT_BRANCH) \
                      $(BUILD_ARGS) $(IMG) .
- 
-docker-push: ## Push docker image with the manager.
-	docker $(PUSH_ARGS) push $(IMG)
+
+image-push: ## Push docker image with the manager.
+	$(DOCKER) $(PUSH_ARGS) push $(IMG)
 
 # Push to minikube's local registry enabled by registry add-on
 minikube-push:
-	docker tag $(IMG) $$(minikube ip):5000/$(IMG)
-	docker push --tls-verify=false $$(minikube ip):5000/$(IMG)
+	$(DOCKER) tag $(IMG) $$(minikube ip):5000/$(IMG)
+	$(DOCKER) push --tls-verify=false $$(minikube ip):5000/$(IMG)
 
 ##@ Deployment
  
@@ -122,7 +124,7 @@ operator-yaml: manifests kustomize
 	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "$(OPERATOR_YAML)"
 	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_YAML).bak")  >>  "$(OPERATOR_YAML)"
 	rm "$(OPERATOR_YAML).bak"
-
+	
 minikube-operator-yaml: IMG:=localhost:5000/$(IMG)
 minikube-operator-yaml: operator-yaml
 	sed -i.bak 's/\(replicas.\) 3/\1 1/g' "$(OPERATOR_YAML)"
@@ -144,8 +146,8 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
  
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.3.0
-CONTROLLER_TOOLS_VERSION ?= v0.16.5
+KUSTOMIZE_VERSION ?= v5.7.1
+CONTROLLER_TOOLS_VERSION ?= v0.17
  
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
@@ -173,11 +175,11 @@ bundle: manifests kustomize ## Generate bundle manifests and metadata, then vali
  
 .PHONY: bundle-build
 bundle-build: ## Build the bundle image.
-	docker build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	$(DOCKER) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
  
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
-	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
+	$(MAKE) image-push IMG=$(BUNDLE_IMG)
  
 .PHONY: opm
 OPM = ./bin/opm
@@ -218,4 +220,4 @@ catalog-build: opm ## Build a catalog image.
 # Push the catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
-	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+	$(MAKE) image-push IMG=$(CATALOG_IMG)

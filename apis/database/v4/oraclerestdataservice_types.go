@@ -126,6 +126,7 @@ type OracleRestDataServiceStatus struct {
 }
 
 //+kubebuilder:object:root=true
+// +kubebuilder:resource:shortName=ords
 //+kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type="string"
 // +kubebuilder:printcolumn:JSONPath=".spec.databaseRef",name="Database",type="string"

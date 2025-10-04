@@ -1,0 +1,24 @@
+# example
+apiVersion: observability.oracle.com/v4
+kind: DatabaseObserver
+metadata:
+  name: obs-sample
+spec:
+  database:
+    dbConnectionString:
+      secret: db-secret
+    azure:
+      vaultID: "..."
+      vaultUsernameSecret: sample_un_secret
+      vaultPasswordSecret: sample_pwd_secret
+
+  wallet:
+    secret: instance-wallet
+
+  serviceMonitor:
+    labels:
+      release: prometheus
+
+  azureConfig:
+    configMap:
+      name: azure-cred

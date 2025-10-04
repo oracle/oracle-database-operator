@@ -6,21 +6,18 @@ metadata:
 spec:
   database:
     dbUser:
-      key: "username"
       secret: db-secret
 
     dbPassword:
-      key: "password"
       secret: db-secret
 
     dbConnectionString:
-      key: "connection"
       secret: db-secret
 
-    dbWallet:
-      secret: instance-wallets
+  wallet:
+    secret: instance-wallet
 
-  prometheus:
-    serviceMonitor:
-      labels:
-        release: prometheus
+
+  serviceMonitor:
+    labels:
+      release: prometheus

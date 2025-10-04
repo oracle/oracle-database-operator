@@ -1,0 +1,193 @@
+$ kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
+Name:         oraclerestart-sample
+Namespace:    orestart
+Labels:       <none>
+Annotations:  OracleRestarts.database.oracle.com/old-spec:
+                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":400,"workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","value":"tru...
+API Version:  database.oracle.com/v4
+Kind:         OracleRestart
+Metadata:
+  Creation Timestamp:  2025-09-10T23:21:18Z
+  Finalizers:
+    database.oracle.com/oraclerestartfinalizer
+  Generation:        2
+  Resource Version:  234059474
+  UID:               0525c7ac-e02f-4471-8e96-40cd5d4645ff
+Spec:
+  Asm Storage Details:
+    Disks By Size:
+      Disk Names:
+        /dev/asm-disk1
+        /dev/asm-disk2
+      Storage Size In Gb:  50
+  Config Params:
+    Cpu Count:                   4
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
+    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Char Set:                 AL32UTF8
+    Db Data File Dest Dg:        +DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       +DATA
+    Db Response File:
+    Db Sw Zip File:  db_home.zip
+    Grid Base:       /u01/app/grid
+    Grid Home:       /u01/app/19c/grid
+    Grid Response File:
+    Grid Sw Zip File:        grid_home.zip
+    Host Sw Stage Location:  /scratch/software/stage
+    Inventory:               /u01/app/oraInventory
+    Pga Size:                1G
+    Processes:               2000
+    Sga Size:                3G
+    Sw Mount Location:       /u01
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Enable Ons:                 enable
+  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image Pull Policy:          IfNotPresent
+  Inst Details:
+    Env Vars:
+      Name:                     IGNORE_CRS_PREREQS
+      Value:                    true
+      Name:                     IGNORE_DB_PREREQS
+      Value:                    true
+    Name:                       dbmc1
+    Sw Loc Storage Size In Gb:  400
+    Worker Node:
+      10.0.10.58
+  Lb Service:
+  Node Port Svc:
+    Name:  dbmc1-service-nodeport
+    Port Mappings:
+      Node Port:    30007
+      Port:         1521
+      Protocol:     TCP
+      Target Port:  1521
+      Node Port:    30200
+      Port:         6200
+      Protocol:     TCP
+      Target Port:  6200
+    Svc Type:       nodeport
+  Resources:
+    Limits:
+      Cpu:     2
+      Memory:  16Gi
+    Requests:
+      Cpu:     2
+      Memory:  16Gi
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmall
+      Value:  2097152
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmax
+      Value:  8589934592
+      Name:   kernel.shmmni
+      Value:  4096
+  Service Details:
+    Name:  soepdb
+  Ssh Key Secret:
+    Key Mount Location:    /mnt/.ssh
+    Name:                  ssh-key-secret
+    Priv Key Secret Name:  ssh-privkey
+    Pub Key Secret Name:   ssh-pubkey
+  Storage Class:           oci-bv
+Status:
+  Oracle Restart Nodes:
+    Name:  dbmc1-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/asm-disk1
+        /dev/asm-disk2
+      State:  AVAILABLE
+  Asm Details:
+    Diskgroup:
+      Disks:
+        /dev/asm-disk1,/dev/asm-disk2
+      Name:        DATA
+      Redundancy:  EXTERN
+  Conditions:
+    Last Transition Time:  2025-09-10T23:34:06Z
+    Message:               reconcile has been queued
+    Observed Generation:   1
+    Reason:                LastReconcileCycleQueued
+    Status:                True
+    Type:                  ReconcileQueued
+    Last Transition Time:  2025-09-10T23:49:53Z
+    Message:               reconcile completed successfully
+    Observed Generation:   2
+    Reason:                LastReconcileCycleCompleted
+    Status:                True
+    Type:                  ReconcileComplete
+  Config Params:
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
+    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Data File Dest Dg:        +DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       +DATA
+    Db Response File:
+    Grid Base:  /u01/app/grid
+    Grid Home:  /u01/app/19c/grid
+    Grid Response File:
+    Inventory:     /u01/app/oraInventory
+  Connect String:  dbmc1-0:1521/PORCLCDB
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Db State:                   OPEN
+  External Connect String:    Pending
+  Pdb Connect String:         dbmc1-0:1521/ORCLPDB
+  Release Update:             19.28.0.0.0
+  Role:                       PRIMARY
+  Service Details:
+    Name:       soepdb
+    Svc State:  service soepdb is running
+  State:        AVAILABLE
+Events:         <none>
+
+
+$ kubectl get pvc -n orestart
+NAME                                  STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      VOLUMEATTRIBUTESCLASS   AGE
+asm-pvc-disk-0-oraclerestart-sample   Bound    csi-851752b8-35e7-4117-a054-0fde0cd78fb6   50Gi       RWO            oci-bv            <unset>                 29m
+asm-pvc-disk-1-oraclerestart-sample   Bound    csi-51633544-2e93-4067-a93d-4ba66da7117e   50Gi       RWO            oci-bv            <unset>                 29m
+dbmc1-oradata-sw-vol-pvc-dbmc1-0      Bound    csi-8b07994d-166f-459d-ac4f-17a4fe52d69b   400Gi      RWO            oci-bv            <unset>                 29m
+
+
+
+[root@dbmc1-0 rac-work-dir]# df -h
+Filesystem                  Size  Used Avail Use% Mounted on
+overlay                     489G   25G  465G   6% /
+tmpfs                        64M     0   64M   0% /dev
+tmpfs                        46G     0   46G   0% /sys/fs/cgroup
+tmpfs                        45G  4.1G   41G   9% /etc/hostname
+tmpfs                        46G  112K   46G   1% /run
+/dev/sdn                    393G   14G  380G   4% /u01
+tmpfs                        83G  8.0K   83G   1% /mnt/.ssh
+tmpfs                        83G  8.0K   83G   1% /mnt/.dbsecrets
+tmpfs                        83G  1.1G   82G   2% /dev/shm
+/dev/mapper/ocivolume-root  489G   25G  465G   6% /etc/hosts
+/dev/sdb1                   196G   31G  156G  17% /scratch/software/stage
+tmpfs                        46G     0   46G   0% /run/lock
+tmpfs                        46G   12M   46G   1% /tmp
+tmpfs                        46G   32M   46G   1% /var/log/journal
+tmpfs                        46G     0   46G   0% /proc/acpi
+tmpfs                        46G     0   46G   0% /proc/scsi
+tmpfs                        46G     0   46G   0% /sys/firmware
+tmpfs                        46G     0   46G   0% /sys/fs/selinux

@@ -16,17 +16,14 @@ export CONN_STRING=<database host ip or scan>:<port>/<service_name>
 
 ```bash
 DB_PWD=<specify password here>
-
 openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM -pubout -out public.pem
 kubectl create secret generic prvkey --from-file=privateKey=ca.key -n ordsnamespace
 
 echo "${DB_PWD}" > db-auth
-openssl rsautl -encrypt -pubin -inkey public.pem -in db-auth |base64 > e_db-auth-enc
-kubectl create secret generic db-auth-enc --from-file=password=e_db-auth-enc -n ordsnamespace
-
-rm db-auth e_db-auth-enc
-
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in db-auth -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
+kubectl create secret generic db-auth-enc --from-file=password=e_db-auth -n ordsnamespace
+rm db-auth e_db-auth
 ```
 
 ### Create ordssrvs Resource
@@ -49,7 +46,7 @@ rm db-auth e_db-auth-enc
       name: ords-db
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:24.1.1
+      image: container-registry.oracle.com/database/ords:25.1.0
       forceRestart: true
       encPrivKey:
         secretName: prvkey
@@ -74,7 +71,7 @@ rm db-auth e_db-auth-enc
     kubectl apply -f ords-db.yaml
     ```
 
-    <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
+    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
     
 1. Watch the restdataservices resource until the status is **Healthy**:
     ```bash

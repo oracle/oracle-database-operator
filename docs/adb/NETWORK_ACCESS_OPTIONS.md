@@ -17,7 +17,7 @@ Review the following options available to you with Autonomous Database.
 
 ## Configuring Network Access with Allowing Secure Access from Anywhere
 
-Before changing the Network Access to Allowing Secure Access from Anywhere, ensure that your network security protocol requries only mTLS (Mutual TLS) authentication. For more details, see: [Allow both TLS and mutual TLS (mTLS) authentication](#allow-both-tls-and-mutual-tls-mtls-authentication). If mTLS enforcement is already enabled on your Autonomous Database, then you can skip this step.
+Before changing the Network Access to Allowing Secure Access from Anywhere, ensure that the enforcement mTLS (Mutual TLS) authentication is set to **true** in your network security protocol. For more details, see: [Allow both TLS and mutual TLS (mTLS) authentication](#allow-both-tls-and-mutual-tls-mtls-authentication). If mTLS enforcement is already enabled on your Autonomous Database, then you can skip this step.
 
 To specify that Autonomous Database can be connected from any location with a valid credential, complete one of the following procedures, based on your network access configuration.
 
@@ -58,7 +58,7 @@ To specify that Autonomous Database can be connected from any location with a va
 
     | Attribute | Type | Description |
     |----|----|----|
-    | `privateEndpointLabel` | string | The hostname prefix for the resource. |
+    | `privateEndpointLabel` | string | The resource's private endpoint label.<br> - Setting the endpoint label to a non-empty string creates a private endpoint database.<br> - Resetting the endpoint label to an empty string, after the creation of the private endpoint database, changes the private endpoint database to a public endpoint database.<br> - Setting the endpoint label to a non-empty string value, updates to a new private endpoint database, when the database is disabled and re-enabled.<br><br>This setting cannot be updated in parallel with any of the following: licenseModel, dbEdition, cpuCoreCount, computeCount, computeModel, adminPassword, whitelistedIps, isMTLSConnectionRequired, dbWorkload, dbVersion, isRefreshable, dbName, scheduledOperations, dbToolsDetails, or isFreeTier. |
 
     ```yaml
     ---
@@ -104,14 +104,13 @@ To configure Network Access with ACLs, complete this procedure.
       action: Update
       details:
         autonomousDatabaseOCID: ocid1.autonomousdatabase...
-        networkAccess:
-          # Restrict access by defining access control rules in an Access Control List (ACL).
-          whitelistedIps:
-          - 1.1.1.1
-          - 1.1.0.0/16
-          - ocid1.vcn...
-          - ocid1.vcn...;1.1.1.1
-          - ocid1.vcn...;1.1.0.0/16
+        # Restrict access by defining access control rules in an Access Control List (ACL).
+        whitelistedIps:
+        - 1.1.1.1
+        - 1.1.0.0/16
+        - ocid1.vcn...
+        - ocid1.vcn...;1.1.1.1
+        - ocid1.vcn...;1.1.0.0/16
       ociConfig:
         configMapName: oci-cred
         secretName: oci-privatekey
