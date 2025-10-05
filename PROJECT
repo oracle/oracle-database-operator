@@ -264,6 +264,19 @@ resources:
     namespaced: true
   controller: true
   domain: oracle.com
+  group: omlai
+  kind: PrivateAi
+  path: github.com/oracle/oracle-database-operator/api/omlai/v4
+  version: v4
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: oracle.com
   group: database
   kind: OracleRestart
   path: github.com/oracle/oracle-database-operator/api/database/v4

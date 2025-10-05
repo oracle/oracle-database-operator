@@ -114,6 +114,7 @@ This production release has been installed and tested on:
 * [Red Hat OKD](https://www.okd.io/)
 * [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.29.0
 
+
 ## Prerequisites
 
 Oracle strongly recommends that you ensure your system meets the following [Prerequisites](./PREREQUISITES.md).
@@ -186,52 +187,11 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
   To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
 
-    This is the default mode, in which OraOperator is deployed to operate in a cluster, and to monitor all the namespaces in the cluster.
-
-  - Grant the `serviceaccount:oracle-database-operator-system:default` clusterwide access for the resources by applying [cluster-role-binding.yaml](./rbac/cluster-role-binding.yaml)
-
-    ```sh
-      kubectl apply -f rbac/cluster-role-binding.yaml
-    ```
-
-  - Next, apply the [oracle-database-operator.yaml](./oracle-database-operator.yaml) to deploy the Operator
-
-    ```sh
-      kubectl apply -f oracle-database-operator.yaml
-    ```
-
-  ##### 2. Namespace Scoped Deployment
-
-   In this mode, `OraOperator` can be deployed to operate in a namespace, and to monitor one or many namespaces.
-
-  - Grant `serviceaccount:oracle-database-operator-system:default` service account with resource access in the required namespaces. For example, to monitor only the default namespace, apply the [`default-ns-role-binding.yaml`](./rbac/default-ns-role-binding.yaml)
-
-    ```sh
-      kubectl apply -f rbac/default-ns-role-binding.yaml
-    ```
-    To watch additional namespaces, create different role binding files for each namespace, using [default-ns-role-binding.yaml](./rbac/default-ns-role-binding.yaml) as a template, and changing the `metadata.name` and `metadata.namespace` fields
-
-  - Next, edit the [`oracle-database-operator.yaml`](./oracle-database-operator.yaml) to add the required namespaces under `WATCH_NAMESPACE`. Use comma-delimited values for multiple namespaces.
-
-    ```sh
-    - name: WATCH_NAMESPACE
-      value: "default"
-    ```
-  - Finally, apply the edited [`oracle-database-operator.yaml`](./oracle-database-operator.yaml) to deploy the Operator
-
-    ```sh
-      kubectl apply -f oracle-database-operator.yaml
-    ```
-
-* ### ClusterRole and ClusterRoleBinding for NodePort services
-
-  To expose services on each node's IP and port (the NodePort), apply the [`node-rbac.yaml`](./rbac/node-rbac.yaml). Note that this step is not required for LoadBalancer services.
+  Run the following command
 
   ```sh
   kubectl apply -f oracle-database-operator.yaml
   ```
-## Installation
-### Install Oracle DB Operator
 
   Ensure that the operator pods are up and running. For high availability, operator pod replicas are set to a default of 3. You can scale this setting up or down.
 
@@ -258,7 +218,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 You should see that the operator is up and running, along with the shipped controllers.
 
 For more details, see [Oracle Database Operator Installation Instructions](./docs/installation/OPERATOR_INSTALLATION_README.md).
-## Documentation
+
 ## Getting Started with the Operator (Quickstart)
 
 The following quickstarts are designed for specific database configurations:

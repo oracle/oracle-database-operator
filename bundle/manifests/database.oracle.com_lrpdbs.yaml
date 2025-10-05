@@ -236,36 +236,6 @@ spec:
                 type: string
               pdbName:
                 type: string
-              pdbOrdsPrvKey:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
-              pdbOrdsPubKey:
-                properties:
-                  secret:
-                    properties:
-                      key:
-                        type: string
-                      secretName:
-                        type: string
-                    required:
-                    - key
-                    - secretName
-                    type: object
-                required:
-                - secret
-                type: object
               pdbState:
                 enum:
                 - OPEN
