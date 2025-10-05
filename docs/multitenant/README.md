@@ -38,7 +38,6 @@
 	/vscode-markdown-toc-config -->
 <!-- /vscode-markdown-toc -->
 
-Starting from OraOperator version 1.2.0, there are two classes of multitenant controllers: one based on [ORDS](https://www.oracle.com/uk/database/technologies/appdev/rest.html) and another based on a dedicated REST server for the operator, called LREST. In both cases, the features remains unchanged (a part from CRD name changes). A pod running a REST server (either LREST or ORDS) acts as the proxy server connected to the container database (CDB) for all incoming kubectl requests.  We plan to discontinue the ORDS based controller, in the next release; no regression (a part form CRD name changes).
 
 <span style="font-family:Liberation mono; font-size:0.9em; line-height: 1.1em">
 

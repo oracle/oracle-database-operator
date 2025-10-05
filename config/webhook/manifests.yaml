@@ -513,7 +513,7 @@ webhooks:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v4
+    - v1alpha1
     operations:
     - CREATE
     - UPDATE

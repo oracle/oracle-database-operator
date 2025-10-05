@@ -5,10 +5,10 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: oshard-gold-image-pvc21c
+  name: oshard-gold-image-pvc19c
   namespace: shns
   labels:
-    app: oshard21cdb-dep
+    app: oshard19cdb-dep
 spec:
   accessModes:
   - ReadWriteOnce
@@ -23,19 +23,19 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: oshard21cdb
+  name: oshard19cdb
   namespace: shns
   labels:
-    app: oshard21cdb-dep
+    app: oshard19cdb-dep
 spec:
   selector:
     matchLabels:
-      app: oshard21cdb-dep
+      app: oshard19cdb-dep
   serviceName: gold-shard
   template:
     metadata:
       labels:
-        app: oshard21cdb-dep
+        app: oshard19cdb-dep
     spec:
       containers:
       - image: container-registry.oracle.com/database/enterprise_ru:19.28.0.0
@@ -68,7 +68,7 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: oshard-gold-image-pvc21c
+            claimName: oshard-gold-image-pvc19c
         - name: dshm
           emptyDir:
             medium: Memory
@@ -78,7 +78,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: oshard21cdb
+  name: oshard19cdb
   namespace: shns
 spec:
   ports:
