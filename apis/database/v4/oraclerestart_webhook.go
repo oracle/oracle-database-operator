@@ -208,6 +208,9 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 	errs = cr.validateCrsAsmDG()
 	validationErrs = append(validationErrs, errs...)
 
+	errs = cr.validateCrsAsmDG()
+	validationErrs = append(validationErrs, errs...)
+
 	if cr.Spec.ConfigParams != nil {
 		// CRS
 		validationErrs = append(validationErrs,
@@ -591,8 +594,31 @@ func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 		}
 	}
 
+	// Check ASM disks are not duplicate
+	if !r.validateAsmDiskUnqiueNames() {
+		validationErrs = append(validationErrs,
+			field.Invalid(asmPath.Child("DisksBySize"), asmPath, "Each ASM disk must be unique"))
+
+	}
+
 	return validationErrs
 }
+
+func (r *OracleRestart) validateAsmDiskUnqiueNames() bool {
+
+	seenDisks := make(map[string]bool) //store encounterednames
+	for _, disks := range r.Spec.AsmStorageDetails.DisksBySize {
+		for _, diskPath := range disks.DiskNames {
+			if seenDisks[diskPath] {
+				return false
+			}
+			seenDisks[diskPath] = true // disk is seen
+		}
+	}
+
+	return true
+}
+
 func (r *OracleRestart) validateGeneric() field.ErrorList {
 	var validationErrs field.ErrorList
 
@@ -826,9 +852,40 @@ func (r *OracleRestart) validateUpdateServiceSpecs(old *OracleRestart) field.Err
 
 	return validationErrs
 }
+
 func (r *OracleRestart) validateUpdateAsmStorage(old *OracleRestart) field.ErrorList {
 	var validationErrs field.ErrorList
 	// Add actual validation logic here if needed
+	if !strings.EqualFold(old.Spec.CrsDgStorageClass, r.Spec.CrsDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("CrsDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "CrsDgStorageClass cannot be changed post creation"))
+	}
+
+	if !strings.EqualFold(old.Spec.CrsDgStorageClass, r.Spec.CrsDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("CrsDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "CrsDgStorageClass cannot be changed post creation"))
+	}
+
+	if !strings.EqualFold(old.Spec.DataDgStorageClass, r.Spec.DataDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("DataDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "DataDgStorageClass cannot be changed post creation"))
+	}
+
+	if !strings.EqualFold(old.Spec.RedoDgStorageClass, r.Spec.RedoDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("RedoDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "RedoDgStorageClass cannot be changed post creation"))
+	}
+
+	if !strings.EqualFold(old.Spec.RecoDgStorageClass, r.Spec.RecoDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("RecoDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "RecoDgStorageClass cannot be changed post creation"))
+	}
+
 	return validationErrs
 }
 
