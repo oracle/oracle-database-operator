@@ -289,7 +289,7 @@ func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex 
 func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
-	privFlag := true
+	privFlag := false
 	var uid int64 = 0
 	var scriptLoc string
 	if len(instance.Spec.ScriptsLocation) != 0 {
