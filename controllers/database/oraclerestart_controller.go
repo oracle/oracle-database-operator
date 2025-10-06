@@ -1957,6 +1957,16 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 		}
 	}
 
+	if instance.Spec.ConfigParams.PdbName != "" {
+		data = append(data, "ORACLE_PDB_NAME="+instance.Spec.ConfigParams.PdbName)
+	} else {
+		if instance.Status.ConfigParams != nil {
+			if instance.Status.ConfigParams.PdbName != "" {
+				data = append(data, "ORACLE_PDB_NAME="+instance.Status.ConfigParams.PdbName)
+			}
+		}
+	}
+
 	if instance.Spec.ConfigParams.DbUniqueName != "" {
 		// Configmap check is done in ValidateSpex
 		data = append(data, "DB_UNIQUE_NAME="+instance.Spec.ConfigParams.DbUniqueName)
