@@ -347,30 +347,30 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				}
 			}
 		}
-	}
 
-	// PVC Creation
-	if isNewSetup || isDiskChanged {
-		if oracleRestart.Spec.AsmStorageDetails != nil {
-			for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-				for _, diskName := range diskBySize.DiskNames {
-					dgType := oraclerestartcommon.CheckDiskInAsmDeviceList(oracleRestart, diskName)
-					pvcName := oraclerestartcommon.GetAsmPvcName(oracleRestart.Name, diskName, oracleRestart)
-					pvcVolume := oraclerestartcommon.VolumePVCForASM(
-						oracleRestart,
-						diskBySize.StorageSizeInGb,
-						diskName,
-						diskBySize.StorageSizeInGb,
-						oracleRestart.Spec.AsmStorageDetails,
-						pvcName,
-						dgType,
-						r.Client,
-					)
+		// PVC Creation
+		if isNewSetup || isDiskChanged {
+			if oracleRestart.Spec.AsmStorageDetails != nil {
+				for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
+					for _, diskName := range diskBySize.DiskNames {
+						dgType := oraclerestartcommon.CheckDiskInAsmDeviceList(oracleRestart, diskName)
+						pvcName := oraclerestartcommon.GetAsmPvcName(oracleRestart.Name, diskName, oracleRestart)
+						pvcVolume := oraclerestartcommon.VolumePVCForASM(
+							oracleRestart,
+							diskBySize.StorageSizeInGb,
+							diskName,
+							diskBySize.StorageSizeInGb,
+							oracleRestart.Spec.AsmStorageDetails,
+							pvcName,
+							dgType,
+							r.Client,
+						)
 
-					_, result, err = r.createOrReplaceAsmPvC(ctx, oracleRestart, pvcVolume)
-					if err != nil {
-						result = resultNq
-						return result, err
+						_, result, err = r.createOrReplaceAsmPvC(ctx, oracleRestart, pvcVolume)
+						if err != nil {
+							result = resultNq
+							return result, err
+						}
 					}
 				}
 			}
