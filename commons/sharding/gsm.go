@@ -290,7 +290,8 @@ func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmS
 	var result []corev1.Container
 	// building the init Container Spec
 	privFlag := false
-	var uid int64 = 0
+	// var uid int64 = 0
+	uid := oraRunAsUser
 	var scriptLoc string
 	if len(instance.Spec.ScriptsLocation) != 0 {
 		scriptLoc = instance.Spec.ScriptsLocation
