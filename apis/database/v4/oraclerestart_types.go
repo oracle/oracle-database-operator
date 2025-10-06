@@ -61,22 +61,26 @@ type OracleRestartSpec struct {
 	SshKeySecret      *OracleRestartSshSecretDetails `json:"sshKeySecret,omitempty"`
 	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
 	// +kubebuilder:validation:default="Always"
-	ImagePullPolicy *corev1.PullPolicy               `json:"imagePullPolicy,omitempty"`
-	ReadinessProbe  *corev1.Probe                    `json:"readinessProbe,omitempty"`
-	ScriptsGetCmd   string                           `json:"scriptsGetCmd,omitempty"`
-	IsDebug         string                           `json:"isDebug,omitempty"`
-	SecurityContext *corev1.PodSecurityContext       `json:"securityContext"`
-	IsDeleteTopolgy string                           `json:"isDeleteTopology,omitempty"`
-	DbSecret        *OracleRestartDbPwdSecretDetails `json:"dbSecret,omitempty"`
-	TdeWalletSecret *OracleRestartDbPwdSecretDetails `json:"tdeWalletSecret,omitempty"`
-	ServiceDetails  ServiceSpec                      `json:"serviceDetails,omitempty"`
-	Resources       *corev1.ResourceRequirements     `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
-	IsFailed        bool                             `json:"isFailed,omitempty"`
-	IsManual        bool                             `json:"isManual,omitempty"`
-	SrvAccountName  string                           `json:"serviceAccountName,omitempty"`
-	StorageClass    string                           `json:"storageClass,omitempty"`
-	LbService       OracleRestartNodePortSvc         `json:"lbService,omitempty"`
-	NodePortSvc     OracleRestartNodePortSvc         `json:"nodePortSvc,omitempty"` // Port mappings for the service that is created. The service is created if
+	ImagePullPolicy    *corev1.PullPolicy               `json:"imagePullPolicy,omitempty"`
+	ReadinessProbe     *corev1.Probe                    `json:"readinessProbe,omitempty"`
+	ScriptsGetCmd      string                           `json:"scriptsGetCmd,omitempty"`
+	IsDebug            string                           `json:"isDebug,omitempty"`
+	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext"`
+	IsDeleteTopolgy    string                           `json:"isDeleteTopology,omitempty"`
+	DbSecret           *OracleRestartDbPwdSecretDetails `json:"dbSecret,omitempty"`
+	TdeWalletSecret    *OracleRestartDbPwdSecretDetails `json:"tdeWalletSecret,omitempty"`
+	ServiceDetails     ServiceSpec                      `json:"serviceDetails,omitempty"`
+	Resources          *corev1.ResourceRequirements     `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	IsFailed           bool                             `json:"isFailed,omitempty"`
+	IsManual           bool                             `json:"isManual,omitempty"`
+	SrvAccountName     string                           `json:"serviceAccountName,omitempty"`
+	DataDgStorageClass string                           `json:"dataDgStorageClass,omitempty"`
+	RedoDgStorageClass string                           `json:"redoDgStorageClass,omitempty"`
+	RecoDgStorageClass string                           `json:"recoDgStorageClass,omitempty"`
+	SwStorageClass     string                           `json:"swDgStorageClass,omitempty"`
+	CrsDgStorageClass  string                           `json:"crsDgStorageClass,omitempty"`
+	LbService          OracleRestartNodePortSvc         `json:"lbService,omitempty"`
+	NodePortSvc        OracleRestartNodePortSvc         `json:"nodePortSvc,omitempty"` // Port mappings for the service that is created. The service is created if
 	// +kubebuilder:validation:Enum=enable;disable
 	// +kubebuilder:default="enable"
 	EnableOns string `json:"enableOns,omitempty"`

@@ -320,17 +320,18 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// PV Creation
-	if len(oracleRestart.Spec.StorageClass) == 0 {
+	if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
 		if isNewSetup || isDiskChanged {
 			if oracleRestart.Spec.AsmStorageDetails != nil {
 				for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-					for index, diskName := range diskBySize.DiskNames {
+					for _, diskName := range diskBySize.DiskNames {
+						pvName := oraclerestartcommon.GetAsmPvName(oracleRestart.Name, diskName, oracleRestart)
 						pvVolume := oraclerestartcommon.VolumePVForASM(
 							oracleRestart,
-							index,
 							diskName,
 							diskBySize.StorageSizeInGb,
 							oracleRestart.Spec.AsmStorageDetails,
+							pvName,
 							r.Client,
 						)
 						// if pvVolume == nil {
@@ -352,13 +353,17 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if isNewSetup || isDiskChanged {
 		if oracleRestart.Spec.AsmStorageDetails != nil {
 			for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-				for index, diskName := range diskBySize.DiskNames {
+				for _, diskName := range diskBySize.DiskNames {
+					dgType := oraclerestartcommon.CheckDiskInAsmDeviceList(oracleRestart, diskName)
+					pvcName := oraclerestartcommon.GetAsmPvcName(oracleRestart.Name, diskName, oracleRestart)
 					pvcVolume := oraclerestartcommon.VolumePVCForASM(
 						oracleRestart,
-						index,
+						diskBySize.StorageSizeInGb,
 						diskName,
 						diskBySize.StorageSizeInGb,
 						oracleRestart.Spec.AsmStorageDetails,
+						pvcName,
+						dgType,
 						r.Client,
 					)
 
@@ -411,7 +416,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 					err = nilErr
 					return result, err
 				}
-				if len(oracleRestart.Spec.StorageClass) == 0 {
+				if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
 					if ready, err := checkDaemonSetStatus(ctx, r, oracleRestart); err != nil || !ready {
 						msg := "Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy."
 						r.Log.Info(msg)
@@ -426,17 +431,17 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 						for _, disk := range addedAsmDisks {
 							addedAsmDisksMap[disk] = true
 						}
-						for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-							for index, diskName := range diskBySize.DiskNames {
+						for pindex, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
+							for cindex, diskName := range diskBySize.DiskNames {
 								if _, ok := addedAsmDisksMap[diskName]; ok {
 									// r.Log.Info("Found disk at index", "index", index)
 
-									err = oraclerestartcommon.DelORestartPVC(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+									err = oraclerestartcommon.DelORestartPVC(oracleRestart, pindex, cindex, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
 									if err != nil {
 										return resultQ, err
 									}
 
-									err = oraclerestartcommon.DelORestartPv(oracleRestart, index, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+									err = oraclerestartcommon.DelORestartPv(oracleRestart, pindex, cindex, diskName, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
 									if err != nil {
 										return resultQ, err
 									}
@@ -2814,10 +2819,10 @@ waitLoop:
 		// Use oraclerestartcommon.GetAsmPvcName and oraclerestartcommon.getAsmPvName to generate PVC and PV names
 
 		// Find and delete the corresponding PVC
-		for index, diskName := range oracleRestart.Status.OracleRestartNodes[index].NodeDetails.MountedDevices {
+		for _, diskName := range oracleRestart.Status.OracleRestartNodes[index].NodeDetails.MountedDevices {
 			for _, removedAsmDisk := range removedAsmDisks {
 				if diskName == removedAsmDisk {
-					pvcName := oraclerestartcommon.GetAsmPvcName(index, oracleRestart.Name) // Use the existing function
+					pvcName := oraclerestartcommon.GetAsmPvcName(oracleRestart.Name, diskName, oracleRestart) // Use the existing function
 					pvc := &corev1.PersistentVolumeClaim{}
 					err := r.Get(ctx, client.ObjectKey{
 						Name:      pvcName,
@@ -2839,7 +2844,7 @@ waitLoop:
 					}
 
 					// Find and delete the corresponding PV
-					pvName := oraclerestartcommon.GetAsmPvName(index, oracleRestart.Name) // Use the existing function
+					pvName := oraclerestartcommon.GetAsmPvName(oracleRestart.Name, diskName, oracleRestart) // Use the existing function
 					pv := &corev1.PersistentVolume{}
 					err = r.Get(ctx, client.ObjectKey{
 						Name: pvName,
@@ -3136,9 +3141,9 @@ func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 
 	if oracleRestart.Spec.AsmStorageDetails != nil {
 		// Delete PVCs for each disk in DisksBySize
-		for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-			for index, disk := range diskBySize.DiskNames {
-				err = oraclerestartcommon.DelORestartPVC(oracleRestart, index, disk, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+		for pindex, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
+			for cindex, disk := range diskBySize.DiskNames {
+				err = oraclerestartcommon.DelORestartPVC(oracleRestart, pindex, cindex, disk, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
 				if err != nil {
 					return err
 				}
@@ -3149,9 +3154,9 @@ func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 	if oraclerestartcommon.IsStaticProvisioning(r.Client, oracleRestart) {
 		if oracleRestart.Spec.AsmStorageDetails != nil {
 			// Delete PVs for each disk in DisksBySize
-			for _, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-				for index, disk := range diskBySize.DiskNames {
-					err = oraclerestartcommon.DelORestartPv(oracleRestart, index, disk, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+			for pindex, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
+				for cindex, disk := range diskBySize.DiskNames {
+					err = oraclerestartcommon.DelORestartPv(oracleRestart, pindex, cindex, disk, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
 					if err != nil {
 						return err
 					}
@@ -3457,9 +3462,9 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 			storageClass := &storagev1.StorageClass{}
 			pvc := &corev1.PersistentVolumeClaim{}
 
-			if instance.Spec.StorageClass != "" {
+			if instance.Spec.SwStorageClass != "" {
 
-				err := r.Get(ctx, types.NamespacedName{Name: instance.Spec.StorageClass}, storageClass)
+				err := r.Get(ctx, types.NamespacedName{Name: instance.Spec.SwStorageClass}, storageClass)
 				if err != nil {
 					return fmt.Errorf("error while fetching the storage class")
 				}
@@ -3475,7 +3480,7 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 				if err == nil {
 					if storageClass.AllowVolumeExpansion == nil || !*storageClass.AllowVolumeExpansion {
 						r.Recorder.Eventf(instance, corev1.EventTypeWarning, "PVC not resizable", "The storage class doesn't support volume expansion")
-						return fmt.Errorf("the storage class %s doesn't support volume expansion", instance.Spec.StorageClass)
+						return fmt.Errorf("the storage class %s doesn't support volume expansion", instance.Spec.SwStorageClass)
 					}
 
 					newPVCSize := resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")

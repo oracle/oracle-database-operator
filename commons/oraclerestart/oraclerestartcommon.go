@@ -44,6 +44,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 
 	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
@@ -191,30 +192,21 @@ func getlabelsForRac(instance *oraclerestart.OracleRestart) map[string]string {
 	return buildLabelsForOracleRestart(instance, "OracleRestart")
 }
 
-func getAsmPvcName(index int, name string) string {
+func GetAsmPvcName(name string, diskPath string, instance *oraclerestart.OracleRestart) string {
 
-	pvcName := "asm-pvc-disk-" + strconv.Itoa(index) + "-" + name
-
-	return pvcName
-
-}
-func GetAsmPvcName(index int, name string) string {
-
-	pvcName := "asm-pvc-disk-" + strconv.Itoa(index) + "-" + name
+	// pvcName := "asm-pvc-disk-" + strconv.Itoa(index) + "-" + name + "-" + dgType + "-" + "pvc"
+	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
+	diskName := diskPath[strings.LastIndex(diskPath, ",")+1:]
+	pvcName := "asm-dg-" + dgType + "-" + diskName + "-pvc-" + name
 
 	return pvcName
-
 }
 
-func getAsmPvName(index int, name string) string {
+func GetAsmPvName(name string, diskPath string, instance *oraclerestart.OracleRestart) string {
 
-	pvName := "asm-pv-disk-" + strconv.Itoa(index) + "-" + name
-	return pvName
-}
-
-func GetAsmPvName(index int, name string) string {
-
-	pvName := "asm-pv-disk-" + strconv.Itoa(index) + "-" + name
+	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
+	diskName := diskPath[strings.LastIndex(diskPath, ",")+1:]
+	pvName := "asm-dg-" + dgType + "-" + diskName + "-pv-" + name
 	return pvName
 }
 
@@ -393,8 +385,8 @@ func checkPv(pvName string, instance *oraclerestart.OracleRestart, kClient clien
 	}
 	return pvFound, nil
 }
-func DelORestartPVC(instance *oraclerestart.OracleRestart, index int, diskName string, disk *oraclerestart.AsmDiskDetails, kClient client.Client, logger logr.Logger) error {
-	pvcName := getAsmPvcName(index, instance.Name)
+func DelORestartPVC(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, disk *oraclerestart.AsmDiskDetails, kClient client.Client, logger logr.Logger) error {
+	pvcName := GetAsmPvcName(instance.Name, diskName, instance)
 	LogMessages("DEBUG", "Attempting to delete PVC: "+GetFmtStr(pvcName), nil, instance, logger)
 
 	pvc, err := checkPvc(pvcName, instance, kClient)
@@ -438,9 +430,9 @@ func DelRestartSwPvc(instance *oraclerestart.OracleRestart, OraRestartSpex oracl
 	return nil
 }
 
-func DelORestartPv(instance *oraclerestart.OracleRestart, index int, diskName string, disk *oraclerestart.AsmDiskDetails, kClient client.Client, logger logr.Logger) error {
+func DelORestartPv(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, disk *oraclerestart.AsmDiskDetails, kClient client.Client, logger logr.Logger) error {
 
-	pvName := getAsmPvName(index, instance.Name)
+	pvName := GetAsmPvName(instance.Name, diskName, instance)
 	LogMessages("DEBUG", "Inside the delPv and received param: "+GetFmtStr(pvName), nil, instance, logger)
 	pvFound, err := checkPv(pvName, instance, kClient)
 	if err != nil {
@@ -1359,4 +1351,45 @@ func GetHealthyNodeCounts(instance *oraclerestart.OracleRestart) (int, error) {
 }
 func GetSwPvcName(name string) string {
 	return name + "-oradata-sw-vol-pvc"
+}
+
+func CheckDiskInAsmDeviceList(instance *oraclerestart.OracleRestart, diskName string) string {
+	dgDisk := []string{"CRS", "DATA", "RECO", "REDO"}
+
+	recoDisk := strings.Split(instance.Spec.ConfigParams.RecoAsmDeviceList, ",")
+	redoDisk := strings.Split(instance.Spec.ConfigParams.RedoAsmDeviceList, ",")
+	dataDisk := strings.Split(instance.Spec.ConfigParams.DbAsmDeviceList, ",")
+	crsDisk := strings.Split(instance.Spec.ConfigParams.CrsAsmDeviceList, ",")
+
+	for _, value := range dgDisk {
+		switch value {
+		case "CRS":
+			if slices.Contains(crsDisk, diskName) {
+				return "CRSDG"
+			}
+		case "DATA":
+			if slices.Contains(dataDisk, diskName) {
+				return "DATADG"
+			}
+		case "RECO":
+			if slices.Contains(recoDisk, diskName) {
+				return "RECODG"
+			}
+		case "REDO":
+			if slices.Contains(redoDisk, diskName) {
+				return "REDODG"
+			}
+		default:
+			return "NODG"
+		}
+
+	}
+	return "NODG"
+}
+
+func CheckStorageClass(instance *oraclerestart.OracleRestart) string {
+	if len(instance.Spec.CrsDgStorageClass) == 0 && len(instance.Spec.DataDgStorageClass) == 0 && len(instance.Spec.RecoDgStorageClass) == 0 && len(instance.Spec.RedoDgStorageClass) == 0 {
+		return "NOSC"
+	}
+	return "SC"
 }
