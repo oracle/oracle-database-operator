@@ -196,8 +196,8 @@ func GetAsmPvcName(name string, diskPath string, instance *oraclerestart.OracleR
 
 	// pvcName := "asm-pvc-disk-" + strconv.Itoa(index) + "-" + name + "-" + dgType + "-" + "pvc"
 	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
-	diskName := diskPath[strings.LastIndex(diskPath, ",")+1:]
-	pvcName := "asm-dg-" + dgType + "-" + diskName + "-pvc-" + name
+	diskName := diskPath[strings.LastIndex(diskPath, "/")+1:]
+	pvcName := "asm-pvc" + dgType + "-" + diskName + name
 
 	return pvcName
 }
@@ -205,8 +205,8 @@ func GetAsmPvcName(name string, diskPath string, instance *oraclerestart.OracleR
 func GetAsmPvName(name string, diskPath string, instance *oraclerestart.OracleRestart) string {
 
 	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
-	diskName := diskPath[strings.LastIndex(diskPath, ",")+1:]
-	pvName := "asm-dg-" + dgType + "-" + diskName + "-pv-" + name
+	diskName := diskPath[strings.LastIndex(diskPath, "/")+1:]
+	pvName := "asm-pv-" + dgType + "-" + diskName + name
 	return pvName
 }
 
