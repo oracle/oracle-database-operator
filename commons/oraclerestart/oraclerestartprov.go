@@ -140,19 +140,19 @@ func buildStatefulSpecForOracleRestart(
 	}
 	// Add volume claim templates if a storage class is specified
 	if len(instance.Spec.DataDgStorageClass) != 0 && !asmPvcsExist(instance, kClient) {
-		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, ASMVolumeClaimTemplatesForDG(instance, OracleRestartSpex, instance.Spec.DataDgStorageClass)...)
+		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, ASMVolumeClaimTemplatesForDG(instance, OracleRestartSpex, &instance.Spec.DataDgStorageClass)...)
 	}
 
 	if len(instance.Spec.CrsDgStorageClass) != 0 && !asmPvcsExist(instance, kClient) {
-		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, ASMVolumeClaimTemplatesForDG(instance, OracleRestartSpex, instance.Spec.CrsDgStorageClass)...)
+		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, ASMVolumeClaimTemplatesForDG(instance, OracleRestartSpex, &instance.Spec.CrsDgStorageClass)...)
 	}
 
 	if len(instance.Spec.RecoDgStorageClass) != 0 && !asmPvcsExist(instance, kClient) {
-		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, ASMVolumeClaimTemplatesForDG(instance, OracleRestartSpex, instance.Spec.RecoDgStorageClass)...)
+		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, ASMVolumeClaimTemplatesForDG(instance, OracleRestartSpex, &instance.Spec.RecoDgStorageClass)...)
 	}
 
 	if len(instance.Spec.RedoDgStorageClass) != 0 && !asmPvcsExist(instance, kClient) {
-		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, ASMVolumeClaimTemplatesForDG(instance, OracleRestartSpex, instance.Spec.RedoDgStorageClass)...)
+		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, ASMVolumeClaimTemplatesForDG(instance, OracleRestartSpex, &instance.Spec.RedoDgStorageClass)...)
 	}
 
 	if len(instance.Spec.SwStorageClass) != 0 && len(instance.Spec.InstDetails.HostSwLocation) == 0 {
@@ -1110,13 +1110,15 @@ func SwVolumeClaimTemplatesForOracleRestart(instance *oraclerestart.OracleRestar
 	}
 }
 
-func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec, StorageClass string) []corev1.PersistentVolumeClaim {
+func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec, StorageClass *string) []corev1.PersistentVolumeClaim {
 	var claims []corev1.PersistentVolumeClaim
 	mode := corev1.PersistentVolumeBlock
 	// If user-provided PVC name exists, skip volume claim template creation
 	if len(OracleRestartSpex.PvcName) != 0 {
 		return claims
 	}
+
+	fmt.Printf("INFO", "working on asm storage class "+*StorageClass)
 
 	for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
 		for _, diskName := range diskBySize.DiskNames {
@@ -1133,7 +1135,7 @@ func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleR
 						corev1.ReadWriteOnce,
 					},
 					VolumeMode:       &mode,
-					StorageClassName: &StorageClass,
+					StorageClassName: StorageClass,
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
 							corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", diskBySize.StorageSizeInGb)),
