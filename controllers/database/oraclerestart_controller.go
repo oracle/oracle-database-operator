@@ -408,15 +408,15 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 
 		case isDiskChanged && !isNewSetup:
-			if len(addedAsmDisks) > 0 {
-				err = r.validateASMDisks(oracleRestart, ctx)
-				if err != nil {
-					result = resultQ
-					r.Log.Info(err.Error())
-					err = nilErr
-					return result, err
-				}
-				if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
+			if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
+				if len(addedAsmDisks) > 0 {
+					err = r.validateASMDisks(oracleRestart, ctx)
+					if err != nil {
+						result = resultQ
+						r.Log.Info(err.Error())
+						err = nilErr
+						return result, err
+					}
 					if ready, err := checkDaemonSetStatus(ctx, r, oracleRestart); err != nil || !ready {
 						msg := "Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy."
 						r.Log.Info(msg)
@@ -485,14 +485,16 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 		}
 	}
-	if len(addedAsmDisks) > 0 {
+	if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
+		if len(addedAsmDisks) > 0 {
 
-		err = r.cleanupDaemonSet(oracleRestart, ctx)
-		if err != nil {
-			result = resultQ
-			r.Log.Info(err.Error())
-			err = nilErr
-			return result, err
+			err = r.cleanupDaemonSet(oracleRestart, ctx)
+			if err != nil {
+				result = resultQ
+				r.Log.Info(err.Error())
+				err = nilErr
+				return result, err
+			}
 		}
 	}
 

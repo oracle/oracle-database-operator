@@ -936,27 +936,26 @@ func BuildDiskCheckDaemonSet(OracleRestart *oraclerestart.OracleRestart) *appsv1
 	// Prepare the volume devices based on the PVCs
 	var volumeDevices []corev1.VolumeDevice
 	var volumes []corev1.Volume
-	//disks := flattenDisksBySize(&OracleRestart.Spec)
+	disks := flattenDisksBySize(&OracleRestart.Spec)
 
-	for _, diskBySize := range OracleRestart.Spec.AsmStorageDetails.DisksBySize {
-		for _, diskName := range diskBySize.DiskNames {
-			pvcName := GetAsmPvcName(OracleRestart.Name, diskName, OracleRestart)
-			volumeName := pvcName
+	for _, diskPath := range disks {
+		pvcName := GetAsmPvcName(OracleRestart.Name, diskPath, OracleRestart)
+		volumeName := pvcName
 
-			volumeDevices = append(volumeDevices, corev1.VolumeDevice{
-				Name:       volumeName,
-				DevicePath: diskName,
-			})
+		volumeDevices = append(volumeDevices, corev1.VolumeDevice{
+			Name:       volumeName,
+			DevicePath: diskPath,
+		})
 
-			volumes = append(volumes, corev1.Volume{
-				Name: volumeName,
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: pvcName,
-					},
+		volumes = append(volumes, corev1.Volume{
+			Name: volumeName,
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: pvcName,
 				},
-			})
-		}
+			},
+		})
+
 	}
 
 	// Flatten the DisksBySize map to get a single slice of all disk names
