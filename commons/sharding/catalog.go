@@ -303,7 +303,7 @@ func buildContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCata
 func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
-	privFlag := true
+	privFlag := false
 	// var uid int64 = 0
 	uid := oraRunAsUser
 	var scriptLoc string
