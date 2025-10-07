@@ -123,13 +123,14 @@ type InitParams struct {
 	CrsAsmDiskDgRedundancy  string       `json:"crsAsmDiskDgRedundancy,omitempty"`
 	DBAsmDiskDgRedundancy   string       `json:"dbAsmDiskDgRedundancy,omitempty"`
 	RecoAsmDiskDgRedundancy string       `json:"recoAsmDiskDgRedundancy,omitempty"`
-	RedoAsmDiskDgRedudancy  string       `json:"redoAsmDiskDgRedundancy,omitempty"`
+	RedoAsmDiskDgRedundancy string       `json:"redoAsmDiskDgRedundancy,omitempty"`
 	DbName                  string       `json:"dbName,omitempty"`
 	PdbName                 string       `json:"pdbName,omitempty"`
 	DbStorageType           string       `json:"dbStorageType,omitempty"`
 	DbAsmDeviceList         string       `json:"dbAsmDeviceList,omitempty"`
 	RecoAsmDeviceList       string       `json:"recoAsmDeviceList,omitempty"`
 	RedoAsmDeviceList       string       `json:"redoAsmDeviceList,omitempty"`
+	RedoAsmDiskDg           string       `json:"redoAsmDiskDg,omitempty"`
 	DbCharSet               string       `json:"dbCharSet,omitempty"`
 	DbRedoFileSize          string       `json:"dbRedoFileSize,omitempty"`
 	DbType                  string       `json:"dbType,omitempty"`

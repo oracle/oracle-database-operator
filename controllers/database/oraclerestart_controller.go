@@ -2129,6 +2129,11 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 			data = append(data, "DB_RECOVERY_FILE_DEST="+instance.Spec.ConfigParams.DbRecoveryFileDest)
 		}
 
+		if instance.Spec.ConfigParams.RedoAsmDiskDg != "" {
+			// Configmap check is done in ValidateSpex
+			data = append(data, "LOG_FILE_DEST="+instance.Spec.ConfigParams.RedoAsmDiskDg)
+		}
+
 		if instance.Spec.ConfigParams.DbRecoveryFileDestSize != "" {
 			// Configmap check is done in ValidateSpex
 			data = append(data, "DB_RECOVERY_FILE_DEST_SIZE="+instance.Spec.ConfigParams.DbRecoveryFileDestSize)
@@ -2137,8 +2142,8 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 			data = append(data, "DB_ASMDG_PROPERTIES="+"redundancy:"+instance.Spec.ConfigParams.DBAsmDiskDgRedundancy)
 		}
 
-		if instance.Spec.ConfigParams.RedoAsmDiskDgRedudancy != "" {
-			data = append(data, "REDO_ASMDG_PROPERTIES="+"redundancy:"+instance.Spec.ConfigParams.RedoAsmDiskDgRedudancy)
+		if instance.Spec.ConfigParams.RedoAsmDiskDgRedundancy != "" {
+			data = append(data, "REDO_ASMDG_PROPERTIES="+"redundancy:"+instance.Spec.ConfigParams.RedoAsmDiskDgRedundancy)
 		}
 
 		if instance.Spec.ConfigParams.RecoAsmDiskDgRedundancy != "" {
@@ -2896,7 +2901,7 @@ waitLoop:
 			}
 			if isDiskInDeviceList(disk, oracleRestart.Spec.ConfigParams.RedoAsmDeviceList) {
 				reqLogger.Info("New disk to be added to REDO ASM device list ", "disk", disk)
-				deviceDg = oracleRestart.Spec.ConfigParams.RedoAsmDiskDgRedudancy
+				deviceDg = oracleRestart.Spec.ConfigParams.RedoAsmDiskDgRedundancy
 			}
 		}
 		if deviceDg != "" {
@@ -3118,8 +3123,10 @@ func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 		}
 	}
 
-	if err := oraclerestartcommon.DelRestartSwPvc(oracleRestart, oraRestartSpex, r.Client, r.Log); err != nil {
-		return err
+	if !utils.CheckStatusFlag(oraRestartSpex.IsKeepPVC) {
+		if err := oraclerestartcommon.DelRestartSwPvc(oracleRestart, oraRestartSpex, r.Client, r.Log); err != nil {
+			return err
+		}
 	}
 
 	// // Deleting the DaemonSet
@@ -3149,26 +3156,30 @@ func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 		}
 	}
 
-	if oracleRestart.Spec.AsmStorageDetails != nil {
-		// Delete PVCs for each disk in DisksBySize
-		for pindex, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-			for cindex, disk := range diskBySize.DiskNames {
-				err = oraclerestartcommon.DelORestartPVC(oracleRestart, pindex, cindex, disk, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
-				if err != nil {
-					return err
+	if !utils.CheckStatusFlag(oraRestartSpex.IsKeepPVC) {
+		if oracleRestart.Spec.AsmStorageDetails != nil {
+			// Delete PVCs for each disk in DisksBySize
+			for pindex, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
+				for cindex, disk := range diskBySize.DiskNames {
+					err = oraclerestartcommon.DelORestartPVC(oracleRestart, pindex, cindex, disk, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+					if err != nil {
+						return err
+					}
 				}
 			}
 		}
 	}
 
-	if oraclerestartcommon.IsStaticProvisioning(r.Client, oracleRestart) {
-		if oracleRestart.Spec.AsmStorageDetails != nil {
-			// Delete PVs for each disk in DisksBySize
-			for pindex, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
-				for cindex, disk := range diskBySize.DiskNames {
-					err = oraclerestartcommon.DelORestartPv(oracleRestart, pindex, cindex, disk, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
-					if err != nil {
-						return err
+	if !utils.CheckStatusFlag(oraRestartSpex.IsKeepPVC) {
+		if oraclerestartcommon.IsStaticProvisioning(r.Client, oracleRestart) {
+			if oracleRestart.Spec.AsmStorageDetails != nil {
+				// Delete PVs for each disk in DisksBySize
+				for pindex, diskBySize := range oracleRestart.Spec.AsmStorageDetails.DisksBySize {
+					for cindex, disk := range diskBySize.DiskNames {
+						err = oraclerestartcommon.DelORestartPv(oracleRestart, pindex, cindex, disk, oracleRestart.Spec.AsmStorageDetails, r.Client, r.Log)
+						if err != nil {
+							return err
+						}
 					}
 				}
 			}

@@ -117,7 +117,7 @@ func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
 
 		if cr.Spec.ConfigParams.GridResponseFile.ConfigMapName == "" {
 			if cr.Spec.ConfigParams.CrsAsmDiskDg == "" {
-				cr.Spec.ConfigParams.CrsAsmDiskDg = "+DATA"
+				cr.Spec.ConfigParams.CrsAsmDiskDg = "DATA"
 			}
 			if cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy == "" {
 				cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy = "external"
