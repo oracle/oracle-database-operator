@@ -304,7 +304,8 @@ func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, Ora
 	var result []corev1.Container
 	// building the init Container Spec
 	privFlag := true
-	var uid int64 = 0
+	// var uid int64 = 0
+	uid := oraRunAsUser
 	var scriptLoc string
 	if len(instance.Spec.ScriptsLocation) != 0 {
 		scriptLoc = instance.Spec.ScriptsLocation
