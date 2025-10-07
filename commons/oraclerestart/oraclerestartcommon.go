@@ -206,7 +206,7 @@ func GetAsmPvName(name string, diskPath string, instance *oraclerestart.OracleRe
 
 	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
 	diskName := diskPath[strings.LastIndex(diskPath, "/")+1:]
-	pvName := "asm-pv-" + strings.ToLower(dgType) + "-" + diskName + "-" + name + instance.Spec.InstDetails.Name + "-0"
+	pvName := "asm-pv-" + strings.ToLower(dgType) + "-" + diskName + "-" + name + "-" + instance.Spec.InstDetails.Name + "-0"
 	return pvName
 }
 

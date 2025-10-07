@@ -1122,7 +1122,10 @@ func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleR
 
 	for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
 		for _, diskName := range diskBySize.DiskNames {
-			pvcName := GetAsmPvcName(instance.Name, diskName, instance)
+			// The folowing peice of code is generating ASM PVC name because by default VolumeCLaim Template add Instance name like -dbmc1-0
+			dgType := CheckDiskInAsmDeviceList(instance, diskName)
+			disk := diskName[strings.LastIndex(diskName, "/")+1:]
+			pvcName := "asm-pvc-" + strings.ToLower(dgType) + "-" + disk + "-" + instance.Name
 
 			claims = append(claims, corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
