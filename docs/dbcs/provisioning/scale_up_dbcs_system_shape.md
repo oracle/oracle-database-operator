@@ -42,4 +42,4 @@ NOTE: Check the DB Operator Pod name in your environment.
 
 ## Sample Output
 
-[Here](./scale_up_dbcs_system_shape_sample_output.log) is an example log output for scaling up the shape of an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.
+[this log file](./scale_up_dbcs_system_shape_sample_output.log) is an example log output for scaling up the shape of an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.
