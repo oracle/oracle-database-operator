@@ -415,7 +415,7 @@ func DelORestartPVC(instance *oraclerestart.OracleRestart, pindex int, cindex in
 
 func DelRestartSwPvc(instance *oraclerestart.OracleRestart, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec, kClient client.Client, logger logr.Logger) error {
 
-	pvcName := OraRestartSpex.Name + "-oradata-sw-vol-pvc-" + OraRestartSpex.Name + "-0"
+	pvcName := GetSwPvcName(instance.Name, instance)
 	LogMessages("DEBUG", "Inside the delPvc and received param: "+GetFmtStr(pvcName), nil, instance, logger)
 	pvcFound, err := checkPvc(pvcName, instance, kClient)
 	if err != nil {
@@ -1349,8 +1349,10 @@ func GetHealthyNodeCounts(instance *oraclerestart.OracleRestart) (int, error) {
 	}
 	return 0, fmt.Errorf("healthy cluster node counts are not matching with total cluster nodes")
 }
-func GetSwPvcName(name string) string {
-	return name + "-oradata-sw-vol-pvc"
+func GetSwPvcName(name string, instance *oraclerestart.OracleRestart) string {
+	//// If you are making any change, please refer SwVolumeClaimTemplatesForOracleRestart function as we add instance.Spec.InstDetails.Name + "-0"
+	pvcName := "odb-sw-pvc-" + name + "-" + instance.Spec.InstDetails.Name + "-0"
+	return pvcName
 }
 
 func CheckDiskInAsmDeviceList(instance *oraclerestart.OracleRestart, diskName string) string {

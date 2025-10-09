@@ -3492,7 +3492,7 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 					return fmt.Errorf("error while fetching the storage class")
 				}
 
-				pvcName := oraclerestartcommon.GetSwPvcName(instance.Spec.InstDetails.Name) + "-" + instance.Spec.InstDetails.Name + "-0"
+				pvcName := oraclerestartcommon.GetSwPvcName(instance.Name, instance)
 				err = r.Get(ctx, types.NamespacedName{
 					Name:      pvcName,
 					Namespace: instance.Namespace,
