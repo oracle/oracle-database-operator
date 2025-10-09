@@ -1,5 +1,6 @@
 # Provisioning an Oracle Restart Database with multiple diskgroups with different redundancy and option to specify separate storage class
-# In this Usecase:
+
+### In this Usecase:
 The Oracle Grid Infrastructure and Oracle Restart Database are deployed automatically using Oracle Restart Controller. In this example, multiple diskgroups are created for CRS Files, Database Files, Recovery Area Files and Redo Log Files. Different Disk Groups have different redundancy levels.
 
 This example uses `oraclerestart_prov_multiple_diskgroups_with_redundancy_with_separate_storage_class.yaml` to provision an Oracle Database configured with Oracle Restart using Oracle Restart Controller. The provisioning includes:
