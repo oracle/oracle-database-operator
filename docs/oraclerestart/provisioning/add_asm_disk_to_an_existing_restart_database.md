@@ -1,6 +1,6 @@
 ## Adding ASM Disks - Add ASM Disks to an existing Oracle Restart Database
 
-### In this usecase:
+### In this use case:
 
 * You have previously deployed an Oracle Restart Database in Kubernetes (for example, on OKE or OpenShift) using the Oracle Restart Database Controller. Now, you need to expand ASM storage by adding new ASM disks.
 * The existing Oracle Restart Database is deployed with Node Port Service using the file `oraclerestart_prov_nodeports.yaml` from Case [Provisioning an Oracle Restart Database with NodePort Service](./provisioning/provisioning_oracle_restart_db_nodeport.md) using Oracle Restart Controller with:
@@ -15,21 +15,21 @@
   * Software location on the worker nodes is specified by `hostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using this location on the worker node.
 
 ### General Steps 
-  * If you are using storage class to dynamically provision the ASM disks, you do not need to allocate block devices. Otherwise,  need to allocate block devices to worker node where Oracle restart databae pod is running. You need to clean the new ASM disks using `dd` command.         
-  * Update the Oracle Restart Custom Resource. Edit the custom resource YAML (oraclerestarts.database.oracle.com) to reference the new PVCs/disks under the appropriate ASM configuration.
+  * If you are using storage class to dynamically provision the ASM disks, then you do not need to allocate block devices. If you are not using storage class, then you must allocate block devices to worker nodes where the Oracle Restart database pod is running. You must clean up the new ASM disks by using the `dd` command.         
+  * Update the Oracle Restart Custom Resource. Edit the custom resource YAML (`oraclerestarts.database.oracle.com`) to reference the new PVCs/disks under the appropriate ASM configuration.
 
 ### In this Example: 
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). 
-  * The exisitng disks on the worker nodes for the ASM which are being used in Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
-  * Specify the size of these devices along with names using the parameter `disksBySize`. Size is by-default in GBs.
-  * Skip this steps, if you are using **storage class to dynamically provision ASM disks**.In this example, two new disks will be added to the existing Oracle Restart Database Deployment. For this purpose, the disks on the worker nodes which will be used are `/dev/disk/by-partlabel/asm-disk3` and `/dev/disk/by-partlabel/asm-disk4`.
-  * Update the corresponding device list in initParams section.
-  * Default value in yaml file is `autoUpdate: "true"`, which will delete and recreate the pod with updated ASM disks in the Oracle Restart Deployment. In this case, the new disks will be automatically added to the existing Diskgroup.
-  * If the value in yaml file is set to `autoUpdate: "false"`, the Oracle Restart Database Pod is recreated, but the additional disks are `NOT` added to the ASM Disk Group automatically.
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. This image is built using files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). 
+  * The existing disks on the worker nodes for the ASM that are used in Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
+  * Specify the size and names of these devices using the parameter `disksBySize`. By default, size is in GBs.  
+  * If you are using **storage class to dynamically provision ASM disks**, then you can skip these steps. If you are not using storage class, then in this example, two new disks are added to the existing Oracle Restart Database Deployment. For this purpose, the disks on the worker nodes that will be used are `/dev/disk/by-partlabel/asm-disk3` and `/dev/disk/by-partlabel/asm-disk4`.
+  * Update the corresponding device list in the `initParams` section.
+  * The default value in the `yaml` file is `autoUpdate: "true"`, which will delete and recreate the pod with updated ASM disks in the Oracle Restart Deployment. In this case, the new disks will be automatically added to the existing Diskgroup.
+  * If the value in the `yaml` file is set to `autoUpdate: "false"`, then the Oracle Restart Database Pod is recreated, but the additional disks are _not_ added to the ASM Disk Group automatically.
 
 
 ## When autoUpdate is set to true
-* Use the file: [orestart_prov_asm_disk_addition.yaml](./orestart_prov_asm_disk_addition.yaml) for this use case as below:
+* For this use case, use the file [orestart_prov_asm_disk_addition.yaml](./orestart_prov_asm_disk_addition.yaml):
 * Deploy the `orestart_prov_asm_disk_addition.yaml` file:
     ```sh
     kubectl apply -f orestart_prov_asm_disk_addition.yaml
@@ -43,16 +43,16 @@ In this case, the new disks will be added to the existing Diskgroup in the Oracl
     # Check the logs of a particular pod. For example, to check status of pod "dbmc1-0":
     kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
     ```
- * Samples logs in [logs](./logs/asm_addition_autoupdate_true.txt) for disk addition with option `autoUpdate: true`.
+ * Example logs are in [ASM addition autoupdate_true logs](./logs/asm_addition_autoupdate_true.txt) for disk addition with the option `autoUpdate: true`.
 
 
 ## When autoUpdate is set to false
-* Use the file: [orestart_prov_asm_disk_addition_autoupdate_false.yaml](./orestart_prov_asm_disk_addition_autoupdate_false.yaml) for this use case as below:
+* For this use case, use the file: [orestart_prov_asm_disk_addition_autoupdate_false.yaml](./orestart_prov_asm_disk_addition_autoupdate_false.yaml):
 * Deploy the `orestart_prov_asm_disk_addition_autoupdate_false.yaml` file:
     ```sh
     kubectl apply -f orestart_prov_asm_disk_addition_autoupdate_false.yaml
     ```
-In this case, new disks are added to Oracle Restart Database Object Statefulset and Pods are recreated, but this disk is not added to the ASM Disk Group.
+In this scenario, new disks are added to Oracle Restart Database Object Statefulset and Pods are recreated, but this disk is not added to the ASM Disk Group.
 * Check the status of the deployment:
     ```sh
     # Check the status of the Kubernetes Pods:
@@ -61,4 +61,4 @@ In this case, new disks are added to Oracle Restart Database Object Statefulset 
     # Check the logs of a particular pod. For example, to check status of pod "dbmc1-0":
     kubectl exec -it pod/dbmc1-0 -n orestart -- bash -c "tail -f /tmp/orod/oracle_db_setup.log"
     ```
- * Samples logs in [logs](./logs/asm_addition_autoupdate_false.txt) for disk addition with option `autoUpdate: false`.
+ * Example logs are in [ASM addition autoupdate_false logs](./logs/asm_addition_autoupdate_false.txt) for disk addition with option `autoUpdate: false`.
