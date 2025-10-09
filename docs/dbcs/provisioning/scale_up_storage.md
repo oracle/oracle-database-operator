@@ -1,15 +1,15 @@
 # Scale UP the storage of an existing OBDS System
 
-In this use case, an existing OCI OBDS system deployed earlier is scaled up for its storage using Oracle DB Operator OBDS controller. Its a 2 Step operation.
+In this use case, an existing OCI OBDS system deployed earlier is scaled up for its storage using Oracle DB Operator OBDS controller. This is a two-step operation.
 
-In order to scale up storage of an existing OBDS system, the steps will be:
+To scale up storage of an existing OBDS system, the two steps are as follows:
 
 1. Bind the existing OBDS System to OBDS Controller.
 2. Apply the change to scale up its storage.
 
-**NOTE** We are assuming that before this step, you have followed the [prerequisite](./../README.md#prerequsites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) steps to create the configmap and the secrets required during the deployment.
+**NOTE** We are assuming that before this step, you have followed the [prerequisite steps](./../README.md#prerequsites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) to create the configmap and the secrets required during the deployment.
 
-This example uses `scale_up_storage.yaml` to scale up storage of an existing Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with:
+This example uses `scale_up_storage.yaml` to scale up storage of an existing Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with the following:
 
 - OCID of existing VMDB as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
 - OCI Configmap as `oci-cred`  
@@ -24,9 +24,9 @@ This example uses `scale_up_storage.yaml` to scale up storage of an existing Sin
 - OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`  
 
 
-Use the file: [scale_up_storage.yaml](./scale_up_storage.yaml) for this use case as below:
+Use the file: [scale_up_storage.yaml](./scale_up_storage.yaml) for this use case as described in the following steps:
 
-1. Deploy the .yaml file:  
+1. Deploy the `.yaml` file:  
 ```sh
 [root@test-server OBDS]# kubectl apply -f scale_storage.yaml
 dbcssystem.database.oracle.com/dbcssystem-existing configured
@@ -42,4 +42,4 @@ NOTE: Check the DB Operator Pod name in your environment.
 
 ## Sample Output
 
-[Here](./scale_up_storage_sample_output.log) is the sample output for scaling up the storage of an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller with minimal parameters.
+[this log file](./scale_up_storage_sample_output.log) is an example of an output log file for scaling up the storage of an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller with minimal parameters.
