@@ -19,7 +19,7 @@
   * The disks on the worker nodes for the Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
   * Specify the size of these devices along with names using the parameter `storageSizeInGb`. Size is by-default in GBs.
 
-**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files and Recovery Area Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
+**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files, Recovery Area Files and Redo Log Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
 
 ### Steps: Deploy Oracle Restart Database 
 * Use the file: [oraclerestart_prov_nodeports.yaml](./oraclerestart_prov_nodeports.yaml) for this use case as below:

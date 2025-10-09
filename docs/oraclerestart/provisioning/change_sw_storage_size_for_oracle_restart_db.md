@@ -2,17 +2,21 @@
 
 ### In this Usecase:
 * You have previously deployed an Oracle Restart Database in Kubernetes (for example, on OKE or OpenShift) using the Oracle Restart Database Controller.
-* Change the software volume size where Oracle binaries are installed for an existing Oracle Restart Database Pod, you can do so by updating in the Custom Resource YAML associated with your Oracle Restart instance.
-* This example uses `oraclerestart_prov_nodeports.yaml` to provision the initial Oracle Restart Database using Oracle Restart Controller with:
+* The Software Home Location for Grid Infrastructure and Database, the ASM Disks are provisioned as Persistent Volumes using custom storage class during the initial deployment. An updated .yaml file is applied to `increase` the size of the Software Home Location.
+
+**NOTE:** The `decrease` in the size of Software Home Location for an existing Oracle Restart Database is `not allowed`.
+
+This example uses `oraclerestart_prov_storage_class_before_sw_home_resize.yaml` to initially provision an Oracle Restart Database using Oracle Restart Controller with:
 
   * Oracle Restart Pod
   * Headless services for Oracle Restart
     * Oracle Restart Node hostname
   * Node Port 30007 mapped to port 1521 for Database Listener. If you are using Loadbalancer service then you will see lbservice.
-  * Persistent volumes created automatically based on specified disks for Oracle ASM storage
-  * Software Persistent Volume and Staged Software Persistent Volume using the specified location on the corresponding worker node. If you are using Storageclass then the software volume is dynamically provisioned.
+  * Persistent volumes for ASM Disks created automatically using the Storage Class for Oracle ASM storage
+  * Persistent volume for Software location is created automatically using the Storage Class. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using the corresponding Persistent Volume Claim. Its size is specified by `swLocStorageSizeInGb`.
   * Namespace: `orestart`
-  * Staged Software location on the worker nodes is specified by `hostSwStageLocation`. The Grid Infrastructure and RDBMS Binaries are copied to this location on the worker node. If you are using, exisitng NFS based PVC for the staged software, the pramater is `swStagePvcMountLocation` under `configParams`.
+  * Staged Software location on the worker nodes is specified by `hostSwStageLocation`. The Grid Infrastructure and RDBMS Binaries are copied to this location on the worker node.
+  * Name of Custom Storage Class is specified by `storageClass`.
   * You will be using storageclass to dynamically allcate the storage. using the storage class **oci-bv**.
 
 ### In this Example: 
@@ -20,7 +24,7 @@
   * The disks provisioned using storageclass are mounted inside the Oracle Restart Pod as `/dev/asm-disk1` and `/dev/asm-disk2`. 
   * Specify the size of these devices along with names using the parameter `swLocStorageSizeInGb`. Size is by-default in GBs.
 
-**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files and Recovery Area Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
+**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files, Recovery Area Files and Redo Log Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
   
 ### Steps - Deploy the Oracle Restart Database
 * Skip this step if you have already deployed the Oracle Restart database using storage class.

@@ -14,7 +14,6 @@
   * Software location on the worker nodes is specified by `hostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using this location on the worker node.
   * Directory where the **Release Update (RU) patch** has been unzipped is specified by `ruPatchLocation`. 
     * For Example: To apply the 19.28 RU Patch `37957391`, if you have unzipped the RU Patch .zip file `p37957391_190000_Linux-x86-64.zip` to location `/scratch/software/19c/19.28/` on the worker node, then set this parameter `ruPatchLocation` to value `/scratch/software/ru_patch/37957391`.
-    * Set the permission on the unzipped RU software directory to be `755` recursively.
 
 ### In this Example:
   * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name `dbocir/oracle/database-orestart:19.3.0-slim`. 
@@ -22,7 +21,7 @@
   * The disks on the worker nodes for the Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
   * Specify the size of these devices along with names using the parameter `storageSizeInGb`. Size is by-default in GBs.
 
-**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files and Recovery Area Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
+**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files, Recovery Area Files and Redo Log Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
 
 ### Steps: Deploy Oracle Restart Database
 * Use the file: [oraclerestart_prov_rupatch.yaml](./oraclerestart_prov_rupatch.yaml) for this use case as below:

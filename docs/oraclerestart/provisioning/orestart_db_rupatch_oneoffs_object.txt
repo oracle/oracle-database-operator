@@ -7,12 +7,12 @@ Annotations:  OracleRestarts.database.oracle.com/old-spec:
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-09-12T14:19:42Z
+  Creation Timestamp:  2025-10-09T05:53:39Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  234821692
-  UID:               a8f02440-e8ed-40d3-9b85-85110f4065f4
+  Resource Version:  246360830
+  UID:               d37b51c4-58ae-42d9-bec4-983ce94ee540
 Spec:
   Asm Storage Details:
     Disks By Size:
@@ -23,15 +23,15 @@ Spec:
   Config Params:
     Cpu Count:                   4
     Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg:             DATA
     Crs Asm Disk Dg Redundancy:  external
     Db Base:                     /u01/app/oracle
     Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        +DATA
+    Db Data File Dest Dg:        DATA
     Db Home:                     /u01/app/oracle/product/19c/dbhome_1
     Db Name:                     PORCLCDB
     Db One Off Ids:              38336965,34436514
-    Db Recovery File Dest:       +DATA
+    Db Recovery File Dest:       DATA
     Db Response File:
     Db Sw Zip File:    db_home.zip
     Grid Base:         /u01/app/grid
@@ -44,6 +44,7 @@ Spec:
     O Patch Location:             /stage/software/19c
     O Patch Sw Zip File:          p6880880_190000_Linux-x86-64.zip
     One Off Location:             /stage/software/19c/oneoff
+    Pdb Name:                     TESTPDB
     Pga Size:                     1G
     Processes:                    2000
     Ru Patch Location:            /stage/software/19c/19.28/37957391
@@ -51,6 +52,7 @@ Spec:
     Sw Mount Location:            /u01
     Sw Stage Pvc:                 pv-stage-vol-claim
     Sw Stage Pvc Mount Location:  /stage
+  Crs Dg Storage Class:           oci-bv
   Db Secret:
     Key File Mount Location:  /mnt/.dbsecrets
     Key File Name:            key.pem
@@ -107,18 +109,19 @@ Spec:
     Name:                  ssh-key-secret
     Priv Key Secret Name:  ssh-privkey
     Pub Key Secret Name:   ssh-pubkey
-  Storage Class:           oci-bv
+  Sw Dg Storage Class:     oci-bv
 Status:
   Oracle Restart Nodes:
     Name:  dbmc1-0
     Node Details:
       Instance State:  OPEN
-      Pod State:       PODAVAILABLE
+      Pod State:       AVAILABLE
       Cluster State:   HEALTHY
       Mounted Devices:
+
         /dev/asm-disk1
         /dev/asm-disk2
-      State:  FAILED
+      State:  AVAILABLE
   Asm Details:
     Diskgroup:
       Disks:
@@ -126,27 +129,27 @@ Status:
       Name:        DATA
       Redundancy:  EXTERN
   Conditions:
-    Last Transition Time:  2025-09-12T15:33:28Z
-    Message:               reconcile completed successfully
-    Observed Generation:   1
-    Reason:                LastReconcileCycleCompleted
-    Status:                True
-    Type:                  ReconcileComplete
-    Last Transition Time:  2025-09-12T18:06:27Z
+    Last Transition Time:  2025-10-09T08:04:31Z
     Message:               reconcile has been queued
     Observed Generation:   1
     Reason:                LastReconcileCycleQueued
     Status:                True
     Type:                  ReconcileQueued
+    Last Transition Time:  2025-10-09T13:21:11Z
+    Message:               reconcile completed successfully
+    Observed Generation:   1
+    Reason:                LastReconcileCycleCompleted
+    Status:                True
+    Type:                  ReconcileComplete
   Config Params:
     Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             +DATA
+    Crs Asm Disk Dg:             DATA
     Crs Asm Disk Dg Redundancy:  external
     Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        +DATA
+    Db Data File Dest Dg:        DATA
     Db Home:                     /u01/app/oracle/product/19c/dbhome_1
     Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Db Recovery File Dest:       DATA
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -160,7 +163,7 @@ Status:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Db State:                   OPEN
-  External Connect String:    Pending
+  External Connect String:    129.146.0.149:30007/soepdb
   Pdb Connect String:         dbmc1-0:1521/ORCLPDB
   Release Update:             19.28.0.0.0
   Role:                       PRIMARY
@@ -169,6 +172,9 @@ Status:
     Svc State:  service soepdb is running
   State:        AVAILABLE
 Events:         <none>
+
+
+
 
 -- Patches Details for GI HOME and RDBMS HOME:
 [grid@dbmc1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches

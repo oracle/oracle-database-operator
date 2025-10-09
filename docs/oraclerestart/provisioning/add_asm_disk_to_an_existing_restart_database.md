@@ -3,7 +3,7 @@
 ### In this use case:
 
 * You have previously deployed an Oracle Restart Database in Kubernetes (for example, on OKE or OpenShift) using the Oracle Restart Database Controller. Now, you need to expand ASM storage by adding new ASM disks.
-* The existing Oracle Restart Database is deployed with Node Port Service using the file `oraclerestart_prov_nodeports.yaml` from Case [Provisioning an Oracle Restart Database with NodePort Service](./provisioning/provisioning_oracle_restart_db_nodeport.md) using Oracle Restart Controller with:
+* The existing Oracle Restart Database is deployed with Node Port Service using the file `oraclerestart_prov_nodeports.yaml` from Case [Provisioning an Oracle Restart Database with NodePort Service](./provisioning_oracle_restart_db_nodeport.md) using Oracle Restart Controller with:
   * Oracle Restart Pod
   * Headless services for Oracle Restart
     * Oracle Restart Node hostname
@@ -19,13 +19,13 @@
   * Update the Oracle Restart Custom Resource. Edit the custom resource YAML (`oraclerestarts.database.oracle.com`) to reference the new PVCs/disks under the appropriate ASM configuration.
 
 ### In this Example: 
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. This image is built using files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). 
-  * The existing disks on the worker nodes for the ASM that are used in Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
-  * Specify the size and names of these devices using the parameter `disksBySize`. By default, size is in GBs.  
-  * If you are using **storage class to dynamically provision ASM disks**, then you can skip these steps. If you are not using storage class, then in this example, two new disks are added to the existing Oracle Restart Database Deployment. For this purpose, the disks on the worker nodes that will be used are `/dev/disk/by-partlabel/asm-disk3` and `/dev/disk/by-partlabel/asm-disk4`.
-  * Update the corresponding device list in the `initParams` section.
-  * The default value in the `yaml` file is `autoUpdate: "true"`, which will delete and recreate the pod with updated ASM disks in the Oracle Restart Deployment. In this case, the new disks will be automatically added to the existing Diskgroup.
-  * If the value in the `yaml` file is set to `autoUpdate: "false"`, then the Oracle Restart Database Pod is recreated, but the additional disks are _not_ added to the ASM Disk Group automatically.
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). 
+  * The existing disks on the worker nodes for the ASM which are being used in Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
+  * Specify the size of these devices along with names using the parameter `storageSizeInGb`. Size is by-default in GBs.
+  * Skip this steps, if you are using **storage class to dynamically provision ASM disks**. In this example, two new disks will be added to the existing Oracle Restart Database Deployment. For this purpose, the disks on the worker nodes which will be used are `/dev/disk/by-partlabel/asm-disk3` and `/dev/disk/by-partlabel/asm-disk4`.
+  * Update the corresponding device list in initParams section.
+  * Default value in yaml file is `autoUpdate: "true"`, which will delete and recreate the pod with updated ASM disks in the Oracle Restart Deployment. In this case, the new disks will be automatically added to the existing Diskgroup.
+  * If the value in yaml file is set to `autoUpdate: "false"`, the Oracle Restart Database Pod is recreated, but the additional disks are `NOT` added to the ASM Disk Group automatically.
 
 
 ## When autoUpdate is set to true
