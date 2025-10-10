@@ -15797,7 +15797,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-sa
+        image: container-registry.oracle.com/database/operator:latest
         imagePullPolicy: Always
         name: manager
         ports:
