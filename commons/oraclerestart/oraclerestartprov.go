@@ -329,7 +329,7 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 		result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-oradata-sw-vol", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: OracleRestartSpex.HostSwLocation}}})
 	} else {
 		if instance.Spec.SwStorageClass != "" {
-			result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-oradata-sw-vol", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OracleRestartSpex.Name + "-oradata-sw-vol-pvc-" + OracleRestartSpex.Name + "-0"}}})
+			result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-oradata-sw-vol", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: GetSwPvcName(instance.Name, instance)}}})
 		}
 	}
 
@@ -1089,6 +1089,7 @@ func SwVolumeClaimTemplatesForOracleRestart(instance *oraclerestart.OracleRestar
 
 	// If user-provided PVC name exists, skip volume claim template creation
 	//pvcName := GetSwPvcName(OracleRestartSpex.Name)
+	// If you are making any change, please refer GetSwPvcName function as we add instance.Spec.InstDetails.Name + "-0"
 	pvcName := "odb-sw-pvc-" + instance.Name
 	return corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
