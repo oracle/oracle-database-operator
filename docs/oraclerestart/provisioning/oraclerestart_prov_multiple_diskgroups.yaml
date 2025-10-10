@@ -54,6 +54,8 @@ spec:
           - /dev/disk/by-partlabel/asm-disk4  # ASM disk device path 4
           - /dev/disk/by-partlabel/asm-disk5  # ASM disk device path 5
           - /dev/disk/by-partlabel/asm-disk6  # ASM disk device path 6
+          - /dev/disk/by-partlabel/asm-disk7  # ASM disk device path 7
+          - /dev/disk/by-partlabel/asm-disk8  # ASM disk device path 8                    
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
@@ -110,11 +112,13 @@ spec:
     dbHome: "/u01/app/oracle/product/19c/dbhome_1"            # Oracle DB home path
     dbBase: "/u01/app/oracle"                                 # Oracle base directory
     crsAsmDeviceList: /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2   # Comma-separated list of ASM devices for CRSDATA Diskgroup
-    dbAsmDeviceList: /dev/disk/by-partlabel/asm-disk3,/dev/disk/by-partlabel/asm-disk4    # Comma-separated list of ASM devices for DATA Diskgroup
-    recoAsmDeviceList: /dev/disk/by-partlabel/asm-disk5,/dev/disk/by-partlabel/asm-disk6  # Comma-separated list of ASM devices for RECO Diskgroup
-    crsAsmDiskDg: "+CRSDATA"                                  # Name of the Diskgroup for Voting Disks
+    dbAsmDeviceList: /dev/disk/by-partlabel/asm-disk3,/dev/disk/by-partlabel/asm-disk4    # Comma-separated list of ASM device files for DBDATA Diskgroup for database files
+    recoAsmDeviceList: /dev/disk/by-partlabel/asm-disk5,/dev/disk/by-partlabel/asm-disk6  # Comma-separated list of ASM device files for RECO Diskgroup for Recovery Area files
+    redoAsmDeviceList: /dev/disk/by-partlabel/asm-disk7,/dev/disk/by-partlabel/asm-disk8 # Comma-separated list of ASM device files for REDO Diskgroup for Redo files    
+    crsAsmDiskDg: "+CRSDATA"                                  # Name of the Diskgroup for CRS Files
     dbRecoveryFileDest: "+RECO"                               # Name of the Diskgroup for Recovery Files
     dbDataFileDestDg: "+DBDATA"                               # Name of the Diskgroup for Database Files
+    redoAsmDiskDg: "+REDO"                                    # Name of the Diskgroup for Redo Files
     inventory: "/u01/app/oraInventory"                        # Inventory location
     gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
     dbSwZipFile: "db_home.zip"                                # Database software ZIP
@@ -123,4 +127,5 @@ spec:
     processes: 2000                                           # Oracle process limit
     cpuCount: 4                                               # Number of CPUs to allocate
     dbName: "PORCLCDB"                                        # Oracle database name
+    pdbName: "TESTPDB"                                        # PDB name, in case you want to explicitly specify the PDB Name
     hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged, same location will be mounted inside the Oracle Restart Pod

@@ -12,15 +12,15 @@
   * Software location on the worker nodes is specified by `hostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using this location on the worker node.
 
 ### In this Example:
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name `dbocir/oracle/database-orestart:19.3.0-slim`. 
-  * When you are building the image yourself, update the image value in the `oraclerestart_prov.yaml` file to point to the container image you have built. 
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from thsi [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). The default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You must tag it with the name `dbocir/oracle/database-orestart:19.3.0-slim`.
+  * When you are building the image yourself, update the image value in the `oraclerestart_prov.yaml` file to point to the container image that you have built. 
   * The disks on the worker nodes for the Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
-  * Specify the size of these devices along with names using the parameter `storageSizeInGb`. Size is by-default in GBs.
+  * Specify the sizes and names of these devices using the parameter `storageSizeInGb`. By default, size is in GBs.
 
-**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files and Recovery Area Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
+**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files, Recovery Area Files and Redo Log Files,  the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
 
 ### Steps: Deploy Oracle Restart Database
-* Use the file: [oraclerestart_prov.yaml](./oraclerestart_prov.yaml) for this use case as below:
+* Use the file [oraclerestart_prov.yaml](./oraclerestart_prov.yaml) for this procedure:
 * Deploy the `oraclerestart_prov.yaml` file:
     ```sh
     kubectl apply -f oraclerestart_prov.yaml
@@ -37,5 +37,5 @@
     ORACLE DATABASE IS READY TO USE
     ===============================
     ```
-* Check Details of Kubernetes CRD Object as in this [example](./orestart_object.txt)
-* efer to the page [Database Connection](./database_connection.md) for the details to connect to Oracle Restart Database deployed using above example.
+* Check Details of Kubernetes CRD Object as shown in this [example](./orestart_object.txt)
+* For details about how ot connect to the Oracle Restart Database deployed in this procedure, refer to [Database Connection](./database_connection.md).

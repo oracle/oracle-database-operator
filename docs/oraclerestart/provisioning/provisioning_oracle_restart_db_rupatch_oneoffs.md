@@ -7,14 +7,13 @@
     * Oracle Restart node hostname
   * Node Port 30007 mapped to port 1521 for Database Listener.  
   * Persistent volumes created automatically based on specified disks for Oracle ASM storage.
-  * Software location and Staged Software location using a mount location which is using a pre created Persistent Volume from a network file system(NFS).
+  * Staged Software location using a mount location which is using a pre created Persistent Volume from a network file system(NFS).
   * Namespace: `orestart`
   * Mount point for the Software Stage Location inside the Pod is specified by `swStagePvcMountLocation`.
   * Staged Software location inside the Pod is specified by `hostSwStageLocation`. It is assumed that the Grid Infrastructure and RDBMS Binaries are already available in this path on the Persistent Volume used.
-  * The GI HOME and the RDBMS HOME in the Oracle Restart Pod are mounted using a Persistent Volume created using the Storage Class (specified using `storageClass`). This Persistent Volume is mounted to `/u01` inside the Pod. Size of this Persistent Volume is specified using `swLocStorageSizeInGb`.
+  * The GI HOME and the RDBMS HOME in the Oracle Restart Pod are mounted using a Persistent Volume created using the Storage Class (specified using `swDgStorageClass`). This Persistent Volume is mounted to `/u01` inside the Pod. Size of this Persistent Volume is specified using `swLocStorageSizeInGb`.
   * Directory where the **Release Update (RU) patch** has been unzipped is specified by `ruPatchLocation`. 
     * For Example: To apply the 19.28 RU Patch `37957391`, if you have unzipped the RU Patch .zip file `p37957391_190000_Linux-x86-64.zip` to location `/scratch/software/19c/19.28/` on the worker node, then set this parameter `ruPatchLocation` to value `/scratch/software/ru_patch/37957391`.
-    * Set the permission on the unzipped RU software directory to be `755` recursively.
   * Directory, where latest opatch zip file is available, is specified by `oPatchLocation`.
   * Directory, where unzipped One-off patch files are available, is specified by `oneOffLocation`.
   * Specify Comma-separated one-off patch IDs to be applied to the GI HOME using `gridOneOffIds`. For Example: `gridOneOffIds: "38336965,34436514"`
@@ -22,8 +21,10 @@
 
 ### In this example, 
   * We are using Oracle Restart Database slim image by building it from Git location(./https://orahub.oci.oraclecorp.com/rac-docker-dev/rac-docker-images/-/blob/master/OracleRealApplicationClusters/README.md#building-oracle-rac-database-container-slim-image) i.e. `dbocir/oracle/database-rac:19.3.0-slim`. To use this in your in own environment, update the image value in the `oraclerestart_prov_rupatch_oneoff_storageclass.yaml` file to point to your own container registry base container image.
-  * The disks procured on the containers using customer storage class for the Oracle Restart storage are `/dev/asm-disk1` and `/dev/asm-disk2`. 
-  * Specify the size of these devices along with names using the parameter `disksBySize`. Size is by-default in GBs.
+  * The disks provisioned using customer storage class (specified by `crsDgStorageClass`) for the Oracle Restart storage are `/dev/asm-disk1` and `/dev/asm-disk2`. 
+  * Specify the size of these devices along with names using the parameter `storageSizeInGb`. Size is by-default in GBs.
+
+**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files, Recovery Area Files and Redo Log Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
 
 ### Steps: Deploy Oracle Restart Database  
 * Use the file: [oraclerestart_prov_rupatch_oneoff_storageclass.yaml](./oraclerestart_prov_rupatch_oneoff_storageclass.yaml) for this use case as below:

@@ -5,6 +5,7 @@
     * [Preparing to Install Oracle Restart on OKE](#preparing-to-install-oracle-restart-on-oke)
     * [Worker Node Preparation for Oracle Restart on OKE](#worker-node-preparation-for-oracle-restart-on-oke)
         + [Download Oracle Grid Infrastructure and Oracle Database Software](#download-oracle-grid-infrastructure-and-oracle-database-software)
+        + [Permission on the software files](#permission-on-the-software-files)
         + [Prepare the Worker Node for Oracle Restart Deployment](#prepare-the-worker-node-for-oracle-restart-deployment)
         + [Set up SELinux Module on Worker Nodes](#set-up-selinux-module-on-worker-nodes)
     * [Create a namespace for the Oracle Restart Setup](#create-a-namespace-for-the-oracle-restart-setup)
@@ -101,6 +102,16 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
   * The Oracle Database Container does not contain any Oracle software binaries. Download the following software from the [Oracle Technology Network](https://www.oracle.com/technetwork/database/enterprise-edition/downloads/index.html).
     - Oracle Grid Infrastructure 19c (19.28) for Linux x86-64
     - Oracle Database 19c (19.28) for Linux x86-64
+
+  ### Permission on the software files
+
+  Depending on the wheter you are provisioning the Oracle Restart Database using Base Release sofware or you are applying an RU patch or any one-off patch, please set the below permissions on the software files in the staging location:
+
+  - Set the permission on the GRID Infrastructure Software and RDBMS Software .zip files to be 755.
+  - Set the permission on the Opatch .zip file to be 755
+  - Set the permission on the unzipped RU software directory to be 755 recursively.
+  - Set the permission on the unzipped oneoff patch software directory to be 755 recursively.
+
 
   ### Worker Node Preparation Checklist
   Preparing the worker node is a critical foundation for a secure and successful Oracle Restart Database deployment in a Kubernetes environmen. These steps need to be executed by Kuberernetes administrator as root user on worker nodes and follow these steps:
@@ -231,6 +242,22 @@ Before using Oracle Restart Database Controller, ensure you have completed the p
 * Creation of Role Bindings for Access Management
 
 Refer to the section [Prerequisites](../../../README.md#prerequisites)
+
+Apart from the default Role Bindings for access management mentioned in above section, you will require the below mentioned role bindings:
+
+  For exposing the database using Nodeport services, apply [RBAC](../../../rbac/node-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/node-rbac.yaml
+  ```
+  For automatic storage expansion of block volumes, apply [RBAC](../../../rbac/storage-class-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/storage-class-rbac.yaml
+  ```
+  For getting get, list and watch privileges on the persistent volumes, apply [RBAC](../../rbac/persistent-volume-rbac.yaml)
+  ```sh
+    kubectl apply -f rbac/persistent-volume-rbac.yaml
+  ```
+
 
 ## Additional requirements for OpenShift Security Context Constraints
 When you deploy Oracle Restart Database using the Oracle Restart Database Controller on an OpenShift cluster, you must account for OpenShift's stricter security model, especially around Security Context Constraints (SCCs). 

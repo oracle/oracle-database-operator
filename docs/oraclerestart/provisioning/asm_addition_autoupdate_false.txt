@@ -249,7 +249,7 @@ $ kubectl logs -f pod/oracle-database-operator-controller-manager-bc8dd8f68-pwfd
 
 ### Status after the Disks are added with "autoUpdate=true"
 
-[jpverma@phoenix497729 provisioning]$ kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
+$ kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
 Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>

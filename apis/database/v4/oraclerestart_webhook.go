@@ -117,7 +117,7 @@ func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
 
 		if cr.Spec.ConfigParams.GridResponseFile.ConfigMapName == "" {
 			if cr.Spec.ConfigParams.CrsAsmDiskDg == "" {
-				cr.Spec.ConfigParams.CrsAsmDiskDg = "+DATA"
+				cr.Spec.ConfigParams.CrsAsmDiskDg = "DATA"
 			}
 			if cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy == "" {
 				cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy = "external"
@@ -196,6 +196,21 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 	deviceWarnings = append(deviceWarnings, w...)
 	validationErrs = append(validationErrs, errs...)
 
+	errs = cr.validateRedoAsmDG()
+	validationErrs = append(validationErrs, errs...)
+
+	errs = cr.validateRecoAsmDG()
+	validationErrs = append(validationErrs, errs...)
+
+	errs = cr.validateDataAsmDG()
+	validationErrs = append(validationErrs, errs...)
+
+	errs = cr.validateCrsAsmDG()
+	validationErrs = append(validationErrs, errs...)
+
+	errs = cr.validateCrsAsmDG()
+	validationErrs = append(validationErrs, errs...)
+
 	if cr.Spec.ConfigParams != nil {
 		// CRS
 		validationErrs = append(validationErrs,
@@ -251,11 +266,39 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 		}
 	}
 
-	if old.Spec.StorageClass != newCr.Spec.StorageClass {
+	if old.Spec.DataDgStorageClass != newCr.Spec.DataDgStorageClass {
 
 		return nil, apierrors.NewForbidden(
 			schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},
-			newCr.Name, fmt.Errorf("updates to the storageclass is forbidden: %s", old.Spec.StorageClass))
+			newCr.Name, fmt.Errorf("updates to the Data storageclass is forbidden: %s", old.Spec.DataDgStorageClass))
+	}
+
+	if old.Spec.RecoDgStorageClass != newCr.Spec.RecoDgStorageClass {
+
+		return nil, apierrors.NewForbidden(
+			schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},
+			newCr.Name, fmt.Errorf("updates to the Reco storageclass is forbidden: %s", old.Spec.RecoDgStorageClass))
+	}
+
+	if old.Spec.RedoDgStorageClass != newCr.Spec.RedoDgStorageClass {
+
+		return nil, apierrors.NewForbidden(
+			schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},
+			newCr.Name, fmt.Errorf("updates to the Redo storageclass is forbidden: %s", old.Spec.RedoDgStorageClass))
+	}
+
+	if old.Spec.SwStorageClass != newCr.Spec.SwStorageClass {
+
+		return nil, apierrors.NewForbidden(
+			schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},
+			newCr.Name, fmt.Errorf("updates to the Swstorageclass is forbidden: %s", old.Spec.SwStorageClass))
+	}
+
+	if old.Spec.CrsDgStorageClass != newCr.Spec.CrsDgStorageClass {
+
+		return nil, apierrors.NewForbidden(
+			schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},
+			newCr.Name, fmt.Errorf("updates to the CrsDgStorageClass is forbidden: %s", old.Spec.CrsDgStorageClass))
 	}
 
 	if newCr.Spec.InstDetails.SwLocStorageSizeInGb < old.Spec.InstDetails.SwLocStorageSizeInGb {
@@ -551,8 +594,31 @@ func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 		}
 	}
 
+	// Check ASM disks are not duplicate
+	if !r.validateAsmDiskUnqiueNames() {
+		validationErrs = append(validationErrs,
+			field.Invalid(asmPath.Child("DisksBySize"), asmPath, "Each ASM disk must be unique"))
+
+	}
+
 	return validationErrs
 }
+
+func (r *OracleRestart) validateAsmDiskUnqiueNames() bool {
+
+	seenDisks := make(map[string]bool) //store encounterednames
+	for _, disks := range r.Spec.AsmStorageDetails.DisksBySize {
+		for _, diskPath := range disks.DiskNames {
+			if seenDisks[diskPath] {
+				return false
+			}
+			seenDisks[diskPath] = true // disk is seen
+		}
+	}
+
+	return true
+}
+
 func (r *OracleRestart) validateGeneric() field.ErrorList {
 	var validationErrs field.ErrorList
 
@@ -564,14 +630,14 @@ func (r *OracleRestart) validateGeneric() field.ErrorList {
 					"Name must contain only alphanumeric characters"))
 		}
 
-		if r.Spec.InstDetails.HostSwLocation == "" && r.Spec.StorageClass == "" {
+		if r.Spec.InstDetails.HostSwLocation == "" && r.Spec.SwStorageClass == "" {
 			validationErrs = append(validationErrs,
 				field.Invalid(field.NewPath("spec").Child("InstDetails").Child("HostSwLocation"), r.Spec.InstDetails.HostSwLocation,
 					"Either HostSwLocation or SwStorageClass must be specified"))
 		}
 	}
 
-	if r.Spec.StorageClass != "" {
+	if r.Spec.SwStorageClass != "" {
 		if r.Spec.InstDetails.SwLocStorageSizeInGb < 60 {
 			validationErrs = append(validationErrs,
 				field.Invalid(field.NewPath("spec").Child("InstDetails").Child("SwLocStorageSizeInGb"), r.Spec.InstDetails.SwLocStorageSizeInGb,
@@ -684,10 +750,10 @@ func (r *OracleRestart) validateGeneric() field.ErrorList {
 				"DbSwZipFile cannot be empty"))
 	}
 
-	if cfg.HostSwStageLocation == "" && r.Spec.StorageClass == "" {
+	if cfg.HostSwStageLocation == "" && r.Spec.SwStorageClass == "" {
 		validationErrs = append(validationErrs,
 			field.Invalid(cfgPath.Child("HostSwStageLocation"), cfg.HostSwStageLocation,
-				"Either HostSwStageLocation or StorageClass must be specified"))
+				"Either HostSwStageLocation or SwDgStorageClass must be specified"))
 	}
 
 	if r.Spec.ConfigParams.RuPatchLocation != "" {
@@ -786,9 +852,40 @@ func (r *OracleRestart) validateUpdateServiceSpecs(old *OracleRestart) field.Err
 
 	return validationErrs
 }
+
 func (r *OracleRestart) validateUpdateAsmStorage(old *OracleRestart) field.ErrorList {
 	var validationErrs field.ErrorList
 	// Add actual validation logic here if needed
+	if !strings.EqualFold(old.Spec.CrsDgStorageClass, r.Spec.CrsDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("CrsDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "CrsDgStorageClass cannot be changed post creation"))
+	}
+
+	if !strings.EqualFold(old.Spec.CrsDgStorageClass, r.Spec.CrsDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("CrsDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "CrsDgStorageClass cannot be changed post creation"))
+	}
+
+	if !strings.EqualFold(old.Spec.DataDgStorageClass, r.Spec.DataDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("DataDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "DataDgStorageClass cannot be changed post creation"))
+	}
+
+	if !strings.EqualFold(old.Spec.RedoDgStorageClass, r.Spec.RedoDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("RedoDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "RedoDgStorageClass cannot be changed post creation"))
+	}
+
+	if !strings.EqualFold(old.Spec.RecoDgStorageClass, r.Spec.RecoDgStorageClass) {
+		validationErrs = append(validationErrs,
+			field.Invalid(field.NewPath("spec").Child("RecoDgStorageClass"),
+				r.Spec.CrsDgStorageClass, "RecoDgStorageClass cannot be changed post creation"))
+	}
+
 	return validationErrs
 }
 
@@ -970,6 +1067,58 @@ func (r *OracleRestart) validateRedoAsmDeviceList() ([]string, field.ErrorList) 
 	}
 
 	return r.validateAsmDeviceList(r.Spec.ConfigParams.RedoAsmDeviceList, "RedoAsmDeviceList")
+}
+
+func (r *OracleRestart) validateRedoAsmDG() field.ErrorList {
+	var validationErrs field.ErrorList
+
+	if r.Spec.RedoDgStorageClass != "" {
+		if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.RedoAsmDeviceList == "" {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("RedoDgStorageClass"), r.Spec.RedoDgStorageClass, fmt.Sprintf("Redo ASM diskgroup storageclass set but Spec.ConfigParams.RedoAsmDeviceList is set to empty")))
+			return validationErrs
+		}
+	}
+	return nil
+}
+
+func (r *OracleRestart) validateRecoAsmDG() field.ErrorList {
+	var validationErrs field.ErrorList
+
+	if r.Spec.RecoDgStorageClass != "" {
+		if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.RecoAsmDeviceList == "" {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("RecoDgStorageClass"), r.Spec.RecoDgStorageClass, fmt.Sprintf("Reco ASM diskgroup storageclass set but Spec.ConfigParams.RecoAsmDeviceList is set to empty")))
+			return validationErrs
+		}
+	}
+	return nil
+}
+
+func (r *OracleRestart) validateDataAsmDG() field.ErrorList {
+	var validationErrs field.ErrorList
+
+	if r.Spec.DataDgStorageClass != "" {
+		if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.DbAsmDeviceList == "" {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("DataDgStorageClass"), r.Spec.RedoDgStorageClass, fmt.Sprintf("Data ASM diskgroup storageclass set but Spec.ConfigParams.DataAsmDeviceList is set to empty")))
+			return validationErrs
+		}
+	}
+	return nil
+}
+
+func (r *OracleRestart) validateCrsAsmDG() field.ErrorList {
+	var validationErrs field.ErrorList
+
+	if r.Spec.CrsDgStorageClass != "" {
+		if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.CrsAsmDeviceList == "" {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("CrsDgStorageClass"), r.Spec.CrsDgStorageClass, fmt.Sprintf("Crs ASM diskgroup storageclass set but Spec.ConfigParams.CrsAsmDeviceList is set to empty")))
+			return validationErrs
+		}
+	}
+	return nil
 }
 
 // Helper function to check if a slice contains a specific element

@@ -1,8 +1,8 @@
 # Scale UP the shape of an existing OBDS System
 
-In this use case, an existing OCI OBDS system deployed earlier is scaled up for its shape using Oracle DB Operator OBDS controller. Its a 2 Step operation.
+In this use case, an existing OCI OBDS system deployed earlier is scaled up for its shape using Oracle DB Operator OBDS controller. This is a two-step operation.
 
-In order to scale up an existing OBDS system, the steps will be:
+To scale up an existing OBDS system, the two steps are:
 
 1. Bind the existing OBDS System to OBDS Controller.
 2. Apply the change to scale up its shape.
@@ -22,17 +22,17 @@ This example uses `scale_up_dbcs_system_shape.yaml` to scale up a Single Instanc
 - SSH Public key for the OBDS system being deployed as `oci-publickey`  
 - OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`  
 
-**NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md).
+**NOTE:** For the details of the parameters to be used in the `.yaml` file, see: [DBCS Controller Parameters](./dbcs_controller_parameters.md).
 
-Use the file: [scale_up_dbcs_system_shape.yaml](./scale_up_dbcs_system_shape.yaml) for this use case as below:
+Use the file: [scale_up_dbcs_system_shape.yaml](./scale_up_dbcs_system_shape.yaml) for this use case as described in the following steps:
 
-1. Deploy the .yaml file:  
+1. Deploy the `.yaml` file:  
 ```sh
 [root@docker-test-server OBDS]# kubectl apply -f scale_up_dbcs_system_shape.yaml
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
-2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the OBDS VMDB Scale up. 
+2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` to see the progress of the OBDS VMDB Scale up. 
 
 NOTE: Check the DB Operator Pod name in your environment.
 
@@ -42,4 +42,4 @@ NOTE: Check the DB Operator Pod name in your environment.
 
 ## Sample Output
 
-[Here](./scale_up_dbcs_system_shape_sample_output.log) is the sample output for scaling up the shape of an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.
+[this log file](./scale_up_dbcs_system_shape_sample_output.log) is an example log output for scaling up the shape of an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.

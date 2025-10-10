@@ -1,8 +1,8 @@
 # Setup Dataguard Association to Existing Database of DB System in OCI Base DBCS Service
 
-In this use case, an existing OCI DBCS system deployed earlier with existing Database is going to have dataguard association in OCI Base DBCS Service using existing Database ID. 
+In this use case, an existing OCI DBCS system previously deployed with an existing Database is provided with an Oracle Data Guard association in OCI Base DBCS Service using the existing Database ID. 
 
-As an pre-requisite, get the details of OCID of database of an existing DBCS System which you want to clone.  
+As a prerequisite, obtain the OCID details for the database of the existing DBCS System that you want to clone.  
 
 **NOTE:** We are assuming that before this step, you have followed the [prerequisite](./../README.md#prerequisites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) steps to create the configmap and the secrets required during the deployment.
 
@@ -14,13 +14,13 @@ This example uses `dataguard_in_database.yaml` to clone a Single Instance DBCS V
 
 Use the file: [dataguard_in_database.yaml](./dataguard_in_database.yaml) for this use case as below:
 
-1. Deploy the .yaml file:  
+1. Deploy the `.yaml` file:  
 ```sh
 [root@docker-test-server DBCS]# kubectl apply -f dataguard_in_database.yaml
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
-2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the DBCS VMDB creation of PDBs. 
+2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` to follow the progress of the DBCS VMDB creation of PDBs. 
 
 NOTE: Check the DB Operator Pod name in your environment.
 
@@ -30,4 +30,4 @@ NOTE: Check the DB Operator Pod name in your environment.
 
 ## Sample Output
 
-[Here](./dataguard_in_database_sample_output.log) is the sample output for cloning an existing DBCS System deployed in OCI using Oracle DB Operator DBCS Controller.
+[Here](./dataguard_in_database_sample_output.log) is the example output log for cloning an existing DBCS System deployed in OCI using Oracle DB Operator DBCS Controller.

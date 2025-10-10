@@ -1,9 +1,9 @@
 # Database Connectivity
 
-Depending on whether the Oracle Restart Database has been deployed using Oracle Restart Controller with a NodePort Service or a Load Balancer Service etc, you can refer to the below examples to connect to the Oracle Restart Database:
+To connect to the Oracle Restart Database, follow the example that matches your deployment method—NodePort Service, Load Balancer Service, or another supported method.
 
 ## Database Connection to Oracle Restart Database with NodePort Service
-The Oracle Database with NodePort service deployed by Oracle Restart Controller can be reached using the Worker Node IP and the Port of the Node Port service. Use the below steps:
+If you deployed the Oracle Restart Database with a NodePort service using the Oracle Restart Controller, then you can connect by specifying the worker node’s IP address and the port of the Node Port service.  Follow these steps:
 
 1. Get the Details of the deployment:
 ```sh
@@ -18,9 +18,9 @@ service/dbmc1-0   ClusterIP   None           <none>        <none>           171m
 NAME                     READY   AGE     CONTAINERS   IMAGES
 statefulset.apps/dbmc1   1/1     5h46m   dbmc1        localhost/oracle/database-orestart:19.3.0-slim
 ```
-In this case, the port 1521 from the pod is mapped to port 30007 on the worker node. To make the connection from outside, you will need to open the port 30007 on the worker node for INGRESS.
+In this case, the port 1521 from the pod is mapped to port 30007 on the worker node. To make the connection from outside, you must open the port 30007 on the worker node for INGRESS.
  
-2. For the above deployment, you will be able to make an SQLPLUS database connection to this Oracle Restart Database from a remote client as below:
+2. With this NodePort Service deployment, you can make a SQL*Plus database connection to this Oracle Restart Database from a remote client:
  
 ```sh
 bash-4.4$ sqlplus system/<Database Password>@//<Worker Node Public IP>:30007/PORCLCDB
@@ -48,9 +48,9 @@ PORCLCDB          dbmc1-0                                 SINGLE
 
 ## Database Connection to Oracle Restart Database with Load Balancer
 
-In this case, the Oracle Restart Database is deployed with an External Load Balancer and the deployment has a Public IP Assigned from the External Load Balancer Service. 
+In this case, the Oracle Restart Database is deployed with an External Load Balancer, and the deployment has a Public IP Assigned from the External Load Balancer Service. 
 
-Once the deployment is completed, you will be able to make a database connection as below:
+After the deployment is completed, you can make a database connection:
 
 1. Get the Details of the deployment:
 ```sh
@@ -65,9 +65,9 @@ service/dbmc1-0   ClusterIP      None           <none>         <none>           
 NAME                     READY   AGE   CONTAINERS   IMAGES
 statefulset.apps/dbmc1   1/1     14m   dbmc1        localhost/oracle/database-orestart:19.3.0-slim
 ```
-In this case, you will be able to make a remote database connection using the Load Balancer target port 1521.
+In this case, you can make a remote database connection using the Load Balancer target port 1521.
  
-2. For the above deployment, you will be able to make an SQLPLUS database connection to this Oracle Restart Database from a remote client as below:
+2. With this Load Balancer deployment, you can make a SQL*Plus database connection to this Oracle Restart Database from a remote client:
  
 ```sh
 bash-4.4$ sqlplus system/<Database Password>@//<Load Balancer Public IP XXX.XX.XX.XX >:1521/PORCLCDB
