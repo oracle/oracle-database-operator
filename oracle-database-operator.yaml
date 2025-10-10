@@ -10749,9 +10749,11 @@ spec:
                     type: integer
                   recoAsmDeviceList:
                     type: string
-                  recoAsmDiskDgRedudancy:
+                  recoAsmDiskDgRedundancy:
                     type: string
                   redoAsmDeviceList:
+                    type: string
+                  redoAsmDiskDg:
                     type: string
                   redoAsmDiskDgRedundancy:
                     type: string
@@ -10770,6 +10772,10 @@ spec:
                   swStagePvcMountLocation:
                     type: string
                 type: object
+              crsDgStorageClass:
+                type: string
+              dataDgStorageClass:
+                type: string
               dbSecret:
                 properties:
                   encryptionType:
@@ -11082,6 +11088,10 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              recoDgStorageClass:
+                type: string
+              redoDgStorageClass:
+                type: string
               resources:
                 properties:
                   claims:
@@ -11270,7 +11280,7 @@ spec:
                 required:
                 - name
                 type: object
-              storageClass:
+              swDgStorageClass:
                 type: string
               tdeWalletSecret:
                 properties:
@@ -11531,9 +11541,11 @@ spec:
                     type: integer
                   recoAsmDeviceList:
                     type: string
-                  recoAsmDiskDgRedudancy:
+                  recoAsmDiskDgRedundancy:
                     type: string
                   redoAsmDeviceList:
+                    type: string
+                  redoAsmDiskDg:
                     type: string
                   redoAsmDiskDgRedundancy:
                     type: string
@@ -14871,32 +14883,6 @@ rules:
   verbs:
   - get
 - apiGroups:
-  - ""
-  resources:
-  - configmaps/status
-  - daemonsets/status
-  - deployments/status
-  - services/status
-  - statefulsets/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - persistentvolumes
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ""
-  resources:
-  - secrets/status
-  verbs:
-  - get
-- apiGroups:
   - ''''''
   resources:
   - statefulsets/finalizers
@@ -15365,6 +15351,7 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
@@ -15720,6 +15707,7 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
