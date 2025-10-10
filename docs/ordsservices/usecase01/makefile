@@ -80,9 +80,9 @@ export PDB1_PRIV_AUTH_SECRET=pdb1-priv-auth-enc
 export PDB2_PRIV_AUTH_SECRET=pdb2-priv-auth-enc
 
 
-export SIDB_IMAGE=container-registry.oracle.com/database/free:23.4.0.0
-export ORDS_IMAGE=container-registry.oracle.com/database/ords:24.1.0
-export ORDS_IMAGE.1=container-registry.oracle.com/database/ords:24.1.1
+export SIDB_IMAGE=container-registry.oracle.com/database/free:23.7.0.0
+export ORDS_IMAGE=container-registry.oracle.com/database/ords:25.1.0
+export ORDS_IMAGE.1=container-registry.oracle.com/database/ords:25.1.0
 export SECRET_CONTAINER_REGISTRY=oracle-container-registry-secret
 export ORACLE_CONTAINER_REGISTRY=container-registry.oracle.com
 export REST_SERVER_NAME=ords-sidb
@@ -386,7 +386,7 @@ step5a:
 	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
 	$(KUBECTL) create secret generic pubkey --from-file=publicKey=$(PUBKEY)   -n $(ORDSNAMESPACE)
 	$(KUBECTL) create secret generic prvkey --from-file=privateKey=$(PRVKEY)  -n $(ORDSNAMESPACE)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(SIDB_PASSWORD_FILE) |base64 > e_$(SIDB_PASSWORD_FILE)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(SIDB_PASSWORD_FILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256|base64 > e_$(SIDB_PASSWORD_FILE)
 	$(KUBECTL) create secret generic $(SIDB_SECRET) --from-literal=password=$(SIDB_PASSWORD) -n $(OPRNAMESPACE)
 	$(KUBECTL) create secret generic $(ORDS_SECRET) --from-file=password=e_$(SIDB_PASSWORD_FILE) -n  $(ORDSNAMESPACE)
 	$(RM) e_$(SIDB_PASSWORD_FILE) $(SIDB_PASSWORD_FILE) 
@@ -467,7 +467,6 @@ cat<<EOF|sed 's/^#//g' >$(REST_SERVER_CREATION)
 #  poolSettings:
 #    - poolName: default
 #      autoUpgradeORDS: true
-#      autoUpgradeAPEX: true
 #      restEnabledSql.active: true
 #      plsql.gateway.mode: direct
 #      db.connectionType: customurl
@@ -675,9 +674,9 @@ step13a:
 	$(OPENSSL) rsa -in $(PRVKEY) -outform PEM  -pubout -out $(PUBKEY)
 	#$(KUBECTL) create secret generic pubkey --from-file=publicKey=$(PUBKEY) -n $(ORDSNAMESPACE)
 	$(KUBECTL) create secret generic prvkey --from-file=privateKey=$(PRVKEY)  -n $(ORDSNAMESPACE)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(SYSPWDFILE1) |base64 > e_$(SYSPWDFILE1)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(SYSPWDFILE2) |base64 > e_$(SYSPWDFILE2)
-	$(OPENSSL) rsautl -encrypt -pubin -inkey $(PUBKEY) -in $(ORDPWDFILE) |base64 > e_$(ORDPWDFILE)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(SYSPWDFILE1) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256|base64 > e_$(SYSPWDFILE1)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(SYSPWDFILE2) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256|base64 > e_$(SYSPWDFILE2)
+	$(OPENSSL) pkeyutl -encrypt -pubin -inkey $(PUBKEY) -in $(ORDPWDFILE) -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256|base64 > e_$(ORDPWDFILE)
 	$(KUBECTL) create secret generic $(PDB1_PRIV_AUTH_SECRET) --from-file=password=e_$(SYSPWDFILE1) -n  $(ORDSNAMESPACE)
 	$(KUBECTL) create secret generic $(PDB2_PRIV_AUTH_SECRET) --from-file=password=e_$(SYSPWDFILE2) -n  $(ORDSNAMESPACE)
 	$(KUBECTL) create secret generic $(MULTI_ORDS_AUTH_SECRET) --from-file=password=e_$(ORDPWDFILE) -n  $(ORDSNAMESPACE)
@@ -698,7 +697,7 @@ cat <<EOF |sed 's/^#//g' >$(MULTISRV_MANIFEST)
 #  name: ords-multi-pool
 #  namespace: $(ORDSNAMESPACE)
 #spec:
-#  image: container-registry.oracle.com/database/ords:24.1.1
+#  image: $(ORDS_IMAGE.1)
 #  forceRestart: true
 #  encPrivKey:
 #    secretName: prvkey
@@ -707,7 +706,6 @@ cat <<EOF |sed 's/^#//g' >$(MULTISRV_MANIFEST)
 #    database.api.enabled: true
 #  poolSettings:
 #    - poolName: pdb1
-#      autoUpgradeAPEX: false
 #      autoUpgradeORDS: false
 #      db.connectionType: tns
 #      db.tnsAliasName: pdb1
@@ -723,7 +721,6 @@ cat <<EOF |sed 's/^#//g' >$(MULTISRV_MANIFEST)
 #      db.adminUser.secret:
 #        secretName: $(PDB1_PRIV_AUTH_SECRET)
 #    - poolName: pdb2
-#      autoUpgradeAPEX: false
 #      autoUpgradeORDS: false
 #      db.connectionType: tns
 #      db.tnsAliasName: PDB2

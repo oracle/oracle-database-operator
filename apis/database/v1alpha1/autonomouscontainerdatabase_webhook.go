@@ -39,6 +39,8 @@
 package v1alpha1
 
 import (
+	"context"
+
 	dbv4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,39 +58,42 @@ var autonomouscontainerdatabaselog = logf.Log.WithName("autonomouscontainerdatab
 func (r *AutonomousContainerDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithValidator(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomouscontainerdatabases,versions=v1alpha1,name=vautonomouscontainerdatabasev1alpha1.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Validator = &AutonomousContainerDatabase{}
+var _ webhook.CustomValidator = &AutonomousContainerDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateCreate() (admission.Warnings, error) {
-	autonomouscontainerdatabaselog.Info("validate create", "name", r.Name)
+func (r *AutonomousContainerDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	var allErrs field.ErrorList
-	var oldACD *AutonomousContainerDatabase = old.(*AutonomousContainerDatabase)
+func (r *AutonomousContainerDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	var (
+		allErrs field.ErrorList
+		oldAcd  *AutonomousContainerDatabase = oldObj.(*AutonomousContainerDatabase)
+		newAcd  *AutonomousContainerDatabase = newObj.(*AutonomousContainerDatabase)
+	)
 
-	autonomouscontainerdatabaselog.Info("validate update", "name", r.Name)
+	autonomouscontainerdatabaselog.Info("validate update", "name", newAcd.Name)
 
 	// skip the update of adding ADB OCID or binding
-	if oldACD.Status.LifecycleState == "" {
+	if oldAcd.Status.LifecycleState == "" {
 		return nil, nil
 	}
 
 	// cannot update when the old state is in intermediate state, except for the terminate operatrion
-	var copiedSpec *AutonomousContainerDatabaseSpec = r.Spec.DeepCopy()
-	changed, err := dbv4.RemoveUnchangedFields(oldACD.Spec, copiedSpec)
+	var copiedSpec *AutonomousContainerDatabaseSpec = newAcd.Spec.DeepCopy()
+	changed, err := dbv4.RemoveUnchangedFields(oldAcd.Spec, copiedSpec)
 	if err != nil {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec"), err.Error()))
 	}
-	if dbv4.IsACDIntermediateState(oldACD.Status.LifecycleState) && changed {
+	if dbv4.IsACDIntermediateState(oldAcd.Status.LifecycleState) && changed {
 		allErrs = append(allErrs,
 			field.Forbidden(field.NewPath("spec"),
 				"cannot change the spec when the lifecycleState is in an intermdeiate state"))
@@ -99,13 +104,10 @@ func (r *AutonomousContainerDatabase) ValidateUpdate(old runtime.Object) (admiss
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousContainerDatabase"},
-		r.Name, allErrs)
+		newAcd.Name, allErrs)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousContainerDatabase) ValidateDelete() (admission.Warnings, error) {
-	autonomouscontainerdatabaselog.Info("validate delete", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object deletion.
+func (r *AutonomousContainerDatabase) ValidateDelete(context.Context, runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }

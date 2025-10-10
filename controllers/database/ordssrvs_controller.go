@@ -40,6 +40,7 @@ package controllers
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -59,6 +60,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -69,23 +71,29 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	//	dbapi "example.com/oracle-ords-operator/api/v1"
+	"github.com/go-logr/logr"
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
+	"github.com/oracle/oracle-database-operator/commons/k8s"
 )
 
 // Definitions of Standards
 const (
-	ordsSABase           = "/opt/oracle/sa"
-	serviceHTTPPortName  = "svc-http-port"
-	serviceHTTPSPortName = "svc-https-port"
-	serviceMongoPortName = "svc-mongo-port"
-	targetHTTPPortName   = "pod-http-port"
-	targetHTTPSPortName  = "pod-https-port"
-	targetMongoPortName  = "pod-mongo-port"
-	globalConfigMapName  = "settings-global"
-	poolConfigPreName    = "settings-" // Append PoolName
-	controllerLabelKey   = "oracle.com/ords-operator-filter"
-	controllerLabelVal   = "oracle-database-operator"
-	specHashLabel        = "oracle.com/ords-operator-spec-hash"
+	ordsSABase            = "/opt/oracle/sa"
+	serviceHTTPPortName   = "svc-http-port"
+	serviceHTTPSPortName  = "svc-https-port"
+	serviceMongoPortName  = "svc-mongo-port"
+	targetHTTPPortName    = "pod-http-port"
+	targetHTTPSPortName   = "pod-https-port"
+	targetMongoPortName   = "pod-mongo-port"
+	globalConfigMapName   = "settings-global"
+	poolConfigPreName     = "settings-" // Append PoolName
+	controllerLabelKey    = "oracle.com/ords-operator-filter"
+	controllerLabelVal    = "oracle-database-operator"
+	specHashLabel         = "oracle.com/ords-operator-spec-hash"
+	APEXInstallationPV    = "apex-installation-pv"
+	APEXInstallationPVC   = "apex-installation-pvc"
+	APEXInstallationMount = "/opt/oracle/apex"
 )
 
 // Definitions to manage status conditions
@@ -96,6 +104,12 @@ const (
 	typeUnsyncedORDS = "Unsynced"
 )
 
+// Definitions used in the controller
+var ordsInitScript string = ""
+var ordsStartScript string = ""
+var ordsGlobalConfig string = ""
+var APEXInstallationExternal string = "false"
+
 // Trigger a restart of Pods on Config Changes
 var RestartPods bool = false
 
@@ -104,6 +118,7 @@ type OrdsSrvsReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	Log      logr.Logger
 }
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=ordssrvs,verbs=get;list;watch;create;update;patch;delete
@@ -116,6 +131,8 @@ type OrdsSrvsReconciler struct {
 //+kubebuilder:rbac:groups=core,resources=secrets/status,verbs=get
 //+kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=services/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=core,resources=persistentvolumeclaim,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=persistentvolumeclaim/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=core,resources=deployments/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch;create;update;patch;delete
@@ -133,63 +150,92 @@ func (r *OrdsSrvsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&appsv1.StatefulSet{}).
 		Owns(&appsv1.DaemonSet{}).
 		Owns(&corev1.Service{}).
+		Owns(&corev1.PersistentVolumeClaim{}).
 		Complete(r)
 }
 
 func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logr := log.FromContext(ctx)
-	ords := &dbapi.OrdsSrvs{}
+	logger := log.FromContext(ctx)
+	ordssrvs := &dbapi.OrdsSrvs{}
 
 	// Check if resource exists or was deleted
-	if err := r.Get(ctx, req.NamespacedName, ords); err != nil {
+	if err := r.Get(ctx, req.NamespacedName, ordssrvs); err != nil {
 		if apierrors.IsNotFound(err) {
-			logr.Info("Resource deleted")
+			logger.Info("Resource deleted")
 			return ctrl.Result{}, nil
 		}
-		logr.Error(err, "Error retrieving resource")
+		logger.Error(err, "Error retrieving resource")
 		return ctrl.Result{Requeue: true, RequeueAfter: time.Minute}, err
 	}
 
+	ordsInitScript = ordssrvs.Name + "-init-script"
+	ordsStartScript = ordssrvs.Name + "-start-script"
+	ordsGlobalConfig = ordssrvs.Name + "-" + globalConfigMapName
+
+	// APEXInstallationExternal
+	// true: persistence volume
+	// false: no persistence volume
+	if ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.VolumeName != "" || ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.StorageClass != "" {
+		APEXInstallationExternal = "true"
+	}
+	logger.Info("Setting env external_apex to " + APEXInstallationExternal)
+
 	// Set the status as Unknown when no status are available
-	if ords.Status.Conditions == nil || len(ords.Status.Conditions) == 0 {
+	if len(ordssrvs.Status.Conditions) == 0 {
 		condition := metav1.Condition{Type: typeUnsyncedORDS, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"}
-		if err := r.SetStatus(ctx, req, ords, condition); err != nil {
+		if err := r.SetStatus(ctx, req, ordssrvs, condition); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
 	// ConfigMap - Init Script
-	if err := r.ConfigMapReconcile(ctx, ords, ords.Name+"-"+"init-script", 0); err != nil {
-		logr.Error(err, "Error in ConfigMapReconcile (init-script)")
+	if err := r.ConfigMapReconcile(ctx, ordssrvs, ordsInitScript, 0); err != nil {
+		logger.Error(err, "Error in ConfigMapReconcile (init-script)")
 		return ctrl.Result{}, err
 	}
 
+	// ConfigMap - Start Script
+	if err := r.ConfigMapReconcile(ctx, ordssrvs, ordsStartScript, 0); err != nil {
+		logger.Error(err, "Error in ConfigMapReconcile (start-script)")
+		return ctrl.Result{}, err
+	}
+
+	if APEXInstallationExternal == "true" {
+		// ApexInstallation PVC
+		if err := r.ApexInstallationPVCReconcile(ctx, ordssrvs); err != nil {
+			logger.Error(err, "Error in ApexInstallation PVC reconcile")
+			return ctrl.Result{}, err
+		}
+	} else {
+		logger.Info("ApexInstallation PVC not defined, no external APEX installation files")
+	}
+
 	// ConfigMap - Global Settings
-	if err := r.ConfigMapReconcile(ctx, ords, ords.Name+"-"+globalConfigMapName, 0); err != nil {
-		logr.Error(err, "Error in ConfigMapReconcile (Global)")
+	if err := r.ConfigMapReconcile(ctx, ordssrvs, ordsGlobalConfig, 0); err != nil {
+		logger.Error(err, "Error in ConfigMapReconcile (Global)")
 		return ctrl.Result{}, err
 	}
 
 	// ConfigMap - Pool Settings
 	definedPools := make(map[string]bool)
-	for i := 0; i < len(ords.Spec.PoolSettings); i++ {
-		poolName := strings.ToLower(ords.Spec.PoolSettings[i].PoolName)
-		poolConfigMapName := ords.Name + "-" + poolConfigPreName + poolName
+	for i := 0; i < len(ordssrvs.Spec.PoolSettings); i++ {
+		poolName := strings.ToLower(ordssrvs.Spec.PoolSettings[i].PoolName)
+		poolConfigMapName := ordssrvs.Name + "-" + poolConfigPreName + poolName
 		if definedPools[poolConfigMapName] {
 			return ctrl.Result{}, errors.New("poolName: " + poolName + " is not unique")
 		}
 		definedPools[poolConfigMapName] = true
-		if err := r.ConfigMapReconcile(ctx, ords, poolConfigMapName, i); err != nil {
-			logr.Error(err, "Error in ConfigMapReconcile (Pools)")
+		if err := r.ConfigMapReconcile(ctx, ordssrvs, poolConfigMapName, i); err != nil {
+			logger.Error(err, "Error in ConfigMapReconcile (Pools)")
 			return ctrl.Result{}, err
 		}
 	}
-	if err := r.ConfigMapDelete(ctx, req, ords, definedPools); err != nil {
-		logr.Error(err, "Error in ConfigMapDelete (Pools)")
+	if err := r.ConfigMapDelete(ctx, req, ordssrvs, definedPools); err != nil {
+		logger.Error(err, "Error in ConfigMapDelete (Pools)")
 		return ctrl.Result{}, err
 	}
-	if err := r.Get(ctx, req.NamespacedName, ords); err != nil {
-		logr.Error(err, "Failed to re-fetch")
+	if err := r.Get(ctx, req.NamespacedName, ordssrvs); err != nil {
+		logger.Error(err, "Failed to re-fetch")
 		return ctrl.Result{}, err
 	}
 
@@ -204,40 +250,40 @@ func (r *OrdsSrvsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Set the Type as Unsynced when a pod restart is required
 	if RestartPods {
 		condition := metav1.Condition{Type: typeUnsyncedORDS, Status: metav1.ConditionTrue, Reason: "Unsynced", Message: "Configurations have changed"}
-		if err := r.SetStatus(ctx, req, ords, condition); err != nil {
+		if err := r.SetStatus(ctx, req, ordssrvs, condition); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
 	// Workloads
-	if err := r.WorkloadReconcile(ctx, req, ords, ords.Spec.WorkloadType); err != nil {
-		logr.Error(err, "Error in WorkloadReconcile")
+	if err := r.WorkloadReconcile(ctx, req, ordssrvs, ordssrvs.Spec.WorkloadType); err != nil {
+		logger.Error(err, "Error in WorkloadReconcile")
 		return ctrl.Result{}, err
 	}
-	if err := r.WorkloadDelete(ctx, req, ords, ords.Spec.WorkloadType); err != nil {
-		logr.Error(err, "Error in WorkloadDelete")
+	if err := r.WorkloadDelete(ctx, req, ordssrvs, ordssrvs.Spec.WorkloadType); err != nil {
+		logger.Error(err, "Error in WorkloadDelete")
 		return ctrl.Result{}, err
 	}
-	if err := r.Get(ctx, req.NamespacedName, ords); err != nil {
-		logr.Error(err, "Failed to re-fetch")
+	if err := r.Get(ctx, req.NamespacedName, ordssrvs); err != nil {
+		logger.Error(err, "Failed to re-fetch")
 		return ctrl.Result{}, err
 	}
 
 	// Service
-	if err := r.ServiceReconcile(ctx, ords); err != nil {
-		logr.Error(err, "Error in ServiceReconcile")
+	if err := r.ServiceReconcile(ctx, ordssrvs); err != nil {
+		logger.Error(err, "Error in ServiceReconcile")
 		return ctrl.Result{}, err
 	}
 
 	// Set the Type as Available when a pod restart is not required
 	if !RestartPods {
 		condition := metav1.Condition{Type: typeAvailableORDS, Status: metav1.ConditionTrue, Reason: "Available", Message: "Workload in Sync"}
-		if err := r.SetStatus(ctx, req, ords, condition); err != nil {
+		if err := r.SetStatus(ctx, req, ordssrvs, condition); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
-	if err := r.Get(ctx, req.NamespacedName, ords); err != nil {
-		logr.Error(err, "Failed to re-fetch")
+	if err := r.Get(ctx, req.NamespacedName, ordssrvs); err != nil {
+		logger.Error(err, "Failed to re-fetch")
 		return ctrl.Result{}, err
 	}
 
@@ -284,12 +330,13 @@ func (r *OrdsSrvsReconciler) SetStatus(ctx context.Context, req ctrl.Request, or
 	}
 
 	var workloadStatus string
-	if readyWorkload == 0 {
+	switch readyWorkload {
+	case 0:
 		workloadStatus = "Preparing"
-	} else if readyWorkload == desiredWorkload {
+	case desiredWorkload:
 		workloadStatus = "Healthy"
 		ords.Status.OrdsInstalled = true
-	} else {
+	default:
 		workloadStatus = "Progressing"
 	}
 
@@ -314,24 +361,57 @@ func (r *OrdsSrvsReconciler) SetStatus(ctx context.Context, req ctrl.Request, or
 }
 
 /************************************************
+ * APEX Installation PVC Reconcile
+ *************************************************/
+func (r *OrdsSrvsReconciler) ApexInstallationPVCReconcile(ctx context.Context, ordssrvs *dbapi.OrdsSrvs) (err error) {
+	logr := log.FromContext(ctx).WithName("ApexInstallationPVCReconcile")
+
+	if ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.Size == "" {
+		msg := "APEX Installation PVC Size not defined"
+		err = r.Create(ctx, ordssrvs)
+		logr.Error(err, msg)
+		return err
+	}
+
+	pvc := &corev1.PersistentVolumeClaim{}
+	err = r.Get(ctx, types.NamespacedName{Name: APEXInstallationPVC, Namespace: ordssrvs.Namespace}, pvc)
+	if err == nil {
+		logr.Info("Found APEX Installation PVC : " + APEXInstallationPVC)
+		return nil
+	}
+
+	volumeName := ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.VolumeName
+	pvc = r.APEXInstallationPVCDefine(ctx, ordssrvs)
+
+	message := fmt.Sprintf("APEX Installation PVC : %s for PV : %s", APEXInstallationPVC, volumeName)
+	logr.Info("Creating " + message)
+	err = r.Create(ctx, pvc)
+	if err != nil {
+		logr.Error(err, "Failed to create "+message)
+	}
+
+	return err
+}
+
+/************************************************
  * ConfigMaps
  *************************************************/
-func (r *OrdsSrvsReconciler) ConfigMapReconcile(ctx context.Context, ords *dbapi.OrdsSrvs, configMapName string, poolIndex int) (err error) {
+func (r *OrdsSrvsReconciler) ConfigMapReconcile(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, configMapName string, poolIndex int) (err error) {
 	logr := log.FromContext(ctx).WithName("ConfigMapReconcile")
-	desiredConfigMap := r.ConfigMapDefine(ctx, ords, configMapName, poolIndex)
+	desiredConfigMap := r.ConfigMapDefine(ctx, ordssrvs, configMapName, poolIndex)
 
 	// Create if ConfigMap not found
 	definedConfigMap := &corev1.ConfigMap{}
-	if err = r.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: ords.Namespace}, definedConfigMap); err != nil {
+	if err = r.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: ordssrvs.Namespace}, definedConfigMap); err != nil {
 		if apierrors.IsNotFound(err) {
 			if err := r.Create(ctx, desiredConfigMap); err != nil {
 				return err
 			}
 			logr.Info("Created: " + configMapName)
 			RestartPods = true
-			r.Recorder.Eventf(ords, corev1.EventTypeNormal, "Create", "ConfigMap %s Created", configMapName)
+			r.Recorder.Eventf(ordssrvs, corev1.EventTypeNormal, "Create", "ConfigMap %s Created", configMapName)
 			// Requery for comparison
-			if err := r.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: ords.Namespace}, definedConfigMap); err != nil {
+			if err := r.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: ordssrvs.Namespace}, definedConfigMap); err != nil {
 				return err
 			}
 		} else {
@@ -344,7 +424,7 @@ func (r *OrdsSrvsReconciler) ConfigMapReconcile(ctx context.Context, ords *dbapi
 		}
 		logr.Info("Updated: " + configMapName)
 		RestartPods = true
-		r.Recorder.Eventf(ords, corev1.EventTypeNormal, "Update", "ConfigMap %s Updated", configMapName)
+		r.Recorder.Eventf(ordssrvs, corev1.EventTypeNormal, "Update", "ConfigMap %s Updated", configMapName)
 	}
 	return nil
 }
@@ -387,22 +467,24 @@ func (r *OrdsSrvsReconciler) ConfigMapReconcile(ctx context.Context, ords *dbapi
 /************************************************
  * Workloads
  *************************************************/
-func (r *OrdsSrvsReconciler) WorkloadReconcile(ctx context.Context, req ctrl.Request, ords *dbapi.OrdsSrvs, kind string) (err error) {
+func (r *OrdsSrvsReconciler) WorkloadReconcile(ctx context.Context, req ctrl.Request, ordssrvs *dbapi.OrdsSrvs, kind string) (err error) {
 	logr := log.FromContext(ctx).WithName("WorkloadReconcile")
-	objectMeta := objectMetaDefine(ords, ords.Name)
-	selector := selectorDefine(ords)
-	template := r.podTemplateSpecDefine(ords, ctx, req)
+	objectMeta := objectMetaDefine(ordssrvs, ordssrvs.Name)
+	selector := selectorDefine(ordssrvs)
+	template := r.podTemplateSpecDefine(ordssrvs, ctx, req)
 
 	var desiredWorkload client.Object
 	var desiredSpecHash string
 	var definedSpecHash string
+
+	var ProgressDeadlineSeconds int32 = 3600
 
 	switch kind {
 	case "StatefulSet":
 		desiredWorkload = &appsv1.StatefulSet{
 			ObjectMeta: objectMeta,
 			Spec: appsv1.StatefulSetSpec{
-				Replicas: &ords.Spec.Replicas,
+				Replicas: &ordssrvs.Spec.Replicas,
 				Selector: &selector,
 				Template: template,
 			},
@@ -423,37 +505,38 @@ func (r *OrdsSrvsReconciler) WorkloadReconcile(ctx context.Context, req ctrl.Req
 		desiredWorkload = &appsv1.Deployment{
 			ObjectMeta: objectMeta,
 			Spec: appsv1.DeploymentSpec{
-				Replicas: &ords.Spec.Replicas,
-				Selector: &selector,
-				Template: template,
+				Replicas:                &ordssrvs.Spec.Replicas,
+				Selector:                &selector,
+				Template:                template,
+				ProgressDeadlineSeconds: &ProgressDeadlineSeconds,
 			},
 		}
 		desiredSpecHash = generateSpecHash(desiredWorkload.(*appsv1.Deployment).Spec)
 		desiredWorkload.(*appsv1.Deployment).ObjectMeta.Labels[specHashLabel] = desiredSpecHash
 	}
 
-	if err := ctrl.SetControllerReference(ords, desiredWorkload, r.Scheme); err != nil {
+	if err := ctrl.SetControllerReference(ordssrvs, desiredWorkload, r.Scheme); err != nil {
 		return err
 	}
 
 	definedWorkload := reflect.New(reflect.TypeOf(desiredWorkload).Elem()).Interface().(client.Object)
-	if err = r.Get(ctx, types.NamespacedName{Name: ords.Name, Namespace: ords.Namespace}, definedWorkload); err != nil {
+	if err = r.Get(ctx, types.NamespacedName{Name: ordssrvs.Name, Namespace: ordssrvs.Namespace}, definedWorkload); err != nil {
 		if apierrors.IsNotFound(err) {
 			if err := r.Create(ctx, desiredWorkload); err != nil {
 				condition := metav1.Condition{
 					Type:    typeAvailableORDS,
 					Status:  metav1.ConditionFalse,
 					Reason:  "Reconciling",
-					Message: fmt.Sprintf("Failed to create %s for the custom resource (%s): (%s)", kind, ords.Name, err),
+					Message: fmt.Sprintf("Failed to create %s for the custom resource (%s): (%s)", kind, ordssrvs.Name, err),
 				}
-				if statusErr := r.SetStatus(ctx, req, ords, condition); statusErr != nil {
+				if statusErr := r.SetStatus(ctx, req, ordssrvs, condition); statusErr != nil {
 					return statusErr
 				}
 				return err
 			}
 			logr.Info("Created: " + kind)
 			RestartPods = false
-			r.Recorder.Eventf(ords, corev1.EventTypeNormal, "Create", "Created %s", kind)
+			r.Recorder.Eventf(ordssrvs, corev1.EventTypeNormal, "Create", "Created %s", kind)
 
 			return nil
 		} else {
@@ -477,10 +560,10 @@ func (r *OrdsSrvsReconciler) WorkloadReconcile(ctx context.Context, req ctrl.Req
 			return err
 		}
 		RestartPods = true
-		r.Recorder.Eventf(ords, corev1.EventTypeNormal, "Update", "Updated %s", kind)
+		r.Recorder.Eventf(ordssrvs, corev1.EventTypeNormal, "Update", "Updated %s", kind)
 	}
 
-	if RestartPods && ords.Spec.ForceRestart {
+	if RestartPods && ordssrvs.Spec.ForceRestart {
 		logr.Info("Cycling: " + kind)
 		labelsField := reflect.ValueOf(desiredWorkload).Elem().FieldByName("Spec").FieldByName("Template").FieldByName("ObjectMeta").FieldByName("Labels")
 		if labelsField.IsValid() {
@@ -490,7 +573,7 @@ func (r *OrdsSrvsReconciler) WorkloadReconcile(ctx context.Context, req ctrl.Req
 			if err := r.Update(ctx, desiredWorkload); err != nil {
 				return err
 			}
-			r.Recorder.Eventf(ords, corev1.EventTypeNormal, "Restart", "Restarted %s", kind)
+			r.Recorder.Eventf(ordssrvs, corev1.EventTypeNormal, "Restart", "Restarted %s", kind)
 			RestartPods = false
 		}
 	}
@@ -588,9 +671,9 @@ func selectorDefine(ords *dbapi.OrdsSrvs) metav1.LabelSelector {
 	}
 }
 
-func (r *OrdsSrvsReconciler) podTemplateSpecDefine(ords *dbapi.OrdsSrvs, ctx context.Context, req ctrl.Request) corev1.PodTemplateSpec {
+func (r *OrdsSrvsReconciler) podTemplateSpecDefine(ords *dbapi.OrdsSrvs, ctx context.Context, _ ctrl.Request) corev1.PodTemplateSpec {
 	labels := getLabels(ords.Name)
-	specVolumes, specVolumeMounts := VolumesDefine(ords)
+	specVolumes, specVolumeMounts := VolumesDefine(ctx, ords)
 
 	envPorts := []corev1.ContainerPort{
 		{
@@ -611,27 +694,20 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(ords *dbapi.OrdsSrvs, ctx con
 		envPorts = append(envPorts, mongoPort)
 	}
 
-	// Environment From Source
 	podSpecTemplate :=
 		corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
 				Labels: labels,
 			},
 			Spec: corev1.PodSpec{
-				Volumes: specVolumes,
-				SecurityContext: &corev1.PodSecurityContext{
-					RunAsNonRoot: &[]bool{true}[0],
-					FSGroup:      &[]int64{54321}[0],
-					SeccompProfile: &corev1.SeccompProfile{
-						Type: corev1.SeccompProfileTypeRuntimeDefault,
-					},
-				},
+				Volumes:         specVolumes,
+				SecurityContext: podSecurityContextDefine(),
 				InitContainers: []corev1.Container{{
 					Image:           ords.Spec.Image,
 					Name:            ords.Name + "-init",
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					SecurityContext: securityContextDefine(),
-					Command:         []string{"sh", "-c", ordsSABase + "/bin/init_script.sh"},
+					Command:         []string{"/bin/bash", "-c", ordsSABase + "/init/ords_init.sh"},
 					Env:             r.envDefine(ords, true, ctx),
 					VolumeMounts:    specVolumeMounts,
 				}},
@@ -641,27 +717,43 @@ func (r *OrdsSrvsReconciler) podTemplateSpecDefine(ords *dbapi.OrdsSrvs, ctx con
 					ImagePullPolicy: corev1.PullIfNotPresent,
 					SecurityContext: securityContextDefine(),
 					Ports:           envPorts,
-					Command:         []string{"/bin/bash", "-c", "ords --config $ORDS_CONFIG serve --apex-images /opt/oracle/apex/$APEX_VER/images --debug"},
+					Command:         []string{"/bin/bash", "-c", ordsSABase + "/start/ords_start.sh"},
 					Env:             r.envDefine(ords, false, ctx),
 					VolumeMounts:    specVolumeMounts,
-				}}},
+				}},
+				ServiceAccountName: ords.Spec.ServiceAccountName,
+			},
 		}
 
 	return podSpecTemplate
 }
 
 // Volumes
-func VolumesDefine(ords *dbapi.OrdsSrvs) ([]corev1.Volume, []corev1.VolumeMount) {
+func VolumesDefine(ctx context.Context, ords *dbapi.OrdsSrvs) ([]corev1.Volume, []corev1.VolumeMount) {
 	// Initialize the slice to hold specifications
 	var volumes []corev1.Volume
 	var volumeMounts []corev1.VolumeMount
 
 	// SecretHelper
-	secretHelperVolume := volumeBuild(ords.Name+"-"+"init-script", "ConfigMap", 0770)
-	secretHelperVolumeMount := volumeMountBuild(ords.Name+"-"+"init-script", ordsSABase+"/bin", true)
-
+	secretHelperVolume := volumeBuild(ordsInitScript, "ConfigMap", 0770)
+	secretHelperVolumeMount := volumeMountBuild(ordsInitScript, ordsSABase+"/init", true)
 	volumes = append(volumes, secretHelperVolume)
 	volumeMounts = append(volumeMounts, secretHelperVolumeMount)
+
+	// start-script
+	startScriptVolume := volumeBuild(ordsStartScript, "ConfigMap", 0770)
+	startScriptVolumeMount := volumeMountBuild(ordsStartScript, ordsSABase+"/start", true)
+	volumes = append(volumes, startScriptVolume)
+	volumeMounts = append(volumeMounts, startScriptVolumeMount)
+
+	if APEXInstallationExternal == "true" {
+		// volume for APEX installation, same optional folder as for ORDS image
+		apexInstallationVolume := APEXInstallationVolumeDefine(ctx, ords)
+		apexInstallationReadOnly := false
+		apexInstallationVolumeMount := volumeMountBuild(APEXInstallationPV, APEXInstallationMount, apexInstallationReadOnly)
+		volumes = append(volumes, apexInstallationVolume)
+		volumeMounts = append(volumeMounts, apexInstallationVolumeMount)
+	}
 
 	// Build volume specifications for globalSettings
 	standaloneVolume := volumeBuild("standalone", "EmptyDir")
@@ -673,8 +765,8 @@ func VolumesDefine(ords *dbapi.OrdsSrvs) ([]corev1.Volume, []corev1.VolumeMount)
 	globalLogVolume := volumeBuild("sa-log-global", "EmptyDir")
 	globalLogVolumeMount := volumeMountBuild("sa-log-global", ordsSABase+"/log/global/", false)
 
-	globalConfigVolume := volumeBuild(ords.Name+"-"+globalConfigMapName, "ConfigMap")
-	globalConfigVolumeMount := volumeMountBuild(ords.Name+"-"+globalConfigMapName, ordsSABase+"/config/global/", true)
+	globalConfigVolume := volumeBuild(ordsGlobalConfig, "ConfigMap")
+	globalConfigVolumeMount := volumeMountBuild(ordsGlobalConfig, ordsSABase+"/config/global/", true)
 
 	globalDocRootVolume := volumeBuild("sa-doc-root", "EmptyDir")
 	globalDocRootVolumeMount := volumeMountBuild("sa-doc-root", ordsSABase+"/config/global/doc_root/", false)
@@ -826,81 +918,165 @@ func (r *OrdsSrvsReconciler) ServiceDefine(ctx context.Context, ords *dbapi.Ords
 	return def
 }
 
+func podSecurityContextDefine() *corev1.PodSecurityContext {
+
+	return &corev1.PodSecurityContext{
+		RunAsNonRoot: k8s.BoolPointer(true),
+		RunAsUser:    k8s.Int64Pointer(dbcommons.ORACLE_UID),
+		RunAsGroup:   k8s.Int64Pointer(dbcommons.ORACLE_GUID),
+		FSGroup:      k8s.Int64Pointer(dbcommons.ORACLE_GUID),
+	}
+
+}
+
 func securityContextDefine() *corev1.SecurityContext {
+
 	return &corev1.SecurityContext{
-		RunAsNonRoot:             &[]bool{true}[0],
-		RunAsUser:                &[]int64{54321}[0],
-		AllowPrivilegeEscalation: &[]bool{false}[0],
+		RunAsNonRoot:             k8s.BoolPointer(true),
+		RunAsUser:                k8s.Int64Pointer(dbcommons.ORACLE_UID),
+		RunAsGroup:               k8s.Int64Pointer(dbcommons.ORACLE_GUID),
+		AllowPrivilegeEscalation: k8s.BoolPointer(false),
 		Capabilities: &corev1.Capabilities{
 			Drop: []corev1.Capability{
 				"ALL",
 			},
 		},
 	}
+
 }
 
-func (r *OrdsSrvsReconciler) envDefine(ords *dbapi.OrdsSrvs, initContainer bool, ctx context.Context) []corev1.EnvVar {
-	envVarSecrets := []corev1.EnvVar{
-		{
-			Name:  "ORDS_CONFIG",
-			Value: ordsSABase + "/config",
-		},
-		{
-			Name:  "JAVA_TOOL_OPTIONS",
-			Value: "-Doracle.ml.version_check=false",
-		},
+func addEnvVar(envVars []corev1.EnvVar, name string, value string) []corev1.EnvVar {
+	newEnvVar := corev1.EnvVar{
+		Name:  name,
+		Value: value,
 	}
+	return append(envVars, newEnvVar)
+}
+
+// Sets environment variables in the containers
+func (r *OrdsSrvsReconciler) envDefine(ordssrvs *dbapi.OrdsSrvs, initContainer bool, ctx context.Context) []corev1.EnvVar {
+	logger := log.FromContext(ctx).WithName("envDefine")
+
+	envVars := []corev1.EnvVar{}
+
+	// ORDS_CONFIG
+	ORDS_CONFIG := ordsSABase + "/config"
+	logger.Info("Setting ORDS_CONFIG to " + ORDS_CONFIG)
+	envVars = addEnvVar(envVars, "ORDS_CONFIG", ORDS_CONFIG)
+
+	// avoid Java warning about JAVA_TOOL_OPTIONS
+	envVars = addEnvVar(envVars, "JAVA_TOOL_OPTIONS", "-Doracle.ml.version_check=false")
 
 	// Limitation case for ADB/mTLS/OraOper edge
-	if len(ords.Spec.PoolSettings) == 1 {
-		poolName := strings.ToLower(ords.Spec.PoolSettings[0].PoolName)
-		tnsAdmin := corev1.EnvVar{
-			Name:  "TNS_ADMIN",
-			Value: ordsSABase + "/config/databases/" + poolName + "/network/admin/",
-		}
-		envVarSecrets = append(envVarSecrets, tnsAdmin)
+	if len(ordssrvs.Spec.PoolSettings) == 1 {
+		poolName := strings.ToLower(ordssrvs.Spec.PoolSettings[0].PoolName)
+		tnsAdmin := ordsSABase + "/config/databases/" + poolName + "/network/admin/"
+		envVars = addEnvVar(envVars, "TNS_ADMIN", tnsAdmin)
 	}
+
+	// passwords are set for the init container only
 	if initContainer {
-		for i := 0; i < len(ords.Spec.PoolSettings); i++ {
-			poolName := strings.ReplaceAll(strings.ToLower(ords.Spec.PoolSettings[i].PoolName), "-", "_")
+		envVars = addEnvVar(envVars, "download_apex", strconv.FormatBool(ordssrvs.Spec.GlobalSettings.APEXDownload))
+		envVars = addEnvVar(envVars, "download_url_apex", ordssrvs.Spec.GlobalSettings.APEXDownloadUrl)
+		envVars = addEnvVar(envVars, "external_apex", APEXInstallationExternal)
 
-			dbSecret := corev1.EnvVar{
-				Name:  poolName + "_dbsecret",
-				Value: r.CommonDecryptWithPrivKey3(ords, ords.Spec.PoolSettings[i].DBSecret.SecretName, ords.Spec.PoolSettings[i].DBSecret.PasswordKey, ctx),
+		for i := 0; i < len(ordssrvs.Spec.PoolSettings); i++ {
+			poolName := strings.ReplaceAll(strings.ToLower(ordssrvs.Spec.PoolSettings[i].PoolName), "-", "_")
+
+			// dbpassword
+			secretName := poolName + "_dbpassword"
+			secretValue := r.CommonDecryptWithPrivKey3(ordssrvs, ordssrvs.Spec.PoolSettings[i].DBSecret.SecretName, ordssrvs.Spec.PoolSettings[i].DBSecret.PasswordKey, ctx)
+			envVars = addEnvVar(envVars, secretName, secretValue)
+
+			// dbadminuserpassword
+			if ordssrvs.Spec.PoolSettings[i].DBAdminUserSecret.SecretName != "" {
+				envVars = addEnvVar(envVars, poolName+"_autoupgrade_ords", strconv.FormatBool(ordssrvs.Spec.PoolSettings[i].AutoUpgradeORDS))
+				envVars = addEnvVar(envVars, poolName+"_autoupgrade_apex", strconv.FormatBool(ordssrvs.Spec.PoolSettings[i].AutoUpgradeAPEX))
+				dbAdminUserPassword := r.CommonDecryptWithPrivKey3(ordssrvs, ordssrvs.Spec.PoolSettings[i].DBAdminUserSecret.SecretName, ordssrvs.Spec.PoolSettings[i].DBAdminUserSecret.PasswordKey, ctx)
+				envVars = addEnvVar(envVars, poolName+"_dbadminuserpassword", dbAdminUserPassword)
 			}
 
-			envVarSecrets = append(envVarSecrets, dbSecret)
-
-			if ords.Spec.PoolSettings[i].DBAdminUserSecret.SecretName != "" {
-				autoUpgradeORDSEnv := corev1.EnvVar{
-					Name:  poolName + "_autoupgrade_ords",
-					Value: strconv.FormatBool(ords.Spec.PoolSettings[i].AutoUpgradeORDS),
-				}
-				autoUpgradeAPEXEnv := corev1.EnvVar{
-					Name:  poolName + "_autoupgrade_apex",
-					Value: strconv.FormatBool(ords.Spec.PoolSettings[i].AutoUpgradeAPEX),
-				}
-
-				dbAdminUserSecret := corev1.EnvVar{
-					Name:  poolName + "_dbadminusersecret",
-					Value: r.CommonDecryptWithPrivKey3(ords, ords.Spec.PoolSettings[i].DBAdminUserSecret.SecretName, ords.Spec.PoolSettings[i].DBAdminUserSecret.PasswordKey, ctx),
-				}
-				envVarSecrets = append(envVarSecrets, dbAdminUserSecret, autoUpgradeORDSEnv, autoUpgradeAPEXEnv)
-			}
-
-			if ords.Spec.PoolSettings[i].DBCDBAdminUserSecret.SecretName != "" {
-
-				dbCDBAdminUserSecret := corev1.EnvVar{
-					Name:  poolName + "_dbcdbadminusersecret",
-					Value: r.CommonDecryptWithPrivKey3(ords, ords.Spec.PoolSettings[i].DBCDBAdminUserSecret.SecretName, ords.Spec.PoolSettings[i].DBCDBAdminUserSecret.PasswordKey, ctx),
-				}
-
-				envVarSecrets = append(envVarSecrets, dbCDBAdminUserSecret)
+			// dbcdbadminuserpassword
+			if ordssrvs.Spec.PoolSettings[i].DBCDBAdminUserSecret.SecretName != "" {
+				dbCDBAdminUserPassword := r.CommonDecryptWithPrivKey3(ordssrvs, ordssrvs.Spec.PoolSettings[i].DBCDBAdminUserSecret.SecretName, ordssrvs.Spec.PoolSettings[i].DBCDBAdminUserSecret.PasswordKey, ctx)
+				envVars = addEnvVar(envVars, poolName+"_dbcdbadminuserpassword", dbCDBAdminUserPassword)
 			}
 		}
 	}
 
-	return envVarSecrets
+	return envVars
+}
+
+func APEXInstallationVolumeDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs) corev1.Volume {
+	logger := log.FromContext(ctx).WithName("APEXInstallationVolumeDefine")
+
+	var vs corev1.VolumeSource
+	if APEXInstallationExternal == "false" {
+		vs = corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		}
+		logger.Info("APEX installation on empty dir")
+	} else {
+
+		vs = corev1.VolumeSource{
+			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+				ClaimName: APEXInstallationPVC,
+				ReadOnly:  false,
+			},
+		}
+		logger.Info("APEX installation PVC : " + APEXInstallationPVC)
+	}
+
+	volume := corev1.Volume{
+		Name:         APEXInstallationPV,
+		VolumeSource: vs,
+	}
+
+	return volume
+}
+
+func (r *OrdsSrvsReconciler) APEXInstallationPVCDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs) *corev1.PersistentVolumeClaim {
+	logger := log.FromContext(ctx).WithName("APEXInstallationPVCDefine")
+
+	size := ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.Size
+
+	if size == "" {
+
+	}
+
+	volumeName := ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.VolumeName
+	storageClassName := ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.StorageClass
+	accessMode := ordssrvs.Spec.GlobalSettings.APEXInstallationPersistence.AccessMode
+
+	message := fmt.Sprintf("Preparing PVC definition, volumeName %s, storageClass %s, size %s, accessMode %s", volumeName, storageClassName, size, accessMode)
+	logger.Info(message)
+
+	// PVC Definition
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      APEXInstallationPVC,
+			Namespace: ordssrvs.Namespace,
+			Labels:    getLabels(ordssrvs.Name),
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.PersistentVolumeAccessMode(accessMode)},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse(size),
+				},
+			},
+			VolumeName:       volumeName,
+			StorageClassName: &storageClassName,
+		},
+	}
+
+	// Set the ownerRef
+	if err := ctrl.SetControllerReference(ordssrvs, pvc, r.Scheme); err != nil {
+		return nil
+	}
+
+	return pvc
+
 }
 
 /*************************************************
@@ -918,7 +1094,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDelete(ctx context.Context, req ctrl.Reque
 	}
 
 	for _, configMap := range configMapList.Items {
-		if configMap.Name == ords.Name+"-"+globalConfigMapName || configMap.Name == ords.Name+"-init-script" {
+		if configMap.Name == ordsGlobalConfig || configMap.Name == ordsInitScript || configMap.Name == ordsStartScript {
 			continue
 		}
 		if _, exists := definedPools[configMap.Name]; !exists {
@@ -1069,7 +1245,7 @@ func CommonDecryptWithPrivKey(Key string, Buffer string) (string, error) {
 		fmt.Printf("======================================\n")
 	}
 
-	decryptedB, err := rsa.DecryptPKCS1v15(nil, pkcs8PrivateKey.(*rsa.PrivateKey), encString64)
+	decryptedB, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, pkcs8PrivateKey.(*rsa.PrivateKey), encString64, nil)
 	if err != nil {
 		fmt.Printf("Failed to decrypt string %s\n", err.Error())
 		return "", err

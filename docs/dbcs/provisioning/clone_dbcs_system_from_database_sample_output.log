@@ -37,3 +37,67 @@
 , "reconcileID": "3ea6b5b1-1196-4279-bf8f-9e663f9a5543"}
 2024-09-20T10:00:46Z    INFO    DB System current state is still:PROVISIONING. Sleeping for 60 seconds. {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-clone","namespace":"default"}, "namespace": "default", "name": "dbcssystem-clone", "reconcileID": "3ea6b5b1-1196-4279-bf8f-9e663f9a5543"}
 2024-09-20T10:01:47Z    INFO    DB Cloning completed successfully from provided backup DB system        {"controller": "dbcssystem", "controllerGroup": "database.oracle.com", "controllerKind": "DbcsSystem", "DbcsSystem": {"name":"dbcssystem-clone","namespace":"default"}, "namespace": "default", "name": "dbcssystem-clone", "reconcileID": "3ea6b5b1-1196-4279-bf8f-9e663f9a5543"}
+
+
+#kubectl describe dbcssystems/dbcssystem-clone
+Name:         dbcssystem-clone
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+API Version:  database.oracle.com/v4
+Kind:         DbcsSystem
+Metadata:
+  Creation Timestamp:  2024-12-10T14:05:34Z
+  Generation:          1
+  Resource Version:    118098180
+  UID:                 6b96d17c-b788-4bb7-bc0e-098ade53100c
+Spec:
+  Db Clone:
+    Db Admin Pasword Secret:  admin-password
+    Db Db Unique Name:        
+    Db Name:                  db1212
+    Display Name:             dbsystem01312
+    Domain:                   subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:                host1213
+    License Model:            BRING_YOUR_OWN_LICENSE
+    Ssh Public Keys:
+      oci-publickey
+    Subnet Id:  ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Db System:
+    Availability Domain:      
+    Compartment Id:           
+    Db Admin Pasword Secret:  
+    Db Backup Config:
+    Host Name:  
+    Kms Config:
+    Shape:      
+    Subnet Id:  
+  Id:           ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  Kms Config:
+  Oci Config Map:    oci-cred-mumbai
+  Oci Secret:        oci-privatekey
+  Setup DB Cloning:  true
+Status:
+  Availability Domain:        OLou:AP-MUMBAI-1-AD-1
+  Cpu Core Count:             1
+  Data Storage Percentage:    80
+  Data Storage Size In G Bs:  512
+  Db Edition:                 ENTERPRISE_EDITION_HIGH_PERFORMANCE
+  Display Name:               dbsystem1234
+  Id:                         ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa
+  License Model:              BRING_YOUR_OWN_LICENSE
+  Network:
+    Client Subnet:          oke-nodesubnet-quick-cluster1-2bebe95db-regional
+    Domain Name:            subdda0b5eaa.cluster1.oraclevcn.com
+    Host Name:              host1234
+    Listener Port:          1521
+    Scan Dns Name:          host1234-scan.subdda0b5eaa.cluster1.oraclevcn.com
+    Vcn Name:               oke-vcn-quick-cluster1-2bebe95db
+  Node Count:               1
+  Reco Storage Size In GB:  256
+  Shape:                    VM.Standard2.1
+  State:                    AVAILABLE
+  Storage Management:       ASM
+  Subnet Id:                ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq
+  Time Zone:                UTC
+Events:                     <none>

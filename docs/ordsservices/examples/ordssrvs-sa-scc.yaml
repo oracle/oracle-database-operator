@@ -1,0 +1,50 @@
+kind: SecurityContextConstraints
+apiVersion: security.openshift.io/v1
+metadata:
+  name: ordssrvs-scc
+  namespace: ordsnamespace
+allowPrivilegedContainer: false
+runAsUser:
+  type: MustRunAs
+  uid: 54321
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 54321
+    max: 54321
+supplementalGroups:
+   type: MustRunAs
+   ranges:
+   - min: 54321
+     max: 54321
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ordssrvs-role
+  namespace: ordsnamespace
+rules:
+  - apiGroups:
+    - security.openshift.io
+    verbs:
+    - use
+    resources:
+    - securitycontextconstraints
+    resourceNames:
+    - ordssrvs-scc
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: ordssrvs-rb
+  namespace: ordsnamespace
+subjects:
+  - kind: ServiceAccount
+    name: ordssrvs-sa
+    namespace: ordsnamespace
+roleRef:
+  kind: Role
+  name: ordssrvs-role
+  apiGroup: rbac.authorization.k8s.io

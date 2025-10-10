@@ -48,78 +48,107 @@ type StatusEnum string
 
 // DatabaseObserverSpec defines the desired state of DatabaseObserver
 type DatabaseObserverSpec struct {
-	Database         DatabaseObserverDatabase       `json:"database,omitempty"`
-	Exporter         DatabaseObserverExporterConfig `json:"exporter,omitempty"`
-	ExporterConfig   DatabaseObserverConfigMap      `json:"configuration,omitempty"`
-	Prometheus       PrometheusConfig               `json:"prometheus,omitempty"`
-	OCIConfig        OCIConfigSpec                  `json:"ociConfig,omitempty"`
-	Replicas         int32                          `json:"replicas,omitempty"`
-	Log              LogConfig                      `json:"log,omitempty"`
-	InheritLabels    []string                       `json:"inheritLabels,omitempty"`
-	ExporterSidecars []corev1.Container             `json:"sidecars,omitempty"`
-	SideCarVolumes   []corev1.Volume                `json:"sidecarVolumes,omitempty"`
+	Database       DatabaseConfig                 `json:"database,omitempty"`
+	Databases      map[string]MultiDatabaseConfig `json:"databases,omitempty"`
+	Wallet         WalletSecret                   `json:"wallet,omitempty"`
+	Deployment     ExporterDeployment             `json:"deployment,omitempty"`
+	Service        ExporterService                `json:"service,omitempty"`
+	ServiceMonitor ExporterServiceMonitor         `json:"serviceMonitor,omitempty"`
+	ExporterConfig ExporterConfig                 `json:"exporterConfig,omitempty"`
+	OCIConfig      OCIConfig                      `json:"ociConfig,omitempty"`
+	AzureConfig    AzureConfig                    `json:"azureConfig,omitempty"`
+	Metrics        MetricsConfig                  `json:"metrics,omitempty"`
+	Log            LogConfig                      `json:"log,omitempty"`
+	InheritLabels  []string                       `json:"inheritLabels,omitempty"`
+	Sidecar        SidecarConfig                  `json:"sidecar,omitempty"`
+	Replicas       int32                          `json:"replicas,omitempty"`
+}
+
+// SidecarConfig defines sidecar containers and volumes to add
+type SidecarConfig struct {
+	Containers []corev1.Container `json:"containers,omitempty"`
+	Volumes    []corev1.Volume    `json:"volumes,omitempty"`
+}
+
+// ExporterConfig defines configMap used for exporter configuration
+type ExporterConfig struct {
+	ConfigMap ConfigMapDetails `json:"configMap,omitempty"`
+	MountPath string           `json:"mountPath,omitempty"`
 }
 
 // LogConfig defines the configuration details relation to the logs of DatabaseObserver
 type LogConfig struct {
-	Path     string    `json:"path,omitempty"`
-	Filename string    `json:"filename,omitempty"`
-	Volume   LogVolume `json:"volume,omitempty"`
+	Disable     bool      `json:"disable,omitempty"`
+	Destination string    `json:"destination,omitempty"`
+	Filename    string    `json:"filename,omitempty"`
+	Volume      LogVolume `json:"volume,omitempty"`
 }
 
+// LogVolume defines the shared volume between the exporter container and other containers
 type LogVolume struct {
-	Name                  string           `json:"name,omitempty"`
-	PersistentVolumeClaim LogVolumePVClaim `json:"persistentVolumeClaim,omitempty"`
+	Name                  string       `json:"name,omitempty"`
+	PersistentVolumeClaim LogVolumePVC `json:"persistentVolumeClaim,omitempty"`
 }
 
-type LogVolumePVClaim struct {
+// LogVolumePVC defines the PVC in which to store the logs
+type LogVolumePVC struct {
 	ClaimName string `json:"claimName,omitempty"`
 }
 
-// DatabaseObserverDatabase defines the database details used for DatabaseObserver
-type DatabaseObserverDatabase struct {
-	DBUser             DBSecret          `json:"dbUser,omitempty"`
-	DBPassword         DBSecretWithVault `json:"dbPassword,omitempty"`
-	DBWallet           DBSecret          `json:"dbWallet,omitempty"`
-	DBConnectionString DBSecret          `json:"dbConnectionString,omitempty"`
+// DatabaseConfig defines the database details used for DatabaseObserver
+type DatabaseConfig struct {
+	DBUser             DBSecret     `json:"dbUser,omitempty"`
+	DBPassword         DBSecret     `json:"dbPassword,omitempty"`
+	DBConnectionString DBSecret     `json:"dbConnectionString,omitempty"`
+	OCIVault           DBOCIVault   `json:"oci,omitempty"`
+	AzureVault         DBAzureVault `json:"azure,omitempty"`
 }
 
-// DatabaseObserverExporterConfig defines the configuration details related to the exporters of DatabaseObserver
-type DatabaseObserverExporterConfig struct {
-	Deployment DatabaseObserverDeployment `json:"deployment,omitempty"`
-	Service    DatabaseObserverService    `json:"service,omitempty"`
+// MultiDatabaseConfig defines each database details used for DatabaseObserver
+type MultiDatabaseConfig struct {
+	DBUser             DBSecret `json:"dbUser,omitempty"`
+	DBPassword         DBSecret `json:"dbPassword,omitempty"`
+	DBConnectionString DBSecret `json:"dbConnectionString,omitempty"`
 }
 
-// DatabaseObserverDeployment defines the exporter deployment component of DatabaseObserver
-type DatabaseObserverDeployment struct {
-	ExporterImage         string                  `json:"image,omitempty"`
-	SecurityContext       *corev1.SecurityContext `json:"securityContext,omitempty"`
-	ExporterArgs          []string                `json:"args,omitempty"`
-	ExporterCommands      []string                `json:"commands,omitempty"`
-	ExporterEnvs          map[string]string       `json:"env,omitempty"`
-	Labels                map[string]string       `json:"labels,omitempty"`
-	DeploymentPodTemplate DeploymentPodTemplate   `json:"podTemplate,omitempty"`
+// DBAzureVault defines Azure Vault details
+type DBAzureVault struct {
+	VaultID             string `json:"vaultID,omitempty"`
+	VaultUsernameSecret string `json:"vaultUsernameSecret,omitempty"`
+	VaultPasswordSecret string `json:"vaultPasswordSecret,omitempty"`
+}
+
+// DBOCIVault defines OCI Vault details
+type DBOCIVault struct {
+	VaultID             string `json:"vaultID,omitempty"`
+	VaultPasswordSecret string `json:"vaultPasswordSecret,omitempty"`
+}
+
+// ExporterDeployment defines the exporter deployment component of DatabaseObserver
+type ExporterDeployment struct {
+	ExporterImage         string                     `json:"image,omitempty"`
+	SecurityContext       *corev1.SecurityContext    `json:"securityContext,omitempty"`
+	PodSecurityContext    *corev1.PodSecurityContext `json:"podSecurityContext,omitempty"`
+	ExporterArgs          []string                   `json:"args,omitempty"`
+	ExporterCommands      []string                   `json:"commands,omitempty"`
+	ExporterEnvs          map[string]string          `json:"env,omitempty"`
+	Labels                map[string]string          `json:"labels,omitempty"`
+	DeploymentPodTemplate DeploymentPodTemplate      `json:"podTemplate,omitempty"`
 }
 
 // DeploymentPodTemplate defines the labels for the DatabaseObserver pods component of a deployment
 type DeploymentPodTemplate struct {
-	SecurityContext *corev1.PodSecurityContext `json:"securityContext,omitempty"`
-	Labels          map[string]string          `json:"labels,omitempty"`
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
-// DatabaseObserverService defines the exporter service component of DatabaseObserver
-type DatabaseObserverService struct {
+// ExporterService defines the exporter service component of DatabaseObserver
+type ExporterService struct {
 	Ports  []corev1.ServicePort `json:"ports,omitempty"`
 	Labels map[string]string    `json:"labels,omitempty"`
 }
 
-// PrometheusConfig defines the generated resources for Prometheus
-type PrometheusConfig struct {
-	ServiceMonitor PrometheusServiceMonitor `json:"serviceMonitor,omitempty"`
-}
-
-// PrometheusServiceMonitor defines DatabaseObserver servicemonitor spec
-type PrometheusServiceMonitor struct {
+// ExporterServiceMonitor defines DatabaseObserver servicemonitor spec
+type ExporterServiceMonitor struct {
 	Labels            map[string]string            `json:"labels,omitempty"`
 	NamespaceSelector *monitorv1.NamespaceSelector `json:"namespaceSelector,omitempty"`
 	Endpoints         []monitorv1.Endpoint         `json:"endpoints,omitempty"`
@@ -129,40 +158,57 @@ type PrometheusServiceMonitor struct {
 type DBSecret struct {
 	Key        string `json:"key,omitempty"`
 	SecretName string `json:"secret,omitempty"`
+	EnvName    string `json:"envName,omitempty"`
 }
 
-// DBSecretWithVault  defines secrets used in reference with vault fields
-type DBSecretWithVault struct {
-	Key             string `json:"key,omitempty"`
-	SecretName      string `json:"secret,omitempty"`
-	VaultOCID       string `json:"vaultOCID,omitempty"`
-	VaultSecretName string `json:"vaultSecretName,omitempty"`
+// WalletSecret defines secret and where the wallet will be mounted if provided
+type WalletSecret struct {
+	SecretName        string                    `json:"secret,omitempty"`
+	MountPath         string                    `json:"mountPath,omitempty"`
+	AdditionalWallets []AdditionalWalletSecrets `json:"additional,omitempty"`
 }
 
-// DatabaseObserverConfigMap defines configMap used for metrics configuration
-type DatabaseObserverConfigMap struct {
-	Configmap ConfigMapDetails `json:"configMap,omitempty"`
+// AdditionalWalletSecrets defines multiple other secrets and where the wallet will be mounted if provided
+type AdditionalWalletSecrets struct {
+	Name       string `json:"name,omitempty"`
+	SecretName string `json:"secret,omitempty"`
+	MountPath  string `json:"mountPath,omitempty"`
 }
 
-// ConfigMapDetails defines the configmap name
+// MetricsConfig defines configMap used for multiple metrics TOML configuration
+type MetricsConfig struct {
+	Configmap []ConfigMapDetails `json:"configMap,omitempty"`
+}
+
+// ConfigMapDetails defines the configmap name used by the exporterConfig and metricsConfig
 type ConfigMapDetails struct {
 	Key  string `json:"key,omitempty"`
 	Name string `json:"name,omitempty"`
 }
 
-// OCIConfigSpec defines the configmap name and secret name used for connecting to OCI
-type OCIConfigSpec struct {
-	ConfigMapName string `json:"configMapName,omitempty"`
-	SecretName    string `json:"secretName,omitempty"`
+// OCIConfig defines the configmap name and secret name used for connecting to OCI
+type OCIConfig struct {
+	ConfigMap  ConfigMapDetails `json:"configMap,omitempty"`
+	PrivateKey ConfigPrivateKey `json:"privateKey,omitempty"`
+	MountPath  string           `json:"mountPath,omitempty"`
+}
+
+type ConfigPrivateKey struct {
+	SecretName string `json:"secret,omitempty"`
+}
+
+// AzureConfig defines the configmap name and secret name used for connecting to Azure
+type AzureConfig struct {
+	ConfigMap ConfigMapDetails `json:"configMap,omitempty"`
 }
 
 // DatabaseObserverStatus defines the observed state of DatabaseObserver
 type DatabaseObserverStatus struct {
-	Conditions     []metav1.Condition `json:"conditions"`
-	Status         string             `json:"status,omitempty"`
-	ExporterConfig string             `json:"exporterConfig"`
-	Version        string             `json:"version"`
-	Replicas       int                `json:"replicas,omitempty"`
+	Conditions    []metav1.Condition `json:"conditions"`
+	Status        string             `json:"status,omitempty"`
+	MetricsConfig string             `json:"metricsConfig"`
+	Version       string             `json:"version"`
+	Replicas      int                `json:"replicas,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -170,7 +216,7 @@ type DatabaseObserverStatus struct {
 // +kubebuilder:resource:shortName="dbobserver";"dbobservers"
 
 // DatabaseObserver is the Schema for the databaseobservers API
-// +kubebuilder:printcolumn:JSONPath=".status.exporterConfig",name="ExporterConfig",type=string
+// +kubebuilder:printcolumn:JSONPath=".status.metricsConfig",name="MetricsConfig",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type=string
 // +kubebuilder:printcolumn:JSONPath=".status.version",name="Version",type=string
 // +kubebuilder:storageversion

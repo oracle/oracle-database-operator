@@ -1,0 +1,27 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates. 
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+apiVersion: database.oracle.com/v4
+kind: AutonomousDatabase
+metadata:
+  name: autonomousdatabase-sample
+spec:
+  action: Update
+  details:
+    id: ocid1.autonomousdatabase...
+  wallet:
+    # Insert a name of the secret where you want the wallet to be stored. The default name is <metadata.name>-instance-wallet.
+    name: instance-wallet
+    password:
+      # Comment out k8sSecret and uncomment ociSecret if you pass the admin password using OCI Secret.
+      k8sSecret:
+        # The Name of the K8s secret where you want to hold the password of the ADMIN account.
+        name: instance-wallet-password
+      # ociSecret:
+      #   # The OCID of the OCI Secret that holds the password of the ADMIN account. It should start with ocid1.vaultsecret... .
+      #   id: ocid1.vaultsecret...
+  # Authorize the operator with API signing key pair. Comment out the ociConfig fields if your nodes are already authorized with instance principal.
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey

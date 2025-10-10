@@ -2,7 +2,7 @@
 # Copyright (c) 2022, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
@@ -10,8 +10,8 @@ spec:
   action: Update
   details:
     id: ocid1.autonomousdatabase...
-    # Your database's OPCU core count
-    cpuCoreCount: 2
+    # Your database's compute count
+    computeCount: 2
     # Your database's storage size in TB
     dataStorageSizeInTBs: 2
     # Enable/Disable auto scaling for your database

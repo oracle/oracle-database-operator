@@ -1,0 +1,125 @@
+# API version of the OracleRestart Custom Resource
+apiVersion: database.oracle.com/v4
+
+# Resource type being created
+kind: OracleRestart
+
+# Metadata section to define the resource's name and namespace
+metadata:
+  name: oraclerestart-sample          # Name of the OracleRestart instance
+  namespace: orestart                 # Kubernetes namespace to deploy into
+
+spec:
+  # Instance details for Oracle Restart
+  instDetails:
+    name: dbmc1                       # Logical name of the OracleRestart instance
+
+    # Worker nodes where the instance should be scheduled
+    workerNode:
+      - 10.0.10.58                   # IP address of the target node for deployment
+
+    # Size of the storage location for software. This parameter will be effective when the local SW location is NOT specified by hostSwLocation
+    swLocStorageSizeInGb: 400
+
+    # Environment variables in case you want to want to ignore prerequisite checks during the GI/RDBSMS Install
+    envVars:
+      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
+        value: "true"
+      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
+        value: "true"
+
+  # NodePort service configuration for exposing DB port externally
+  nodePortSvc:
+    name: dbmc1-service-nodeport  # Name of the Kubernetes Service
+    svcType: nodeport             # Service type (NodePort to expose externally)
+
+    # Mapping between container and host ports
+    portMappings:
+      - port: 1521                    # Port inside container (Oracle Listener port)
+        targetPort: 1521              # Target port for the service
+        protocol: TCP                 # Protocol type (TCP for Oracle)
+        nodePort: 30007               # Host port exposed on worker node (must be in NodePort range)
+      - port: 6200                    # Port inside container (for ONS)
+        targetPort: 6200              # Target port for the service
+        protocol: TCP                 # Protocol type (TCP for Oracle)
+        nodePort: 30200               # Host port exposed on worker node (must be in NodePort range)        
+  enableOns: "enable"                 # If you want to have ONS notification configured on the specified port. Default value is "enable"        
+    
+  # Custom Storage class to be used for dynamic provisioning (if applicable)
+  # You have separate parameters to specify the storage class for all the diskgroups (CRS, DATA, RECO, REDO)
+  crsDgStorageClass: "oci-bv"         # Specify storage class for the CRS Diskgroup, Currently using "oci-bv" but you can specify another available storage class as well
+  swDgStorageClass: "oci-bv"          # Specify storage class for the storage location for software, Currently using "oci-bv" but you can specify another available storage class as well
+
+  # ASM (Automatic Storage Management) storage configuration
+  asmStorageDetails:
+    disksBySize:
+      - storageSizeInGb: 50          # Each disk in this group has 50Gi of storage
+        diskNames:
+          - /dev/asm-disk1  # ASM disk device path 1
+          - /dev/asm-disk2  # ASM disk device path 2
+
+  # SSH key secret used for remote access and automation
+  sshKeySecret:
+    name: ssh-key-secret          # Kubernetes secret name
+    privKeySecretName: ssh-privkey  # Private key inside secret
+    pubKeySecretName: ssh-pubkey    # Public key inside secret
+
+  # Secret containing DB user credentials
+  dbSecret:
+    name: db-user-pass-pkutl     # Secret name
+    keyFileName: key.pem         # Key file name inside secret
+    pwdFileName: pwdfile.enc     # Password file name inside secret
+
+  # Image for Oracle Restart container
+  image: dbocir/oracle/database-orestart:19.3.0-slim  # <-- Replace with your image registry
+
+  # Policy to pull image
+  # Use the value as "Always" if you want use the latest version of the image from the container registry.
+  # Use the value as "IfNotPresent" it the image is not already present locally.
+  imagePullPolicy: IfNotPresent
+
+  # Optional service account for security context permissions
+  # serviceAccountName: oraclerestart   # <-- Required for OpenShift; optional for vanilla Kubernetes
+
+  # Service-specific database name and related details
+  serviceDetails:
+    name: soepdb                     # Name of the Oracle service (pluggable DB)
+
+  # Resource requests and limits for memory and CPU
+  resources:
+    requests:
+      memory: "16Gi"                 # Minimum memory required
+      cpu: "2"                       # Minimum CPU required
+    limits:
+      memory: "16Gi"                 # Max memory allowed
+      cpu: "2"                       # Max CPU allowed
+
+  # Kernel-level system control parameters for Oracle
+  securityContext:
+    sysctls:
+      - name: kernel.shmall
+        value: "2097152"
+      - name: kernel.sem
+        value: "250 32000 100 128"
+      - name: kernel.shmmax
+        value: "8589934592"
+      - name: kernel.shmmni
+        value: "4096"
+
+  # Configuration parameters for Oracle Grid and Database homes
+  configParams:
+    gridHome: "/u01/app/19c/grid"                             # Oracle Grid home path
+    gridBase: "/u01/app/grid"                                 # Grid base directory
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"            # Oracle DB home path
+    dbBase: "/u01/app/oracle"                                 # Oracle base directory
+    crsAsmDeviceList: /dev/asm-disk1,/dev/asm-disk2           # Comma-separated list of ASM device files
+    inventory: "/u01/app/oraInventory"                        # Inventory location
+    gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
+    dbSwZipFile: "db_home.zip"                                # Database software ZIP
+    sgaSize: "3G"                                             # Size of the System Global Area
+    pgaSize: "1G"                                             # Size of the Program Global Area
+    processes: 2000                                           # Oracle process limit
+    cpuCount: 4                                               # Number of CPUs to allocate
+    dbName: "PORCLCDB"                                        # Oracle database name
+    hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged, same location will be mounted inside the Oracle Restart Pod
+

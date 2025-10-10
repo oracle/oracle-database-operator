@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.17.3
   name: autonomousdatabases.database.oracle.com
 spec:
   group: database.oracle.com
@@ -30,9 +30,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: Compute Count
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
@@ -64,6 +64,8 @@ spec:
                 - Start
                 - Terminate
                 - Clone
+                - Switchover
+                - Failover
                 type: string
               clone:
                 properties:
@@ -363,9 +365,9 @@ spec:
     - jsonPath: .spec.details.isDedicated
       name: Dedicated
       type: string
-    - jsonPath: .spec.details.cpuCoreCount
-      name: OCPUs
-      type: integer
+    - jsonPath: .spec.details.computeCount
+      name: Compute Count
+      type: number
     - jsonPath: .spec.details.dataStorageSizeInTBs
       name: Storage (TB)
       type: integer
@@ -397,6 +399,8 @@ spec:
                 - Start
                 - Terminate
                 - Clone
+                - Switchover
+                - Failover
                 type: string
               clone:
                 properties:

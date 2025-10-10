@@ -56,7 +56,7 @@ func (d *DatabaseService) CreateAutonomousContainerDatabase(acd *dbv4.Autonomous
 			CompartmentId:              acd.Spec.CompartmentOCID,
 			DisplayName:                acd.Spec.DisplayName,
 			CloudAutonomousVmClusterId: acd.Spec.AutonomousExadataVMClusterOCID,
-			PatchModel:                 database.CreateAutonomousContainerDatabaseDetailsPatchModelUpdates,
+			PatchModel:                 database.CreateAutonomousContainerDatabaseBasePatchModelUpdates,
 		},
 	}
 

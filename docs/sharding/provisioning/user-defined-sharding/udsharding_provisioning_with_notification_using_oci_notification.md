@@ -17,7 +17,7 @@ This example uses `udsharding_shard_prov_send_notification.yaml` to provision an
 
 **NOTE:**
 
-* The notification will be sent using a configmap created with the credentials of the OCI user account in this use case.
+* The notification will be sent using a configmap created with the credentials of the OCI user account used in this procedure.
 
 We will create a topic in Notification Service of the OCI Console and use its OCID. 
 
@@ -37,7 +37,7 @@ To do this:
     kubectl create configmap onsconfigmap --from-file=./configmap_data.txt -n shns
     ```
 
-3. Create a key file `priavatekey` having the PEM key of the OCI user being used to send notification:
+3. Create a key file `privatekey` that has the PEM key of the OCI user being used to send notification:
     ```sh
     -----BEGIN PRIVATE KEY-G----
     MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCXYxA0DJvEwtVR
@@ -62,16 +62,16 @@ To do this:
     kubectl describe secret my-secret -n shns
     ```
 
-In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
-  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `udsharding_shard_prov_send_notification.yaml`.
-  * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
-  * In case you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you will need to add the additional parameter `dbEdition: "free"` to the below .yaml file.
-  * Make sure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
+In this example, we are using pre-built Oracle Database and Global Data Services container images available on the [Oracle Container Registry](https://container-registry.oracle.com/)
+  * To pull these images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
+  * If you plan to use images built by you, then you must exchanage the `dbImage` and `gsmImage` tags for the images that you have built in your enviornment in file `udsharding_shard_prov_send_notification.yaml`.
+  * To understand the Database and Global Data Services Docker images prerequisites, see: [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
+  * If you want to use the [Oracle Database 23ai Free image](https://www.oracle.com/database/free/get-started/) for Database and GSM, then you must add the additional parameter `dbEdition: "free"` to the _.yaml_ file used in this procedure. 
+  * Ensure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
 
-**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
+**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is _not_ supported with Oracle Database 23ai Free.
 
-Use the file: [udsharding_shard_prov_send_notification.yaml](./udsharding_shard_prov_send_notification.yaml) for this use case as below:
+Use the file: [udsharding_shard_prov_send_notification.yaml](./udsharding_shard_prov_send_notification.yaml) for this use case:
 
 1. Deploy the `udsharding_shard_prov_send_notification.yaml` file:
     ```sh

@@ -1,0 +1,29 @@
+# example
+apiVersion: observability.oracle.com/v4
+kind: DatabaseObserver
+metadata:
+  name: obs-sample
+spec:
+  database:
+    dbUser:
+      secret: db-secret
+    dbConnectionString:
+      secret: db-secret
+    oci:
+      vaultID: ocid1.vault.oc1.<region>.<vault-ocid>
+      vaultPasswordSecret: sample_secret
+
+  wallet:
+    secret: instance-wallet
+
+  serviceMonitor:
+    labels:
+      release: prometheus
+
+  ociConfig:
+    configMap:
+      key: config
+      name: oci-cred
+    privateKey:
+      secret: oci-privatekey
+    mountPath: "/.oci"

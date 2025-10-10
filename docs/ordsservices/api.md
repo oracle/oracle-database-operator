@@ -291,14 +291,32 @@ Contains settings that are configured across the entire ORDS instance.
             <i>Format</i>: int64<br/>
         </td>
         <td>false</td>
-      </tr><tr>
+      </tr>
+      <tr>
         <td><b>debug.printDebugToScreen</b></td>
         <td>boolean</td>
         <td>
           Specifies whether to display error messages on the browser.<br/>
         </td>
         <td>false</td>
-      </tr><tr>
+      </tr>
+      <tr>
+        <td><b>downloadAPEX</b></td>
+        <td>boolean</td>
+        <td>
+          Specifies whether to downloan APEX installation files.<br/>
+        </td>
+        <td>false</td>
+      </tr>
+      <tr>
+        <td><b>downloadUrlAPEX</b></td>
+        <td>string</td>
+        <td>
+          Specifies the URL to downloan APEX installation files.<br/>
+        </td>
+        <td>https://download.oracle.com/otn_software/apex/apex-latest.zip</td>
+      </tr>
+      <tr>
         <td><b>enable.mongo.access.log</b></td>
         <td>boolean</td>
         <td>

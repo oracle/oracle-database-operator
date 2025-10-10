@@ -1,0 +1,87 @@
+
+########################
+## REST SERVER IMAGE ###
+########################
+LRESTIMG:container-registry.oracle.com/database/operator:lrest-241210-amd64
+
+##############################
+## TNS URL FOR CDB CREATION ##
+##############################
+TNSALIAS:"(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
+
+###########################################
+## CDB USER FOR PDB LIFECYCLE MANAGMENT ###
+###########################################
+
+DBUSER:_username_
+DBPASS:_password_
+
+#########################
+## SERVICENAME ACCOUNT ##
+#########################
+SERVICENAMEACCOUNT:_your_service_account_
+
+
+#########################
+## OPENSHIFT           ##
+#########################
+OPENSHIFT:false
+
+#########################
+## PLSQL CONFIGMAP     ##
+#########################
+PLSQLMAP:sql-map-example1
+
+#######################
+## HTTPS CREDENTIAL ###
+#######################
+
+WBUSER:_username_
+WBPASS:_password_
+
+#####################
+## PDB ADMIN USER ###
+##################### 
+
+PDBUSR:_username_
+PDBPWD:_password_
+
+###################
+### NAMESPACES ####
+###################
+PDBNAMESPACE:pdbnamespace
+LRSNAMESPACE:cdbnamespace
+
+####################
+### COMPANY NAME ### 
+####################
+COMPANY:oracle
+
+##########################
+### CODE TREE          ###
+##########################
+CODE_TREE:../../../../oracle-database-operator
+
+########################
+##  OPERATOR IMAGE   ###
+########################
+#Use this parameter if you need to change the image
+#OPRIMG:lin.ocir.io/intsanjaysingh/operator/dboperator_master_orahub:test
+
+
+##########################
+### PDB AUTODISCOVER   ###
+##########################
+AUTODISCOVER:false
+
+####################
+### APIVERSION   ### 
+####################
+APIVERSION:v4
+
+##########################
+### CERT_MANAGER       ###
+##########################
+CERT_MANAGER:https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
+
+

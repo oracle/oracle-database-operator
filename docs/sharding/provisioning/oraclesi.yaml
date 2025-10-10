@@ -5,10 +5,10 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: oshard-gold-image-pvc21c
+  name: oshard-gold-image-pvc19c
   namespace: shns
   labels:
-    app: oshard21cdb-dep
+    app: oshard19cdb-dep
 spec:
   accessModes:
   - ReadWriteOnce
@@ -18,28 +18,28 @@ spec:
   storageClassName: oci
   selector:
     matchLabels:
-      topology.kubernetes.io/zone: "PHX-AD-1"
+      topology.kubernetes.io/zone: "PHX-AD-3"
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: oshard21cdb
+  name: oshard19cdb
   namespace: shns
   labels:
-    app: oshard21cdb-dep
+    app: oshard19cdb-dep
 spec:
   selector:
     matchLabels:
-      app: oshard21cdb-dep
+      app: oshard19cdb-dep
   serviceName: gold-shard
   template:
     metadata:
       labels:
-        app: oshard21cdb-dep
+        app: oshard19cdb-dep
     spec:
       containers:
-      - image: container-registry.oracle.com/database/enterprise:latest
-        name: oshard21cdb
+      - image: container-registry.oracle.com/database/enterprise_ru:19.28.0.0
+        name: oshard19cdb
         ports:
         - containerPort: 1521
           name: db1-dbport
@@ -68,17 +68,17 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: oshard-gold-image-pvc21c
+            claimName: oshard-gold-image-pvc19c
         - name: dshm
           emptyDir:
             medium: Memory
       nodeSelector:
-        topology.kubernetes.io/zone: "PHX-AD-1"
+        topology.kubernetes.io/zone: "PHX-AD-3"
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: oshard21cdb
+  name: oshard19cdb
   namespace: shns
 spec:
   ports:
@@ -95,4 +95,4 @@ spec:
     port: 6234
     targetPort: db1-onsrport
   selector:
-   app: oshard21cdb-dep
+   app: oshard19cdb-dep

@@ -200,7 +200,7 @@ var _ = Describe("test ADB provisioning", func() {
 				Spec: dbv1alpha1.AutonomousDatabaseBackupSpec{
 					Target: dbv1alpha1.TargetSpec{
 						OciAdb: dbv1alpha1.OciAdbSpec{
-							Ocid: common.String(*databaseOCID),
+							Id: common.String(*databaseOCID),
 						},
 					},
 					DisplayName: common.String(backupName),

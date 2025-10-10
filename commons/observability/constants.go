@@ -9,6 +9,13 @@ const (
 	DefaultValue = "DEFAULT"
 )
 
+// Signals
+const (
+	VaultUsernameInUse = "VAULT_USERNAME"
+	VaultPasswordInUse = "VAULT_PASSWORD"
+	VaultIDProvided    = "VAULT_ID_PROVIDED"
+)
+
 // Observability Status
 const (
 	StatusObservabilityPending v4.StatusEnum = "PENDING"
@@ -29,61 +36,64 @@ const (
 	DefaultDbUserKey                 = "username"
 	DefaultDBPasswordKey             = "password"
 	DefaultDBConnectionStringKey     = "connection"
-	DefaultConfigVolumeString        = "config-volume"
+	DefaultConfigVolumeString        = "metrics-volume"
 	DefaultLogFilename               = "alert.log"
 	DefaultLogVolumeString           = "log-volume"
+	DefaultLogDestination            = "/log"
+	DefaultConfigMountPath           = "/config"
+	DefaultConfigVolumeName          = "config-volume"
 	DefaultWalletVolumeString        = "creds"
-	DefaultOCIPrivateKeyVolumeString = "ocikey"
+	DefaultOCIConfigVolumeName       = "oci-config-volume"
 	DefaultOCIConfigFingerprintKey   = "fingerprint"
 	DefaultOCIConfigRegionKey        = "region"
 	DefaultOCIConfigTenancyKey       = "tenancy"
 	DefaultOCIConfigUserKey          = "user"
+	DefaultAzureConfigTenantId       = "tenantId"
+	DefaultAzureConfigClientId       = "clientId"
+	DefaultAzureConfigClientSecret   = "clientSecret"
+	DefaultEnvPasswordSuffix         = "_PASSWORD"
+	DefaultEnvUserSuffix             = "_USERNAME"
+	DefaultEnvConnectionStringSuffix = "_CONNECT_STRING"
 
-	DefaultExporterImage                 = "container-registry.oracle.com/database/observability-exporter:1.5.2"
-	DefaultServicePort                   = 9161
-	DefaultServiceTargetPort             = 9161
-	DefaultAppPort                       = 8080
-	DefaultPrometheusPort                = "metrics"
-	DefaultServiceType                   = "ClusterIP"
-	DefaultReplicaCount                  = 1
-	DefaultExporterConfigMountRootPath   = "/oracle/observability"
-	DefaultOracleHome                    = "/lib/oracle/21/client64/lib"
-	DefaultOracleTNSAdmin                = DefaultOracleHome + "/network/admin"
-	DefaultExporterConfigmapFilename     = "config.toml"
-	DefaultVaultPrivateKeyRootPath       = "/oracle/config"
-	DefaultPrivateKeyFileKey             = "privatekey"
-	DefaultPrivateKeyFileName            = "private.pem"
-	DefaultVaultPrivateKeyAbsolutePath   = DefaultVaultPrivateKeyRootPath + "/" + DefaultPrivateKeyFileName
-	DefaultExporterConfigmapAbsolutePath = DefaultExporterConfigMountRootPath + "/" + DefaultExporterConfigmapFilename
-)
-
-// labeling
-const (
-	DefaultSelectorLabelKey = "app"
-	DefaultReleaseLabelKey  = "release"
-)
-
-// default resource
-const (
-	DefaultExporterContainerName = "observability-exporter"
+	DefaultExporterImage               = "container-registry.oracle.com/database/observability-exporter:2.0.2"
+	DefaultServicePort                 = 9161
+	DefaultServiceTargetPort           = 9161
+	DefaultAppPort                     = 8080
+	DefaultPrometheusPort              = "metrics"
+	DefaultServiceType                 = "ClusterIP"
+	DefaultReplicaCount                = 1
+	DefaultExporterConfigMountRootPath = "/oracle/observability"
+	DefaultOracleHome                  = "/lib/oracle/21/client64/lib"
+	DefaultOracleTNSAdmin              = DefaultOracleHome + "/network/admin"
+	DefaultOCIConfigPath               = "/.oci"
+	DefaultPrivateKeyFileName          = "private.pem"
+	DefaultVaultPrivateKeyAbsolutePath = DefaultOCIConfigPath + "/" + DefaultPrivateKeyFileName
+	DefaultExporterContainerName       = "exporter"
+	DefaultSelectorLabelKey            = "app"
 )
 
 // Known environment variables
 const (
 	EnvVarOracleHome                   = "ORACLE_HOME"
-	EnvVarDataSourceUser               = "DB_USERNAME"
+	EnvVarDataSourceUsername           = "DB_USERNAME"
 	EnvVarDataSourcePassword           = "DB_PASSWORD"
 	EnvVarDataSourceConnectString      = "DB_CONNECT_STRING"
 	EnvVarDataSourceLogDestination     = "LOG_DESTINATION"
-	EnvVarDataSourcePwdVaultSecretName = "VAULT_SECRET_NAME"
-	EnvVarDataSourcePwdVaultId         = "VAULT_ID"
+	EnvVarDataSourcePwdVaultSecretName = "OCI_VAULT_SECRET_NAME"
+	EnvVarDataSourcePwdVaultId         = "OCI_VAULT_ID"
 	EnvVarCustomConfigmap              = "CUSTOM_METRICS"
 	EnvVarTNSAdmin                     = "TNS_ADMIN"
-	EnvVarVaultTenancyOCID             = "vault_tenancy_ocid"
-	EnvVarVaultUserOCID                = "vault_user_ocid"
-	EnvVarVaultFingerprint             = "vault_fingerprint"
-	EnvVarVaultPrivateKeyPath          = "vault_private_key_path"
-	EnvVarVaultRegion                  = "vault_region"
+	EnvVarOCIVaultTenancyOCID          = "OCI_CLI_TENANCY"
+	EnvVarOCIVaultUserOCID             = "OCI_CLI_USER"
+	EnvVarOCIVaultFingerprint          = "OCI_CLI_FINGERPRINT"
+	EnvVarOCIVaultPrivateKeyPath       = "OCI_CLI_KEY_FILE"
+	EnvVarOCIVaultRegion               = "OCI_CLI_REGION"
+	EnvVarAzureVaultPasswordSecret     = "AZ_VAULT_PASSWORD_SECRET"
+	EnvVarAzureVaultUsernameSecret     = "AZ_VAULT_USERNAME_SECRET"
+	EnvVarAzureVaultID                 = "AZ_VAULT_ID"
+	EnvVarAzureTenantID                = "AZURE_TENANT_ID"
+	EnvVarAzureClientID                = "AZURE_CLIENT_ID"
+	EnvVarAzureClientSecret            = "AZURE_CLIENT_SECRET"
 )
 
 // Positive ConditionTypes
@@ -165,10 +175,10 @@ const (
 	EventMessageFailedCRRetrieval = "Encountered error retrieving databaseObserver instance"
 
 	EventReasonSpecError                                 = "DeploymentSpecValidationFailed"
-	EventMessageSpecErrorDBPasswordSecretMissing         = "Spec validation failed due to required dbPassword secret not found"
+	EventMessageSpecErrorConfigMapSpecifiedMissing       = "Spec validation failed due to referenced configMap not found"
 	EventMessageSpecErrorDBConnectionStringSecretMissing = "Spec validation failed due to required dbConnectionString secret not found"
 	EventMessageSpecErrorDBPUserSecretMissing            = "Spec validation failed due to dbUser secret not found"
-	EventMessageSpecErrorConfigmapMissing                = "Spec validation failed due to custom config configmap not found"
+	EventMessageSpecErrorDBPwdSecretMissing              = "Spec validation failed due to dbPassword secret not found"
 	EventMessageSpecErrorDBWalletSecretMissing           = "Spec validation failed due to provided dbWallet secret not found"
 
 	EventReasonUpdateSucceeded = "ExporterDeploymentUpdated"

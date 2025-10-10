@@ -1,15 +1,15 @@
 # Scale Down the shape of an existing OBDS System
 
-In this use case, an existing OCI OBDS system deployed earlier is scaled down for its shape using Oracle DB Operator OBDS controller. Its a 2 Step operation.
+In this use case, an existing OCI OBDS system deployed earlier is scaled down for its shape using Oracle DB Operator OBDS controller. This is a two-step operation.
 
-In order to scale down an existing OBDS system, the steps will be:
+To scale down an existing OBDS system, the two steps are as follows:
 
 1. Bind the existing OBDS System to OBDS Controller.
 2. Apply the change to scale down its shape.
 
-**NOTE** We are assuming that before this step, you have followed the [prerequisite](./../README.md#prerequsites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) steps to create the configmap and the secrets required during the deployment.
+**NOTE** We are assuming that before this step, you have followed the [prerequisite steps](./../README.md#prerequsites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) to create the configmap and the secrets required during the deployment.
 
-This example uses `scale_down_dbcs_system_shape.yaml` to scale down a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with:
+This example uses `scale_down_dbcs_system_shape.yaml` to scale down a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with the following:
 
 - OCID of existing VMDB as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
 - OCI Configmap as `oci-cred`  
@@ -22,9 +22,9 @@ This example uses `scale_down_dbcs_system_shape.yaml` to scale down a Single Ins
 - SSH Public key for the OBDS system being deployed as `oci-publickey`  
 - OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`  
 
-**NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md).
+**NOTE:** For the details of the parameters to be used in the `.yaml` file, see: [DBCS Controller Parameters](./dbcs_controller_parameters.md).
 
-Use the file: [scale_down_dbcs_system_shape.yaml](./scale_down_dbcs_system_shape.yaml) for this use case as below:
+Use the file: [scale_down_dbcs_system_shape.yaml](./scale_down_dbcs_system_shape.yaml) for this use case as follows:
 
 1. Deploy the .yaml file:  
 ```sh
@@ -42,4 +42,4 @@ NOTE: Check the DB Operator Pod name in your environment.
 
 ## Sample Output
 
-[Here](./scale_down_dbcs_system_shape_sample_output.log) is the sample output for scaling down the shape of an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.
+[This log file](./scale_down_dbcs_system_shape_sample_output.log) is an example output log file for scaling down the shape of an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.

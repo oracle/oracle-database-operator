@@ -39,6 +39,8 @@
 package v4
 
 import (
+	"context"
+
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,28 +58,32 @@ var autonomousdatabaselog = logf.Log.WithName("autonomousdatabase-resource")
 func (r *AutonomousDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(r).
+		WithValidator(r).
 		Complete()
 }
 
 // +kubebuilder:webhook:verbs=create;update,path=/validate-database-oracle-com-v4-autonomousdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=autonomousdatabases,versions=v4,name=vautonomousdatabasev4.kb.io,admissionReviewVersions=v1
-var _ webhook.Validator = &AutonomousDatabase{}
+
+var _ webhook.CustomValidator = &AutonomousDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 // ValidateCreate checks if the spec is valid for a provisioning or a binding operation
-func (r *AutonomousDatabase) ValidateCreate() (admission.Warnings, error) {
+func (r *AutonomousDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	var allErrs field.ErrorList
 
-	autonomousdatabaselog.Info("validate create", "name", r.Name)
+	adb := obj.(*AutonomousDatabase)
+
+	autonomousdatabaselog.Info("validate create", "name", adb.Name)
 
 	namespaces := dbcommons.GetWatchNamespaces()
 	_, hasEmptyString := namespaces[""]
 	isClusterScoped := len(namespaces) == 1 && hasEmptyString
 	if !isClusterScoped {
-		_, containsNamespace := namespaces[r.Namespace]
+		_, containsNamespace := namespaces[adb.Namespace]
 		// Check if the allowed namespaces maps contains the required namespace
 		if len(namespaces) != 0 && !containsNamespace {
 			allErrs = append(allErrs,
-				field.Invalid(field.NewPath("metadata").Child("namespace"), r.Namespace,
+				field.Invalid(field.NewPath("metadata").Child("namespace"), adb.Namespace,
 					"Oracle database operator doesn't watch over this namespace"))
 		}
 	}
@@ -87,47 +93,17 @@ func (r *AutonomousDatabase) ValidateCreate() (admission.Warnings, error) {
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabase"},
-		r.Name, allErrs)
+		adb.Name, allErrs)
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	var allErrs field.ErrorList
-	var oldADB *AutonomousDatabase = old.(*AutonomousDatabase)
+func (r *AutonomousDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+	var (
+		allErrs field.ErrorList
+		newAdb  = newObj.(*AutonomousDatabase)
+	)
 
-	autonomousdatabaselog.Info("validate update", "name", r.Name)
-
-	// skip the verification of adding ADB OCID or binding
-	// if oldADB.Status.LifecycleState == "" {
-	// 	return nil, nil
-	// }
-
-	// cannot update when the old state is in intermediate, except for the change to the hardLink or the terminate operatrion during valid lifecycleState
-	// var copySpec *AutonomousDatabaseSpec = r.Spec.DeepCopy()
-	// specChanged, err := RemoveUnchangedFields(oldADB.Spec, copySpec)
-	// if err != nil {
-	// 	allErrs = append(allErrs,
-	// 		field.Forbidden(field.NewPath("spec"), err.Error()))
-	// }
-
-	// hardLinkChanged := copySpec.HardLink != nil
-
-	// isTerminateOp := CanBeTerminated(oldADB.Status.LifecycleState) && copySpec.Action == "Terminate"
-
-	// if specChanged && IsAdbIntermediateState(oldADB.Status.LifecycleState) && !isTerminateOp && !hardLinkChanged {
-	// 	allErrs = append(allErrs,
-	// 		field.Forbidden(field.NewPath("spec"),
-	// 			"cannot change the spec when the lifecycleState is in an intermdeiate state"))
-	// }
-
-	// cannot modify autonomousDatabaseOCID
-	if r.Spec.Details.Id != nil &&
-		oldADB.Spec.Details.Id != nil &&
-		*r.Spec.Details.Id != *oldADB.Spec.Details.Id {
-		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("details").Child("autonomousDatabaseOCID"),
-				"autonomousDatabaseOCID cannot be modified"))
-	}
+	autonomousdatabaselog.Info("validate update", "name", newAdb.Name)
 
 	allErrs = validateCommon(r, allErrs)
 
@@ -136,7 +112,7 @@ func (r *AutonomousDatabase) ValidateUpdate(old runtime.Object) (admission.Warni
 	}
 	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "AutonomousDatabase"},
-		r.Name, allErrs)
+		newAdb.Name, allErrs)
 }
 
 func validateCommon(adb *AutonomousDatabase, allErrs field.ErrorList) field.ErrorList {
@@ -149,7 +125,7 @@ func validateCommon(adb *AutonomousDatabase, allErrs field.ErrorList) field.Erro
 
 	if adb.Spec.Wallet.Password.K8sSecret.Name != nil && adb.Spec.Wallet.Password.OciSecret.Id != nil {
 		allErrs = append(allErrs,
-			field.Forbidden(field.NewPath("spec").Child("details").Child("wallet").Child("password"),
+			field.Forbidden(field.NewPath("spec").Child("wallet").Child("password"),
 				"cannot apply k8sSecret.name and ociSecret.ocid at the same time"))
 	}
 
@@ -157,14 +133,6 @@ func validateCommon(adb *AutonomousDatabase, allErrs field.ErrorList) field.Erro
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *AutonomousDatabase) ValidateDelete() (admission.Warnings, error) {
-	autonomousdatabaselog.Info("validate delete", "name", r.Name)
+func (r *AutonomousDatabase) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	return nil, nil
-}
-
-// Returns true if AutonomousContainerDatabaseOCID has value.
-// We don't use Details.IsDedicated because the parameter might be null when it's a provision operation.
-func isDedicated(adb *AutonomousDatabase) bool {
-	return adb.Spec.Details.AutonomousContainerDatabase.K8sAcd.Name != nil ||
-		adb.Spec.Details.AutonomousContainerDatabase.OciAcd.Id != nil
 }
