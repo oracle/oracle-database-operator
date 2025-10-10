@@ -39,14 +39,16 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 	"time"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	dbcsv1 "github.com/oracle/oracle-database-operator/commons/dbcssystem"
+	dbcsv4 "github.com/oracle/oracle-database-operator/commons/dbcssystem"
 	"github.com/oracle/oracle-database-operator/commons/finalizer"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 
@@ -103,15 +105,16 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	var err error
 	resultNq := ctrl.Result{Requeue: false}
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}
-
 	// Get the dbcs instance from the cluster
 	dbcsInst := &databasev4.DbcsSystem{}
 	r.Logger.Info("Reconciling DbSystemDetails", "name", req.NamespacedName)
-
-	if err := r.KubeClient.Get(context.TODO(), req.NamespacedName, dbcsInst); err != nil {
-		if !errors.IsNotFound(err) {
-			return ctrl.Result{}, err
+	if err := r.KubeClient.Get(ctx, req.NamespacedName, dbcsInst); err != nil {
+		if errors.IsNotFound(err) {
+			// CR was deleted → stop reconciling
+			r.Logger.Info("DbcsSystem resource not found.", "name", req.NamespacedName)
+			return ctrl.Result{}, nil
 		}
+		return ctrl.Result{}, err
 	}
 
 	// Create oci-go-sdk client
@@ -144,10 +147,23 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		result := resultNq
 		return result, err
 	}
+
+	var compartmentId string
+	if dbcsInst.Spec.DbSystem != nil && dbcsInst.Spec.DbSystem.CompartmentId != "" {
+		compartmentId = dbcsInst.Spec.DbSystem.CompartmentId
+	} else if dbcsInst.Spec.Id != nil && *dbcsInst.Spec.Id != "" {
+		var err error
+		compartmentId, err = r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		if err != nil {
+			fmt.Printf("Failed to get compartment ID: %v\n", err)
+			dbcsInst.Status.Message = err.Error()
+			return ctrl.Result{}, err
+		}
+	}
 	r.Logger.Info("OCI provider configured succesfully")
 
 	/*
-	   Using Finalizer for object deletion
+		Using Finalizer for object deletion
 	*/
 
 	if dbcsInst.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -162,10 +178,11 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	} else {
 		// The object is being deleted
 		r.Logger.Info("Terminate DbcsSystem Database: " + dbcsInst.Spec.DbSystem.DisplayName)
-		if err := dbcsv1.DeleteDbcsSystemSystem(r.dbClient, *dbcsInst.Spec.Id); err != nil {
+		if err := dbcsv4.DeleteDbcsSystemSystem(r.dbClient, *dbcsInst.Spec.Id); err != nil {
 			r.Logger.Error(err, "Fail to terminate DbcsSystem Instance")
+			dbcsInst.Status.Message = err.Error()
 			// Change the status to Failed
-			if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Terminate, r.nwClient, r.wrClient); statusErr != nil {
+			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Terminate, r.nwClient, r.wrClient); statusErr != nil {
 				result := resultNq
 				return result, err
 			}
@@ -183,6 +200,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					// Call deletePluggableDatabase function
 					dbSystemId := *dbcsInst.Spec.Id
 					if err := r.deletePluggableDatabase(ctx, pdbConfig, dbSystemId); err != nil {
+						dbcsInst.Status.Message = err.Error()
 						result := resultNq
 						return result, err
 					}
@@ -200,7 +218,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	/*
-	   Determine whether it's a provision or bind operation
+		Determine whether it's a provision or bind operation
 	*/
 	lastSuccessfullSpec, err := dbcsInst.GetLastSuccessfulSpec()
 	if err != nil {
@@ -217,7 +235,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	if lastSuccessfullKMSConfig == nil && lastSuccessfullKMSStatus == nil {
 
-		if dbcsInst.Spec.KMSConfig.KeyName != "" {
+		if dbcsInst.Spec.KMSConfig != nil && dbcsInst.Spec.KMSConfig.KeyName != "" {
 
 			kmsVaultClient, err := keymanagement.NewKmsVaultClientWithConfigurationProvider(provider)
 
@@ -236,6 +254,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 			listResp, err := kmsVaultClient.ListVaults(ctx, getVaultReq)
 			if err != nil {
+				dbcsInst.Status.Message = err.Error()
 				return ctrl.Result{}, fmt.Errorf("error listing vaults: %v", err)
 			}
 
@@ -260,8 +279,9 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			if existingVaultId == nil {
 
 				// Create the KMS vault
-				createResp, err := r.createKMSVault(ctx, &dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
+				createResp, err := r.createKMSVault(ctx, dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
 				if err != nil {
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, fmt.Errorf("error creating vault: %v", err)
 				}
 				existingVaultId = createResp.Id
@@ -287,6 +307,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				listKeysResp, err := kmsClient.ListKeys(ctx, listKeysReq)
 				if err != nil {
 					r.Logger.Error(err, "Error listing keys in existing vault")
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 
@@ -305,7 +326,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					r.Logger.Info("Master key not found in existing vault, creating new key")
 
 					// Create the KMS key in the existing vault
-					keyResponse, err := r.createKMSKey(ctx, &dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
+					keyResponse, err := r.createKMSKey(ctx, dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
 					if err != nil {
 						return ctrl.Result{}, err
 					}
@@ -324,15 +345,17 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				r.Logger.Info("Creating new vault")
 
 				// Create the new vault
-				vaultResponse, err := r.createKMSVault(ctx, &dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
+				vaultResponse, err := r.createKMSVault(ctx, dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
 				if err != nil {
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 				dbcsInst.Status.KMSDetailsStatus.VaultId = *vaultResponse.Id
 				dbcsInst.Status.KMSDetailsStatus.ManagementEndpoint = *vaultResponse.ManagementEndpoint
 				// Create the KMS key in the newly created vault
-				keyResponse, err := r.createKMSKey(ctx, &dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
+				keyResponse, err := r.createKMSKey(ctx, dbcsInst.Spec.KMSConfig, kmsClient, &dbcsInst.Status.KMSDetailsStatus)
 				if err != nil {
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 
@@ -343,11 +366,207 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 		}
 	}
-	//debugging
-	// lastSuccessfullSpec = nil
-	// r.ensureDBSystemSpec(&dbcsInst.Spec.DbSystem)
-	// Check if cloning is needed, debugging
-	// *dbcsInst.Status.DbCloneStatus.Id = ""
+	// Backup Creation
+	if dbcsInst.Spec.EnableBackup {
+		var compartmentId string
+		if dbcsInst.Spec.DbSystem.CompartmentId != "" {
+			compartmentId = dbcsInst.Spec.DbSystem.CompartmentId
+		} else if dbcsInst.Spec.Id != nil && *dbcsInst.Spec.Id != "" {
+			var err error
+			compartmentId, err = r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+			if err != nil {
+				fmt.Printf("Failed to get compartment ID: %v\n", err)
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, err
+			}
+		} else {
+			err := fmt.Errorf("compartment ID or DB system ID must be set")
+			dbcsInst.Status.Message = err.Error()
+			return ctrl.Result{}, err
+		}
+		backupId, err := dbcsv4.CreateDbcsBackup(compartmentId, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient)
+		if err != nil {
+			r.Logger.Error(err, "Backup creation failed")
+			dbcsInst.Status.Message = err.Error()
+			return ctrl.Result{}, nil
+		} else {
+
+			dbHomeId, err := r.getDbHomeIdByDbSystemID(ctx, compartmentId, *dbcsInst.Spec.Id)
+			if err != nil {
+				fmt.Printf("Failed to get DB Home ID: %v\n", err)
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, err
+			}
+
+			databaseIds, err := r.getDatabaseIDByDbSystemID(ctx, *dbcsInst.Spec.Id, compartmentId, dbHomeId)
+			if err != nil {
+				fmt.Printf("Failed to get database IDs: %v\n", err)
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, err
+			}
+
+			// Assume the first database is the one to back up (customize as needed)
+			databaseId := databaseIds[0]
+			// After successful creation and backup becomes ACTIVE
+			listBackupsReq := database.ListBackupsRequest{
+				DatabaseId: &databaseId,
+			}
+
+			listBackupsResp, err := r.dbClient.ListBackups(ctx, listBackupsReq)
+			if err != nil {
+				r.Logger.Error(err, "Failed to list backups")
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, nil
+			}
+
+			// Reset and populate status.Backups with up-to-date backup list
+			dbcsInst.Status.Backups = []databasev4.BackupInfo{}
+			for _, b := range listBackupsResp.Items {
+				if b.Id != nil && b.DisplayName != nil && b.TimeStarted != nil {
+					dbcsInst.Status.Backups = append(dbcsInst.Status.Backups, databasev4.BackupInfo{
+						Name:      *b.DisplayName,
+						BackupID:  *b.Id,
+						Timestamp: b.TimeStarted.Format(time.RFC3339),
+					})
+				}
+			}
+			r.Logger.Info("Backup Completed successfully", "BackupID", backupId)
+		}
+	}
+	restoreCount := 0
+	var restoreInfo *databasev4.RestoreConfig
+	if dbcsInst.Spec.DbSystem != nil {
+		restoreInfo = dbcsInst.Spec.DbSystem.RestoreConfig
+	}
+	if restoreInfo != nil {
+		if restoreInfo.Latest {
+			restoreCount++
+		}
+		if restoreInfo.Timestamp != nil {
+			restoreCount++
+		}
+		if restoreInfo.SCN != nil {
+			restoreCount++
+		}
+
+		if restoreCount > 1 {
+			return ctrl.Result{}, fmt.Errorf("exactly one of Timestamp, SCN, or Latest must be specified for restore")
+		}
+
+		aj, _ := json.Marshal(dbcsInst.Spec)
+		bj, _ := json.Marshal(lastSuccessfullSpec)
+
+		if bytes.Equal(aj, bj) {
+			r.Logger.Info("Restore already applied — skipping", "DbcsSystem", dbcsInst.Name)
+		} else if restoreCount == 1 { // do restore when exactly one restore is new spec and defined correctly
+			switch {
+			case restoreInfo.Latest:
+				err = dbcsv4.RestoreDbcsToPoint(compartmentId, r.Logger, r.dbClient, dbcsInst,
+					databasev4.RestoreConfig{Latest: true},
+					r.KubeClient, r.nwClient, r.wrClient)
+
+			case restoreInfo.Timestamp != nil:
+				err = dbcsv4.RestoreDbcsToPoint(compartmentId, r.Logger, r.dbClient, dbcsInst,
+					databasev4.RestoreConfig{Timestamp: restoreInfo.Timestamp},
+					r.KubeClient, r.nwClient, r.wrClient)
+
+			case restoreInfo.SCN != nil:
+				err = dbcsv4.RestoreDbcsToPoint(compartmentId, r.Logger, r.dbClient, dbcsInst,
+					databasev4.RestoreConfig{SCN: restoreInfo.SCN},
+					r.KubeClient, r.nwClient, r.wrClient)
+			}
+
+			if err != nil {
+				r.Logger.Error(err, "Restore failed")
+				return ctrl.Result{}, err
+			}
+
+			// STEP 4: Mark spec as successfully applied
+			if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, err
+			}
+
+			r.Logger.Info("Restore Operation Completed and lastSuccessfulSpec updated", "DbcsSystem", dbcsInst.Name)
+			return ctrl.Result{}, nil
+		}
+	}
+
+	switch {
+	case dbcsInst.Spec.IsPatch && dbcsInst.Spec.IsUpgrade:
+		errMsg := "Both IsPatch and IsUpgrade are set. Only one operation can be performed at a time."
+		r.Logger.Error(nil, errMsg)
+		dbcsInst.Status.Message = errMsg
+		return ctrl.Result{}, nil
+
+	case dbcsInst.Spec.IsPatch:
+		if dbcsInst.Spec.Id == nil || dbcsInst.Spec.DbSystem.PatchOCID == "" {
+			errMsg := "Patching is requested but Patch Version or DB System ID is missing."
+			r.Logger.Error(nil, errMsg)
+			dbcsInst.Status.Message = errMsg
+			return ctrl.Result{}, nil
+		}
+		compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		if err != nil {
+			fmt.Printf("Failed to get compartment ID: %v\n", err)
+			dbcsInst.Status.Message = err.Error()
+			return ctrl.Result{}, err
+		}
+
+		err = dbcsv4.PatchDBSystem(ctx, compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, dbcsInst.Spec.DbSystem.DbHomeId, dbcsInst.Spec.DbSystem.PatchOCID)
+		if err != nil {
+			r.Logger.Error(err, "Fail to patch db system")
+			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				dbcsInst.Status.Message = err.Error()
+				return ctrl.Result{}, statusErr
+			}
+		}
+
+	case dbcsInst.Spec.IsUpgrade:
+		if dbcsInst.Spec.Id == nil || dbcsInst.Spec.DbSystem.UpgradeVersion == "" {
+			errMsg := "Upgrade is requested but Upgrade Version or DB System ID is missing."
+			r.Logger.Error(nil, errMsg)
+			dbcsInst.Status.Message = errMsg
+			return ctrl.Result{}, nil
+		}
+		compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		if err != nil {
+			fmt.Printf("Failed to get compartment ID: %v\n", err)
+			dbcsInst.Status.Message = err.Error()
+			return ctrl.Result{}, err
+		}
+
+		err = dbcsv4.UpgradeDatabaseVersion(ctx, compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, *dbcsInst.Spec.DatabaseId, dbcsInst.Spec.DbSystem.UpgradeVersion)
+		if err != nil {
+			r.Logger.Error(err, "Failed to upgrade DB Home.")
+			dbcsInst.Status.Message = fmt.Sprintf("Upgrade failed: %v", err)
+			return ctrl.Result{}, err
+		}
+
+	}
+
+	isDeleteDataguard := false
+	setupDataguard := false
+
+	// Check if DataGuard is marked for deletion
+	if dbcsInst.Spec.DataGuard.IsDelete {
+		isDeleteDataguard = true
+		// If marked for delete, skip DataGuard setup
+		setupDataguard = false
+	} else if dbcsInst.Spec.DataGuard.Enabled {
+		// Proceed to check required fields for DataGuard setup
+		if dbcsInst.Spec.DataGuard.PrimaryDatabaseId == nil ||
+			dbcsInst.Spec.DataGuard.DbAdminPasswordSecret == nil ||
+			dbcsInst.Spec.DataGuard.DisplayName == nil {
+			r.Logger.Error(err, "setupDataguard is defined but other necessary details are not present. Refer README.md file for instructions.")
+			return ctrl.Result{}, nil
+		}
+		// All required fields are present, enable setup
+		setupDataguard = true
+	}
+
+	//-----------------Clone Setup---------------------------------//
+
 	setupCloning := false
 	// Check if SetupDBCloning is true and ensure one of the required fields is provided
 	if dbcsInst.Spec.SetupDBCloning {
@@ -355,6 +574,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if dbcsInst.Spec.Id == nil && dbcsInst.Spec.DbBackupId == nil && dbcsInst.Spec.DatabaseId == nil {
 			// If none of the required fields are set, log an error and exit the function
 			r.Logger.Error(err, "SetupDBCloning is defined but other necessary details (Id, DbBackupId, DatabaseId) are not present. Refer README.md file for instructions.")
+			dbcsInst.Status.Message = "SetupDBCloning is defined but other necessary details (Id, DbBackupId, DatabaseId) are not present. Refer README.md file for instructions."
 			return ctrl.Result{}, nil
 		}
 		// If the condition is met, proceed with cloning setup
@@ -363,17 +583,19 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// If SetupDBCloning is false, continue as usual without cloning
 		setupCloning = false
 	}
-
 	var dbSystemId string
 	// Executing DB Cloning Process, if defined. Do not repeat cloning again when Status has Id present.
 	if setupCloning && dbcsInst.Status.DbCloneStatus.Id == nil {
+		// if setupCloning {
+
 		switch {
 
 		case dbcsInst.Spec.SetupDBCloning && dbcsInst.Spec.DbBackupId != nil:
-			dbSystemId, err = dbcsv1.CloneFromBackupAndGetDbcsId(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
+			dbSystemId, err = dbcsv4.CloneFromBackupAndGetDbcsId(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
 			if err != nil {
 				r.Logger.Error(err, "Fail to clone db system from backup and get DbcsSystem System ID")
-				if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, statusErr
 				}
 
@@ -382,10 +604,12 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			r.Logger.Info("DB Cloning completed successfully from provided backup DB system")
 
 		case dbcsInst.Spec.SetupDBCloning && dbcsInst.Spec.DatabaseId != nil:
-			dbSystemId, err = dbcsv1.CloneFromDatabaseAndGetDbcsId(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
+			dbSystemId, err = dbcsv4.CloneFromDatabaseAndGetDbcsId(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
 			if err != nil {
 				r.Logger.Error(err, "Fail to clone db system from DatabaseID provided")
-				if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				dbcsInst.Status.Message = err.Error()
+				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+
 					return ctrl.Result{}, statusErr
 				}
 
@@ -394,31 +618,38 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			r.Logger.Info("DB Cloning completed successfully from provided databaseId")
 
 		case dbcsInst.Spec.SetupDBCloning && dbcsInst.Spec.DbBackupId == nil && dbcsInst.Spec.DatabaseId == nil:
-			dbSystemId, err = dbcsv1.CloneAndGetDbcsId(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
+			dbSystemId, err = dbcsv4.CloneAndGetDbcsId(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient)
 			if err != nil {
 				r.Logger.Error(err, "Fail to clone db system and get DbcsSystem System ID")
-				if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, statusErr
 				}
 				return ctrl.Result{}, nil
 			}
 			r.Logger.Info("DB Cloning completed successfully from provided db system")
 		}
-	} else if !setupCloning {
+	} else if !setupCloning && !setupDataguard && !isDeleteDataguard {
 		if dbcsInst.Spec.Id == nil && lastSuccessfullSpec == nil {
 			// If no DbcsSystem ID specified, create a new DB System
 			// ======================== Validate Specs ==============
-			err = dbcsv1.ValidateSpex(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.Recorder)
+			if dbcsInst == nil {
+				// Safety guard
+				return ctrl.Result{}, nil
+			}
+			err = dbcsv4.ValidateSpex(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.Recorder)
 			if err != nil {
+				dbcsInst.Status.Message = err.Error()
 				return ctrl.Result{}, err
 			}
 			r.Logger.Info("DbcsSystem DBSystem provisioning")
-			dbcsID, err := dbcsv1.CreateAndGetDbcsId(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, &dbcsInst.Status.KMSDetailsStatus)
+			dbcsID, err := dbcsv4.CreateAndGetDbcsId(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient, &dbcsInst.Status.KMSDetailsStatus)
 			if err != nil {
+				dbcsInst.Status.Message = err.Error()
 				r.Logger.Error(err, "Fail to provision and get DbcsSystem System ID")
 
 				// Change the status to Failed
-				if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
@@ -428,16 +659,17 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			assignDBCSID(dbcsInst, dbcsID)
 			// Check if KMSConfig is specified
 			kmsConfig := dbcsInst.Spec.KMSConfig
-			if kmsConfig != (databasev4.KMSConfig{}) {
+			if kmsConfig != nil {
 				// Check if KMSDetailsStatus is uninitialized (zero value)
-				if dbcsInst.Spec.DbSystem.KMSConfig != dbcsInst.Spec.KMSConfig {
+				if dbcsInst.Spec.DbSystem.KMSConfig != nil && dbcsInst.Spec.KMSConfig != nil &&
+					*dbcsInst.Spec.DbSystem.KMSConfig != *dbcsInst.Spec.KMSConfig {
 					dbcsInst.Spec.DbSystem.KMSConfig = dbcsInst.Spec.KMSConfig
 				}
 			}
-			if err := dbcsv1.UpdateDbcsSystemId(r.KubeClient, dbcsInst); err != nil {
+			if err := dbcsv4.UpdateDbcsSystemId(r.KubeClient, dbcsInst); err != nil {
 				// Change the status to Failed
 				assignDBCSID(dbcsInst, dbcsID)
-				if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 					return ctrl.Result{}, statusErr
 				}
 				return ctrl.Result{}, err
@@ -446,28 +678,30 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			r.Logger.Info("DbcsSystem system provisioned succesfully")
 			assignDBCSID(dbcsInst, dbcsID)
 			if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
+				dbcsInst.Status.Message = err.Error()
 				return ctrl.Result{}, err
 			}
 			assignDBCSID(dbcsInst, dbcsID)
 		} else {
-			if lastSuccessfullSpec == nil { // first time after creation of DB
-				if err := dbcsv1.GetDbSystemId(r.Logger, r.dbClient, dbcsInst); err != nil {
+			if lastSuccessfullSpec == nil { // first time update after creation of DB
+				if err := dbcsv4.GetDbSystemId(r.Logger, r.dbClient, dbcsInst); err != nil {
 					// Change the status to Failed
-					if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+					if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 					return ctrl.Result{}, err
 				}
-				if err := dbcsv1.SetDBCSDatabaseLifecycleState(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient); err != nil {
+				if err := dbcsv4.SetDBCSDatabaseLifecycleState(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient); err != nil {
 					// Change the status to required state
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 
 				dbSystemId := *dbcsInst.Spec.Id
-				if err := dbcsv1.UpdateDbcsSystemId(r.KubeClient, dbcsInst); err != nil {
+				if err := dbcsv4.UpdateDbcsSystemId(r.KubeClient, dbcsInst); err != nil {
 					// Change the status to Failed
 					assignDBCSID(dbcsInst, dbSystemId)
-					if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+					if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 					return ctrl.Result{}, err
@@ -477,6 +711,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 				dbSystemId = *dbcsInst.Spec.Id
 				if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 				assignDBCSID(dbcsInst, dbSystemId)
@@ -489,46 +724,75 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					dbSystemId = *dbcsInst.Spec.Id
 				}
 				//debugging
-				// *dbcsInst.Spec.Id = "ocid1.dbsystem.oc1.iad.anuwcljsabf7htya55wz5vfil7ul3pkzpubnymp6zrp3fhgomv3fcdr2vtiq"
+
 				compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
 				if err != nil {
 					fmt.Printf("Failed to get compartment ID: %v\n", err)
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 				dbHomeId, err := r.getDbHomeIdByDbSystemID(ctx, compartmentId, *dbcsInst.Spec.Id)
 				if err != nil {
 					fmt.Printf("Failed to get DB Home ID: %v\n", err)
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 
 				databaseIds, err := r.getDatabaseIDByDbSystemID(ctx, *dbcsInst.Spec.Id, compartmentId, dbHomeId)
 				if err != nil {
 					fmt.Printf("Failed to get database IDs: %v\n", err)
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
 				err = r.getPluggableDatabaseDetails(ctx, dbcsInst, *dbcsInst.Spec.Id, databaseIds)
 				if err != nil {
 					fmt.Printf("Failed to get pluggable database details: %v\n", err)
+					dbcsInst.Status.Message = err.Error()
 					return ctrl.Result{}, err
 				}
+				// Example: assume you have dataGuardRetryCount as an int
 
-				if err := dbcsv1.UpdateDbcsSystemIdInst(r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient, databaseIds[0]); err != nil {
+				if len(databaseIds) > 0 && dbcsInst.Spec.Id != nil {
+					dataGuardRetryCount := 0
+					if dataGuardRetryCount < 5 {
+						err = r.getDataGuardStatusAndUpdate(ctx, dbcsInst, databaseIds[0], *dbcsInst.Spec.Id)
+						if err != nil {
+							dataGuardRetryCount++
+							// persist the updated retry count
+
+							fmt.Printf("Failed to get dataguard details (attempt %d/5): %v\n",
+								dataGuardRetryCount, err)
+							return ctrl.Result{Requeue: true}, err
+						}
+						// reset retry count on success
+						dataGuardRetryCount = 0
+					} else {
+						fmt.Println("Max retries (5) reached. Failing DataGuard status update.")
+						return ctrl.Result{}, fmt.Errorf("max retries reached for DataGuard status update")
+					}
+				} else {
+					fmt.Println("Skipping DataGuard status update as DatabaseIds or DbcsSystem ID is nil")
+				}
+
+				if err := dbcsv4.UpdateDbcsSystemIdInst(compartmentId, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient, databaseIds[0]); err != nil {
 					r.Logger.Error(err, "Fail to update DbcsSystem Id")
+					dbcsInst.Status.Message = err.Error()
 
 					// Change the status to Failed
-					if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+					if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 						return ctrl.Result{}, statusErr
 					}
 					// The reconciler should not requeue since the error returned from OCI during update will not be solved by requeue
 					return ctrl.Result{}, nil
 				}
-				if err := dbcsv1.SetDBCSDatabaseLifecycleState(r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient); err != nil {
+				if err := dbcsv4.SetDBCSDatabaseLifecycleState(compartmentId, r.Logger, r.KubeClient, r.dbClient, dbcsInst, r.nwClient, r.wrClient); err != nil {
 					// Change the status to required state
 					return ctrl.Result{}, err
 				}
 				// Update Spec and Status
 				result, err := r.updateSpecsAndStatus(ctx, dbcsInst, dbSystemId)
 				if err != nil {
+					dbcsInst.Status.Message = err.Error()
 					return result, err
 				}
 			}
@@ -537,29 +801,85 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Update the Wallet Secret when the secret name is given
 	//r.updateWalletSecret(dbcs)
+	// Dataguard enablement
+	switch {
+	case setupDataguard:
+		// Data Guard Creation Flow
+		compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		if err != nil {
+			fmt.Printf("Failed to get compartment ID: %v\n", err)
+			dbcsInst.Status.Message = err.Error()
+			return ctrl.Result{}, err
+		}
+		if err := r.EnableDataGuard(ctx, compartmentId, r.Logger, r.dbClient, dbcsInst, r.KubeClient, r.nwClient, r.wrClient, *dbcsInst.Spec.DataGuard.PrimaryDatabaseId, &dbcsInst.Spec.DataGuard); err != nil {
+			r.Logger.Error(err, "Failed to enable Data Guard and update DbcsSystem ID")
+
+			// Update status to Failed
+			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{}, nil
+		}
+
+		if err := r.KubeClient.Status().Update(ctx, dbcsInst); err != nil {
+			r.Logger.Error(err, "Failed to update DB status")
+			return reconcile.Result{}, err
+		}
+
+		if dbcsInst.Status.DataGuardStatus != nil && dbcsInst.Status.DataGuardStatus.PeerDbSystemId != nil {
+			dbSystemId = *dbcsInst.Status.DataGuardStatus.PeerDbSystemId
+			assignDBCSID(dbcsInst, dbSystemId)
+		}
+		if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
+			return ctrl.Result{}, err
+		}
+
+	case isDeleteDataguard:
+		// Data Guard Deletion Flow
+		compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Spec.Id)
+		if err != nil {
+			fmt.Printf("Failed to get compartment ID: %v\n", err)
+			dbcsInst.Status.Message = err.Error()
+			return ctrl.Result{}, err
+		}
+		if err := r.DeleteDataGuard(ctx, compartmentId, r.Logger, r.dbClient, dbcsInst); err != nil {
+			r.Logger.Error(err, "Failed to delete Data Guard")
+
+			// Update status to Failed
+			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+				return ctrl.Result{}, statusErr
+			}
+			return ctrl.Result{}, nil
+		}
+
+	}
 
 	// Update the last succesful spec
 	if dbcsInst.Spec.Id != nil {
 		dbSystemId = *dbcsInst.Spec.Id
 
 		if err := dbcsInst.UpdateLastSuccessfulSpec(r.KubeClient); err != nil {
+			dbcsInst.Status.Message = err.Error()
 			return ctrl.Result{}, err
 		}
 	} else if dbcsInst.Status.DbCloneStatus.Id != nil {
 		dbSystemId = *dbcsInst.Status.DbCloneStatus.Id
+	} else if setupDataguard {
+		dbSystemId = *dbcsInst.Status.DataGuardStatus.PeerDbSystemId
 	}
-	//assignDBCSID(dbcsInst,dbcsI)
+
 	// Change the phase to "Available"
 	assignDBCSID(dbcsInst, dbSystemId)
-	if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
+	if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
 		return ctrl.Result{}, statusErr
 	}
 
-	r.Logger.Info("DBInst after assignment", "dbcsInst:->", dbcsInst)
+	// r.Logger.Info("DBInst after assignment", "dbcsInst:->", dbcsInst)
 
 	// Check if specified PDB exists or needs to be created
 	exists, err := r.validatePDBExistence(dbcsInst)
 	if err != nil {
+		dbcsInst.Status.Message = err.Error()
 		fmt.Printf("Failed to get PDB Details: %v\n", err)
 		return ctrl.Result{}, err
 	}
@@ -572,17 +892,20 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					// Get Compartment ID by DB System ID
 					compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemId)
 					if err != nil {
+						dbcsInst.Status.Message = err.Error()
 						fmt.Printf("Failed to get compartment ID: %v\n", err)
 						return ctrl.Result{}, err
 					}
 					dbHomeId, err := r.getDbHomeIdByDbSystemID(ctx, compartmentId, dbSystemId)
 					if err != nil {
 						fmt.Printf("Failed to get DB Home ID: %v\n", err)
+						dbcsInst.Status.Message = err.Error()
 						return ctrl.Result{}, err
 					}
 					databaseIds, err := r.getDatabaseIDByDbSystemID(ctx, dbSystemId, compartmentId, dbHomeId)
 					if err != nil {
 						fmt.Printf("Failed to get database IDs: %v\n", err)
+						dbcsInst.Status.Message = err.Error()
 						return ctrl.Result{}, err
 					}
 
@@ -593,6 +916,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					if pdbConfig.IsDelete != nil && *pdbConfig.IsDelete {
 						// Call deletePluggableDatabase function
 						if err := r.deletePluggableDatabase(ctx, pdbConfig, dbSystemId); err != nil {
+							dbcsInst.Status.Message = err.Error()
 							return ctrl.Result{}, err
 						}
 						// Continue to the next pdbConfig
@@ -603,6 +927,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 						pdbId, err := r.createPluggableDatabase(ctx, dbcsInst, pdbConfig, databaseIds[0], compartmentId, dbSystemId)
 						if err != nil {
 							// Handle error if required
+							dbcsInst.Status.Message = err.Error()
 							return ctrl.Result{}, err
 						}
 
@@ -638,10 +963,9 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 						// Assign the updated slice to dbcsInst.Status.PdbDetailsStatus
 						dbcsInst.Status.PdbDetailsStatus = updatedPdbDetailsStatus
-						// Update the status in Kubernetes
-						// Update the status subresource
 						err = r.KubeClient.Status().Update(ctx, dbcsInst)
 						if err != nil {
+							dbcsInst.Status.Message = err.Error()
 							r.Logger.Error(err, "Failed to update DB status")
 							return reconcile.Result{}, err
 						}
@@ -653,10 +977,6 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			r.Logger.Info("No change in PDB configurations or, already existed PDB Status.")
 		}
 	}
-	// } else {
-	// 	r.Logger.Info("No PDB configurations given.")
-	// }
-	// r.Logger.Info("DBInst after assignment", "dbcsInst:->", dbcsInst)
 	// // Check if PDBConfig is defined and needs to be created or deleted
 	pdbConfigs := dbcsInst.Spec.PdbConfigs
 	if pdbConfigs != nil {
@@ -667,16 +987,19 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				// Get Compartment ID by DB System ID
 				compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemId)
 				if err != nil {
+					dbcsInst.Status.Message = err.Error()
 					fmt.Printf("Failed to get compartment ID: %v\n", err)
 					return ctrl.Result{}, err
 				}
 				dbHomeId, err := r.getDbHomeIdByDbSystemID(ctx, compartmentId, dbSystemId)
 				if err != nil {
+					dbcsInst.Status.Message = err.Error()
 					fmt.Printf("Failed to get DB Home ID: %v\n", err)
 					return ctrl.Result{}, err
 				}
 				databaseIds, err := r.getDatabaseIDByDbSystemID(ctx, dbSystemId, compartmentId, dbHomeId)
 				if err != nil {
+					dbcsInst.Status.Message = err.Error()
 					fmt.Printf("Failed to get database IDs: %v\n", err)
 					return ctrl.Result{}, err
 				}
@@ -688,6 +1011,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				if pdbConfig.IsDelete != nil && *pdbConfig.IsDelete {
 					// Call deletePluggableDatabase function
 					if err := r.deletePluggableDatabase(ctx, pdbConfig, dbSystemId); err != nil {
+						dbcsInst.Status.Message = err.Error()
 						return ctrl.Result{}, err
 					}
 					// Continue to the next pdbConfig
@@ -698,6 +1022,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 					_, err := r.createPluggableDatabase(ctx, dbcsInst, pdbConfig, databaseIds[0], compartmentId, dbSystemId)
 					if err != nil {
 						// Handle error if required
+						dbcsInst.Status.Message = err.Error()
 						return ctrl.Result{}, err
 					}
 				}
@@ -708,6 +1033,386 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return resultQ, nil
 
 }
+
+func (r *DbcsSystemReconciler) DeleteDataGuard(
+	ctx context.Context,
+	compartmentId string,
+	log logr.Logger,
+	dbClient database.DatabaseClient,
+	dbcsInst *databasev4.DbcsSystem,
+) error {
+	dataGuardStatus := dbcsInst.Status.DataGuardStatus
+	var peerDbSystemId *string
+
+	// Prefer runtime status, fallback to spec if available
+	if dataGuardStatus != nil && dataGuardStatus.PeerDbSystemId != nil {
+		peerDbSystemId = dataGuardStatus.PeerDbSystemId
+	}
+	if dbcsInst.Spec.DataGuard.PeerDbSystemId != nil {
+		peerDbSystemId = dbcsInst.Spec.DataGuard.PeerDbSystemId
+	}
+
+	if peerDbSystemId == nil {
+		msg := "Skipping Data Guard deletion — peer DB System ID is nil"
+		log.Info(msg)
+		dbcsInst.Status.Message = msg
+		dbcsInst.Status.DataGuardStatus = nil
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+		return nil
+	}
+	if dbcsInst.Status.DataGuardStatus == nil {
+		dbcsInst.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
+	}
+	status := dbcsInst.Status.DataGuardStatus
+
+	// Use Spec to fill necessary details
+	spec := dbcsInst.Spec.DataGuard
+
+	// Populate Status from Spec (if present)
+	status.DbAdminPasswordSecret = spec.DbAdminPasswordSecret
+	// status.PeerDbSystemId = spec.PeerDbSystemId
+	status.PrimaryDatabaseId = dbcsInst.Spec.Id
+	status.ProtectionMode = spec.ProtectionMode
+	status.TransportType = spec.TransportType
+	status.PeerRole = spec.PeerRole
+	status.Shape = spec.Shape
+	status.SubnetId = spec.SubnetId
+
+	getDbSystemResp, err := dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
+		DbSystemId: peerDbSystemId,
+	})
+	if err != nil {
+		if svcErr, ok := err.(common.ServiceError); ok && svcErr.GetHTTPStatusCode() == 404 {
+			msg := fmt.Sprintf("Peer DB System %s already terminated or not found, cleaning up Data Guardstatus",
+				func(s *string) string {
+					if s == nil {
+						return "<nil>"
+					}
+					return *s
+				}(peerDbSystemId),
+			)
+			log.Info(msg)
+			dbcsInst.Status.Message = msg
+			dbcsInst.Status.DataGuardStatus = nil
+			_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+			return nil
+		}
+
+		log.Error(err, "Failed to fetch peer DB system status")
+		dbcsInst.Status.Message = "Failed to fetch peer DB system status"
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+		return err
+	}
+
+	var primaryDatabaseId *string
+
+	// List DB Homes
+	dbHomesResp, err := dbClient.ListDbHomes(ctx, database.ListDbHomesRequest{
+		CompartmentId: &compartmentId,
+		DbSystemId:    dbcsInst.Spec.Id,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list DB Homes for system %s: %w", *dbcsInst.Spec.Id, err)
+	}
+
+	// Iterate DB Homes
+	for _, home := range dbHomesResp.Items {
+		dbsResp, err := dbClient.ListDatabases(ctx, database.ListDatabasesRequest{
+			CompartmentId: &compartmentId,
+			DbHomeId:      home.Id,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to list databases for DB Home %s: %w", *home.Id, err)
+		}
+
+		for _, db := range dbsResp.Items {
+			// List DG associations for this DB
+			dgResp, err := dbClient.ListDataGuardAssociations(ctx, database.ListDataGuardAssociationsRequest{
+				DatabaseId: db.Id,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to list Data Guard associations for DB %s: %w", *db.Id, err)
+			}
+
+			for _, assoc := range dgResp.Items {
+				if assoc.Role == database.DataGuardAssociationSummaryRolePrimary {
+					primaryDatabaseId = db.Id
+					if dbcsInst.Status.DataGuardStatus == nil {
+						dbcsInst.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
+					}
+					dbcsInst.Status.DataGuardStatus.PrimaryDatabaseId = primaryDatabaseId
+					dbcsInst.Status.DataGuardStatus.PeerDbSystemId = assoc.PeerDbSystemId
+					break
+				}
+			}
+
+			if primaryDatabaseId != nil {
+				break
+			}
+		}
+
+		if primaryDatabaseId != nil {
+			break
+		}
+	}
+
+	if primaryDatabaseId == nil {
+		msg := fmt.Sprintf(
+			"Skipping Data Guard deletion — peer DB %s is not associated with primary DB %s",
+			strVal(peerDbSystemId),
+			strVal(primaryDatabaseId),
+		)
+		log.Info(msg)
+
+		dbcsInst.Status.Message = msg
+
+		dbcsInst.Status.Message = msg
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+		return nil
+	}
+
+	// Verify Data Guard association exists
+	listAssocResp, err := dbClient.ListDataGuardAssociations(ctx, database.ListDataGuardAssociationsRequest{
+		DatabaseId: primaryDatabaseId,
+	})
+	if err != nil {
+		log.Error(err, "Failed to list Data Guard associations for primary DB")
+		dbcsInst.Status.Message = "Failed to list Data Guard associations"
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+		return err
+	}
+
+	var association *database.DataGuardAssociationSummary
+	for _, assoc := range listAssocResp.Items {
+		if assoc.PeerDbSystemId != nil && *assoc.PeerDbSystemId == *peerDbSystemId {
+			association = &assoc
+			break
+		}
+	}
+
+	if association == nil {
+		msg := fmt.Sprintf(
+			"Skipping Data Guard deletion — peer DB %s is not associated with primary DB %s",
+			*peerDbSystemId, primaryDatabaseId,
+		)
+		log.Info(msg)
+		dbcsInst.Status.Message = msg
+		if dbcsInst.Status.DataGuardStatus == nil {
+			dbcsInst.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
+		}
+		dbcsInst.Status.DataGuardStatus.LifecycleDetails = &msg
+
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+
+		return fmt.Errorf(msg)
+	}
+
+	// At this point, we know the primary and peer DB are actually in Data Guard
+	log.Info("Confirmed Data Guard association, proceeding with deletion",
+		"primary", primaryDatabaseId,
+		"peer", *peerDbSystemId)
+
+	switch getDbSystemResp.DbSystem.LifecycleState {
+
+	case database.DbSystemLifecycleStateTerminated:
+		log.Info("Peer DB system is already terminated.", "peerDbSystemId", *peerDbSystemId)
+
+		terminated := string(database.DbSystemLifecycleStateTerminated)
+		dbcsInst.Status.DataGuardStatus.LifecycleState = &terminated
+		details := "Peer DB system already terminated"
+		dbcsInst.Status.DataGuardStatus.LifecycleDetails = &details
+
+		dbcsInst.Status.Message = "Data Guard peer already terminated"
+
+		if statusErr := dbcsv4.SetLifecycleState(
+			compartmentId, r.KubeClient, r.dbClient, dbcsInst,
+			databasev4.Available, r.nwClient, r.wrClient,
+		); statusErr != nil {
+			return statusErr
+		}
+
+		return r.KubeClient.Status().Update(ctx, dbcsInst)
+
+	case database.DbSystemLifecycleStateTerminating:
+		// Wait until it becomes TERMINATED (with timeout)
+		log.Info("Peer DB system is in TERMINATING state, waiting for it to reach TERMINATED...",
+			"peerDbSystemId", *peerDbSystemId)
+		status := dbcsInst.Status.DataGuardStatus
+
+		// Use Spec to fill necessary details
+		spec := dbcsInst.Spec.DataGuard
+
+		// Populate Status from Spec (if present)
+		status.DbAdminPasswordSecret = spec.DbAdminPasswordSecret
+		// status.PeerDbSystemId = spec.PeerDbSystemId
+		status.PrimaryDatabaseId = dbcsInst.Spec.Id
+		status.ProtectionMode = spec.ProtectionMode
+		status.TransportType = spec.TransportType
+		status.PeerRole = spec.PeerRole
+		status.Shape = spec.Shape
+		status.SubnetId = spec.SubnetId
+		terminatingState := string(database.DbSystemLifecycleStateTerminating)
+		status.LifecycleState = &terminatingState
+		status.LifecycleDetails = common.String("Dataguard Peer DB system is terminating...")
+		dbcsInst.Status.State = databasev4.Update
+		dbcsInst.Status.Message = "Peer DB system is terminating..."
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+
+		pollInterval := 30 * time.Second
+		maxWait := 120 * time.Minute
+		timeout := time.After(maxWait)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timeout:
+				dbcsInst.Status.Message = "Timeout while waiting for peer DB system termination"
+				_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+				return fmt.Errorf("timed out waiting for peer DB system %s to terminate", *peerDbSystemId)
+
+			case <-time.After(pollInterval):
+				latest, err := dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
+					DbSystemId: peerDbSystemId,
+				})
+				if err != nil {
+					log.Error(err, "Failed to poll DB system lifecycle state")
+					return err
+				}
+
+				switch latest.DbSystem.LifecycleState {
+				case database.DbSystemLifecycleStateTerminated:
+					log.Info("Peer DB system successfully terminated", "peerDbSystemId", *peerDbSystemId)
+					goto Cleanup
+				case database.DbSystemLifecycleStateFailed:
+					dbcsInst.Status.Message = "Peer DB system termination failed"
+					dbcsInst.Status.State = databasev4.Available
+					_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+					return fmt.Errorf("DB system termination failed for peer %s", *peerDbSystemId)
+				default:
+					log.Info("Peer DB system still terminating...",
+						"peerDbSystemId", *peerDbSystemId,
+						"lifecycleState", latest.DbSystem.LifecycleState)
+				}
+			}
+		}
+
+	default:
+		// Active or other state → initiate termination
+		if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient,
+			dbcsInst, databasev4.Update, r.nwClient, r.wrClient); statusErr != nil {
+			return statusErr
+		}
+
+		log.Info("Terminating peer DB system", "peerDbSystemId", *peerDbSystemId)
+		status := dbcsInst.Status.DataGuardStatus
+
+		// Use Spec to fill necessary details
+		spec := dbcsInst.Spec.DataGuard
+
+		// Populate Status from Spec (if present)
+		status.DbAdminPasswordSecret = spec.DbAdminPasswordSecret
+		// status.PeerDbSystemId = spec.PeerDbSystemId
+		status.PrimaryDatabaseId = dbcsInst.Spec.Id
+		status.ProtectionMode = spec.ProtectionMode
+		status.TransportType = spec.TransportType
+		status.PeerRole = spec.PeerRole
+		status.Shape = spec.Shape
+		status.SubnetId = spec.SubnetId
+		terminatingState := string(database.DbSystemLifecycleStateTerminating)
+		status.LifecycleState = &terminatingState
+		status.LifecycleDetails = common.String("Dataguard Peer DB system is terminating...")
+		dbcsInst.Status.State = databasev4.Update
+		dbcsInst.Status.Message = "Peer DB system is terminating..."
+
+		dbcsInst.Status.Message = "Initiating peer DB system termination"
+		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+
+		termSysResp, err := dbClient.TerminateDbSystem(ctx, database.TerminateDbSystemRequest{
+			DbSystemId: peerDbSystemId,
+		})
+		if err != nil {
+			log.Error(err, "Failed to initiate termination of peer DB System")
+			dbcsInst.Status.Message = "Failed to initiate peer DB system termination"
+			_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+			return err
+		}
+
+		if err := r.waitForWorkRequest(ctx, log, termSysResp.OpcWorkRequestId); err != nil {
+			log.Error(err, "Peer DB system termination failed or timed out")
+			dbcsInst.Status.Message = "Peer DB system termination failed or timed out"
+			_ = r.KubeClient.Status().Update(ctx, dbcsInst)
+			return err
+		}
+		if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient,
+			dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
+			return statusErr
+		}
+	}
+
+Cleanup:
+	// Final cleanup — clear DataGuardStatus
+	dbcsInst.Status.Message = "Data Guard peer deleted successfully"
+	if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient,
+		dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
+		return statusErr
+	}
+	if err := r.KubeClient.Status().Update(ctx, dbcsInst); err != nil {
+		log.Error(err, "Failed to update DB status after deleting Data Guard")
+		return err
+	}
+	log.Info("Successfully deleted Data Guard association")
+	return nil
+}
+func strVal(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func (r *DbcsSystemReconciler) waitForWorkRequest(
+	ctx context.Context,
+	log logr.Logger,
+	workRequestID *string,
+) error {
+	if workRequestID == nil {
+		return fmt.Errorf("missing WorkRequest ID")
+	}
+
+	log.Info("Waiting for work request to complete", "workRequestID", *workRequestID)
+	timeout := time.After(120 * time.Minute)
+	pollInterval := 30 * time.Second
+
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timed out waiting for WorkRequest %s", *workRequestID)
+		default:
+			resp, err := r.wrClient.GetWorkRequest(ctx, workrequests.GetWorkRequestRequest{
+				WorkRequestId: workRequestID,
+			})
+			if err != nil {
+				log.Error(err, "Failed to get WorkRequest status", "workRequestID", *workRequestID)
+				return err
+			}
+
+			status := resp.WorkRequest.Status
+			log.Info("Polling WorkRequest status", "status", status)
+
+			switch status {
+			case workrequests.WorkRequestStatusSucceeded:
+				log.Info("WorkRequest succeeded", "workRequestID", *workRequestID)
+				return nil
+			case workrequests.WorkRequestStatusFailed:
+				return fmt.Errorf("work request %s failed", *workRequestID)
+			}
+
+			time.Sleep(pollInterval)
+		}
+	}
+}
+
 func (r *DbcsSystemReconciler) updateSpecsAndStatus(ctx context.Context, dbcsInst *databasev4.DbcsSystem, dbSystemId string) (reconcile.Result, error) {
 
 	// Retry mechanism for handling resource version conflicts
@@ -913,7 +1618,7 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 		return "", err
 	}
 	// Change the status to Provisioning
-	if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcs, databasev4.Provision, r.nwClient, r.wrClient); statusErr != nil {
+	if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcs, databasev4.Provision, r.nwClient, r.wrClient); statusErr != nil {
 		r.Logger.Error(err, "Failed to set DBCS LifeCycle State to Provisioning")
 		return "", statusErr
 	}
@@ -961,7 +1666,7 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 		if pdbStatus == database.PluggableDatabaseLifecycleStateAvailable {
 			r.Logger.Info("Pluggable database successfully created", "PDBName", pdbConfig.PdbName, "PDBID", *pdbConfig.PluggableDatabaseId)
 			// Change the status to Available
-			if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcs, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
+			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcs, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
 				return "", statusErr
 			}
 			return *response.PluggableDatabase.Id, nil
@@ -970,7 +1675,7 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 		if pdbStatus == database.PluggableDatabaseLifecycleStateFailed {
 			r.Logger.Error(fmt.Errorf("pluggable database creation failed"), "PDBName", pdbConfig.PdbName, "PDBID", *pdbConfig.PluggableDatabaseId)
 			// Change the status to Failed
-			if statusErr := dbcsv1.SetLifecycleState(r.KubeClient, r.dbClient, dbcs, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
+			if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcs, databasev4.Failed, r.nwClient, r.wrClient); statusErr != nil {
 				return "", statusErr
 			}
 			return "", fmt.Errorf("pluggable database creation failed")
@@ -1079,6 +1784,59 @@ func (r *DbcsSystemReconciler) getPluggableDatabaseID(ctx context.Context, pdbCo
 	return pdbID, nil
 }
 
+func (r *DbcsSystemReconciler) getDataGuardStatusAndUpdate(
+	ctx context.Context,
+	dbcsInst *databasev4.DbcsSystem,
+	primaryDatabaseId string,
+	dbSystemId string,
+) error {
+	log := r.Logger.WithValues("func", "getDataGuardStatusAndUpdate")
+
+	// compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemId)
+	// if err != nil {
+	// 	log.Error(err, "Failed to get compartment ID for DB System")
+	// 	return err
+	// }
+
+	listRequest := database.ListDataGuardAssociationsRequest{
+		DatabaseId: common.String(primaryDatabaseId),
+	}
+
+	listResp, err := r.dbClient.ListDataGuardAssociations(ctx, listRequest)
+	if err != nil {
+		log.Error(err, "Failed to list Data Guard associations")
+		return err
+	}
+
+	if len(listResp.Items) == 0 {
+		// log.Info("No Data Guard associations found")
+		dbcsInst.Status.DataGuardStatus = &databasev4.DataGuardStatus{} // reset to empty
+		return nil
+	}
+
+	// Assuming one-to-one association
+	dg := listResp.Items[0]
+
+	status := databasev4.DataGuardStatus{
+		Id:                         dg.Id,
+		PeerDatabaseId:             dg.PeerDatabaseId,
+		PeerDbSystemId:             dg.PeerDbSystemId,
+		PeerDbHomeId:               dg.PeerDbHomeId,
+		PeerRole:                   (*string)(&dg.Role), // Cast enum to string pointer
+		PrimaryDatabaseId:          dg.DatabaseId,
+		TransportType:              (*string)(&dg.TransportType),
+		ProtectionMode:             (*string)(&dg.ProtectionMode),
+		LifecycleState:             (*string)(&dg.LifecycleState),
+		LifecycleDetails:           dg.LifecycleDetails,
+		PeerDataGuardAssociationId: dg.Id,
+	}
+
+	dbcsInst.Status.DataGuardStatus = &status
+
+	log.Info("Updated DataGuardStatus in CR", "DataGuardAssociationId", *dg.Id)
+	return nil
+}
+
 func (r *DbcsSystemReconciler) getPluggableDatabaseDetails(ctx context.Context, dbcsInst *databasev4.DbcsSystem, dbSystemId string, databaseIds []string) error {
 	compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, dbSystemId)
 	if err != nil {
@@ -1097,12 +1855,6 @@ func (r *DbcsSystemReconciler) getPluggableDatabaseDetails(ctx context.Context, 
 	// Create a map to track existing PDBDetailsStatus by PdbName
 	pdbDetailsMap := make(map[string]databasev4.PDBConfigStatus)
 
-	// Populate the map with existing PDBDetailsStatus from dbcsInst.Status.PdbDetailsStatus
-	// for _, existingPdbDetails := range dbcsInst.Status.PdbDetailsStatus {
-	// 	for _, existingPdbConfig := range existingPdbDetails.PDBConfigStatus {
-	// 		pdbDetailsMap[*existingPdbConfig.PdbName] = existingPdbConfig
-	// 	}
-	// }
 	// Convert databaseIds array to a set for quick lookup
 	databaseIdsSet := make(map[string]struct{})
 	for _, id := range databaseIds {
@@ -1186,6 +1938,283 @@ func (r *DbcsSystemReconciler) doesPluggableDatabaseExist(ctx context.Context, c
 	return false, nil, nil
 }
 
+// Enable Dataguard
+func (r *DbcsSystemReconciler) EnableDataGuard(
+	ctx context.Context,
+	compartmentId string,
+	log logr.Logger,
+	dbClient database.DatabaseClient,
+	dbcsSystem *databasev4.DbcsSystem,
+	kubeClient client.Client,
+	nwClient core.VirtualNetworkClient,
+	wrClient workrequests.WorkRequestClient,
+	databaseID string,
+	dataGuardConfig *databasev4.DataGuardConfig,
+) error {
+
+	// Check if the `Id` field is set
+	if databaseID == "" {
+		return fmt.Errorf("DbcsSystem.Spec.DataGuard.peerDBSytemID is not set")
+	}
+
+	// Extract last successful spec for comparison (optional)
+	oldSpec, err := dbcsSystem.GetLastSuccessfulSpecWithLog(log)
+	if err != nil {
+		log.Error(err, "Failed to get last successful spec for DbcsSystem")
+		return err
+	}
+
+	// Compare DataGuard configurations to determine if an update is required
+	updateFlag := false
+
+	if oldSpec == nil || !reflect.DeepEqual(oldSpec.DataGuard, dataGuardConfig) {
+		updateFlag = true
+	}
+
+	databaseAdminPassword, err := r.getSecret(ctx, dbcsSystem.Namespace, *dataGuardConfig.DbAdminPasswordSecret)
+	if err != nil {
+		return err
+	}
+	// Trim newline character from the password
+	databaseAdminPassword = strings.TrimSpace(databaseAdminPassword)
+	if updateFlag {
+
+		exists, err := r.checkExistingDataGuardAssociation(ctx, dbClient, dbcsSystem, databaseID, r.KubeClient, r.nwClient, r.wrClient)
+		if err != nil {
+			return err
+		}
+
+		if exists {
+			log.Info("Skipping Data Guard creation as it already exists for the database", "DatabaseID", databaseID)
+			return nil
+		}
+		// Change the phase to "Provisioning"
+		if statusErr := dbcsv4.SetLifecycleState(compartmentId, kubeClient, dbClient, dbcsSystem, databasev4.Update, nwClient, wrClient); statusErr != nil {
+			return statusErr
+		}
+
+		request := database.CreateDataGuardAssociationRequest{
+			DatabaseId: common.String(databaseID),
+			CreateDataGuardAssociationDetails: database.CreateDataGuardAssociationWithNewDbSystemDetails{
+				// CreationType:          common.String("NewDbSystem"),
+				DatabaseAdminPassword: common.String(databaseAdminPassword),
+				ProtectionMode:        database.CreateDataGuardAssociationDetailsProtectionModeEnum(*dataGuardConfig.ProtectionMode),
+				TransportType:         database.CreateDataGuardAssociationDetailsTransportTypeEnum(*dataGuardConfig.TransportType),
+				AvailabilityDomain:    dataGuardConfig.AvailabilityDomain,
+				DisplayName:           dataGuardConfig.DisplayName,
+				Hostname:              dataGuardConfig.HostName,
+				Shape:                 dataGuardConfig.Shape,
+				SubnetId:              dataGuardConfig.SubnetId,
+			},
+		}
+
+		response, err := dbClient.CreateDataGuardAssociation(ctx, request)
+		// fmt.Printf("Response:\n%+v\n", response)
+		if err != nil {
+			r.Logger.Error(err, "DbcsSystem did not reach desired state after DataGuard update")
+			return err
+		}
+
+		r.Logger.Info("Data Guard association creation started")
+		if dbcsSystem.Status.DataGuardStatus == nil {
+			dbcsSystem.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
+		}
+		status := dbcsSystem.Status.DataGuardStatus
+
+		// Use Spec to fill necessary details
+		spec := dbcsSystem.Spec.DataGuard
+
+		// Populate Status from Spec (if present)
+		if spec.DbAdminPasswordSecret != nil {
+			status.DbAdminPasswordSecret = spec.DbAdminPasswordSecret
+		}
+
+		if spec.PeerDbSystemId != nil {
+			status.PeerDbSystemId = spec.PeerDbSystemId
+		}
+		if dbcsSystem.Spec.Id != nil {
+			status.PrimaryDatabaseId = dbcsSystem.Spec.Id
+		}
+		if spec.ProtectionMode != nil {
+			status.ProtectionMode = spec.ProtectionMode
+		}
+
+		if spec.TransportType != nil {
+			status.TransportType = spec.TransportType
+		}
+
+		if spec.PeerRole != nil {
+			status.PeerRole = spec.PeerRole
+		}
+
+		if spec.Shape != nil {
+			status.Shape = spec.Shape
+		}
+
+		if spec.SubnetId != nil {
+			status.SubnetId = spec.SubnetId
+		}
+
+		// Mark lifecycle as provisioning
+		provisioningState := string(database.DbSystemLifecycleStateProvisioning)
+		status.LifecycleState = &provisioningState
+		status.LifecycleDetails = common.String("Dataguard Peer DB system is Provisioning...")
+
+		dbcsSystem.Status.State = databasev4.Update
+		dbcsSystem.Status.Message = "Peer DB system is provisioning..."
+
+		dbcsSystem.Status.Message = "Initiating peer DB system provisioning for Data Guard association"
+		_ = r.KubeClient.Status().Update(ctx, dbcsSystem)
+
+		// Extract the DataGuardAssociation ID from the response
+		associationId := *response.DataGuardAssociation.Id
+
+		// Wait for the update to be applied and resource state to become "AVAILABLE"
+		// _, err = dbcsv4.CheckResourceState(log, dbClient, *dbcsSystem.Spec.Id, "UPDATING", "AVAILABLE")
+		_, err = dbcsv4.CheckDataGuardAssociationState(log, dbClient, associationId, "UPDATING", "AVAILABLE", databaseID)
+		if err != nil {
+			r.Logger.Error(err, "Error checking Data Guard Association state")
+		}
+
+		r.Logger.Info("Data Guard Association is now in the 'AVAILABLE' state.")
+
+		r.Logger.Info("DataGuard update successful", "dbSystemId", *dbcsSystem.Spec.Id)
+	} else {
+		r.Logger.Info("No DataGuard update required; configurations match")
+	}
+
+	_, err = r.checkExistingDataGuardAssociation(ctx, dbClient, dbcsSystem, databaseID, r.KubeClient, r.nwClient, r.wrClient)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Get Dataguard Details
+func (r *DbcsSystemReconciler) checkExistingDataGuardAssociation(
+	ctx context.Context,
+	dbClient database.DatabaseClient,
+	dbcsSystem *databasev4.DbcsSystem,
+	databaseID string,
+	kubeClient client.Client,
+	nwClient core.VirtualNetworkClient,
+	wrClient workrequests.WorkRequestClient,
+) (bool, error) {
+
+	request := database.ListDataGuardAssociationsRequest{
+		DatabaseId: common.String(databaseID),
+	}
+
+	response, err := dbClient.ListDataGuardAssociations(ctx, request)
+	if err != nil {
+		return false, fmt.Errorf("failed to list Data Guard associations: %w", err)
+	}
+
+	if len(response.Items) > 0 {
+		item := response.Items[0]
+
+		// r.Logger.Info("Data Guard association found for the database", "DatabaseID", databaseID)
+
+		// Ensure DataGuardStatus struct exists
+		if dbcsSystem.Status.DataGuardStatus == nil {
+			dbcsSystem.Status.DataGuardStatus = &databasev4.DataGuardStatus{}
+		}
+		status := dbcsSystem.Status.DataGuardStatus
+
+		if item.PeerDbSystemId != nil {
+			status.PeerDbSystemId = item.PeerDbSystemId
+		}
+
+		if item.DatabaseId != nil {
+			status.PrimaryDatabaseId = item.DatabaseId
+		}
+
+		status.DbAdminPasswordSecret = dbcsSystem.Spec.DataGuard.DbAdminPasswordSecret
+
+		if item.IsActiveDataGuardEnabled != nil {
+			status.IsActiveDataGuardEnabled = *item.IsActiveDataGuardEnabled
+		}
+
+		if item.PeerRole != "" {
+			s := string(item.PeerRole)
+			status.PeerRole = &s
+		}
+
+		if item.ProtectionMode != "" {
+			s := string(item.ProtectionMode)
+			status.ProtectionMode = &s
+		}
+
+		if item.TransportType != "" {
+			s := string(item.TransportType)
+			status.TransportType = &s
+		}
+
+		if item.LifecycleState != "" {
+			s := string(item.LifecycleState)
+			status.LifecycleState = &s
+		}
+
+		if item.PeerDataGuardAssociationId != nil {
+			status.PeerDataGuardAssociationId = item.PeerDataGuardAssociationId
+		}
+
+		if item.LifecycleDetails != nil {
+			status.LifecycleDetails = item.LifecycleDetails
+		} else {
+			status.LifecycleDetails = common.String("Dataguard association enabled for the database")
+		}
+
+		if item.Id != nil {
+			status.Id = item.Id
+		}
+
+		if item.PeerDatabaseId != nil {
+			status.PeerDatabaseId = item.PeerDatabaseId
+		}
+
+		if item.LifecycleState == database.DataGuardAssociationSummaryLifecycleStateAvailable {
+			status.LifecycleDetails = common.String("Data Guard association is available")
+
+			r.Logger.Info("Data Guard association is available", "DatabaseID", databaseID)
+
+			if err := r.KubeClient.Status().Update(ctx, dbcsSystem); err != nil {
+				return false, fmt.Errorf("failed to update DbcsSystem status: %w", err)
+			}
+
+			return true, nil
+		}
+
+		if item.LifecycleState == database.DataGuardAssociationSummaryLifecycleStateFailed {
+			if item.LifecycleDetails != nil {
+				status.LifecycleDetails = item.LifecycleDetails
+			} else {
+				status.LifecycleDetails = common.String("Data Guard association is failed")
+			}
+
+			_ = r.KubeClient.Status().Update(ctx, dbcsSystem)
+
+			return false, fmt.Errorf("data guard association failed: %s", *status.LifecycleDetails)
+		}
+
+		if item.LifecycleState == database.DataGuardAssociationSummaryLifecycleStateProvisioning {
+			status.LifecycleDetails = common.String("Data Guard association is getting provisioned")
+
+			if err := r.KubeClient.Status().Update(ctx, dbcsSystem); err != nil {
+				return false, fmt.Errorf("failed to update DbcsSystem status during provisioning: %w", err)
+			}
+
+			r.Logger.Info("Data Guard association is provisioning", "DatabaseID", databaseID)
+			return true, nil
+		}
+
+	} else {
+		return false, nil
+	}
+	return false, nil
+}
+
 // Function to create KMS vault
 func (r *DbcsSystemReconciler) createKMSVault(ctx context.Context, kmsConfig *databasev4.KMSConfig, kmsClient keymanagement.KmsManagementClient, kmsInst *databasev4.KMSDetailsStatus) (*keymanagement.CreateVaultResponse, error) {
 	// Dereference the ConfigurationProvider pointer
@@ -1230,7 +2259,7 @@ func (r *DbcsSystemReconciler) createKMSVault(ctx context.Context, kmsConfig *da
 		return nil, err
 	}
 	// Wait until vault becomes active or timeout
-	timeout := time.After(5 * time.Minute) // Example timeout: 5 minutes
+	timeout := time.After(15 * time.Minute) // Example timeout: 5 minutes
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
@@ -1326,100 +2355,6 @@ func (r *DbcsSystemReconciler) getSecret(ctx context.Context, namespace, secretN
 
 	return "", fmt.Errorf("secret %s is empty", secretName)
 }
-
-// func (r *DbcsSystemReconciler) cloneDbSystem(ctx context.Context, dbcsInst *databasev4.DbcsSystem, provider common.ConfigurationProvider) error {
-
-// 	// Initialize OCI clients
-// 	dbClient, err := database.NewDatabaseClientWithConfigurationProvider(provider)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to create OCI database client: %v", err)
-// 	}
-
-// 	// Get DB System details
-// 	compartmentId, err := r.getCompartmentIDByDbSystemID(ctx, *dbcsInst.Status.Id)
-// 	if err != nil {
-// 		fmt.Printf("Failed to get compartment ID: %v\n", err)
-// 		return err
-// 	}
-
-// 	dbHomeId, err := r.getDbHomeIdByDbSystemID(ctx, compartmentId, *dbcsInst.Status.Id)
-// 	if err != nil {
-// 		fmt.Printf("Failed to get DB Home ID: %v\n", err)
-// 		return err
-// 	}
-
-// 	databaseIds, err := r.getDatabaseIDByDbSystemID(ctx, *dbcsInst.Status.Id, compartmentId, dbHomeId)
-// 	if err != nil {
-// 		fmt.Printf("Failed to get database IDs: %v\n", err)
-// 		return err
-// 	}
-
-// 	// Use the first database ID for cloning
-// 	if len(databaseIds) == 0 {
-// 		return fmt.Errorf("no databases found in the DB system")
-// 	}
-
-// 	// Retrieve details of the database to clone
-// 	sourceDatabaseId := databaseIds[0]
-// 	_, err = dbClient.GetDatabase(ctx, database.GetDatabaseRequest{
-// 		DatabaseId: common.String(sourceDatabaseId),
-// 	})
-// 	if err != nil {
-// 		return fmt.Errorf("failed to get source database details: %v", err)
-// 	}
-
-// 	// adminPassword, err := dbcsv1.GetAdminPassword(kubeClient, dbcsInstance)
-// 	// if err != nil {
-// 	// 	log.Fatalf("Error getting admin password: %v", err)
-// 	// }
-
-// 	// tdePassword, err := GetTdePassword(kubeClient, dbcsInstance)
-// 	// if err != nil {
-// 	// 	log.Fatalf("Error getting TDE password: %v", err)
-// 	// }
-
-// 	// Define the details for creating the database from the existing DB system
-// 	// createDatabaseDetails := CreateDatabaseBaseWrapper{
-// 	// 	CreateDatabaseFromDbSystemDetails: database.CreateDatabaseFromDbSystemDetails{
-// 	// 		AdminPassword: common.String(adminPassword),                       // Replace with actual admin password
-// 	// 		DbName:        common.String(dbcsInst.Spec.DbSystem.DbName),       // Use the dbName from DbcsSystemSpec
-// 	// 		DbDomain:      common.String(dbcsInst.Spec.DbSystem.DbDomain),     // Use the dbDomain from DbcsSystemSpec
-// 	// 		DbUniqueName:  common.String(dbcsInst.Spec.DbSystem.DbUniqueName), // Use the dbUniqueName from DbcsSystemSpec
-// 	// 		DbBackupConfig: &database.DbBackupConfig{
-// 	// 			AutoBackupEnabled:    dbcsInst.Spec.DbSystem.DbBackupConfig.AutoBackupEnabled,
-// 	// 			RecoveryWindowInDays: dbcsInst.Spec.DbSystem.DbBackupConfig.RecoveryWindowsInDays,
-// 	// 		},
-// 	// 		FreeformTags: dbcsInst.Spec.DbSystem.Tags,
-// 	// 		DefinedTags: map[string]map[string]interface{}{
-// 	// 			"Namespace": {
-// 	// 				"TagKey": "TagValue", // Replace with actual defined tags if needed
-// 	// 			},
-// 	// 		},
-// 	// 	},
-// 	// }
-// 	// createDatabaseRequest := database.CreateDatabaseRequest{
-// 	// 	CreateNewDatabaseDetails: &createDatabaseDetails,
-// 	// }
-
-// 	// createDatabaseResponse, err := dbClient.CreateDatabase(ctx, createDatabaseRequest)
-// 	// if err != nil {
-// 	// 	return fmt.Errorf("failed to create database from DB system: %v", err)
-// 	// }
-
-// 	// // Update instance status with the new database ID
-// 	// dbcsInst.Status.DbInfo = append(dbcsInst.Status.DbInfo, databasev4.DbStatus{
-// 	// 	Id:           createDatabaseResponse.Database.Id,
-// 	// 	DbName:       dbcsInst.Spec.DbSystem.DbName,
-// 	// 	DbUniqueName: dbcsInst.Spec.DbSystem.DbUniqueName,
-// 	// })
-
-// 	// err = r.KubeClient.Status().Update(ctx, dbcsInst)
-// 	// if err != nil {
-// 	// 	return fmt.Errorf("failed to update instance status with database ID: %v", err)
-// 	// }
-
-// 	return nil
-// }
 
 // Convert DbBackupConfigAutoBackupWindowEnum to *string
 func autoBackupWindowEnumToStringPtr(enum *database.DbBackupConfigAutoBackupWindowEnum) *string {

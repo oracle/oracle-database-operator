@@ -1,0 +1,13 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: KubeletConfig
+metadata:
+  name: enable-unsafe-sysctls
+spec:
+  machineConfigPoolSelector:
+    matchLabels:
+      custom-kubelet: enable-unsafe-sysctls
+  kubeletConfig:
+    allowedUnsafeSysctls:
+      - "kernel.shm*"
+      - "kernel.sem"
+      - "net.*"

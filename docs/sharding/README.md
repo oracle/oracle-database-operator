@@ -132,6 +132,7 @@ If you want to use Oracle Database 23ai Free Image for Database and GSM for depl
 * For Oracle Database 23ai Free, you can control the `CPU` and `Memory` allocation of the PODs using tags `cpu` and `memory` respectively but tags `INIT_SGA_SIZE` and `INIT_PGA_SIZE` to control the SGA and PGA allocation at the database level are `not` supported.
 * Provisioning the Oracle Globally Distributed Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
 * Total number of chunks for FREE Database defaults to `12` if `CATALOG_CHUNKS` parameter is not specified. This default value is determined considering limitation of 12 GB of user data on disk for oracle free database.
+* Oracle 23ai FREE Database supports maximum three shards. Please refer [here](https://docs.oracle.com/en/database/oracle/oracle-database/23/dblic/Licensing-Information.html)
 
 
 ## Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding in a Cloud-Based Kubernetes Cluster
@@ -169,18 +170,15 @@ In this example, the deployment uses the YAML file based on `OCI OKE` cluster. T
 
 Deploy Oracle Globally Distributed Database Topology with `System-Managed Sharding` and with `RAFT Replication` enabled on your Cloud based Kubernetes cluster. 
 
-**NOTE: RAFT Replication Feature is available only for Oracle 23ai RDBMS and Oracle 23ai GSM version.**
+**NOTE:** RAFT Replication Feature is available only for Oracle 23ai RDBMS and Oracle 23ai GSM version.
+**NOTE:** RAFT Replication requires atleast three shards. Oracle 23ai FREE Database supports maximum three shards. Please refer [here](https://docs.oracle.com/en/database/oracle/oracle-database/23/dblic/Licensing-Information.html)
 
 In this example, the deployment uses the YAML file based on `OCI OKE` cluster. There are multiple use case possible for deploying the Oracle Globally Distributed Database Topology covered by below examples:
 
 [1. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled without Database Gold Image](./provisioning/snr_system_sharding/snr_ssharding_provisioning_without_db_gold_image.md)  
-[2. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled with number of chunks specified](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_chunks_specified.md)  
-[3. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled with additional control on resources like Memory and CPU allocated to Pods](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_control_on_resources.md)  
-[4. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled by cloning database from your own Database Gold Image in the same Availability Domain(AD)](./provisioning/snr_system_sharding/snr_ssharding_provisioning_by_cloning_db_gold_image_in_same_ad.md)  
-[5. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled by cloning database from your own Database Gold Image across Availability Domains(ADs)](./provisioning/snr_system_sharding/snr_ssharding_provisioning_by_cloning_db_from_gold_image_across_ads.md)  
-[6. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled send Notification using OCI Notification Service](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_notification_using_oci_notification.md)  
-[7. Scale Out - Add Shards to an existing Oracle Globally Distributed Database provisioned earlier with System-Managed Sharding and RAFT replication enabled](./provisioning/snr_system_sharding/snr_ssharding_scale_out_add_shards.md)  
-[8. Scale In - Delete an existing Shard from a working Oracle Globally Distributed Database provisioned earlier with System-Managed Sharding and RAFT reolication enabled](./provisioning/snr_system_sharding/snr_ssharding_scale_in_delete_an_existing_shard.md)
+[2. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled with additional control on resources like Memory and CPU allocated to Pods](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_control_on_resources.md)  
+[3. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled send Notification using OCI Notification Service](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_notification_using_oci_notification.md)  
+
 
 ## Connecting to Oracle Globally Distributed Database
 

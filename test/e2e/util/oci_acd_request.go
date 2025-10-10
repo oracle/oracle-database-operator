@@ -43,9 +43,6 @@ import (
 
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
-	// "io"
-	// "io/ioutil"
-	// "time"
 )
 
 func CreateAutonomousContainerDatabase(dbClient database.DatabaseClient, compartmentId *string, acdName *string, exadataVmClusterID *string) (response database.CreateAutonomousContainerDatabaseResponse, err error) {
@@ -53,7 +50,7 @@ func CreateAutonomousContainerDatabase(dbClient database.DatabaseClient, compart
 		DisplayName:                acdName,
 		CloudAutonomousVmClusterId: exadataVmClusterID,
 		CompartmentId:              compartmentId,
-		PatchModel:                 database.CreateAutonomousContainerDatabaseDetailsPatchModelUpdates,
+		PatchModel:                 database.CreateAutonomousContainerDatabaseBasePatchModelUpdates,
 	}
 
 	createACDRequest := database.CreateAutonomousContainerDatabaseRequest{

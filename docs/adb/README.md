@@ -2,11 +2,14 @@
 
 Before you use the Oracle Database Operator for Kubernetes (the operator), ensure that your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
 
-As indicated in the prerequisites (see above), to interact with OCI services, either the cluster must be authorized using Principal Instance, or the cluster must be authorized using the API Key Authentication by specifying the configMap and the secret under the `ociConfig` field.
+To allow your Kubernetes cluster to interact with OCI services, your cluster must be authorized with one of the following: 
+- Instance Principal authentication
+- API Key Authentication (specify the required configMap and Secret under `ociConfig`).
+
 
 ## Required Permissions
 
-The operator must be given the required type of access in a policy written by an administrator to manage the Autonomous Databases. For examples of Autonomous Database policies, see: [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb)
+The operator requires appropriate OCI policies, written by an administrator, to manage Autonomous Databases. For examples of Autonomous Database policies, see: [Let database and fleet admins manage Autonomous Databases](https://docs.oracle.com/en-us/iaas/Content/Identity/Concepts/commonpolicies.htm#db-admins-manage-adb)
 
 Permissions to view the work requests are also required, so that the operator can update the resources when the work is done. For example work request policies, see: [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) 
 
@@ -26,6 +29,8 @@ After you create the resource, you can use the operator to perform the following
 * [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
 * [Delete the resource](#delete-the-resource) from the cluster
 * [Clone](#clone-an-existing-autonomous-database) an existing Autonomous Database
+* [Switchover](#switchover-an-existing-autonomous-database) an existing Autonomous Database
+* [Perform Manual Failover](#manually-failover-an-existing-autonomous-database) to an existing Autonomous Database
 
 To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
 
@@ -113,7 +118,8 @@ To provision an Autonomous Database that will map objects in your cluster, compl
         compartmentId: ocid1.compartment...
         dbName: NewADB
         displayName: NewADB
-        cpuCoreCount: 1
+        computeModel: ECPU
+        computeCount: 1
         adminPassword:
           k8sSecret:
             name: admin-password # use the name of the secret from step 2
@@ -187,7 +193,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 
 > Note: this operation requires an `AutonomousDatabase` object to be in your cluster. To use this example, either the provision operation or the bind operation must be completed, and the operator must be authorized with API Key Authentication.
 
-You can scale up or scale down the Oracle Autonomous Database OCPU core count or storage by updating the `cpuCoreCount` and `dataStorageSizeInTBs` parameters. The `isAutoScalingEnabled` indicates whether auto scaling is enabled. In this example, the CPU count and storage size (TB) are scaled up to 2 and the auto-scaling is turned off by updating the `autonomousdatabase-sample` custom resource.
+You can scale up or scale down the Oracle Autonomous Database OCPU core count or storage by updating the `computeCount` and `dataStorageSizeInTBs` parameters. The `isAutoScalingEnabled` indicates whether auto scaling is enabled. In this example, the CPU count and storage size (TB) are scaled up to 2 and the auto-scaling is turned off by updating the `autonomousdatabase-sample` custom resource.
 
 1. An example YAML file is available here: [config/samples/adb/autonomousdatabase_scale.yaml](./../../config/samples/adb/autonomousdatabase_scale.yaml)
 
@@ -201,7 +207,7 @@ You can scale up or scale down the Oracle Autonomous Database OCPU core count or
       action: Update
       details:
         id: ocid1.autonomousdatabase...
-        cpuCoreCount: 2
+        computeCount: 2
         dataStorageSizeInTBs: 2
         isAutoScalingEnabled: false
       ociConfig:
@@ -310,7 +316,7 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
 
     \* The password must be at least 8 characters long and must include at least 1 letter and either 1 numeric character or 1 special character.
 
-2. Update the example [config/samples/adb/autonomousdatabase_wallet.yaml](./../../config/samples/adb/autonomousdatabase_wallet.yaml)
+2. Update the example [config/samples/adb/autonomousdatabase_download_wallet.yaml](./../../config/samples/adb/autonomousdatabase_download_wallet.yaml)
 
     ```yaml
     ---
@@ -487,7 +493,8 @@ To clone an existing Autonomous Database, complete these steps:
         compartmentId: ocid1.compartment... OR ocid1.tenancy...
         dbName: ClonedADB
         displayName: ClonedADB
-        cpuCoreCount: 1
+        computeModel: ECPU
+        computeCount: 1
         adminPassword:
           k8sSecret:
             name: admin-password
@@ -508,6 +515,78 @@ To clone an existing Autonomous Database, complete these steps:
 
 Now, you can verify that a cloned database with name "ClonedADB" is being provisioned on the Cloud Console.
 
+## Switchover an existing Autonomous Database
+
+> Note: this operation requires an `AutonomousDatabase` object to be in your cluster. This example assumes the provision operation or the bind operation has been done by the users and the operator is authorized with API Key Authentication.
+
+To switchover an existing Autonomous Database, complete these steps:
+
+1. Add the following fields to the AutonomousDatabase resource definition. An example YAML file is available here: [config/samples/adb/autonomousdatabase_switchover.yaml](./../../config/samples/adb/autonomousdatabase_switchover.yaml)
+    | Attribute | Type | Description | Required? |
+    |----|----|----|----|
+    | `spec.details.id` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the source Autonomous Database that you will clone to create a new Autonomous Database. | Yes |
+    | `spec.ociConfig` | dictionary | Not required when the Operator is authorized with [Instance Principal](./ADB_PREREQUISITES.md#authorized-with-instance-principal). Otherwise, you will need the values from the [Authorized with API Key Authentication](./ADB_PREREQUISITES.md#authorized-with-api-key-authentication) section. | Conditional |
+    | `spec.ociConfig.configMapName` | string | Name of the ConfigMap that holds the local OCI configuration | Conditional |
+    | `spec.ociConfig.secretName`| string | Name of the K8s Secret that holds the private key value | Conditional |
+
+    ```yaml
+    ---
+    apiVersion: database.oracle.com/v4
+    kind: AutonomousDatabase
+    metadata:
+      name: autonomousdatabase-sample
+    spec:
+      action: Switchover
+      details:
+        id: ocid1.autonomousdatabase...
+      ociConfig:
+        configMapName: oci-cred
+        secretName: oci-privatekey
+    ```
+
+2. Apply the yaml
+
+    ```sh
+    kubectl apply -f config/samples/adb/autonomousdatabase_switchover.yaml
+    autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
+    ```
+
+## Manually failover an existing Autonomous Database
+
+> Note: this operation requires an `AutonomousDatabase` object to be in your cluster. This example assumes the provision operation or the bind operation has been done by the users and the operator is authorized with API Key Authentication.
+
+To manually failover an existing Autonomous Database, complete these steps:
+
+1. Add the following fields to the AutonomousDatabase resource definition. An example YAML file is available here: [config/samples/adb/autonomousdatabase_manual_failover.yaml](./../../config/samples/adb/autonomousdatabase_manual_failover.yaml)
+    | Attribute | Type | Description | Required? |
+    |----|----|----|----|
+    | `spec.details.id` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the source Autonomous Database that you will clone to create a new Autonomous Database. | Yes |
+    | `spec.ociConfig` | dictionary | Not required when the Operator is authorized with [Instance Principal](./ADB_PREREQUISITES.md#authorized-with-instance-principal). Otherwise, you will need the values from the [Authorized with API Key Authentication](./ADB_PREREQUISITES.md#authorized-with-api-key-authentication) section. | Conditional |
+    | `spec.ociConfig.configMapName` | string | Name of the ConfigMap that holds the local OCI configuration | Conditional |
+    | `spec.ociConfig.secretName`| string | Name of the K8s Secret that holds the private key value | Conditional |
+
+    ```yaml
+    ---
+    apiVersion: database.oracle.com/v4
+    kind: AutonomousDatabase
+    metadata:
+      name: autonomousdatabase-sample
+    spec:
+      action: Failover
+      details:
+        id: ocid1.autonomousdatabase...
+      ociConfig:
+        configMapName: oci-cred
+        secretName: oci-privatekey
+    ```
+
+2. Apply the yaml
+
+    ```sh
+    kubectl apply -f config/samples/adb/autonomousdatabase_failover.yaml
+    autonomousdatabase.database.oracle.com/autonomousdatabase-sample configured
+    ```
+
 ## Roles and Privileges requirements for Oracle Autonomous Database Controller
 
 Autonomous Database controller uses Kubernetes objects such as:
@@ -519,6 +598,18 @@ Autonomous Database controller uses Kubernetes objects such as:
   | Events | create patch |
 
 The defintion of all the Kubernetes Objects, which are to be used by the Oracle Autonomous Database Controller, comes from the `oracle-database-operator.yaml` file which is applied to deploy the **Oracle Database Operator**.
+
+## OpenShift Support
+
+The Autonomous Database (ADB) Controller has been tested on OpenShift clusters and verified to work with the following use cases:
+
+* **Create** – Provision a new Autonomous Database
+* **Sync (Binding)** – Synchronize with existing Autonomous Database resources
+* **Update** – Apply configuration changes
+* **Stop** – Stop an Autonomous Database instance
+* **Start** – Start an Autonomous Database instance
+* **Terminate** – Delete an Autonomous Database instance
+* **Clone** – Create a clone from an existing Autonomous Database
 
 ## Debugging and troubleshooting
 
@@ -547,3 +638,24 @@ To check the logs, use these steps:
     ```sh
     kubectl logs -f pod/oracle-database-operator-controller-manager-78666fdddb-s4xcm -n oracle-database-operator-system
     ```
+
+## Known Issues
+
+### Failed to validate Wallet: "read-only file system"
+
+In some environments, e.g. OKE using the Operator add-on, the operator fails to validate the wallet due to encountering a **read-only file system** error. This prevents successful wallet validation and can disrupt operator functionality.
+
+For example, logs from the controller pod may show:
+
+```text
+"error": "Failed to validate Wallet: open /tmp/wallet1208873634.zip: read-only file system"
+```
+
+#### Workaround
+
+* Ensure wallet directories and mounted volumes have correct **read-write** permissions.
+* Confirm that file system mounts used by the operator are writable.
+
+#### Reference
+
+See GitHub issue **#193** in the [oracle-database-operator repository](https://github.com/oracle/oracle-database-operator/issues/193) for details and steps to work around.

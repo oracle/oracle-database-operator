@@ -41,7 +41,7 @@ package oci
 import (
 	"archive/zip"
 	"io"
-	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -62,7 +62,7 @@ func ExtractWallet(content io.ReadCloser) (map[string][]byte, error) {
 func saveWalletZip(content io.ReadCloser) (string, error) {
 	// Create a temp file wallet*.zip
 	const walletFileName = "wallet*.zip"
-	outZip, err := ioutil.TempFile("", walletFileName)
+	outZip, err := os.CreateTemp("", walletFileName)
 	if err != nil {
 		return "", err
 	}
@@ -91,7 +91,7 @@ func unzipWallet(path string) (map[string][]byte, error) {
 			return files, err
 		}
 
-		content, err := ioutil.ReadAll(reader)
+		content, err := io.ReadAll(reader)
 		if err != nil {
 			return files, err
 		}

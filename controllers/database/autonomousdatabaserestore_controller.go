@@ -236,8 +236,8 @@ func (r *AutonomousDatabaseRestoreReconciler) verifyTargetAdb(restore *dbv4.Auto
 		}
 	}
 
-	if restore.Spec.Target.OciAdb.OCID != nil {
-		return *restore.Spec.Target.OciAdb.OCID, nil
+	if restore.Spec.Target.OciAdb.Id != nil {
+		return *restore.Spec.Target.OciAdb.Id, nil
 	}
 	if ownerAdb != nil && ownerAdb.Spec.Details.Id != nil {
 		return *ownerAdb.Spec.Details.Id, nil

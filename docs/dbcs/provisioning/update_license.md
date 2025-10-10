@@ -1,15 +1,15 @@
 # Update License type of an existing OBDS System
 
-In this use case, the license type of an existing OCI OBDS system deployed earlier is changed from `License Included` to `Bring your own license` using Oracle DB Operator OBDS controller. Its a 2 Step operation.
+In this use case, the license type of an existing OCI OBDS system deployed earlier is changed from `License Included` to `Bring your own license` using Oracle DB Operator OBDS controller. This is a two-step operation.
 
-In order to update the license type an existing OBDS system, the steps will be:
+To update the license type an existing OBDS system, the two steps are as follows:
 
 1. Bind the existing OBDS System to OBDS Controller.
 2. Apply the change to change its license type.
 
-**NOTE** We are assuming that before this step, you have followed the [prerequisite](./../README.md#prerequsites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) steps to create the configmap and the secrets required during the deployment.
+**NOTE** We are assuming that before this step, you have followed the [prerequisite steps](./../README.md#prerequsites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) to create the configmap and the secrets required during the deployment.
 
-This example uses `update_license.yaml` to change the license type of a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with:
+This example uses `update_license.yaml` to change the license type of a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with the following:
 
 - OCID of existing VMDB as `ocid1.dbsystem.oc1.ap-mumbai-1.anrg6ljrabf7htyadgsso7aessztysrwaj5gcl3tp7ce6asijm2japyvmroa`
 - OCI Configmap as `oci-cred`  
@@ -23,17 +23,17 @@ This example uses `update_license.yaml` to change the license type of a Single I
 - SSH Public key for the OBDS system being deployed as `oci-publickey`  
 - OCID of the Subnet as `ocid1.subnet.oc1.ap-mumbai-1.aaaaaaaa5zpzfax66omtbmjwlv4thruyru7focnu7fjcjksujmgwmr6vpbvq`  
 
-**NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md).
+**NOTE:** For the details of the parameters to be used in the `.yaml` file, see: [DBCS Controller Parameters](./dbcs_controller_parameters.md).
 
-Use the file: [update_license.yaml](./update_license.yaml) for this use case as below:
+Use the file: [update_license.yaml](./update_license.yaml) for this use case as described in the following steps:
 
-1. Deploy the .yaml file:  
+1. Deploy the `.yaml` file:  
 ```sh
 [root@test-server OBDS]# kubectl apply -f update_license.yaml
 dbcssystem.database.oracle.com/dbcssystem-existing configured
 ```
 
-2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the OBDS VMDB Scale up. 
+2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` to follow the progress of the OBDS VMDB Scale up. 
 
 NOTE: Check the DB Operator Pod name in your environment.
 
@@ -43,4 +43,4 @@ NOTE: Check the DB Operator Pod name in your environment.
 
 ## Sample Output
 
-[Here](./update_license_sample_output.log) is the sample output for updating the license type an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.
+[This log file](./update_license_sample_output.log) is an example output log file for updating the license type an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.

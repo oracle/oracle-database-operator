@@ -2,7 +2,7 @@
 # Copyright (c) 2022, Oracle and/or its affiliates. 
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: AutonomousDatabase
 metadata:
   name: autonomousdatabase-sample
@@ -11,15 +11,13 @@ spec:
   details:
     id: ocid1.autonomousdatabase...
     # # Allow secure access from everywhere. Uncomment one of the following field depends on your network access configuration.
-    # accessControlList:
-    # -
-    # privateEndpoint: ""
+    # privateEndpointLabel: ""
 
     # # Uncomment this block to configure the network access type with the RESTRICTED option.
     # # This option lets you restrict access by defining access control rules in an Access Control List (ACL).
-    # # By specifying an ACL, the database will be accessible from a whitelisted set of IP addresses, CIDR (Classless Inter-Domain Routing) blocks, or VCNs. 
+    # # By specifying an ACL, the database will be accessible from a whitelisted set of IP addresses, CIDR (Classless Inter-Domain Routing) blocks, or VCNs.
     # # Use a semicolon (;) as a deliminator between the VCN-specific subnets or IPs.
-    # accessControlList:
+    # whitelistedIps:
     # - 1.1.1.1
     # - 1.1.0.0/16
     # - ocid1.vcn...
@@ -27,16 +25,16 @@ spec:
     # - ocid1.vcn...;1.1.0.0/16
 
     # # Uncomment this block to configure the network access type with the PRIVATE option.
-    # # This option assigns a private endpoint, private IP, and hostname to your database. 
+    # # This option assigns a private endpoint, private IP, and hostname to your database.
     # # Specifying this option allows traffic only from the VCN you specify.
     # # This allows you to define security rules, ingress/egress, at the Network Security Group (NSG) level and to control traffic to your Autonomous Database.
-    # privateEndpoint:
-    #   subnetOCID: ocid1.subnet...
-    #   nsgOCIDs: # Optional
-    #   - ocid1.networksecuritygroup...
+    # subnetId: ocid1.subnet...
+    # nsgIds:
+    # - ocid1.networksecuritygroup...
 
     # # Uncomment this block to configure the network access of an dedicated Autonomous Database (ADB-D) with an access control list.
-    # accessControlList:
+    # isAccessControlEnabled: true
+    # whitelistedIps:
     # - 1.1.1.1
     # - 1.1.0.0/16
 

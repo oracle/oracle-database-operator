@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.17.3
   name: autonomousdatabaserestores.database.oracle.com
 spec:
   group: database.oracle.com
@@ -48,7 +48,7 @@ spec:
                 type: object
               source:
                 properties:
-                  k8sADBBackup:
+                  k8sAdbBackup:
                     properties:
                       name:
                         type: string
@@ -61,14 +61,14 @@ spec:
                 type: object
               target:
                 properties:
-                  k8sADB:
+                  k8sAdb:
                     properties:
                       name:
                         type: string
                     type: object
-                  ociADB:
+                  ociAdb:
                     properties:
-                      ocid:
+                      id:
                         type: string
                     type: object
                 type: object
@@ -134,7 +134,7 @@ spec:
                 type: object
               source:
                 properties:
-                  k8sADBBackup:
+                  k8sAdbBackup:
                     properties:
                       name:
                         type: string
@@ -147,14 +147,14 @@ spec:
                 type: object
               target:
                 properties:
-                  k8sADB:
+                  k8sAdb:
                     properties:
                       name:
                         type: string
                     type: object
-                  ociADB:
+                  ociAdb:
                     properties:
-                      ocid:
+                      id:
                         type: string
                     type: object
                 type: object

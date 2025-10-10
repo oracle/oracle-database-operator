@@ -1,0 +1,93 @@
+#
+# Copyright (c) 2024, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+---
+
+# Create a Security Context Contraint
+kind: SecurityContextConstraints
+apiVersion: security.openshift.io/v1
+metadata:
+  name: lrest-scc
+allowPrivilegedContainer: false
+allowedCapabilities:
+  - SYS_NICE
+runAsUser:
+  type: MustRunAs
+  uid: 54321
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 54321
+    max: 54321
+supplementalGroups:
+   type: MustRunAs
+   ranges:
+   - min: 54321
+     max: 54321
+---
+
+# Create a Security Context Contraint
+kind: SecurityContextConstraints
+apiVersion: security.openshift.io/v1
+metadata:
+  name: lrest-root-user-scc
+allowPrivilegedContainer: false
+allowedCapabilities:
+  - SYS_NICE
+runAsUser:
+  type: MustRunAsRange
+  uidRangeMin: 0
+  uidRangeMax: 54321
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: MustRunAs
+  ranges:
+  - min: 0
+    max: 54325
+supplementalGroups:
+  type: MustRunAs
+  ranges:
+  - min: 0
+    max: 54321
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lrest-sa
+  namespace: cdbnamespace
+---
+
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: use-lrest-scc
+  namespace: cdbnamespace
+rules:
+  - apiGroups:
+    - security.openshift.io
+    verbs:
+    - use
+    resources:
+    - securitycontextconstraints
+    resourceNames:
+    - lrest-scc
+    - lrest-root-user-scc
+---
+
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: use-lrest-scc
+  namespace: cdbnamespace
+subjects:
+  - kind: ServiceAccount
+    name: lrest-sa
+    namespace: cdbnamespace
+roleRef:
+  kind: Role
+  name: use-lrest-scc
+  apiGroup: rbac.authorization.k8s.io

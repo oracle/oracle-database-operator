@@ -55,7 +55,7 @@ The following secret will be used for PDB1:
 
 ```bash
 echo "THIS_IS_A_PASSWORD"     > ordspwdfile
-openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_ordspwdfile
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in ordspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
 kubectl create secret generic pdb1-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
 rm ordspwdfile e_ordspwdfile
 ```
@@ -64,7 +64,7 @@ The following secret will be used for PDB2:
 
 ```bash
 echo "THIS_IS_A_PASSWORD"     > ordspwdfile
-openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_ordspwdfile
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in ordspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
 kubectl create secret generic pdb2-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
 rm ordspwdfile e_ordspwdfile
 ```
@@ -73,7 +73,7 @@ The following secret will be used for PDB3 and PDB4:
 
 ```bash
 echo "THIS_IS_A_PASSWORD"     > ordspwdfile
-openssl rsautl -encrypt -pubin -inkey public.pem -in ordspwdfile |base64 > e_ordspwdfile
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in ordspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
 kubectl create secret generic multi-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
 rm ordspwdfile e_ordspwdfile
 ```
@@ -86,7 +86,7 @@ In this example, only PDB1 will be set for [AutoUpgrade](../autoupgrade.md), the
 
 ```bash
 echo "THIS_IS_A_PASSWORD"     > syspwdfile
-openssl rsautl -encrypt -pubin -inkey public.pem -in syspwdfile |base64 > e_syspwdfile
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in syspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_syspwdfile
 kubectl create secret generic pdb1-priv-auth-enc --from-file=password=e_syspwdfile -n  ordsnamespace
 rm syspwdfile e_syspwdfile
 ```
@@ -102,7 +102,7 @@ rm syspwdfile e_syspwdfile
       name: ords-multi-pool
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:24.1.1
+      image: container-registry.oracle.com/database/ords:25.1.0
       forceRestart: true
       encPrivKey:
         secretName: prvkey
@@ -112,7 +112,6 @@ rm syspwdfile e_syspwdfile
       poolSettings:
         - poolName: pdb1
           autoUpgradeORDS: true
-          autoUpgradeAPEX: true
           db.connectionType: tns
           db.tnsAliasName: PDB1
           tnsAdminSecret:
@@ -160,7 +159,8 @@ rm syspwdfile e_syspwdfile
           db.secret:
             secretName: multi-ords-auth-enc
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
+    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
+
 
 1. Apply the yaml file:
     ```bash
@@ -196,5 +196,4 @@ This example has multiple pools, named `pdb1`, `pdb2`, `pdb3`, and `pdb4`.
 * They all share the same `tnsAdminSecret` to connect using thier individual `db.tnsAliasName`
 * They will all automatically restart when the configuration changes: `forceRestart: true`
 * Only the `pdb1` pool will automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
-* Only the `pdb1` pool will automatically install/update APEX on startup, if required: `autoUpgradeAPEX: true`
 * The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)

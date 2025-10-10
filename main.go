@@ -55,10 +55,13 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	ctrlzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	databasev1alpha1 "github.com/oracle/oracle-database-operator/apis/database/v1alpha1"
@@ -99,13 +102,12 @@ func main() {
 	flag.Parse()
 
 	// Initialize new logger Opts
-	options := &zap.Options{
+	options := &ctrlzap.Options{
 		Development: true,
 		TimeEncoder: zapcore.RFC3339TimeEncoder,
 	}
 
 	ctrl.SetLogger(zap.New(func(o *zap.Options) { *o = *options }))
-
 	watchNamespaces, err := getWatchNamespace()
 	if err != nil {
 		setupLog.Error(err, "Failed to get watch namespaces")
@@ -122,6 +124,10 @@ func main() {
 			opts.DefaultNamespaces = watchNamespaces
 			return cache.New(config, opts)
 		},
+		EventBroadcaster: record.NewBroadcasterWithCorrelatorOptions(record.CorrelatorOptions{
+			BurstSize: 10,
+			QPS:       1,
+		}),
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), opt)
@@ -210,6 +216,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&databasecontroller.OracleRestartReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("OracleRestart"),
+		Scheme: mgr.GetScheme(),
+		Config: mgr.GetConfig(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "OracleRestart")
+		os.Exit(1)
+	}
+
 	// Set RECONCILE_INTERVAL environment variable if you want to change the default value from 15 secs
 	interval := os.Getenv("RECONCILE_INTERVAL")
 	i, err := strconv.ParseInt(interval, 10, 64)
@@ -228,16 +244,8 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
 			os.Exit(1)
 		}
-		if err = (&databasev4.PDB{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "PDB")
-			os.Exit(1)
-		}
 		if err = (&databasev4.LRPDB{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "LRPDB")
-			os.Exit(1)
-		}
-		if err = (&databasev4.CDB{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "CDB")
 			os.Exit(1)
 		}
 		if err = (&databasev4.LREST{}).SetupWebhookWithManager(mgr); err != nil {
@@ -312,18 +320,22 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DatabaseObserver")
 			os.Exit(1)
 		}
-	}
-
-	// PDB Reconciler
-	if err = (&databasecontroller.PDBReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Log:      ctrl.Log.WithName("controllers").WithName("PDB"),
-		Interval: time.Duration(i),
-		Recorder: mgr.GetEventRecorderFor("PDB"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "PDB")
-		os.Exit(1)
+		if err = (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev4.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
+			os.Exit(1)
+		}
+		if err = (&databasev4.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
+			os.Exit(1)
+		}
+		if err = (&databasev4.OracleRestart{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestart")
+			os.Exit(1)
+		}
 	}
 
 	// LRPDBR Reconciler
@@ -335,19 +347,6 @@ func main() {
 		Recorder: mgr.GetEventRecorderFor("LRPDB"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "LRPDB")
-		os.Exit(1)
-	}
-
-	// CDB Reconciler
-	if err = (&databasecontroller.CDBReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Config:   mgr.GetConfig(),
-		Log:      ctrl.Log.WithName("controllers").WithName("CDB"),
-		Interval: time.Duration(i),
-		Recorder: mgr.GetEventRecorderFor("CDB"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CDB")
 		os.Exit(1)
 	}
 
@@ -394,29 +393,7 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "DatabaseObserver")
 		os.Exit(1)
 	}
-
-	if err = (&databasev4.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
-		os.Exit(1)
-	}
-	if err = (&databasev4.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
-		os.Exit(1)
-	}
-	if err = (&databasev4.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
-		os.Exit(1)
-	}
 	// +kubebuilder:scaffold:builder
-
-	// Add index for PDB CR to enable mgr to cache PDBs
-	indexFunc := func(obj client.Object) []string {
-		return []string{obj.(*databasev4.PDB).Spec.PDBName}
-	}
-	if err = cache.IndexField(context.TODO(), &databasev4.PDB{}, "spec.pdbName", indexFunc); err != nil {
-		setupLog.Error(err, "unable to create index function for ", "controller", "PDB")
-		os.Exit(1)
-	}
 
 	indexFunc2 := func(obj client.Object) []string {
 		return []string{obj.(*databasev4.LRPDB).Spec.LRPDBName}

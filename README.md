@@ -4,78 +4,116 @@
 
 As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released the  _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating the management of the Oracle Database lifecycle.
 
-##  Supported Database Configurations in V1.2.0
-In this v1.2.0 production release, `OraOperator` supports the following database configurations, and controllers:
+## What's New in v2.0.0
 
-* Oracle Autonomous Database:
+* **RedHat OpenShift Certification**
+  * Validation of OraOperator and Controllers
+  * Inclusion in RedHat Operators Catalog
+* **Restart Controller**
+  * Provision, add & delete asm disks, and more
+* **ORDS Service**
+  * ServiceAccount and OpenShift support
+  * Auto download of APEX installation files and APEX image on a Persistent Volume
+* **Integrations**
+  * Private Cloud Appliance (PCA)
+  * Compute Cloud@Customer (C3)
+* **Bug fixes**
+  * Bugs filed through Oracle Support
+  * GitHub issues
+ 
+
+## Supported Database Configurations v2.0.0
+In this v2.0 production release, `OraOperator` supports the following database configurations and controllers:
+
+* **Oracle Autonomous Database:**
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
   * Oracle Autonomous Database on dedicated Cloud infrastructure (ADB-D)
-  * Oracle Autonomous Container Database (ACD), the infrastructure for provisioning Autonomous Databases.
-* Containerized Single Instance databases (SIDB) deployed in the Oracle Kubernetes Engine (OKE) and any k8s where OraOperator is deployed
-* Containerized Oracle Globally Distributed Databases(GDD) deployed in OKE and any k8s where OraOperator is deployed
-* Oracle Multitenant Databases (CDB/PDBs)
-* Oracle Base Database Service (OBDS) on Oracle Cloud Infrastructure (OCI)
-* Oracle Data Guard
-* Oracle Database Observability
-* Oracle Database Rest Service (ORDS) instances
+  * Oracle Autonomous Container Database (ACD), the infrastructure for provisioning Autonomous Databases
+* **Containerized Single Instance databases (SIDB)** deployed in the Oracle Kubernetes Engine (OKE) and any Kubernetes where OraOperator is deployed
+* **Containerized Oracle Globally Distributed Databases (GDD)** deployed in OKE and any Kubernetes where OraOperator is deployed
+* **Oracle Multitenant Databases (CDB/PDBs)**
+* **Oracle Base Database Service (OBDS)** on Oracle Cloud Infrastructure (OCI)
+* **Oracle Data Guard**
+* **Oracle Database Observability**
+* **Oracle Database Rest Service (ORDS) instances**
+* **Oracle Restart**
+* **Oracle Globally Distributed Database**
 
-## New Lifecycle Features in V1.2.0 Release (Controllers Enhancements)
-* ORDSSERVICES
+---
+
+## Lifecycle Features (Controllers Enhancements)
+* **ORDS Services**
   - Install on SIDB and ADB
-  - Provision and Delete ORDS instances
-* SIDB
+  - Provision and delete ORDS instances
+* **SIDB**
   - Oracle Database 23ai Free support
   - Oracle Database 23ai Free-lite support
   - SIDB resource management
   - True Cache support for Free SIDB databases (Preview)
   - Observer for FastStartFailover with Data Guard
   - Snapshot Standby support in Data Guard setup
-* Globally Distributed Database : Support for Oracle Database 23ai Raft replication
-* Autonomous Database: support for Database cloning
-* Multitenant DB:
-  - ORDS-based Controller:  assertive deletion policy.
-  - New LRES based Controller  (ARM & AM)
+* **Globally Distributed Database**
+  - Support for Oracle Database 23ai Raft replication
+  - Oracle Database 23ai Free support
+* **Autonomous Database**
+  - Support for Database manual failover and switchover
+* **Multitenant DB**
+  - ORDS-based Controller: Assertive deletion policy
+  - New LRES-based Controller (ARM & AM)
     - PDBs settings with init parameters config map
-    - Assertive deletion policy.
-* Database Observability (preview)
-  - Support for Database Logs (in addition to Metrics)
+    - Assertive deletion policy
+* **Database Observability **
+  - Support for Database Logs and Metrics
   - Support for the latest Exporter container images
-  - Bug Fix: Prometheus label config
-* Oracle Base Database Service: support for Oracle Database 23ai Cloning, using KMS Vaults, PDB creation.
+ 
+* **Oracle Base Database Service**
+  - Support for Oracle Database 23ai Cloning, using KMS Vaults
+  - PDB creation
+  - Clone, Backup, Restore
+  - Data Guard Setup
+  - Patching and Upgrade
+* **Oracle Restart**
+  - Support for Oracle Database 19c
 
-## New Product Features
-*The Operator itself, as a product, brings the following new features:
-* Published on `operatorhub.io`
+---
+
+## Product Features
+* Upgraded Kubernetes API version to v4
+* Published on `operatorhub.io`
 * Operator Lifecycle Manager (OLM) support (install from `operatorhub.io`)
-* Validated on Google Kubernetes Engine
+* OpenShift certified
+
+---
 
 ## Overall Features Summary
+As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) supports the following lifecycle operations:
 
-This release of Oracle Database Operator for Kubernetes (the operator) supports the following lifecycle operations:
-
-* ADB-S/ADB-D: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning.
-* ACD: Provision, bind, restart, terminate (soft/hard)
-* SIDB: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS) to support REST based SQL, PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), and Snapshot Standby (Data Guard)
-* ORDS Services: Provision and delete ORDS instances
-* Globally Distrib. (Sharded): Provision/deploy sharded databases and the shard topology, Add a new shard, Delete an existing shard, Raft replication.
-* Oracle Multitenant Database (choice of controller): Bind to a CDB, Create a  PDB, Plug a  PDB, Unplug a PDB, Delete a PDB, Clone a PDB, Open/Close a PDB, Assertive deletion policy
-* Oracle Base Database Service (OBDS): Provision, bind, scale shape Up/Down, Scale Storage Up, Terminate and Update License, Cloning, PDB creation, using KMS Vaults on Oracle Cloud Infrastructure (OCI)
-* Oracle Data Guard: Provision a Standby for the SIDB resource, Create a Data Guard Configuration, Perform a Switchover, Patch Primary and Standby databases in Data Guard Configuration
-* Oracle Database Observability: create, patch, delete `databaseObserver` resources (Logs and Metrics)
-* Watch over a set of namespaces or all the namespaces in the cluster using the `WATCH_NAMESPACE` environment variable of the operator deployment
+* **ADB-S/ADB-D**: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning, manual failover, switchover
+* **ACD**: Provision, bind, restart, terminate (soft/hard)
+* **SIDB**: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS), PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), Snapshot Standby (Data Guard)
+* **ORDS Services**: Provision and delete ORDS instances
+* **Globally Distributed (Sharded)**: Provision/deploy sharded databases and topology, add/delete shards, Raft replication
+* **Oracle Multitenant Database**: Bind to a CDB, create/plug/unplug/delete/clone/open/close PDBs, assertive deletion policy
+* **Oracle Base Database Service (OBDS)**: Provision, scale shape/storage, terminate/update license, cloning, PDB creation, using KMS Vaults, backup/restore, Data Guard setup, patching/upgrade
+* **Oracle Data Guard**: Provision standby for SIDB, create Data Guard configuration, perform switchover, patch primary/standby
+* **Oracle Database Observability**: Create, patch, delete `databaseObserver` (logs and metrics)
+* **Oracle Restart**: Provision, add & delete asm disks, enable ons ports, custom storage class support, existing pvc support, load balancer  support
+* Watch namespaces using the `WATCH_NAMESPACE` environment variable
 
 
 ## Release Status
 
-This production release has been installed and tested on the following Kubernetes platforms:
-
-* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.24
-* [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.6
+This production release has been installed and tested on:
+* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.30 or later
+* [Redhat Openshift](https://www.redhat.com/en/technologies/cloud-computing/openshift) with version v4.16 or later
+* [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.9 or later
+* [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
 * [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/)
 * [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Red Hat OKD](https://www.okd.io/)
 * [Minikube](https://minikube.sigs.k8s.io/docs/) with version v1.29.0
+
 
 ## Prerequisites
 
@@ -140,26 +178,20 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
   ```sh
     kubectl apply -f rbac/node-rbac.yaml
   ```
-## Installation
-### Install Oracle DB Operator
-
-   After you have completed the preceding prerequisite changes, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
-
-   Run the following command
-
-   ```sh
-   kubectl apply -f oracle-database-operator.yaml
-   ```
 
 ## Install Oracle DB Operator
 
-   After you have completed the preceding prerequisite changes, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
+  After you have completed the preceding prerequisite changes, you can install the operator using one of the following methods:
 
-   Run the following command
+### Option 1: Install Using `oracle-database-operator.yaml`
 
-   ```sh
-   kubectl apply -f oracle-database-operator.yaml
-   ```
+  To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the preceding step.
+
+  Run the following command
+
+  ```sh
+  kubectl apply -f oracle-database-operator.yaml
+  ```
 
   Ensure that the operator pods are up and running. For high availability, operator pod replicas are set to a default of 3. You can scale this setting up or down.
 
@@ -173,12 +205,20 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
 
   ```
 
-* Check the resources
+### Option 2: Install via OperatorHub.io
+
+  You can also install the Oracle DB Operator from [OperatorHub.io](https://operatorhub.io/operator/oracle-database-operator).
+
+  1. Visit the [Oracle Database Operator](https://operatorhub.io/operator/oracle-database-operator) page on OperatorHub.io.
+
+  2. Click the **Install** button to view and follow the step-by-step installation instructions for your Kubernetes environment.
+
+### Check the resources
 
 You should see that the operator is up and running, along with the shipped controllers.
 
 For more details, see [Oracle Database Operator Installation Instructions](./docs/installation/OPERATOR_INSTALLATION_README.md).
-## Documentation
+
 ## Getting Started with the Operator (Quickstart)
 
 The following quickstarts are designed for specific database configurations:
@@ -190,6 +230,7 @@ The following quickstarts are designed for specific database configurations:
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Service (OBDS)](./docs/dbcs/README.md)
 * [ORDS Services (ORDSSRVS)](./docs/ordsservices/README.md)
+* [Oracle Restart](./docs/oraclerestart/README.md)
 
 
 The following quickstart is designed for non-database configurations:
@@ -229,6 +270,10 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 
 * ### Delete the Deployment
 
+  #### Option1: Delete `oracle-database-operator.yaml`
+
+  Use this option if you install the operator using `oracle-database-operator.yaml`
+
   After all CRD instances are deleted, it is safe to remove the CRDs, APIServices and operator deployment. To remove these files, use the following command:
 
   ```sh
@@ -237,6 +282,25 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 
   Note: If the CRD instances are not deleted, and the operator is deleted by using the preceding command, then operator deployment and instance objects (pods, services, PVCs, and so on) are deleted. However, if that happens, then the CRD deletion stops responding. This is because the CRD instances have properties that prevent their deletion, and that can only be removed by the operator pod, which is deleted when the APIServices are deleted.
 
+  #### Option2: Delete the Operator’s ClusterServiceVersion (CSV)
+
+  Use this option if you install the operation from OperatorHub.io.
+
+  First, identify the name of the installed operator’s ClusterServiceVersion (CSV) using the following command:
+
+  ```sh
+  kubectl clusterserviceversion -n operators
+  ```
+
+  Look for a CSV name similar to oracle-database-operator.vx.x.x.
+
+  Once identified, delete the ClusterServiceVersion with the following command (replace the placeholder with the actual CSV name):
+
+  ```sh
+  kubectl delete clusterserviceversion oracle-database-operator.vx.x.x -n operators
+  ```
+
+
 ## Documentation for the supported Oracle Database configurations
 
 * [Oracle Autonomous Database](https://docs.oracle.com/en-us/iaas/Content/Database/Concepts/adboverview.htm)
@@ -244,6 +308,7 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 * [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
 * [Oracle Globally Distributed Database](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
 * [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
+
 
 ## Contributing
 
@@ -269,6 +334,10 @@ The following is an example of a YAML file fragment for specifying Oracle Cloud 
 ```
 
 Examples in this repository where passwords are entered on the command line are for demonstration purposes only.
+
+### Reporting a Security Issue
+
+See [Reporting security vulnerabilities](./SECURITY.md)
 
 ## License
 

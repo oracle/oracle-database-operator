@@ -649,10 +649,10 @@ The following table depicts the fail over matrix for any destructive operation t
 - If the `ReadWriteMany` access mode is used, then all the replicas will be distributed on different nodes. For this reason, Oracle recommends that you have replicas more than or equal to the number of the nodes, because the database image is downloaded on all those nodes. This is beneficial in quick cold fail-over scenario (when the active pod dies) as the image would already be available on that node.
 
 #### Database Pod Resource Management
-When creating a Single Instance Database, you can specify the CPU and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod is scheduled on one of the pods that has the required resources available. To use database pod resource management, specify values for the `resources` attributes in the [`config/samples/sidb/singleinstancedatabase.yaml`](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
-
-#### Database Pod Resource Management
-When creating a Single Instance Database you can specify the cpu and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod gets scheduled on one of the pods that has the required resources available. To use database pod resource management specify values for the `resources` attributes in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
+When creating a Single Instance Database you can specify the cpu and memory resources needed by the database pod. These specified resources are passed to the `kube-scheduler` so that the pod gets scheduled on one of the nodes that has the required resources available. To use database pod resource management specify values for the `resources` attributes in the [config/samples/sidb/singleinstancedatabase.yaml](../../config/samples/sidb/singleinstancedatabase.yaml) file, and apply it.
+For Enterprise Edition, the recommended values are:
+cpu="2"
+memory="16Gi"
 
 #### Setup Database with LoadBalancer
 For the Single Instance Database, the default service is the `NodePort` service. You can enable the `LoadBalancer` service by using the `kubectl patch` command.

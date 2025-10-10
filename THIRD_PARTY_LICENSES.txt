@@ -1,5 +1,5 @@
 -------------------------------------
-Operator SDK 1.37.0
+Operator SDK 1.40.0
 https://github.com/operator-framework/operator-sdk
 Apache 2.0
 
@@ -208,7 +208,7 @@ Apache License:
    limitations under the License.
 
    ------------------------------
-   GO lang 1.23.3
+   GO lang 1.25.1
    https://github.com/golang
 
 
@@ -241,18 +241,18 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 -------------------------
-apimachinery 0.31.3
+apimachinery 0.32.2
 https://github.com/kubernetes/apimachinery/tr
 Apache 2.0
 
 -------------------------
-controller-runtime 0.19.3
+controller-runtime 0.21.0
 https://github.com/kubernetes-sigs/controller-runtime/releases/tag/v0.16.3
 Apache 2.0
 
 -------------------------
-golang 1.23.3
-https://github.com/golang/go/releases/tag/go1.21.4
+golang 1.25.1
+https://github.com/golang/go/releases/tag/go1.25.1
 
 BSD 2-clause or 3-clause License:
 
@@ -1006,13 +1006,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    limitations under the License.
 
 --------------------------
-Logr 1.4.2
+Logr 1.4.3
 https://pkg.go.dev/github.com/go-logr/logr
-https://github.com/go-logr/logr/tree/v1.3.0
+https://github.com/go-logr/logr/tree/v1.4.3
 Apache 2.0 License
 
 -------------------------
-OCI Go SDK 65.77.1
+OCI Go SDK 65.95.0
 https://github.com/oracle/oci-go-sdk/releases/tag/v65.53.0
 
 Dual-License: UPL + Apache 2.0
@@ -1063,7 +1063,7 @@ The Universal Permissive License (UPL), Version 1.0
 
 
 -------------------------
-ginkgo 2.202.
+ginkgo 2.23.4
 https://github.com/onsi/ginkgo/releases/tag/v2.13.1
 MIT
 ------------------------------------
@@ -1073,48 +1073,48 @@ MIT License
 Copyright (c) 2013-2014 Onsi Fakhouri
 
 ----------------------------
-gomega 1.34.2
+gomega 1.37.0
 http://onsi.github.io/gomega/
 MIT
 
 -------------------------
-Kubernetes api 0.31.3
+Kubernetes api 0.33.2
 https://pkg.go.dev/k8s.io/api
 Apache 2.0
 
 ----------------------------------
-Kubernetes apimachinery 0.31.3
+Kubernetes apimachinery 0.32.2
 https://pkg.go.dev/k8s.io/apimachinery
 Apache 2.0
 
 -----------------------------------
-Kubernetes client-go 0.31.3
+Kubernetes client-go 0.33.2
 https://pkg.go.dev/k8s.io/client-go
 Apache 2.0
 
 -------------------------------------
-Kubernetes controller-runtime project 0.19.3
+Kubernetes controller-runtime project 0.21.0
 https://pkg.go.dev/sigs.k8s.io/controller-runtime
 Apache 2.0
 
 ------------------------------------
-kubernetes-sigs/yaml 1.4.0
-https://github.com/kubernetes-sigs/yaml/tree/v1.3.0
+kubernetes-sigs/yaml 1.5.0
+https://github.com/kubernetes-sigs/yaml/tree/v1.5.0
 MIT
 
 -------------------------
-OCI SDK for Go 65.77.1
+OCI SDK for Go 65.95.0
 https://github.com/oracle/oci-go-sdk
 Multiple Licenses: Apache 2.0, UPL
 
 ------------------------------
-Operator Lifecycle Manager (OLM) 0.30.0
+Operator Lifecycle Manager (OLM) 0.32.0
 github.com/operator-framework/operator-lifecycle-manager
 Apache 2.0
 
 
 ------------------------------------
-Prometheus Operator 0.78.2
+Prometheus Operator 0.83.0
 https://github.com/prometheus-operator/prometheus-operator
 Apache 2.0
 

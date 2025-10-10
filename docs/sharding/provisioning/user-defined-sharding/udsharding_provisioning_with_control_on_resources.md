@@ -14,14 +14,14 @@ This example uses `udsharding_shard_prov_memory_cpu.yaml` to provision an Oracle
 * Additional tags `INIT_SGA_SIZE` and `INIT_PGA_SIZE` to control the SGA and PGA allocation at the database level
 * User Defined Sharding is specified using `shardingType: USER`
 
-In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
+In this example, we are using pre-built Oracle Database and Global Data Services container images available on the [Oracle Container Registry](https://container-registry.oracle.com/)
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `udsharding_shard_prov_memory_cpu.yaml`.
-  * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
-  * In case you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you will need to add the additional parameter `dbEdition: "free"` to the below .yaml file.
-  * Make sure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
+  * If you plan to use images built by you, then you must change the `dbImage` and `gsmImage` tags with the images that you have built in your enviornment in file `udsharding_shard_prov_memory_cpu.yaml`.
+  * To understand the Database and Global Data Services Docker images prerequisites, see: [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
+  * If you want to use the [Oracle Database 23ai Free image](https://www.oracle.com/database/free/get-started/) for Database and GSM, then you must add the additional parameter `dbEdition: "free"` to the `.yaml` file used with this procedure. 
+  * Ensure that the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
 
-**NOTE:** For Oracle Database 23ai Free, you can control the `CPU` and `Memory` allocation of the PODs using tags `cpu` and `memory` respectively but tags `INIT_SGA_SIZE` and `INIT_PGA_SIZE` to control the SGA and PGA allocation at the database level are `not` supported.
+**NOTE:** For Oracle Database 23ai Free, you can control the `CPU` and `Memory` allocation of the PODs by using tags `cpu` and `memory` respectively, but tags `INIT_SGA_SIZE` and `INIT_PGA_SIZE` to control the SGA and PGA allocation at the database level are _not_ supported.
 
 Use the YAML file [udsharding_shard_prov_memory_cpu.yaml](./udsharding_shard_prov_memory_cpu.yaml).
 

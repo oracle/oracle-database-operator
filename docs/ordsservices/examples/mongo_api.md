@@ -40,10 +40,10 @@ openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keyg
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
 kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
 
-echo "${DB_PWD}" > sidb-db-auth-enc
-openssl rsautl -encrypt -pubin -inkey public.pem -in sidb-db-auth-enc |base64 > e_sidb-db-auth-enc
-kubectl create secret generic sidb-db-auth-enc --from-file=password=e_sidb-db-auth-enc -n  ordsnamespace
-rm sidb-db-auth-enc e_sidb-db-auth-enc
+echo "${DB_PWD}" > db-auth
+openssl pkeyutl -encrypt -pubin -inkey public.pem -in db-auth -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
+kubectl create secret generic sidb-db-auth-enc --from-file=password=e_db-auth -n  ordsnamespace
+rm db-auth e_db-auth
 ```
 
 ### Create ordssrvs Resource
@@ -74,7 +74,7 @@ rm sidb-db-auth-enc e_sidb-db-auth-enc
       name: ords-sidb
       namespace: ordsnamespace
     spec:
-      image: container-registry.oracle.com/database/ords:24.1.1
+      image: container-registry.oracle.com/database/ords:25.1.0
       forceRestart: true
       encPrivKey:
         secretName: prvkey
@@ -101,7 +101,8 @@ rm sidb-db-auth-enc e_sidb-db-auth-enc
           db.adminUser.secret:
             secretName:  sidb-db-auth-enc" | kubectl apply -f -
     ```
-    <sup>latest container-registry.oracle.com/database/ords version, **24.1.1**, valid as of **30-May-2024**</sup>
+    <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
+
     
 1. Watch the restdataservices resource until the status is **Healthy**:
     ```bash

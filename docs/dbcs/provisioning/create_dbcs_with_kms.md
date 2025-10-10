@@ -2,12 +2,13 @@
 
 In this use case, an OCI OBDS system is deployed using Oracle DB Operator OBDS controller along with KMS Vault configuration
 
-**NOTE** It is assumed that before this step, you have followed the [prerequisite](./../README.md#prerequsites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) steps to create the configmap and the secrets required during the deployment.
+**NOTE** We assume that before this procedure, you have followed the [prerequisite steps](./../README.md#prerequsites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) to create the configmap and the secrets required during the deployment.
 
 ## Pre-requisites for KMS Vaults related to OBDS System
-There is also other set of pre-requisites for KMS Vaults related to dynamic group and policies. Please follow instructions for same. 
-1. Create Dynamic group with rule `ALL {resource.compartment.id =<ocid>` and give it some name.
-2. Create policy in your compartment for this dynamic group to access to key/vaults by database.
+You also must have completed the prerequisites for KMS Vaults related to dynamic group and policies. 
+
+1. Create Dynamic group with rule `ALL {resource.compartment.id =<ocid>` and give it a name.
+2. Create a policy in your compartment for this dynamic group to grant it access to key/vaults by database.
 
 ```txt
 Allow dynamic-group <> to manage secret-family in compartment <>	
@@ -17,7 +18,7 @@ Allow dynamic-group <> to manage keys in compartment <>
 Allow dynamic-group <> to manage vaults in compartment <>
 ```
 
-E.g
+For example: 
 
 ```txt
 ALL {resource.compartment.id = 'ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a'}
@@ -29,9 +30,9 @@ Allow dynamic-group db_dynamic_group to manage database-family in compartment sa
 Allow dynamic-group db_dynamic_group to manage keys in compartment sauahuja
 Allow dynamic-group db_dynamic_group to manage vaults in compartment sauahuja
 ```
-3. Do also create KMS Vault and KMS Key in order to use it during OBDS provisioning. We are going to refer those variables (`vaultName`, `keyName`) in the yaml file.
+3. Create KMS Vault and KMS Keys so that you can use it during OBDS provisioning. We refer to those variables (`vaultName`, `keyName`) in the yaml file.
 
-This example uses `dbcs_service_with_kms.yaml` to deploy a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with:
+This example uses `dbcs_service_with_kms.yaml` to deploy a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with the following:
 
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`  
@@ -50,17 +51,17 @@ This example uses `dbcs_service_with_kms.yaml` to deploy a Single Instance OBDS 
 - KMS Compartment Id as `ocid1.compartment.oc1..aaaaaaaa63yqilqhgxv3dszur3a2fgwc64ohpfy43vpqjm7q5zq4q4yaw72a`
 - KMS Key Name as `dbkey`
 
-**NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md). While giving KMS Vault make sure not to pass TDE wallet password in DB creation as either of them can be only used for encryption.
+**NOTE:** For the details of the parameters used in the `.yaml` file, see: [DBCS Controller Parameters](./dbcs_controller_parameters.md). When providing the KMS Vault, ensure that you do not pass the TDE wallet password in database creation, because either of them can be used only for encryption.
 
-Use the file: [dbcs_service_with_kms.yaml](./dbcs_service_with_kms.yaml) for this use case as below:
+For the steps that follow, use this file: [dbcs_service_with_kms.yaml](./dbcs_service_with_kms.yaml). Complete the following steps: 
 
-1. Deploy the .yaml file:  
+1. Deploy the `.yaml` file:  
 ```bash
 [root@docker-test-server OBDS]# kubectl apply -f dbcs_service_with_kms.yaml
 dbcssystem.database.oracle.com/dbcssystem-create created
 ```
 
-2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the OBDS VMDB deployment. 
+2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` to monitor the progress of the OBDS VMDB deployment. 
 
 NOTE: Check the DB Operator Pod name in your environment.
 
@@ -70,4 +71,4 @@ NOTE: Check the DB Operator Pod name in your environment.
 
 ## Sample Output
 
-[Here](./dbcs_service_with_kms_sample_output.log) is the sample output for a OBDS System deployed in OCI using Oracle DB Operator OBDS Controller with KMS configurations.
+[This log file](./dbcs_service_with_kms_sample_output.log) is an example output log file for a OBDS System deployed in OCI using Oracle DB Operator OBDS Controller with KMS configurations.

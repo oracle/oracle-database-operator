@@ -44,7 +44,8 @@ default                           Active   118d
 kube-node-lease                   Active   118d
 kube-public                       Active   118d
 kube-system                       Active   118d
-oracle-database-operator-system   Active   10m    <<<< namespace to deploy the Oracle Database Operator
+oracle-database-operator-system   Active   10m   # <<<< NAMESPACE TO DEPLOY ORACLE DB OPERATOR 
+
  
  
 [root@test-server oracle-database-operator]# kubectl get all -n  oracle-database-operator-system
@@ -73,7 +74,7 @@ certificaterequests.cert-manager.io              2022-02-22T23:21:35Z
 certificates.cert-manager.io                     2022-02-22T23:21:36Z
 challenges.acme.cert-manager.io                  2022-02-22T23:21:36Z
 clusterissuers.cert-manager.io                   2022-02-22T23:21:36Z
-dbcssystems.database.oracle.com                  2022-02-22T23:23:25Z  <<<< CRD for OBDS Controller
+dbcssystems.database.oracle.com                  2022-02-22T23:23:25Z  # <<<< CRD for OBDS Controller
 issuers.cert-manager.io                          2022-02-22T23:21:36Z
 orders.acme.cert-manager.io                      2022-02-22T23:21:37Z
 shardingdatabases.database.oracle.com            2022-02-22T23:23:25Z
@@ -107,21 +108,21 @@ kubectl create secret generic oci-privatekey --from-file=privatekey=/root/.oci/o
 ```
 
 
-## 3. Create a Kubernetes secret named `admin-password`; This passward must meet the minimum passward requirements for the OCI OBDS Service.
+## 3. Create a Kubernetes secret named `admin-password`; This password must meet the minimum password requirements for the OCI OBDS Service.
 For example:
 
 ```bash
-#-- assuming the passward has been added to a text file named "admin-password":
+#-- assuming the password has been added to a text file named "admin-password":
 
 kubectl create secret generic admin-password --from-file=./admin-password -n default
 ```
 
 
-## 4. Create a Kubernetes secret named `tde-password`; this passward must meet the minimum passward requirements for the OCI OBDS Service.
+## 4. Create a Kubernetes secret named `tde-password`; this password must meet the minimum password requirements for the OCI OBDS Service.
 For example:
 
 ```bash
-# -- assuming the passward has been added to a text file named "tde-password":
+# -- assuming the password has been added to a text file named "tde-password":
 
 kubectl create secret generic tde-password --from-file=./tde-password -n default
 ```
@@ -161,20 +162,26 @@ For more informatoin about the multiple use cases available to you to deploy and
 [1. Deploy a DB System using OCI OBDS Service with minimal parameters](./provisioning/dbcs_service_with_minimal_parameters.md)  
 [2. Binding to an existing OBDS System already deployed in OCI Oracle Base Database Service](./provisioning/bind_to_existing_dbcs_system.md)  
 [3. Scale UP the shape of an existing OBDS System](./provisioning/scale_up_dbcs_system_shape.md)  
-[4. Scale DOWN the shape of an existing OBDS System](./provisioning/scale_down_dbcs_system_shape.md)  
-[5. Scale UP the storage of an existing OBDS System](./provisioning/scale_up_storage.md)  
-[6. Update License type of an existing OBDS System](./provisioning/update_license.md)  
+[4. Scale DOWN the shape of an existing OBDS System](./provisioning/scale_down_dbcs_system_shape.md)   
+[5. Scale UP the storage of an existing OBDS System](./provisioning/scale_up_storage.md)    
+[6. Update License type of an existing OBDS System](./provisioning/update_license.md)   
 [7. Terminate an existing OBDS System](./provisioning/terminate_dbcs_system.md)  
 [8. Create OBDS with All Parameters with Storage Management as LVM](./provisioning/dbcs_service_with_all_parameters_lvm.md)  
 [9. Create OBDS with All Parameters with Storage Management as ASM](./provisioning/dbcs_service_with_all_parameters_asm.md)  
 [10. Deploy a 2 Node RAC DB System using OCI OBDS Service](./provisioning/dbcs_service_with_2_node_rac.md)  
-[11. Create PDB to an existing OBDS System already deployed in OCI OBDS Service](./provisioning/create_pdb_to_existing_dbcs_system.md)   
-[12. Create OBDS with PDB in OCI](./provisioning/create_dbcs_with_pdb.md)  
-[13. Create OBDS with KMS Vault Encryption in OCI](./provisioning/create_dbcs_with_kms.md)    
+[11. Create PDB to an existing OBDS System already deployed in OCI OBDS Service](./provisioning/create_pdb_to_existing_dbcs_system.md)    
+[12. Create OBDS with PDB in OCI](./provisioning/create_dbcs_with_pdb.md)   
+[13. Create OBDS with KMS Vault Encryption in OCI](./provisioning/create_dbcs_with_kms.md)     
 [14. Migrate to KMS vault from TDE Wallet password encryption of an existing OBDS System already deployed in OCI Base OBDS Service](./provisioning/migrate_to_kms.md)  
 [15. Clone DB System from Existing DB System in OCI OBDS Service](./provisioning/clone_from_existing_dbcs.md)  
 [16. Clone DB System from Backup of Existing DB System in OCI OBDS Service](./provisioning/clone_from_backup_dbcs.md)  
 [17. Clone DB System from Existing Database of DB System in OCI OBDS Service](./provisioning/clone_from_database.md)  
+[18. Create Backup of Existing Database of DB System in OCI OBDS Service](./provisioning/backup_of_database.md)  
+[19. Restore from Backup of Existing Database of DB System in OCI OBDS Service](./provisioning/restore_of_database.md)  
+[20. Setup Dataguard Association to Existing Database of DB System in OCI Base DBCS Service](./provisioning/dataguard_to_database.md)  
+[21. Disable Dataguard Association to Existing Database of DB System and Terminate Peer DB System in OCI Base DBCS Service](./provisioning/disable_dataguard_to_database.md)  
+[22. Patching Existing Database of DB System in OCI Base DBCS Service](./provisioning/patching_database.md)   
+[23. Upgrading Existing Database of DB System in OCI Base DBCS Service](./provisioning/upgrading_database.md)  
 
 ## Connecting to OCI OBDS database deployed using Oracle DB Operator OBDS Controller
 

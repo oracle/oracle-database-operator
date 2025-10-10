@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: observability-exporter
     app.kubernetes.io/instance: obs-sample
-    app.kubernetes.io/version: 1.5.1
+    app.kubernetes.io/version: 2.0.2
 spec:
   database:
     dbUser:
@@ -21,54 +21,48 @@ spec:
       key: "connection"
       secret: db-secret
 
-    dbWallet:
-      secret: instance-wallet
+  wallet:
+    secret: instance-wallet
+
 
   inheritLabels:
     - app.kubernetes.io/name
     - app.kubernetes.io/instance
     - app.kubernetes.io/version
 
-  sidecars:
-    - name: promtail
-      image: grafana/promtail
-      args:
-        - -config.file=/etc/promtail/promtail.yaml
-      volumeMounts:
-        - name: config
-          mountPath: /etc/promtail
-        - name: log-volume
-          mountPath: /log
+  sidecar:
+    containers:
+      - name: promtail
+        image: grafana/promtail
+        args:
+          - -config.file=/etc/promtail/promtail.yaml
+        volumeMounts:
+          - name: config
+            mountPath: /etc/promtail
+          - name: log-volume
+            mountPath: /log
+    volumes:
+      - name: config
+        configMap:
+          name: promtail-sidecar-config
 
-  sidecarVolumes:
-    - name: config
-      configMap:
-        name: promtail-sidecar-config
-  exporter:
-    deployment:
-      image: "container-registry.oracle.com/database/observability-exporter:1.5.1"
-      args: [ "--log.level=info" ]
-      commands: [ "/oracledb_exporter" ]
+  deployment:
+    image: "container-registry.oracle.com/database/observability-exporter:2.0.2"
+    args: [ "--log.level=info" ]
+    commands: [ "/oracledb_exporter" ]
 
-  configuration:
+  metrics:
     configMap:
-      key: "config.toml"
-      name: "devcm-oradevdb-config"
+      - name: "devcm-oradevdb-config"
+        key: "config.toml"
 
-  prometheus:
-    serviceMonitor:
-      labels:
-        release: prometheus
+
+  serviceMonitor:
+    labels:
+      release: prometheus
 
   log:
+    destination: "/log"
     filename: "alert.log"
-    path: "/log"
-
-    volume:
-      name: log-volume
 
   replicas: 1
-
-  ociConfig:
-    configMapName: oci-cred
-    secretName: oci-privatekey

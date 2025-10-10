@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.17.3
   name: lrpdbs.database.oracle.com
 spec:
   group: database.oracle.com
@@ -31,18 +31,26 @@ spec:
       jsonPath: .status.totalSize
       name: PDB Size
       type: string
-    - description: Status of the LRPDB Resource
-      jsonPath: .status.phase
-      name: Status
-      type: string
     - description: Error message, if any
       jsonPath: .status.msg
       name: Message
+      type: string
+    - description: open restricted
+      jsonPath: .status.restricted
+      name: Restricted
       type: string
     - description: last sqlcode
       jsonPath: .status.sqlCode
       name: last sqlcode
       type: integer
+    - description: last plsql applied
+      jsonPath: .status.lastplsql
+      name: last PLSQL
+      type: string
+    - description: Bitmask status
+      jsonPath: .status.pdbBitMaskStr
+      name: BITMASK STATUS
+      type: string
     - description: The connect string to be used
       jsonPath: .status.connString
       name: Connect_String
@@ -60,17 +68,6 @@ spec:
           spec:
             properties:
               action:
-                enum:
-                - Create
-                - Clone
-                - Plug
-                - Unplug
-                - Delete
-                - Modify
-                - Status
-                - Map
-                - Alter
-                - Noaction
                 type: string
               adminName:
                 properties:
@@ -140,8 +137,6 @@ spec:
                 type: string
               asClone:
                 type: boolean
-              assertiveLrpdbDeletion:
-                type: boolean
               cdbName:
                 type: string
               cdbNamespace:
@@ -163,12 +158,16 @@ spec:
                 type: object
               cdbResName:
                 type: string
+              codeconfigmap:
+                type: string
               copyAction:
                 enum:
                 - COPY
                 - NOCOPY
                 - MOVE
                 type: string
+              debug:
+                type: integer
               dropAction:
                 enum:
                 - INCLUDING
@@ -177,6 +176,9 @@ spec:
               fileNameConversions:
                 type: string
               getScript:
+                default: false
+                type: boolean
+              imperativeLrpdbDeletion:
                 type: boolean
               lrpdbTlsCat:
                 properties:
@@ -231,6 +233,9 @@ spec:
                 - READ WRITE
                 - RESTRICTED
                 type: string
+              modifyOption2:
+                default: NONE
+                type: string
               parameterScope:
                 type: string
               pdbName:
@@ -240,10 +245,21 @@ spec:
                 - OPEN
                 - CLOSE
                 - ALTER
+                - DELETE
+                - UNPLUG
+                - PLUG
+                - CLONE
+                - RESET
+                - NONE
                 type: string
               pdbconfigmap:
                 type: string
+              plsqlexemode:
+                type: integer
+              reststate:
+                type: integer
               reuseTempFile:
+                default: true
                 type: boolean
               sourceFileNameConversions:
                 type: string
@@ -292,6 +308,7 @@ spec:
               totalSize:
                 type: string
               unlimitedStorage:
+                default: true
                 type: boolean
               webServerPwd:
                 properties:
@@ -325,11 +342,6 @@ spec:
                 type: object
               xmlFileName:
                 type: string
-            required:
-            - action
-            - alterSystemParameter
-            - alterSystemValue
-            - webServerPwd
             type: object
           status:
             properties:
@@ -343,13 +355,21 @@ spec:
                 type: string
               connString:
                 type: string
+              lastplsql:
+                type: string
               modifyOption:
                 type: string
               msg:
                 type: string
               openMode:
                 type: string
+              pdbBitMask:
+                type: integer
+              pdbBitMaskStr:
+                type: string
               phase:
+                type: string
+              restricted:
                 type: string
               sqlCode:
                 type: integer

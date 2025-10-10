@@ -94,6 +94,9 @@ func CreateAutonomousBackup(kubeClient client.Client,
 				K8sAdb: dbv4.K8sAdbSpec{
 					Name: common.String(ownerAdb.Name),
 				},
+				OciAdb: dbv4.OciAdbSpec{
+					Id: backupSummary.AutonomousDatabaseId,
+				},
 			},
 			DisplayName:                  backupSummary.DisplayName,
 			AutonomousDatabaseBackupOCID: backupSummary.Id,

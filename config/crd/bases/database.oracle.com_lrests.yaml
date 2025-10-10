@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.17.3
   name: lrests.database.oracle.com
 spec:
   group: database.oracle.com
@@ -55,6 +55,8 @@ spec:
             type: object
           spec:
             properties:
+              autodiscover:
+                type: boolean
               cdbAdminPwd:
                 properties:
                   secret:
@@ -117,6 +119,21 @@ spec:
                 required:
                 - secret
                 type: object
+              cdbTlsCat:
+                properties:
+                  secret:
+                    properties:
+                      key:
+                        type: string
+                      secretName:
+                        type: string
+                    required:
+                    - key
+                    - secretName
+                    type: object
+                required:
+                - secret
+                type: object
               cdbTlsCrt:
                 properties:
                   secret:
@@ -147,6 +164,9 @@ spec:
                 required:
                 - secret
                 type: object
+              clusterIp:
+                default: false
+                type: boolean
               dbPort:
                 type: integer
               dbServer:
@@ -154,6 +174,9 @@ spec:
               dbTnsurl:
                 type: string
               deletePdbCascade:
+                type: boolean
+              loadBalancer:
+                default: false
                 type: boolean
               lrestImage:
                 type: string
@@ -165,6 +188,7 @@ spec:
               lrestImagePullSecret:
                 type: string
               lrestPort:
+                default: 8888
                 type: integer
               lrestPwd:
                 properties:
@@ -181,12 +205,16 @@ spec:
                 required:
                 - secret
                 type: object
+              namespaceAutoDiscover:
+                type: string
               nodeSelector:
                 additionalProperties:
                   type: string
                 type: object
               replicas:
                 type: integer
+              serviceAccountName:
+                type: string
               serviceName:
                 type: string
               sysAdminPwd:
@@ -204,6 +232,9 @@ spec:
                 required:
                 - secret
                 type: object
+              trace_level_client:
+                default: 0
+                type: integer
               webServerPwd:
                 properties:
                   secret:
