@@ -1,40 +1,40 @@
 # Debugging and Troubleshooting
 
-When the Oracle Restart Database is provisioned using the Oracle Restart controller, the debugging of an issue with the deployment depends on at which stage the issue has been seen.
+When provisioning the Oracle Restart Database with the Oracle Restart Controller, your debugging approach depends on the stage in which the issue occurs. Use the guidance below for targeted troubleshooting.
 
 Below are the possible cases and the steps to debug such an issue:
 
 ## Failure during the provisioning of Kubernetes Pods
 
-In case the failure occurs during the provisioning, we need to check the status of the Kubernetes Pod which has failed to deployed.
+If the failure occurs while creating Kubernetes Pods, start by checking the status of the affected Pod:
 
-Use the below command to check the logs of the Pod which has a failure. For example, for failure in case of Pod `pod/dbmc1-0`, use below command:
+Use the following command to check the logs of the Pod that has a failure. For example, pod `pod/dbmc1-0`, use the following command:
 
 ```sh
 kubectl logs -f pod/dbmc1-0 -n orestart
 ```
 
-In case the Pod has failed to provision due to an issue with the Docker Image Pull, you will see the error `Error: ErrImagePull` in above logs.
+If the Pod has failed to provision due to an issue with the Docker Image Pull, then you see the error `Error: ErrImagePull` in the logs.
 
-If the Pod has not yet got initialized, use the below command to find the reason for it:
+If the Pod has not yet been initialized, then use the following command to find the reason for it:
 
 ```sh
 kubectl describe pod/dbmc1-0 -n orestart
 ```
 
-You will need to further troubleshoot depending upon the issue/error seen from the above step.
+You will need to further troubleshoot depending on further issues or errors seen after you run `kubectl describe pod`.
 
-## Failure in the provisioning of the Oracle Database
+## Oracle Database Provisioning Failure
 
-In case the failure occures after the Kubernetes Pods are created but during the execution of the scripts to create the Oracle database, you will need to trobleshoot that at the individual Pod level.
+If the Oracle Database provisioning fails after the Kubernetes Pods have been created, but during the processing of database creation scripts, then troubleshoot the issue within the affected Pod.
 
-Initially, check the logs of the Kubernetes Pod using the command like below (change the name of the Pod with the actual Pod)
+Initially, check the logs of the Kubernetes Pod using the `kubectl logs` command (exchange the name of the Pod in this example with the actual Pod on your system):
 
 ```sh
 kubectl logs -f pod/dbmc1-0 -n orestart
 ```
 
-To check the details of the CRS logs or the RDBMS instance logs at the host level, switch to the corresponding Kubernetes container using the command like below:
+To check the details of the CRS logs or the RDBMS instance logs at the host level, switch to the corresponding Kubernetes container using the following command:
 
 ```sh
 kubectl exec -it dbmc1-0 -n orestart -- tail -f /tmp/orod/oracle_db_setup.log

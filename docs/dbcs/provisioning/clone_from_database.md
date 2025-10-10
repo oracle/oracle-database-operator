@@ -2,11 +2,11 @@
 
 In this use case, an existing OCI OBDS system deployed earlier with existing Database is going to be cloned in OCI Base OBDS Service using existing Database ID. 
 
-As an pre-requisite, get the details of OCID of database of an existing OBDS System which you want to clone.  
+As an prerequisite, obtain the details of OCID of database of an existing OBDS System that you want to clone.  
 
-**NOTE:** We are assuming that before this step, you have followed the [prerequisite](./../README.md#prerequisites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) steps to create the configmap and the secrets required during the deployment.
+**NOTE:** We are assuming that before this step, you have followed the [prerequisite steps](./../README.md#prerequisites-to-deploy-a-dbcs-system-using-oracle-db-operator-dbcs-controller) to create the configmap and the secrets required during the deployment.
 
-This example uses `clone_dbcs_system_from_database.yaml` to clone a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with:
+This example uses `clone_dbcs_system_from_database.yaml` to clone a Single Instance OBDS VMDB using Oracle DB Operator OBDS Controller with the following:
 - OCID of existing as `databaseId`
 - OCI Configmap as `oci-cred`  
 - OCI Secret as `oci-privatekey`
@@ -14,7 +14,7 @@ This example uses `clone_dbcs_system_from_database.yaml` to clone a Single Insta
 - Specification of dbClone as - Details of new DB system for cloning `dbAdminPasswordSecret`,`tdeWalletPasswordSecret`, `dbName`,`hostName`,`displayName`,`licenseModel`,`domain`,`sshPublicKeys`,`subnetId`, `initialDataStorageSizeInGB`
 **NOTE:** For the details of the parameters to be used in the .yaml file, please refer [here](./dbcs_controller_parameters.md).
 
-Use the file: [clone_dbcs_system_from_database.yaml](./clone_dbcs_system_from_database.yaml) for this use case as below:
+Use the file: [clone_dbcs_system_from_database.yaml](./clone_dbcs_system_from_database.yaml) for this use case as described in the following steps:
 
 1. Deploy the .yaml file:  
 ```sh
@@ -22,7 +22,7 @@ Use the file: [clone_dbcs_system_from_database.yaml](./clone_dbcs_system_from_da
 dbcssystem.database.oracle.com/dbcssystem-clone created
 ```
 
-2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` for the progress of the OBDS VMDB creation of PDBs. 
+2. Monitor the Oracle DB Operator Pod `pod/oracle-database-operator-controller-manager-665874bd57-g2cgw` to follow the progress of the OBDS VMDB creation of PDBs. 
 
 NOTE: Check the DB Operator Pod name in your environment.
 
@@ -32,4 +32,4 @@ NOTE: Check the DB Operator Pod name in your environment.
 
 ## Sample Output
 
-[Here](./clone_dbcs_system_from_database_sample_output.log) is the sample output for cloning an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.
+[This log file](./clone_dbcs_system_from_database_sample_output.log) is an example output log file for cloning an existing OBDS System deployed in OCI using Oracle DB Operator OBDS Controller.

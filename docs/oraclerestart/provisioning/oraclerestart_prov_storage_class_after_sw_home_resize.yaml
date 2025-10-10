@@ -46,15 +46,17 @@ spec:
   enableOns: "enable"                 # If you want to have ONS notification configured on the specified port. Default value is "enable"        
     
   # Custom Storage class to be used for dynamic provisioning (if applicable)
-  storageClass: "oci-bv"
+  # You have separate parameters to specify the storage class for all the diskgroups (CRS, DATA, RECO, REDO)
+  crsDgStorageClass: "oci-bv"         # Specify storage class for the CRS Diskgroup, Currently using "oci-bv" but you can specify another available storage class as well
+  swDgStorageClass: "oci-bv"          # Specify storage class for the storage location for software, Currently using "oci-bv" but you can specify another available storage class as well
 
   # ASM (Automatic Storage Management) storage configuration
   asmStorageDetails:
     disksBySize:
       - storageSizeInGb: 50          # Each disk in this group has 50Gi of storage
         diskNames:
-          - /dev/asm-disk1           # Device for ASM disk 1
-          - /dev/asm-disk2           # Device for ASM disk 2
+          - /dev/asm-disk1  # ASM disk device path 1
+          - /dev/asm-disk2  # ASM disk device path 2
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
