@@ -6,7 +6,7 @@ For more information on Oracle Restart Database 19c refer to the [Oracle Databas
 
 Kubernetes provides essential infrastructure building blocks, including compute, storage, and networking resources, and exposes them as code for infrastructure automation. This approach enables rapid provisioning of multi-node topologies. Additionally, Kubernetes offers the **StatefulSet** workload API object—ideal for managing stateful applications such as Oracle Restart, Single Instance Oracle Databases, and other Oracle features or configurations that require persistent storage and stable network identities.
 
-The Oracle Restart Controller in the Oracle Database Operator deploys Oracle Databases as a StatefulSet within Kubernetes clusters, utilizing the Oracle Restart Slim Image. The Oracle Restart Controller manages the typical lifecycle operations of an Oracle Database in a Kubernetes environment, including deployment, monitoring, scaling, upgrades, and deletion, as illustrated below:
+The Oracle Restart Controller in the Oracle Database Operator deploys Oracle Databases as a StatefulSet within Kubernetes clusters, using the Oracle Restart Slim Image. The Oracle Restart Controller manages the typical lifecycle operations of an Oracle Database in a Kubernetes environment, including deployment, monitoring, scaling, upgrades, and deletion, as illustrated below:
 
 * Create Oracle Database
   * Install and Configure Oracle Grid Infrastructure
@@ -34,7 +34,7 @@ To create an Oracle Database, complete the steps in the following sections:
 
 To become familiar with Oracle Restart in containerized environments, review the [this documentation](https://github.com/oracle/docker-images/blob/main/OracleDatabase/RAC/OracleRealApplicationClusters/docs/orestart/README.md) before proceeding further
 
-[Pre-requisites for running Oracle Restart Controller](./provisioning/prerequisites_oracle_restart_db.md)
+[Prerequisites for running Oracle Restart Controller](./provisioning/prerequisites_oracle_restart_db.md)
 
 ## Provisioning Oracle Restart database in an Oracle Kubernetes Engine Environment
 
@@ -55,7 +55,7 @@ Deploy Oracle Restart Database YAML files using Kubernetes Cluster on your Oracl
 [13. Adding ASM Disks - Add ASM Disks to an existing Oracle Restart Database](./provisioning/add_asm_disk_to_an_existing_restart_database.md)  
 [14. Deleting ASM Disks - Delete ASM Disks from an existing Oracle Restart Database](./provisioning/delete_asm_disks_from_an_existing_restart_database.md)
 
-**NOTE:** Resizing of the `ASM Disks` is NOT allowed. You can add new ASM Disks to an exising Oracle Restart Database.
+**NOTE:** Resizing of the `ASM Disks` is _not_ allowed. You can add new ASM Disks to an exising Oracle Restart Database.
 
 ## Connecting to Oracle Restart Database
 
@@ -63,11 +63,11 @@ After the Oracle Restart database has been provisioned using the Oracle Restart 
 
 ## Known Issues
 
-Please refer to this document for any known issues related to deploying Oracle Restart Database using Oracle Restart Controller: [Known Issues](./provisioning/known_issues.md)
+Refer to the Known Issues document for assistance related to issues deploying Oracle Restart Database using Oracle Restart Controller: [Known Issues](./provisioning/known_issues.md)
 
 ## Cleanup
 
-Steps to cleanup Oracle Restart Database deployed using Oracle Restart Controller in this document in Oracle Database Kubernetes Operator are documented in this page: [Cleanup](./provisioning/cleanup.md)
+Steps to clean up Oracle Restart Database deployed using Oracle Restart Controller in this document in Oracle Database Kubernetes Operator are documented in this page: [Cleanup](./provisioning/cleanup.md)
 
 
 ## Debugging and Troubleshooting
