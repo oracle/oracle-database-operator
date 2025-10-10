@@ -738,9 +738,6 @@ func VolumePVForASM(instance *oraclerestart.OracleRestart, diskName string, size
 	if scName != nil {
 		asmPvc.Spec.StorageClassName = *scName
 	}
-	if scName != nil {
-		asmPvc.Spec.StorageClassName = *scName
-	}
 
 	return asmPvc
 }
