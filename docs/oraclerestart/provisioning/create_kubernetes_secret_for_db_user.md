@@ -1,8 +1,8 @@
 # Create Kubernetes secret for db user
 
-Create a Kubernetes secret named `db-user-pass-pkutl` using a password in a text file and then encrypt it using an `openssl` key. The text file will be removed after secret is created. You need to make sure openssl must be installed on worker nodes.
+Create a Kubernetes secret named `db-user-pass-pkutl` using a password in a text file, and then encrypt it using an `openssl` key. The text file will be removed after the secret is created. Note that openssl _must_ be installed on worker nodes.
 
-**NOTE:** The openssl version on the system where you run the below commands to generate the secret and the openssl version of the Oracle Restart Slim Image must be compatible with each other.
+**NOTE:** The openssl version on the system where you run the commands in this procedure to generate the secret and the openssl version of the Oracle Restart Slim Image must be compatible with each other.
 
 ```sh
 mkdir /tmp/.secrets/
