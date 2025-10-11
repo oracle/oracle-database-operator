@@ -383,6 +383,17 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 		}
 	}
 
+	if checkHugePagesConfigured(instance) {
+		result = append(result, corev1.Volume{
+			Name: OracleRestartSpex.Name + "-oradata-hugepages-vol",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium: corev1.StorageMediumHugePages,
+				},
+			},
+		})
+	}
+
 	if len(OracleRestartSpex.PvcName) != 0 {
 		for source := range OracleRestartSpex.PvcName {
 			result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-ora-vol-" + source, VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: source}}})
@@ -614,6 +625,13 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 				})
 			}
 		}
+	}
+
+	if checkHugePagesConfigured(instance) {
+		result = append(result, corev1.VolumeMount{
+			Name:      OracleRestartSpex.Name + "-oradata-hugepages-vol",
+			MountPath: "/hugepages",
+		})
 	}
 
 	if len(OracleRestartSpex.PvcName) != 0 {

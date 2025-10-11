@@ -1395,3 +1395,20 @@ func CheckStorageClass(instance *oraclerestart.OracleRestart) string {
 	}
 	return "SC"
 }
+
+func checkHugePagesConfigured(instance *oraclerestart.OracleRestart) bool {
+
+	if instance.Spec.Resources != nil {
+		if len(instance.Spec.Resources.Limits) > 0 {
+			_, ok := instance.Spec.Resources.Limits["hugepages-2Mi"]
+			if ok {
+				return true
+			}
+			_, ok = instance.Spec.Resources.Requests["hugepages-2Mi"]
+			if ok {
+				return true
+			}
+		}
+	}
+	return false
+}
