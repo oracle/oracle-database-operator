@@ -6,7 +6,7 @@ As part of Oracle's resolution to make Oracle Database Kubernetes native (that i
 
 ## What's New in v2.0.0
 
-* **RedHat OpenShift Certification**
+* **RedHat OpenShift**
   * Validation of OraOperator and Controllers
   * Inclusion in RedHat Operators Catalog
 * **Restart Controller**
