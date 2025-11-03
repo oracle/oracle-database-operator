@@ -179,7 +179,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
     kubectl apply -f rbac/node-rbac.yaml
   ```
 
-## Install Oracle DB Operator
+## Installation
 
   After you have completed the preceding prerequisite changes, you can install the operator using one of the following methods:
 
