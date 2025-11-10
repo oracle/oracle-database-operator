@@ -1161,7 +1161,7 @@ func (r *OracleRestartReconciler) setDefaults(oracleRestart *oraclerestartdb.Ora
 			}
 
 			if oracleRestart.Spec.ConfigParams.CrsAsmDiskDgRedundancy == "" {
-				oracleRestart.Spec.ConfigParams.CrsAsmDiskDgRedundancy = "external"
+				oracleRestart.Spec.ConfigParams.CrsAsmDiskDgRedundancy = "EXTERNAL"
 			}
 		}
 
@@ -2153,7 +2153,7 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 		}
 
 		if instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy != "" {
-			data = append(data, "CRS_ASMDG_REDUNDANCY="+"redundancy="+instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy)
+			data = append(data, "CRS_ASMDG_REDUNDANCY="+instance.Spec.ConfigParams.CrsAsmDiskDgRedundancy)
 		}
 	}
 
