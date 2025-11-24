@@ -131,11 +131,11 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
       vm.nr_hugepages=16384
       ```
    * Run the following commands:
-      * `# sysctl -a`
-      * `# sysctl –p`
+      * `sysctl -a`
+      * `sysctl –p`
    * Verify that the swap memory is disabled by running:  
       ```sh
-      # free -m
+      free -m
       .....
       Swap:             0           0           0
       ```
@@ -144,18 +144,24 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
       ```txt
       Environment="KUBELET_EXTRA_ARGS=--fail-swap-on=false --allowed-unsafe-sysctls='kernel.shm*,net.*,kernel.sem'"
       ```
-      * Reload Configurations: `# systemctl daemon-reload`
-      * Restart Kubelet: `# systemctl restart kubelet`
-      * Check the Kubelet status: `# systemctl status kubelet`
+      * Reload Configurations:  
+      `systemctl daemon-reload`
+      * Restart Kubelet:  
+      `systemctl restart kubelet`
+      * Check the Kubelet status:   
+      `systemctl status kubelet`
       
       **Note: For openshift worker nodes**, path to edit is `/etc/systemd/system/kubelet.service.d/99-kubelet-extra-args.conf` and add below content in this file:
       ```txt
       [Service]
       Environment="KUBELET_EXTRA_ARGS=--fail-swap-on=false --allowed-unsafe-sysctls='kernel.shm*,net.*,kernel.sem'"
       ```
-      * Reload Configurations: `# systemctl daemon-reload`
-      * Restart Kubelet: `# systemctl restart kubelet`
-      * Check the Kubelet status: `# systemctl status kubelet`
+      * Reload Configurations:  
+      `systemctl daemon-reload`
+      * Restart Kubelet:  
+      `systemctl restart kubelet`
+      * Check the Kubelet status:  
+      `systemctl status kubelet`
 
    * Skip this step **if you are using a StorageClass**.Otherwise, create the necessary mount points on the worker node. These mount points will be used by the Oracle Restart pod for Oracle Grid Infrastructure and RDBMS Home, as well as for the software staging location.
       * On worker node:

@@ -44,6 +44,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -119,7 +120,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	oracleRestart := &oraclerestartdb.OracleRestart{}
 	configMapData := make(map[string]string)
-
+	// time.Sleep(50000 * time.Second)
 	// Execute for every reconcile
 	defer r.updateReconcileStatus(oracleRestart, ctx, req, &result, &err, &blocked, &completed)
 
@@ -189,13 +190,17 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// debugging
-	err = checkOracleRestartState(oracleRestart)
-	if err != nil {
-		result = resultQ
-		r.Log.Info("Oracle Restart object is in restricted state, returning back")
-		return result, nilErr
-	}
+	webhooksEnabled := os.Getenv("ENABLE_WEBHOOKS") != "false"
 
+	if webhooksEnabled {
+
+		err = checkOracleRestartState(oracleRestart)
+		if err != nil {
+			result = resultQ
+			r.Log.Info("Oracle Restart object is in restricted state, returning back")
+			return result, nilErr
+		}
+	}
 	// First Validate
 	err = r.validateSpex(oracleRestart, oldSpec, ctx)
 	if err != nil {
@@ -334,10 +339,6 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 							pvName,
 							r.Client,
 						)
-						// if pvVolume == nil {
-						// 	r.Log.Info("VolumePVForASM returned nil for Dynamic Provisioning", "diskName", diskName, "index", index)
-						// 	continue // or return error
-						// }
 						_, result, err = r.createOrReplaceAsmPv(ctx, oracleRestart, pvVolume)
 						if err != nil {
 							result = resultNq
@@ -386,9 +387,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
 			cm := oraclerestartcommon.ConfigMapSpecs(oracleRestart, configMapData, cmName)
 			result, configmapEnvKeyChanged, err := r.createConfigMap(ctx, *oracleRestart, cm)
-			if err != nil {
-				// handle error
-			}
+
 			if err != nil {
 				result = resultNq
 				return result, err
@@ -498,31 +497,6 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	if oracleRestart.Spec.EnableOns == "enable" || oracleRestart.Spec.EnableOns == "disable" {
-		OraRestartSpex := oracleRestart.Spec.InstDetails
-		orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
-		if err != nil {
-			r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
-			return ctrl.Result{}, err
-		}
-
-		podList, err := oraclerestartcommon.GetPodList(orestartSfSet.Name, oracleRestart, r.Client, oracleRestart.Spec.InstDetails)
-		if err != nil {
-			r.Log.Error(err, "Failed to list pods")
-			return ctrl.Result{}, err
-		}
-		// default is to start
-		onsOp := "start"
-		if oracleRestart.Spec.EnableOns == "disable" {
-			onsOp = "stop"
-		}
-
-		err = r.updateONS(ctx, podList, oracleRestart, onsOp)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-
 	err = r.expandStorageClassSWVolume(ctx, oracleRestart, oldSpec)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -535,6 +509,56 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		oracleRestart.Spec.IsFailed = true
 		return resultQ, err
 	}
+	OraRestartSpex := oracleRestart.Spec.InstDetails
+	orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
+
+	if err != nil {
+		//msg := "Unable to find Oracle Restart statefulset " + oraclerestartcommon.GetFmtStr(OraRestartSpex.Name) + "."
+		//oraclerestartcommon.LogMessages("INFO", msg, nil, instance, r.Log)
+		r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
+		return ctrl.Result{}, err
+	}
+
+	podList, err := oraclerestartcommon.GetPodList(orestartSfSet.Name, oracleRestart, r.Client, OraRestartSpex)
+	if err != nil {
+		msg := "Unable to find any pod in statefulset " + oraclerestartcommon.GetFmtStr(orestartSfSet.Name) + "."
+		oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
+		r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.PodNotFound), r.Client, false)
+		return ctrl.Result{}, err
+	}
+	isPodExist, _, notReadyPod := oraclerestartcommon.PodListValidation(podList, orestartSfSet.Name, oracleRestart, r.Client)
+	// Check if the pod is ready
+	if isPodExist {
+		msg := ""
+		if notReadyPod == nil {
+			if oracleRestart.Spec.EnableOns == "enable" || oracleRestart.Spec.EnableOns == "disable" {
+				OraRestartSpex := oracleRestart.Spec.InstDetails
+				orestartSfSet, err := oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
+				if err != nil {
+					r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
+					return ctrl.Result{}, err
+				}
+
+				podList, err := oraclerestartcommon.GetPodList(orestartSfSet.Name, oracleRestart, r.Client, oracleRestart.Spec.InstDetails)
+				if err != nil {
+					r.Log.Error(err, "Failed to list pods")
+					return ctrl.Result{}, err
+				}
+				// default is to start
+				onsOp := "start"
+				if oracleRestart.Spec.EnableOns == "disable" {
+					onsOp = "stop"
+				}
+
+				err = r.updateONS(ctx, podList, oracleRestart, onsOp)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+			}
+			r.Log.Info(msg)
+		}
+	}
+
 	r.Log.Info("Reconcile completed. Requeuing....")
 	// uncomment this only to debugging null pointer exception
 	// r.updateReconcileStatus(OracleRestart, ctx, req, &result, &err, &blocked, &completed)
@@ -772,14 +796,14 @@ func (r *OracleRestartReconciler) validateSpex(oracleRestart *oraclerestartdb.Or
 	}
 
 	// ========  Config Params Checks
-	// Checking Secret for ssh key
-	privKeyFlag, pubKeyFlag := oraclerestartcommon.GetSSHkey(oracleRestart, oracleRestart.Spec.SshKeySecret.Name, r.Client)
-	if !privKeyFlag {
-		return errors.New("private key name is not set to " + oracleRestart.Spec.SshKeySecret.PrivKeySecretName + " in SshKeySecret")
-	}
-	if !pubKeyFlag {
-		return errors.New("public key name is not set to " + oracleRestart.Spec.SshKeySecret.PubKeySecretName + " in SshKeySecret")
-	}
+	// // Checking Secret for ssh key
+	// privKeyFlag, pubKeyFlag := oraclerestartcommon.GetSSHkey(oracleRestart, oracleRestart.Spec.SshKeySecret.Name, r.Client)
+	// if !privKeyFlag {
+	// 	return errors.New("private key name is not set to " + oracleRestart.Spec.SshKeySecret.PrivKeySecretName + " in SshKeySecret")
+	// }
+	// if !pubKeyFlag {
+	// 	return errors.New("public key name is not set to " + oracleRestart.Spec.SshKeySecret.PubKeySecretName + " in SshKeySecret")
+	// }
 
 	// Checking Gi Responsefile
 	if oracleRestart.Spec.ConfigParams.GridResponseFile.ConfigMapName != "" {
@@ -1911,10 +1935,17 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 		}
 	}
 
-	if instance.Spec.SshKeySecret.Name != " " {
-		//SecretMap check is done in ValidateSpex
-		data = append(data, "SSH_PRIVATE_KEY="+instance.Spec.SshKeySecret.KeyMountLocation+"/"+instance.Spec.SshKeySecret.PrivKeySecretName)
-		data = append(data, "SSH_PUBLIC_KEY="+instance.Spec.SshKeySecret.KeyMountLocation+"/"+instance.Spec.SshKeySecret.PubKeySecretName)
+	// Check for nil SshKeySecret and ensure Name is not empty/whitespace
+	if instance.Spec.SshKeySecret != nil && strings.TrimSpace(instance.Spec.SshKeySecret.Name) != "" {
+		if instance.Spec.SshKeySecret.KeyMountLocation != "" && instance.Spec.SshKeySecret.PrivKeySecretName != "" {
+			data = append(data, "SSH_PRIVATE_KEY="+
+				instance.Spec.SshKeySecret.KeyMountLocation+"/"+instance.Spec.SshKeySecret.PrivKeySecretName)
+		}
+		// PubKeySecretName may be optional; only append if present
+		if instance.Spec.SshKeySecret.KeyMountLocation != "" && instance.Spec.SshKeySecret.PubKeySecretName != "" {
+			data = append(data, "SSH_PUBLIC_KEY="+
+				instance.Spec.SshKeySecret.KeyMountLocation+"/"+instance.Spec.SshKeySecret.PubKeySecretName)
+		}
 	}
 
 	if instance.Spec.DbSecret != nil {
@@ -2609,9 +2640,6 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(
 		Name:      dep.Name,
 		Namespace: oracleRestart.Namespace,
 	}, found)
-
-	jsn, _ := json.Marshal(dep)
-	oraclerestartcommon.LogMessages("DEBUG", string(jsn), nil, &oracleRestart, r.Log)
 
 	if err != nil && apierrors.IsNotFound(err) {
 		// CREATE

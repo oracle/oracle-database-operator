@@ -11277,8 +11277,6 @@ spec:
                     type: string
                   pubKeySecretName:
                     type: string
-                required:
-                - name
                 type: object
               swDgStorageClass:
                 type: string
@@ -11997,8 +11995,6 @@ spec:
                     type: string
                   pubKeySecretName:
                     type: string
-                required:
-                - name
                 type: object
               state:
                 type: string
