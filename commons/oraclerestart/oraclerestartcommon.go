@@ -188,16 +188,12 @@ func GetRacPodName(racName string) string {
 	return podName
 }
 
-func getlabelsForRac(instance *oraclerestart.OracleRestart) map[string]string {
-	return buildLabelsForOracleRestart(instance, "OracleRestart")
-}
-
 func GetAsmPvcName(name string, diskPath string, instance *oraclerestart.OracleRestart) string {
 
 	// pvcName := "asm-pvc-disk-" + strconv.Itoa(index) + "-" + name + "-" + dgType + "-" + "pvc"
 	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
 	diskName := diskPath[strings.LastIndex(diskPath, "/")+1:]
-	pvcName := "asm-pvc-" + strings.ToLower(dgType) + "-" + diskName + "-" + name + "-" + instance.Spec.InstDetails.Name + "-0"
+	pvcName := "asm-pvc-" + strings.ToLower(dgType) + "-" + diskName + "-" + instance.Name
 
 	return pvcName
 }
