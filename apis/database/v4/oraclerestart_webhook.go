@@ -115,25 +115,8 @@ func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
 			cr.Spec.ConfigParams.SwMountLocation = utils.OraSwLocation
 		}
 
-		if cr.Spec.ConfigParams.GridResponseFile.ConfigMapName == "" {
-			if cr.Spec.ConfigParams.CrsAsmDiskDg == "" {
-				cr.Spec.ConfigParams.CrsAsmDiskDg = "DATA"
-			}
-			if cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy == "" {
-				cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy = "EXTERNAL"
-			}
-		}
-
-		if cr.Spec.ConfigParams.DbResponseFile.ConfigMapName == "" {
-			if cr.Spec.ConfigParams.DbDataFileDestDg == "" {
-				cr.Spec.ConfigParams.DbDataFileDestDg = cr.Spec.ConfigParams.CrsAsmDiskDg
-			}
-			if cr.Spec.ConfigParams.DbRecoveryFileDest == "" {
-				cr.Spec.ConfigParams.DbRecoveryFileDest = cr.Spec.ConfigParams.DbDataFileDestDg
-			}
-			if cr.Spec.ConfigParams.DbCharSet == "" {
-				cr.Spec.ConfigParams.DbCharSet = "AL32UTF8"
-			}
+		if cr.Spec.ConfigParams.DbCharSet == "" {
+			cr.Spec.ConfigParams.DbCharSet = "AL32UTF8"
 		}
 	}
 
@@ -177,67 +160,6 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 	validationErrs = append(validationErrs, cr.validateServiceSpecs()...)
 	validationErrs = append(validationErrs, cr.validateAsmStorage()...)
 	validationErrs = append(validationErrs, cr.validateGeneric()...)
-
-	// ASM disk warnings
-	var deviceWarnings []string
-	w, errs := cr.validateCrsAsmDeviceListSize()
-	deviceWarnings = append(deviceWarnings, w...)
-	validationErrs = append(validationErrs, errs...)
-
-	w, errs = cr.validateDbAsmDeviceList()
-	deviceWarnings = append(deviceWarnings, w...)
-	validationErrs = append(validationErrs, errs...)
-
-	w, errs = cr.validateRecoAsmDeviceList()
-	deviceWarnings = append(deviceWarnings, w...)
-	validationErrs = append(validationErrs, errs...)
-
-	w, errs = cr.validateRedoAsmDeviceList()
-	deviceWarnings = append(deviceWarnings, w...)
-	validationErrs = append(validationErrs, errs...)
-
-	errs = cr.validateRedoAsmDG()
-	validationErrs = append(validationErrs, errs...)
-
-	errs = cr.validateRecoAsmDG()
-	validationErrs = append(validationErrs, errs...)
-
-	errs = cr.validateDataAsmDG()
-	validationErrs = append(validationErrs, errs...)
-
-	errs = cr.validateCrsAsmDG()
-	validationErrs = append(validationErrs, errs...)
-
-	errs = cr.validateCrsAsmDG()
-	validationErrs = append(validationErrs, errs...)
-
-	if cr.Spec.ConfigParams != nil {
-		// CRS
-		validationErrs = append(validationErrs,
-			cr.validateAsmRedundancyAndDisks(
-				cr.Spec.ConfigParams.CrsAsmDeviceList,
-				cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy,
-				"crsAsmDeviceList")...,
-		)
-		// DB
-		validationErrs = append(validationErrs,
-			cr.validateAsmRedundancyAndDisks(
-				cr.Spec.ConfigParams.DbAsmDeviceList,
-				cr.Spec.ConfigParams.DBAsmDiskDgRedundancy,
-				"dbAsmDeviceList")...,
-		)
-		// RECO
-		validationErrs = append(validationErrs,
-			cr.validateAsmRedundancyAndDisks(
-				cr.Spec.ConfigParams.RecoAsmDeviceList,
-				cr.Spec.ConfigParams.RecoAsmDiskDgRedundancy,
-				"recoAsmDeviceList")...,
-		)
-	}
-
-	for _, warning := range deviceWarnings {
-		warnings = append(warnings, warning)
-	}
 
 	if len(validationErrs) > 0 {
 		return warnings, apierrors.NewInvalid(
@@ -308,19 +230,6 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 			newCr.Name, fmt.Errorf("SwLocStorageSizeInGb Storage size shrink is not allowed. Old value : %d and New value: %d. ", old.Spec.InstDetails.SwLocStorageSizeInGb, newCr.Spec.InstDetails.SwLocStorageSizeInGb))
 	}
 
-	isDiskChanged := !reflect.DeepEqual(old.Spec.AsmStorageDetails.DisksBySize, newCr.Spec.AsmStorageDetails.DisksBySize)
-	if isDiskChanged {
-		if old.Spec.ConfigParams.HostSwStageLocation != newCr.Spec.ConfigParams.HostSwStageLocation ||
-			old.Spec.ConfigParams.GridSwZipFile != newCr.Spec.ConfigParams.GridSwZipFile ||
-			old.Spec.ConfigParams.DbSwZipFile != newCr.Spec.ConfigParams.DbSwZipFile ||
-			old.Spec.Image != newCr.Spec.Image {
-
-			return nil, apierrors.NewForbidden(
-				schema.GroupResource{Group: "database.oracle.com", Resource: "OracleRestart"},
-				newCr.Name, fmt.Errorf("updates to the following fields are not allowed during ASM disk updates: %v", []string{"hostSwStageLocation", "gridSwZipFile", "dbSwZipFile", "image"}))
-		}
-	}
-
 	var validationErrs field.ErrorList
 
 	// Re-use create validations on update
@@ -351,28 +260,28 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 
 	if old.Spec.ConfigParams != nil && newCr.Spec.ConfigParams != nil {
 
-		// CRS
-		if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.CrsAsmDiskDgRedundancy, newCr.Spec.ConfigParams.CrsAsmDiskDgRedundancy, "crsAsmDiskDgRedundancy"); err != nil {
-			validationErrs = append(validationErrs, err)
-		}
-		// DB
-		if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.DBAsmDiskDgRedundancy, newCr.Spec.ConfigParams.DBAsmDiskDgRedundancy, "dbAsmDiskDgRedundancy"); err != nil {
-			validationErrs = append(validationErrs, err)
-		}
-		// RECO
-		if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.RecoAsmDiskDgRedundancy, newCr.Spec.ConfigParams.RecoAsmDiskDgRedundancy, "recoAsmDiskDgRedundancy"); err != nil {
-			validationErrs = append(validationErrs, err)
-		}
+		// // CRS
+		// if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.CrsAsmDiskDgRedundancy, newCr.Spec.ConfigParams.CrsAsmDiskDgRedundancy, "crsAsmDiskDgRedundancy"); err != nil {
+		// 	validationErrs = append(validationErrs, err)
+		// }
+		// // DB
+		// if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.DBAsmDiskDgRedundancy, newCr.Spec.ConfigParams.DBAsmDiskDgRedundancy, "dbAsmDiskDgRedundancy"); err != nil {
+		// 	validationErrs = append(validationErrs, err)
+		// }
+		// // RECO
+		// if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.RecoAsmDiskDgRedundancy, newCr.Spec.ConfigParams.RecoAsmDiskDgRedundancy, "recoAsmDiskDgRedundancy"); err != nil {
+		// 	validationErrs = append(validationErrs, err)
+		// }
 	}
 
-	if old.Spec.AsmStorageDetails != nil && newCr.Spec.AsmStorageDetails != nil {
-		errs := validateAsmNoDiskResize(
-			old.Spec.AsmStorageDetails.DisksBySize,
-			newCr.Spec.AsmStorageDetails.DisksBySize,
-			field.NewPath("spec").Child("asmStorageDetails").Child("disksBySize"),
-		)
-		validationErrs = append(validationErrs, errs...)
-	}
+	// if old.Spec.AsmStorageDetails != nil && newCr.Spec.AsmStorageDetails != nil {
+	// 	errs := validateAsmNoDiskResize(
+	// 		old.Spec.AsmStorageDetails.DisksBySize,
+	// 		newCr.Spec.AsmStorageDetails.DisksBySize,
+	// 		field.NewPath("spec").Child("asmStorageDetails").Child("disksBySize"),
+	// 	)
+	// 	validationErrs = append(validationErrs, errs...)
+	// }
 
 	if len(validationErrs) > 0 {
 		return nil, apierrors.NewInvalid(
@@ -381,74 +290,6 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 	}
 
 	return nil, nil
-}
-
-func redundancyChanged(oldRed, newRed string) bool {
-	// Normalize and compare (case-insensitive, trim spaces)
-	return strings.ToUpper(strings.TrimSpace(oldRed)) != strings.ToUpper(strings.TrimSpace(newRed))
-}
-
-func validateRedundancyOnUpdate(
-	oldRed, newRed, fieldName string,
-) *field.Error {
-	normalizedOld := strings.ToUpper(strings.TrimSpace(oldRed))
-	normalizedNew := strings.ToUpper(strings.TrimSpace(newRed))
-
-	if normalizedOld == "" {
-		// Old value not set, treat as EXTERNAL only
-		if normalizedNew != "" && normalizedNew != "EXTERNAL" {
-			return field.Invalid(
-				field.NewPath("spec").Child("configParams").Child(fieldName),
-				newRed,
-				"Redundancy was not set before (treated as EXTERNAL); it can only be EXTERNAL now.",
-			)
-		}
-	} else {
-		// Old value set; do not allow changes
-		if redundancyChanged(normalizedOld, normalizedNew) {
-			return field.Invalid(
-				field.NewPath("spec").Child("configParams").Child(fieldName),
-				newRed,
-				fmt.Sprintf("Changing redundancy value for ASM diskgroup (%s) is not allowed on update.", fieldName),
-			)
-		}
-	}
-	return nil
-}
-
-func validateAsmNoDiskResize(
-	oldDisks, newDisks []DiskBySize,
-	fieldPath *field.Path,
-) field.ErrorList {
-	var errs field.ErrorList
-
-	// Build map of disk name -> size for old and new
-	oldDiskMap := make(map[string]int)
-	for _, disk := range oldDisks {
-		for _, name := range disk.DiskNames {
-			oldDiskMap[name] = disk.StorageSizeInGb
-		}
-	}
-	newDiskMap := make(map[string]int)
-	for _, disk := range newDisks {
-		for _, name := range disk.DiskNames {
-			newDiskMap[name] = disk.StorageSizeInGb
-		}
-	}
-
-	// For disks present in both old and new, size must not change
-	for name, oldSize := range oldDiskMap {
-		if newSize, exists := newDiskMap[name]; exists {
-			if newSize != oldSize {
-				errs = append(errs, field.Invalid(
-					fieldPath,
-					name,
-					fmt.Sprintf("cannot change size of existing ASM disk %s (old: %dGB, new: %dGB)", name, oldSize, newSize),
-				))
-			}
-		}
-	}
-	return errs
 }
 
 func (r *OracleRestart) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
@@ -465,31 +306,6 @@ func (r *OracleRestart) ValidateDelete(ctx context.Context, obj runtime.Object) 
 
 //========== User Functions to check the fields ==========
 
-// func (r *OracleRestart) validateSshSecret() field.ErrorList {
-// 	var validationErrs field.ErrorList
-// 	sshPath := field.NewPath("spec").Child("SshKeySecret")
-
-// 	if r.Spec.SshKeySecret == nil {
-// 		validationErrs = append(validationErrs,
-// 			field.Required(sshPath, "SshKeySecret must be specified"))
-// 		return validationErrs
-// 	}
-
-// 	if r.Spec.SshKeySecret.Name == "" {
-// 		validationErrs = append(validationErrs,
-// 			field.Required(sshPath.Child("Name"), "SshKeySecret.Name cannot be empty"))
-// 	}
-// 	if r.Spec.SshKeySecret.PrivKeySecretName == "" {
-// 		validationErrs = append(validationErrs,
-// 			field.Required(sshPath.Child("PrivKeySecretName"), "PrivKeySecretName cannot be empty"))
-// 	}
-// 	if r.Spec.SshKeySecret.PubKeySecretName == "" {
-// 		validationErrs = append(validationErrs,
-// 			field.Required(sshPath.Child("PubKeySecretName"), "PubKeySecretName cannot be empty"))
-// 	}
-
-//		return validationErrs
-//	}
 func (r *OracleRestart) validateDbSecret() field.ErrorList {
 	var validationErrs field.ErrorList
 	dbPath := field.NewPath("spec").Child("DbSecret")
@@ -580,43 +396,7 @@ func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 		return validationErrs
 	}
 
-	if len(r.Spec.AsmStorageDetails.DisksBySize) == 0 {
-		validationErrs = append(validationErrs,
-			field.Invalid(asmPath.Child("DisksBySize"), r.Spec.AsmStorageDetails.DisksBySize,
-				"At least one disk size group must be defined"))
-	} else {
-		for i, group := range r.Spec.AsmStorageDetails.DisksBySize {
-			if len(group.DiskNames) == 0 {
-				validationErrs = append(validationErrs,
-					field.Invalid(asmPath.Child("DisksBySize").Index(i).Child("DiskNames"), group.DiskNames,
-						"Each disk size group must have at least one disk name"))
-			}
-		}
-	}
-
-	// Check ASM disks are not duplicate
-	if !r.validateAsmDiskUnqiueNames() {
-		validationErrs = append(validationErrs,
-			field.Invalid(asmPath.Child("DisksBySize"), asmPath, "Each ASM disk must be unique"))
-
-	}
-
 	return validationErrs
-}
-
-func (r *OracleRestart) validateAsmDiskUnqiueNames() bool {
-
-	seenDisks := make(map[string]bool) //store encounterednames
-	for _, disks := range r.Spec.AsmStorageDetails.DisksBySize {
-		for _, diskPath := range disks.DiskNames {
-			if seenDisks[diskPath] {
-				return false
-			}
-			seenDisks[diskPath] = true // disk is seen
-		}
-	}
-
-	return true
 }
 
 func (r *OracleRestart) validateGeneric() field.ErrorList {
@@ -663,80 +443,6 @@ func (r *OracleRestart) validateGeneric() field.ErrorList {
 					"GridResponseFile name cannot be empty"))
 		}
 
-		for _, fieldVal := range []struct {
-			name  string
-			value string
-		}{
-			{"Inventory", cfg.Inventory},
-			{"CrsAsmDeviceList", cfg.CrsAsmDeviceList},
-			{"GridBase", cfg.GridBase},
-			{"CrsAsmDiskDg", cfg.CrsAsmDiskDg},
-			{"CrsAsmDiskDgRedundancy", cfg.CrsAsmDiskDgRedundancy},
-		} {
-			if fieldVal.value != "" {
-				validationErrs = append(validationErrs,
-					field.Invalid(cfgPath.Child(fieldVal.name), fieldVal.value,
-						fmt.Sprintf("%s cannot be used when GridResponseFile is set", fieldVal.name)))
-			}
-		}
-	} else {
-		if cfg.GridBase == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(cfgPath.Child("GridBase"), cfg.GridBase, "GridBase cannot be empty"))
-		}
-		if cfg.GridHome == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(cfgPath.Child("GridHome"), cfg.GridHome, "GridHome cannot be empty"))
-		}
-		if cfg.Inventory == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(cfgPath.Child("Inventory"), cfg.Inventory, "Inventory cannot be empty"))
-		}
-		if cfg.CrsAsmDeviceList == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(cfgPath.Child("CrsAsmDeviceList"), cfg.CrsAsmDeviceList, "CrsAsmDeviceList cannot be empty"))
-		}
-	}
-
-	// DB Response File validation
-	if cfg.DbResponseFile.ConfigMapName != "" {
-		if cfg.DbResponseFile.Name == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(cfgPath.Child("DbResponseFile").Child("Name"), cfg.DbResponseFile.Name,
-					"DbResponseFile name cannot be empty"))
-		}
-
-		for _, fieldVal := range []struct {
-			name  string
-			value string
-		}{
-			{"DbCharSet", cfg.DbCharSet},
-			{"DbConfigType", cfg.DbConfigType},
-			{"DbRedoFileSize", cfg.DbRedoFileSize},
-			{"DbType", cfg.DbType},
-			{"DbUniqueName", cfg.DbUniqueName},
-			{"DbStorageType", cfg.DbStorageType},
-			{"DbName", cfg.DbName},
-		} {
-			if fieldVal.value != "" {
-				validationErrs = append(validationErrs,
-					field.Invalid(cfgPath.Child(fieldVal.name), fieldVal.value,
-						fmt.Sprintf("%s cannot be used when DbResponseFile is set", fieldVal.name)))
-			}
-		}
-	} else {
-		if cfg.DbBase == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(cfgPath.Child("DbBase"), cfg.DbBase, "DbBase cannot be empty"))
-		}
-		if cfg.DbHome == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(cfgPath.Child("DbHome"), cfg.DbHome, "DbHome cannot be empty"))
-		}
-		if cfg.DbName == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(cfgPath.Child("DbName"), cfg.DbName, "DbName cannot be empty"))
-		}
 	}
 
 	if cfg.GridSwZipFile == "" {
@@ -799,15 +505,9 @@ func (r *OracleRestart) validateUpdateGeneric(old *OracleRestart) field.ErrorLis
 		check(cpPath.Child("GridHome"), old.Spec.ConfigParams.GridHome, r.Spec.ConfigParams.GridHome)
 		check(cpPath.Child("DbBase"), old.Spec.ConfigParams.DbBase, r.Spec.ConfigParams.DbBase)
 		check(cpPath.Child("DbHome"), old.Spec.ConfigParams.DbHome, r.Spec.ConfigParams.DbHome)
-		check(cpPath.Child("CrsAsmDiskDg"), old.Spec.ConfigParams.CrsAsmDiskDg, r.Spec.ConfigParams.CrsAsmDiskDg)
-		check(cpPath.Child("CrsAsmDiskDgRedundancy"), old.Spec.ConfigParams.CrsAsmDiskDgRedundancy, r.Spec.ConfigParams.CrsAsmDiskDgRedundancy)
-		check(cpPath.Child("DBAsmDiskDgRedundancy"), old.Spec.ConfigParams.DBAsmDiskDgRedundancy, r.Spec.ConfigParams.DBAsmDiskDgRedundancy)
 		check(cpPath.Child("DbCharSet"), old.Spec.ConfigParams.DbCharSet, r.Spec.ConfigParams.DbCharSet)
 		check(cpPath.Child("DbConfigType"), old.Spec.ConfigParams.DbConfigType, r.Spec.ConfigParams.DbConfigType)
-		check(cpPath.Child("DbDataFileDestDg"), old.Spec.ConfigParams.DbDataFileDestDg, r.Spec.ConfigParams.DbDataFileDestDg)
 		check(cpPath.Child("DbUniqueName"), old.Spec.ConfigParams.DbUniqueName, r.Spec.ConfigParams.DbUniqueName)
-		check(cpPath.Child("DbRecoveryFileDest"), old.Spec.ConfigParams.DbRecoveryFileDest, r.Spec.ConfigParams.DbRecoveryFileDest)
-		check(cpPath.Child("DbRedoFileSize"), old.Spec.ConfigParams.DbRedoFileSize, r.Spec.ConfigParams.DbRedoFileSize)
 		check(cpPath.Child("DbStorageType"), old.Spec.ConfigParams.DbStorageType, r.Spec.ConfigParams.DbStorageType)
 		check(cpPath.Child("DbSwZipFile"), old.Spec.ConfigParams.DbSwZipFile, r.Spec.ConfigParams.DbSwZipFile)
 		check(cpPath.Child("GridSwZipFile"), old.Spec.ConfigParams.GridSwZipFile, r.Spec.ConfigParams.GridSwZipFile)
@@ -976,160 +676,6 @@ func (r *OracleRestart) validateUpdateSshSecret(old *OracleRestart) field.ErrorL
 	return validationErrs
 }
 
-func (r *OracleRestart) validateAsmDeviceList(deviceListStr, deviceListName string) ([]string, field.ErrorList) {
-	var warnings []string
-	var validationErrs field.ErrorList
-
-	// Skip validation if the device list is empty or not provided
-	if deviceListStr == "" {
-		return warnings, validationErrs
-	}
-
-	if r.Spec.AsmStorageDetails == nil {
-		validationErrs = append(validationErrs,
-			field.Required(field.NewPath("spec").Child("AsmStorageDetails"),
-				"ASM storage details must be provided when device list is specified"))
-		return warnings, validationErrs
-	}
-
-	deviceList := strings.Split(deviceListStr, ",")
-	var sizeGroup string // Placeholder for the expected storage size as string
-
-	for _, device := range deviceList {
-		found := false
-		for _, diskBySize := range r.Spec.AsmStorageDetails.DisksBySize {
-			// Check if the device exists in the current size group
-			if contains(diskBySize.DiskNames, device) {
-				// Check for storage size mismatch
-				if sizeGroup == "" {
-					// Set the expected size group on first match
-					sizeGroup = fmt.Sprintf("%d", diskBySize.StorageSizeInGb)
-				} else if sizeGroup != fmt.Sprintf("%d", diskBySize.StorageSizeInGb) {
-					// Add warning for size mismatch
-					warnings = append(warnings,
-						fmt.Sprintf("Disk %s in %s is not of the same storage size as others (%s GB expected, but found %s GB)",
-							device, deviceListName, sizeGroup, fmt.Sprintf("%d", diskBySize.StorageSizeInGb)))
-				}
-				found = true
-				break
-			}
-		}
-		// Error if a device in the list is not found in any DisksBySize group
-		if !found {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("AsmStorageDetails").Child(deviceListName), device,
-					fmt.Sprintf("Disk %s not found in any storage size group", device)))
-		}
-	}
-
-	return warnings, validationErrs
-}
-
-func (r *OracleRestart) validateCrsAsmDeviceListSize() ([]string, field.ErrorList) {
-	var warnings []string
-	var validationErrs field.ErrorList
-
-	if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.CrsAsmDeviceList == "" {
-		return warnings, validationErrs
-	}
-
-	return r.validateAsmDeviceList(r.Spec.ConfigParams.CrsAsmDeviceList, "CrsAsmDeviceList")
-}
-
-func (r *OracleRestart) validateDbAsmDeviceList() ([]string, field.ErrorList) {
-	var warnings []string
-	var validationErrs field.ErrorList
-
-	if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.DbAsmDeviceList == "" {
-		return warnings, validationErrs
-	}
-
-	return r.validateAsmDeviceList(r.Spec.ConfigParams.DbAsmDeviceList, "DbAsmDeviceList")
-}
-
-func (r *OracleRestart) validateRecoAsmDeviceList() ([]string, field.ErrorList) {
-	var warnings []string
-	var validationErrs field.ErrorList
-
-	if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.RecoAsmDeviceList == "" {
-		return warnings, validationErrs
-	}
-
-	return r.validateAsmDeviceList(r.Spec.ConfigParams.RecoAsmDeviceList, "RecoAsmDeviceList")
-}
-
-func (r *OracleRestart) validateRedoAsmDeviceList() ([]string, field.ErrorList) {
-	var warnings []string
-	var validationErrs field.ErrorList
-
-	if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.RedoAsmDeviceList == "" {
-		return warnings, validationErrs
-	}
-
-	return r.validateAsmDeviceList(r.Spec.ConfigParams.RedoAsmDeviceList, "RedoAsmDeviceList")
-}
-
-func (r *OracleRestart) validateRedoAsmDG() field.ErrorList {
-	var validationErrs field.ErrorList
-
-	if r.Spec.RedoDgStorageClass != "" {
-		if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.RedoAsmDeviceList == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("RedoDgStorageClass"), r.Spec.RedoDgStorageClass, fmt.Sprintf("Redo ASM diskgroup storageclass set but Spec.ConfigParams.RedoAsmDeviceList is set to empty")))
-			return validationErrs
-		}
-	}
-	return nil
-}
-
-func (r *OracleRestart) validateRecoAsmDG() field.ErrorList {
-	var validationErrs field.ErrorList
-
-	if r.Spec.RecoDgStorageClass != "" {
-		if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.RecoAsmDeviceList == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("RecoDgStorageClass"), r.Spec.RecoDgStorageClass, fmt.Sprintf("Reco ASM diskgroup storageclass set but Spec.ConfigParams.RecoAsmDeviceList is set to empty")))
-			return validationErrs
-		}
-	}
-	return nil
-}
-
-func (r *OracleRestart) validateDataAsmDG() field.ErrorList {
-	var validationErrs field.ErrorList
-
-	if r.Spec.DataDgStorageClass != "" {
-		if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.DbAsmDeviceList == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("DataDgStorageClass"), r.Spec.RedoDgStorageClass, fmt.Sprintf("Data ASM diskgroup storageclass set but Spec.ConfigParams.DataAsmDeviceList is set to empty")))
-			return validationErrs
-		}
-	}
-	return nil
-}
-
-func (r *OracleRestart) validateCrsAsmDG() field.ErrorList {
-	var validationErrs field.ErrorList
-
-	if r.Spec.CrsDgStorageClass != "" {
-		if r.Spec.ConfigParams == nil || r.Spec.ConfigParams.CrsAsmDeviceList == "" {
-			validationErrs = append(validationErrs,
-				field.Invalid(field.NewPath("spec").Child("CrsDgStorageClass"), r.Spec.CrsDgStorageClass, fmt.Sprintf("Crs ASM diskgroup storageclass set but Spec.ConfigParams.CrsAsmDeviceList is set to empty")))
-			return validationErrs
-		}
-	}
-	return nil
-}
-
-// Helper function to check if a slice contains a specific element
-func contains(slice []string, item string) bool {
-	for _, elem := range slice {
-		if elem == item {
-			return true
-		}
-	}
-	return false
-}
 func getDeviceCount(deviceList string) int {
 	if deviceList == "" {
 		return 0
@@ -1142,53 +688,6 @@ func getDeviceCount(deviceList string) int {
 		}
 	}
 	return count
-}
-
-func (r *OracleRestart) validateAsmRedundancyAndDisks(
-	devList, redundancy, paramField string,
-) field.ErrorList {
-	var errs field.ErrorList
-	diskCount := getDeviceCount(devList)
-
-	// Only validate if at least ONE of devList or redundancy is set/non-empty
-	if strings.TrimSpace(redundancy) == "" {
-		// Both are empty, nothing to validate
-		return errs
-	}
-
-	switch strings.ToUpper(redundancy) {
-	case "EXTERNAL":
-		if diskCount < 1 {
-			errs = append(errs, field.Invalid(
-				field.NewPath("spec").Child("configParams").Child(paramField),
-				devList,
-				"EXTERNAL redundancy requires disk count minimum 1",
-			))
-		}
-	case "NORMAL":
-		if diskCount < 2 {
-			errs = append(errs, field.Invalid(
-				field.NewPath("spec").Child("configParams").Child(paramField),
-				devList,
-				"NORMAL redundancy requires disk count minimum 2",
-			))
-		}
-	case "HIGH":
-		if diskCount < 3 {
-			errs = append(errs, field.Invalid(
-				field.NewPath("spec").Child("configParams").Child(paramField),
-				devList,
-				"HIGH redundancy requires disk count minimum 3",
-			))
-		}
-	default:
-		errs = append(errs, field.Invalid(
-			field.NewPath("spec").Child("configParams").Child(paramField),
-			redundancy,
-			"Invalid redundancy type; must be EXTERNAL, NORMAL, or HIGH",
-		))
-	}
-	return errs
 }
 
 // =========================== Update specs checks block ends Here =======================

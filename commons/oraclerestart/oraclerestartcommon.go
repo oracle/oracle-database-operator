@@ -41,10 +41,12 @@ package commons
 import (
 	"bufio"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
+	"regexp"
 	"strconv"
 
 	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
@@ -57,7 +59,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -188,22 +189,34 @@ func GetRacPodName(racName string) string {
 	return podName
 }
 
-func GetAsmPvcName(name string, diskPath string, instance *oraclerestart.OracleRestart) string {
-
-	// pvcName := "asm-pvc-disk-" + strconv.Itoa(index) + "-" + name + "-" + dgType + "-" + "pvc"
-	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
-	diskName := diskPath[strings.LastIndex(diskPath, "/")+1:]
-	pvcName := "asm-pvc-" + strings.ToLower(dgType) + "-" + diskName + "-" + instance.Name
-
-	return pvcName
+func getlabelsForRac(instance *oraclerestart.OracleRestart) map[string]string {
+	return buildLabelsForOracleRestart(instance, "OracleRestart")
 }
 
-func GetAsmPvName(name string, diskPath string, instance *oraclerestart.OracleRestart) string {
+// Short, deterministic hex hash
+func shortHash(text string, n int) string {
+	h := sha1.New()
+	h.Write([]byte(text))
+	return hex.EncodeToString(h.Sum(nil))[:n]
+}
 
-	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
-	diskName := diskPath[strings.LastIndex(diskPath, "/")+1:]
-	pvName := "asm-pv-" + strings.ToLower(dgType) + "-" + diskName + "-" + name + "-" + instance.Spec.InstDetails.Name + "-0"
-	return pvName
+func GetAsmPvcName(diskPath, dbName string) string {
+	// Use a hash of the device path for uniqueness, keep it short but collision-resistant
+	hash := shortHash(diskPath, 8)
+	base := fmt.Sprintf("asm-pvc-%s-%s", hash, sanitizeK8sName(dbName))
+	if len(base) > maxNameLen {
+		base = base[:maxNameLen]
+	}
+	return base
+}
+
+func GetAsmPvName(diskPath, dbName string) string {
+	hash := shortHash(diskPath, 8)
+	base := fmt.Sprintf("asm-pv-%s-%s", hash, sanitizeK8sName(dbName))
+	if len(base) > maxNameLen {
+		base = base[:maxNameLen]
+	}
+	return base
 }
 
 func CheckSfset(sfsetName string, instance *oraclerestart.OracleRestart, kClient client.Client) (*appsv1.StatefulSet, error) {
@@ -213,7 +226,12 @@ func CheckSfset(sfsetName string, instance *oraclerestart.OracleRestart, kClient
 		Namespace: instance.Namespace,
 	}, sfSetFound)
 	if err != nil {
-		return sfSetFound, err
+		if apierrors.IsNotFound(err) {
+			// Not found, return nil and no error
+			return nil, nil
+		}
+		// Other error, return as is
+		return nil, err
 	}
 	return sfSetFound, nil
 }
@@ -365,7 +383,12 @@ func checkPvc(pvcName string, instance *oraclerestart.OracleRestart, kClient cli
 		Namespace: instance.Namespace,
 	}, pvcFound)
 	if err != nil {
-		return pvcFound, err
+		if apierrors.IsNotFound(err) {
+			// PVC not found, return nil and nil error
+			return nil, nil
+		}
+		// Other error, return as is
+		return nil, err
 	}
 	return pvcFound, nil
 }
@@ -381,8 +404,8 @@ func checkPv(pvName string, instance *oraclerestart.OracleRestart, kClient clien
 	}
 	return pvFound, nil
 }
-func DelORestartPVC(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, disk *oraclerestart.AsmDiskDetails, kClient client.Client, logger logr.Logger) error {
-	pvcName := GetAsmPvcName(instance.Name, diskName, instance)
+func DelORestartPVC(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, kClient client.Client, logger logr.Logger) error {
+	pvcName := GetAsmPvcName(instance.Name, diskName)
 	LogMessages("DEBUG", "Attempting to delete PVC: "+GetFmtStr(pvcName), nil, instance, logger)
 
 	pvc, err := checkPvc(pvcName, instance, kClient)
@@ -395,40 +418,44 @@ func DelORestartPVC(instance *oraclerestart.OracleRestart, pindex int, cindex in
 	}
 
 	// Remove finalizers if any
-	if len(pvc.GetFinalizers()) > 0 {
+	if pvc != nil && len(pvc.GetFinalizers()) > 0 {
 		LogMessages("DEBUG", "Removing PVC finalizers", nil, instance, logger)
 		pvc.SetFinalizers([]string{})
 		if err := kClient.Update(context.Background(), pvc); err != nil {
 			return fmt.Errorf("failed to remove finalizers from PVC %s: %v", pvcName, err)
 		}
 	}
-
-	if err := kClient.Delete(context.Background(), pvc); err != nil {
-		return fmt.Errorf("failed to delete PVC %s: %v", pvcName, err)
+	if pvc != nil {
+		if err := kClient.Delete(context.Background(), pvc); err != nil {
+			return fmt.Errorf("failed to delete PVC %s: %v", pvcName, err)
+		}
 	}
 	return nil
 }
 
-func DelRestartSwPvc(instance *oraclerestart.OracleRestart, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec, kClient client.Client, logger logr.Logger) error {
+func DelRestartSwPvc(instance *oraclerestart.OracleRestart, kClient client.Client, logger logr.Logger) error {
 
 	pvcName := GetSwPvcName(instance.Name, instance)
 	LogMessages("DEBUG", "Inside the delPvc and received param: "+GetFmtStr(pvcName), nil, instance, logger)
 	pvcFound, err := checkPvc(pvcName, instance, kClient)
-	if err != nil {
+	if err != nil && pvcFound != nil {
 		LogMessages("DEBUG", "Error occurred in finding the pvc claim!", nil, instance, logger)
 		return nil
-	}
-	err = kClient.Delete(context.Background(), pvcFound)
-	if err != nil {
-		LogMessages("DEBUG", "Error occurred in deleting the pvc claim!", nil, instance, logger)
-		return err
+	} else {
+		if pvcFound != nil {
+			err = kClient.Delete(context.Background(), pvcFound)
+			if err != nil {
+				LogMessages("DEBUG", "Error occurred in deleting the pvc claim!", nil, instance, logger)
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func DelORestartPv(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, disk *oraclerestart.AsmDiskDetails, kClient client.Client, logger logr.Logger) error {
+func DelORestartPv(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, kClient client.Client, logger logr.Logger) error {
 
-	pvName := GetAsmPvName(instance.Name, diskName, instance)
+	pvName := GetAsmPvName(instance.Name, diskName)
 	LogMessages("DEBUG", "Inside the delPv and received param: "+GetFmtStr(pvName), nil, instance, logger)
 	pvFound, err := checkPv(pvName, instance, kClient)
 	if err != nil {
@@ -502,14 +529,14 @@ func GetPodList(sfsetName string, instance *oraclerestart.OracleRestart, kClient
 	podList := &corev1.PodList{}
 	//labelSelector := labels.SelectorFromSet(getlabelsForRAC(instance))
 	//labelSelector := map[string]labels.Selector{}
-	var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForOracleRestart(-1, OraRestartSpex))
+	// var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForOracleRestart(-1, OraRestartSpex))
 
-	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
+	// listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
 
-	err := kClient.List(context.TODO(), podList, listOps)
-	if err != nil {
-		return nil, err
-	}
+	// err := kClient.List(context.TODO(), podList, listOps)
+	// if err != nil {
+	// 	return nil, err
+	// }
 	return podList, nil
 }
 
@@ -631,48 +658,44 @@ func getDbInstState(podName string, instance *oraclerestart.OracleRestart, speci
 	return strings.TrimSpace(stdoutput)
 }
 
-func getAsmInstState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
-) *oraclerestart.AsmInstanceStatus {
-	AsmStorageStatus := &oraclerestart.AsmInstanceStatus{}
-	diskGroup := getAsmDiskgroup(podName, instance, specidx, kubeClient, kubeConfig, logger)
-	if diskGroup == "Pending" {
-		return AsmStorageStatus
-	}
-	dglist := strings.Split(diskGroup, ",")
-	for _, dg := range dglist {
-		asmdg := oraclerestart.AsmDiskgroupStatus{}
-		disks := getAsmDisks(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
-		redundancy := getAsmDgRedundancy(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
-
-		asmdg.Name = string(dg)
-		asmdg.Disks = disks
-		asmdg.Redundancy = redundancy
-		AsmStorageStatus.Diskgroup = append(AsmStorageStatus.Diskgroup, asmdg)
-	}
-	return AsmStorageStatus
-}
 func GetAsmInstState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
-) *oraclerestart.AsmInstanceStatus {
-	AsmStorageStatus := &oraclerestart.AsmInstanceStatus{}
-	diskGroup := getAsmDiskgroup(podName, instance, specidx, kubeClient, kubeConfig, logger)
-	if diskGroup == "Pending" {
-		return AsmStorageStatus
+) []oraclerestart.AsmDiskGroupStatus {
+	var diskGroups []oraclerestart.AsmDiskGroupStatus
+	diskGroup := GetAsmDiskgroup(podName, instance, specidx, kubeClient, kubeConfig, logger)
+	if diskGroup == "Pending" || diskGroup == "" {
+		return diskGroups // return empty slice if pending or absent
 	}
+
 	dglist := strings.Split(diskGroup, ",")
 	for _, dg := range dglist {
-		asmdg := oraclerestart.AsmDiskgroupStatus{}
-		disks := getAsmDisks(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
-		redundancy := getAsmDgRedundancy(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
-
-		asmdg.Name = string(dg)
-		asmdg.Disks = disks
-		asmdg.Redundancy = redundancy
-		AsmStorageStatus.Diskgroup = append(AsmStorageStatus.Diskgroup, asmdg)
+		asmdg := oraclerestart.AsmDiskGroupStatus{}
+		asmdg.Name = strings.TrimSpace(dg)
+		asmdg.Disks = stringsToAsmDiskStatus(
+			getAsmDisks(podName, dg, instance, specidx, kubeClient, kubeConfig, logger),
+		)
+		asmdg.Redundancy = getAsmDgRedundancy(podName, dg, instance, specidx, kubeClient, kubeConfig, logger)
+		// Optionally fill other fields (Type, AutoUpdate, StorageClass) if available in spec:
+		for _, specDG := range instance.Spec.AsmStorageDetails {
+			if specDG.Name == asmdg.Name {
+				asmdg.Type = specDG.Type
+				asmdg.AutoUpdate = specDG.AutoUpdate
+				asmdg.StorageClass = instance.Spec.CrsDgStorageClass
+				break
+			}
+		}
+		diskGroups = append(diskGroups, asmdg)
 	}
-	return AsmStorageStatus
+	return diskGroups
+}
+func stringsToAsmDiskStatus(disks []string) []oraclerestart.AsmDiskStatus {
+	var result []oraclerestart.AsmDiskStatus
+	for _, disk := range disks {
+		result = append(result, oraclerestart.AsmDiskStatus{Name: disk})
+	}
+	return result
 }
 
-func getAsmDiskgroup(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+func GetAsmDiskgroup(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
 	stdoutput, _, err := ExecCommand(podName, getAsmDiskgroupCmd(), kubeClient, kubeConfig, instance, logger)
@@ -999,14 +1022,13 @@ func getGridHome(podName string, instance *oraclerestart.OracleRestart, kubeClie
 }
 
 func GetAsmDevices(instance *oraclerestart.OracleRestart) string {
-	var asmDisk []string
+	var asmDisks []string
 	if instance.Spec.AsmStorageDetails != nil {
-		// Loop through each DiskBySize and add disk names to asmDisk
-		for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
-			asmDisk = append(asmDisk, diskBySize.DiskNames...)
+		for _, dg := range instance.Spec.AsmStorageDetails {
+			asmDisks = append(asmDisks, dg.Disks...)
 		}
 	}
-	return strings.Join(asmDisk, ",")
+	return strings.Join(asmDisks, ",")
 }
 
 // func GetScanname(instance *oraclerestart.OracleRestart) string {
@@ -1134,20 +1156,20 @@ func GetDbResponseFile(instance *oraclerestart.OracleRestart, kClient client.Cli
 }
 
 func CheckConfigMap(instance *oraclerestart.OracleRestart, configMapName string, kClient client.Client) (*corev1.ConfigMap, error) {
-
 	configMapFound := &corev1.ConfigMap{}
-
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      configMapName,
 		Namespace: instance.Namespace,
 	}, configMapFound)
-
 	if err != nil {
-		return configMapFound, err
+		if apierrors.IsNotFound(err) {
+			// ConfigMap not found, no error
+			return nil, nil
+		}
+		// Other error (such as permissions, network, etc.)
+		return nil, err
 	}
-
 	return configMapFound, nil
-
 }
 
 func GetConfigList(sfsetName string, instance *oraclerestart.OracleRestart, kClient client.Client, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec,
@@ -1155,14 +1177,14 @@ func GetConfigList(sfsetName string, instance *oraclerestart.OracleRestart, kCli
 	cmapList := &corev1.ConfigMapList{}
 	//labelSelector := labels.SelectorFromSet(getlabelsForRAC(instance))
 	//labelSelector := map[string]labels.Selector{}
-	var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForOracleRestart(-1, OraRestartSpex))
+	// var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForOracleRestart(-1, OraRestartSpex))
 
-	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
+	// listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
 
-	err := kClient.List(context.TODO(), cmapList, listOps)
-	if err != nil {
-		return nil, err
-	}
+	// err := kClient.List(context.TODO(), cmapList, listOps)
+	// if err != nil {
+	// 	return nil, err
+	// }
 	return cmapList, nil
 }
 
@@ -1351,39 +1373,39 @@ func GetSwPvcName(name string, instance *oraclerestart.OracleRestart) string {
 	return pvcName
 }
 
-func CheckDiskInAsmDeviceList(instance *oraclerestart.OracleRestart, diskName string) string {
-	dgDisk := []string{"CRS", "DATA", "RECO", "REDO"}
+// func CheckDiskInAsmDeviceList(instance *oraclerestart.OracleRestart, diskName string) string {
+// 	dgDisk := []string{"CRS", "DATA", "RECO", "REDO"}
 
-	recoDisk := strings.Split(instance.Spec.ConfigParams.RecoAsmDeviceList, ",")
-	redoDisk := strings.Split(instance.Spec.ConfigParams.RedoAsmDeviceList, ",")
-	dataDisk := strings.Split(instance.Spec.ConfigParams.DbAsmDeviceList, ",")
-	crsDisk := strings.Split(instance.Spec.ConfigParams.CrsAsmDeviceList, ",")
+// 	recoDisk := strings.Split(instance.Spec.ConfigParams.RecoAsmDeviceList, ",")
+// 	redoDisk := strings.Split(instance.Spec.ConfigParams.RedoAsmDeviceList, ",")
+// 	dataDisk := strings.Split(instance.Spec.ConfigParams.DbAsmDeviceList, ",")
+// 	crsDisk := strings.Split(instance.Spec.ConfigParams.CrsAsmDeviceList, ",")
 
-	for _, value := range dgDisk {
-		switch value {
-		case "CRS":
-			if slices.Contains(crsDisk, diskName) {
-				return "CRSDG"
-			}
-		case "DATA":
-			if slices.Contains(dataDisk, diskName) {
-				return "DATADG"
-			}
-		case "RECO":
-			if slices.Contains(recoDisk, diskName) {
-				return "RECODG"
-			}
-		case "REDO":
-			if slices.Contains(redoDisk, diskName) {
-				return "REDODG"
-			}
-		default:
-			return "NODG"
-		}
+// 	for _, value := range dgDisk {
+// 		switch value {
+// 		case "CRS":
+// 			if slices.Contains(crsDisk, diskName) {
+// 				return "CRSDG"
+// 			}
+// 		case "DATA":
+// 			if slices.Contains(dataDisk, diskName) {
+// 				return "DATADG"
+// 			}
+// 		case "RECO":
+// 			if slices.Contains(recoDisk, diskName) {
+// 				return "RECODG"
+// 			}
+// 		case "REDO":
+// 			if slices.Contains(redoDisk, diskName) {
+// 				return "REDODG"
+// 			}
+// 		default:
+// 			return "NODG"
+// 		}
 
-	}
-	return "NODG"
-}
+// 	}
+// 	return "NODG"
+// }
 
 func CheckStorageClass(instance *oraclerestart.OracleRestart) string {
 	if len(instance.Spec.CrsDgStorageClass) == 0 && len(instance.Spec.DataDgStorageClass) == 0 && len(instance.Spec.RecoDgStorageClass) == 0 && len(instance.Spec.RedoDgStorageClass) == 0 {
@@ -1407,4 +1429,16 @@ func checkHugePagesConfigured(instance *oraclerestart.OracleRestart) bool {
 		}
 	}
 	return false
+}
+
+const maxNameLen = 63
+
+func sanitizeK8sName(name string) string {
+	re := regexp.MustCompile(`[^a-z0-9-]+`)
+	sanitized := re.ReplaceAllString(strings.ToLower(name), "-")
+	sanitized = strings.Trim(sanitized, "-")
+	if len(sanitized) > maxNameLen {
+		sanitized = sanitized[:maxNameLen]
+	}
+	return sanitized
 }

@@ -46,6 +46,7 @@ import (
 
 	"github.com/go-logr/logr"
 	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
+	oraclerestartdb "github.com/oracle/oracle-database-operator/apis/database/v4"
 	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -60,7 +61,7 @@ import (
 )
 
 // Constants for rac-stateful StatefulSet & Volumes
-func buildLabelsForOracleRestart(instance *oraclerestart.OracleRestart, label string) map[string]string {
+func buildLabelsForOracleRestart(instance *oraclerestartdb.OracleRestart, label string) map[string]string {
 	return map[string]string{
 		"cluster": "oraclerestart",
 	}
@@ -68,18 +69,18 @@ func buildLabelsForOracleRestart(instance *oraclerestart.OracleRestart, label st
 	// "oralabel": getLabelForOracleRestart(instance),
 }
 
-func buildLabelsForAsmPv(instance *oraclerestart.OracleRestart, diskName string) map[string]string {
+func buildLabelsForAsmPv(instance *oraclerestartdb.OracleRestart, diskName string) map[string]string {
 	return map[string]string{
 		"asm_vol": "block-asm-pv-" + getLabelForOracleRestart(instance) + "-" + diskName[strings.LastIndex(diskName, "/")+1:],
 	}
 }
 
-func getLabelForOracleRestart(instance *oraclerestart.OracleRestart) string {
+func getLabelForOracleRestart(instance *oraclerestartdb.OracleRestart) string {
 
 	return instance.Name
 }
 
-func BuildStatefulSetForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec, kClient client.Client) *appsv1.StatefulSet {
+func BuildStatefulSetForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, kClient client.Client) *appsv1.StatefulSet {
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForOracleRestart(),
 		ObjectMeta: builObjectMetaForOracleRestart(instance, OracleRestartSpex),
@@ -99,7 +100,7 @@ func buildTypeMetaForOracleRestart() metav1.TypeMeta {
 }
 
 // Function to build ObjectMeta
-func builObjectMetaForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) metav1.ObjectMeta {
+func builObjectMetaForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) metav1.ObjectMeta {
 	// building objectMeta
 	objmeta := metav1.ObjectMeta{
 		Name:      OracleRestartSpex.Name,
@@ -111,8 +112,8 @@ func builObjectMetaForOracleRestart(instance *oraclerestart.OracleRestart, Oracl
 
 // Function to build Stateful Specs
 func buildStatefulSpecForOracleRestart(
-	instance *oraclerestart.OracleRestart,
-	OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec,
+	instance *oraclerestartdb.OracleRestart,
+	OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec,
 	kClient client.Client,
 ) *appsv1.StatefulSetSpec {
 
@@ -138,7 +139,7 @@ func buildStatefulSpecForOracleRestart(
 			Spec: *podSpec, // dereference after modification
 		},
 	}
-	// Add volume claim templates if a storage class is specified
+	// // Add volume claim templates if a storage class is specified
 	if len(instance.Spec.DataDgStorageClass) != 0 && !asmPvcsExist(instance, kClient) {
 		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, ASMVolumeClaimTemplatesForDG(instance, OracleRestartSpex, &instance.Spec.DataDgStorageClass)...)
 	}
@@ -162,9 +163,9 @@ func buildStatefulSpecForOracleRestart(
 }
 
 func asmPvcsExist(instance *oraclerestart.OracleRestart, kClient client.Client) bool {
-	for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
-		for _, diskName := range diskBySize.DiskNames {
-			pvcName := GetAsmPvcName(instance.Name, diskName, instance)
+	for _, dg := range instance.Spec.AsmStorageDetails {
+		for _, diskName := range dg.Disks {
+			pvcName := GetAsmPvcName(diskName, instance.Name)
 			var pvc corev1.PersistentVolumeClaim
 			err := kClient.Get(context.TODO(), types.NamespacedName{
 				Name:      pvcName,
@@ -186,7 +187,7 @@ func asmPvcsExist(instance *oraclerestart.OracleRestart, kClient client.Client) 
 
 // Function to build PodSpec
 
-func buildPodSpecForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) *corev1.PodSpec {
+func buildPodSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) *corev1.PodSpec {
 
 	spec := &corev1.PodSpec{
 		Hostname:       OracleRestartSpex.Name + "-0",
@@ -212,7 +213,7 @@ func buildPodSpecForOracleRestart(instance *oraclerestart.OracleRestart, OracleR
 }
 
 // Function get the Node Affinity
-func getNodeAffinity(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) *corev1.Affinity {
+func getNodeAffinity(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) *corev1.Affinity {
 
 	nodeAffinity := &corev1.NodeAffinity{
 		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
@@ -240,7 +241,7 @@ func getNodeAffinity(instance *oraclerestart.OracleRestart, OracleRestartSpex or
 }
 
 // Function get the Node Affinity
-func getAsmNodeAffinity(instance *oraclerestart.OracleRestart, disk *oraclerestart.AsmDiskDetails) *corev1.VolumeNodeAffinity {
+func getAsmNodeAffinity(instance *oraclerestartdb.OracleRestart) *corev1.VolumeNodeAffinity {
 
 	nodeAffinity := &corev1.VolumeNodeAffinity{
 		Required: &corev1.NodeSelector{
@@ -267,7 +268,7 @@ func getAsmNodeAffinity(instance *oraclerestart.OracleRestart, disk *oracleresta
 }
 
 // Function to build Volume Spec
-func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.Volume {
+func buildVolumeSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.Volume {
 	var result []corev1.Volume
 	result = []corev1.Volume{
 		{
@@ -402,22 +403,23 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 			result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-ora-vol-" + source, VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: source}}})
 		}
 	}
-	seen := make(map[string]struct{})
 	if instance.Spec.AsmStorageDetails != nil {
-		for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
-			for _, diskName := range diskBySize.DiskNames {
-				pvcName := GetAsmPvcName(instance.Name, diskName, instance)
-				if _, exists := seen[pvcName]; !exists {
-					seen[pvcName] = struct{}{}
-					result = append(result, corev1.Volume{
-						Name: pvcName,
-						VolumeSource: corev1.VolumeSource{
-							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: pvcName,
-							},
-						},
-					})
+		seen := make(map[string]struct{})
+		for _, dg := range instance.Spec.AsmStorageDetails {
+			for _, diskName := range dg.Disks {
+				pvcName := GetAsmPvcName(diskName, instance.Name)
+				if _, exists := seen[pvcName]; exists {
+					continue // Skip duplicate PVCs
 				}
+				seen[pvcName] = struct{}{}
+				result = append(result, corev1.Volume{
+					Name: pvcName,
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: pvcName,
+						},
+					},
+				})
 			}
 		}
 	}
@@ -426,7 +428,7 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 }
 
 // Function to build the container Specification
-func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.Container {
+func buildContainerSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.Container {
 	// building Continer spec
 	var result []corev1.Container
 	privileged := false
@@ -449,7 +451,7 @@ func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, O
 		Command: []string{
 			"/usr/sbin/init",
 		},
-		VolumeDevices: getAsmVolumeDevices(instance),
+		VolumeDevices: getAsmVolumeDevices(instance, OracleRestartSpex),
 		Resources: corev1.ResourceRequirements{
 			Requests: make(map[corev1.ResourceName]resource.Quantity),
 		},
@@ -482,21 +484,23 @@ func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, O
 	return result
 }
 
-func getAsmVolumeDevices(instance *oraclerestart.OracleRestart) []corev1.VolumeDevice {
+func getAsmVolumeDevices(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.VolumeDevice {
 	var result []corev1.VolumeDevice
-	seen := make(map[string]struct{})
+	seen := make(map[string]struct{}) // Track seen disk names
 
 	if instance.Spec.AsmStorageDetails != nil {
-		for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
-			for _, diskName := range diskBySize.DiskNames {
-				pvcName := GetAsmPvcName(instance.Name, diskName, instance)
-				if _, exists := seen[pvcName]; !exists {
-					seen[pvcName] = struct{}{}
-					result = append(result, corev1.VolumeDevice{
-						Name:       pvcName,
-						DevicePath: diskName,
-					})
+		for _, dg := range instance.Spec.AsmStorageDetails {
+			for _, diskName := range dg.Disks {
+				if _, exists := seen[diskName]; exists {
+					continue // Skip duplicate
 				}
+				seen[diskName] = struct{}{}
+
+				pvcName := GetAsmPvcName(diskName, instance.Name)
+				result = append(result, corev1.VolumeDevice{
+					Name:       pvcName,
+					DevicePath: diskName,
+				})
 			}
 		}
 	}
@@ -504,7 +508,7 @@ func getAsmVolumeDevices(instance *oraclerestart.OracleRestart) []corev1.VolumeD
 }
 
 // Function to build the init Container Spec
-func buildInitContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.Container {
+func buildInitContainerSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
 	privFlag := true
@@ -549,7 +553,7 @@ func buildInitContainerSpecForOracleRestart(instance *oraclerestart.OracleRestar
 	return result
 }
 
-func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.VolumeMount {
+func buildVolumeMountSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.VolumeMount {
 	var result []corev1.VolumeMount
 	if instance.Spec.SshKeySecret != nil && strings.TrimSpace(instance.Spec.SshKeySecret.KeyMountLocation) != "" {
 		result = append(result, corev1.VolumeMount{
@@ -596,10 +600,6 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 	}
 	if len(OracleRestartSpex.HostSwLocation) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-oradata-sw-vol", MountPath: instance.Spec.ConfigParams.SwMountLocation})
-	} else if len(instance.Spec.SwStorageClass) != 0 {
-		result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-oradata-sw-vol", MountPath: instance.Spec.ConfigParams.SwMountLocation})
-	} else {
-		fmt.Println("No Location is passed for the software storage in" + OracleRestartSpex.Name)
 	}
 
 	//var mountLoc string
@@ -655,14 +655,16 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 	return result
 }
 
-func VolumePVCForASM(instance *oraclerestart.OracleRestart, index int, diskName string, size int, asmStorage *oraclerestart.AsmDiskDetails, pvcName string, dgType string, k8sClient client.Client) *corev1.PersistentVolumeClaim {
+func VolumePVCForASM(instance *oraclerestartdb.OracleRestart, dgIndex, diskIdx int,
+	diskName, diskGroupName, size, dgType string, k8sClient client.Client,
+) *corev1.PersistentVolumeClaim {
 	// Set volume mode to block
 	volumeBlock := corev1.PersistentVolumeBlock
 
 	// Create PersistentVolumeClaim
 	asmPvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvcName, // Use size to determine index
+			Name:      GetAsmPvcName(diskName, instance.Name),
 			Namespace: instance.Namespace,
 			Labels:    buildLabelsForOracleRestart(instance, "OracleRestart"),
 		},
@@ -673,7 +675,7 @@ func VolumePVCForASM(instance *oraclerestart.OracleRestart, index int, diskName 
 			VolumeMode: &volumeBlock,
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(size), 10) + "Gi")},
+					corev1.ResourceStorage: resource.MustParse(size)},
 			},
 		},
 	}
@@ -728,12 +730,16 @@ func GetDefaultStorageClass(ctx context.Context, k8sClient client.Client) (strin
 	return "", nil // No default StorageClass found
 }
 
-func VolumePVForASM(instance *oraclerestart.OracleRestart, diskName string, size int, asmStorage *oraclerestart.AsmDiskDetails, pvName string, k8sClient client.Client) *corev1.PersistentVolume {
+func VolumePVForASM(instance *oraclerestartdb.OracleRestart,
+	dgIndex, diskIdx int,
+	diskName, diskGroupName, size string,
+	k8sClient client.Client,
+) *corev1.PersistentVolume {
 	volumeBlock := corev1.PersistentVolumeBlock
 
 	asmPvc := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvName,
+			Name:      GetAsmPvName(diskName, instance.Name),
 			Namespace: instance.Namespace,
 			Labels:    buildLabelsForAsmPv(instance, diskName),
 		},
@@ -743,7 +749,8 @@ func VolumePVForASM(instance *oraclerestart.OracleRestart, diskName string, size
 			},
 			VolumeMode: &volumeBlock,
 			Capacity: corev1.ResourceList{
-				corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(size), 10) + "Gi")},
+				corev1.ResourceStorage: resource.MustParse(size),
+			},
 		},
 	}
 
@@ -762,7 +769,7 @@ func VolumePVForASM(instance *oraclerestart.OracleRestart, diskName string, size
 		// No StorageClass, so use label selector and statically bound PVs
 		scName = nil
 	}
-	asmPvc.Spec.NodeAffinity = getAsmNodeAffinity(instance, asmStorage)
+	asmPvc.Spec.NodeAffinity = getAsmNodeAffinity(instance)
 	asmPvc.Spec.PersistentVolumeSource = corev1.PersistentVolumeSource{Local: &corev1.LocalVolumeSource{Path: diskName}}
 
 	if scName != nil {
@@ -772,7 +779,7 @@ func VolumePVForASM(instance *oraclerestart.OracleRestart, diskName string, size
 	return asmPvc
 }
 
-func BuildServiceDefForOracleRestart(instance *oraclerestart.OracleRestart, replicaCount int32, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec, svctype string) *corev1.Service {
+func BuildServiceDefForOracleRestart(instance *oraclerestartdb.OracleRestart, replicaCount int32, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, svctype string) *corev1.Service {
 	//service := &corev1.Service{}
 	service := &corev1.Service{
 		TypeMeta:   metav1.TypeMeta{Kind: "Service"},
@@ -799,10 +806,10 @@ func BuildServiceDefForOracleRestart(instance *oraclerestart.OracleRestart, repl
 	return service
 }
 
-func BuildExternalServiceDefForOracleRestart(instance *oraclerestart.OracleRestart, index int32, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec, svctype string, opType string) *corev1.Service {
+func BuildExternalServiceDefForOracleRestart(instance *oraclerestartdb.OracleRestart, index int32, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, svctype string, opType string) *corev1.Service {
 	//service := &corev1.Service{}
 
-	var npSvc oraclerestart.OracleRestartNodePortSvc
+	var npSvc oraclerestartdb.OracleRestartNodePortSvc
 
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForOracleRestart(instance, index, OracleRestartSpex, opType),
@@ -837,7 +844,7 @@ func BuildExternalServiceDefForOracleRestart(instance *oraclerestart.OracleResta
 }
 
 // Function to build Service ObjectMeta
-func buildSvcObjectMetaForOracleRestart(instance *oraclerestart.OracleRestart, replicaCount int32, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec, svctype string) metav1.ObjectMeta {
+func buildSvcObjectMetaForOracleRestart(instance *oraclerestartdb.OracleRestart, replicaCount int32, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, svctype string) metav1.ObjectMeta {
 	// building objectMeta
 	//var svcName string
 
@@ -853,7 +860,7 @@ func buildSvcObjectMetaForOracleRestart(instance *oraclerestart.OracleRestart, r
 	return objmeta
 }
 
-func getOracleRestartSvcName(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec, svcType string) string {
+func getOracleRestartSvcName(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, svcType string) string {
 
 	switch svcType {
 	case "local":
@@ -875,7 +882,7 @@ func getOracleRestartSvcName(instance *oraclerestart.OracleRestart, OracleRestar
 	}
 }
 
-func getSvcLabelsForOracleRestart(replicaCount int32, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) map[string]string {
+func getSvcLabelsForOracleRestart(replicaCount int32, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) map[string]string {
 
 	var labelStr map[string]string = make(map[string]string)
 	if replicaCount == -1 {
@@ -889,8 +896,8 @@ func getSvcLabelsForOracleRestart(replicaCount int32, OracleRestartSpex oraclere
 }
 
 // This function cleanup the shard from GSM
-func OraCleanupForOracleRestart(instance *oraclerestart.OracleRestart,
-	OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec,
+func OraCleanupForOracleRestart(instance *oraclerestartdb.OracleRestart,
+	OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec,
 	oldReplicaSize int32,
 	newReplicaSize int32,
 ) string {
@@ -905,8 +912,8 @@ func OraCleanupForOracleRestart(instance *oraclerestart.OracleRestart,
 	return err1
 }
 
-func UpdateProvForOracleRestart(instance *oraclerestart.OracleRestart,
-	OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec, kClient client.Client, sfSet *appsv1.StatefulSet, gsmPod *corev1.Pod, logger logr.Logger,
+func UpdateProvForOracleRestart(instance *oraclerestartdb.OracleRestart,
+	OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, kClient client.Client, sfSet *appsv1.StatefulSet, gsmPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
 
 	var msg string
@@ -941,7 +948,7 @@ func UpdateProvForOracleRestart(instance *oraclerestart.OracleRestart,
 	return ctrl.Result{}, nil
 }
 
-func ConfigMapSpecs(instance *oraclerestart.OracleRestart, cmData map[string]string, cmName string) *corev1.ConfigMap {
+func ConfigMapSpecs(instance *oraclerestartdb.OracleRestart, cmData map[string]string, cmName string) *corev1.ConfigMap {
 	//cm := &corev1.ConfigMap{}
 
 	return &corev1.ConfigMap{
@@ -960,39 +967,53 @@ func ConfigMapSpecs(instance *oraclerestart.OracleRestart, cmData map[string]str
 
 }
 
-func BuildDiskCheckDaemonSet(OracleRestart *oraclerestart.OracleRestart) *appsv1.DaemonSet {
-	labels := buildLabelsForOracleRestart(OracleRestart, "disk-check")
+func BuildDiskCheckDaemonSet(OracleRestart *oraclerestartdb.OracleRestart) *appsv1.DaemonSet {
+	labels := BuildLabelsForDaemonSet(OracleRestart, "disk-check")
+	workerNodes := getAllWorkerNodes(OracleRestart)
+	privileged := true
+	disks := flattenAsmDisks(&OracleRestart.Spec)
+	diskArray := strings.Join(disks, " ")
 
-	// Prepare the volume devices based on the PVCs
-	var volumeDevices []corev1.VolumeDevice
-	var volumes []corev1.Volume
-	disks := flattenDisksBySize(&OracleRestart.Spec)
+	cmd := fmt.Sprintf(`
+disks=(%s)
+for disk in "${disks[@]}"; do
+  real_disk=$(readlink -f "$disk")
+  if [ -b "$real_disk" ]; then
+    size_bytes=$(blockdev --getsize64 "$real_disk")
+    size_gb=$((size_bytes / 1024 / 1024 / 1024))
+    echo "{\"disk\":\"$disk\",\"valid\":true,\"sizeGb\":$size_gb}"
+  else
+    echo "{\"disk\":\"$disk\",\"valid\":false,\"sizeGb\":0}"
+    exit 1
+  fi
+done
+sleep 3600
+`, diskArray)
 
-	for _, diskPath := range disks {
-		pvcName := GetAsmPvcName(OracleRestart.Name, diskPath, OracleRestart)
-		volumeName := pvcName
-
-		volumeDevices = append(volumeDevices, corev1.VolumeDevice{
-			Name:       volumeName,
-			DevicePath: diskPath,
+	var volumeMounts []corev1.VolumeMount
+	for _, disk := range disks {
+		volName := sanitizeK8sName(disk) + "-vol"
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      volName,
+			MountPath: disk, // mount to the same path
 		})
+	}
 
+	var volumes []corev1.Volume
+	for _, disk := range disks {
+		volName := sanitizeK8sName(disk) + "-vol"
+		hostPathType := corev1.HostPathBlockDev
 		volumes = append(volumes, corev1.Volume{
-			Name: volumeName,
+			Name: volName,
 			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: pvcName,
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: disk,
+					Type: &hostPathType, // pointer to the enum
 				},
 			},
 		})
 
 	}
-
-	// Flatten the DisksBySize map to get a single slice of all disk names
-	diskNamesSlice := flattenDisksBySize(&OracleRestart.Spec)
-
-	// Join the flattened list of disk names into a single space-separated string
-	diskNames := strings.Join(diskNamesSlice, " ")
 
 	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1018,7 +1039,7 @@ func BuildDiskCheckDaemonSet(OracleRestart *oraclerestart.OracleRestart) *appsv1
 											{
 												Key:      "kubernetes.io/hostname",
 												Operator: corev1.NodeSelectorOpIn,
-												Values:   OracleRestart.Spec.InstDetails.WorkerNode,
+												Values:   workerNodes,
 											},
 										},
 									},
@@ -1031,19 +1052,17 @@ func BuildDiskCheckDaemonSet(OracleRestart *oraclerestart.OracleRestart) *appsv1
 							Name:    "disk-check",
 							Image:   OracleRestart.Spec.Image,
 							Command: []string{"/bin/bash", "-c"},
-							Args: []string{
-								"for disk in " + diskNames + "; do " +
-									"if [ ! -e $disk ]; then " +
-									"echo Disk $disk is not a valid block device; " +
-									"exit 1; " +
-									"else " +
-									"echo Disk $disk is valid; " +
-									"fi; " +
-									"done; " +
-									"sleep 3600",
+							Args:    []string{cmd},
+							SecurityContext: &corev1.SecurityContext{
+								Privileged: &privileged,
+								Capabilities: &corev1.Capabilities{
+									Add: []corev1.Capability{
+										"NET_ADMIN", "SYS_NICE", "SYS_RESOURCE",
+										"AUDIT_WRITE", "NET_RAW", "AUDIT_CONTROL", "SYS_CHROOT",
+									},
+								},
 							},
-
-							VolumeDevices: volumeDevices,
+							VolumeMounts: volumeMounts,
 						},
 					},
 					Volumes: volumes,
@@ -1053,17 +1072,22 @@ func BuildDiskCheckDaemonSet(OracleRestart *oraclerestart.OracleRestart) *appsv1
 	}
 }
 
-// Helper function to flatten DisksBySize into a single slice of disk names
-func flattenDisksBySize(oraclerestartSpec *oraclerestart.OracleRestartSpec) []string {
-	disksBySize := oraclerestartSpec.AsmStorageDetails.DisksBySize
+// Helper function to flatten all disk names in AsmStorageDetails, removing duplicates
+func flattenAsmDisks(racDbSpec *oraclerestartdb.OracleRestartSpec) []string {
+	seen := make(map[string]struct{})
 	var allDisks []string
-	for _, diskBySize := range disksBySize {
-		allDisks = append(allDisks, diskBySize.DiskNames...)
+	for _, dg := range racDbSpec.AsmStorageDetails {
+		for _, disk := range dg.Disks {
+			if _, ok := seen[disk]; !ok {
+				allDisks = append(allDisks, disk)
+				seen[disk] = struct{}{}
+			}
+		}
 	}
 	return allDisks
 }
 
-func CreateServiceAccountIfNotExists(instance *oraclerestart.OracleRestart, kClient client.Client) error {
+func CreateServiceAccountIfNotExists(instance *oraclerestartdb.OracleRestart, kClient client.Client) error {
 	if instance.Spec.SrvAccountName == "" {
 		return nil
 	}
@@ -1095,7 +1119,7 @@ func CreateServiceAccountIfNotExists(instance *oraclerestart.OracleRestart, kCli
 	return nil
 }
 
-func IsStaticProvisioning(k8sClient client.Client, instance *oraclerestart.OracleRestart) bool {
+func IsStaticProvisioning(k8sClient client.Client, instance *oraclerestartdb.OracleRestart) bool {
 	if CheckStorageClass(instance) == "NOSC" {
 		return false
 	}
@@ -1115,7 +1139,7 @@ func IsStaticProvisioning(k8sClient client.Client, instance *oraclerestart.Oracl
 	return true // no default SC → use static
 }
 
-func SwVolumeClaimTemplatesForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) corev1.PersistentVolumeClaim {
+func SwVolumeClaimTemplatesForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) corev1.PersistentVolumeClaim {
 
 	// If user-provided PVC name exists, skip volume claim template creation
 	//pvcName := GetSwPvcName(OracleRestartSpex.Name)
@@ -1151,12 +1175,12 @@ func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleR
 
 	fmt.Printf("INFO", "working on asm storage class "+*StorageClass)
 
-	for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
-		for _, diskName := range diskBySize.DiskNames {
+	for _, dg := range instance.Spec.AsmStorageDetails {
+		for _, diskName := range dg.Disks {
 			// The folowing peice of code is generating ASM PVC name because by default VolumeCLaim Template add Instance name like -dbmc1-0
-			dgType := CheckDiskInAsmDeviceList(instance, diskName)
+			dgType := dg.Type
 			disk := diskName[strings.LastIndex(diskName, "/")+1:]
-			pvcName := "asm-pvc-" + strings.ToLower(dgType) + "-" + disk + "-" + instance.Name
+			pvcName := "asm-pvc-" + strings.ToLower(string(dgType)) + "-" + disk + "-" + instance.Name
 
 			claims = append(claims, corev1.PersistentVolumeClaim{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1172,7 +1196,7 @@ func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleR
 					StorageClassName: StorageClass,
 					Resources: corev1.VolumeResourceRequirements{
 						Requests: corev1.ResourceList{
-							corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", diskBySize.StorageSizeInGb)),
+							// corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", diskBySize.StorageSizeInGb)),
 						},
 					},
 				},
@@ -1181,4 +1205,24 @@ func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleR
 	}
 
 	return claims
+}
+
+func getAllWorkerNodes(instance *oraclerestartdb.OracleRestart) []string {
+	nodeSet := map[string]struct{}{}
+	for _, node := range instance.Spec.InstDetails.WorkerNode {
+		nodeSet[node] = struct{}{}
+	}
+
+	nodes := make([]string, 0, len(nodeSet))
+	for node := range nodeSet {
+		nodes = append(nodes, node)
+	}
+	return nodes
+}
+
+func BuildLabelsForDaemonSet(instance *oraclerestart.OracleRestart, label string) map[string]string {
+	return map[string]string{
+		"cluster": label,
+	}
+
 }

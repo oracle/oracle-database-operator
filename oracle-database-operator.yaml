@@ -10647,6 +10647,25 @@ spec:
             type: object
           spec:
             properties:
+              asmDiskGroupDetails:
+                items:
+                  properties:
+                    autoUpdate:
+                      type: string
+                    disks:
+                      items:
+                        type: string
+                      type: array
+                    name:
+                      type: string
+                    redundancy:
+                      type: string
+                    type:
+                      type: string
+                  required:
+                  - disks
+                  type: object
+                type: array
               asmStorageDetails:
                 properties:
                   autoUpdate:
@@ -10667,35 +10686,17 @@ spec:
                 properties:
                   cpuCount:
                     type: integer
-                  crsAsmDeviceList:
-                    type: string
-                  crsAsmDiskDg:
-                    type: string
-                  crsAsmDiskDgRedundancy:
-                    type: string
-                  dbAsmDeviceList:
-                    type: string
-                  dbAsmDiskDgRedundancy:
-                    type: string
                   dbBase:
                     type: string
                   dbCharSet:
                     type: string
                   dbConfigType:
                     type: string
-                  dbDataFileDestDg:
-                    type: string
                   dbHome:
                     type: string
                   dbName:
                     type: string
                   dbOneOffIds:
-                    type: string
-                  dbRecoveryFileDest:
-                    type: string
-                  dbRecoveryFileDestSize:
-                    type: string
-                  dbRedoFileSize:
                     type: string
                   dbResponseFile:
                     properties:
@@ -10747,16 +10748,6 @@ spec:
                     type: string
                   processes:
                     type: integer
-                  recoAsmDeviceList:
-                    type: string
-                  recoAsmDiskDgRedundancy:
-                    type: string
-                  redoAsmDeviceList:
-                    type: string
-                  redoAsmDiskDg:
-                    type: string
-                  redoAsmDiskDgRedundancy:
-                    type: string
                   ruFolderName:
                     type: string
                   ruPatchLocation:
@@ -11398,22 +11389,32 @@ spec:
                       type: object
                   type: object
                 type: array
-              asmDetails:
-                properties:
-                  diskgroup:
-                    items:
-                      properties:
-                        disks:
-                          items:
+              asmDiskGroups:
+                items:
+                  properties:
+                    autoUpdate:
+                      type: string
+                    disks:
+                      items:
+                        properties:
+                          name:
                             type: string
-                          type: array
-                        name:
-                          type: string
-                        redundancy:
-                          type: string
-                      type: object
-                    type: array
-                type: object
+                          sizeInGb:
+                            type: integer
+                          valid:
+                            type: boolean
+                        type: object
+                      type: array
+                    name:
+                      type: string
+                    redundancy:
+                      type: string
+                    storageClass:
+                      type: string
+                    type:
+                      type: string
+                  type: object
+                type: array
               conditions:
                 items:
                   properties:
@@ -11457,35 +11458,17 @@ spec:
                 properties:
                   cpuCount:
                     type: integer
-                  crsAsmDeviceList:
-                    type: string
-                  crsAsmDiskDg:
-                    type: string
-                  crsAsmDiskDgRedundancy:
-                    type: string
-                  dbAsmDeviceList:
-                    type: string
-                  dbAsmDiskDgRedundancy:
-                    type: string
                   dbBase:
                     type: string
                   dbCharSet:
                     type: string
                   dbConfigType:
                     type: string
-                  dbDataFileDestDg:
-                    type: string
                   dbHome:
                     type: string
                   dbName:
                     type: string
                   dbOneOffIds:
-                    type: string
-                  dbRecoveryFileDest:
-                    type: string
-                  dbRecoveryFileDestSize:
-                    type: string
-                  dbRedoFileSize:
                     type: string
                   dbResponseFile:
                     properties:
@@ -11537,16 +11520,6 @@ spec:
                     type: string
                   processes:
                     type: integer
-                  recoAsmDeviceList:
-                    type: string
-                  recoAsmDiskDgRedundancy:
-                    type: string
-                  redoAsmDeviceList:
-                    type: string
-                  redoAsmDiskDg:
-                    type: string
-                  redoAsmDiskDgRedundancy:
-                    type: string
                   ruFolderName:
                     type: string
                   ruPatchLocation:

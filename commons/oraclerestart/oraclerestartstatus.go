@@ -70,9 +70,9 @@ func UpdateOracleRestartInstStatusData(
 	orestartNodeDetails := &oraclerestartdb.OracleRestartNodeDetailedStatus{}
 	strMap := make(map[string]string)
 
-	if OracleRestart.Status.AsmDetails == nil {
-		OracleRestart.Status.AsmDetails = &oraclerestartdb.AsmInstanceStatus{}
-	}
+	// if OracleRestart.Status.AsmDetails == nil {
+	// 	OracleRestart.Status.AsmDetails = &oraclerestartdb.AsmInstanceStatus{}
+	// }
 
 	if OracleRestart.Status.ConfigParams == nil {
 		OracleRestart.Status.ConfigParams = &oraclerestartdb.InitParams{}
@@ -137,10 +137,10 @@ func UpdateOracleRestartInstStatusData(
 			OracleRestart.Status.ConfigParams.DbHome = OracleRestart.Spec.ConfigParams.DbHome
 		}
 		// OracleRestart.Status.ConfigParams.CrsAsmDeviceList = OracleRestart.Spec.ConfigParams.CrsAsmDeviceList
-		OracleRestart.Status.ConfigParams.CrsAsmDeviceList = getcrsAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
+		// OracleRestart.Status.ConfigParams.CrsAsmDeviceList = getcrsAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
 
 		// OracleRestart.Status.ConfigParams.DbAsmDeviceList = OracleRestart.Spec.ConfigParams.DbAsmDeviceList
-		OracleRestart.Status.ConfigParams.DbAsmDeviceList = getdbAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
+		// OracleRestart.Status.ConfigParams.DbAsmDeviceList = getdbAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
 
 	} else if state == string(oraclerestartdb.OracleRestartStatefulSetNotFound) {
 		neworacleRestart := delOracleRestartNodestatus(OracleRestart, oraRestartSpex.Name+"-0")
@@ -239,7 +239,7 @@ func UpdateoraclerestartdbStatusData(OracleRestart *oraclerestartdb.OracleRestar
 	OracleRestart.Status.PdbConnectString = getPdbConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
 	OracleRestart.Status.ExternalConnectString = getExternalConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
 	OracleRestart.Status.DbSecret = OracleRestart.Spec.DbSecret
-	OracleRestart.Status.AsmDetails = getAsmInstState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
+	// OracleRestart.Status.AsmDetails = getAsmInstState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
 
 	UpdateoraclerestartdbServiceStatus(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
 	UpdateoraclerestartdbTopologyState(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
