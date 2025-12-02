@@ -1,3 +1,4 @@
+---
 # API version of the OracleRestart Custom Resource
 apiVersion: database.oracle.com/v4
 
@@ -52,12 +53,13 @@ spec:
   swDgStorageClass: "oci-bv"          # Specify storage class for the storage location for software, Currently using "oci-bv" but you can specify another available storage class as well
 
   # ASM (Automatic Storage Management) storage configuration
-  asmStorageDetails:
-    disksBySize:
-      - storageSizeInGb: 50          # Each disk in this group has 50Gi of storage
-        diskNames:
-          - /dev/asm-disk1           # Device for ASM disk 1
-          - /dev/asm-disk2           # Device for ASM disk 2
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/oracleoci/oraclevdd
+        - /dev/oracleoci/oraclevde
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
@@ -113,7 +115,6 @@ spec:
     gridBase: "/u01/app/grid"                                 # Grid base directory
     dbHome: "/u01/app/oracle/product/19c/dbhome_1"            # Oracle DB home path
     dbBase: "/u01/app/oracle"                                 # Oracle base directory
-    crsAsmDeviceList: /dev/asm-disk1,/dev/asm-disk2           # Comma-separated list of ASM device files
     inventory: "/u01/app/oraInventory"                        # Inventory location
     gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
     dbSwZipFile: "db_home.zip"                                # Database software ZIP

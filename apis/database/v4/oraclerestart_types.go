@@ -52,13 +52,14 @@ import (
 type OracleRestartSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	InstDetails       OracleRestartInstDetailSpec    `json:"instDetails"`
-	ConfigParams      *InitParams                    `json:"configParams,omitempty"`
-	AsmStorageDetails *AsmDiskDetails                `json:"asmStorageDetails,omitempty"`
-	Image             string                         `json:"image,omitempty"`
-	ImagePullSecret   string                         `json:"imagePullSecret,omitempty"`
-	ScriptsLocation   string                         `json:"scriptsLocation,omitempty"`
-	SshKeySecret      *OracleRestartSshSecretDetails `json:"sshKeySecret,omitempty"`
+	InstDetails          OracleRestartInstDetailSpec    `json:"instDetails"`
+	ConfigParams         *InitParams                    `json:"configParams,omitempty"`
+	AsmStorageDetails    []AsmDiskGroupDetails          `json:"asmDiskGroupDetails,omitempty"`
+	AsmStorageDetailsOld *AsmDiskDetails                `json:"asmStorageDetails,omitempty"`
+	Image                string                         `json:"image,omitempty"`
+	ImagePullSecret      string                         `json:"imagePullSecret,omitempty"`
+	ScriptsLocation      string                         `json:"scriptsLocation,omitempty"`
+	SshKeySecret         *OracleRestartSshSecretDetails `json:"sshKeySecret,omitempty"`
 	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
 	// +kubebuilder:validation:default="Always"
 	ImagePullPolicy    *corev1.PullPolicy               `json:"imagePullPolicy,omitempty"`
@@ -85,7 +86,6 @@ type OracleRestartSpec struct {
 	// +kubebuilder:default="enable"
 	EnableOns string `json:"enableOns,omitempty"`
 }
-
 type AsmDiskDetails struct {
 	DisksBySize []DiskBySize `json:"disksBySize,omitempty"`
 	AutoUpdate  string       `json:"autoUpdate,omitempty"`
@@ -115,37 +115,26 @@ type InitParams struct {
 	PgaSize                 string       `json:"pgaSize,omitempty"`
 	Processes               int          `json:"processes,omitempty"`
 	DbUniqueName            string       `json:"dbUniqueName,omitempty"`
-	CrsAsmDiskDg            string       `json:"crsAsmDiskDg,omitempty"`
-	CrsAsmDeviceList        string       `json:"crsAsmDeviceList,omitempty"`
-	DbRecoveryFileDest      string       `json:"dbRecoveryFileDest,omitempty"`
-	DbRecoveryFileDestSize  string       `json:"dbRecoveryFileDestSize,omitempty"`
-	DbDataFileDestDg        string       `json:"dbDataFileDestDg,omitempty"`
-	CrsAsmDiskDgRedundancy  string       `json:"crsAsmDiskDgRedundancy,omitempty"`
-	DBAsmDiskDgRedundancy   string       `json:"dbAsmDiskDgRedundancy,omitempty"`
-	RecoAsmDiskDgRedundancy string       `json:"recoAsmDiskDgRedundancy,omitempty"`
-	RedoAsmDiskDgRedundancy string       `json:"redoAsmDiskDgRedundancy,omitempty"`
-	DbName                  string       `json:"dbName,omitempty"`
-	PdbName                 string       `json:"pdbName,omitempty"`
-	DbStorageType           string       `json:"dbStorageType,omitempty"`
-	DbAsmDeviceList         string       `json:"dbAsmDeviceList,omitempty"`
-	RecoAsmDeviceList       string       `json:"recoAsmDeviceList,omitempty"`
-	RedoAsmDeviceList       string       `json:"redoAsmDeviceList,omitempty"`
-	RedoAsmDiskDg           string       `json:"redoAsmDiskDg,omitempty"`
-	DbCharSet               string       `json:"dbCharSet,omitempty"`
-	DbRedoFileSize          string       `json:"dbRedoFileSize,omitempty"`
-	DbType                  string       `json:"dbType,omitempty"`
-	DbConfigType            string       `json:"dbConfigType,omitempty"`
-	EnableArchiveLog        string       `json:"enableArchiveLog,omitempty"`
-	SwMountLocation         string       `json:"swMountLocation,omitempty"`
-	HostSwStageLocation     string       `json:"hostSwStageLocation,omitempty"`
-	RuPatchLocation         string       `json:"ruPatchLocation,omitempty"`
-	RuFolderName            string       `json:"ruFolderName,omitempty"`
-	OPatchLocation          string       `json:"oPatchLocation,omitempty"`
-	SwStagePvc              string       `json:"swStagePvc,omitempty"`
-	SwStagePvcMountLocation string       `json:"swStagePvcMountLocation,omitempty"`
-	OneOffLocation          string       `json:"oneOffLocation,omitempty"`
-	DbOneOffIds             string       `json:"dbOneOffIds,omitempty"`
-	GridOneOffIds           string       `json:"gridOneOffIds,omitempty"`
+
+	DbName        string `json:"dbName,omitempty"`
+	PdbName       string `json:"pdbName,omitempty"`
+	DbStorageType string `json:"dbStorageType,omitempty"`
+
+	DbCharSet string `json:"dbCharSet,omitempty"`
+
+	DbType                  string `json:"dbType,omitempty"`
+	DbConfigType            string `json:"dbConfigType,omitempty"`
+	EnableArchiveLog        string `json:"enableArchiveLog,omitempty"`
+	SwMountLocation         string `json:"swMountLocation,omitempty"`
+	HostSwStageLocation     string `json:"hostSwStageLocation,omitempty"`
+	RuPatchLocation         string `json:"ruPatchLocation,omitempty"`
+	RuFolderName            string `json:"ruFolderName,omitempty"`
+	OPatchLocation          string `json:"oPatchLocation,omitempty"`
+	SwStagePvc              string `json:"swStagePvc,omitempty"`
+	SwStagePvcMountLocation string `json:"swStagePvcMountLocation,omitempty"`
+	OneOffLocation          string `json:"oneOffLocation,omitempty"`
+	DbOneOffIds             string `json:"dbOneOffIds,omitempty"`
+	GridOneOffIds           string `json:"gridOneOffIds,omitempty"`
 }
 
 type OracleRestartInstDetailSpec struct {
@@ -238,7 +227,7 @@ type OracleRestartStatus struct {
 	Conditions         []metav1.Condition               `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 	InstDetails        *OracleRestartInstDetailSpec     `json:"instDetails,omitempty"`
 	ConfigParams       *InitParams                      `json:"configParams,omitempty"`
-	AsmDetails         *AsmInstanceStatus               `json:"asmDetails,omitempty"`
+	AsmDiskGroups      []AsmDiskGroupStatus             `json:"asmDiskGroups,omitempty"`
 	NfsStorageDetails  *corev1.NFSVolumeSource          `json:"nfsStorageDetails,omitempty"`
 	UseNfsforSwStorage string                           `json:"useNfsforSwStorage,omitempty"`
 	StorageClass       string                           `json:"storageClass,omitempty"`
@@ -297,16 +286,6 @@ type OracleRestartNodeDetailedStatus struct {
 	IsDelete       string                     `json:"isDelete,omitempty"`
 	State          string                     `json:"state,omitempty"`
 	MountedDevices []string                   `json:"mountedDevices,omitempty"`
-}
-
-type AsmInstanceStatus struct {
-	Diskgroup []AsmDiskgroupStatus `json:"diskgroup,omitempty"`
-}
-
-type AsmDiskgroupStatus struct {
-	Name       string   `json:"name,omitempty"`
-	Disks      []string `json:"disks,omitempty"`
-	Redundancy string   `json:"redundancy,omitempty"`
 }
 
 type OracleRestartLifecycleState string
