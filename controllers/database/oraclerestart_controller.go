@@ -463,7 +463,6 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
 			cm := oraclerestartcommon.ConfigMapSpecs(oracleRestart, configMapData, cmName)
 			result, configmapEnvKeyChanged, err := r.createConfigMap(ctx, *oracleRestart, cm)
-
 			if err != nil {
 				result = resultNq
 				return result, err
@@ -475,7 +474,11 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			}
 
 			oracleRestart.Spec.InstDetails.EnvFile = cmName
-			dep := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
+			dep, err := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
+			if err != nil {
+				result = resultNq
+				return result, err
+			}
 			result, err = r.createOrReplaceSfs(ctx, req, *oracleRestart, dep, index, isLast, oldState, configmapEnvKeyChanged)
 			if err != nil {
 				result = resultNq
@@ -549,14 +552,12 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			r.Log.Info("Config Map updated successfully with new asm details")
 			oracleRestart.Spec.InstDetails.EnvFile = cmName
 			// result, err = r.createOrReplaceSfsAsm(ctx, req, oracleRestart, oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client), index, isLast, oldSpec)
-			dep := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
+			dep, err := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
 			result, err = r.createOrReplaceSfsAsm(ctx, req, oracleRestart, dep, index, isLast, oldSpec)
-
 			if err != nil {
 				result = resultNq
 				return result, err
 			}
-
 		}
 	}
 	// if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
@@ -635,8 +636,6 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	r.Log.Info("Reconcile completed. Requeuing....")
-	// uncomment this only to debugging null pointer exception
-	// r.updateReconcileStatus(OracleRestart, ctx, req, &result, &err, &blocked, &completed)
 	// time.Sleep(1 * time.Minute)
 	return resultQ, nil
 }
@@ -1591,6 +1590,19 @@ func (r *OracleRestartReconciler) setDefaults(oracleRestart *oraclerestartdb.Ora
 	// }
 	return nil
 
+}
+
+func parseSGASizeGB(sizeStr string) int64 {
+	s := strings.ToUpper(strings.TrimSpace(sizeStr))
+	// Remove "GB", "G" suffix if present
+	s = strings.TrimSuffix(s, "GB")
+	s = strings.TrimSuffix(s, "G")
+	// Parse integer
+	val, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0 // or a safe default, e.g., 16
+	}
+	return val
 }
 
 func (r *OracleRestartReconciler) updateGiConfigParamStatus(oracleRestart *oraclerestartdb.OracleRestart) error {
@@ -2620,6 +2632,26 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 			if cfg.CpuCount > 0 {
 				data = append(data, "CPU_COUNT="+strconv.Itoa(cfg.CpuCount))
 			}
+			// Later in your code where you append INIT_* values:
+			if instance.Spec.ConfigParams.SgaSize != "" {
+				normalizedSGA := normalizeOracleMemoryUnit(instance.Spec.ConfigParams.SgaSize)
+				data = append(data, "INIT_SGA_SIZE="+normalizedSGA)
+			}
+
+			if instance.Spec.ConfigParams.PgaSize != "" {
+				normalizedPGA := normalizeOracleMemoryUnit(instance.Spec.ConfigParams.PgaSize)
+				data = append(data, "INIT_PGA_SIZE="+normalizedPGA)
+			}
+			if instance.Spec.ConfigParams.Processes > 0 {
+				// Configmap check is done in ValidateSpex
+				data = append(data, "INIT_PROCESSES="+strconv.Itoa(instance.Spec.ConfigParams.Processes))
+			}
+
+			if instance.Spec.ConfigParams.CpuCount > 0 {
+				// Configmap check is done in ValidateSpex
+				data = append(data, "CPU_COUNT="+strconv.Itoa(instance.Spec.ConfigParams.CpuCount))
+			}
+
 		}
 	}
 
@@ -2635,6 +2667,14 @@ func ensurePlusPrefix(name string) string {
 		return "+" + name
 	}
 	return name
+}
+
+// normalizeOracleMemoryUnit converts "Gi"/"Mi" to "G"/"M" for Oracle DBCA compatibility
+func normalizeOracleMemoryUnit(s string) string {
+	s = strings.TrimSpace(strings.ToUpper(s))
+	s = strings.ReplaceAll(s, "GI", "G")
+	s = strings.ReplaceAll(s, "MI", "M")
+	return s
 }
 
 // ================================== CREATE FUNCTIONS =============================

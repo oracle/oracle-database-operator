@@ -3161,11 +3161,6 @@ func (in *OracleRestartStatus) DeepCopyInto(out *OracleRestartStatus) {
 		*out = new(corev1.Probe)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.SecurityContext != nil {
-		in, out := &in.SecurityContext, &out.SecurityContext
-		*out = new(corev1.PodSecurityContext)
-		(*in).DeepCopyInto(*out)
-	}
 	if in.ExternalSvcType != nil {
 		in, out := &in.ExternalSvcType, &out.ExternalSvcType
 		*out = new(string)
@@ -3185,6 +3180,11 @@ func (in *OracleRestartStatus) DeepCopyInto(out *OracleRestartStatus) {
 	if in.Resources != nil {
 		in, out := &in.Resources, &out.Resources
 		*out = new(corev1.ResourceRequirements)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.SecurityContext != nil {
+		in, out := &in.SecurityContext, &out.SecurityContext
+		*out = new(corev1.PodSecurityContext)
 		(*in).DeepCopyInto(*out)
 	}
 }
