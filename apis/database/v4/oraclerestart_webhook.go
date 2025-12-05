@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 
 	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
@@ -160,6 +161,97 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 	validationErrs = append(validationErrs, cr.validateServiceSpecs()...)
 	validationErrs = append(validationErrs, cr.validateAsmStorage()...)
 	validationErrs = append(validationErrs, cr.validateGeneric()...)
+
+	cp := cr.Spec.ConfigParams
+	fldPath := field.NewPath("spec").Child("configParams")
+	safetyPct := 0.8
+
+	if cp != nil {
+		// ----- BASIC CONFIG PARAMS VALIDATION -----
+		if cp.CpuCount != 0 && cp.CpuCount < 1 {
+			validationErrs = append(validationErrs, field.Invalid(
+				fldPath.Child("cpuCount"), cp.CpuCount, "if specified, must be greater than zero"))
+		}
+		if cp.Processes != 0 && cp.Processes < 1 {
+			validationErrs = append(validationErrs, field.Invalid(
+				fldPath.Child("processes"), cp.Processes, "if specified, must be greater than zero"))
+		}
+		if cp.HugePages < 0 {
+			validationErrs = append(validationErrs, field.Invalid(
+				fldPath.Child("hugePages"), cp.HugePages, "cannot be negative"))
+		}
+		if cp.SgaSize != "" {
+			if err := validateMemorySize(cp.SgaSize); err != nil {
+				validationErrs = append(validationErrs, field.Invalid(
+					fldPath.Child("sgaSize"), cp.SgaSize, err.Error()))
+			}
+		}
+		if cp.PgaSize != "" {
+			if err := validateMemorySize(cp.PgaSize); err != nil {
+				validationErrs = append(validationErrs, field.Invalid(
+					fldPath.Child("pgaSize"), cp.PgaSize, err.Error()))
+			}
+		}
+	}
+	var deviceWarnings []string
+	// ----- PARSE SGA AND PGA -----
+	sga, errSga := parseMem(cp.SgaSize)
+	pga, errPga := parseMem(cp.PgaSize)
+	if errSga != nil {
+		validationErrs = append(validationErrs, field.Invalid(fldPath.Child("sgaSize"), cp.SgaSize, "invalid format"))
+	}
+	if errPga != nil {
+		validationErrs = append(validationErrs, field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
+	}
+
+	// ----- EXTRACT POD RESOURCE LIMITS -----
+	memLimit := int64(0)
+	if cr.Spec.Resources != nil {
+		if memQ, ok := cr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
+			memLimit = memQ.Value()
+		}
+	}
+
+	// ----- SGA + PGA MUST BE WITHIN MEMORY LIMIT -----
+	totalMem := sga + pga
+	if memLimit > 0 && totalMem > int64(float64(memLimit)*safetyPct) {
+		validationErrs = append(validationErrs, field.Invalid(
+			fldPath, totalMem,
+			fmt.Sprintf("SGA (%dB) + PGA (%dB) must not exceed %d%% of pod memory limit (%dB)", sga, pga, int(safetyPct*100), memLimit)))
+	}
+
+	// ----- EXTRACT HUGE PAGES -----
+	hugeMem := int64(0)
+	if cr.Spec.Resources != nil {
+		// Check limits first
+		if hpQ, ok := cr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
+			hugeMem = hpQ.Value()
+		}
+		// Fallback: check requests if limits not set
+		if hugeMem == 0 {
+			if hpQ, ok := cr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
+				hugeMem = hpQ.Value()
+			}
+		}
+	}
+
+	// ----- VALIDATE HUGEPAGES -----
+	if hugeMem > 0 {
+		if hugeMem < sga {
+			validationErrs = append(validationErrs, field.Invalid(
+				fldPath.Child("hugePages"), hugeMem,
+				fmt.Sprintf("HugePages (%d bytes) must be >= SGA size (%d bytes)", hugeMem, sga)))
+		}
+		if memLimit > 0 && hugeMem > memLimit {
+			validationErrs = append(validationErrs, field.Invalid(
+				fldPath.Child("hugePages"), hugeMem,
+				fmt.Sprintf("HugePages (%d bytes) exceeds pod memory limit (%d bytes)", hugeMem, memLimit)))
+		}
+	}
+
+	for _, warning := range deviceWarnings {
+		warnings = append(warnings, warning)
+	}
 
 	if len(validationErrs) > 0 {
 		return warnings, apierrors.NewInvalid(
@@ -282,6 +374,23 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 	// 	)
 	// 	validationErrs = append(validationErrs, errs...)
 	// }
+
+	// Forbid downscale or warn on SGA/PGA
+	oldSga, _ := parseMem(old.Spec.ConfigParams.SgaSize)
+	newSga, _ := parseMem(newCr.Spec.ConfigParams.SgaSize)
+	if newSga < oldSga {
+		validationErrs = append(validationErrs, field.Invalid(
+			field.NewPath("spec").Child("configParams").Child("sgaSize"),
+			newCr.Spec.ConfigParams.SgaSize, "reducing SGA size after initial deploy is not allowed"))
+	}
+	// Likewise for PGA
+	oldSga, _ = parseMem(old.Spec.ConfigParams.PgaSize)
+	newSga, _ = parseMem(newCr.Spec.ConfigParams.PgaSize)
+	if newSga < oldSga {
+		validationErrs = append(validationErrs, field.Invalid(
+			field.NewPath("spec").Child("configParams").Child("sgaSize"),
+			newCr.Spec.ConfigParams.SgaSize, "reducing SGA size after initial deploy is not allowed"))
+	}
 
 	if len(validationErrs) > 0 {
 		return nil, apierrors.NewInvalid(
@@ -688,6 +797,226 @@ func getDeviceCount(deviceList string) int {
 		}
 	}
 	return count
+}
+
+func (r *OracleRestart) validateAsmRedundancyAndDisks(
+	devList, redundancy, paramField string,
+) field.ErrorList {
+	var errs field.ErrorList
+	diskCount := getDeviceCount(devList)
+
+	// Only validate if at least ONE of devList or redundancy is set/non-empty
+	if strings.TrimSpace(redundancy) == "" {
+		// Both are empty, nothing to validate
+		return errs
+	}
+
+	switch strings.ToUpper(redundancy) {
+	case "EXTERNAL":
+		if diskCount < 1 {
+			errs = append(errs, field.Invalid(
+				field.NewPath("spec").Child("configParams").Child(paramField),
+				devList,
+				"EXTERNAL redundancy requires disk count minimum 1",
+			))
+		}
+	case "NORMAL":
+		if diskCount < 2 {
+			errs = append(errs, field.Invalid(
+				field.NewPath("spec").Child("configParams").Child(paramField),
+				devList,
+				"NORMAL redundancy requires disk count minimum 2",
+			))
+		}
+	case "HIGH":
+		if diskCount < 3 {
+			errs = append(errs, field.Invalid(
+				field.NewPath("spec").Child("configParams").Child(paramField),
+				devList,
+				"HIGH redundancy requires disk count minimum 3",
+			))
+		}
+	default:
+		errs = append(errs, field.Invalid(
+			field.NewPath("spec").Child("configParams").Child(paramField),
+			redundancy,
+			"Invalid redundancy type; must be EXTERNAL, NORMAL, or HIGH",
+		))
+	}
+	return errs
+}
+
+func validateMemorySize(sizeStr string) error {
+	matched, _ := regexp.MatchString(`^\d+(Gi|Mi|G|M)$`, sizeStr)
+	if !matched {
+		return fmt.Errorf("memory size must be of form <number>[M|G|Mi|Gi], e.g., 3G, 1024M, 16Gi")
+	}
+	return nil
+}
+
+const safetyPct = 0.80 // Only 80% of pod memory can be used for SGA+PGA
+
+func parseMem(memStr string) (int64, error) {
+	if memStr == "" {
+		return 0, nil
+	}
+
+	// Identify unit (supports M, G, Mi, Gi)
+	var numStr string
+	var multiplier int64
+
+	if strings.HasSuffix(memStr, "Gi") || strings.HasSuffix(memStr, "gi") {
+		numStr = memStr[:len(memStr)-2]
+		multiplier = 1024 * 1024 * 1024
+	} else if strings.HasSuffix(memStr, "Mi") || strings.HasSuffix(memStr, "mi") {
+		numStr = memStr[:len(memStr)-2]
+		multiplier = 1024 * 1024
+	} else if strings.HasSuffix(memStr, "G") || strings.HasSuffix(memStr, "g") {
+		numStr = memStr[:len(memStr)-1]
+		multiplier = 1024 * 1024 * 1024
+	} else if strings.HasSuffix(memStr, "M") || strings.HasSuffix(memStr, "m") {
+		numStr = memStr[:len(memStr)-1]
+		multiplier = 1024 * 1024
+	} else {
+		return 0, fmt.Errorf("invalid memory unit in %s", memStr)
+	}
+
+	num, err := strconv.Atoi(numStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid numeric value in %s", memStr)
+	}
+
+	return int64(num) * multiplier, nil
+}
+
+func validateOracleSysctls(sysctls map[string]string, sgaBytes int64, pageSize int64) field.ErrorList {
+	var errs field.ErrorList
+	// kernel.sem = "250 32000 100 128"
+	if val, ok := sysctls["kernel.sem"]; ok {
+		parts := strings.Fields(val)
+		if len(parts) != 4 {
+			errs = append(errs, field.Invalid(field.NewPath("kernel.sem"), val, "must have 4 space-separated integers"))
+		} else {
+			if v, _ := strconv.Atoi(parts[0]); v < 250 {
+				errs = append(errs, field.Invalid(field.NewPath("kernel.sem"), parts[0], "semmsl must be >= 250"))
+			}
+			if v, _ := strconv.Atoi(parts[1]); v < 32000 {
+				errs = append(errs, field.Invalid(field.NewPath("kernel.sem"), parts[1], "semmns must be >= 32000"))
+			}
+			if v, _ := strconv.Atoi(parts[2]); v < 100 {
+				errs = append(errs, field.Invalid(field.NewPath("kernel.sem"), parts[2], "semopm must be >= 100"))
+			}
+			if v, _ := strconv.Atoi(parts[3]); v < 128 {
+				errs = append(errs, field.Invalid(field.NewPath("kernel.sem"), parts[3], "semmni must be >= 128"))
+			}
+		}
+	}
+
+	// kernel.shmall ≥ kernel.shmmax / pageSize
+	if val, ok := sysctls["kernel.shmall"]; ok {
+		shmall, err := strconv.ParseInt(val, 10, 64)
+		if err != nil || shmall < sgaBytes/pageSize {
+			errs = append(errs, field.Invalid(field.NewPath("kernel.shmall"), val, fmt.Sprintf("must be >= shmmax/pageSize = %d", sgaBytes/pageSize)))
+		}
+	}
+
+	// kernel.shmmax ≥ half of physical RAM (at minimum, let's assume SGA or higher as stricter validation)
+	if val, ok := sysctls["kernel.shmmax"]; ok {
+		shmmax, err := strconv.ParseInt(val, 10, 64)
+		if err != nil || shmmax < (sgaBytes) {
+			errs = append(errs, field.Invalid(field.NewPath("kernel.shmmax"), val, fmt.Sprintf("should be >= SGA size (%d)", sgaBytes)))
+		}
+	}
+
+	// kernel.shmmni ≥ 4096
+	if val, ok := sysctls["kernel.shmmni"]; ok {
+		shmmni, err := strconv.ParseInt(val, 10, 64)
+		if err != nil || shmmni < 4096 {
+			errs = append(errs, field.Invalid(field.NewPath("kernel.shmmni"), val, "should be >= 4096"))
+		}
+	}
+
+	// kernel.panic_on_oops = 1
+	if val, ok := sysctls["kernel.panic_on_oops"]; ok {
+		pan, err := strconv.Atoi(val)
+		if err != nil || pan != 1 {
+			errs = append(errs, field.Invalid(field.NewPath("kernel.panic_on_oops"), val, "must be 1"))
+		}
+	}
+
+	// kernel.panic ≥ 10
+	if val, ok := sysctls["kernel.panic"]; ok {
+		pan, err := strconv.Atoi(val)
+		if err != nil || pan < 10 {
+			errs = append(errs, field.Invalid(field.NewPath("kernel.panic"), val, "should be at least 10"))
+		}
+	}
+
+	// fs.file-max ≥ 6815744
+	if val, ok := sysctls["fs.file-max"]; ok {
+		fm, err := strconv.ParseInt(val, 10, 64)
+		if err != nil || fm < 6815744 {
+			errs = append(errs, field.Invalid(field.NewPath("fs.file-max"), val, "should be ≥ 6815744"))
+		}
+	}
+
+	// fs.aio-max-nr ≥ 1048576
+	if val, ok := sysctls["fs.aio-max-nr"]; ok {
+		aio, err := strconv.ParseInt(val, 10, 64)
+		if err != nil || aio < 1048576 {
+			errs = append(errs, field.Invalid(field.NewPath("fs.aio-max-nr"), val, "should be ≥ 1048576"))
+		}
+	}
+
+	// net.ipv4.ip_local_port_range must have min >= 9000, max <= 65535
+	if val, ok := sysctls["net.ipv4.ip_local_port_range"]; ok {
+		parts := strings.Fields(val)
+		if len(parts) != 2 {
+			errs = append(errs, field.Invalid(field.NewPath("net.ipv4.ip_local_port_range"), val, "must have two space-separated integers (e.g., 9000 65535)"))
+		} else {
+			min, _ := strconv.Atoi(parts[0])
+			max, _ := strconv.Atoi(parts[1])
+			if min < 9000 {
+				errs = append(errs, field.Invalid(field.NewPath("net.ipv4.ip_local_port_range"), parts[0], "minimum must be ≥ 9000"))
+			}
+			if max > 65535 {
+				errs = append(errs, field.Invalid(field.NewPath("net.ipv4.ip_local_port_range"), parts[1], "maximum must be ≤ 65535"))
+			}
+		}
+	}
+
+	// net.core.rmem_default ≥ 262144
+	if val, ok := sysctls["net.core.rmem_default"]; ok {
+		v, err := strconv.ParseInt(val, 10, 64)
+		if err != nil || v < 262144 {
+			errs = append(errs, field.Invalid(field.NewPath("net.core.rmem_default"), val, "should be ≥ 262144"))
+		}
+	}
+
+	// net.core.rmem_max ≥ 4194304
+	if val, ok := sysctls["net.core.rmem_max"]; ok {
+		v, err := strconv.ParseInt(val, 10, 64)
+		if err != nil || v < 4194304 {
+			errs = append(errs, field.Invalid(field.NewPath("net.core.rmem_max"), val, "should be ≥ 4194304"))
+		}
+	}
+
+	// net.core.wmem_default ≥ 262144
+	if val, ok := sysctls["net.core.wmem_default"]; ok {
+		v, err := strconv.ParseInt(val, 10, 64)
+		if err != nil || v < 262144 {
+			errs = append(errs, field.Invalid(field.NewPath("net.core.wmem_default"), val, "should be ≥ 262144"))
+		}
+	}
+
+	// net.core.wmem_max ≥ 1048576
+	if val, ok := sysctls["net.core.wmem_max"]; ok {
+		v, err := strconv.ParseInt(val, 10, 64)
+		if err != nil || v < 1048576 {
+			errs = append(errs, field.Invalid(field.NewPath("net.core.wmem_max"), val, "should be ≥ 1048576"))
+		}
+	}
+	return errs
 }
 
 // =========================== Update specs checks block ends Here =======================

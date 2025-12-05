@@ -130,6 +130,8 @@ spec:
                     type: string
                   hostSwStageLocation:
                     type: string
+                  hugePages:
+                    type: integer
                   inventory:
                     type: string
                   oPatchLocation:
@@ -688,7 +690,6 @@ spec:
                 type: object
             required:
             - instDetails
-            - securityContext
             type: object
           status:
             properties:
@@ -902,6 +903,8 @@ spec:
                     type: string
                   hostSwStageLocation:
                     type: string
+                  hugePages:
+                    type: integer
                   inventory:
                     type: string
                   oPatchLocation:
@@ -935,6 +938,8 @@ spec:
                 type: object
               connectString:
                 type: string
+              cpuCount:
+                type: integer
               dbSecret:
                 properties:
                   encryptionType:
@@ -958,6 +963,8 @@ spec:
                 type: string
               externalSvcType:
                 type: string
+              hugePages:
+                type: integer
               image:
                 type: string
               imagePullPolicy:
@@ -1098,6 +1105,10 @@ spec:
                 type: string
               pdbConnectString:
                 type: string
+              pgaSize:
+                type: string
+              processes:
+                type: integer
               readinessProbe:
                 properties:
                   exec:
@@ -1356,6 +1367,8 @@ spec:
                 required:
                 - name
                 type: object
+              sgaSize:
+                type: string
               sshKeySecret:
                 properties:
                   keyMountLocation:

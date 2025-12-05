@@ -66,7 +66,7 @@ type OracleRestartSpec struct {
 	ReadinessProbe     *corev1.Probe                    `json:"readinessProbe,omitempty"`
 	ScriptsGetCmd      string                           `json:"scriptsGetCmd,omitempty"`
 	IsDebug            string                           `json:"isDebug,omitempty"`
-	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext"`
+	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext,omitempty"`
 	IsDeleteTopolgy    string                           `json:"isDeleteTopology,omitempty"`
 	DbSecret           *OracleRestartDbPwdSecretDetails `json:"dbSecret,omitempty"`
 	TdeWalletSecret    *OracleRestartDbPwdSecretDetails `json:"tdeWalletSecret,omitempty"`
@@ -98,6 +98,11 @@ type DiskBySize struct {
 }
 
 type InitParams struct {
+	CpuCount                int          `json:"cpuCount,omitempty"`
+	SgaSize                 string       `json:"sgaSize,omitempty"`
+	PgaSize                 string       `json:"pgaSize,omitempty"`
+	Processes               int          `json:"processes,omitempty"`
+	HugePages               int          `json:"hugePages,omitempty"`
 	GridHome                string       `json:"gridHome,omitempty"`
 	DbHome                  string       `json:"dbHome,omitempty"`
 	GridBase                string       `json:"gridBase,omitempty"`
@@ -110,10 +115,6 @@ type InitParams struct {
 	OPatchSwZipFile         string       `json:"oPatchSwZipFile,omitempty"`
 	StagingSoftwareLocation string       `json:"stagingSoftwareLocation,omitempty"`
 	OpType                  string       `json:"opType,omitempty"`
-	CpuCount                int          `json:"cpuCount,omitempty"`
-	SgaSize                 string       `json:"sgaSize,omitempty"`
-	PgaSize                 string       `json:"pgaSize,omitempty"`
-	Processes               int          `json:"processes,omitempty"`
 	DbUniqueName            string       `json:"dbUniqueName,omitempty"`
 
 	DbName        string `json:"dbName,omitempty"`
@@ -241,14 +242,19 @@ type OracleRestartStatus struct {
 	ReadinessProbe     *corev1.Probe                    `json:"readinessProbe,omitempty"`
 	ScriptsGetCmd      string                           `json:"scriptsGetCmd,omitempty"`
 	IsDebug            string                           `json:"isDebug,omitempty"`
-	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext,omitempty"`
 	IsDeleteTopolgy    string                           `json:"isDeleteTopology,omitempty"`
 	ExternalSvcType    *string                          `json:"externalSvcType,omitempty"`
 	DbSecret           *OracleRestartDbPwdSecretDetails `json:"dbSecret,omitempty"`
 	TdeWalletSecret    *OracleRestartDbPwdSecretDetails `json:"tdeWalletSecret,omitempty"`
 	ServiceDetails     ServiceSpec                      `json:"serviceDetails,omitempty"`
-	Resources          *corev1.ResourceRequirements     `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
 	OldSpec            string                           `json:"oldSpec,omitempty"`
+	CpuCount           int                              `json:"cpuCount,omitempty"`
+	SgaSize            string                           `json:"sgaSize,omitempty"`
+	PgaSize            string                           `json:"pgaSize,omitempty"`
+	Processes          int                              `json:"processes,omitempty"`
+	HugePages          int                              `json:"hugePages,omitempty"`
+	Resources          *corev1.ResourceRequirements     `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext,omitempty"`
 }
 
 type OracleRestartNodePortSvc struct {

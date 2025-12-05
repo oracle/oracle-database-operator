@@ -40,9 +40,12 @@ package commons
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
+	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
 	oraclerestartdb "github.com/oracle/oracle-database-operator/apis/database/v4"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -243,6 +246,36 @@ func UpdateoraclerestartdbStatusData(OracleRestart *oraclerestartdb.OracleRestar
 
 	UpdateoraclerestartdbServiceStatus(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
 	UpdateoraclerestartdbTopologyState(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
+	paramsToFetch := []string{"sga_target", "pga_aggregate_target", "cpu_count", "processes"}
+	paramMap, err := getOracleParameters(podName, paramsToFetch, OracleRestart, kubeClient, kubeConfig, logger)
+	if err != nil {
+		logger.Error(err, "Failed to get Oracle parameters via Python script")
+	} else {
+		// Assign string fields directly
+		OracleRestart.Status.SgaSize = paramMap["sga_target"]
+		OracleRestart.Status.PgaSize = paramMap["pga_aggregate_target"]
+
+		// Convert string to int for numeric fields
+		if cpuCountStr, ok := paramMap["cpu_count"]; ok {
+			if cpuCount, err := strconv.Atoi(cpuCountStr); err == nil {
+				OracleRestart.Status.CpuCount = cpuCount
+			} else {
+				logger.Error(err, "Failed to convert cpu_count to int")
+			}
+		}
+		if processesStr, ok := paramMap["processes"]; ok {
+			if processes, err := strconv.Atoi(processesStr); err == nil {
+				OracleRestart.Status.Processes = processes
+			} else {
+				logger.Error(err, "Failed to convert processes to int")
+			}
+		}
+	}
+	pod, err := kubeClient.CoreV1().Pods(req.Namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err == nil {
+		OracleRestart.Status.Resources = &pod.Spec.Containers[0].Resources
+		OracleRestart.Status.SecurityContext = pod.Spec.SecurityContext
+	}
 }
 
 func UpdateoraclerestartdbServiceStatus(instance *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
@@ -337,4 +370,30 @@ func getPvcDetails(instance *oraclerestartdb.OracleRestart, oracleRestart *oracl
 
 	return strMap
 
+}
+func getOracleParameters(
+	podName string,
+	params []string,
+	instance *oraclerestart.OracleRestart,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	logger logr.Logger,
+) (map[string]string, error) {
+	scriptMount := getOraScriptMount()
+	paramArg := strings.Join(params, ",")
+	cmd := []string{
+		scriptMount + "/cmdExec",
+		"/bin/python3",
+		scriptMount + "/main.py",
+		"--getparam=" + paramArg,
+	}
+	output, _, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
+	if err != nil {
+		return nil, err
+	}
+	paramMap := make(map[string]string)
+	if err := json.Unmarshal([]byte(output), &paramMap); err != nil {
+		return nil, err
+	}
+	return paramMap, nil
 }

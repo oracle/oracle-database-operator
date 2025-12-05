@@ -60,6 +60,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// Constants
+const (
+	minContainerMemory = 16 * 1024 * 1024 * 1024 // 16 GB
+	pageSize           = 4096                    // 4 KiB
+	oneGB              = int64(1024 * 1024 * 1024)
+	defaultSem         = "250 32000 100 128"
+	defaultShmmni      = "4096"
+)
+
 // Constants for rac-stateful StatefulSet & Volumes
 func buildLabelsForOracleRestart(instance *oraclerestartdb.OracleRestart, label string) map[string]string {
 	return map[string]string{
@@ -80,13 +89,26 @@ func getLabelForOracleRestart(instance *oraclerestartdb.OracleRestart) string {
 	return instance.Name
 }
 
-func BuildStatefulSetForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, kClient client.Client) *appsv1.StatefulSet {
+func BuildStatefulSetForOracleRestart(
+	instance *oraclerestart.OracleRestart,
+	OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec,
+	kClient client.Client,
+) (*appsv1.StatefulSet, error) {
+
+	sfsetSpec, err := buildStatefulSpecForOracleRestart(instance, OracleRestartSpex, kClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build StatefulSetSpec for OracleRestart %s: %v", OracleRestartSpex.Name, err)
+	}
+
+	// Build full StatefulSet
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForOracleRestart(),
 		ObjectMeta: builObjectMetaForOracleRestart(instance, OracleRestartSpex),
-		Spec:       *buildStatefulSpecForOracleRestart(instance, OracleRestartSpex, kClient),
+		Spec:       *sfsetSpec, // dereference after successful build
 	}
-	return sfset
+
+	return sfset, nil
+
 }
 
 // Function to build TypeMeta
@@ -112,13 +134,16 @@ func builObjectMetaForOracleRestart(instance *oraclerestartdb.OracleRestart, Ora
 
 // Function to build Stateful Specs
 func buildStatefulSpecForOracleRestart(
-	instance *oraclerestartdb.OracleRestart,
-	OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec,
+	instance *oraclerestart.OracleRestart,
+	OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec,
 	kClient client.Client,
-) *appsv1.StatefulSetSpec {
+) (*appsv1.StatefulSetSpec, error) {
 
-	// Build PodSpec first
-	podSpec := buildPodSpecForOracleRestart(instance, OracleRestartSpex)
+	// Build PodSpec first, capture any errors
+	podSpec, err := buildPodSpecForOracleRestart(instance, OracleRestartSpex)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build PodSpec for OracleRestart %s: %v", OracleRestartSpex.Name, err)
+	}
 
 	// Add service account name if specified
 	if instance.Spec.SrvAccountName != "" {
@@ -159,7 +184,7 @@ func buildStatefulSpecForOracleRestart(
 	if len(instance.Spec.SwStorageClass) != 0 && len(instance.Spec.InstDetails.HostSwLocation) == 0 {
 		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, SwVolumeClaimTemplatesForOracleRestart(instance, OracleRestartSpex))
 	}
-	return sfsetspec
+	return sfsetspec, nil
 }
 
 func asmPvcsExist(instance *oraclerestart.OracleRestart, kClient client.Client) bool {
@@ -187,29 +212,231 @@ func asmPvcsExist(instance *oraclerestart.OracleRestart, kClient client.Client) 
 
 // Function to build PodSpec
 
-func buildPodSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) *corev1.PodSpec {
+func buildPodSpecForOracleRestart(
+	instance *oraclerestart.OracleRestart,
+	OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec,
+) (*corev1.PodSpec, error) {
 
-	spec := &corev1.PodSpec{
-		Hostname:       OracleRestartSpex.Name + "-0",
-		Subdomain:      utils.OraSubDomain,
-		InitContainers: buildInitContainerSpecForOracleRestart(instance, OracleRestartSpex),
-		Containers:     buildContainerSpecForOracleRestart(instance, OracleRestartSpex),
-		Volumes:        buildVolumeSpecForOracleRestart(instance, OracleRestartSpex),
-		Affinity:       getNodeAffinity(instance, OracleRestartSpex),
-	}
+	const hugePageSizeBytes int64 = 2 * 1024 * 1024
 
-	if instance.Spec.SecurityContext != nil {
-		spec.SecurityContext = instance.Spec.SecurityContext
-	}
+	var (
+		sgaBytes          int64
+		pgaBytes          int64
+		containerMemBytes int64
+		hugePagesBytes    int64
+		userShmmax        int64
+		userShmall        int64
+		hasUserSysctls    bool
+	)
 
-	if len(instance.Spec.ImagePullSecret) > 0 {
-		spec.ImagePullSecrets = []corev1.LocalObjectReference{
-			{
-				Name: instance.Spec.ImagePullSecret,
-			},
+	// Parse SGA and PGA sizes
+	if instance.Spec.ConfigParams != nil {
+		if instance.Spec.ConfigParams.SgaSize != "" {
+			sgaBytes = parseSGASizeBytes(instance.Spec.ConfigParams.SgaSize)
+		}
+
+		if instance.Spec.ConfigParams.PgaSize != "" {
+			pgaBytes = parseSGASizeBytes(instance.Spec.ConfigParams.PgaSize)
 		}
 	}
-	return spec
+
+	// Parse container memory
+	if instance != nil && instance.Spec.Resources != nil && instance.Spec.Resources.Limits != nil {
+		if memQty, ok := instance.Spec.Resources.Limits["memory"]; ok {
+			containerMemBytes = memQty.Value()
+		}
+	}
+
+	// Parse HugePages
+	if instance != nil && instance.Spec.Resources != nil && instance.Spec.Resources.Limits != nil {
+		if hugeQty, ok := instance.Spec.Resources.Limits["hugepages-2Mi"]; ok {
+			hugePagesBytes = hugeQty.Value()
+		}
+	}
+
+	// Check for user-provided sysctls
+	if instance.Spec.SecurityContext != nil && len(instance.Spec.SecurityContext.Sysctls) > 0 {
+		for _, sysctl := range instance.Spec.SecurityContext.Sysctls {
+			switch sysctl.Name {
+			case "kernel.shmmax":
+				userShmmax = parseSGASizeBytes(sysctl.Value)
+				hasUserSysctls = true
+			case "kernel.shmall":
+				val, err := strconv.ParseInt(sysctl.Value, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("invalid user-provided kernel.shmall value: %v", err)
+				}
+				userShmall = val
+				hasUserSysctls = true
+			}
+		}
+	}
+
+	// Compute sysctls if user did not provide them
+	var sysctls []corev1.Sysctl
+	var err error
+	if !hasUserSysctls {
+		sysctls, err = calculateSysctls(sgaBytes, pgaBytes, containerMemBytes, hugePagesBytes, userShmmax, userShmall)
+		if err != nil {
+			return nil, fmt.Errorf("failed to calculate sysctls: %v", err)
+		}
+	} else {
+		sysctls = instance.Spec.SecurityContext.Sysctls
+	}
+	// Ensure PodSecurityContext exists
+	if instance.Spec.SecurityContext == nil {
+		instance.Spec.SecurityContext = &corev1.PodSecurityContext{}
+	}
+	instance.Spec.SecurityContext.Sysctls = sysctls
+
+	// Build pod spec
+	spec := &corev1.PodSpec{
+		Hostname:        OracleRestartSpex.Name + "-0",
+		Subdomain:       utils.OraSubDomain,
+		InitContainers:  buildInitContainerSpecForOracleRestart(instance, OracleRestartSpex),
+		Containers:      buildContainerSpecForOracleRestart(instance, OracleRestartSpex),
+		Volumes:         buildVolumeSpecForOracleRestart(instance, OracleRestartSpex),
+		Affinity:        getNodeAffinity(instance, OracleRestartSpex),
+		SecurityContext: instance.Spec.SecurityContext,
+	}
+	// ImagePullSecret
+	if len(instance.Spec.ImagePullSecret) > 0 {
+		spec.ImagePullSecrets = []corev1.LocalObjectReference{
+			{Name: instance.Spec.ImagePullSecret},
+		}
+	}
+
+	return spec, nil
+}
+
+// parseSGASizeBytes parses memory config value ("16G", "16Gi", "1024M", "512Mi") and returns int64 bytes
+func parseSGASizeBytes(sga string) int64 {
+	s := strings.ToUpper(strings.TrimSpace(sga))
+
+	var multiplier int64
+	switch {
+	case strings.HasSuffix(s, "GI"):
+		s = strings.TrimSuffix(s, "GI")
+		multiplier = 1024 * 1024 * 1024
+	case strings.HasSuffix(s, "MI"):
+		s = strings.TrimSuffix(s, "MI")
+		multiplier = 1024 * 1024
+	case strings.HasSuffix(s, "GB"):
+		s = strings.TrimSuffix(s, "GB")
+		multiplier = 1024 * 1024 * 1024
+	case strings.HasSuffix(s, "G"):
+		s = strings.TrimSuffix(s, "G")
+		multiplier = 1024 * 1024 * 1024
+	case strings.HasSuffix(s, "M"):
+		s = strings.TrimSuffix(s, "M")
+		multiplier = 1024 * 1024
+	default:
+		// Unknown unit
+		return 0
+	}
+
+	val, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	if err != nil {
+		return 0
+	}
+
+	return val * multiplier
+}
+
+func calculateSysctls(
+	sgaBytes, pgaBytes, containerMemBytes, hugePagesBytes, userShmmax, userShmall int64,
+) ([]corev1.Sysctl, error) {
+
+	//  Minimum container memory check (only if memory is given)
+	if containerMemBytes > 0 && containerMemBytes < minContainerMemory {
+		return nil, fmt.Errorf("container memory (%d) is less than minimum required (%d)", containerMemBytes, minContainerMemory)
+	}
+
+	// 2Case 1: No container memory and no SGA/PGA
+	if containerMemBytes == 0 && sgaBytes == 0 && pgaBytes == 0 {
+		return []corev1.Sysctl{}, nil
+	}
+
+	// Case 2: No container memory, but SGA/PGA provided
+	if containerMemBytes == 0 {
+		shmmax := sgaBytes + oneGB
+
+		if userShmmax > 0 {
+			// validate user-provided shmmax
+			if userShmmax < sgaBytes {
+				return nil, fmt.Errorf("user-provided shmmax (%d) cannot be less than SGA_TARGET (%d)", userShmmax, sgaBytes)
+			}
+			shmmax = userShmmax
+		}
+
+		shmall := (shmmax + pageSize - 1) / pageSize
+		if userShmall > 0 {
+			if userShmall < shmall {
+				return nil, fmt.Errorf("user-provided shmall (%d) is too small; min required=%d pages", userShmall, shmall)
+			}
+			shmall = userShmall
+		}
+
+		return []corev1.Sysctl{
+			{Name: "kernel.shmmax", Value: fmt.Sprintf("%d", shmmax)},
+			{Name: "kernel.shmall", Value: fmt.Sprintf("%d", shmall)},
+			{Name: "kernel.sem", Value: defaultSem},
+			{Name: "kernel.shmmni", Value: defaultShmmni},
+		}, nil
+	}
+
+	// Case 3: Container memory provided
+	if pgaBytes > containerMemBytes {
+		return nil, fmt.Errorf("PGA_TARGET (%d) cannot be greater than container memory (%d)", pgaBytes, containerMemBytes)
+	}
+	if sgaBytes > containerMemBytes {
+		return nil, fmt.Errorf("SGA_TARGET (%d) cannot be greater than container memory (%d)", sgaBytes, containerMemBytes)
+	}
+
+	var shmmax int64
+	if userShmmax > 0 {
+		// Validate user-provided shmmax
+		if userShmmax < sgaBytes {
+			return nil, fmt.Errorf("user-provided shmmax (%d) cannot be less than SGA_TARGET (%d)", userShmmax, sgaBytes)
+		}
+		if hugePagesBytes > 0 && userShmmax < hugePagesBytes {
+			return nil, fmt.Errorf("user-provided shmmax (%d) cannot be less than hugePages memory (%d)", userShmmax, hugePagesBytes)
+		}
+		if userShmmax > containerMemBytes-oneGB {
+			return nil, fmt.Errorf("user-provided shmmax (%d) must be < container memory - 1GB (%d)", userShmmax, containerMemBytes-oneGB)
+		}
+		shmmax = userShmmax
+	} else if hugePagesBytes > 0 {
+		if hugePagesBytes < sgaBytes {
+			return nil, fmt.Errorf("huge pages (%d) must be >= SGA_TARGET (%d)", hugePagesBytes, sgaBytes)
+		}
+		shmmax = hugePagesBytes
+	} else if sgaBytes < (containerMemBytes / 2) {
+		shmmax = containerMemBytes / 2
+	} else {
+		shmmax = sgaBytes + oneGB
+	}
+
+	// Ensure shmmax < container memory
+	if shmmax >= containerMemBytes {
+		shmmax = containerMemBytes - oneGB
+	}
+
+	// Compute shmall
+	shmall := (shmmax + pageSize - 1) / pageSize
+	if userShmall > 0 {
+		if userShmall < shmall {
+			return nil, fmt.Errorf("user-provided shmall (%d) is too small; min required=%d pages", userShmall, shmall)
+		}
+		shmall = userShmall
+	}
+
+	return []corev1.Sysctl{
+		{Name: "kernel.shmmax", Value: fmt.Sprintf("%d", shmmax)},
+		{Name: "kernel.shmall", Value: fmt.Sprintf("%d", shmall)},
+		{Name: "kernel.sem", Value: defaultSem},
+		{Name: "kernel.shmmni", Value: defaultShmmni},
+	}, nil
 }
 
 // Function get the Node Affinity
@@ -428,7 +655,7 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, Or
 }
 
 // Function to build the container Specification
-func buildContainerSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.Container {
+func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.Container {
 	// building Continer spec
 	var result []corev1.Container
 	privileged := false
@@ -436,8 +663,6 @@ func buildContainerSpecForOracleRestart(instance *oraclerestartdb.OracleRestart,
 	periodSeconds := 5
 	initialDelaySeconds := 120
 	oraLsnrPort := 1521
-
-	// Get the Idx
 
 	containerSpec := corev1.Container{
 		Name:  OracleRestartSpex.Name,
@@ -452,12 +677,8 @@ func buildContainerSpecForOracleRestart(instance *oraclerestartdb.OracleRestart,
 			"/usr/sbin/init",
 		},
 		VolumeDevices: getAsmVolumeDevices(instance, OracleRestartSpex),
-		Resources: corev1.ResourceRequirements{
-			Requests: make(map[corev1.ResourceName]resource.Quantity),
-		},
-		VolumeMounts: buildVolumeMountSpecForOracleRestart(instance, OracleRestartSpex),
+		VolumeMounts:  buildVolumeMountSpecForOracleRestart(instance, OracleRestartSpex),
 		ReadinessProbe: &corev1.Probe{
-			// TODO: Investigate if it's ok to call status every 10 seconds
 			FailureThreshold:    int32(failureThreshold),
 			PeriodSeconds:       int32(periodSeconds),
 			InitialDelaySeconds: int32(initialDelaySeconds),
@@ -482,6 +703,33 @@ func buildContainerSpecForOracleRestart(instance *oraclerestartdb.OracleRestart,
 		containerSpec,
 	}
 	return result
+}
+
+func resourcesForSGA(sgaSizeStr string) (corev1.ResourceRequirements, error) {
+	qty, err := resource.ParseQuantity(sgaSizeStr)
+	if err != nil {
+		return corev1.ResourceRequirements{}, err
+	}
+	sgaSizeBytes := qty.Value()
+
+	hugePageSizeBytes := int64(2 * 1024 * 1024) // 2MiB
+
+	numHugePages := (sgaSizeBytes + hugePageSizeBytes - 1) / hugePageSizeBytes
+	totalHugePagesMemoryBytes := numHugePages * hugePageSizeBytes
+
+	memQuantity := *resource.NewQuantity(sgaSizeBytes, resource.BinarySI)
+	hugePagesQuantity := *resource.NewQuantity(totalHugePagesMemoryBytes, resource.BinarySI)
+
+	return corev1.ResourceRequirements{
+		Requests: map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceMemory:                memQuantity,
+			corev1.ResourceName("hugepages-2Mi"): hugePagesQuantity,
+		},
+		Limits: map[corev1.ResourceName]resource.Quantity{
+			corev1.ResourceMemory:                memQuantity,
+			corev1.ResourceName("hugepages-2Mi"): hugePagesQuantity,
+		},
+	}, nil
 }
 
 func getAsmVolumeDevices(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.VolumeDevice {
@@ -919,7 +1167,7 @@ func UpdateProvForOracleRestart(instance *oraclerestartdb.OracleRestart,
 	var msg string
 	var size int32 = 1
 	var isUpdate bool = false
-	var err error
+	// var err error
 	//var i int
 
 	msg = "Inside the updateProvForOracleRestart"
@@ -936,9 +1184,17 @@ func UpdateProvForOracleRestart(instance *oraclerestartdb.OracleRestart,
 	}
 
 	if isUpdate {
-		err = kClient.Update(context.Background(), BuildStatefulSetForOracleRestart(instance, OracleRestartSpex, kClient))
+		sfSet, err := BuildStatefulSetForOracleRestart(instance, OracleRestartSpex, kClient)
 		if err != nil {
-			msg = "Failed to update Shard StatefulSet " + "StatefulSet.Name : " + sfSet.Name
+			msg := fmt.Sprintf("Failed to build StatefulSet for OracleRestart %s: %v", OracleRestartSpex.Name, err)
+			LogMessages("Error", msg, err, instance, logger)
+			return ctrl.Result{}, err
+		}
+
+		// Update StatefulSet
+		err = kClient.Update(context.Background(), sfSet)
+		if err != nil {
+			msg := fmt.Sprintf("Failed to update Shard StatefulSet. StatefulSet.Name: %s", sfSet.Name)
 			LogMessages("Error", msg, err, instance, logger)
 			return ctrl.Result{}, err
 		}
