@@ -251,19 +251,19 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 		}
 		if strings.ToUpper(instance.Spec.ShardingType) != "USER" {
 			if !sGroup1Params {
-				if len(instance.Spec.GsmShardGroup) > 0 {
-					for i := 0; i < len(instance.Spec.GsmShardGroup); i++ {
-						if strings.ToUpper(instance.Spec.GsmShardGroup[i].DeployAs) == "PRIMARY" {
-							group_name := instance.Spec.GsmShardGroup[i].Name
+				if len(instance.Spec.ShardGroup) > 0 {
+					for i := 0; i < len(instance.Spec.ShardGroup); i++ {
+						if strings.ToUpper(instance.Spec.ShardGroup[i].DeployAs) == "PRIMARY" {
+							group_name := instance.Spec.ShardGroup[i].Name
 							//deploy_as := instance.Spec.ShardGroup[i].DeployAs
-							region := instance.Spec.GsmShardGroup[i].Region
+							region := instance.Spec.ShardGroup[i].Region
 							varinfo = "group_name=" + group_name + ";" + "deploy_as=primary;" + "group_region=" + region
 							result = append(result, corev1.EnvVar{Name: "SHARD1_GROUP_PARAMS", Value: varinfo})
 						}
-						if strings.ToUpper(instance.Spec.GsmShardGroup[i].DeployAs) == "STANDBY" {
-							group_name := instance.Spec.GsmShardGroup[i].Name
+						if strings.ToUpper(instance.Spec.ShardGroup[i].DeployAs) == "STANDBY" {
+							group_name := instance.Spec.ShardGroup[i].Name
 							//deploy_as := instance.Spec.ShardGroup[i].DeployAs
-							region := instance.Spec.GsmShardGroup[i].Region
+							region := instance.Spec.ShardGroup[i].Region
 							varinfo = "group_name=" + group_name + ";" + "deploy_as=standby;" + "group_region=" + region
 							result = append(result, corev1.EnvVar{Name: "SHARD2_GROUP_PARAMS", Value: varinfo})
 						}

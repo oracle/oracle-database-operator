@@ -63,13 +63,12 @@ var shardingdatabaselog = logf.Log.WithName("shardingdatabase-resource")
 func (r *ShardingDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(&ShardingDatabase{}).
-    WithDefaulter(r).
+		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
 }
 
 var _ webhook.CustomDefaulter = &ShardingDatabase{}
-
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
@@ -78,16 +77,15 @@ var _ webhook.CustomDefaulter = &ShardingDatabase{}
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) error {
 
-  cr , ok :=  obj.(*ShardingDatabase)
+	cr, ok := obj.(*ShardingDatabase)
 
- if  !ok {
-    return fmt.Errorf("xpected  obj.*ShardingDatabase but got %T", obj)
- }
+	if !ok {
+		return fmt.Errorf("xpected  obj.*ShardingDatabase but got %T", obj)
+	}
 
 	shardingdatabaselog.Info("default", "name", cr.Name)
 
 	var replicas int32
-
 
 	// TODO(user): fill in your defaulting logic.
 	if cr.Spec.GsmDevMode != "" {
@@ -139,16 +137,15 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj runtime.Objec
 	// Check Secret configuration
 	var validationErr field.ErrorList
 	var validationErrs1 field.ErrorList
-  cr , ok :=  obj.(*ShardingDatabase)
+	cr, ok := obj.(*ShardingDatabase)
 
- if  !ok {
-//    return fmt.Errorf("xpected  obj.*ShardingDatabase but got %T", obj)
-    validationErr = append(validationErr,field.Invalid(field.NewPath("obj"),"obj","Expected  obj.*ShardingDatabase."))
-	  return nil, apierrors.NewInvalid(
-	  	schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
-  		cr.Name, validationErr)
- }
-
+	if !ok {
+		//    return fmt.Errorf("xpected  obj.*ShardingDatabase but got %T", obj)
+		validationErr = append(validationErr, field.Invalid(field.NewPath("obj"), "obj", "Expected  obj.*ShardingDatabase."))
+		return nil, apierrors.NewInvalid(
+			schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
+			cr.Name, validationErr)
+	}
 
 	//namespaces := db.GetWatchNamespaces()
 	//_, containsNamespace := namespaces[r.Namespace]
@@ -418,7 +415,7 @@ func (r *ShardingDatabase) initShardsSpec() error {
 		for i := 0; i < int(r.Spec.ShardInfo[pindex].Replicas); i++ {
 			r.Spec.Shard[shardIndex].Name = r.Spec.ShardInfo[pindex].ShardPreFixName + strconv.Itoa(shardIndex+1)
 			r.Spec.Shard[shardIndex].StorageSizeInGb = r.Spec.ShardInfo[pindex].StorageSizeInGb
-			r.Spec.Shard[shardIndex].ShardGroup = r.Spec.ShardInfo[pindex].ShardGroupDetails.ShardGroupName
+			r.Spec.Shard[shardIndex].ShardGroup = r.Spec.ShardInfo[pindex].ShardGroupDetails.Name
 			r.Spec.Shard[shardIndex].ShardRegion = r.Spec.ShardInfo[pindex].ShardGroupDetails.Region
 			r.Spec.Shard[shardIndex].DeployAs = r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs
 			r.Spec.Shard[shardIndex].IsDelete = r.Spec.ShardInfo[pindex].ShardGroupDetails.IsDelete
@@ -426,7 +423,7 @@ func (r *ShardingDatabase) initShardsSpec() error {
 			*(r.Spec.Shard[shardIndex].ImagePulllPolicy) = corev1.PullPolicy("Always")
 			fmt.Println("ShardName=[" + r.Spec.Shard[shardIndex].Name + "]")
 			if r.Spec.ShardInfo[pindex].ShardSpaceDetails != nil {
-				r.Spec.Shard[shardIndex].ShardSpace = r.Spec.ShardInfo[pindex].ShardSpaceDetails.ShardSpaceName
+				r.Spec.Shard[shardIndex].ShardSpace = r.Spec.ShardInfo[pindex].ShardSpaceDetails.Name
 			}
 
 			shardIndex++
