@@ -296,6 +296,12 @@ OpenShift requires additional Security Context Constraints (SCC) for deploying a
   oc adm policy add-scc-to-user privileged -z oraclerestart -n orestart
   ```
 
+  * Give the role "oracle-database-operator-manager-role" read-only access (get, list, watch) to the serviceaccounts resource from the core API group:
+
+  ```sh
+  oc patch clusterrole oracle-database-operator-manager-role --type='json' -p '[{"op":"add","path":"/rules/-","value":{"apiGroups":[""],"resources":["serviceaccounts"],"verbs":["get","list","watch"]}}]'
+  ```
+
 ## Deploy Oracle Database Operator
 After you have completed the prerequisite steps, you can install the operator. To install the operator in the cluster quickly, you can apply the modified `oracle-database-operator.yaml` file from the previous step.
 
