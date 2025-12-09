@@ -1,7 +1,7 @@
 # Provisioning an Oracle Restart Database
 ### In this Usecase:
 * In this use case, the Oracle Grid Infrastructure and Oracle Restart Database are deployed automatically using Oracle Restart Controller.
-* This example uses `oraclerestart_prov.yaml` to provision an Oracle Database configured with Oracle Restart using Oracle Restart Controller. The provisioning includes:
+* This example uses `oraclerestart_prov_contexts.yaml` to provision an Oracle Database configured with Oracle Restart using Oracle Restart Controller. The provisioning includes:
   * Oracle Restart Pod
   * Headless services for Oracle Restart.
     * Oracle Database Node hostname.
@@ -13,7 +13,7 @@
 
 ### In this Example:
   * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from thsi [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). The default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You must tag it with the name `dbocir/oracle/database-orestart:19.3.0-slim`.
-  * When you are building the image yourself, update the image value in the `oraclerestart_prov.yaml` file to point to the container image that you have built. 
+  * When you are building the image yourself, update the image value in the `oraclerestart_prov_contexts.yaml` file to point to the container image that you have built. 
 The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
 ```text
 For example:
@@ -26,10 +26,10 @@ For example:
 ```
 
 ### Steps: Deploy Oracle Restart Database
-* Use the file [oraclerestart_prov.yaml](./oraclerestart_prov.yaml) for this procedure:
-* Deploy the `oraclerestart_prov.yaml` file:
+* Use the file [oraclerestart_prov_contexts.yaml](./oraclerestart_prov_contexts.yaml) for this procedure:
+* Deploy the `oraclerestart_prov_contexts.yaml` file:
     ```sh
-    kubectl apply -f oraclerestart_prov.yaml
+    kubectl apply -f oraclerestart_prov_contexts.yaml
     oraclerestart.database.oracle.com/oraclerestart-sample created
     ```
 * Check the status of the deployment:

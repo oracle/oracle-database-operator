@@ -95,18 +95,6 @@ spec:
       memory: "16Gi"                 # Max memory allowed
       cpu: "2"                       # Max CPU allowed
 
-  # Kernel-level system control parameters for Oracle
-  securityContext:
-    sysctls:
-      - name: kernel.shmall
-        value: "2097152"
-      - name: kernel.sem
-        value: "250 32000 100 128"
-      - name: kernel.shmmax
-        value: "8589934592"
-      - name: kernel.shmmni
-        value: "4096"
-
   # Configuration parameters for Oracle Grid and Database homes
   configParams:
     gridHome: "/u01/app/19c/grid"                             # Oracle Grid home path

@@ -20,10 +20,18 @@
 
 ### In this Example: 
   * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. The image is built using files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). 
-  * The existing disks on the worker nodes for the ASM that are used in Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
-  * Specify the size and names of these devices using the parameter `storageSizeInGb`. By default, size is in GBs.
-  * If you are using **storage class to dynamically provision ASM disks**, then you can skip these steps. In this example, two new disks will be added to the existing Oracle Restart Database Deployment. For this purpose, the disks on the worker nodes that will be used are `/dev/disk/by-partlabel/asm-disk3` and `/dev/disk/by-partlabel/asm-disk4`.
-  * Update the corresponding device list in the `initParams` section.
+ The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
+```text
+For example:
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/oracleoci/oraclevdd
+        - /dev/oracleoci/oraclevde
+        - /dev/oracleoci/oraclevdf
+```
   * The default value in YAML file is `autoUpdate: "true"`, which will delete and recreate the pod with updated ASM disks in the Oracle Restart Deployment. In this case, the new disks will be automatically added to the existing Diskgroup.
   * If the value in the YAML file is set to `autoUpdate: "false"`, then the Oracle Restart Database Pod is recreated, but the additional disks are _not_ added to the ASM Disk Group automatically.
 

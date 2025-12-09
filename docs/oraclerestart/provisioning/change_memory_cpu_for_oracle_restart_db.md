@@ -19,10 +19,16 @@
 ### In this Example: 
   * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You must tag it with the name `localhost/oracle/database-orestart:19.3.0-slim`. 
   * When you are building the image yourself, update the image value in the `oraclerestart_prov_nodeports.yaml` file to point to the container image that you have built. 
-  * The disks on the worker nodes for the Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
-  * Specify the sizes and names of these devices using the parameter `storageSizeInGb`. By default, size is in GBs.
-
-**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files, Recovery Area Files and Redo Log Files, the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
+The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
+```text
+For example:
+  - name: DATA
+    redundancy: EXTERNAL
+    type: CRSDG
+    disks:
+      - /dev/oracleoci/oraclevdd
+      - /dev/oracleoci/oraclevde
+```
 
 ### Steps - Deploy initial Oracle Restart Database 
 * Use the file [oraclerestart_prov_nodeports.yaml](./oraclerestart_prov_nodeports.yaml) for the initial deployment before any CPU or memory change.
