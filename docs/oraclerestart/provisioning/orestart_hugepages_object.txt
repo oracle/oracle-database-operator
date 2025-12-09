@@ -1,0 +1,293 @@
+$ kubectl describe oraclerestarts.database.oracle.com/oraclerestart-sample -n orestart
+Name:         oraclerestart-sample
+Namespace:    orestart
+Labels:       <none>
+Annotations:  OracleRestarts.database.oracle.com/old-spec:
+                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","value":"tru...
+API Version:  database.oracle.com/v4
+Kind:         OracleRestart
+Metadata:
+  Creation Timestamp:  2025-11-27T22:50:58Z
+  Finalizers:
+    database.oracle.com/oraclerestartfinalizer
+  Generation:        1
+  Resource Version:  267696911
+  UID:               7d193e93-72c3-490d-954f-158a521d4210
+Spec:
+  Asm Storage Details:
+    Disks By Size:
+      Disk Names:
+        /dev/asm-disk1
+        /dev/asm-disk2
+      Storage Size In Gb:  50
+  Config Params:
+    Cpu Count:                   4
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
+    Crs Asm Disk Dg:             DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Char Set:                 AL32UTF8
+    Db Data File Dest Dg:        DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       DATA
+    Db Response File:
+    Db Sw Zip File:  db1928000.zip
+    Grid Base:       /u01/app/grid
+    Grid Home:       /u01/app/19c/grid
+    Grid Response File:
+    Grid Sw Zip File:        grid1928000.zip
+    Host Sw Stage Location:  /scratch/software/stage/19.28.0
+    Inventory:               /u01/app/oraInventory
+    Pga Size:                12G
+    Processes:               2000
+    Sga Size:                32G
+    Sw Mount Location:       /u01
+  Crs Dg Storage Class:      oci-bv
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Enable Ons:                 enable
+  Image:                      phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim-oct13
+  Image Pull Policy:          IfNotPresent
+  Inst Details:
+    Env Vars:
+      Name:                     IGNORE_CRS_PREREQS
+      Value:                    true
+      Name:                     IGNORE_DB_PREREQS
+      Value:                    true
+      Name:                     TOTAL_MEMORY
+      Value:                    53248
+    Name:                       dbmc1
+    Sw Loc Storage Size In Gb:  300
+    Worker Node:
+      10.0.10.58
+  Lb Service:
+  Node Port Svc:
+    Name:  dbmc1-service-nodeport
+    Port Mappings:
+      Node Port:    30007
+      Port:         1521
+      Protocol:     TCP
+      Target Port:  1521
+      Node Port:    30200
+      Port:         6200
+      Protocol:     TCP
+      Target Port:  6200
+    Svc Type:       nodeport
+  Resources:
+    Limits:
+      Cpu:            16
+      hugepages-2Mi:  36Gi
+      Memory:         30Gi
+    Requests:
+      Cpu:            16
+      hugepages-2Mi:  36Gi
+      Memory:         30Gi
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmall
+      Value:  9437184
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmax
+      Value:  38654705664
+      Name:   kernel.shmmni
+      Value:  4096
+  Service Details:
+    Name:  soepdb
+  Ssh Key Secret:
+    Key Mount Location:    /mnt/.ssh
+    Name:                  ssh-key-secret
+    Priv Key Secret Name:  ssh-privkey
+    Pub Key Secret Name:   ssh-pubkey
+  Sw Dg Storage Class:     oci-bv
+Status:
+  Oracle Restart Nodes:
+    Name:  dbmc1-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/asm-disk1
+        /dev/asm-disk2
+      State:  AVAILABLE
+  Asm Details:
+    Diskgroup:
+      Disks:
+        /dev/asm-disk1,/dev/asm-disk2
+      Name:        DATA
+      Redundancy:  EXTERN
+  Conditions:
+    Last Transition Time:  2025-11-27T23:25:30Z
+    Message:               reconcile has been queued
+    Observed Generation:   1
+    Reason:                LastReconcileCycleQueued
+    Status:                True
+    Type:                  ReconcileQueued
+    Last Transition Time:  2025-11-28T03:17:28Z
+    Message:               reconcile completed successfully
+    Observed Generation:   1
+    Reason:                LastReconcileCycleCompleted
+    Status:                True
+    Type:                  ReconcileComplete
+  Config Params:
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
+    Crs Asm Disk Dg:             DATA
+    Crs Asm Disk Dg Redundancy:  external
+    Db Base:                     /u01/app/oracle
+    Db Data File Dest Dg:        DATA
+    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                     PORCLCDB
+    Db Recovery File Dest:       DATA
+    Db Response File:
+    Grid Base:  /u01/app/grid
+    Grid Home:  /u01/app/19c/grid
+    Grid Response File:
+    Inventory:     /u01/app/oraInventory
+  Connect String:  dbmc1-0:1521/PORCLCDB
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass-pkutl
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Db State:                   OPEN
+  External Connect String:    129.146.0.149:30007/soepdb
+  Pdb Connect String:         dbmc1-0:1521/ORCLPDB
+  Release Update:             19.28.0.0.0
+  Role:                       PRIMARY
+  Service Details:
+    Name:       soepdb
+    Svc State:  service soepdb is running
+  State:        AVAILABLE
+Events:         <none>
+
+
+
+ kubectl get pvc -n orestart
+NAME                                                   STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      VOLUMEATTRIBUTESCLASS   AGE
+asm-pvc-crsdg-asm-disk1-oraclerestart-sample-dbmc1-0   Bound    csi-978618f9-4cc2-4731-8856-d0ba5313ff7c   50Gi       RWO            oci-bv            <unset>                 4h27m
+asm-pvc-crsdg-asm-disk2-oraclerestart-sample-dbmc1-0   Bound    csi-f243527e-e47c-4838-aee4-1e3de7f1e880   50Gi       RWO            oci-bv            <unset>                 4h27m
+odb-sw-pvc-oraclerestart-sample-dbmc1-0                Bound    csi-7bed79e3-7493-4c43-ab46-6ec13f90a603   300Gi      RWO            oci-bv            <unset>                 4h27m
+pv-stage-vol-claim                                     Bound    pv-stage-vol1                              500Gi      ROX            fss-dyn-storage   <unset>                 49d
+
+$ kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                                           STORAGECLASS      VOLUMEATTRIBUTESCLASS   REASON   AGE
+csi-7bed79e3-7493-4c43-ab46-6ec13f90a603   300Gi      RWO            Delete           Bound    orestart/odb-sw-pvc-oraclerestart-sample-dbmc1-0                oci-bv            <unset>                          4h27m
+csi-978618f9-4cc2-4731-8856-d0ba5313ff7c   50Gi       RWO            Delete           Bound    orestart/asm-pvc-crsdg-asm-disk1-oraclerestart-sample-dbmc1-0   oci-bv            <unset>                          4h27m
+csi-f243527e-e47c-4838-aee4-1e3de7f1e880   50Gi       RWO            Delete           Bound    orestart/asm-pvc-crsdg-asm-disk2-oraclerestart-sample-dbmc1-0   oci-bv            <unset>                          4h27m
+
+
+
+$ kubectl exec -it pod/dbmc1-0 -n orestart /bin/bash
+kubectl exec [POD] [COMMAND] is DEPRECATED and will be removed in a future version. Use kubectl exec [POD] -- [COMMAND] instead.
+Defaulted container "dbmc1" out of: dbmc1, dbmc1-init1 (init)
+[root@dbmc1-0 rac-work-dir]#
+[root@dbmc1-0 rac-work-dir]# sudo su - oracle
+Last login: Fri Nov 28 03:19:30 UTC 2025 on pts/0
+[oracle@dbmc1-0 ~]$ export ORACLE_SID=PORCLCDB
+[oracle@dbmc1-0 ~]$ sqlplus "/ as sysdba"
+
+SQL*Plus: Release 19.0.0.0.0 - Production on Fri Nov 28 03:19:54 2025
+Version 19.28.0.0.0
+
+Copyright (c) 1982, 2025, Oracle.  All rights reserved.
+
+
+Connected to:
+Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production
+Version 19.28.0.0.0
+
+SQL> show parameter sga
+
+NAME				     TYPE	 VALUE
+------------------------------------ ----------- ------------------------------
+allow_group_access_to_sga	     boolean	 FALSE
+lock_sga			     boolean	 FALSE
+pre_page_sga			     boolean	 TRUE
+sga_max_size			     big integer 32G
+sga_min_size			     big integer 0
+sga_target			     big integer 32G
+unified_audit_sga_queue_size	     integer	 1048576
+SQL> show parameter pga
+
+NAME				     TYPE	 VALUE
+------------------------------------ ----------- ------------------------------
+pga_aggregate_limit		     big integer 40G
+pga_aggregate_target		     big integer 20G
+SQL>
+
+
+
+
+/u01/app/oracle/cfgtoollogs/dbca/PORCLCDB/trace.log_2025-11-27_10-58-57PM
+-----
+INFO: Nov 27, 2025 10:58:59 PM oracle.install.commons.base.util.cli.CommandLineArguments logCommandLineArguments
+INFO: *********** Commmand line arguments passed to this session ***********
+Argument Name: silent value: true
+Argument Name: ignorePreReqs value: true
+Argument Name: skipPrereq value: true
+Argument Name: skipPrereqs value: true
+Argument Name: createDatabase value: true
+Argument Name: templateName value: General_Purpose.dbc
+Argument Name: gdbName value: PORCLCDB
+Argument Name: createAsContainerDatabase value: true
+Argument Name: enableDBConsolidation value: true
+Argument Name: sysPassword value: *******************
+Argument Name: systemPassword value: *******************
+Argument Name: datafileDestination value: +DATA
+Argument Name: storageType value: ASM
+Argument Name: characterSet value: AL32UTF8
+Argument Name: redoLogFileSize value: 1024
+Argument Name: databaseType value: OLTP
+Argument Name: databaseConfigType value: SINGLE
+Argument Name: databaseConfType value: SINGLE
+Argument Name: nodelist value: dbmc1-0
+Argument Name: nodeInfo value: dbmc1-0
+Argument Name: useOMF value: true
+Argument Name: numberOfPDBs value: 1
+Argument Name: pdbAdminPassword value: *******************
+Argument Name: pdbName value: ORCLPDB
+Argument Name: initParams value: db_recovery_file_dest=+DATA,db_create_file_dest=+DATA,REMOTE_LOGIN_PASSWORDFILE=EXCLUSIVE,LOG_ARCHIVE_FORMAT=%t_%s_%r.arc,db_unique_name=PORCLCDB,db_files=1024,LOG_BUFFER=256M,DB_FLASHBACK_RETENTION_TARGET=120,DB_BLOCK_CHECKSUM=TYPICAL,DB_LOST_WRITE_PROTECT=TYPICAL,PARALLEL_THREADS_PER_CPU=1,DG_BROKER_CONFIG_FILE1=+DATA,DG_BROKER_CONFIG_FILE2=+DATA,DB_CREATE_ONLINE_LOG_DEST_1=+DATA,sga_target=32G,sga_max_size=32G,pga_aggregate_size=12G,processes=2000,cpu_count=4
+Argument Name: enableArchive value: true
+Argument Name: totalMemory value: 53248
+.
+.
+INFO: Nov 27, 2025 10:59:07 PM oracle.assistants.dbca.util.MemoryManagementHelper getTotalPhysicalMemory
+INFO: Getting memory assigned to Linux Container/Container
+
+
+[main] [ 2025-11-27 22:59:07.989 UTC ] [UnixSystem.getTotalMemory:6307]  totalMemory obtained: 95106532
+[main] [ 2025-11-27 22:59:07.989 UTC ] [UnixSystem.getContainerMemory:6170]  Name is not required, get the memory information
+[main] [ 2025-11-27 22:59:07.990 UTC ] [UnixSystem.getContainerMemory:6213]  memory lines: [32212254720]
+[main] [ 2025-11-27 22:59:07.990 UTC ] [UnixSystem.getContainerMemory:6222]  totalMemory of the container obtained: 32212254720
+[main] [ 2025-11-27 22:59:07.990 UTC ] [UnixSystem.getContainerMemory:6252]  containerMemory: 31457280, totalHostMemory: 95106532
+INFO: Nov 27, 2025 10:59:07 PM oracle.assistants.dbca.util.MemoryManagementHelper getTotalPhysicalMemory
+INFO: Memory assigned to Linux Container/Container: 31457280
+.
+.
+INFO: Nov 27, 2025 10:59:07 PM oracle.assistants.dbca.action.ConfigurationParamsAction updateMemoryParamsValues
+INFO: Total memory used to calculate memory values:53248 MB
+
+INFO: Nov 27, 2025 10:59:07 PM oracle.assistants.common.base.util.InitParamCollectionUtil getInitParam
+INFO: Could not find the init param (pga_aggregate_target) from init params.
+
+
+INFO: Nov 27, 2025 10:59:07 PM oracle.assistants.common.base.util.InitParamCollectionUtil getInitParam
+INFO: Could not find the init param (pga_aggregate_target) from init params. So creating one.
+
+INFO: Nov 27, 2025 10:59:07 PM oracle.assistants.common.base.util.InitParamCollectionUtil getInitParam
+INFO: Could not find the init param (pga_aggregate_target) from init params.
+
+
+INFO: Nov 27, 2025 10:59:07 PM oracle.assistants.dbca.action.ConfigurationParamsAction updateMemoryParamsValues
+INFO: pga_aggregate_target is not specified. So calculating value for pga.
+
+
+INFO: Nov 27, 2025 10:59:07 PM oracle.assistants.dbca.action.ConfigurationParamsAction updateMemoryParamsValues
+INFO: sga_target value:32768 MB pga_aggreegate_target value:20480 MB
