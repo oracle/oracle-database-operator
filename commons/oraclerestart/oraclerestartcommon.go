@@ -59,6 +59,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -527,16 +528,14 @@ func PodListValidation(podList *corev1.PodList, sfName string, instance *oracler
 func GetPodList(sfsetName string, instance *oraclerestart.OracleRestart, kClient client.Client, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec,
 ) (*corev1.PodList, error) {
 	podList := &corev1.PodList{}
-	//labelSelector := labels.SelectorFromSet(getlabelsForRAC(instance))
-	//labelSelector := map[string]labels.Selector{}
-	// var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForOracleRestart(-1, OraRestartSpex))
+	var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForOracleRestart(-1, OraRestartSpex))
 
-	// listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
+	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
 
-	// err := kClient.List(context.TODO(), podList, listOps)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	err := kClient.List(context.TODO(), podList, listOps)
+	if err != nil {
+		return nil, err
+	}
 	return podList, nil
 }
 

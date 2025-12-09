@@ -13,12 +13,35 @@
 ### In this Example:
   * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name `dbocir/oracle/database-orestart:19.3.0-slim`. 
   * When you are building the image yourself, update the image value in the `oraclerestart_prov_multiple_diskgroups.yaml` file to point to the container image you have built. 
-  * The disks on the worker nodes for the Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` to`/dev/disk/by-partlabel/asm-disk8`. 
-  * Specify the size of these devices along with names using the parameter `storageSizeInGb`. Size is by-default in GBs. 
-  * The Diskgroup for CRS files is specified by `crsAsmDiskDg` and the disks on the worker nodes for this diskgroup are specified by `crsAsmDeviceList`. 
-  * The Diskgroup for Database files is specified by `dbDataFileDestDg` and the disks on the worker nodes for this diskgroup are specified by `dbAsmDeviceList`. 
-  * The Diskgroup for Recovery Area files is specified by `dbRecoveryFileDest` and the disks on the worker nodes for this diskgroup are specified by `recoAsmDeviceList`. 
-  * The Diskgroup for Redo Log files is specified by `redoAsmDiskDg` and the disks on the worker nodes for this diskgroup are specified by `redoAsmDeviceList`. 
+The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
+```text
+For example:
+  asmDiskGroupDetails:
+    - name: CRSDATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk1
+        - /dev/disk/by-partlabel/asm-disk2
+    - name: DBDATA
+      redundancy: EXTERNAL
+      type: DBDATAFILESDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk3
+        - /dev/disk/by-partlabel/asm-disk4
+    - name: RECO
+      redundancy: EXTERNAL
+      type: DBRECOVERY
+      disks:
+        - /dev/disk/by-partlabel/asm-disk5
+        - /dev/disk/by-partlabel/asm-disk6
+    - name: REDO
+      redundancy: EXTERNAL
+      type: DBREDO
+      disks:
+        - /dev/disk/by-partlabel/asm-disk7
+        - /dev/disk/by-partlabel/asm-disk8              
+```
 
 ### Steps: Deploy Oracle Restart Database
 * Use the file: [oraclerestart_prov_multiple_diskgroups.yaml](./oraclerestart_prov_multiple_diskgroups.yaml) for this use case as below:

@@ -16,11 +16,18 @@
 
 ### In this exapmple:
   * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image).
-  * The disks on the worker nodes for the Oracle Restart storage are `/dev/disk/by-partlabel/asm-disk1` and `/dev/disk/by-partlabel/asm-disk2`. 
-  * Specify the size of these devices along with names using the parameter `storageSizeInGb`. By default, size is in GBs.
+The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
+```text
+For example:
+  - name: DATA
+    redundancy: EXTERNAL
+    type: CRSDG
+    disks:
+      - /dev/oracleoci/oraclevdd
+```
   * Before deleting the disk, **you will need to remove the disk at the ASM Level** using `ALTER DISKGROUP DROP DISK` command. 
   * If you delete the disk’s YAML file before first removing the disk at the ASM level, thne the Operator will not delete the disk from the StatefulSet, and the Oracle Restart Database Pod will not be recreated. Instead, to prevent data loss, the operator will wait until you remove the disk at the ASM level before proceeding.
-  * In this example, out of the two disks mentioned above, the disk `/dev/disk/by-partlabel/asm-disk2` will be deleted from the existing Oracle Restart Database Deployment. 
+  * In this example, out of the two disks mentioned above, the disk `/dev/oracleoci/oraclevde` will be deleted from the existing Oracle Restart Database Deployment. 
 
 ### Steps: Delete the ASM Disk
 Use the file: [orestart_prov_asm_disk_deletion.yaml](./orestart_prov_asm_disk_deletion.yaml) for this procedure:
