@@ -123,6 +123,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -211,6 +212,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -458,6 +460,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -546,6 +549,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
