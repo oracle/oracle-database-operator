@@ -10,7 +10,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: autonomouscontainerdatabases.database.oracle.com
 spec:
   conversion:
@@ -182,7 +182,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: autonomousdatabasebackups.database.oracle.com
 spec:
   conversion:
@@ -396,7 +396,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: autonomousdatabaserestores.database.oracle.com
 spec:
   conversion:
@@ -600,7 +600,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: autonomousdatabases.database.oracle.com
 spec:
   conversion:
@@ -732,6 +732,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -820,6 +821,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -1067,6 +1069,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -1155,6 +1158,7 @@ spec:
                     - DW
                     - AJD
                     - APEX
+                    - LH
                     type: string
                   displayName:
                     type: string
@@ -1302,7 +1306,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: databaseobservers.observability.oracle.com
 spec:
   group: observability.oracle.com
@@ -1824,7 +1828,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -2083,7 +2086,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -2094,6 +2096,8 @@ spec:
                           enum:
                           - http
                           - https
+                          - HTTP
+                          - HTTPS
                           type: string
                         scrapeTimeout:
                           pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$
@@ -4327,7 +4331,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -4586,7 +4589,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -4597,6 +4599,8 @@ spec:
                           enum:
                           - http
                           - https
+                          - HTTP
+                          - HTTPS
                           type: string
                         scrapeTimeout:
                           pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$
@@ -6830,7 +6834,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -7089,7 +7092,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -7100,6 +7102,8 @@ spec:
                           enum:
                           - http
                           - https
+                          - HTTP
+                          - HTTPS
                           type: string
                         scrapeTimeout:
                           pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$
@@ -8831,7 +8835,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: dataguardbrokers.database.oracle.com
 spec:
   group: database.oracle.com
@@ -9045,7 +9049,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: dbcssystems.database.oracle.com
 spec:
   group: database.oracle.com
@@ -9929,7 +9933,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: lrests.database.oracle.com
 spec:
   group: database.oracle.com
@@ -10215,7 +10219,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: lrpdbs.database.oracle.com
 spec:
   group: database.oracle.com
@@ -10605,7 +10609,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: oraclerestarts.database.oracle.com
 spec:
   group: database.oracle.com
@@ -12019,7 +12023,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: oraclerestdataservices.database.oracle.com
 spec:
   group: database.oracle.com
@@ -12384,7 +12388,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: ordssrvs.database.oracle.com
 spec:
   group: database.oracle.com
@@ -12880,7 +12884,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: shardingdatabases.database.oracle.com
 spec:
   group: database.oracle.com
@@ -14059,7 +14063,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: singleinstancedatabases.database.oracle.com
 spec:
   group: database.oracle.com
@@ -15755,7 +15759,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-sa
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-mltp1
         imagePullPolicy: Always
         name: manager
         ports:
