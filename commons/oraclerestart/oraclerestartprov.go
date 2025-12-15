@@ -158,9 +158,6 @@ func buildStatefulSpecForOracleRestart(
 	if len(instance.Spec.SwStorageClass) != 0 && len(instance.Spec.InstDetails.HostSwLocation) == 0 {
 		sfsetspec.VolumeClaimTemplates = append(sfsetspec.VolumeClaimTemplates, SwVolumeClaimTemplatesForOracleRestart(instance, OracleRestartSpex))
 	}
-	// Add annotations to the Pod template
-	// sfsetspec.Template.Annotations = generateNetworkDetails(instance, OracleRestartSpex, kClient)
-
 	return sfsetspec
 }
 
@@ -274,19 +271,25 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 	var result []corev1.Volume
 	result = []corev1.Volume{
 		{
-			Name: OracleRestartSpex.Name + "-ssh-secretmap-vol",
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: instance.Spec.SshKeySecret.Name,
-				},
-			},
-		},
-		{
 			Name: OracleRestartSpex.Name + "-oradshm-vol",
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory},
 			},
 		},
+	}
+
+	// Only add the SSH secret volume if SshKeySecret is not nil and Name is not empty/whitespace
+	if instance.Spec.SshKeySecret != nil && strings.TrimSpace(instance.Spec.SshKeySecret.Name) != "" {
+		result = append([]corev1.Volume{
+			{
+				Name: OracleRestartSpex.Name + "-ssh-secretmap-vol",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: instance.Spec.SshKeySecret.Name,
+					},
+				},
+			},
+		}, result...)
 	}
 
 	if len(instance.Spec.ScriptsLocation) != 0 {
@@ -383,27 +386,38 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestart.OracleRestart, Orac
 		}
 	}
 
+	if checkHugePagesConfigured(instance) {
+		result = append(result, corev1.Volume{
+			Name: OracleRestartSpex.Name + "-oradata-hugepages-vol",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium: corev1.StorageMediumHugePages,
+				},
+			},
+		})
+	}
+
 	if len(OracleRestartSpex.PvcName) != 0 {
 		for source := range OracleRestartSpex.PvcName {
 			result = append(result, corev1.Volume{Name: OracleRestartSpex.Name + "-ora-vol-" + source, VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: source}}})
 		}
 	}
-
+	seen := make(map[string]struct{})
 	if instance.Spec.AsmStorageDetails != nil {
-		// Iterate over the DisksBySize slice
 		for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
-			// For each DiskBySize, append PVCs for the disks in DiskNames
 			for _, diskName := range diskBySize.DiskNames {
-				// Construct PVC name based on index and instance name
 				pvcName := GetAsmPvcName(instance.Name, diskName, instance)
-				result = append(result, corev1.Volume{
-					Name: pvcName,
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: pvcName,
+				if _, exists := seen[pvcName]; !exists {
+					seen[pvcName] = struct{}{}
+					result = append(result, corev1.Volume{
+						Name: pvcName,
+						VolumeSource: corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: pvcName,
+							},
 						},
-					},
-				})
+					})
+				}
 			}
 		}
 	}
@@ -435,7 +449,7 @@ func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, O
 		Command: []string{
 			"/usr/sbin/init",
 		},
-		VolumeDevices: getAsmVolumeDevices(instance, OracleRestartSpex),
+		VolumeDevices: getAsmVolumeDevices(instance),
 		Resources: corev1.ResourceRequirements{
 			Requests: make(map[corev1.ResourceName]resource.Quantity),
 		},
@@ -468,21 +482,24 @@ func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, O
 	return result
 }
 
-func getAsmVolumeDevices(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.VolumeDevice {
+func getAsmVolumeDevices(instance *oraclerestart.OracleRestart) []corev1.VolumeDevice {
 	var result []corev1.VolumeDevice
+	seen := make(map[string]struct{})
 
 	if instance.Spec.AsmStorageDetails != nil {
-		// Iterate over the DisksBySize slice
 		for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
-			// For each disk in DiskNames, create a VolumeDevice
 			for _, diskName := range diskBySize.DiskNames {
-				// Create PVC name and append VolumeDevice to the result
 				pvcName := GetAsmPvcName(instance.Name, diskName, instance)
-				result = append(result, corev1.VolumeDevice{Name: pvcName, DevicePath: diskName})
+				if _, exists := seen[pvcName]; !exists {
+					seen[pvcName] = struct{}{}
+					result = append(result, corev1.VolumeDevice{
+						Name:       pvcName,
+						DevicePath: diskName,
+					})
+				}
 			}
 		}
 	}
-
 	return result
 }
 
@@ -534,7 +551,13 @@ func buildInitContainerSpecForOracleRestart(instance *oraclerestart.OracleRestar
 
 func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.VolumeMount {
 	var result []corev1.VolumeMount
-	result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-ssh-secretmap-vol", MountPath: instance.Spec.SshKeySecret.KeyMountLocation, ReadOnly: true})
+	if instance.Spec.SshKeySecret != nil && strings.TrimSpace(instance.Spec.SshKeySecret.KeyMountLocation) != "" {
+		result = append(result, corev1.VolumeMount{
+			Name:      OracleRestartSpex.Name + "-ssh-secretmap-vol",
+			MountPath: instance.Spec.SshKeySecret.KeyMountLocation,
+			ReadOnly:  true,
+		})
+	}
 	if instance.Spec.DbSecret != nil {
 		if instance.Spec.DbSecret.KeySecretName != "" {
 			result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-dbsecret-key-vol", MountPath: instance.Spec.DbSecret.KeyFileMountLocation, ReadOnly: true})
@@ -614,6 +637,13 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestart.OracleRestart,
 				})
 			}
 		}
+	}
+
+	if checkHugePagesConfigured(instance) {
+		result = append(result, corev1.VolumeMount{
+			Name:      OracleRestartSpex.Name + "-oradata-hugepages-vol",
+			MountPath: "/hugepages",
+		})
 	}
 
 	if len(OracleRestartSpex.PvcName) != 0 {

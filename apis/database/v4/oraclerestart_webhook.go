@@ -120,7 +120,7 @@ func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
 				cr.Spec.ConfigParams.CrsAsmDiskDg = "DATA"
 			}
 			if cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy == "" {
-				cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy = "external"
+				cr.Spec.ConfigParams.CrsAsmDiskDgRedundancy = "EXTERNAL"
 			}
 		}
 
@@ -171,7 +171,7 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 				"image cannot be set to empty"))
 	}
 
-	validationErrs = append(validationErrs, cr.validateSshSecret()...)
+	// validationErrs = append(validationErrs, cr.validateSshSecret()...)
 	validationErrs = append(validationErrs, cr.validateDbSecret()...)
 	validationErrs = append(validationErrs, cr.validateTdeSecret()...)
 	validationErrs = append(validationErrs, cr.validateServiceSpecs()...)
@@ -465,31 +465,31 @@ func (r *OracleRestart) ValidateDelete(ctx context.Context, obj runtime.Object) 
 
 //========== User Functions to check the fields ==========
 
-func (r *OracleRestart) validateSshSecret() field.ErrorList {
-	var validationErrs field.ErrorList
-	sshPath := field.NewPath("spec").Child("SshKeySecret")
+// func (r *OracleRestart) validateSshSecret() field.ErrorList {
+// 	var validationErrs field.ErrorList
+// 	sshPath := field.NewPath("spec").Child("SshKeySecret")
 
-	if r.Spec.SshKeySecret == nil {
-		validationErrs = append(validationErrs,
-			field.Required(sshPath, "SshKeySecret must be specified"))
-		return validationErrs
-	}
+// 	if r.Spec.SshKeySecret == nil {
+// 		validationErrs = append(validationErrs,
+// 			field.Required(sshPath, "SshKeySecret must be specified"))
+// 		return validationErrs
+// 	}
 
-	if r.Spec.SshKeySecret.Name == "" {
-		validationErrs = append(validationErrs,
-			field.Required(sshPath.Child("Name"), "SshKeySecret.Name cannot be empty"))
-	}
-	if r.Spec.SshKeySecret.PrivKeySecretName == "" {
-		validationErrs = append(validationErrs,
-			field.Required(sshPath.Child("PrivKeySecretName"), "PrivKeySecretName cannot be empty"))
-	}
-	if r.Spec.SshKeySecret.PubKeySecretName == "" {
-		validationErrs = append(validationErrs,
-			field.Required(sshPath.Child("PubKeySecretName"), "PubKeySecretName cannot be empty"))
-	}
+// 	if r.Spec.SshKeySecret.Name == "" {
+// 		validationErrs = append(validationErrs,
+// 			field.Required(sshPath.Child("Name"), "SshKeySecret.Name cannot be empty"))
+// 	}
+// 	if r.Spec.SshKeySecret.PrivKeySecretName == "" {
+// 		validationErrs = append(validationErrs,
+// 			field.Required(sshPath.Child("PrivKeySecretName"), "PrivKeySecretName cannot be empty"))
+// 	}
+// 	if r.Spec.SshKeySecret.PubKeySecretName == "" {
+// 		validationErrs = append(validationErrs,
+// 			field.Required(sshPath.Child("PubKeySecretName"), "PubKeySecretName cannot be empty"))
+// 	}
 
-	return validationErrs
-}
+//		return validationErrs
+//	}
 func (r *OracleRestart) validateDbSecret() field.ErrorList {
 	var validationErrs field.ErrorList
 	dbPath := field.NewPath("spec").Child("DbSecret")
