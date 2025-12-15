@@ -182,7 +182,7 @@ type OracleRestartDbPwdSecretDetails struct {
 
 // OracleRestart Ssh secret Details
 type OracleRestartSshSecretDetails struct {
-	Name              string `json:"name"` // Name of the secret.
+	Name              string `json:"name,omitempty"` // Name of the secret.
 	KeyMountLocation  string `json:"keyMountLocation,omitempty"`
 	PrivKeySecretName string `json:"privKeySecretName,omitempty"`
 	PubKeySecretName  string `json:"pubKeySecretName,omitempty"`

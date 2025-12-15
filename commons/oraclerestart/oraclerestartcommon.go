@@ -188,16 +188,12 @@ func GetRacPodName(racName string) string {
 	return podName
 }
 
-func getlabelsForRac(instance *oraclerestart.OracleRestart) map[string]string {
-	return buildLabelsForOracleRestart(instance, "OracleRestart")
-}
-
 func GetAsmPvcName(name string, diskPath string, instance *oraclerestart.OracleRestart) string {
 
 	// pvcName := "asm-pvc-disk-" + strconv.Itoa(index) + "-" + name + "-" + dgType + "-" + "pvc"
 	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
 	diskName := diskPath[strings.LastIndex(diskPath, "/")+1:]
-	pvcName := "asm-pvc-" + strings.ToLower(dgType) + "-" + diskName + "-" + name + "-" + instance.Spec.InstDetails.Name + "-0"
+	pvcName := "asm-pvc-" + strings.ToLower(dgType) + "-" + diskName + "-" + instance.Name
 
 	return pvcName
 }
@@ -1394,4 +1390,21 @@ func CheckStorageClass(instance *oraclerestart.OracleRestart) string {
 		return "NOSC"
 	}
 	return "SC"
+}
+
+func checkHugePagesConfigured(instance *oraclerestart.OracleRestart) bool {
+
+	if instance.Spec.Resources != nil {
+		if len(instance.Spec.Resources.Limits) > 0 {
+			_, ok := instance.Spec.Resources.Limits["hugepages-2Mi"]
+			if ok {
+				return true
+			}
+			_, ok = instance.Spec.Resources.Requests["hugepages-2Mi"]
+			if ok {
+				return true
+			}
+		}
+	}
+	return false
 }

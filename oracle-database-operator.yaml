@@ -11277,8 +11277,6 @@ spec:
                     type: string
                   pubKeySecretName:
                     type: string
-                required:
-                - name
                 type: object
               swDgStorageClass:
                 type: string
@@ -11997,8 +11995,6 @@ spec:
                     type: string
                   pubKeySecretName:
                     type: string
-                required:
-                - name
                 type: object
               state:
                 type: string
@@ -15773,7 +15769,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-sa
+        image: container-registry.oracle.com/database/operator:latest
         imagePullPolicy: Always
         name: manager
         ports:
