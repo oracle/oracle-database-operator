@@ -102,7 +102,7 @@ const (
 )
 
 // Function to build the env var specification
-func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databasev4.EnvironmentVariable, name string, restype string, masterFlag bool, directorParams string) []corev1.EnvVar {
+func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databasev4.EnvironmentVariable, name string, restype string, masterFlag bool, directorParams string, deployAs string) []corev1.EnvVar {
 	var result []corev1.EnvVar
 	var varinfo string
 	var sidFlag bool = false
@@ -147,7 +147,7 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 		if variable.Name == "SHARD_SETUP" {
 			shardSetupFlag = true
 		}
-		if variable.Name == "OLD_ORACLE_PDB" {
+		if variable.Name == "ENABLE_ARCHIVELOG" {
 			archiveLogFlag = true
 		}
 		if variable.Name == "DB_UNIQUE_NAME" {
@@ -325,7 +325,15 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 	}
 
 	if restype == "SHARD" {
-		result = append(result, corev1.EnvVar{Name: "OP_TYPE", Value: "primaryshard"})
+		role := strings.ToUpper(strings.TrimSpace(deployAs))
+		switch role {
+		case "STANDBY":
+			result = append(result, corev1.EnvVar{Name: "OP_TYPE", Value: "standbyshard"})
+		case "ACTIVE_STANDBY":
+			result = append(result, corev1.EnvVar{Name: "OP_TYPE", Value: "active_standby_shard"})
+		default:
+			result = append(result, corev1.EnvVar{Name: "OP_TYPE", Value: "primaryshard"})
+		}
 		result = append(result, corev1.EnvVar{Name: "KUBE_SVC", Value: name})
 	}
 
@@ -1021,15 +1029,30 @@ func BuildShardParams(instance *databasev4.ShardingDatabase, sfSet *appsv1.State
 		result = result + varinfo
 	}
 
-	if OraShardSpex.DeployAs != "" {
-		varinfo = "deploy_as=" + OraShardSpex.DeployAs + ";"
-		result = result + varinfo
-	}
+	// if OraShardSpex.DeployAs != "" {
+	// 	varinfo = "deploy_as=" + OraShardSpex.DeployAs + ";"
+	// 	result = result + varinfo
+	// }
 
 	if !isShardPort {
 		varinfo = "shard_port=" + "1521" + ";"
 		result = result + varinfo
 	}
+	// normalize deploy_as and APPEND to result (single source of truth)
+	deployAs := strings.ToLower(strings.TrimSpace(OraShardSpex.DeployAs))
+	if deployAs == "" {
+		deployAs = "primary"
+	} else if deployAs == "active_standby" {
+		deployAs = "active_standby"
+	} else if deployAs == "standby" {
+		deployAs = "standby"
+	} else {
+		deployAs = "primary"
+	}
+
+	result = result + "deploy_as=" + deployAs + ";"
+
+	// trim and return
 	result = strings.TrimSuffix(result, ";")
 	return result
 }

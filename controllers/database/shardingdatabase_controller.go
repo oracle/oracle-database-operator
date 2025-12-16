@@ -1395,6 +1395,12 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 			//	stateStr := shardingv1.GetGsmShardStatus(instance, OraShardSpex.Name)
 			//	strings.Contains(stateStr, "DELETE")
 
+			// NOTE: only handle PRIMARY shards here; standby/active_standby handled by addStandbyShards()
+			deployAs := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
+			if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
+				continue
+			}
+
 			if !shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
 				if setLifeCycleFlag != true {
 					setLifeCycleFlag = true
@@ -1520,8 +1526,91 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev4.ShardingD
 }
 
 func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.ShardingDatabase) error {
-	//var result ctrl.Result
+	var result ctrl.Result
+	var i int32
+	var err error
 
+	shardSfSet := &appsv1.StatefulSet{}
+	gsmPod := &corev1.Pod{}
+
+	var sparams1 string
+	var deployFlag = true
+	var errStr = false
+	var setLifeCycleFlag = false
+
+	shardingv1.LogMessages("DEBUG", "Starting standby shard adding operation.", nil, instance, r.Log)
+
+	if len(instance.Spec.Shard) == 0 {
+		return nil
+	}
+
+	for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
+		OraShardSpex := instance.Spec.Shard[i]
+
+		if shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
+			continue
+		}
+
+		deployAs := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
+		if deployAs != "STANDBY" && deployAs != "ACTIVE_STANDBY" {
+			continue
+		}
+
+		if !setLifeCycleFlag {
+			setLifeCycleFlag = true
+			stateType := string(databasev4.CrdReconcileWaitingState)
+			r.setCrdLifeCycleState(instance, &result, &err, &stateType)
+		}
+
+		// Validate shard pod is ready
+		shardSfSet, _, err = r.validateShard(instance, OraShardSpex, int(i))
+		if err != nil {
+			errStr = true
+			deployFlag = false
+			continue
+		}
+
+		// Validate GSM is ready
+		_, gsmPod, err = r.validateGsm(instance)
+		if err != nil {
+			deployFlag = false
+			return err
+		}
+
+		// Check if shard already exists in GSM
+		sparams := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
+		sparams1 = sparams
+
+		err = shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		if err == nil {
+			// already exists
+			continue
+		}
+
+		// Add standby shard in GSM
+		r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardState))
+		err = shardingv1.AddShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		if err != nil {
+			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
+			deployFlag = false
+			continue
+		}
+	}
+
+	if errStr {
+		shardingv1.LogMessages("INFO", "Some standby shards are still pending for addition. Requeue reconcile loop.", nil, instance, r.Log)
+		return fmt.Errorf("standby shards are not ready for addition")
+	}
+
+	if deployFlag {
+		_ = shardingv1.DeployShardInGsm(gsmPod.Name, sparams1, instance, r.kubeClient, r.kubeConfig, r.Log)
+		r.updateShardTopologyShardsInGsm(instance, gsmPod)
+	} else {
+		shardingv1.LogMessages("INFO", "Standby shards are not added in GSM yet. Deploy will happen after addition. Requeue.", nil, instance, r.Log)
+		return fmt.Errorf("standby shard addition pending")
+	}
+
+	shardingv1.LogMessages("INFO", "Completed standby shard addition operation.", nil, instance, r.Log)
 	return nil
 }
 
