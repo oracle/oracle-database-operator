@@ -72,7 +72,9 @@ import (
 	observabilityv1 "github.com/oracle/oracle-database-operator/apis/observability/v1"
 	observabilityv1alpha1 "github.com/oracle/oracle-database-operator/apis/observability/v1alpha1"
 	observabilityv4 "github.com/oracle/oracle-database-operator/apis/observability/v4"
+	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
 	observabilitycontroller "github.com/oracle/oracle-database-operator/controllers/observability"
+	privateaiv4controller "github.com/oracle/oracle-database-operator/controllers/privateai"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -89,6 +91,7 @@ func init() {
 	utilruntime.Must(databasev4.AddToScheme(scheme))
 	utilruntime.Must(observabilityv1.AddToScheme(scheme))
 	utilruntime.Must(observabilityv4.AddToScheme(scheme))
+	utilruntime.Must(privateaiv4.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -226,6 +229,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&privateaiv4controller.PrivateAiReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("privateai").WithName("PrivateAi"),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("PrivateAi"),
+		Config:   mgr.GetConfig(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "PrivateAi")
+		os.Exit(1)
+	}
+
 	// Set RECONCILE_INTERVAL environment variable if you want to change the default value from 15 secs
 	interval := os.Getenv("RECONCILE_INTERVAL")
 	i, err := strconv.ParseInt(interval, 10, 64)
@@ -334,6 +348,10 @@ func main() {
 		}
 		if err = (&databasev4.OracleRestart{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestart")
+			os.Exit(1)
+		}
+		if err = (&privateaiv4.PrivateAi{}).SetupPrivateAiWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "PrivateAi")
 			os.Exit(1)
 		}
 	}

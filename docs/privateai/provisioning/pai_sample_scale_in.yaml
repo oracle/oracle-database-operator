@@ -1,0 +1,55 @@
+#
+# Copyright (c) 2022, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
+#
+---
+# Specifies the custom resource API version
+apiVersion: privateai.oracle.com/v4
+
+# Defines the type of resource (Private AI)
+kind: PrivateAi
+
+# Provide identification and scoping metadata
+metadata:
+  # Name of Private AI resource
+  name: pai-sample
+  # Kubernetes Namespace where this resource will be deployed
+  namespace: pai
+
+# Main specification for Private AI
+spec:
+
+ # Configuration for Private AI
+ paiConfigFile:
+  # Configmap having the link for the AI Model File
+  name: privateaiconfigjson
+  # Location inside the Pod to which the file containining the configmap will be mounted to
+  mountLocation: /privateai/config
+
+ # Specify the Kubernetes Secret Details
+ paiSecret:
+  name: paisecret
+  mountLocation: /privateai/ssl
+
+ # If you want to enable Authentication for the Private AI Access
+ paiEnableAuthentication: "true"
+
+ # If LoadBalancer will be used
+ isExternalSvc: "true"
+
+ # Container Image of the Private AI Container
+ paiImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:private-ai-1.11.18
+ 
+ # Name and port details of the Private AI Service once deployed
+ paiService:
+   name: paisvc
+   portMappings:
+   - port: 443
+     targetPort: 8443
+     protocol: TCP
+
+ # Public Reserved IP of the Public LoadBalancer
+ paiLBIP: 129.xxx.xxx.xxx
+
+ # Replica Count
+ replicas: 2

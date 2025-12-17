@@ -1,0 +1,10 @@
+{
+  "models": [
+    {
+      "modelname": "all_MiniLM_L12_v2",
+      "modelfile": "https://objectstorage.us-phoenix-1.oraclecloud.com/p/sxwiLMWNV62iWXroRSDMtLm2GzXf4qSICwuW8Drf4bumt3pVLSJafAHzSv9DWdBR/n/intsanjaysingh/b/privateai_bucket/o/all_MiniLM_L12_v2.zip",
+      "modelfunction": "EMBEDDING",
+      "cache_on_startup": true
+    }
+  ]
+}
