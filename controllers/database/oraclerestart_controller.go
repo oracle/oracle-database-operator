@@ -689,7 +689,7 @@ func checkRacDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, or
 			}
 
 			// DaemonSet did not become ready or running within the timeout
-			return false, fmt.Errorf("DaemonSet %s/%s did not become ready or running within 5 minutes", oracleRestart.Namespace, "disk-check-daemonset")
+			return false, fmt.Errorf("DaemonSet %s/%s did not become ready or running within 2 minutes", oracleRestart.Namespace, "disk-check-daemonset")
 
 		case <-tick.C:
 			// Check DaemonSet status
@@ -1933,6 +1933,9 @@ func (r *OracleRestartReconciler) updateOracleRestartInstTopologyStatus(oracleRe
 		if err != nil {
 			return podNames, nodeDetails, err
 		}
+		if pod == nil {
+			return nil, nil, fmt.Errorf("Pod not found for Oracle Restart instance")
+		}
 		podNames = append(podNames, pod.Name)
 
 		// Get node details for the node where the pod is running
@@ -2041,11 +2044,14 @@ func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oracl
 	orestartPod := &corev1.Pod{}
 
 	orestartSfSet, err = oraclerestartcommon.CheckSfset(OraRestartSpex.Name, oracleRestart, r.Client)
-	if err != nil {
+	if err != nil && orestartSfSet != nil {
 		//msg := "Unable to find Oracle Restart statefulset " + oraclerestartcommon.GetFmtStr(OraRestartSpex.Name) + "."
 		//oraclerestartcommon.LogMessages("INFO", msg, nil, instance, r.Log)
 		r.updateOracleRestartInstStatus(oracleRestart, ctx, req, OraRestartSpex, string(oraclerestartdb.StatefulSetNotFound), r.Client, false)
 		return orestartSfSet, orestartPod, err
+	}
+	if orestartSfSet == nil {
+		return orestartSfSet, nil, nil
 	}
 
 	podList, err := oraclerestartcommon.GetPodList(orestartSfSet.Name, oracleRestart, r.Client, OraRestartSpex)
