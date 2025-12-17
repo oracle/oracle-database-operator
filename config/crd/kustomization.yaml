@@ -20,6 +20,7 @@ resources:
 - bases/database.oracle.com_lrpdbs.yaml
 - bases/database.oracle.com_ordssrvs.yaml
 - bases/database.oracle.com_oraclerestarts.yaml
+- bases/privateai.oracle.com_privateais.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

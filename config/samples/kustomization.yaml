@@ -16,4 +16,5 @@ resources:
 - sidb/singleinstancedatabase_create.yaml
 - omlai_v4_privateai.yaml
 - database_v4_oraclerestart.yaml
+- privateai_v4_privateai.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

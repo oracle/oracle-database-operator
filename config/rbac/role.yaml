@@ -218,6 +218,32 @@ rules:
   - patch
   - update
 - apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - storage.k8s.io
   resources:
   - storageclasses
