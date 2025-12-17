@@ -286,7 +286,7 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 				},
 			},
 		},
-		Env: buildEnvVarsSpec(instance, OraShardSpex.EnvVars, OraShardSpex.Name, "SHARD", false, "NONE", OraShardSpex.DeployAs),
+		Env: buildEnvVarsSpec(instance, OraShardSpex.EnvVars, OraShardSpex.Name, "SHARD", false, "NONE", OraShardSpex.DeployAs, OraShardSpex.PrimaryDatabaseRef),
 	}
 
 	if instance.Spec.IsClone {

@@ -273,7 +273,7 @@ func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex 
 			},
 		},
 		**/
-		Env: buildEnvVarsSpec(instance, OraGsmSpex.EnvVars, OraGsmSpex.Name, "GSM", masterGsmFlag, directorParams, ""),
+		Env: buildEnvVarsSpec(instance, OraGsmSpex.EnvVars, OraGsmSpex.Name, "GSM", masterGsmFlag, directorParams, "", nil),
 	}
 	if OraGsmSpex.Resources != nil {
 		containerSpec.Resources = *OraGsmSpex.Resources

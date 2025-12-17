@@ -283,7 +283,7 @@ func buildContainerSpecForCatalog(instance *databasev4.ShardingDatabase, OraCata
 				},
 			},
 		},
-		Env: buildEnvVarsSpec(instance, OraCatalogSpex.EnvVars, OraCatalogSpex.Name, "CATALOG", false, "NONE", ""),
+		Env: buildEnvVarsSpec(instance, OraCatalogSpex.EnvVars, OraCatalogSpex.Name, "CATALOG", false, "NONE", "", nil),
 	}
 	if instance.Spec.IsClone {
 		containerSpec.Command = []string{orainitCmd3}

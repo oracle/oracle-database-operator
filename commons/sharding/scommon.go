@@ -102,136 +102,120 @@ const (
 )
 
 // Function to build the env var specification
-func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databasev4.EnvironmentVariable, name string, restype string, masterFlag bool, directorParams string, deployAs string) []corev1.EnvVar {
+func buildEnvVarsSpec(
+	instance *databasev4.ShardingDatabase,
+	variables []databasev4.EnvironmentVariable,
+	name string,
+	restype string,
+	masterFlag bool,
+	directorParams string,
+	deployAs string,
+	primaryRef *databasev4.DatabaseRef, // for standby linking
+) []corev1.EnvVar {
+
 	var result []corev1.EnvVar
 	var varinfo string
-	var sidFlag bool = false
-	//var sidValue string
+
+	var sidFlag bool
 	var pdbValue string
-	var pdbFlag bool = false
-	var sDirectParam bool = false
-	var sGroup1Params bool = false
-	//var sGroup2Params bool = false
-	var catalogParams bool = false
-	var oldPdbFlag bool = false
-	var oldSidFlag bool = false
-	var archiveLogFlag bool = false
-	var shardSetupFlag bool = false
-	var dbUnameFlag bool = false
-	var ofreePdbFlag bool = false
+	var pdbFlag bool
+	var sDirectParam bool
+	var sGroup1Params bool
+	var catalogParams bool
+	var oldPdbFlag bool
+	var oldSidFlag bool
+	var archiveLogFlag bool
+	var shardSetupFlag bool
+	var dbUnameFlag bool
+	var ofreePdbFlag bool
 
 	for _, variable := range variables {
-		if variable.Name == "ORACLE_SID" {
+		switch variable.Name {
+		case "ORACLE_SID":
 			sidFlag = true
-			//sidValue = variable.Value
-		}
-		if variable.Name == "ORACLE_PDB" {
+		case "ORACLE_PDB":
 			pdbFlag = true
 			pdbValue = variable.Value
-		}
-		if variable.Name == "SHARD_DIRECTOR_PARAMS" {
+		case "SHARD_DIRECTOR_PARAMS":
 			sDirectParam = true
-		}
-		if variable.Name == "SHARD1_GROUP_PARAMS" {
+		case "SHARD1_GROUP_PARAMS":
 			sGroup1Params = true
-		}
-		if variable.Name == "CATALOG_PARAMS" {
+		case "CATALOG_PARAMS":
 			catalogParams = true
-		}
-		if variable.Name == "OLD_ORACLE_SID" {
+		case "OLD_ORACLE_SID":
 			oldSidFlag = true
-		}
-		if variable.Name == "OLD_ORACLE_PDB" {
+		case "OLD_ORACLE_PDB":
 			oldPdbFlag = true
-		}
-		if variable.Name == "SHARD_SETUP" {
+		case "SHARD_SETUP":
 			shardSetupFlag = true
-		}
-		if variable.Name == "ENABLE_ARCHIVELOG" {
+		case "ENABLE_ARCHIVELOG":
 			archiveLogFlag = true
-		}
-		if variable.Name == "DB_UNIQUE_NAME" {
+		case "DB_UNIQUE_NAME":
 			dbUnameFlag = true
-		}
-		if variable.Name == "ORACLE_FREE_PDB" {
+		case "ORACLE_FREE_PDB":
 			ofreePdbFlag = true
 		}
 
 		result = append(result, corev1.EnvVar{Name: variable.Name, Value: variable.Value})
 	}
 
-	if !dbUnameFlag {
-		if strings.ToLower(instance.Spec.DbEdition) == "free" {
-			result = append(result, corev1.EnvVar{Name: "DB_UNIQUE_NAME", Value: strings.ToUpper(name)})
+	// FREE DB helpers
+	if !dbUnameFlag && strings.ToLower(instance.Spec.DbEdition) == "free" {
+		result = append(result, corev1.EnvVar{Name: "DB_UNIQUE_NAME", Value: strings.ToUpper(name)})
+	}
+
+	if !ofreePdbFlag && strings.ToLower(instance.Spec.DbEdition) == "free" {
+		if pdbFlag {
+			result = append(result, corev1.EnvVar{Name: "ORACLE_FREE_PDB", Value: pdbValue})
+		} else {
+			result = append(result, corev1.EnvVar{Name: "ORACLE_FREE_PDB", Value: strings.ToUpper(name) + "PDB"})
 		}
 	}
 
-	if !ofreePdbFlag {
-		if strings.ToLower(instance.Spec.DbEdition) == "free" {
-			if pdbFlag {
-				result = append(result, corev1.EnvVar{Name: "ORACLE_FREE_PDB", Value: pdbValue})
-			} else {
-				result = append(result, corev1.EnvVar{Name: "ORACLE_FREE_PDB", Value: strings.ToUpper(name) + "PDB"})
-			}
-		}
-	}
-
+	// Common flags
 	if !shardSetupFlag {
-		if restype == "SHARD" {
-			result = append(result, corev1.EnvVar{Name: "SHARD_SETUP", Value: "true"})
-		}
-		if restype == "CATALOG" {
-			result = append(result, corev1.EnvVar{Name: "SHARD_SETUP", Value: "true"})
-		}
-		if restype == "GSM" {
+		if restype == "SHARD" || restype == "CATALOG" || restype == "GSM" {
 			result = append(result, corev1.EnvVar{Name: "SHARD_SETUP", Value: "true"})
 		}
 	}
+
 	if !archiveLogFlag {
-		if restype == "SHARD" {
-			result = append(result, corev1.EnvVar{Name: "ENABLE_ARCHIVELOG", Value: "true"})
-		}
-		if restype == "CATALOG" {
+		if restype == "SHARD" || restype == "CATALOG" {
 			result = append(result, corev1.EnvVar{Name: "ENABLE_ARCHIVELOG", Value: "true"})
 		}
 	}
+
+	// ORACLE_SID / ORACLE_PDB defaults
 	if !sidFlag {
 		if strings.ToLower(instance.Spec.DbEdition) == "free" {
 			result = append(result, corev1.EnvVar{Name: "ORACLE_SID", Value: "FREE"})
-		} else {
-			if restype == "SHARD" {
-				result = append(result, corev1.EnvVar{Name: "ORACLE_SID", Value: strings.ToUpper(name)})
-			}
-			if restype == "CATALOG" {
-				result = append(result, corev1.EnvVar{Name: "ORACLE_SID", Value: strings.ToUpper(name)})
-			}
+		} else if restype == "SHARD" || restype == "CATALOG" {
+			result = append(result, corev1.EnvVar{Name: "ORACLE_SID", Value: strings.ToUpper(name)})
 		}
 	}
+
 	if !pdbFlag {
 		if strings.ToLower(instance.Spec.DbEdition) == "free" {
 			result = append(result, corev1.EnvVar{Name: "ORACLE_PDB", Value: "FREEPDB"})
-		} else {
-			if restype == "SHARD" {
-				result = append(result, corev1.EnvVar{Name: "ORACLE_PDB", Value: strings.ToUpper(name) + "PDB"})
-			}
-			if restype == "CATALOG" {
-				result = append(result, corev1.EnvVar{Name: "ORACLE_PDB", Value: strings.ToUpper(name) + "PDB"})
-			}
+		} else if restype == "SHARD" || restype == "CATALOG" {
+			result = append(result, corev1.EnvVar{Name: "ORACLE_PDB", Value: strings.ToUpper(name) + "PDB"})
 		}
 	}
-	// Secret Settings
 
+	// Secret Settings
 	if strings.ToLower(instance.Spec.DbSecret.EncryptionType) != "base64" {
 		result = append(result, corev1.EnvVar{Name: "PWD_KEY", Value: instance.Spec.DbSecret.KeyFileName})
 		result = append(result, corev1.EnvVar{Name: "COMMON_OS_PWD_FILE", Value: instance.Spec.DbSecret.PwdFileName})
 	} else {
 		result = append(result, corev1.EnvVar{Name: "PASSWORD_FILE", Value: instance.Spec.DbSecret.PwdFileName})
 	}
+
 	if len(instance.Spec.DbSecret.PwdFileMountLocation) != 0 {
 		result = append(result, corev1.EnvVar{Name: "SECRET_VOLUME", Value: instance.Spec.DbSecret.PwdFileMountLocation})
 	} else {
 		result = append(result, corev1.EnvVar{Name: "SECRET_VOLUME", Value: oraSecretMount})
 	}
+
 	if len(instance.Spec.DbSecret.KeyFileMountLocation) != 0 {
 		result = append(result, corev1.EnvVar{Name: "KEY_SECRET_VOLUME", Value: instance.Spec.DbSecret.KeyFileMountLocation})
 	} else {
@@ -243,28 +227,28 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 		result = append(result, corev1.EnvVar{Name: "TDE_PWD_FILE", Value: instance.Spec.DbSecret.TdePwdFileName})
 	}
 
+	// GSM specific
 	if restype == "GSM" {
 		if !sDirectParam {
 			//varinfo = "director_name=sharddirector" + sDirectorCounter + ";director_region=primary;director_port=1521"
 			varinfo = directorParams
 			result = append(result, corev1.EnvVar{Name: "SHARD_DIRECTOR_PARAMS", Value: varinfo})
 		}
+
 		if strings.ToUpper(instance.Spec.ShardingType) != "USER" {
 			if !sGroup1Params {
 				if len(instance.Spec.ShardGroup) > 0 {
 					for i := 0; i < len(instance.Spec.ShardGroup); i++ {
 						if strings.ToUpper(instance.Spec.ShardGroup[i].DeployAs) == "PRIMARY" {
-							group_name := instance.Spec.ShardGroup[i].Name
-							//deploy_as := instance.Spec.ShardGroup[i].DeployAs
+							groupName := instance.Spec.ShardGroup[i].Name
 							region := instance.Spec.ShardGroup[i].Region
-							varinfo = "group_name=" + group_name + ";" + "deploy_as=primary;" + "group_region=" + region
+							varinfo = "group_name=" + groupName + ";" + "deploy_as=primary;" + "group_region=" + region
 							result = append(result, corev1.EnvVar{Name: "SHARD1_GROUP_PARAMS", Value: varinfo})
 						}
 						if strings.ToUpper(instance.Spec.ShardGroup[i].DeployAs) == "STANDBY" {
-							group_name := instance.Spec.ShardGroup[i].Name
-							//deploy_as := instance.Spec.ShardGroup[i].DeployAs
+							groupName := instance.Spec.ShardGroup[i].Name
 							region := instance.Spec.ShardGroup[i].Region
-							varinfo = "group_name=" + group_name + ";" + "deploy_as=standby;" + "group_region=" + region
+							varinfo = "group_name=" + groupName + ";" + "deploy_as=standby;" + "group_region=" + region
 							result = append(result, corev1.EnvVar{Name: "SHARD2_GROUP_PARAMS", Value: varinfo})
 						}
 					}
@@ -278,22 +262,20 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 		if strings.ToUpper(instance.Spec.ShardingType) == "USER" {
 			result = append(result, corev1.EnvVar{Name: "SHARDING_TYPE", Value: "USER"})
 		}
-		// SERVICE Params setting
-		var svc string
+
+		// Service params
 		if len(instance.Spec.GsmService) > 0 {
-			svc = ""
 			for i := 0; i < len(instance.Spec.GsmService); i++ {
-				svc = svc + "service_name=" + instance.Spec.GsmService[i].Name
+				svc := "service_name=" + instance.Spec.GsmService[i].Name
 				if len(instance.Spec.GsmService[i].Role) != 0 {
-					svc = svc + ";service_role=" + instance.Spec.GsmService[i].Role
+					svc += ";service_role=" + instance.Spec.GsmService[i].Role
 				} else {
-					svc = svc + ";service_role=primary"
+					svc += ";service_role=primary"
 				}
 				if len(instance.Spec.GsmService[i].RuMode) != 0 {
-					svc = svc + ";service_mode=" + instance.Spec.GsmService[i].RuMode
+					svc += ";service_mode=" + instance.Spec.GsmService[i].RuMode
 				}
 				result = append(result, corev1.EnvVar{Name: "SERVICE" + fmt.Sprint(i) + "_PARAMS", Value: svc})
-				svc = ""
 			}
 		}
 
@@ -303,7 +285,6 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 
 		if instance.Spec.InvitedNodeSubnetFlag == "" {
 			instance.Spec.InvitedNodeSubnetFlag = "TRUE"
-
 		}
 		if strings.ToUpper(instance.Spec.InvitedNodeSubnetFlag) != "FALSE" {
 			result = append(result, corev1.EnvVar{Name: "INVITED_NODE_SUBNET_FLAG", Value: "TRUE"})
@@ -311,19 +292,22 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 				result = append(result, corev1.EnvVar{Name: "INVITED_NODE_SUBNET", Value: instance.Spec.InvitedNodeSubnet})
 			}
 		}
+
 		if !catalogParams {
 			varinfo = buildCatalogParams(instance)
 			result = append(result, corev1.EnvVar{Name: "CATALOG_PARAMS", Value: varinfo})
 		}
 
-		if masterFlag == true {
+		if masterFlag {
 			result = append(result, corev1.EnvVar{Name: "MASTER_GSM", Value: "true"})
 		}
+
 		result = append(result, corev1.EnvVar{Name: "CATALOG_SETUP", Value: "true"})
 		result = append(result, corev1.EnvVar{Name: "OP_TYPE", Value: "gsm"})
 		result = append(result, corev1.EnvVar{Name: "KUBE_SVC", Value: name})
 	}
 
+	// SHARD specific
 	if restype == "SHARD" {
 		role := strings.ToUpper(strings.TrimSpace(deployAs))
 		switch role {
@@ -335,24 +319,45 @@ func buildEnvVarsSpec(instance *databasev4.ShardingDatabase, variables []databas
 			result = append(result, corev1.EnvVar{Name: "OP_TYPE", Value: "primaryshard"})
 		}
 		result = append(result, corev1.EnvVar{Name: "KUBE_SVC", Value: name})
+
+		// only for standby roles ---
+		if (role == "STANDBY" || role == "ACTIVE_STANDBY") && primaryRef != nil && strings.TrimSpace(primaryRef.Host) != "" {
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_HOST", Value: strings.TrimSpace(primaryRef.Host)})
+
+			if primaryRef.Port > 0 {
+				result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_PORT", Value: fmt.Sprint(primaryRef.Port)})
+			} else {
+				result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_PORT", Value: "1521"})
+			}
+
+			if strings.TrimSpace(primaryRef.CdbName) != "" {
+				result = append(result, corev1.EnvVar{Name: "PRIMARY_CDB_NAME", Value: strings.TrimSpace(primaryRef.CdbName)})
+			}
+			if strings.TrimSpace(primaryRef.PdbName) != "" {
+				result = append(result, corev1.EnvVar{Name: "PRIMARY_PDB_NAME", Value: strings.TrimSpace(primaryRef.PdbName)})
+			}
+
+			// Optional single connect string helper (scripts can use if they want)
+			connect := strings.TrimSpace(primaryRef.Host) + ":" + func() string {
+				if primaryRef.Port > 0 {
+					return fmt.Sprint(primaryRef.Port)
+				}
+				return "1521"
+			}() + "/" + strings.TrimSpace(primaryRef.PdbName)
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connect})
+		}
 	}
 
+	// CATALOG specific
 	if restype == "CATALOG" {
 		result = append(result, corev1.EnvVar{Name: "OP_TYPE", Value: "catalog"})
 		result = append(result, corev1.EnvVar{Name: "KUBE_SVC", Value: name})
 	}
 
+	// Clone handling
 	if instance.Spec.IsClone {
 		result = append(result, corev1.EnvVar{Name: "CLONE_DB", Value: "true"})
-		if restype == "SHARD" {
-			if !oldSidFlag {
-				result = append(result, corev1.EnvVar{Name: "OLD_ORACLE_SID", Value: "GOLDCDB"})
-			}
-			if !oldPdbFlag {
-				result = append(result, corev1.EnvVar{Name: "OLD_ORACLE_PDB", Value: "GOLDPDB"})
-			}
-		}
-		if restype == "CATALOG" {
+		if restype == "SHARD" || restype == "CATALOG" {
 			if !oldSidFlag {
 				result = append(result, corev1.EnvVar{Name: "OLD_ORACLE_SID", Value: "GOLDCDB"})
 			}
