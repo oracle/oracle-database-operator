@@ -195,7 +195,7 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Populate LoadBalancerIP in status from the external service (if enabled)
 	if externalSvcEnabled {
-		if _, err := r.ensureServices(ctx, privateAiInst, "local"); err != nil {
+		if _, err := r.ensureServices(ctx, privateAiInst, "external"); err != nil {
 			return resultNq, err
 		}
 	}
