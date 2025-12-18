@@ -176,6 +176,29 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return result, err
 	}
 
+	// ---- Ensure standby shards have primaryDatabaseRef BEFORE creating shard services/STS ----
+	orig := instance.DeepCopy()
+
+	changed, e := r.ensurePrimaryRefForStandby(ctx, instance)
+	if e != nil {
+		// primary not ready yet -> requeue (same pattern you already follow)
+		shardingv1.LogMessages("INFO", e.Error(), nil, instance, r.Log)
+		err = nilErr
+		result = resultQ
+		return result, err
+	}
+
+	if changed {
+		if perr := r.Patch(ctx, instance, client.MergeFrom(orig)); perr != nil {
+			result = resultNq
+			return result, perr
+		}
+		// Requeue so the next loop creates/updates shard STS with correct env
+		err = nilErr
+		result = resultQ
+		return result, err
+	}
+
 	// ========================= Service Setup For Catalog===================
 	// Following check and loop will make sure  to create the service
 	for i = 0; i < int32(len(instance.Spec.Catalog)); i++ {
@@ -1366,6 +1389,77 @@ func (r *ShardingDatabaseReconciler) updateGsmShardStatus(instance *databasev4.S
 	if eventMsgFlag == true {
 		r.publishEvents(instance, eventMsg, state)
 	}
+}
+
+// ensurePrimaryRefForStandby fills spec.shard[].primaryDatabaseRef for standby shards,
+// using the PRIMARY shard from the same shardGroup (or first PRIMARY shard as fallback).
+func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
+	ctx context.Context,
+	instance *databasev4.ShardingDatabase,
+) (bool, error) {
+
+	// Pick PRIMARY shard by shardGroup (and keep first PRIMARY as fallback)
+	primaryByGroup := map[string]databasev4.ShardSpec{}
+	var firstPrimary *databasev4.ShardSpec
+
+	for _, s := range instance.Spec.Shard {
+		if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
+			ss := s // copy
+			if firstPrimary == nil {
+				firstPrimary = &ss
+			}
+			if g := strings.TrimSpace(s.ShardGroup); g != "" {
+				primaryByGroup[g] = ss
+			}
+		}
+	}
+
+	changed := false
+
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
+
+		role := strings.ToUpper(strings.TrimSpace(s.DeployAs))
+		if role != "STANDBY" && role != "ACTIVE_STANDBY" {
+			continue
+		}
+
+		// already set
+		if s.PrimaryDatabaseRef != nil && strings.TrimSpace(s.PrimaryDatabaseRef.Host) != "" {
+			continue
+		}
+
+		// choose matching primary shard
+		var prim databasev4.ShardSpec
+		if g := strings.TrimSpace(s.ShardGroup); g != "" {
+			if p, ok := primaryByGroup[g]; ok {
+				prim = p
+			}
+		}
+		if prim.Name == "" && firstPrimary != nil {
+			prim = *firstPrimary
+		}
+		if prim.Name == "" {
+			return changed, fmt.Errorf("no PRIMARY shard found yet to build primaryDatabaseRef for standby shard %s", s.Name)
+		}
+
+		// Derive primary endpoint from naming convention
+		primaryHost := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", prim.Name, prim.Name, instance.Namespace)
+		primaryCdb := strings.ToUpper(prim.Name)
+		primaryPdb := strings.ToUpper(prim.Name) + "PDB"
+
+		if s.PrimaryDatabaseRef == nil {
+			s.PrimaryDatabaseRef = &databasev4.DatabaseRef{}
+		}
+		s.PrimaryDatabaseRef.Host = primaryHost
+		s.PrimaryDatabaseRef.Port = 1521
+		s.PrimaryDatabaseRef.CdbName = primaryCdb
+		s.PrimaryDatabaseRef.PdbName = primaryPdb
+
+		changed = true
+	}
+
+	return changed, nil
 }
 
 // This function add the Primary Shards in GSM
