@@ -181,7 +181,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	changed, e := r.ensurePrimaryRefForStandby(ctx, instance)
 	if e != nil {
-		// primary not ready yet -> requeue (same pattern you already follow)
+		// primary not ready yet -> requeue
 		shardingv1.LogMessages("INFO", e.Error(), nil, instance, r.Log)
 		err = nilErr
 		result = resultQ
@@ -189,14 +189,14 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if changed {
+		// Best-effort: persist it, but don't block the rest of reconcile.
+		// If something clears this field later, we still want to create standby Service/STS now.
 		if perr := r.Patch(ctx, instance, client.MergeFrom(orig)); perr != nil {
-			result = resultNq
-			return result, perr
+			shardingv1.LogMessages("INFO", "Failed to patch primaryDatabaseRef; continuing reconcile: "+perr.Error(), nil, instance, r.Log)
+		} else {
+			shardingv1.LogMessages("INFO", "Patched primaryDatabaseRef for standby shards", nil, instance, r.Log)
 		}
-		// Requeue so the next loop creates/updates shard STS with correct env
-		err = nilErr
-		result = resultQ
-		return result, err
+		// IMPORTANT: do NOT return/requeue here
 	}
 
 	// ========================= Service Setup For Catalog===================
