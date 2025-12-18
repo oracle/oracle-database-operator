@@ -321,15 +321,26 @@ func buildEnvVarsSpec(
 		result = append(result, corev1.EnvVar{Name: "KUBE_SVC", Value: name})
 
 		// only for standby roles ---
-		if (role == "STANDBY" || role == "ACTIVE_STANDBY") && primaryRef != nil && strings.TrimSpace(primaryRef.Host) != "" {
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_HOST", Value: strings.TrimSpace(primaryRef.Host)})
+		if (role == "STANDBY" || role == "ACTIVE_STANDBY") &&
+			primaryRef != nil &&
+			strings.TrimSpace(primaryRef.Host) != "" {
 
+			host := strings.TrimSpace(primaryRef.Host)
+
+			port := "1521"
 			if primaryRef.Port > 0 {
-				result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_PORT", Value: fmt.Sprint(primaryRef.Port)})
-			} else {
-				result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_PORT", Value: "1521"})
+				port = fmt.Sprint(primaryRef.Port)
 			}
 
+			// Prefer PDB if provided, else fall back to CDB, else empty service name
+			svc := strings.TrimSpace(primaryRef.PdbName)
+			if svc == "" {
+				svc = strings.TrimSpace(primaryRef.CdbName)
+			}
+
+			// Keep the individual vars (may be used elsewhere)
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_HOST", Value: host})
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_PORT", Value: port})
 			if strings.TrimSpace(primaryRef.CdbName) != "" {
 				result = append(result, corev1.EnvVar{Name: "PRIMARY_CDB_NAME", Value: strings.TrimSpace(primaryRef.CdbName)})
 			}
@@ -337,14 +348,17 @@ func buildEnvVarsSpec(
 				result = append(result, corev1.EnvVar{Name: "PRIMARY_PDB_NAME", Value: strings.TrimSpace(primaryRef.PdbName)})
 			}
 
-			// Optional single connect string helper (scripts can use if they want)
-			connect := strings.TrimSpace(primaryRef.Host) + ":" + func() string {
-				if primaryRef.Port > 0 {
-					return fmt.Sprint(primaryRef.Port)
-				}
-				return "1521"
-			}() + "/" + strings.TrimSpace(primaryRef.PdbName)
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connect})
+			// This is what your scripts/pods are clearly expecting (you saw it in printenv)
+			// If svc is empty, still set host:port (better than blank)
+			conn := host + ":" + port
+			if svc != "" {
+				conn = conn + "/" + svc
+			}
+
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: conn})
+
+			// Backward compatible helper (if any scripts still read this)
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: conn})
 		}
 	}
 
