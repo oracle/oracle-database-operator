@@ -1422,11 +1422,10 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 					return err
 				}
 				// 3rd step to check if shard is in GSM if not then continue
-				sparams := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
-				sparams1 = sparams
-				err = shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+				sparamsCheck := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
+				sparams1 = sparamsCheck
+				err = shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeClient, r.kubeConfig, r.Log)
 				if err == nil {
-					// if you are in this block then it means that shard already exist in the GSM and we do not need to anything
 					continue
 				}
 
@@ -1463,9 +1462,11 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 
 				// If the shard doesn't exist in GSM then just add the shard statefulset and update GSM shard status
 				// ADD Shard in GSM
+				sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, OraShardSpex)
 
 				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardState))
-				err = shardingv1.AddShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+				err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeClient, r.kubeConfig, r.Log)
+
 				if err != nil {
 					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
 					title = instance.Namespace + ":Shard Addition Failure"
@@ -1578,18 +1579,19 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 		}
 
 		// Check if shard already exists in GSM
-		sparams := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
-		sparams1 = sparams
+		sparamsCheck := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
+		sparams1 = sparamsCheck
 
-		err = shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		err = shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeClient, r.kubeConfig, r.Log)
 		if err == nil {
-			// already exists
 			continue
 		}
 
-		// Add standby shard in GSM
+		sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, OraShardSpex)
+
 		r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardState))
-		err = shardingv1.AddShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeClient, r.kubeConfig, r.Log)
+
 		if err != nil {
 			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
 			deployFlag = false

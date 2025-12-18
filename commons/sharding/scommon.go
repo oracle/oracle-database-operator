@@ -1057,23 +1057,36 @@ func BuildShardParams(instance *databasev4.ShardingDatabase, sfSet *appsv1.State
 		varinfo = "shard_port=" + "1521" + ";"
 		result = result + varinfo
 	}
-	// normalize deploy_as and APPEND to result (single source of truth)
-	deployAs := strings.ToLower(strings.TrimSpace(OraShardSpex.DeployAs))
-	if deployAs == "" {
-		deployAs = "primary"
-	} else if deployAs == "active_standby" {
-		deployAs = "active_standby"
-	} else if deployAs == "standby" {
-		deployAs = "standby"
-	} else {
-		deployAs = "primary"
-	}
-
-	result = result + "deploy_as=" + deployAs + ";"
 
 	// trim and return
 	result = strings.TrimSuffix(result, ";")
 	return result
+}
+
+func BuildShardParamsForAdd(
+	instance *databasev4.ShardingDatabase,
+	sfSet *appsv1.StatefulSet,
+	OraShardSpex databasev4.ShardSpec,
+) string {
+	// start with existing params (NO deploy_as)
+	p := BuildShardParams(instance, sfSet, OraShardSpex)
+
+	// append deploy_as only for addshard command
+	deployAs := strings.ToLower(strings.TrimSpace(OraShardSpex.DeployAs))
+	switch deployAs {
+	case "standby", "active_standby":
+		// keep
+	case "", "primary":
+		deployAs = "primary"
+	default:
+		deployAs = "primary"
+	}
+
+	if p != "" {
+		p += ";"
+	}
+	p += "deploy_as=" + deployAs
+	return p
 }
 
 func labelsForShardingDatabaseKind(instance *databasev4.ShardingDatabase, sftype string,
