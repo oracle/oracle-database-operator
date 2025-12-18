@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,23 +20,20 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4" // TODO
+	privateaiv4 "github.com/oracle/oracle-database-operator/apis/privateai/v4"
 )
 
-func buildLabelsForPrivateAi(instance *privateaiv4.PrivateAi, label, name string) map[string]string {
-	return map[string]string{
-		"app.kubernetes.io/instance":       "PrivateAi-" + instance.Name,
-		"app.kubernetes.io/name":           instance.Name,
-		"app.kubernetes.io/component":      getLabelForPrivateAI(instance),
-		"app.kubernetes.io/managed-by":     "Oracle-Database-Operator",
-		"app.kubernetes.io/offline-status": "false",
-	}
-}
+const (
+	restartAnnotationKey = "kubectl.kubernetes.io/restartedAt"
+	envHTTPEnabled       = "PRIVATE_AI_HTTP_ENABLED"
+	envHTTPSEnabled      = "PRIVATE_AI_HTTPS_ENABLED"
+	envAuthEnabled       = "PRIVATE_AI_AUTHENTICATION_ENABLED"
+	envConfigFile        = "PRIVATE_AI_CONFIG_FILE"
+	envSecretsMount      = "PRIVATE_AI_SECRETS_MOUNTPOINT"
+)
 
-func getLabelForPrivateAI(instance *privateaiv4.PrivateAi) string {
-	return "Oml-" + "PrivateAi-" + instance.Name
-}
-
+// BuildDeploySetForPrivateAI produces a deployment definition suitable for the
+// provided PrivateAi custom resource.
 func BuildDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.Deployment {
 	return &appsv1.Deployment{
 		TypeMeta:   buildTypeMetaForPrivateAI(),
@@ -45,71 +43,73 @@ func BuildDeploySetForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.Deploym
 }
 
 func buildTypeMetaForPrivateAI() metav1.TypeMeta {
-	return metav1.TypeMeta{
-		Kind:       "Deployment",
-		APIVersion: "apps/v1",
-	}
+	return metav1.TypeMeta{Kind: "Deployment", APIVersion: "apps/v1"}
 }
 
 func buildObjectMetaForPrivateAI(instance *privateaiv4.PrivateAi) metav1.ObjectMeta {
-
 	return metav1.ObjectMeta{
 		Name:            instance.Name,
 		Namespace:       instance.Namespace,
 		OwnerReferences: getOwnerRefPrivateAI(instance),
-		Labels:          buildLabelsForPrivateAi(instance, "privateai", instance.Name),
+		Labels:          buildLabelsForPrivateAi(instance),
 	}
+}
+
+func buildLabelsForPrivateAi(instance *privateaiv4.PrivateAi) map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/instance":       fmt.Sprintf("PrivateAi-%s", instance.Name),
+		"app.kubernetes.io/name":           instance.Name,
+		"app.kubernetes.io/component":      getComponentLabel(instance),
+		"app.kubernetes.io/managed-by":     "Oracle-Database-Operator",
+		"app.kubernetes.io/offline-status": "false",
+	}
+}
+
+func getComponentLabel(instance *privateaiv4.PrivateAi) string {
+	return "Oml-PrivateAi-" + instance.Name
 }
 
 func buildDeploymentSpecForPrivateAI(instance *privateaiv4.PrivateAi) *appsv1.DeploymentSpec {
-	ann := make(map[string]string)
-	ann["kubectl.kubernetes.io/restartedAt"] = time.Now().UTC().String()
-
-	var replicas, mxUnavailable int32
-	if instance.Spec.Replicas > 1 {
-		replicas = instance.Spec.Replicas
-		mxUnavailable = 1
-	} else {
-		replicas = 1
-		mxUnavailable = 0
+	replicas := replicasOrDefault(instance.Spec.Replicas)
+	strategy := appsv1.DeploymentStrategy{
+		Type: appsv1.RollingUpdateDeploymentStrategyType,
+		RollingUpdate: &appsv1.RollingUpdateDeployment{
+			MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: maxUnavailableFor(replicas)},
+			MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+		},
 	}
 
+	labels := buildLabelsForPrivateAi(instance)
+	annotations := map[string]string{restartAnnotationKey: time.Now().UTC().Format(time.RFC3339)}
+
 	return &appsv1.DeploymentSpec{
-		Replicas:             &replicas,
+		Replicas:             pointer.Int32(replicas),
 		RevisionHistoryLimit: pointer.Int32(0),
-		Strategy: appsv1.DeploymentStrategy{
-			Type: appsv1.RollingUpdateDeploymentStrategyType,
-			RollingUpdate: &appsv1.RollingUpdateDeployment{
-				MaxUnavailable: &intstr.IntOrString{
-					Type:   intstr.Int,
-					IntVal: mxUnavailable,
-				},
-				MaxSurge: &intstr.IntOrString{
-					Type:   intstr.Int,
-					IntVal: 1,
-				},
-			},
-		},
-		Selector: &metav1.LabelSelector{
-			MatchLabels: buildLabelsForPrivateAi(instance, "privateai", instance.Name),
-		},
+		Strategy:             strategy,
+		Selector:             &metav1.LabelSelector{MatchLabels: labels},
 		Template: corev1.PodTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{
-				Labels:      buildLabelsForPrivateAi(instance, "privateai", instance.Name),
-				Annotations: ann,
-			},
-			Spec: *buildPodSpecForPrivateAI(instance),
+			ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: annotations},
+			Spec:       *buildPodSpecForPrivateAI(instance),
 		},
 	}
 }
 
-func int64Ptr(i int64) *int64 {
-	return &i
+func replicasOrDefault(requested int32) int32 {
+	if requested > 0 {
+		return requested
+	}
+	return 1
+}
+
+func maxUnavailableFor(replicas int32) int32 {
+	if replicas > 1 {
+		return 1
+	}
+	return 0
 }
 
 func buildPodSpecForPrivateAI(instance *privateaiv4.PrivateAi) *corev1.PodSpec {
-	spec := &corev1.PodSpec{
-		// SecurityContext: &corev1.PodSecurityContext{FsGroup: int64(2001), RunAsUser: int64(2001), RunAsGroup(2001)},
+	podSpec := &corev1.PodSpec{
 		SecurityContext: &corev1.PodSecurityContext{
 			FSGroup:    int64Ptr(2001),
 			RunAsUser:  int64Ptr(2001),
@@ -121,144 +121,166 @@ func buildPodSpecForPrivateAI(instance *privateaiv4.PrivateAi) *corev1.PodSpec {
 	}
 
 	if len(instance.Spec.WorkerNodes) > 0 {
-		spec.Affinity = getNodeAffinity(instance)
+		podSpec.Affinity = getNodeAffinity(instance)
+	}
+	podSpec.TopologySpreadConstraints = buildTopologySpreadConstraintsForPrivateAI(instance)
+
+	if instance.Spec.PaiImagePullSecret != "" {
+		podSpec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: instance.Spec.PaiImagePullSecret}}
 	}
 
-	if len(instance.Spec.PaiImagePullSecret) > 0 {
-		spec.ImagePullSecrets = []corev1.LocalObjectReference{
-			{Name: instance.Spec.PaiImagePullSecret},
-		}
-	}
-
-	// Add NodeSelector if provided ?? TODO
-	// if len(paiSpec.NodeSelector) > 0 {
-	//     spec.NodeSelector = paiSpec.NodeSelector
-	// }
-
-	return spec
+	return podSpec
 }
 
 // Init container: run as root, chown all pvcList mount paths
 func buildInitContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Container {
-	if len(instance.Spec.PvcList) == 0 {
+	entries := orderedPVCEntries(instance.Spec.PvcList)
+	if len(entries) == 0 {
 		return nil
 	}
 
-	// Build a single chown command across all mount paths
-	var cmds []string
-	for _, mountPath := range instance.Spec.PvcList {
-		if mountPath != "" {
-			cmds = append(cmds, fmt.Sprintf("chown -R 2001:2001 %q || true", mountPath))
-		}
+	cmds := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		cmds = append(cmds, fmt.Sprintf("chown -R 2001:2001 %q || true", entry.mountPath))
 	}
-	chownCmd := strings.Join(cmds, " && ")
 
 	privileged := true
-	runAsRoot := int64(0)
+	rootUser := int64(0)
 
-	return []corev1.Container{
+	return []corev1.Container{ //nolint:gomnd // explicit security context
 		{
-			Name:            instance.Name + "-init",
+			Name:            fmt.Sprintf("%s-init", instance.Name),
 			Image:           instance.Spec.PaiImage,
 			ImagePullPolicy: corev1.PullIfNotPresent,
-			Command:         []string{"/bin/sh", "-c", chownCmd},
-			SecurityContext: &corev1.SecurityContext{
-				Privileged: &privileged,
-				RunAsUser:  &runAsRoot,
-				RunAsGroup: &runAsRoot,
-			},
-			VolumeMounts: pvcOnlyVolumeMounts(instance), // mount only PVCs we need to chown
+			Command:         []string{"/bin/sh", "-c", strings.Join(cmds, " && ")},
+			SecurityContext: &corev1.SecurityContext{Privileged: &privileged, RunAsUser: &rootUser, RunAsGroup: &rootUser},
+			VolumeMounts:    pvcVolumeMounts(instance, true),
 		},
 	}
 }
 
-// only the pvcList mounts (used by the init container)
-func pvcOnlyVolumeMounts(instance *privateaiv4.PrivateAi) []corev1.VolumeMount {
-	var vms []corev1.VolumeMount
-	if len(instance.Spec.PvcList) > 0 {
-		for claimName, mountPath := range instance.Spec.PvcList {
-			if mountPath == "" {
-				continue
-			}
-			vms = append(vms, corev1.VolumeMount{
-				Name:      fmt.Sprintf("%s-%s-vol", instance.Name, claimName),
-				MountPath: mountPath,
-				ReadOnly:  false,
-			})
-		}
+func orderedPVCEntries(pvcs map[string]string) []pvcEntry {
+	if len(pvcs) == 0 {
+		return nil
 	}
-	return vms
+	entries := make([]pvcEntry, 0, len(pvcs))
+	for claim, path := range pvcs {
+		if path == "" {
+			continue
+		}
+		entries = append(entries, pvcEntry{claimName: claim, mountPath: path})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].claimName < entries[j].claimName })
+	return entries
+}
+
+type pvcEntry struct {
+	claimName string
+	mountPath string
+}
+
+func pvcVolumeMounts(instance *privateaiv4.PrivateAi, initContainer bool) []corev1.VolumeMount {
+	entries := orderedPVCEntries(instance.Spec.PvcList)
+	if len(entries) == 0 {
+		return nil
+	}
+
+	mounts := make([]corev1.VolumeMount, 0, len(entries))
+	for _, entry := range entries {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      fmt.Sprintf("%s-%s-vol", instance.Name, entry.claimName),
+			MountPath: entry.mountPath,
+			ReadOnly:  false,
+		})
+	}
+
+	if !initContainer {
+		return mounts
+	}
+
+	result := make([]corev1.VolumeMount, len(mounts))
+	copy(result, mounts)
+	return result
 }
 
 func buildContainerSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Container {
+	if instance.Spec.PaiImage == "" {
+		return nil
+	}
+
+	port, scheme, httpEnabled, httpsEnabled := resolveServicePort(&instance.Spec)
+
 	container := corev1.Container{
 		Name:            instance.Name,
 		Image:           instance.Spec.PaiImage,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Env:             buildEnvVarsForPrivateAI(instance, instance.Spec.EnvVars, httpEnabled, httpsEnabled),
 		Resources:       corev1.ResourceRequirements{},
 		VolumeMounts:    buildVolumeMountSpecForPrivateAI(instance),
-		Env:             buildEnvVarsForPrivateAI(instance, instance.Spec.EnvVars),
-		ImagePullPolicy: corev1.PullIfNotPresent,
-		StartupProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path:   "/health",
-					Port:   TernaryCondition(instance.Spec.PaiHTTPSPort > 0, intstr.FromInt(int(instance.Spec.PaiHTTPSPort)), intstr.FromInt(int(instance.Spec.PaiHTTPPort))),
-					Scheme: TernaryCondition(instance.Spec.PaiHTTPSPort > 0, corev1.URISchemeHTTPS, corev1.URISchemeHTTP),
-					//		TCPSocket: &corev1.TCPSocketAction{
-					//			Port: intstr.FromInt(int(appPort)),
-				},
-			},
-			FailureThreshold: 30,
-			PeriodSeconds:    30,
-		},
+		Ports: []corev1.ContainerPort{{
+			ContainerPort: port,
+			Protocol:      corev1.ProtocolTCP,
+		}},
+		StartupProbe: newHTTPProbe("/health", port, scheme, corev1.Probe{FailureThreshold: 30, PeriodSeconds: 30}),
+		LivenessProbe: newHTTPProbe("/health", port, scheme, corev1.Probe{
+			InitialDelaySeconds: 30,
+			TimeoutSeconds:      3,
+			SuccessThreshold:    1,
+			FailureThreshold:    3,
+			PeriodSeconds:       30,
+		}),
 	}
-	var appPort int32
+
 	if instance.Spec.Resources != nil {
 		container.Resources = *instance.Spec.Resources
 	}
 
-	pHtpStatus, _ := strconv.ParseBool(instance.Spec.PaiHTTPEnabled)
-
-	if pHtpStatus {
-		container.Env = append(container.Env, corev1.EnvVar{Name: "PRIVATE_AI_HTTP_ENABLED", Value: "true"}, corev1.EnvVar{Name: "PRIVATE_AI_HTTPS_ENABLED", Value: "false"})
-		appPort = instance.Spec.PaiHTTPPort
-
-	} else {
-		// HTTPS
-		container.Env = append(container.Env, corev1.EnvVar{Name: "PRIVATE_AI_HTTP_ENABLED", Value: "false"}, corev1.EnvVar{Name: "PRIVATE_AI_HTTPS_ENABLED", Value: "true"})
-		appPort = instance.Spec.PaiHTTPSPort
-	}
-
-	container.LivenessProbe = &corev1.Probe{
-		ProbeHandler: corev1.ProbeHandler{
-			HTTPGet: &corev1.HTTPGetAction{
-				Path:   "/health",
-				Port:   TernaryCondition(instance.Spec.PaiHTTPSPort > 0, intstr.FromInt(int(instance.Spec.PaiHTTPSPort)), intstr.FromInt(int(instance.Spec.PaiHTTPPort))),
-				Scheme: TernaryCondition(instance.Spec.PaiHTTPSPort > 0, corev1.URISchemeHTTPS, corev1.URISchemeHTTP),
-				//		TCPSocket: &corev1.TCPSocketAction{
-				//			Port: intstr.FromInt(int(appPort)),
-			},
-		},
-		InitialDelaySeconds: 30,
-		TimeoutSeconds:      3,
-		SuccessThreshold:    1,
-		FailureThreshold:    3,
-		PeriodSeconds:       30,
-	}
-	container.Ports = []corev1.ContainerPort{
-		{
-			ContainerPort: appPort,
-			Protocol:      corev1.ProtocolTCP,
-		},
-	}
 	return []corev1.Container{container}
 }
 
+func resolveServicePort(spec *privateaiv4.PrivateAiSpec) (int32, corev1.URIScheme, bool, bool) {
+	httpEnabled := boolFromString(spec.PaiHTTPEnabled)
+	httpsEnabled := boolFromString(spec.PaiHTTPSEnabled)
+
+	if !httpEnabled && !httpsEnabled {
+		// Preserve legacy behaviour – prefer HTTPS when port available.
+		httpsEnabled = spec.PaiHTTPSPort > 0
+		httpEnabled = !httpsEnabled
+	}
+
+	if httpsEnabled && spec.PaiHTTPSPort > 0 {
+		return spec.PaiHTTPSPort, corev1.URISchemeHTTPS, httpEnabled, httpsEnabled
+	}
+
+	if httpEnabled && spec.PaiHTTPPort > 0 {
+		return spec.PaiHTTPPort, corev1.URISchemeHTTP, httpEnabled, httpsEnabled
+	}
+
+	// Fall back to whichever port is set.
+	if spec.PaiHTTPSPort > 0 {
+		return spec.PaiHTTPSPort, corev1.URISchemeHTTPS, httpEnabled, true
+	}
+	return spec.PaiHTTPPort, corev1.URISchemeHTTP, true, httpsEnabled
+}
+
+func newHTTPProbe(path string, port int32, scheme corev1.URIScheme, base corev1.Probe) *corev1.Probe {
+	probe := base
+	probe.ProbeHandler = corev1.ProbeHandler{
+		HTTPGet: &corev1.HTTPGetAction{
+			Path:   path,
+			Port:   intstr.FromInt(int(port)),
+			Scheme: scheme,
+		},
+	}
+	return &probe
+}
+
 func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volume {
-	var vols []corev1.Volume
+	volumes := make([]corev1.Volume, 0, 4)
+
 	if instance.Spec.PaiSecret != nil && instance.Spec.PaiSecret.Name != "" {
-		vols = append(vols, corev1.Volume{
-			Name: instance.Name + "secret-vol",
+		volumes = append(volumes, corev1.Volume{
+			Name: fmt.Sprintf("%ssecret-vol", instance.Name),
 			VolumeSource: corev1.VolumeSource{
 				Secret: &corev1.SecretVolumeSource{SecretName: instance.Spec.PaiSecret.Name},
 			},
@@ -266,8 +288,8 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 	}
 
 	if instance.Spec.PaiConfigFile != nil && instance.Spec.PaiConfigFile.Name != "" {
-		vols = append(vols, corev1.Volume{
-			Name: instance.Name + "configmap-vol",
+		volumes = append(volumes, corev1.Volume{
+			Name: fmt.Sprintf("%sconfigmap-vol", instance.Name),
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: instance.Spec.PaiConfigFile.Name}},
 			},
@@ -275,463 +297,411 @@ func buildVolumeSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.Volum
 	}
 
 	if instance.Spec.StorageClass != "" {
-		vols = append(vols, corev1.Volume{
-			Name:         instance.Name + "-oradata-vol4",
-			VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Name + "-oradata-vol4"}},
+		volumes = append(volumes, corev1.Volume{
+			Name: fmt.Sprintf("%s-oradata-vol4", instance.Name),
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: fmt.Sprintf("%s-oradata-vol4", instance.Name)},
+			},
 		})
 	}
-	if len(instance.Spec.PvcList) > 0 {
-		for claimName := range instance.Spec.PvcList {
-			vols = append(vols, corev1.Volume{
-				Name: fmt.Sprintf("%s-%s-vol", instance.Name, claimName),
-				VolumeSource: corev1.VolumeSource{
-					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-						ClaimName: claimName, // PVC name from CR
-						ReadOnly:  false,
-					},
-				},
-			})
-		}
+
+	for _, entry := range orderedPVCEntries(instance.Spec.PvcList) {
+		volumes = append(volumes, corev1.Volume{
+			Name: fmt.Sprintf("%s-%s-vol", instance.Name, entry.claimName),
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: entry.claimName},
+			},
+		})
 	}
 
-	vols = append(vols, corev1.Volume{
-		Name: instance.Name + "-logs-vol",
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
-		},
+	volumes = append(volumes, corev1.Volume{
+		Name:         fmt.Sprintf("%s-logs-vol", instance.Name),
+		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 	})
 
-	return vols
+	return volumes
 }
 
 func buildVolumeMountSpecForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.VolumeMount {
-	var vms []corev1.VolumeMount
+	var mounts []corev1.VolumeMount
 
-	// Main data PVC mount
 	if instance.Spec.StorageClass != "" {
-		vms = append(vms, corev1.VolumeMount{
-			Name:      instance.Name + "-oradata-vol4",
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      fmt.Sprintf("%s-oradata-vol4", instance.Name),
 			MountPath: piDataMount,
 		})
 	}
 
-	if instance.Spec.PaiSecret != nil {
-		vms = append(vms, corev1.VolumeMount{
-			Name:      instance.Name + "secret-vol",
+	if instance.Spec.PaiSecret != nil && instance.Spec.PaiSecret.Name != "" {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      fmt.Sprintf("%ssecret-vol", instance.Name),
 			MountPath: instance.Spec.PaiSecret.MountLocation,
 			ReadOnly:  true,
 		})
 	}
 
-	if instance.Spec.PaiConfigFile != nil {
-		vms = append(vms, corev1.VolumeMount{
-			Name:      instance.Name + "configmap-vol",
+	if instance.Spec.PaiConfigFile != nil && instance.Spec.PaiConfigFile.Name != "" {
+		mounts = append(mounts, corev1.VolumeMount{
+			Name:      fmt.Sprintf("%sconfigmap-vol", instance.Name),
 			MountPath: instance.Spec.PaiConfigFile.MountLocation,
 			ReadOnly:  true,
 		})
 	}
-	if len(instance.Spec.PvcList) > 0 {
-		for claimName, mountPath := range instance.Spec.PvcList {
-			if mountPath == "" {
-				continue
-			}
-			vms = append(vms, corev1.VolumeMount{
-				Name:      fmt.Sprintf("%s-%s-vol", instance.Name, claimName),
-				MountPath: mountPath, // e.g /privateai/models
-				ReadOnly:  false,
-			})
-		}
-	}
 
-	// NEW: Logs mount
+	mounts = append(mounts, pvcVolumeMounts(instance, false)...)
+
 	logMount := defaultLogMount
 	if instance.Spec.PaiLogLocation != "" {
 		logMount = instance.Spec.PaiLogLocation
 	}
 
-	vms = append(vms, corev1.VolumeMount{
-		Name:      instance.Name + "-logs-vol",
+	mounts = append(mounts, corev1.VolumeMount{
+		Name:      fmt.Sprintf("%s-logs-vol", instance.Name),
 		MountPath: logMount,
 	})
 
-	return vms
+	return mounts
 }
 
+// VolumeClaimTemplatesForPrivateAi returns the PersistentVolumeClaim templates
+// required by the PrivateAi deployment when storage is requested.
 func VolumeClaimTemplatesForPrivateAi(instance *privateaiv4.PrivateAi) []corev1.PersistentVolumeClaim {
+	if instance.Spec.StorageClass == "" {
+		return nil
+	}
 
-	var claims []corev1.PersistentVolumeClaim
+	quantity := resource.MustParse(fmt.Sprintf("%dGi", instance.Spec.StorageSizeInGb))
 
-	claims = []corev1.PersistentVolumeClaim{
+	return []corev1.PersistentVolumeClaim{
 		{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:            instance.Name + "-oradata-vol4",
+				Name:            fmt.Sprintf("%s-oradata-vol4", instance.Name),
 				Namespace:       instance.Namespace,
 				OwnerReferences: getOwnerRef(instance),
-				Labels:          buildLabelsForPrivateAi(instance, "privateai", instance.Name),
+				Labels:          buildLabelsForPrivateAi(instance),
 			},
 			Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes: []corev1.PersistentVolumeAccessMode{
-					corev1.ReadWriteOnce,
-				},
-				StorageClassName: &instance.Spec.StorageClass,
+				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				StorageClassName: pointer.String(instance.Spec.StorageClass),
 				Resources: corev1.VolumeResourceRequirements{
-					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(instance.Spec.StorageSizeInGb), 10) + "Gi"),
-					},
+					Requests: corev1.ResourceList{corev1.ResourceStorage: quantity},
 				},
 			},
 		},
 	}
-
-	//	if len(instance.Spec.PvcList) != 0 {
-
-	//claims = append(claims, slices.Collect(maps.Values(instance.Spec.PvcList)))
-	//	}
-
-	return claims
 }
 
-func buildEnvVarsForPrivateAI(instance *privateaiv4.PrivateAi, envVars []privateaiv4.EnvironmentVariable) []corev1.EnvVar {
-	var envs []corev1.EnvVar
-	var omlConfigFileFlag bool
-	var omlSecretFlag bool
+func buildEnvVarsForPrivateAI(
+	instance *privateaiv4.PrivateAi,
+	custom []privateaiv4.EnvironmentVariable,
+	httpEnabled, httpsEnabled bool,
+) []corev1.EnvVar {
+	// Preserve order: custom vars first, then inferred ones when missing.
+	envVars := make([]corev1.EnvVar, 0, len(custom)+4)
+	seen := map[string]bool{}
 
-	for _, ev := range envVars {
-		if ev.Name == "PRIVATE_AI_CONFIG_FILE" {
-			omlConfigFileFlag = true
+	for _, envVar := range custom {
+		if envVar.Name == "" {
+			continue
 		}
-		if ev.Name == "PRIVATE_AI_SECRETS_MOUNTPOINT" {
-			omlSecretFlag = true
-		}
-		envs = append(envs, corev1.EnvVar{
-			Name:  ev.Name,
-			Value: ev.Value,
-		})
+		envVars = append(envVars, corev1.EnvVar{Name: envVar.Name, Value: envVar.Value})
+		seen[envVar.Name] = true
 	}
 
-	if !omlConfigFileFlag {
-		if instance.Spec.PaiConfigFile != nil && instance.Spec.PaiConfigFile.Name != "" && instance.Spec.PaiConfigFile.MountLocation != "" {
-			envs = append(envs, corev1.EnvVar{
-				Name:  "PRIVATE_AI_CONFIG_FILE",
-				Value: instance.Spec.PaiConfigFile.MountLocation + "/" + "config.json",
-			})
-		}
+	if instance.Spec.PaiConfigFile != nil && instance.Spec.PaiConfigFile.Name != "" && instance.Spec.PaiConfigFile.MountLocation != "" {
+		ensureEnvVar(&envVars, seen, envConfigFile, instance.Spec.PaiConfigFile.MountLocation+"/config.json")
 	}
 
-	if !omlSecretFlag {
-		if instance.Spec.PaiSecret.Name != "" && instance.Spec.PaiSecret.MountLocation != "" {
-			envs = append(envs, corev1.EnvVar{
-				Name:  "PRIVATE_AI_SECRETS_MOUNTPOINT",
-				Value: instance.Spec.PaiSecret.MountLocation,
-			})
-		}
-	}
-	pstatus, _ := strconv.ParseBool(instance.Spec.PaiEnableAuthentication)
-	if pstatus {
-		envs = append(envs, corev1.EnvVar{
-			Name:  "PRIVATE_AI_AUTHENTICATION_ENABLED",
-			Value: "true",
-		})
-	} else {
-		envs = append(envs, corev1.EnvVar{
-			Name:  "PRIVATE_AI_AUTHENTICATION_ENABLED",
-			Value: "false",
-		})
+	if instance.Spec.PaiSecret != nil && instance.Spec.PaiSecret.Name != "" && instance.Spec.PaiSecret.MountLocation != "" {
+		ensureEnvVar(&envVars, seen, envSecretsMount, instance.Spec.PaiSecret.MountLocation)
 	}
 
-	return envs
+	ensureEnvVar(&envVars, seen, envHTTPEnabled, strconv.FormatBool(httpEnabled))
+	ensureEnvVar(&envVars, seen, envHTTPSEnabled, strconv.FormatBool(httpsEnabled))
+	ensureEnvVar(&envVars, seen, envAuthEnabled, strconv.FormatBool(boolFromString(instance.Spec.PaiEnableAuthentication)))
+
+	return envVars
+}
+
+func ensureEnvVar(envs *[]corev1.EnvVar, seen map[string]bool, name, value string) {
+	if name == "" || seen[name] {
+		return
+	}
+	*envs = append(*envs, corev1.EnvVar{Name: name, Value: value})
+	seen[name] = true
 }
 
 func getOwnerRefPrivateAI(instance *privateaiv4.PrivateAi) []metav1.OwnerReference {
-	return []metav1.OwnerReference{
-		*metav1.NewControllerRef(instance, privateaiv4.GroupVersion.WithKind("PrivateAI")),
-	}
+	return []metav1.OwnerReference{*metav1.NewControllerRef(instance, privateaiv4.GroupVersion.WithKind("PrivateAI"))}
 }
 
-func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svctype string) *corev1.Service {
-	//service := &corev1.Service{}
+// BuildServiceDefForPrivateAi constructs a Kubernetes Service definition for
+// the PrivateAi instance respecting the requested service type.
+func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svcType string) *corev1.Service {
 	service := &corev1.Service{
-		ObjectMeta: buildSvcObjectMetaForPrivateAi(instance, svctype),
-		Spec:       corev1.ServiceSpec{},
+		ObjectMeta: buildSvcObjectMetaForPrivateAi(instance, svcType),
+		Spec:       corev1.ServiceSpec{Selector: buildLabelsForPrivateAi(instance)},
 	}
 
-	// Check if user want External Svc on each replica pod
-	if svctype == "external" {
+	switch svcType {
+	case "external":
 		service.Spec.Type = corev1.ServiceTypeLoadBalancer
-		service.Spec.Selector = buildLabelsForPrivateAi(instance, "privateai", instance.Name)
-		// internal LB condition
-		plStatus, _ := strconv.ParseBool(instance.Spec.PaiInternalLB)
-		if plStatus {
-			if service.ObjectMeta.Annotations == nil {
-				service.ObjectMeta.Annotations = make(map[string]string)
-			}
-
-			// Use custom annotations if provided
-			if len(instance.Spec.PailbAnnotation) > 0 {
-				for k, v := range instance.Spec.PailbAnnotation {
-					service.ObjectMeta.Annotations[k] = v
-				}
-			}
-
-			// default internal LB annotations if not already set
-			if _, ok := service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"]; !ok {
-				service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"] = "lb"
-			}
-			if _, ok := service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"]; !ok {
-				service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"] = "true"
-			}
+		if instance.Spec.PaiLBExternalTrafficPolicy == "local" {
+			service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
+		} else {
+			service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
 		}
-	}
-
-	if svctype == "local" {
+		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
+		augmentExternalService(service, instance)
+	case "local":
 		service.Spec.ClusterIP = corev1.ClusterIPNone
-		service.Spec.Selector = buildLabelsForPrivateAi(instance, "privateai", instance.Name)
 	}
 
-	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
 	service.Spec.Ports = buildSvcPortsDef(instance)
 	if instance.Spec.PaiLBIP != "" {
 		service.Spec.LoadBalancerIP = instance.Spec.PaiLBIP
 	}
+
 	return service
 }
 
-// Function to build Service ObjectMeta
-func buildSvcObjectMetaForPrivateAi(instance *privateaiv4.PrivateAi, svctype string) metav1.ObjectMeta {
-	// building objectMeta
-
-	svcName := GetSvcName(instance.Name, svctype)
-
-	objmeta := metav1.ObjectMeta{
-		Name:            svcName,
-		Namespace:       instance.Namespace,
-		OwnerReferences: getOwnerRef(instance),
-		Labels:          buildSvcLabelsForPrivateAi(instance, svctype, instance.Name),
+func augmentExternalService(service *corev1.Service, instance *privateaiv4.PrivateAi) {
+	plStatus := boolFromString(instance.Spec.PaiInternalLB)
+	if !plStatus {
+		return
 	}
-	return objmeta
+
+	if service.ObjectMeta.Annotations == nil {
+		service.ObjectMeta.Annotations = map[string]string{}
+	}
+
+	for k, v := range instance.Spec.PailbAnnotation {
+		service.ObjectMeta.Annotations[k] = v
+	}
+
+	if _, ok := service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"]; !ok {
+		service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"] = "lb"
+	}
+	if _, ok := service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"]; !ok {
+		service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"] = "true"
+	}
 }
 
-func buildSvcLabelsForPrivateAi(instance *privateaiv4.PrivateAi, svctype, name string) map[string]string {
-	labelMap := buildLabelsForPrivateAi(instance, "privateai", instance.Name)
-	labelMap["app.kubernetes.io/servicetype"] = svctype
+func buildSvcObjectMetaForPrivateAi(instance *privateaiv4.PrivateAi, svcType string) metav1.ObjectMeta {
+	return metav1.ObjectMeta{
+		Name:            GetSvcName(instance.Name, svcType),
+		Namespace:       instance.Namespace,
+		OwnerReferences: getOwnerRef(instance),
+		Labels:          buildSvcLabelsForPrivateAi(instance, svcType),
+	}
+}
 
-	return labelMap
+func buildSvcLabelsForPrivateAi(instance *privateaiv4.PrivateAi, svcType string) map[string]string {
+	labels := buildLabelsForPrivateAi(instance)
+	labels["app.kubernetes.io/servicetype"] = svcType
+	return labels
 }
 
 // Update Section
+// ManageReplicas reconciles the Deployment replica count with the desired
+// specification and updates the PrivateAi status accordingly.
 func ManageReplicas(
 	r client.Reader,
 	instance *privateaiv4.PrivateAi,
 	kClient client.Client,
-	Config *rest.Config,
+	config *rest.Config,
 	deploy *appsv1.Deployment,
 	podList *corev1.PodList,
 	ctx context.Context,
 	req ctrl.Request,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
-	var desired int32 = 1
-	if instance.Spec.Replicas > 0 {
-		desired = instance.Spec.Replicas
+	desired := replicasOrDefault(instance.Spec.Replicas)
+
+	if deploy.Spec.Replicas != nil && *deploy.Spec.Replicas == desired {
+		return ctrl.Result{}, nil
 	}
 
-	current := *deploy.Spec.Replicas
-
-	if deploy.Spec.Replicas != nil && current != desired {
-		LogMessages("DEBUG", "Deployment replicas mismatch. Updating deployment...", nil, instance, logger)
-		LogMessages("Info", "Status is changed to Updating", nil, instance, logger)
-		// Updating Status before Update
-		instance.Status.Status = privateaiv4.StatusUpdating
-		kClient.Status().Update(ctx, instance)
-
-		newDeploy := BuildDeploySetForPrivateAI(instance)
-		newDeploy.Spec.Replicas = &desired
-		err := kClient.Update(context.Background(), newDeploy)
-		if err != nil {
-			LogMessages("ERROR", "Failed to update Deployment with new replica count", err, instance, logger)
-			instance.Status.Status = privateaiv4.StatusError
-			kClient.Status().Update(ctx, instance)
-			return ctrl.Result{}, err
-		}
-
+	logger.Info("Deployment replicas mismatch. Updating deployment...")
+	instance.Status.Status = privateaiv4.StatusUpdating
+	if err := kClient.Status().Update(ctx, instance); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	// // Re-mark pods based on diff
-	// diff := current - desired
-
-	// for i := range podList.Items {
-	// 	pod := &podList.Items[i]
-
-	// 	if diff > 0 {
-	// 		// Mark pod as unhealthy
-	// 		touchCmd := []string{"/bin/touch", "/tmp/unhealthy"}
-	// 		_, err := ExecCommand(r, Config, pod.Name, pod.Namespace, pod.Spec.Containers[0].Name, ctx, req, false, touchCmd)
-	// 		if err != nil {
-	// 			LogMessages("ERROR", "Failed to mark pod as unhealthy", err, instance, logger)
-	// 			return ctrl.Result{}, err
-	// 		}
-	// 		diff--
-	// 	} else {
-	// 		// Heal pod if previously unready
-	// 		removeCmd := []string{"rm", "-f", "/tmp/unhealthy"}
-	// 		_, err := ExecCommand(r, Config, pod.Name, pod.Namespace, pod.Spec.Containers[0].Name, ctx, req, false, removeCmd)
-	// 		if err != nil {
-	// 			LogMessages("ERROR", "Failed to heal pod back to ready state", err, instance, logger)
-	// 			return ctrl.Result{}, err
-	// 		}
-	// 	}
-	// }
+	updated := deploy.DeepCopy()
+	updated.Spec.Replicas = pointer.Int32(desired)
+	if err := kClient.Update(context.Background(), updated); err != nil {
+		LogMessages("ERROR", "Failed to update Deployment with new replica count", err, instance, logger)
+		instance.Status.Status = privateaiv4.StatusError
+		_ = kClient.Status().Update(ctx, instance)
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
 
+// UpdateSvcForPrivateAI reconciles the Service definition and updates the
+// PrivateAi status when changes are detected.
 func UpdateSvcForPrivateAI(
 	instance *privateaiv4.PrivateAi,
 	paiSpec privateaiv4.PrivateAiSpec,
 	kClient client.Client,
-	Config *rest.Config,
+	config *rest.Config,
 	newSvc *corev1.Service,
 	oldSvc *corev1.Service,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
-	updateStatus := false
-	// if !reflect.DeepEqual(oldSvc.Spec.Ports, newSvc.Spec.Ports) {
-	// 	updateStatus = true
-	// }
+	_ = paiSpec
 
-	if !reflect.DeepEqual(oldSvc.ObjectMeta.Annotations, newSvc.ObjectMeta.Annotations) {
-		updateStatus = true
+	if servicesEqual(newSvc, oldSvc) {
+		return ctrl.Result{}, nil
 	}
 
-	if !reflect.DeepEqual(oldSvc.Annotations, newSvc.Annotations) {
-		updateStatus = true
+	LogMessages("INFO", "Svc definition change detected ...", nil, instance, logger)
+	instance.Status.Status = privateaiv4.StatusUpdating
+	if err := kClient.Status().Update(context.Background(), instance); err != nil {
+		return ctrl.Result{}, err
 	}
 
-	if !reflect.DeepEqual(oldSvc.Labels, newSvc.Labels) {
-		updateStatus = true
-	}
-
-	if !reflect.DeepEqual(oldSvc.Spec.LoadBalancerIP, newSvc.Spec.LoadBalancerIP) {
-		updateStatus = true
-	}
-
-	if updateStatus {
-		LogMessages("INFO", "Svc definition change detected ...", nil, instance, logger)
-		instance.Status.Status = privateaiv4.StatusUpdating
-		kClient.Status().Update(context.Background(), instance)
-
-		err := kClient.Update(context.Background(), newSvc)
-		if err != nil {
-			LogMessages("ERROR", "Failed to update service spec", err, instance, logger)
-			instance.Status.Status = privateaiv4.StatusError
-			kClient.Status().Update(context.Background(), instance)
-			return ctrl.Result{}, err
-		}
+	if err := kClient.Update(context.Background(), newSvc); err != nil {
+		LogMessages("ERROR", "Failed to update service spec", err, instance, logger)
+		instance.Status.Status = privateaiv4.StatusError
+		_ = kClient.Status().Update(context.Background(), instance)
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
-// Update Section
+func servicesEqual(a, b *corev1.Service) bool {
+	return reflect.DeepEqual(a.ObjectMeta.Annotations, b.ObjectMeta.Annotations) &&
+		reflect.DeepEqual(a.Labels, b.Labels) &&
+		reflect.DeepEqual(a.Spec.LoadBalancerIP, b.Spec.LoadBalancerIP) &&
+		reflect.DeepEqual(a.Spec.Ports, b.Spec.Ports)
+}
+
+// UpdateDeploySetForPrivateAI reconciles the running deployment with the
+// desired container configuration defined in the custom resource.
 func UpdateDeploySetForPrivateAI(
 	instance *privateaiv4.PrivateAi,
 	paiSpec privateaiv4.PrivateAiSpec,
 	kClient client.Client,
-	Config *rest.Config,
+	config *rest.Config,
 	deploy *appsv1.Deployment,
 	pod *corev1.Pod,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
-	updateStatus := false
+	_ = config
+
+	var needsUpdate bool
+
 	for i := range pod.Spec.Containers {
-		if pod.Spec.Containers[i].Name == deploy.Name {
-			contRes := &pod.Spec.Containers[i].Resources
-			paiRes := paiSpec.Resources
-
-			contImage := pod.Spec.Containers[i].Image
-			paiImage := paiSpec.PaiImage
-			if paiRes != nil {
-				if !reflect.DeepEqual(contRes, paiRes) {
-					LogMessages("INFO", "Container resources have changed. Updating deployment...", nil, instance, logger)
-					updateStatus = true
-				}
-			}
-			if !reflect.DeepEqual(contImage, paiImage) {
-				LogMessages("INFO", "Container Image. Updating deployment...", nil, instance, logger)
-				updateStatus = true
-			}
-
-			if updateStatus {
-				// Update the deployment with new spec
-				instance.Status.Status = privateaiv4.StatusUpdating
-				kClient.Status().Update(context.Background(), instance)
-
-				err := kClient.Update(context.Background(), BuildDeploySetForPrivateAI(instance))
-				if err != nil {
-					LogMessages("ERROR", "Failed to update deployment with new spec", err, instance, logger)
-					instance.Status.Status = privateaiv4.StatusError
-					kClient.Status().Update(context.Background(), instance)
-					return ctrl.Result{}, err
-				}
-			}
+		container := &pod.Spec.Containers[i]
+		if container.Name != deploy.Name {
+			continue
 		}
+
+		if paiSpec.Resources != nil && !reflect.DeepEqual(&container.Resources, paiSpec.Resources) {
+			LogMessages("INFO", "Container resources have changed. Updating deployment...", nil, instance, logger)
+			needsUpdate = true
+		}
+
+		if container.Image != paiSpec.PaiImage {
+			LogMessages("INFO", "Container image changed. Updating deployment...", nil, instance, logger)
+			needsUpdate = true
+		}
+	}
+
+	if !needsUpdate {
+		return ctrl.Result{}, nil
+	}
+
+	instance.Status.Status = privateaiv4.StatusUpdating
+	if err := kClient.Status().Update(context.Background(), instance); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if err := kClient.Update(context.Background(), BuildDeploySetForPrivateAI(instance)); err != nil {
+		LogMessages("ERROR", "Failed to update deployment with new spec", err, instance, logger)
+		instance.Status.Status = privateaiv4.StatusError
+		_ = kClient.Status().Update(context.Background(), instance)
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
-// Update Label
-
-// Update Section
+// UpdateRestartedAtAnnotation refreshes the restart timestamp annotation on the
+// deployment pod template when Kubernetes has recorded a restart request.
 func UpdateRestartedAtAnnotation(
 	r client.Reader,
 	instance *privateaiv4.PrivateAi,
 	kClient client.Client,
-	Config *rest.Config,
+	config *rest.Config,
 	deploy *appsv1.Deployment,
 	ctx context.Context,
 	req ctrl.Request,
 	logger logr.Logger,
 ) error {
+	_ = r
+	_ = config
+	_ = req
+	_ = logger
 
 	depCopy := deploy.DeepCopy()
-	PaiAnnotation := depCopy.Spec.Template.GetAnnotations()
-
-	if len(PaiAnnotation) != 0 {
-		if _, ok := PaiAnnotation["kubectl.kubernetes.io/restartedAt"]; ok {
-			depCopy.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
-			patch := client.MergeFrom(deploy)
-			err := kClient.Patch(context.Background(), depCopy, patch)
-			if err != nil {
-				return err
-			}
-		}
+	annotations := depCopy.Spec.Template.Annotations
+	if annotations == nil {
+		return nil
 	}
-	return nil
+
+	if _, ok := annotations[restartAnnotationKey]; !ok {
+		return nil
+	}
+
+	if depCopy.Spec.Template.Annotations == nil {
+		depCopy.Spec.Template.Annotations = map[string]string{}
+	}
+	depCopy.Spec.Template.Annotations[restartAnnotationKey] = time.Now().Format(time.RFC3339)
+
+	return kClient.Patch(context.Background(), depCopy, client.MergeFrom(deploy))
+}
+
+func buildTopologySpreadConstraintsForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.TopologySpreadConstraint {
+	return []corev1.TopologySpreadConstraint{
+		{
+			MaxSkew:           1,
+			TopologyKey:       "kubernetes.io/hostname",
+			WhenUnsatisfiable: corev1.ScheduleAnyway,
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: buildLabelsForPrivateAi(instance),
+			},
+		},
+	}
 }
 
 func getNodeAffinity(instance *privateaiv4.PrivateAi) *corev1.Affinity {
-
-	nodeAffinity := &corev1.NodeAffinity{
-		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-			NodeSelectorTerms: []corev1.NodeSelectorTerm{},
+	term := corev1.NodeSelectorTerm{
+		MatchExpressions: []corev1.NodeSelectorRequirement{
+			{
+				Key:      "kubernetes.io/hostname",
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   instance.Spec.WorkerNodes,
+			},
 		},
 	}
-	paiTerm := corev1.NodeSelectorTerm{
-		MatchExpressions: []corev1.NodeSelectorRequirement{},
+
+	return &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{NodeSelectorTerms: []corev1.NodeSelectorTerm{term}},
+		},
 	}
+}
 
-	paiMatch := corev1.NodeSelectorRequirement{
-		Key:      "kubernetes.io/hostname",
-		Operator: "In",
-		Values:   instance.Spec.WorkerNodes,
-	}
+func boolFromString(value string) bool {
+	result, err := strconv.ParseBool(value)
+	return err == nil && result
+}
 
-	paiTerm.MatchExpressions = append(paiTerm.MatchExpressions, paiMatch)
-	nodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms = append(nodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms,
-		paiTerm)
-
-	affinity := &corev1.Affinity{NodeAffinity: nodeAffinity}
-	return affinity
-
+func int64Ptr(value int64) *int64 {
+	return &value
 }

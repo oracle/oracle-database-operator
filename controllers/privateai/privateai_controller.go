@@ -43,8 +43,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-
-	// "strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -65,6 +63,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // PrivateAiReconciler reconciles a PrivateAi object
@@ -93,17 +92,9 @@ const PrivateAiFinalizer = "privateai.oracle.com/privateaifinalizer"
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the PrivateAi object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.4/pkg/reconcile
 func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = logf.FromContext(ctx)
 
-	// TODO(user): your logic here
 	r.Log.Info("Reconcile requested")
 	var result ctrl.Result
 	var err error
@@ -123,17 +114,13 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return requeueY, err
 	}
 
-	// Manage SingleInstanceDatabase Deletion
-	err, isPrivateAiDelTrue := r.managePrivateAiDeletion(privateAiInst)
-	if err != nil {
-		//r.setCrdLifeCycleState(instance, &result, &err, stateType)
+	// Manage resource cleanup when deletion has been requested.
+	if err, inProgress := r.managePrivateAiDeletion(privateAiInst); err != nil {
 		result = resultNq
-		if isPrivateAiDelTrue == true {
-			err = nil
-			return result, err
-		} else {
-			return result, err
+		if inProgress {
+			return result, nil
 		}
+		return result, err
 	}
 
 	if result.Requeue {
@@ -162,78 +149,21 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		r.Status().Update(ctx, privateAiInst)
 	}
 
-	// Validation PaiAuthentication
-	pstatus, _ := strconv.ParseBool(privateAiInst.Spec.PaiEnableAuthentication)
-	if pstatus {
-		if privateAiInst.Spec.PaiSecret.Name == "" {
-			return requeueN, fmt.Errorf("PaiAuthentication is enabled but no PaiSecret is defined")
-		}
-		apiKey, certPem := aicommons.ReadSecret(privateAiInst.Spec.PaiSecret.Name, privateAiInst, r.Client, r.Log)
-		if apiKey == "" || apiKey == "NONE" {
-			return requeueN, fmt.Errorf("PaiAuthentication is enabled but apikey is not found in secret")
-		}
-		if certPem == "NONE" {
-			r.Log.Info("PaiAuthentication is enabled but cert.pem not found in secret") // optional soft warning
-		}
+	authEnabled := parseBoolFlag(privateAiInst.Spec.PaiEnableAuthentication)
+	externalSvcEnabled := parseBoolFlag(privateAiInst.Spec.IsExternalSvc)
+	storageEnabled := privateAiInst.Spec.StorageClass != ""
 
-		_ = aicommons.PatchSecret(privateAiInst.Spec.PaiSecret.Name, privateAiInst, r.Client, r.Log)
-
-		privateAiInst.Status.PaiSecret.Name = privateAiInst.Spec.PaiSecret.Name
-		rversion := aicommons.GetSecretResourceVersion(privateAiInst.Spec.PaiSecret.Name, privateAiInst, r.Client, r.Log)
-		if privateAiInst.Status.PaiSecret.ResourceVersion == "" {
-			privateAiInst.Status.PaiSecret.ResourceVersion = rversion
-		} else if privateAiInst.Status.PaiSecret.ResourceVersion != rversion {
-			// Updating Status before Update
-			privateAiInst.Status.Status = privateaiv4.StatusUpdating
-			r.Status().Update(ctx, privateAiInst)
-
-			r.Log.Info("change in Secret " + privateAiInst.Spec.PaiSecret.Name + " is detected ")
-			foundDeploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace)
-			if err == nil {
-				err = aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, foundDeploy, ctx, req, r.Log)
-				if err != nil {
-					privateAiInst.Status.Status = privateaiv4.StatusError
-					r.Status().Update(context.Background(), privateAiInst)
-					r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
-					return ctrl.Result{}, err
-				}
-			}
-			privateAiInst.Status.PaiSecret.ResourceVersion = rversion
-		} else {
-			privateAiInst.Status.PaiSecret.ResourceVersion = rversion
+	if authEnabled {
+		if _, err := r.ensureSecret(ctx, req, privateAiInst); err != nil {
+			return resultNq, err
 		}
-		privateAiInst.Status.PaiSecret.ApiKey = apiKey
-		privateAiInst.Status.PaiSecret.Certpem = certPem
-		r.Status().Update(ctx, privateAiInst)
 	}
 
-	if privateAiInst.Spec.PaiConfigFile != nil {
-		if privateAiInst.Spec.PaiConfigFile.Name != "" && privateAiInst.Spec.PaiConfigFile.MountLocation != "" {
-			_ = aicommons.PatchConfigMap(privateAiInst.Spec.PaiConfigFile.Name, privateAiInst, r.Client, r.Log)
-			privateAiInst.Status.PaiConfigMap.Name = privateAiInst.Spec.PaiConfigFile.Name
-			rversion := aicommons.GetConfigMapResourceVersion(privateAiInst.Spec.PaiConfigFile.Name, privateAiInst, r.Client, r.Log)
-			if privateAiInst.Status.PaiConfigMap.ResourceVersion == "" {
-				privateAiInst.Status.PaiConfigMap.ResourceVersion = rversion
-			} else if privateAiInst.Status.PaiConfigMap.ResourceVersion != rversion {
-				// Updating Status before Update
-				privateAiInst.Status.Status = privateaiv4.StatusUpdating
-				r.Status().Update(ctx, privateAiInst)
-
-				r.Log.Info("change in ConfigMap " + privateAiInst.Spec.PaiConfigFile.Name + " is detected ")
-				foundDeploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace)
-				if err == nil {
-					err = aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, foundDeploy, ctx, req, r.Log)
-					if err != nil {
-						privateAiInst.Status.Status = privateaiv4.StatusError
-						r.Status().Update(context.Background(), privateAiInst)
-						r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
-						return ctrl.Result{}, err
-					}
-				}
-				privateAiInst.Status.PaiConfigMap.ResourceVersion = rversion
-			} else {
-				privateAiInst.Status.PaiConfigMap.ResourceVersion = rversion
-			}
+	if privateAiInst.Spec.PaiConfigFile != nil &&
+		privateAiInst.Spec.PaiConfigFile.Name != "" &&
+		privateAiInst.Spec.PaiConfigFile.MountLocation != "" {
+		if _, err := r.ensureConfigMap(ctx, req, privateAiInst); err != nil {
+			return resultNq, err
 		}
 	}
 	// First validate
@@ -248,123 +178,76 @@ func (r *PrivateAiReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// Create PVC
-	if privateAiInst.Spec.StorageClass != "" {
-		claims := aicommons.VolumeClaimTemplatesForPrivateAi(privateAiInst)
-		for i := 0; i < len(claims); i++ {
-			result, err = r.createPvc(privateAiInst, &claims[i])
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-		}
-	}
-
-	// ========================= Service Setup For Catalog===================
-	// Following check and loop will make sure  to create the service
-	lSvc := aicommons.BuildServiceDefForPrivateAi(privateAiInst, "local")
-	result, err = r.createService(privateAiInst, lSvc)
-	if err != nil {
-		result = resultNq
-		return result, err
-	}
-
-	plSvc, err := r.checkAiSvc(aicommons.GetSvcName(privateAiInst.Name, "local"), privateAiInst.Namespace)
-	if err == nil {
-		_, err = aicommons.UpdateSvcForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, lSvc, plSvc, r.Log)
-		if err != nil {
+	if storageEnabled {
+		// ensurePVCs verifies that all required PersistentVolumeClaims (PVCs) exist for the given PrivateAI instance.
+		// It creates any missing PVCs and returns an error if the operation fails.
+		if _, err := r.ensurePVCs(ctx, privateAiInst); err != nil {
 			return resultNq, err
 		}
 	}
 
-	exsvStatus, _ := strconv.ParseBool(privateAiInst.Spec.IsExternalSvc)
-	if exsvStatus {
-		eSvc := aicommons.BuildServiceDefForPrivateAi(privateAiInst, "external")
-		result, err = r.createService(privateAiInst, eSvc)
-		if err != nil {
-			result = resultNq
-			return result, err
-		}
-
-		// Service Update Block
-		pexlSvc, err := r.checkAiSvc(aicommons.GetSvcName(privateAiInst.Name, "external"), privateAiInst.Namespace)
-		if err == nil {
-			_, err = aicommons.UpdateSvcForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, eSvc, pexlSvc, r.Log)
-			if err != nil {
-				return resultNq, err
-			}
-		}
+	// ensureServices verifies that the required Kubernetes Services are created and configured for the PrivateAI instance.
+	// It takes the provided context, PrivateAI instance, and a flag indicating whether external service access is enabled.
+	// Returns an error if the service creation or configuration fails.
+	if _, err := r.ensureServices(ctx, privateAiInst, "local"); err != nil {
+		return resultNq, err
 	}
 
 	// Populate LoadBalancerIP in status from the external service (if enabled)
-	if exsvStatus {
-		esvc, err := r.checkAiSvc(aicommons.GetSvcName(privateAiInst.Name, "external"), privateAiInst.Namespace)
-		if err == nil && len(esvc.Status.LoadBalancer.Ingress) > 0 {
-			ingress := esvc.Status.LoadBalancer.Ingress[0]
-
-			lb := ingress.IP
-			if lb == "" {
-				lb = ingress.Hostname
-			}
-
-			if privateAiInst.Status.LoadBalancerIP != lb {
-				privateAiInst.Status.LoadBalancerIP = lb
-				_ = r.Status().Update(ctx, privateAiInst)
-			}
+	if externalSvcEnabled {
+		if _, err := r.ensureServices(ctx, privateAiInst, "local"); err != nil {
+			return resultNq, err
 		}
 	}
 
-
-	// See if DeploymentSets already exists and create if it doesn't
+	// desiredDeploy constructs and returns a Deployment object configured for the PrivateAI instance.
+	// It uses the provided privateAiInst to build the desired deployment specification with appropriate
+	// settings, replicas, and container configuration for the PrivateAI workload.
 	desiredDeploy := aicommons.BuildDeploySetForPrivateAI(privateAiInst)
 	foundDeploy, err := r.checkAiDeploymentSet(desiredDeploy.Name, desiredDeploy.Namespace)
-	if err != nil && apierrors.IsNotFound(err) {
-		// didn't found create New deployment
+	if apierrors.IsNotFound(err) {
 		result, err = r.deployPrivateAiDeploymentSet(privateAiInst, desiredDeploy)
 		if err != nil {
 			return resultNq, err
 		}
-
-	} else if err == nil {
-		//if exists check Pods & run
+	} else if err != nil {
+		return resultNq, err
+	} else {
 		podList := &corev1.PodList{}
-		err = r.Client.List(ctx, podList,
+		listOpts := []client.ListOption{
 			client.InNamespace(privateAiInst.Namespace),
-			client.MatchingLabels(foundDeploy.Spec.Selector.MatchLabels),
-		)
-		if err != nil {
+		}
+		if foundDeploy.Spec.Selector != nil {
+			listOpts = append(listOpts, client.MatchingLabels(foundDeploy.Spec.Selector.MatchLabels))
+		}
+		if err := r.Client.List(ctx, podList, listOpts...); err != nil {
 			return resultNq, err
 		}
 
-		var foundPod *corev1.Pod
+		var firstPod *corev1.Pod
 		if len(podList.Items) > 0 {
-			foundPod = &podList.Items[0]
-		} else {
-			foundPod = &corev1.Pod{}
+			firstPod = &podList.Items[0]
 		}
 
-		// _, err = aicommons.ManageReplicas(privateAiInst, r.Client, r.Config, foundDeploy, podList, r.Log)
-		_, err = aicommons.ManageReplicas(r, privateAiInst, r.Client, r.Config, foundDeploy, podList, ctx, req, r.Log)
-
-		if err != nil {
+		if _, err := aicommons.ManageReplicas(r, privateAiInst, r.Client, r.Config, foundDeploy, podList, ctx, req, r.Log); err != nil {
 			return resultNq, err
 		}
 
-		// update PodIP / NodeIP in status using the first pod
-		if foundPod != nil {
-			if privateAiInst.Status.PodIP != foundPod.Status.PodIP || privateAiInst.Status.NodeIP != foundPod.Status.HostIP {
-				privateAiInst.Status.PodIP = foundPod.Status.PodIP
-				privateAiInst.Status.NodeIP = foundPod.Status.HostIP
-				_ = r.Status().Update(ctx, privateAiInst)
+		if firstPod != nil {
+			podIP := firstPod.Status.PodIP
+			hostIP := firstPod.Status.HostIP
+			if privateAiInst.Status.PodIP != podIP || privateAiInst.Status.NodeIP != hostIP {
+				privateAiInst.Status.PodIP = podIP
+				privateAiInst.Status.NodeIP = hostIP
+				if err := r.Status().Update(ctx, privateAiInst); err != nil {
+					return resultNq, err
+				}
 			}
 		}
 
-		_, err = aicommons.UpdateDeploySetForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, foundDeploy, foundPod, r.Log)
-		if err != nil {
+		if _, err := aicommons.UpdateDeploySetForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, foundDeploy, firstPod, r.Log); err != nil {
 			return resultNq, err
 		}
-
-	} else {
-		return resultNq, err
 	}
 
 	completed = true
@@ -521,16 +404,8 @@ func (r *PrivateAiReconciler) deployPrivateAiDeploymentSet(instance *privateaiv4
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	message := "Inside the deployDeploymentSet function"
 	aicommons.LogMessages("DEBUG", message, nil, instance, r.Log)
-	// See if DeploymentSets already exists and create if it doesn't
-	// Error : invalid memory address or nil pointer dereference" (runtime error: invalid memory address or nil pointer dereference)
-	// This happens during unit test cases
-	for i := 0; i < 5; i++ {
-		if r.Scheme == nil {
-			time.Sleep(time.Second * 40)
-		} else {
-			break
-		}
-	}
+
+	r.waitForScheme()
 	controllerutil.SetControllerReference(instance, dep, r.Scheme)
 	_, err := r.checkAiDeploymentSet(dep.Name, instance.Namespace)
 	jsn, _ := json.Marshal(dep)
@@ -563,66 +438,50 @@ func (r *PrivateAiReconciler) deployPrivateAiDeploymentSet(instance *privateaiv4
 	return ctrl.Result{}, nil
 }
 
-// ================================== CREATE FUNCTIONS =============================
-// This function create a service based isExtern parameter set in the yaml file
+// createService creates a Kubernetes Service resource for the PrivateAi instance.
+// It configures the service with appropriate ports and selectors to expose the PrivateAi
+// deployment within the cluster. Returns an error if the service creation fails.
 func (r *PrivateAiReconciler) createService(instance *privateaiv4.PrivateAi,
 	dep *corev1.Service,
 ) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	// See if Service already exists and create if it doesn't
-	// We are getting error on nil pointer segment when r.scheme is null
-	// Error : invalid memory address or nil pointer dereference" (runtime error: invalid memory address or nil pointer dereference)
-	// This happens during unit test cases
-	for i := 0; i < 5; i++ {
-		if r.Scheme == nil {
-			time.Sleep(time.Second * 40)
-		} else {
-			break
-		}
-	}
+	ctx := context.TODO()
+
+	r.waitForScheme()
 	controllerutil.SetControllerReference(instance, dep, r.Scheme)
-	_, err := r.checkAiSvc(dep.Name, instance.Namespace)
 
-	jsn, _ := json.Marshal(dep)
-	aicommons.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
-	if err != nil && errors.IsNotFound(err) {
-		// Create the Service
-		reqLogger.Info("Creating a service")
-		err = r.Client.Create(context.TODO(), dep)
-		if err != nil {
-			// Service creation failed
-			reqLogger.Error(err, "Failed to create Service", "Service.space", dep.Namespace, "Service.Name", dep.Name)
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: dep.Name, Namespace: dep.Namespace}, &corev1.Service{}); err != nil {
+		if !errors.IsNotFound(err) {
+			reqLogger.Error(err, "Failed to retrieve Service", "Service.namespace", dep.Namespace, "Service.name", dep.Name)
 			return ctrl.Result{}, err
-		} else {
-			// Service creation was successful
-			return ctrl.Result{Requeue: true}, nil
 		}
-	} else if err != nil {
-		// Error that isn't due to the Service not existing
-		reqLogger.Error(err, "Failed to find the  Service details")
-		return ctrl.Result{}, err
+
+		reqLogger.Info("Creating service", "Service.namespace", dep.Namespace, "Service.name", dep.Name)
+		if jsn, merr := json.Marshal(dep); merr == nil {
+			aicommons.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
+		}
+		if err := r.Client.Create(ctx, dep); err != nil {
+			reqLogger.Error(err, "Failed to create Service", "Service.namespace", dep.Namespace, "Service.name", dep.Name)
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{Requeue: true}, nil
 	}
 
+	reqLogger.Info("Service already exists", "Service.namespace", dep.Namespace, "Service.name", dep.Name)
 	return ctrl.Result{}, nil
 }
 
-// ================================== CREATE FUNCTIONS =============================
-// This function create a PVC based isExtern parameter set in the yaml file
+// createPvc creates a PersistentVolumeClaim for the PrivateAi instance if it does not already exist.
+// It sets the controller reference to establish ownership, attempts to retrieve an existing PVC,
+// and creates a new one if not found. The function logs the PVC configuration and any errors encountered.
+// Returns a reconciliation result with Requeue set to true if the PVC was successfully created,
+// indicating that reconciliation should be rerun. Returns an error if the PVC creation fails
+// or if there is an unexpected error retrieving the PVC.
 func (r *PrivateAiReconciler) createPvc(instance *privateaiv4.PrivateAi,
 	dep *corev1.PersistentVolumeClaim,
 ) (ctrl.Result, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
-	// See if Service already exists and create if it doesn't
-	// We are getting error on nil pointer segment when r.scheme is null
-	// Error : invalid memory address or nil pointer dereference" (runtime error: invalid memory address or nil pointer dereference)
-	// This happens during unit test cases
-	for i := 0; i < 5; i++ {
-		if r.Scheme == nil {
-			time.Sleep(time.Second * 40)
-		} else {
-			break
-		}
-	}
+	r.waitForScheme()
 	controllerutil.SetControllerReference(instance, dep, r.Scheme)
 	found := &corev1.PersistentVolumeClaim{}
 
@@ -654,9 +513,29 @@ func (r *PrivateAiReconciler) createPvc(instance *privateaiv4.PrivateAi,
 	return ctrl.Result{}, nil
 }
 
-// FInalizer
-
-// ================== Function to check insytance deletion timestamp and activate the finalizer code ========
+// managePrivateAiDeletion handles the deletion lifecycle of a PrivateAi resource.
+// It ensures proper cleanup by managing finalizers and executing finalization logic.
+//
+// The function performs the following steps:
+// 1. Checks if the PrivateAi instance is marked for deletion via DeletionTimestamp
+// 2. If marked for deletion and has the PrivateAiFinalizer:
+//   - Executes finalization logic to clean up associated resources
+//   - Removes the finalizer to allow Kubernetes to proceed with deletion
+//   - Updates the instance in the cluster
+//
+// 3. If not marked for deletion, ensures the PrivateAiFinalizer is added to the instance
+//
+// Parameters:
+//   - instance: The PrivateAi resource being reconciled
+//
+// Returns:
+//   - error: An error if finalization or update operations fail; a custom message
+//     if deletion is in progress
+//   - bool: true if deletion is in progress (error should not be logged as a stack trace),
+//     false otherwise
+//
+// Note: When deletion is in progress (bool=true), the returned error is informational
+// and should not be treated as a critical failure.
 func (r *PrivateAiReconciler) managePrivateAiDeletion(instance *privateaiv4.PrivateAi) (error, bool) {
 
 	isPrivateToBeDeleted := instance.GetDeletionTimestamp() != nil
@@ -694,7 +573,6 @@ func (r *PrivateAiReconciler) managePrivateAiDeletion(instance *privateaiv4.Priv
 	return nil, false
 }
 
-// ========================== FInalizer Section ===================
 func (r *PrivateAiReconciler) addFinalizer(instance *privateaiv4.PrivateAi) error {
 	reqLogger := r.Log.WithValues("instance.Namespace", instance.Namespace, "instance.Name", instance.Name)
 	controllerutil.AddFinalizer(instance, PrivateAiFinalizer)
@@ -709,52 +587,193 @@ func (r *PrivateAiReconciler) addFinalizer(instance *privateaiv4.PrivateAi) erro
 }
 
 func (r *PrivateAiReconciler) finalizePrivateAi(instance *privateaiv4.PrivateAi) error {
-	// TODO(user): Add the cleanup steps that the operator needs to do before the CR
-	// can be deleted. Examples of finalizers include performing backups and deleting
-	// resources that are not owned by this CR, like a PVC.
+	ctx := context.Background()
 
-	var err error
-	var pvcName string
-
-	//r.checkProvInstance(instance)
-	depSetFound := &appsv1.Deployment{}
-	svcFound := &corev1.Service{}
-	depSetFound, err = aicommons.CheckDepSet(instance, r.Client)
-	if err == nil {
-		// See if StatefulSets already exists and create if it doesn't
-		err = r.Client.Delete(context.Background(), depSetFound)
-		if err != nil {
+	if depSet, err := aicommons.CheckDepSet(instance, r.Client); err == nil {
+		if err := r.Client.Delete(ctx, depSet); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
-		if instance.Spec.IsDeleteOraPvc && len(instance.Spec.StorageClass) > 0 {
-			pvcName = instance.Name + "-oradata-vol4-" + instance.Name + "-0"
-			err = aicommons.DelPvc(pvcName, instance, r.Client, r.Log)
-			if err != nil {
+	} else if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+
+	if instance.Spec.IsDeleteOraPvc && len(instance.Spec.StorageClass) > 0 {
+		pvcName := instance.Name + "-oradata-vol4-" + instance.Name + "-0"
+		if err := aicommons.DelPvc(pvcName, instance, r.Client, r.Log); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	if exSvcEnabled, err := strconv.ParseBool(instance.Spec.IsExternalSvc); err == nil && exSvcEnabled {
+		if svc, err := aicommons.CheckSvc(instance.Name+"-svc", instance, r.Client); err == nil {
+			if err := r.Client.Delete(ctx, svc); err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
+		} else if err != nil && !apierrors.IsNotFound(err) {
+			return err
 		}
+	}
 
-		exsvStatus, _ := strconv.ParseBool(instance.Spec.IsExternalSvc)
-		if exsvStatus {
-			// svcFound, err = aicommons.CheckSvc(instance.Name+strconv.FormatInt(int64(0), 10)+"-svc", instance, r.Client)
-			svcFound, err = aicommons.CheckSvc(instance.Name+"-svc", instance, r.Client)
+	if svc, err := aicommons.CheckSvc(instance.Name, instance, r.Client); err == nil {
+		if err := r.Client.Delete(ctx, svc); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	} else if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
 
+	return nil
+}
+
+func (r *PrivateAiReconciler) waitForScheme() {
+	for r.Scheme == nil {
+		r.Log.Info("Waiting for scheme to be initialized...")
+		time.Sleep(3 * time.Second)
+	}
+}
+
+func (r *PrivateAiReconciler) ensureConfigMap(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
+	if privateAiInst.Spec.PaiConfigFile.Name != "" && privateAiInst.Spec.PaiConfigFile.MountLocation != "" {
+		_ = aicommons.PatchConfigMap(privateAiInst.Spec.PaiConfigFile.Name, privateAiInst, r.Client, r.Log)
+		privateAiInst.Status.PaiConfigMap.Name = privateAiInst.Spec.PaiConfigFile.Name
+		rversion := aicommons.GetConfigMapResourceVersion(privateAiInst.Spec.PaiConfigFile.Name, privateAiInst, r.Client, r.Log)
+		if privateAiInst.Status.PaiConfigMap.ResourceVersion == "" {
+			privateAiInst.Status.PaiConfigMap.ResourceVersion = rversion
+		} else if privateAiInst.Status.PaiConfigMap.ResourceVersion != rversion {
+			// Updating Status before Update
+			privateAiInst.Status.Status = privateaiv4.StatusUpdating
+			r.Status().Update(ctx, privateAiInst)
+
+			r.Log.Info("change in ConfigMap " + privateAiInst.Spec.PaiConfigFile.Name + " is detected ")
+			foundDeploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace)
 			if err == nil {
-				// See if StatefulSets already exists and create if it doesn't
-				err = r.Client.Delete(context.Background(), svcFound)
+				err = aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, foundDeploy, ctx, req, r.Log)
 				if err != nil {
-					return err
+					privateAiInst.Status.Status = privateaiv4.StatusError
+					r.Status().Update(context.Background(), privateAiInst)
+					r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
+					return ctrl.Result{}, err
 				}
 			}
+			privateAiInst.Status.PaiConfigMap.ResourceVersion = rversion
+		} else {
+			privateAiInst.Status.PaiConfigMap.ResourceVersion = rversion
 		}
-		svcFound, err = aicommons.CheckSvc(instance.Name, instance, r.Client)
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
+	if privateAiInst.Spec.PaiSecret.Name == "" {
+		return requeueN, fmt.Errorf("PaiAuthentication is enabled but no PaiSecret is defined")
+	}
+	apiKey, certPem := aicommons.ReadSecret(privateAiInst.Spec.PaiSecret.Name, privateAiInst, r.Client, r.Log)
+	if apiKey == "" || apiKey == "NONE" {
+		return requeueN, fmt.Errorf("PaiAuthentication is enabled but apikey is not found in secret")
+	}
+	if certPem == "NONE" {
+		r.Log.Info("PaiAuthentication is enabled but cert.pem not found in secret") // optional soft warning
+	}
+
+	_ = aicommons.PatchSecret(privateAiInst.Spec.PaiSecret.Name, privateAiInst, r.Client, r.Log)
+
+	privateAiInst.Status.PaiSecret.Name = privateAiInst.Spec.PaiSecret.Name
+	rversion := aicommons.GetSecretResourceVersion(privateAiInst.Spec.PaiSecret.Name, privateAiInst, r.Client, r.Log)
+	if privateAiInst.Status.PaiSecret.ResourceVersion == "" {
+		privateAiInst.Status.PaiSecret.ResourceVersion = rversion
+	} else if privateAiInst.Status.PaiSecret.ResourceVersion != rversion {
+		// Updating Status before Update
+		privateAiInst.Status.Status = privateaiv4.StatusUpdating
+		r.Status().Update(ctx, privateAiInst)
+
+		r.Log.Info("change in Secret " + privateAiInst.Spec.PaiSecret.Name + " is detected ")
+		foundDeploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace)
 		if err == nil {
-			// See if StatefulSets already exists and create if it doesn't
-			err = r.Client.Delete(context.Background(), svcFound)
+			err = aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, foundDeploy, ctx, req, r.Log)
 			if err != nil {
-				return err
+				privateAiInst.Status.Status = privateaiv4.StatusError
+				r.Status().Update(context.Background(), privateAiInst)
+				r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
+				return ctrl.Result{}, err
+			}
+		}
+		privateAiInst.Status.PaiSecret.ResourceVersion = rversion
+	} else {
+		privateAiInst.Status.PaiSecret.ResourceVersion = rversion
+	}
+	privateAiInst.Status.PaiSecret.ApiKey = privateAiInst.Spec.PaiSecret.Name
+	privateAiInst.Status.PaiSecret.Certpem = privateAiInst.Spec.PaiSecret.Name
+	r.Status().Update(ctx, privateAiInst)
+	return ctrl.Result{}, nil
+}
+
+// ensurePVCs ensures that all required PersistentVolumeClaims (PVCs) for the PrivateAi instance are created and configured.
+// It reconciles the desired PVC state with the actual state in the cluster.
+// ctx is the context for the operation, allowing for cancellation and timeouts.
+// privateAiInst is the PrivateAi custom resource instance for which PVCs need to be ensured.
+// Returns a ctrl.Result indicating the reconciliation result and any error that occurred during PVC creation or validation.
+func (r *PrivateAiReconciler) ensurePVCs(ctx context.Context, privateAiInst *privateaiv4.PrivateAi) (ctrl.Result, error) {
+	claims := aicommons.VolumeClaimTemplatesForPrivateAi(privateAiInst)
+
+	for i := 0; i < len(claims); i++ {
+		result, err := r.createPvc(privateAiInst, &claims[i])
+		if err != nil {
+			result = resultNq
+			return result, err
+		}
+	}
+	return ctrl.Result{}, nil
+}
+
+// ensureServices ensures that the required Kubernetes Services for PrivateAI are created and configured.
+// It creates an internal Service for the PrivateAI instance and optionally creates an external Service
+// if externalSvcEnabled is true. Both services are configured with controller references to establish
+// ownership relationships.
+//
+// Parameters:
+//   - ctx: Context for API operations and cancellation
+//   - instance: The PrivateAi custom resource instance for which services are being ensured
+//   - externalSvcEnabled: Boolean flag to determine whether to create an external-facing service
+//
+// Returns:
+//   - error: Returns an error if service creation, retrieval, or controller reference configuration fails;
+//     nil on success
+func (r *PrivateAiReconciler) ensureServices(ctx context.Context, privateAiInst *privateaiv4.PrivateAi, svcType string) (ctrl.Result, error) {
+	// Create internal service
+	sSvc := aicommons.BuildServiceDefForPrivateAi(privateAiInst, svcType)
+	result, err := r.createService(privateAiInst, sSvc)
+	if err != nil {
+		result = resultNq
+		return result, err
+	}
+	pexlSvc, err := r.checkAiSvc(aicommons.GetSvcName(privateAiInst.Name, svcType), privateAiInst.Namespace)
+	if err == nil {
+		_, err = aicommons.UpdateSvcForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, sSvc, pexlSvc, r.Log)
+		if err != nil {
+			return resultNq, err
+		}
+	}
+	if svcType == "external" {
+		if err == nil && len(sSvc.Status.LoadBalancer.Ingress) > 0 {
+			ingress := sSvc.Status.LoadBalancer.Ingress[0]
+
+			lb := ingress.IP
+			if lb == "" {
+				lb = ingress.Hostname
+			}
+
+			if privateAiInst.Status.LoadBalancerIP != lb {
+				privateAiInst.Status.LoadBalancerIP = lb
+				_ = r.Status().Update(ctx, privateAiInst)
 			}
 		}
 	}
-	return nil
+	return ctrl.Result{}, nil
+}
+func parseBoolFlag(flag string) bool {
+	val, err := strconv.ParseBool(flag)
+	if err != nil {
+		return false
+	}
+	return val
 }

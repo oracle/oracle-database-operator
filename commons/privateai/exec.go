@@ -56,7 +56,8 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-// ExecCMDInContainer execute command in first container of a pod
+// ExecCommand runs the provided command inside the target container of the
+// specified pod and returns the combined stdout output.
 func ExecCommand(
 	r client.Reader,
 	config *rest.Config,
