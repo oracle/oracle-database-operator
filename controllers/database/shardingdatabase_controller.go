@@ -144,7 +144,6 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 	defer r.setCrdLifeCycleState(instance, &result, &err, &stateType)
-	defer r.updateShardTopologyStatus(instance)
 	// =============================== Check Deletion TimeStamp========
 	// Check if the ProvOShard instance is marked to be deleted, which is
 	// // indicated by the deletion timestamp being set.
@@ -354,6 +353,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		result = resultQ
 		return result, err
 	}
+	defer r.updateShardTopologyStatus(instance)
 
 	// we don't need to run the requeue loop but still putting this condition to address any unkown situation
 	// delShard function set the state to blocked and we do not allow any other operationn while delete is going on
@@ -1601,14 +1601,11 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev4.ShardingD
 	sparams := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
 	err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
 	if err != nil {
-		// If the shard doesn't exist in GSM then just delete the shard statefulset and update GSM shard status
-		/// Terminate state means we will remove teh shard entry from GSM shard status
-		r.updateGsmShardStatus(instance, shardSfSet.Name, string(databasev4.ShardOnlineErrorState))
-		if strings.ToUpper(instance.Spec.ReplicationType) != "NATIVE" {
-			shardingv1.CancelChunksInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-		}
-		return err
+		// Treat as transient; don't flip status to ERROR in GSM status
+		shardingv1.LogMessages("INFO", "CheckOnlineShardInGsm failed; will retry: "+err.Error(), nil, instance, r.Log)
+		return nil
 	}
+
 	oldStateStr := shardingv1.GetGsmShardStatus(instance, shardSfSet.Name)
 	r.updateGsmShardStatus(instance, shardSfSet.Name, string(databasev4.ShardOnlineState))
 	// Following logic will sent a email only once
