@@ -379,23 +379,6 @@ func (r *PrivateAiReconciler) checkAiDeploymentSet(name string,
 
 }
 
-func (r *PrivateAiReconciler) checkAiSvc(name string,
-	namespace string,
-) (*corev1.Service, error) {
-
-	found := &corev1.Service{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{
-		Name:      name,
-		Namespace: namespace,
-	}, found)
-
-	if err != nil {
-		return found, err
-	}
-
-	return found, nil
-}
-
 // This function deploy the DeploymentSet
 func (r *PrivateAiReconciler) deployPrivateAiDeploymentSet(instance *privateaiv4.PrivateAi,
 	dep *appsv1.Deployment,
@@ -450,12 +433,8 @@ func (r *PrivateAiReconciler) createService(instance *privateaiv4.PrivateAi,
 	r.waitForScheme()
 	controllerutil.SetControllerReference(instance, dep, r.Scheme)
 
-	if err := r.Client.Get(ctx, types.NamespacedName{Name: dep.Name, Namespace: dep.Namespace}, &corev1.Service{}); err != nil {
-		if !errors.IsNotFound(err) {
-			reqLogger.Error(err, "Failed to retrieve Service", "Service.namespace", dep.Namespace, "Service.name", dep.Name)
-			return ctrl.Result{}, err
-		}
-
+	_, err := aicommons.CheckSvc(dep.Name, instance, r.Client)
+	if err != nil && errors.IsNotFound(err) {
 		reqLogger.Info("Creating service", "Service.namespace", dep.Namespace, "Service.name", dep.Name)
 		if jsn, merr := json.Marshal(dep); merr == nil {
 			aicommons.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
@@ -467,7 +446,8 @@ func (r *PrivateAiReconciler) createService(instance *privateaiv4.PrivateAi,
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	reqLogger.Info("Service already exists", "Service.namespace", dep.Namespace, "Service.name", dep.Name)
+	message := "Service already Exist " + aicommons.GetFmtStr(dep.Name) + " already exist"
+	aicommons.LogMessages("DEBUG", message, nil, instance, r.Log)
 	return ctrl.Result{}, nil
 }
 
@@ -628,82 +608,130 @@ func (r *PrivateAiReconciler) finalizePrivateAi(instance *privateaiv4.PrivateAi)
 func (r *PrivateAiReconciler) waitForScheme() {
 	for r.Scheme == nil {
 		r.Log.Info("Waiting for scheme to be initialized...")
-		time.Sleep(3 * time.Second)
+		time.Sleep(5 * time.Second)
 	}
 }
 
 func (r *PrivateAiReconciler) ensureConfigMap(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
-	if privateAiInst.Spec.PaiConfigFile.Name != "" && privateAiInst.Spec.PaiConfigFile.MountLocation != "" {
-		_ = aicommons.PatchConfigMap(privateAiInst.Spec.PaiConfigFile.Name, privateAiInst, r.Client, r.Log)
-		privateAiInst.Status.PaiConfigMap.Name = privateAiInst.Spec.PaiConfigFile.Name
-		rversion := aicommons.GetConfigMapResourceVersion(privateAiInst.Spec.PaiConfigFile.Name, privateAiInst, r.Client, r.Log)
-		if privateAiInst.Status.PaiConfigMap.ResourceVersion == "" {
-			privateAiInst.Status.PaiConfigMap.ResourceVersion = rversion
-		} else if privateAiInst.Status.PaiConfigMap.ResourceVersion != rversion {
-			// Updating Status before Update
-			privateAiInst.Status.Status = privateaiv4.StatusUpdating
-			r.Status().Update(ctx, privateAiInst)
+	cfg := privateAiInst.Spec.PaiConfigFile
+	if cfg.Name == "" || cfg.MountLocation == "" {
+		return ctrl.Result{}, nil
+	}
 
-			r.Log.Info("change in ConfigMap " + privateAiInst.Spec.PaiConfigFile.Name + " is detected ")
-			foundDeploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace)
-			if err == nil {
-				err = aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, foundDeploy, ctx, req, r.Log)
-				if err != nil {
-					privateAiInst.Status.Status = privateaiv4.StatusError
-					r.Status().Update(context.Background(), privateAiInst)
-					r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
-					return ctrl.Result{}, err
-				}
-			}
-			privateAiInst.Status.PaiConfigMap.ResourceVersion = rversion
-		} else {
-			privateAiInst.Status.PaiConfigMap.ResourceVersion = rversion
+	_ = aicommons.PatchConfigMap(cfg.Name, privateAiInst, r.Client, r.Log)
+	privateAiInst.Status.PaiConfigMap.Name = cfg.Name
+
+	currentVersion := privateAiInst.Status.PaiConfigMap.ResourceVersion
+	latestVersion := aicommons.GetConfigMapResourceVersion(cfg.Name, privateAiInst, r.Client, r.Log)
+
+	if latestVersion == "" {
+		privateAiInst.Status.PaiConfigMap.ResourceVersion = latestVersion
+		if err := r.Status().Update(ctx, privateAiInst); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if currentVersion == "" {
+		privateAiInst.Status.PaiConfigMap.ResourceVersion = latestVersion
+		if err := r.Status().Update(ctx, privateAiInst); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if currentVersion == latestVersion {
+		return ctrl.Result{}, nil
+	}
+
+	privateAiInst.Status.Status = privateaiv4.StatusUpdating
+	if err := r.Status().Update(ctx, privateAiInst); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	r.Log.Info("ConfigMap change detected", "configMap", cfg.Name)
+
+	if deploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace); err == nil {
+		if err := aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, deploy, ctx, req, r.Log); err != nil {
+			privateAiInst.Status.Status = privateaiv4.StatusError
+			_ = r.Status().Update(context.Background(), privateAiInst)
+			r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
+			return ctrl.Result{}, err
 		}
 	}
+
+	privateAiInst.Status.PaiConfigMap.ResourceVersion = latestVersion
+	if err := r.Status().Update(ctx, privateAiInst); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 
 func (r *PrivateAiReconciler) ensureSecret(ctx context.Context, req ctrl.Request, privateAiInst *privateaiv4.PrivateAi) (reconcile.Result, error) {
-	if privateAiInst.Spec.PaiSecret.Name == "" {
+	secretName := privateAiInst.Spec.PaiSecret.Name
+	if secretName == "" {
 		return requeueN, fmt.Errorf("PaiAuthentication is enabled but no PaiSecret is defined")
 	}
-	apiKey, certPem := aicommons.ReadSecret(privateAiInst.Spec.PaiSecret.Name, privateAiInst, r.Client, r.Log)
+
+	apiKey, certPem := aicommons.ReadSecret(secretName, privateAiInst, r.Client, r.Log)
 	if apiKey == "" || apiKey == "NONE" {
 		return requeueN, fmt.Errorf("PaiAuthentication is enabled but apikey is not found in secret")
 	}
 	if certPem == "NONE" {
-		r.Log.Info("PaiAuthentication is enabled but cert.pem not found in secret") // optional soft warning
+		r.Log.Info("PaiAuthentication is enabled but cert.pem not found in secret")
 	}
 
-	_ = aicommons.PatchSecret(privateAiInst.Spec.PaiSecret.Name, privateAiInst, r.Client, r.Log)
+	_ = aicommons.PatchSecret(secretName, privateAiInst, r.Client, r.Log)
 
-	privateAiInst.Status.PaiSecret.Name = privateAiInst.Spec.PaiSecret.Name
-	rversion := aicommons.GetSecretResourceVersion(privateAiInst.Spec.PaiSecret.Name, privateAiInst, r.Client, r.Log)
-	if privateAiInst.Status.PaiSecret.ResourceVersion == "" {
-		privateAiInst.Status.PaiSecret.ResourceVersion = rversion
-	} else if privateAiInst.Status.PaiSecret.ResourceVersion != rversion {
-		// Updating Status before Update
-		privateAiInst.Status.Status = privateaiv4.StatusUpdating
-		r.Status().Update(ctx, privateAiInst)
+	privateAiInst.Status.PaiSecret.Name = secretName
+	privateAiInst.Status.PaiSecret.ApiKey = secretName
+	privateAiInst.Status.PaiSecret.Certpem = secretName
 
-		r.Log.Info("change in Secret " + privateAiInst.Spec.PaiSecret.Name + " is detected ")
-		foundDeploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace)
-		if err == nil {
-			err = aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, foundDeploy, ctx, req, r.Log)
-			if err != nil {
-				privateAiInst.Status.Status = privateaiv4.StatusError
-				r.Status().Update(context.Background(), privateAiInst)
-				r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
-				return ctrl.Result{}, err
-			}
+	currentVersion := privateAiInst.Status.PaiSecret.ResourceVersion
+	latestVersion := aicommons.GetSecretResourceVersion(secretName, privateAiInst, r.Client, r.Log)
+
+	if currentVersion == "" {
+		privateAiInst.Status.PaiSecret.ResourceVersion = latestVersion
+		if err := r.Status().Update(ctx, privateAiInst); err != nil {
+			return ctrl.Result{}, err
 		}
-		privateAiInst.Status.PaiSecret.ResourceVersion = rversion
-	} else {
-		privateAiInst.Status.PaiSecret.ResourceVersion = rversion
+		return ctrl.Result{}, nil
 	}
-	privateAiInst.Status.PaiSecret.ApiKey = privateAiInst.Spec.PaiSecret.Name
-	privateAiInst.Status.PaiSecret.Certpem = privateAiInst.Spec.PaiSecret.Name
-	r.Status().Update(ctx, privateAiInst)
+
+	if currentVersion == "" {
+		privateAiInst.Status.PaiSecret.ResourceVersion = latestVersion
+		if err := r.Status().Update(ctx, privateAiInst); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if currentVersion == latestVersion {
+		return ctrl.Result{}, nil
+	}
+
+	privateAiInst.Status.Status = privateaiv4.StatusUpdating
+	if err := r.Status().Update(ctx, privateAiInst); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	r.Log.Info("Secret change detected", "secret", secretName)
+
+	if deploy, err := r.checkAiDeploymentSet(privateAiInst.Name, privateAiInst.Namespace); err == nil {
+		if err := aicommons.UpdateRestartedAtAnnotation(r, privateAiInst, r.Client, r.Config, deploy, ctx, req, r.Log); err != nil {
+			privateAiInst.Status.Status = privateaiv4.StatusError
+			_ = r.Status().Update(context.Background(), privateAiInst)
+			r.Log.Info("Error occurred while rolling out the deployments after detecting secrets change")
+			return ctrl.Result{}, err
+		}
+	}
+
+	privateAiInst.Status.PaiSecret.ResourceVersion = latestVersion
+	if err := r.Status().Update(ctx, privateAiInst); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
 }
 
@@ -746,7 +774,7 @@ func (r *PrivateAiReconciler) ensureServices(ctx context.Context, privateAiInst 
 		result = resultNq
 		return result, err
 	}
-	pexlSvc, err := r.checkAiSvc(aicommons.GetSvcName(privateAiInst.Name, svcType), privateAiInst.Namespace)
+	pexlSvc, err := aicommons.CheckSvc(aicommons.GetSvcName(privateAiInst.Name, svcType), privateAiInst, r.Client)
 	if err == nil {
 		_, err = aicommons.UpdateSvcForPrivateAI(privateAiInst, privateAiInst.Spec, r.Client, r.Config, sSvc, pexlSvc, r.Log)
 		if err != nil {

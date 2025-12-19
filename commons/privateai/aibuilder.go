@@ -437,54 +437,51 @@ func getOwnerRefPrivateAI(instance *privateaiv4.PrivateAi) []metav1.OwnerReferen
 
 // BuildServiceDefForPrivateAi constructs a Kubernetes Service definition for
 // the PrivateAi instance respecting the requested service type.
-func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svcType string) *corev1.Service {
+func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svctype string) *corev1.Service {
 	service := &corev1.Service{
-		ObjectMeta: buildSvcObjectMetaForPrivateAi(instance, svcType),
-		Spec:       corev1.ServiceSpec{Selector: buildLabelsForPrivateAi(instance)},
+		ObjectMeta: buildSvcObjectMetaForPrivateAi(instance, svctype),
+		Spec: corev1.ServiceSpec{
+			Ports: buildSvcPortsDef(instance),
+		},
 	}
 
-	switch svcType {
+	labels := buildLabelsForPrivateAi(instance)
+
+	switch svctype {
 	case "external":
 		service.Spec.Type = corev1.ServiceTypeLoadBalancer
-		if instance.Spec.PaiLBExternalTrafficPolicy == "local" {
-			service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
-		} else {
-			service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
+		service.Spec.Selector = labels
+
+		if status, err := strconv.ParseBool(instance.Spec.PaiInternalLB); err == nil && status {
+			if service.ObjectMeta.Annotations == nil {
+				service.ObjectMeta.Annotations = make(map[string]string, len(instance.Spec.PailbAnnotation)+2)
+			}
+			if len(instance.Spec.PailbAnnotation) > 0 {
+				for k, v := range instance.Spec.PailbAnnotation {
+					service.ObjectMeta.Annotations[k] = v
+				}
+			}
+			if _, ok := service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"]; !ok {
+				service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"] = "lb"
+			}
+			if _, ok := service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"]; !ok {
+				service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"] = "true"
+			}
 		}
-		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
-		augmentExternalService(service, instance)
+
 	case "local":
 		service.Spec.ClusterIP = corev1.ClusterIPNone
+		service.Spec.Selector = labels
+
+	default:
+		// No additional configuration
 	}
 
-	service.Spec.Ports = buildSvcPortsDef(instance)
 	if instance.Spec.PaiLBIP != "" {
 		service.Spec.LoadBalancerIP = instance.Spec.PaiLBIP
 	}
 
 	return service
-}
-
-func augmentExternalService(service *corev1.Service, instance *privateaiv4.PrivateAi) {
-	plStatus := boolFromString(instance.Spec.PaiInternalLB)
-	if !plStatus {
-		return
-	}
-
-	if service.ObjectMeta.Annotations == nil {
-		service.ObjectMeta.Annotations = map[string]string{}
-	}
-
-	for k, v := range instance.Spec.PailbAnnotation {
-		service.ObjectMeta.Annotations[k] = v
-	}
-
-	if _, ok := service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"]; !ok {
-		service.ObjectMeta.Annotations["oci.oraclecloud.com/load-balancer-type"] = "lb"
-	}
-	if _, ok := service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"]; !ok {
-		service.ObjectMeta.Annotations["service.beta.kubernetes.io/oci-load-balancer-internal"] = "true"
-	}
 }
 
 func buildSvcObjectMetaForPrivateAi(instance *privateaiv4.PrivateAi, svcType string) metav1.ObjectMeta {
@@ -553,7 +550,7 @@ func UpdateSvcForPrivateAI(
 ) (ctrl.Result, error) {
 	_ = paiSpec
 
-	if servicesEqual(newSvc, oldSvc) {
+	if !servicesEqual(newSvc, oldSvc) {
 		return ctrl.Result{}, nil
 	}
 
@@ -573,15 +570,18 @@ func UpdateSvcForPrivateAI(
 	return ctrl.Result{}, nil
 }
 
-func servicesEqual(a, b *corev1.Service) bool {
-	return reflect.DeepEqual(a.ObjectMeta.Annotations, b.ObjectMeta.Annotations) &&
-		reflect.DeepEqual(a.Labels, b.Labels) &&
-		reflect.DeepEqual(a.Spec.LoadBalancerIP, b.Spec.LoadBalancerIP) &&
-		reflect.DeepEqual(a.Spec.Ports, b.Spec.Ports)
+func servicesEqual(newSvc, oldSvc *corev1.Service) bool {
+	updateStatus := false
+	if !reflect.DeepEqual(oldSvc.ObjectMeta.Annotations, newSvc.ObjectMeta.Annotations) ||
+		!reflect.DeepEqual(oldSvc.Annotations, newSvc.Annotations) ||
+		!reflect.DeepEqual(oldSvc.Labels, newSvc.Labels) ||
+		!reflect.DeepEqual(oldSvc.Spec.LoadBalancerIP, newSvc.Spec.LoadBalancerIP) {
+		updateStatus = true
+	}
+	return updateStatus
 }
 
-// UpdateDeploySetForPrivateAI reconciles the running deployment with the
-// desired container configuration defined in the custom resource.
+// Update Section
 func UpdateDeploySetForPrivateAI(
 	instance *privateaiv4.PrivateAi,
 	paiSpec privateaiv4.PrivateAiSpec,
@@ -593,23 +593,47 @@ func UpdateDeploySetForPrivateAI(
 ) (ctrl.Result, error) {
 	_ = config
 
-	var needsUpdate bool
+	if deploy == nil || pod == nil {
+		return ctrl.Result{}, nil
+	}
+
+	desiredResources := paiSpec.Resources
+	desiredImage := paiSpec.PaiImage
+	targetName := deploy.Name
+
+	var (
+		currentResources *corev1.ResourceRequirements
+		currentImage     string
+		containerFound   bool
+	)
 
 	for i := range pod.Spec.Containers {
 		container := &pod.Spec.Containers[i]
-		if container.Name != deploy.Name {
+		if container.Name != targetName {
 			continue
 		}
 
-		if paiSpec.Resources != nil && !reflect.DeepEqual(&container.Resources, paiSpec.Resources) {
-			LogMessages("INFO", "Container resources have changed. Updating deployment...", nil, instance, logger)
-			needsUpdate = true
-		}
+		containerFound = true
+		currentResources = &container.Resources
+		currentImage = container.Image
+		break
+	}
 
-		if container.Image != paiSpec.PaiImage {
-			LogMessages("INFO", "Container image changed. Updating deployment...", nil, instance, logger)
-			needsUpdate = true
-		}
+	if !containerFound {
+		logger.Info("No matching container found on pod; skipping deployment update", "deployment", deploy.Name)
+		return ctrl.Result{}, nil
+	}
+
+	needsUpdate := false
+
+	if desiredResources != nil && !reflect.DeepEqual(currentResources, desiredResources) {
+		LogMessages("INFO", "Container resources have changed. Updating deployment...", nil, instance, logger)
+		needsUpdate = true
+	}
+
+	if desiredImage != "" && currentImage != desiredImage {
+		LogMessages("INFO", "Container image changed. Updating deployment...", nil, instance, logger)
+		needsUpdate = true
 	}
 
 	if !needsUpdate {
@@ -621,7 +645,23 @@ func UpdateDeploySetForPrivateAI(
 		return ctrl.Result{}, err
 	}
 
-	if err := kClient.Update(context.Background(), BuildDeploySetForPrivateAI(instance)); err != nil {
+	updated := deploy.DeepCopy()
+	for i := range updated.Spec.Template.Spec.Containers {
+		container := &updated.Spec.Template.Spec.Containers[i]
+		if container.Name != targetName {
+			continue
+		}
+
+		if desiredResources != nil {
+			container.Resources = *desiredResources
+		}
+		if desiredImage != "" {
+			container.Image = desiredImage
+		}
+		break
+	}
+
+	if err := kClient.Update(context.Background(), updated); err != nil {
 		LogMessages("ERROR", "Failed to update deployment with new spec", err, instance, logger)
 		instance.Status.Status = privateaiv4.StatusError
 		_ = kClient.Status().Update(context.Background(), instance)
@@ -643,27 +683,34 @@ func UpdateRestartedAtAnnotation(
 	req ctrl.Request,
 	logger logr.Logger,
 ) error {
+
 	_ = r
+	_ = instance
 	_ = config
+	_ = ctx
 	_ = req
 	_ = logger
 
-	depCopy := deploy.DeepCopy()
-	annotations := depCopy.Spec.Template.Annotations
+	if deploy == nil {
+		return nil
+	}
+
+	annotations := deploy.Spec.Template.Annotations
 	if annotations == nil {
 		return nil
 	}
-
-	if _, ok := annotations[restartAnnotationKey]; !ok {
+	if _, ok := annotations["kubectl.kubernetes.io/restartedAt"]; !ok {
 		return nil
 	}
 
+	patch := client.MergeFrom(deploy)
+	depCopy := deploy.DeepCopy()
 	if depCopy.Spec.Template.Annotations == nil {
 		depCopy.Spec.Template.Annotations = map[string]string{}
 	}
-	depCopy.Spec.Template.Annotations[restartAnnotationKey] = time.Now().Format(time.RFC3339)
+	depCopy.Spec.Template.Annotations["kubectl.kubernetes.io/restartedAt"] = time.Now().Format(time.RFC3339)
 
-	return kClient.Patch(context.Background(), depCopy, client.MergeFrom(deploy))
+	return kClient.Patch(context.Background(), depCopy, patch)
 }
 
 func buildTopologySpreadConstraintsForPrivateAI(instance *privateaiv4.PrivateAi) []corev1.TopologySpreadConstraint {
