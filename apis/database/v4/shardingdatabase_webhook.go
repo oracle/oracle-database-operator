@@ -418,6 +418,7 @@ func (r *ShardingDatabase) initShardsSpec() error {
 			r.Spec.Shard[shardIndex].ShardGroup = r.Spec.ShardInfo[pindex].ShardGroupDetails.Name
 			r.Spec.Shard[shardIndex].ShardRegion = r.Spec.ShardInfo[pindex].ShardGroupDetails.Region
 			r.Spec.Shard[shardIndex].DeployAs = r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs
+			r.Spec.Shard[shardIndex].PrimaryDatabaseRef = r.Spec.ShardInfo[pindex].PrimaryDatabaseRef
 			r.Spec.Shard[shardIndex].IsDelete = r.Spec.ShardInfo[pindex].ShardGroupDetails.IsDelete
 			r.Spec.Shard[shardIndex].ImagePulllPolicy = new(corev1.PullPolicy)
 			*(r.Spec.Shard[shardIndex].ImagePulllPolicy) = corev1.PullPolicy("Always")

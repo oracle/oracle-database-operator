@@ -1398,63 +1398,70 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 	instance *databasev4.ShardingDatabase,
 ) (bool, error) {
 
-	// Pick PRIMARY shard by shardGroup (and keep first PRIMARY as fallback)
-	primaryByGroup := map[string]databasev4.ShardSpec{}
-	var firstPrimary *databasev4.ShardSpec
+	primByGroup := map[string]*databasev4.ShardSpec{}
+	var firstPrim *databasev4.ShardSpec
 
-	for _, s := range instance.Spec.Shard {
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
 		if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
-			ss := s // copy
-			if firstPrimary == nil {
-				firstPrimary = &ss
+			if firstPrim == nil {
+				firstPrim = s
 			}
-			if g := strings.TrimSpace(s.ShardGroup); g != "" {
-				primaryByGroup[g] = ss
+			g := strings.TrimSpace(s.ShardGroup)
+			if g != "" {
+				if _, ok := primByGroup[g]; !ok {
+					primByGroup[g] = s
+				}
 			}
 		}
 	}
 
+	if firstPrim == nil {
+		return false, fmt.Errorf("primary shard not found yet")
+	}
+
 	changed := false
 
-	for i := range instance.Spec.Shard {
-		s := &instance.Spec.Shard[i]
-
-		role := strings.ToUpper(strings.TrimSpace(s.DeployAs))
-		if role != "STANDBY" && role != "ACTIVE_STANDBY" {
+	for si := range instance.Spec.ShardInfo {
+		info := &instance.Spec.ShardInfo[si]
+		if info.ShardGroupDetails == nil {
 			continue
 		}
 
-		// already set
-		if s.PrimaryDatabaseRef != nil && strings.TrimSpace(s.PrimaryDatabaseRef.Host) != "" {
+		if !strings.EqualFold(strings.TrimSpace(info.ShardGroupDetails.DeployAs), "STANDBY") {
 			continue
 		}
 
-		// choose matching primary shard
-		var prim databasev4.ShardSpec
-		if g := strings.TrimSpace(s.ShardGroup); g != "" {
-			if p, ok := primaryByGroup[g]; ok {
+		if info.PrimaryDatabaseRef != nil && strings.TrimSpace(info.PrimaryDatabaseRef.Host) != "" {
+			continue
+		}
+
+		key := strings.TrimSpace(info.ShardGroupDetails.Name)
+		prim := firstPrim
+		if key != "" {
+			if p, ok := primByGroup[key]; ok {
 				prim = p
 			}
 		}
-		if prim.Name == "" && firstPrimary != nil {
-			prim = *firstPrimary
-		}
-		if prim.Name == "" {
-			return changed, fmt.Errorf("no PRIMARY shard found yet to build primaryDatabaseRef for standby shard %s", s.Name)
+
+		ref := &databasev4.DatabaseRef{
+			Host:    fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", prim.Name, prim.Name, instance.Namespace),
+			Port:    1521,
+			CdbName: strings.ToUpper(prim.Name),
+			PdbName: strings.ToUpper(prim.Name) + "PDB",
 		}
 
-		// Derive primary endpoint from naming convention
-		primaryHost := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", prim.Name, prim.Name, instance.Namespace)
-		primaryCdb := strings.ToUpper(prim.Name)
-		primaryPdb := strings.ToUpper(prim.Name) + "PDB"
+		// Persist on shardInfo (webhook regenerates spec.shard from shardInfo)
+		info.PrimaryDatabaseRef = ref
 
-		if s.PrimaryDatabaseRef == nil {
-			s.PrimaryDatabaseRef = &databasev4.DatabaseRef{}
+		// Also set in-memory for this reconcile pass (so STS/env builder sees it now)
+		prefix := strings.TrimSpace(info.ShardPreFixName)
+		for sj := range instance.Spec.Shard {
+			s := &instance.Spec.Shard[sj]
+			if strings.EqualFold(strings.TrimSpace(s.DeployAs), "STANDBY") && prefix != "" && strings.HasPrefix(s.Name, prefix) {
+				s.PrimaryDatabaseRef = ref
+			}
 		}
-		s.PrimaryDatabaseRef.Host = primaryHost
-		s.PrimaryDatabaseRef.Port = 1521
-		s.PrimaryDatabaseRef.CdbName = primaryCdb
-		s.PrimaryDatabaseRef.PdbName = primaryPdb
 
 		changed = true
 	}
