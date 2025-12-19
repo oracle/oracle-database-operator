@@ -128,6 +128,7 @@ func buildEnvVarsSpec(
 	var shardSetupFlag bool
 	var dbUnameFlag bool
 	var ofreePdbFlag bool
+	var standbyDbFlag bool
 
 	for _, variable := range variables {
 		switch variable.Name {
@@ -154,6 +155,8 @@ func buildEnvVarsSpec(
 			dbUnameFlag = true
 		case "ORACLE_FREE_PDB":
 			ofreePdbFlag = true
+		case "STANDBY_DB":
+			standbyDbFlag = true
 		}
 
 		result = append(result, corev1.EnvVar{Name: variable.Name, Value: variable.Value})
@@ -230,7 +233,6 @@ func buildEnvVarsSpec(
 	// GSM specific
 	if restype == "GSM" {
 		if !sDirectParam {
-			//varinfo = "director_name=sharddirector" + sDirectorCounter + ";director_region=primary;director_port=1521"
 			varinfo = directorParams
 			result = append(result, corev1.EnvVar{Name: "SHARD_DIRECTOR_PARAMS", Value: varinfo})
 		}
@@ -318,6 +320,13 @@ func buildEnvVarsSpec(
 		default:
 			result = append(result, corev1.EnvVar{Name: "OP_TYPE", Value: "primaryshard"})
 		}
+
+		if !standbyDbFlag {
+			if role == "STANDBY" || role == "ACTIVE_STANDBY" {
+				result = append(result, corev1.EnvVar{Name: "STANDBY_DB", Value: "true"})
+			}
+		}
+
 		result = append(result, corev1.EnvVar{Name: "KUBE_SVC", Value: name})
 
 		// only for standby roles ---
@@ -338,7 +347,6 @@ func buildEnvVarsSpec(
 				svc = strings.TrimSpace(primaryRef.CdbName)
 			}
 
-			// Keep the individual vars (may be used elsewhere)
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_HOST", Value: host})
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_PORT", Value: port})
 			if strings.TrimSpace(primaryRef.CdbName) != "" {
@@ -348,16 +356,12 @@ func buildEnvVarsSpec(
 				result = append(result, corev1.EnvVar{Name: "PRIMARY_PDB_NAME", Value: strings.TrimSpace(primaryRef.PdbName)})
 			}
 
-			// This is what your scripts/pods are clearly expecting (you saw it in printenv)
-			// If svc is empty, still set host:port (better than blank)
 			conn := host + ":" + port
 			if svc != "" {
 				conn = conn + "/" + svc
 			}
 
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: conn})
-
-			// Backward compatible helper (if any scripts still read this)
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: conn})
 		}
 	}
