@@ -288,6 +288,27 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 		},
 		Env: buildEnvVarsSpec(instance, OraShardSpex.EnvVars, OraShardSpex.Name, "SHARD", false, "NONE", OraShardSpex.DeployAs, OraShardSpex.PrimaryDatabaseRef),
 	}
+	role := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
+	if role == "STANDBY" || role == "ACTIVE_STANDBY" {
+		containerSpec.Command = []string{
+			"/bin/bash",
+			"-lc",
+			`set -e
+if [ -z "${ORACLE_PWD:-}" ]; then
+  if [ -n "${COMMON_OS_PWD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" ]; then
+    openssl pkeyutl -decrypt \
+      -in "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" \
+      -inkey "${KEY_SECRET_VOLUME:-/mnt/secrets}/${PWD_KEY:-key.pem}" \
+      -out /tmp/.orapwd
+    export ORACLE_PWD="$(cat /tmp/.orapwd)"
+    rm -f /tmp/.orapwd
+  elif [ -n "${PASSWORD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}" ]; then
+    export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}")"
+  fi
+fi
+exec /opt/oracle/runOracle.sh`,
+		}
+	}
 
 	if instance.Spec.IsClone {
 		containerSpec.Command = []string{orainitCmd3}
