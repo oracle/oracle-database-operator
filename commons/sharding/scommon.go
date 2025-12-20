@@ -357,13 +357,20 @@ func buildEnvVarsSpec(
 				svc = strings.TrimSpace(primaryRef.PdbName)
 			}
 
-			conn := "//" + host + ":" + port
+			connNoSlash := host + ":" + port
+			connWithSlash := "//" + host + ":" + port
+
 			if svc != "" {
-				conn = conn + "/" + svc
+				connNoSlash = connNoSlash + "/" + svc
+				connWithSlash = connWithSlash + "/" + svc
 			}
 
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: conn})
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: conn})
+			// keep this format for the python/dbca scripts
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connNoSlash})
+
+			// use this format for RMAN (prevents ORA-12154)
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connWithSlash})
+
 		}
 	}
 
