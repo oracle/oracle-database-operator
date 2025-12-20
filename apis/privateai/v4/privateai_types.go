@@ -83,6 +83,7 @@ type PrivateAiSpec struct {
 	PaiHTTPSPort    int32  `json:"paiHTTPSPort,omitempty"`
 	PaiLBPort       int32  `json:"paiLBPort,omitempty"`
 	PaiLBIP         string `json:"paiLBIP,omitempty"`
+	// +kubebuilder:validation:Enum="local";"cluster"
 	// +kubebuilder:default="local"
 	PaiLBExternalTrafficPolicy string `json:"paiLBExternalTrafficPolicy,omitempty"`
 	// +kubebuilder:validation:Enum="true";"false"

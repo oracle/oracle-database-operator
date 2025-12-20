@@ -452,6 +452,12 @@ func BuildServiceDefForPrivateAi(instance *privateaiv4.PrivateAi, svctype string
 		service.Spec.Type = corev1.ServiceTypeLoadBalancer
 		service.Spec.Selector = labels
 
+		if instance.Spec.PaiLBExternalTrafficPolicy == "local" {
+			service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyLocal
+		} else {
+			service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyCluster
+		}
+
 		if status, err := strconv.ParseBool(instance.Spec.PaiInternalLB); err == nil && status {
 			if service.ObjectMeta.Annotations == nil {
 				service.ObjectMeta.Annotations = make(map[string]string, len(instance.Spec.PailbAnnotation)+2)
