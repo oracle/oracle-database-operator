@@ -341,12 +341,7 @@ func buildEnvVarsSpec(
 				port = fmt.Sprint(primaryRef.Port)
 			}
 
-			// Prefer PDB if provided, else fall back to CDB, else empty service name
-			svc := strings.TrimSpace(primaryRef.PdbName)
-			if svc == "" {
-				svc = strings.TrimSpace(primaryRef.CdbName)
-			}
-
+			// Keep individual vars (useful for scripts/debug)
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_HOST", Value: host})
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_PORT", Value: port})
 			if strings.TrimSpace(primaryRef.CdbName) != "" {
@@ -356,7 +351,13 @@ func buildEnvVarsSpec(
 				result = append(result, corev1.EnvVar{Name: "PRIMARY_PDB_NAME", Value: strings.TrimSpace(primaryRef.PdbName)})
 			}
 
-			conn := host + ":" + port
+			// Always use PRIMARY CDB service for standby duplicate
+			svc := strings.TrimSpace(primaryRef.CdbName)
+			if svc == "" {
+				svc = strings.TrimSpace(primaryRef.PdbName)
+			}
+
+			conn := "//" + host + ":" + port
 			if svc != "" {
 				conn = conn + "/" + svc
 			}
