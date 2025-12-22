@@ -365,11 +365,11 @@ func buildEnvVarsSpec(
 				connWithSlash = connWithSlash + "/" + svc
 			}
 
-			// keep this format for the python/dbca scripts
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connNoSlash})
-
-			// use this format for RMAN (prevents ORA-12154)
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connWithSlash})
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connWithSlash})
+
+			// Optional: keep the old form for debugging/compat
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_NOSLASH", Value: connNoSlash})
 
 		}
 	}
