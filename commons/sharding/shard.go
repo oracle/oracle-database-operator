@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -56,6 +57,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+const standbySqlnetOra = `NAMES.DIRECTORY_PATH=(TNSNAMES,EZCONNECT,HOSTNAME)
+`
 
 func buildLabelsForShard(instance *databasev4.ShardingDatabase, label string, shardName string) map[string]string {
 	return map[string]string{
@@ -123,18 +127,112 @@ func buildStatefulSpecForShard(instance *databasev4.ShardingDatabase, OraShardSp
 		},
 		VolumeClaimTemplates: volumeClaimTemplatesForShard(instance, OraShardSpex),
 	}
-	//	if OraShardSpex.OraShardSize == 0 {
-	//		OraShardSpex.OraShardSize = 1
-	sfsetspec.Replicas = &size
-	//	} else {
-	//		sfsetspec.Replicas = &OraShardSpex.OraShardSize
-	//	}
 
+	sfsetspec.Replicas = &size
 	return sfsetspec
 }
 
-// Function to build PodSpec
+// NEW: Standby Net initContainer (listener.ora + tnsnames.ora + sqlnet.ora) BEFORE DBCA/RMAN runs.
+func buildStandbyNetInitContainerForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) (corev1.Container, bool) {
+	role := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
+	if role != "STANDBY" && role != "ACTIVE_STANDBY" {
+		return corev1.Container{}, false
+	}
 
+	if OraShardSpex.PrimaryDatabaseRef == nil ||
+		strings.TrimSpace(OraShardSpex.PrimaryDatabaseRef.Host) == "" ||
+		OraShardSpex.PrimaryDatabaseRef.Port == 0 ||
+		strings.TrimSpace(OraShardSpex.PrimaryDatabaseRef.CdbName) == "" {
+		return corev1.Container{}, false
+	}
+
+	privFlag := false
+	uid := oraRunAsUser
+	gid := oraFsGroup
+
+	primarySid := strings.ToUpper(strings.TrimSpace(OraShardSpex.PrimaryDatabaseRef.CdbName))
+	primaryHost := strings.TrimSpace(OraShardSpex.PrimaryDatabaseRef.Host)
+
+	// Writes into:
+	// 1) /opt/oracle/oradata/dbconfig/<SID>  (SIDB style)
+	// 2) $ORACLE_HOME/network/admin          (so DBCA/RMAN can resolve aliases during bootstrap)
+	script := `set -euo pipefail
+
+SID_UPPER="$(echo "${ORACLE_SID:-}" | tr '[:lower:]' '[:upper:]')"
+if [ -z "${SID_UPPER}" ]; then
+  echo "ERROR: ORACLE_SID is empty"; exit 1
+fi
+
+# Fallback ORACLE_HOME (19c common). If image exports ORACLE_HOME already, it will be used.
+if [ -z "${ORACLE_HOME:-}" ]; then
+  export ORACLE_HOME="/u01/app/oracle/product/19c/dbhome_1"
+fi
+
+CFG_DIR="` + oraDataMount + `/dbconfig/${SID_UPPER}"
+NET_ADMIN="${ORACLE_HOME}/network/admin"
+
+mkdir -p "${CFG_DIR}" "${NET_ADMIN}"
+
+# listener.ora (SIDB constant) -> static services for NOMOUNT + DGMGRL
+cat > "${CFG_DIR}/listener.ora" <<EOF
+` + dbcommons.ListenerEntry + `
+EOF
+
+# tnsnames.ora (SIDB constant) -> PRIMARY_SID alias (ex: PSHARD1 -> primary host)
+cat > "${CFG_DIR}/tnsnames.ora" <<EOF
+` + dbcommons.PrimaryTnsnamesEntry + `
+EOF
+
+# sqlnet.ora -> allow TNSNAMES + EZCONNECT resolution
+cat > "${CFG_DIR}/sqlnet.ora" <<EOF
+` + standbySqlnetOra + `
+EOF
+
+# Make bootstrap tools read from ORACLE_HOME/network/admin too
+ln -sf "${CFG_DIR}/listener.ora" "${NET_ADMIN}/listener.ora"
+ln -sf "${CFG_DIR}/tnsnames.ora" "${NET_ADMIN}/tnsnames.ora"
+ln -sf "${CFG_DIR}/sqlnet.ora" "${NET_ADMIN}/sqlnet.ora"
+
+chown -R 54321:54321 "${CFG_DIR}" "${NET_ADMIN}" || true
+chmod 0644 "${CFG_DIR}/"*.ora || true
+
+echo "[standby-net-init] prepared Oracle Net files in ${CFG_DIR} and ${NET_ADMIN}"
+ls -l "${CFG_DIR}" || true
+`
+
+	c := corev1.Container{
+		Name:  OraShardSpex.Name + "-standby-net-init",
+		Image: instance.Spec.DbImage,
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot:             BoolPointer(true),
+			AllowPrivilegeEscalation: BoolPointer(false),
+			Privileged:               &privFlag,
+			RunAsUser:                &uid,
+			RunAsGroup:               &gid,
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+		},
+		Command:      []string{"/bin/bash", "-lc", script},
+		VolumeMounts: buildVolumeMountSpecForShard(instance, OraShardSpex),
+		Env: []corev1.EnvVar{
+			// Used by ListenerEntry (${ORACLE_SID^^}) and our script
+			{Name: "ORACLE_SID", Value: strings.ToUpper(OraShardSpex.Name)},
+			// Used by PrimaryTnsnamesEntry
+			{Name: "PRIMARY_SID", Value: primarySid},
+			{Name: "PRIMARY_IP", Value: primaryHost},
+			// Helpful for diagnostics (not required by constants)
+			{Name: "PRIMARY_DB_CONN_STR", Value: "//" + primaryHost + ":1521/" + primarySid},
+		},
+	}
+
+	if OraShardSpex.ImagePulllPolicy != nil {
+		c.ImagePullPolicy = *OraShardSpex.ImagePulllPolicy
+	}
+	return c, true
+}
+
+// Function to build PodSpec
 func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *corev1.PodSpec {
 
 	user := oraRunAsUser
@@ -151,8 +249,19 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 		ServiceAccountName: instance.Spec.SrvAccountName,
 	}
 
+	//  NEW: compose initContainers (standby net-init + optional download-scripts)
+	var initList []corev1.Container
+
+	if c, ok := buildStandbyNetInitContainerForShard(instance, OraShardSpex); ok {
+		initList = append(initList, c)
+	}
+
 	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
-		spec.InitContainers = buildInitContainerSpecForShard(instance, OraShardSpex)
+		initList = append(initList, buildInitContainerSpecForShard(instance, OraShardSpex)...)
+	}
+
+	if len(initList) > 0 {
+		spec.InitContainers = initList
 	}
 
 	if len(instance.Spec.DbImagePullSecret) > 0 {
@@ -197,8 +306,14 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 		result = append(result, corev1.Volume{Name: OraShardSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraShardSpex.ShardConfigData.Name}}}})
 	}
 
+	//  FIX: Volume name must match VolumeMount ("-oradata-vol4")
 	if len(OraShardSpex.PvcName) != 0 {
-		result = append(result, corev1.Volume{Name: OraShardSpex.Name + "oradata-vol4", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OraShardSpex.PvcName}}})
+		result = append(result, corev1.Volume{
+			Name: OraShardSpex.Name + "-oradata-vol4",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OraShardSpex.PvcName},
+			},
+		})
 	}
 
 	if len(instance.Spec.StagePvcName) != 0 {
@@ -288,8 +403,17 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 		},
 		Env: buildEnvVarsSpec(instance, OraShardSpex.EnvVars, OraShardSpex.Name, "SHARD", false, "NONE", OraShardSpex.DeployAs, OraShardSpex.PrimaryDatabaseRef),
 	}
+
+	// DBCA/RMAN to use our dbconfig tnsnames
 	role := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
 	if role == "STANDBY" || role == "ACTIVE_STANDBY" {
+		containerSpec.Env = append(containerSpec.Env,
+			corev1.EnvVar{
+				Name:  "TNS_ADMIN",
+				Value: oraDataMount + "/dbconfig/" + strings.ToUpper(OraShardSpex.Name),
+			},
+		)
+
 		containerSpec.Command = []string{
 			"/bin/bash",
 			"-lc",
