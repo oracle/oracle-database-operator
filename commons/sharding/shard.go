@@ -334,7 +334,6 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 
 // Function to build the container Specification
 func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Container {
-	// building Continer spec
 	var result []corev1.Container
 	user := oraRunAsUser
 	group := oraFsGroup
@@ -419,13 +418,24 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 			"-lc",
 			`set -e
 if [ -z "${ORACLE_PWD:-}" ]; then
-  if [ -n "${COMMON_OS_PWD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" ]; then
+  # 1) SIDB style secret path
+  if [ -f "/run/secrets/oracle_pwd" ]; then
+    export ORACLE_PWD="$(cat /run/secrets/oracle_pwd)"
+
+  # 2) Kubernetes plaintext key (mounted at ${SECRET_VOLUME}=/mnt/secrets via oraSecretMount)
+  elif [ -f "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd" ]; then
+    export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd")"
+
+  # 3) Existing encrypted flow (pwdfile.enc + key.pem)
+  elif [ -n "${COMMON_OS_PWD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" ]; then
     openssl pkeyutl -decrypt \
       -in "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" \
       -inkey "${KEY_SECRET_VOLUME:-/mnt/secrets}/${PWD_KEY:-key.pem}" \
       -out /tmp/.orapwd
     export ORACLE_PWD="$(cat /tmp/.orapwd)"
     rm -f /tmp/.orapwd
+
+  # 4) Existing PASSWORD_FILE fallback
   elif [ -n "${PASSWORD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}" ]; then
     export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}")"
   fi
@@ -441,10 +451,8 @@ exec /opt/oracle/runOracle.sh`,
 	if OraShardSpex.Resources != nil {
 		containerSpec.Resources = *OraShardSpex.Resources
 	}
-	// building Complete Container Spec
-	result = []corev1.Container{
-		containerSpec,
-	}
+
+	result = []corev1.Container{containerSpec}
 	return result
 }
 
@@ -496,6 +504,8 @@ func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraSh
 func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.VolumeMount {
 	var result []corev1.VolumeMount
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
+	// NEW: also mount same secret at /run/secrets (SIDB style)
+	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: "/run/secrets", ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
 	if instance.Spec.IsDownloadScripts {
 		result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})
@@ -583,6 +593,8 @@ func BuildServiceDefForShard(instance *databasev4.ShardingDatabase, replicaCount
 	if svctype == "local" {
 		service.Spec.ClusterIP = corev1.ClusterIPNone
 		service.Spec.Selector = getSvcLabelsForShard(replicaCount, OraShardSpex)
+		// publish DNS for NotReady endpoints (needed for DBCA/RMAN duplicate bootstrap)
+		service.Spec.PublishNotReadyAddresses = true
 	}
 
 	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
