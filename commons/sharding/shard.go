@@ -416,17 +416,19 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 		containerSpec.Command = []string{
 			"/bin/bash",
 			"-lc",
-			`set -e
+			`set -euo pipefail
+
+# If ORACLE_PWD is not already set, seed it like SIDB does + support our secret formats.
 if [ -z "${ORACLE_PWD:-}" ]; then
-  # 1) SIDB style secret path
+  # 1) SIDB/Podman secret style (no K8S volume mount needed)
   if [ -f "/run/secrets/oracle_pwd" ]; then
     export ORACLE_PWD="$(cat /run/secrets/oracle_pwd)"
 
-  # 2) Kubernetes plaintext key (mounted at ${SECRET_VOLUME}=/mnt/secrets via oraSecretMount)
+  # 2) K8S plain secret file (your current mount)
   elif [ -f "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd" ]; then
     export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd")"
 
-  # 3) Existing encrypted flow (pwdfile.enc + key.pem)
+  # 3) Your existing encrypted file flow (pwdfile.enc + key.pem)
   elif [ -n "${COMMON_OS_PWD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" ]; then
     openssl pkeyutl -decrypt \
       -in "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" \
@@ -435,11 +437,16 @@ if [ -z "${ORACLE_PWD:-}" ]; then
     export ORACLE_PWD="$(cat /tmp/.orapwd)"
     rm -f /tmp/.orapwd
 
-  # 4) Existing PASSWORD_FILE fallback
+  # 4) Your existing plain password file variable
   elif [ -n "${PASSWORD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}" ]; then
     export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}")"
+
+  # 5) Optional: base64 env support (if you want)
+  elif [ -n "${ORACLE_PWD_B64:-}" ]; then
+    export ORACLE_PWD="$(echo "${ORACLE_PWD_B64}" | base64 -d)"
   fi
 fi
+
 exec /opt/oracle/runOracle.sh`,
 		}
 	}
@@ -504,8 +511,6 @@ func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraSh
 func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.VolumeMount {
 	var result []corev1.VolumeMount
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
-	// NEW: also mount same secret at /run/secrets (SIDB style)
-	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: "/run/secrets", ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
 	if instance.Spec.IsDownloadScripts {
 		result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})
