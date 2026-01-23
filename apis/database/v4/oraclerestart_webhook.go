@@ -62,6 +62,8 @@ import (
 // log is for logging in this package.
 var OracleRestartlog = logf.Log.WithName("OracleRestart-resource")
 
+// SetupWebhookWithManager registers the OracleRestart webhook with the
+// controller manager.
 func (r *OracleRestart) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(&OracleRestart{}).
@@ -70,12 +72,12 @@ func (r *OracleRestart) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-oraclerestart,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestarts,verbs=create;update,versions=v4,name=moraclerestart.kb.io,admissionReviewVersions={v1}
 
 var _ webhook.CustomDefaulter = &OracleRestart{}
 
+// Default mutates an OracleRestart resource to apply default values before
+// admission.
 func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
 	cr, ok := obj.(*OracleRestart)
 	if !ok {
@@ -124,12 +126,11 @@ func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
 	return nil
 }
 
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-oraclerestart,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestarts,versions=v4,name=voraclerestart.kb.io,admissionReviewVersions={v1}
 
 var _ webhook.CustomValidator = &OracleRestart{}
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
+// ValidateCreate verifies OracleRestart resources on creation.
 func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	cr, ok := obj.(*OracleRestart)
 	if !ok {
@@ -352,29 +353,7 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 
 	if old.Spec.ConfigParams != nil && newCr.Spec.ConfigParams != nil {
 
-		// // CRS
-		// if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.CrsAsmDiskDgRedundancy, newCr.Spec.ConfigParams.CrsAsmDiskDgRedundancy, "crsAsmDiskDgRedundancy"); err != nil {
-		// 	validationErrs = append(validationErrs, err)
-		// }
-		// // DB
-		// if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.DBAsmDiskDgRedundancy, newCr.Spec.ConfigParams.DBAsmDiskDgRedundancy, "dbAsmDiskDgRedundancy"); err != nil {
-		// 	validationErrs = append(validationErrs, err)
-		// }
-		// // RECO
-		// if err := validateRedundancyOnUpdate(old.Spec.ConfigParams.RecoAsmDiskDgRedundancy, newCr.Spec.ConfigParams.RecoAsmDiskDgRedundancy, "recoAsmDiskDgRedundancy"); err != nil {
-		// 	validationErrs = append(validationErrs, err)
-		// }
 	}
-
-	// if old.Spec.AsmStorageDetails != nil && newCr.Spec.AsmStorageDetails != nil {
-	// 	errs := validateAsmNoDiskResize(
-	// 		old.Spec.AsmStorageDetails.DisksBySize,
-	// 		newCr.Spec.AsmStorageDetails.DisksBySize,
-	// 		field.NewPath("spec").Child("asmStorageDetails").Child("disksBySize"),
-	// 	)
-	// 	validationErrs = append(validationErrs, errs...)
-	// }
-
 	// Forbid downscale or warn on SGA/PGA
 	oldSga, _ := parseMem(old.Spec.ConfigParams.SgaSize)
 	newSga, _ := parseMem(newCr.Spec.ConfigParams.SgaSize)
@@ -384,12 +363,12 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 			newCr.Spec.ConfigParams.SgaSize, "reducing SGA size after initial deploy is not allowed"))
 	}
 	// Likewise for PGA
-	oldSga, _ = parseMem(old.Spec.ConfigParams.PgaSize)
-	newSga, _ = parseMem(newCr.Spec.ConfigParams.PgaSize)
-	if newSga < oldSga {
+	oldPga, _ := parseMem(old.Spec.ConfigParams.PgaSize)
+	newPga, _ := parseMem(newCr.Spec.ConfigParams.PgaSize)
+	if newPga < oldPga {
 		validationErrs = append(validationErrs, field.Invalid(
-			field.NewPath("spec").Child("configParams").Child("sgaSize"),
-			newCr.Spec.ConfigParams.SgaSize, "reducing SGA size after initial deploy is not allowed"))
+			field.NewPath("spec").Child("configParams").Child("pgaSize"),
+			newCr.Spec.ConfigParams.PgaSize, "reducing PGA size after initial deploy is not allowed"))
 	}
 
 	if len(validationErrs) > 0 {
@@ -401,6 +380,7 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 	return nil, nil
 }
 
+// ValidateDelete enforces constraints when OracleRestart resources are deleted.
 func (r *OracleRestart) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	cr, ok := obj.(*OracleRestart)
 	if !ok {
@@ -409,12 +389,13 @@ func (r *OracleRestart) ValidateDelete(ctx context.Context, obj runtime.Object) 
 
 	OracleRestartlog.Info("validate delete", "name", cr.Name)
 
-	// TODO: Add any deletion-specific logic if required
 	return nil, nil
 }
 
 //========== User Functions to check the fields ==========
 
+// validateDbSecret checks DB secret fields for required values and encryption
+// compatibility.
 func (r *OracleRestart) validateDbSecret() field.ErrorList {
 	var validationErrs field.ErrorList
 	dbPath := field.NewPath("spec").Child("DbSecret")
@@ -432,6 +413,9 @@ func (r *OracleRestart) validateDbSecret() field.ErrorList {
 
 	return validationErrs
 }
+
+// validateTdeSecret checks TDE wallet secret fields for required entries and
+// encryption compatibility.
 func (r *OracleRestart) validateTdeSecret() field.ErrorList {
 	var validationErrs field.ErrorList
 	tdePath := field.NewPath("spec").Child("TdeWalletSecret")
@@ -452,6 +436,9 @@ func (r *OracleRestart) validateTdeSecret() field.ErrorList {
 
 	return validationErrs
 }
+
+// validateServiceSpecs verifies service configuration such as cardinality,
+// TAF policy, failover type, and role settings.
 func (r *OracleRestart) validateServiceSpecs() field.ErrorList {
 	var validationErrs field.ErrorList
 	svcPath := field.NewPath("spec").Child("ServiceDetails")
@@ -495,6 +482,8 @@ func (r *OracleRestart) validateServiceSpecs() field.ErrorList {
 
 	return validationErrs
 }
+
+// validateAsmStorage ensures ASM storage details are provided when required.
 func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 	var validationErrs field.ErrorList
 	asmPath := field.NewPath("spec").Child("AsmStorageDetails")
@@ -508,6 +497,8 @@ func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 	return validationErrs
 }
 
+// validateGeneric performs general spec validation including instance naming
+// and secret references.
 func (r *OracleRestart) validateGeneric() field.ErrorList {
 	var validationErrs field.ErrorList
 
@@ -594,10 +585,7 @@ func (r *OracleRestart) validateGeneric() field.ErrorList {
 	return validationErrs
 }
 
-//========================== Validate inital specs check ends here ================
-
-// =========================== Update specs checks block begin Here =======================
-
+// validateUpdateGeneric checks general constraints on update operations.
 func (r *OracleRestart) validateUpdateGeneric(old *OracleRestart) field.ErrorList {
 	var validationErrs field.ErrorList
 
@@ -631,6 +619,7 @@ func (r *OracleRestart) validateUpdateGeneric(old *OracleRestart) field.ErrorLis
 	return validationErrs
 }
 
+// validateUpdateServiceSpecs validates service-related fields during updates.
 func (r *OracleRestart) validateUpdateServiceSpecs(old *OracleRestart) field.ErrorList {
 	var validationErrs field.ErrorList
 
@@ -662,6 +651,7 @@ func (r *OracleRestart) validateUpdateServiceSpecs(old *OracleRestart) field.Err
 	return validationErrs
 }
 
+// validateUpdateAsmStorage verifies ASM storage updates respect required rules.
 func (r *OracleRestart) validateUpdateAsmStorage(old *OracleRestart) field.ErrorList {
 	var validationErrs field.ErrorList
 	// Add actual validation logic here if needed
@@ -698,6 +688,7 @@ func (r *OracleRestart) validateUpdateAsmStorage(old *OracleRestart) field.Error
 	return validationErrs
 }
 
+// validateUpdateDbSecret validates DB secret changes during updates.
 func (r *OracleRestart) validateUpdateDbSecret(old *OracleRestart) field.ErrorList {
 	var validationErrs field.ErrorList
 
@@ -727,6 +718,7 @@ func (r *OracleRestart) validateUpdateDbSecret(old *OracleRestart) field.ErrorLi
 	return validationErrs
 }
 
+// validateUpdateTdeSecret validates TDE secret updates.
 func (r *OracleRestart) validateUpdateTdeSecret(old *OracleRestart) field.ErrorList {
 	var validationErrs field.ErrorList
 
@@ -756,6 +748,7 @@ func (r *OracleRestart) validateUpdateTdeSecret(old *OracleRestart) field.ErrorL
 	return validationErrs
 }
 
+// validateUpdateSshSecret checks SSH secret updates for permitted changes.
 func (r *OracleRestart) validateUpdateSshSecret(old *OracleRestart) field.ErrorList {
 	var validationErrs field.ErrorList
 
@@ -785,6 +778,8 @@ func (r *OracleRestart) validateUpdateSshSecret(old *OracleRestart) field.ErrorL
 	return validationErrs
 }
 
+// getDeviceCount returns the number of disks defined in the comma-separated
+// device list.
 func getDeviceCount(deviceList string) int {
 	if deviceList == "" {
 		return 0
@@ -799,6 +794,8 @@ func getDeviceCount(deviceList string) int {
 	return count
 }
 
+// validateAsmRedundancyAndDisks ensures redundancy settings align with the
+// number of provided disks for ASM device lists.
 func (r *OracleRestart) validateAsmRedundancyAndDisks(
 	devList, redundancy, paramField string,
 ) field.ErrorList {
@@ -846,6 +843,7 @@ func (r *OracleRestart) validateAsmRedundancyAndDisks(
 	return errs
 }
 
+// validateMemorySize ensures memory strings use supported units and format.
 func validateMemorySize(sizeStr string) error {
 	matched, _ := regexp.MatchString(`^\d+(Gi|Mi|G|M)$`, sizeStr)
 	if !matched {
@@ -856,6 +854,7 @@ func validateMemorySize(sizeStr string) error {
 
 const safetyPct = 0.80 // Only 80% of pod memory can be used for SGA+PGA
 
+// parseMem converts memory strings into byte counts for validation.
 func parseMem(memStr string) (int64, error) {
 	if memStr == "" {
 		return 0, nil
@@ -889,6 +888,8 @@ func parseMem(memStr string) (int64, error) {
 	return int64(num) * multiplier, nil
 }
 
+// validateOracleSysctls enforces format and size constraints on Oracle-specific
+// sysctl overrides.
 func validateOracleSysctls(sysctls map[string]string, sgaBytes int64, pageSize int64) field.ErrorList {
 	var errs field.ErrorList
 	// kernel.sem = "250 32000 100 128"

@@ -35,15 +35,15 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
-
 package v4
 
 type AsmDiskGroupDetails struct {
-	Name       string         `json:"name,omitempty"`
-	Redundancy string         `json:"redundancy,omitempty"`
-	Type       AsmDiskDGTypes `json:"type,omitempty"`
-	Disks      []string       `json:"disks"`
-	AutoUpdate string         `json:"autoUpdate,omitempty"`
+	Name         string         `json:"name,omitempty"`
+	Redundancy   string         `json:"redundancy,omitempty"`
+	Type         AsmDiskDGTypes `json:"type,omitempty"`
+	Disks        []string       `json:"disks"`
+	AutoUpdate   string         `json:"autoUpdate,omitempty"`
+	StorageClass string         `json:"storageClass,omitempty"`
 }
 type AsmDiskDGTypes string
 

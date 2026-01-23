@@ -58,6 +58,8 @@ spec:
                       type: string
                     redundancy:
                       type: string
+                    storageClass:
+                      type: string
                     type:
                       type: string
                   required:
@@ -691,6 +693,9 @@ spec:
             required:
             - instDetails
             type: object
+            x-kubernetes-validations:
+            - message: instDetails is required
+              rule: self.instDetails != null
           status:
             properties:
               DbName:

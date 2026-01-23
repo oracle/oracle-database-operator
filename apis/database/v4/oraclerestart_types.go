@@ -45,10 +45,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// OracleRestartSpec defines the desired state of OracleRestart
+// OracleRestartSpec defines the desired state of an Oracle Restart deployment.
+// It contains configuration for Oracle instance details, storage, security, and service settings.
+// +kubebuilder:object:generate=true
+// +kubebuilder:validation:XValidation:rule="self.instDetails != null",message="instDetails is required"
 type OracleRestartSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -97,6 +97,54 @@ type DiskBySize struct {
 	DiskNames       []string `json:"diskNames,omitempty"`
 }
 
+// InitParams contains the initialization parameters for Oracle database and Grid Infrastructure setup.
+// It specifies CPU, memory allocation, installation paths, response files, software locations,
+// database configuration, and patch management settings.
+//
+// CPU and Memory Configuration:
+// - CpuCount: Number of CPUs to allocate
+// - SgaSize: System Global Area size
+// - PgaSize: Program Global Area size
+// - Processes: Maximum number of processes
+// - HugePages: Number of huge pages to allocate
+//
+// Installation Directories:
+// - GridHome: Oracle Grid Infrastructure home directory
+// - DbHome: Oracle Database home directory
+// - GridBase: Grid Infrastructure base directory
+// - DbBase: Database base directory
+// - Inventory: Oracle inventory directory location
+//
+// Installation Files and Response Configuration:
+// - GridResponseFile: Response file for Grid Infrastructure installation
+// - DbResponseFile: Response file for Database installation
+// - GridSwZipFile: Grid software zip file path
+// - DbSwZipFile: Database software zip file path
+// - OPatchSwZipFile: OPatch software zip file path
+// - StagingSoftwareLocation: Location where software is staged
+//
+// Operation and Database Configuration:
+// - OpType: Type of operation to perform
+// - DbUniqueName: Unique name of the database
+// - DbName: Database name
+// - PdbName: Pluggable database name
+// - DbStorageType: Storage type for database
+// - DbCharSet: Database character set
+// - DbType: Type of database
+// - DbConfigType: Database configuration type
+// - EnableArchiveLog: Enable archive logging
+//
+// Software and Patch Locations:
+// - SwMountLocation: Software mount location
+// - HostSwStageLocation: Host-level software staging location
+// - RuPatchLocation: RU patch location
+// - RuFolderName: RU folder name
+// - OPatchLocation: OPatch utility location
+// - SwStagePvc: Persistent volume claim for software staging
+// - SwStagePvcMountLocation: Mount location for software staging PVC
+// - OneOffLocation: One-off patch location
+// - DbOneOffIds: One-off patch IDs for database
+// - GridOneOffIds: One-off patch IDs for Grid Infrastructure
 type InitParams struct {
 	CpuCount                int          `json:"cpuCount,omitempty"`
 	SgaSize                 string       `json:"sgaSize,omitempty"`
@@ -138,6 +186,9 @@ type InitParams struct {
 	GridOneOffIds           string `json:"gridOneOffIds,omitempty"`
 }
 
+// OracleRestartInstDetailSpec defines the specification for an Oracle Restart instance detail.
+// It contains configuration parameters for managing Oracle Restart instances including
+// storage locations, worker nodes, environment variables, and persistent volume claim settings.
 type OracleRestartInstDetailSpec struct {
 	Name                 string          `json:"name,omitempty"` // Name of the Oracle Restart Instance
 	HostSwLocation       string          `json:"hostSwLocation,omitempty"`

@@ -1,0 +1,617 @@
+### Details of the racdbprov-sample before the disk deletion
+
+$ kubectl get all -n rac -o wide
+NAME             READY   STATUS    RESTARTS   AGE   IP            NODE            NOMINATED NODE   READINESS GATES
+pod/racnode1-0   1/1     Running   0          13h   10.244.1.94   qck-ocne19-w1   <none>           <none>
+pod/racnode2-0   1/1     Running   0          13h   10.244.2.79   qck-ocne19-w2   <none>           <none>
+
+NAME                        TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)           AGE   SELECTOR
+service/racnode-scan        ClusterIP   None             <none>        <none>            13h   cluster=racnode-scan
+service/racnode-scan-lsnr   NodePort    10.100.199.56    <none>        1521:31521/TCP    13h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0          ClusterIP   None             <none>        <none>            13h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-lsnr     NodePort    10.100.16.22     <none>        31522:31522/TCP   13h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-ons      NodePort    10.108.171.185   <none>        6200:30200/TCP    13h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-vip      ClusterIP   None             <none>        <none>            13h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode2-0          ClusterIP   None             <none>        <none>            13h   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-lsnr     NodePort    10.110.115.78    <none>        31523:31523/TCP   13h   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-ons      NodePort    10.104.114.219   <none>        6200:30201/TCP    13h   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-vip      ClusterIP   None             <none>        <none>            13h   statefulset.kubernetes.io/pod-name=racnode2-0
+
+NAME                        READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/racnode1   1/1     13h   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     13h   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+
+
+
+$ kubectl describe racdatabases.database.oracle.com/racdbprov-sample -n rac
+Name:         racdbprov-sample
+Namespace:    rac
+Labels:       <none>
+Annotations:  racdatabases.database.oracle.com/old-spec:
+                {"instanceDetails":{"nodeCount":2,"racHostSwLocation":"/scratch/rac/cluster01","racNodeName":"racnode","baseOnsTargetPort":30200,"baseLsnr...
+API Version:  database.oracle.com/v4
+Kind:         RacDatabase
+Metadata:
+  Creation Timestamp:  2025-12-22T05:55:44Z
+  Finalizers:
+    database.oracle.com/racdatabasefinalizer
+  Generation:        1
+  Resource Version:  1207445
+  UID:               e5ef3f87-d337-4546-8cb8-10e20b2a48c1
+Spec:
+  Asm Disk Group Details:
+    Disks:
+      /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+      /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+    Name:        DATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
+  Config Params:
+    Cpu Count:               8
+    Db Base:                 /u01/app/oracle
+    Db Home:                 /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                 PORCLCDB
+    Db Sw Zip File:          db_home.zip
+    Grid Base:               /u01/app/grid
+    Grid Home:               /u01/app/19c/grid
+    Grid Sw Zip File:        grid_home.zip
+    Host Sw Stage Location:  /scratch/software/stage/19c/19.28GoldImageSoftware
+    Inventory:               /u01/app/oraInventory
+    Pga Size:                6G
+    Processes:               2000
+    Sga Size:                20G
+    Sw Mount Location:       /u01
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Env Vars:
+    Name:             IGNORE_CRS_PREREQS
+    Value:            true
+    Name:             IGNORE_DB_PREREQS
+    Value:            true
+  Image:              phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+  Image Pull Policy:  Always
+  Instance Details:
+    Base Lsnr Target Port:  31522
+    Base Ons Target Port:   30200
+    Node Count:             2
+    Private IP Details:
+      Interface:           ens1
+      Name:                macvlan-conf1
+      Interface:           ens2
+      Name:                macvlan-conf2
+    Rac Host Sw Location:  /scratch/rac/cluster01
+    Rac Node Name:         racnode
+    Worker Node Selector:
+      Raccluster:  raccluster01
+  Resources:
+    Limits:
+      Cpu:     12
+      Memory:  36Gi
+    Requests:
+      Cpu:               12
+      Memory:            36Gi
+  Scan Svc Name:         racnode-scan
+  Scan Svc Target Port:  31521
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmall
+      Value:  8388608
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmax
+      Value:  34359738368
+      Name:   kernel.shmmni
+      Value:  4096
+      Name:   net.ipv4.conf.all.rp_filter
+      Value:  2
+  Service Details:
+    Name:  soepdb
+  Ssh Key Secret:
+
+    Key Mount Location:    /mnt/.ssh
+    Name:                  ssh-key-secret
+    Priv Key Secret Name:  ssh-privkey
+    Pub Key Secret Name:   ssh-pubkey
+  Tde Wallet Secret:
+    Key File Mount Location:  /mnt/.tdesecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.tdesecrets
+    Pwd File Name:            pwdfile.enc
+Status:
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+      Size In Gb:  49
+      Valid:       true
+      Name:        /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+      Size In Gb:  49
+      Valid:       true
+    Name:          DATA
+    Redundancy:    EXTERN
+    Type:          CRSDG
+  Client Etc Host:
+    10.0.1.34    racnode1-0.rac.svc.cluster.local racnode1-0-vip.rac.svc.cluster.local    racnode-scan.rac.svc.cluster.local
+    10.0.1.214    racnode2-0.rac.svc.cluster.local racnode2-0-vip.rac.svc.cluster.local    racnode-scan.rac.svc.cluster.local
+  Conditions:
+    Last Transition Time:  2025-12-22T19:15:52Z
+    Message:               no reconcile errors
+    Observed Generation:   1
+    Reason:                LastReconcileCycleCompleted
+    Status:                True
+    Type:                  ReconcileComplete
+  Config Params:
+    Db Base:       /u01/app/oracle
+    Db Home:       /u01/app/oracle/product/19c/dbhome_1
+    Db Name:       PORCLCDB
+    Grid Base:     /u01/app/grid
+    Grid Home:     /u01/app/19c/grid
+    Inventory:     /u01/app/oraInventory
+  Connect String:  racnode-scan:1521/PORCLCDB
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Db State:                   OPEN
+  External Connect String:    racnode-scan.rac.svc.cluster.local:31521/soepdb
+  Pdb Connect String:         racnode-scan:1521/soepdb
+  Rac Nodes:
+    Name:  racnode1-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+      State:  AVAILABLE
+      Vip Details:
+        Name:  racnode1-0-vip
+    Name:      racnode2-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+      State:  AVAILABLE
+      Vip Details:
+        Name:      racnode2-0-vip
+  Release Update:  19.28.0.0.0
+  Role:            PRIMARY
+  Scan Svc Name:   racnode-scan
+  Service Details:
+    Name:       soepdb
+    Svc State:  service soepdb is running on instance(s) porclcdb1,porclcdb2
+  State:        AVAILABLE
+Events:         <none>
+
+
+
+$ kubectl get pvc -n rac
+NAME                                STATUS   VOLUME                             CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+asm-pvc-b8ff8be9-racdbprov-sample   Bound    asm-pv-b8ff8be9-racdbprov-sample   49Gi       RWX                           <unset>                 13h
+asm-pvc-d6a10c56-racdbprov-sample   Bound    asm-pv-d6a10c56-racdbprov-sample   49Gi       RWX                           <unset>                 13h
+
+
+$ kubectl get pv -n rac
+NAME                               CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                   STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
+asm-pv-b8ff8be9-racdbprov-sample   49Gi       RWX            Retain           Bound    rac/asm-pvc-b8ff8be9-racdbprov-sample                  <unset>                          13h
+asm-pv-d6a10c56-racdbprov-sample   49Gi       RWX            Retain           Bound    rac/asm-pvc-d6a10c56-racdbprov-sample                  <unset>                          13h
+
+
+[root@racnode1-0 rac-work-dir]# su - grid
+Last login: Mon Dec 22 19:51:14 UTC 2025 on pts/0
+[grid@racnode1-0 ~]$
+[grid@racnode1-0 ~]$
+[grid@racnode1-0 ~]$ export ORACLE_SID=+ASM1
+[grid@racnode1-0 ~]$ asmcmd lsdsk
+Path
+/dev/disk/by-partlabel/qck-ocne19-asmdisk1
+/dev/disk/by-partlabel/qck-ocne19-asmdisk2
+[grid@racnode1-0 ~]$
+[grid@racnode1-0 ~]$ ls -lrt /dev/disk/by-partlabel/qck-ocne19-asmdisk*
+brw-rw----. 1 grid asmadmin 8, 65 Dec 22 19:51 /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+brw-rw----. 1 grid asmadmin 8, 97 Dec 22 19:51 /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+[grid@racnode1-0 ~]$ sqlplus "/ as sysasm"
+
+SQL*Plus: Release 19.0.0.0.0 - Production on Mon Dec 22 19:51:50 2025
+Version 19.28.0.0.0
+
+Copyright (c) 1982, 2025, Oracle.  All rights reserved.
+
+
+Connected to:
+Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production
+Version 19.28.0.0.0
+
+SQL> set lines 200
+SQL> col path format a50
+SQL> select group_number, disk_number, name, total_mb, free_mb, path from v$asm_disk;
+
+GROUP_NUMBER DISK_NUMBER NAME				  TOTAL_MB    FREE_MB PATH
+------------ ----------- ------------------------------ ---------- ---------- --------------------------------------------------
+	   1	       1 DATA_0001			     51196	45688 /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+	   1	       0 DATA_0000			     51196	45640 /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+
+SQL>
+
+
+
+
+
+### Apply the file "rac_prov_asm_disk_deletion.yaml" to delete an exising ASM Disk
+
+$ date;kubectl apply -f rac_prov_asm_disk_deletion.yaml
+Fri Dec 19 13:41:22 UTC 2025
+racdatabase.database.oracle.com/racdbprov-sample configured
+
+
+
+
+### At this stage, the DB Operator will not drop the disk and will report it being part of a diskgroup:
+
+2025-12-22T19:54:16Z	ERROR	Reconciler error	{"controller": "racdatabase", "controllerGroup": "database.oracle.com", "controllerKind": "RacDatabase", "RacDatabase": {"name":"racdbprov-sample","namespace":"rac"}, "namespace": "rac", "name": "racdbprov-sample", "reconcileID": "279e55e4-9871-48eb-ad1d-87b8fad6bae8", "error": "disk '/dev/disk/by-partlabel/qck-ocne19-asmdisk2' is still part of diskgroup 'DATA' and must be removed manually"}
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:474
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:421
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func1.1
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:296
+
+
+
+
+
+### Now, if you want to drop the disk, first drop the disk manually at the ASM Level using "ALTER DISKGROUP DROP DISK" command as below while DB Operator will be in waiting:
+
+[grid@racnode1-0 ~]$ export ORACLE_SID=+ASM1
+[grid@racnode1-0 ~]$ sqlplus "/ as sysasm"
+
+SQL*Plus: Release 19.0.0.0.0 - Production on Mon Dec 22 19:54:45 2025
+Version 19.28.0.0.0
+
+Copyright (c) 1982, 2025, Oracle.  All rights reserved.
+
+
+Connected to:
+Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production
+Version 19.28.0.0.0
+
+SQL> ALTER DISKGROUP DATA DROP DISK 'DATA_0001' REBALANCE POWER 10;
+
+Diskgroup altered.
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  1	  1374	       10	  35
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  1	  1374	       10	  35
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  1	  1374	       10	 311
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  0	  1374	       10	 546
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  0	  1374	       10	1022
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  0	  1374	       10	1244
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  0	  1374	       10	1307
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+no rows selected
+
+
+### At this stage, the DB Operator will detect the disk not in use and will proceed to drop the disk
+
+2025-12-22T19:58:52Z	INFO	controllers.controllers.RacDatabase	Detected removal of ASM disks	{"removedAsmDisks": ["/dev/disk/by-partlabel/qck-ocne19-asmdisk2"]}
+2025-12-22T19:58:52Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-b8ff8be9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T19:58:52Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-b8ff8be9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T19:58:52Z	INFO	controllers.controllers.RacDatabase	Updating existing configmap (cluster-style ASM update)	{"ConfigMap": "racnode1racdbprov-sample-cmap"}
+2025-12-22T19:58:52Z	INFO	controllers.controllers.RacDatabase	ConfigMap updated successfully with new ASM disk details (new-style cluster mode)
+2025-12-22T19:58:56Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T19:58:56Z	INFO	controllers.controllers.RacDatabase	Change State to UPDATING
+2025-12-22T19:58:56Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T19:58:56Z	INFO	controllers.controllers.RacDatabase	Conflict detected in updateRacNodeStatusForCluster, retrying...	{"attempt": 1}
+2025-12-22T19:58:58Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T19:58:58Z	INFO	controllers.controllers.RacDatabase	StatefulSet spec differs for volume devices, updating StatefulSet (pods may be recreated)	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode1"}
+2025-12-22T19:58:58Z	INFO	controllers.controllers.RacDatabase	StatefulSet update applied, waiting for pod recreation	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode1"}
+2025-12-22T19:58:58Z	INFO	controllers.controllers.RacDatabase	Waiting for StatefulSet update to be applied	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode1"}
+2025-12-22T19:59:03Z	INFO	controllers.controllers.RacDatabase	StatefulSet update is applied successfully	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode1"}
+2025-12-22T19:59:03Z	INFO	controllers.controllers.RacDatabase	Updating existing configmap (cluster-style ASM update)	{"ConfigMap": "racnode2racdbprov-sample-cmap"}
+2025-12-22T19:59:03Z	INFO	controllers.controllers.RacDatabase	ConfigMap updated successfully with new ASM disk details (new-style cluster mode)
+2025-12-22T19:59:31Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T19:59:31Z	INFO	controllers.controllers.RacDatabase	Change State to UPDATING
+2025-12-22T19:59:31Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T19:59:31Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T19:59:31Z	INFO	controllers.controllers.RacDatabase	StatefulSet spec differs for volume devices, updating StatefulSet (pods may be recreated)	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode2"}
+2025-12-22T19:59:31Z	INFO	controllers.controllers.RacDatabase	StatefulSet update applied, waiting for pod recreation	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode2"}
+2025-12-22T19:59:31Z	INFO	controllers.controllers.RacDatabase	StatefulSet update is applied successfully	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode2"}
+2025-12-22T20:00:01Z	INFO	controllers.controllers.RacDatabase	Deleted ASM PVC & PV	{"PVC": "asm-pvc-d6a10c56-racdbprov-sample", "PV": "asm-pv-d6a10c56-racdbprov-sample"}
+
+
+
+
+
+
+
+
+### Details of the racdbprov-sample after the disk deletion
+
+$ kubectl get all -n rac -o wide
+NAME             READY   STATUS    RESTARTS   AGE     IP            NODE            NOMINATED NODE   READINESS GATES
+pod/racnode1-0   1/1     Running   0          8m46s   10.244.1.95   qck-ocne19-w1   <none>           <none>
+pod/racnode2-0   1/1     Running   0          8m13s   10.244.2.80   qck-ocne19-w2   <none>           <none>
+
+NAME                        TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)           AGE   SELECTOR
+service/racnode-scan        ClusterIP   None             <none>        <none>            14h   cluster=racnode-scan
+service/racnode-scan-lsnr   NodePort    10.100.199.56    <none>        1521:31521/TCP    14h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0          ClusterIP   None             <none>        <none>            14h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-lsnr     NodePort    10.100.16.22     <none>        31522:31522/TCP   14h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-ons      NodePort    10.108.171.185   <none>        6200:30200/TCP    14h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-vip      ClusterIP   None             <none>        <none>            14h   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode2-0          ClusterIP   None             <none>        <none>            14h   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-lsnr     NodePort    10.110.115.78    <none>        31523:31523/TCP   14h   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-ons      NodePort    10.104.114.219   <none>        6200:30201/TCP    14h   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-vip      ClusterIP   None             <none>        <none>            14h   statefulset.kubernetes.io/pod-name=racnode2-0
+
+NAME                        READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/racnode1   1/1     14h   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     14h   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+
+
+
+$ kubectl describe racdatabases.database.oracle.com/racdbprov-sample -n rac
+Name:         racdbprov-sample
+Namespace:    rac
+Labels:       <none>
+Annotations:  racdatabases.database.oracle.com/old-spec:
+                {"instanceDetails":{"nodeCount":2,"racHostSwLocation":"/scratch/rac/cluster01","racNodeName":"racnode","baseOnsTargetPort":30200,"baseLsnr...
+API Version:  database.oracle.com/v4
+Kind:         RacDatabase
+Metadata:
+  Creation Timestamp:  2025-12-22T05:55:44Z
+  Finalizers:
+    database.oracle.com/racdatabasefinalizer
+  Generation:        2
+  Resource Version:  1210020
+  UID:               e5ef3f87-d337-4546-8cb8-10e20b2a48c1
+Spec:
+  Asm Disk Group Details:
+    Disks:
+      /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+    Name:        DATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
+  Config Params:
+    Cpu Count:               8
+    Db Base:                 /u01/app/oracle
+    Db Home:                 /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                 PORCLCDB
+    Db Sw Zip File:          db_home.zip
+    Grid Base:               /u01/app/grid
+    Grid Home:               /u01/app/19c/grid
+    Grid Sw Zip File:        grid_home.zip
+    Host Sw Stage Location:  /scratch/software/stage/19c/19.28GoldImageSoftware
+    Inventory:               /u01/app/oraInventory
+    Pga Size:                6G
+    Processes:               2000
+    Sga Size:                20G
+    Sw Mount Location:       /u01
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Env Vars:
+    Name:             IGNORE_CRS_PREREQS
+    Value:            true
+    Name:             IGNORE_DB_PREREQS
+    Value:            true
+  Image:              phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+  Image Pull Policy:  Always
+  Instance Details:
+    Base Lsnr Target Port:  31522
+    Base Ons Target Port:   30200
+    Node Count:             2
+    Private IP Details:
+      Interface:           ens1
+      Name:                macvlan-conf1
+      Interface:           ens2
+      Name:                macvlan-conf2
+    Rac Host Sw Location:  /scratch/rac/cluster01
+    Rac Node Name:         racnode
+    Worker Node Selector:
+      Raccluster:  raccluster01
+  Resources:
+    Limits:
+      Cpu:     12
+      Memory:  36Gi
+    Requests:
+      Cpu:               12
+      Memory:            36Gi
+  Scan Svc Name:         racnode-scan
+  Scan Svc Target Port:  31521
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmall
+      Value:  8388608
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmax
+      Value:  34359738368
+      Name:   kernel.shmmni
+      Value:  4096
+      Name:   net.ipv4.conf.all.rp_filter
+      Value:  2
+  Service Details:
+    Name:  soepdb
+  Ssh Key Secret:
+    Key Mount Location:    /mnt/.ssh
+    Name:                  ssh-key-secret
+    Priv Key Secret Name:  ssh-privkey
+    Pub Key Secret Name:   ssh-pubkey
+  Tde Wallet Secret:
+    Key File Mount Location:  /mnt/.tdesecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.tdesecrets
+    Pwd File Name:            pwdfile.enc
+Status:
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+      Size In Gb:  49
+      Valid:       true
+    Name:          DATA
+    Redundancy:    EXTERN
+    Type:          CRSDG
+  Client Etc Host:
+    10.0.1.34    racnode1-0.rac.svc.cluster.local racnode1-0-vip.rac.svc.cluster.local    racnode-scan.rac.svc.cluster.local
+    10.0.1.214    racnode2-0.rac.svc.cluster.local racnode2-0-vip.rac.svc.cluster.local    racnode-scan.rac.svc.cluster.local
+  Conditions:
+    Last Transition Time:  2025-12-22T20:04:02Z
+    Message:               oracle RAC database is in a restricted state: PROVISIONING
+    Observed Generation:   2
+    Reason:                LastReconcileCycleQueued
+    Status:                True
+    Type:                  ReconcileQueued
+  Config Params:
+    Db Base:       /u01/app/oracle
+    Db Home:       /u01/app/oracle/product/19c/dbhome_1
+    Db Name:       PORCLCDB
+    Grid Base:     /u01/app/grid
+    Grid Home:     /u01/app/19c/grid
+    Inventory:     /u01/app/oraInventory
+  Connect String:  racnode-scan:1521/PORCLCDB
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Db State:                   OPEN
+  External Connect String:    racnode-scan.rac.svc.cluster.local:31521/soepdb
+  Pdb Connect String:         racnode-scan:1521/soepdb
+  Rac Nodes:
+    Name:  racnode1-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+      State:  AVAILABLE
+      Vip Details:
+        Name:  racnode1-0-vip
+    Name:      racnode2-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+      State:  AVAILABLE
+      Vip Details:
+        Name:      racnode2-0-vip
+  Release Update:  19.28.0.0.0
+  Role:            PRIMARY
+  Scan Svc Name:   racnode-scan
+  Service Details:
+    Name:       soepdb
+    Svc State:  service soepdb is running on instance(s) porclcdb1,porclcdb2
+  State:        AVAILABLE
+Events:         <none>
+
+
+
+$ kubectl get pvc -n rac
+NAME                                STATUS   VOLUME                             CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+asm-pvc-b8ff8be9-racdbprov-sample   Bound    asm-pv-b8ff8be9-racdbprov-sample   49Gi       RWX                           <unset>                 14h
+
+
+$ kubectl get pv -n rac
+NAME                               CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                   STORAGECLASS   VOLUMEATTRIBUTESCLASS   REASON   AGE
+asm-pv-b8ff8be9-racdbprov-sample   49Gi       RWX            Retain           Bound    rac/asm-pvc-b8ff8be9-racdbprov-sample                  <unset>                          14h
+
+
+[root@racnode1-0 rac-work-dir]# su - grid
+Last login: Mon Dec 22 20:09:16 UTC 2025 on pts/0
+[grid@racnode1-0 ~]$ export ORACLE_SID=+ASM1
+[grid@racnode1-0 ~]$ asmcmd lsdsk
+Path
+/dev/disk/by-partlabel/qck-ocne19-asmdisk1
+[grid@racnode1-0 ~]$ ls -lrt /dev/disk/by-partlabel/qck-ocne19-asmdisk*
+brw-rw----. 1 grid asmadmin 8, 97 Dec 22 20:09 /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+[grid@racnode1-0 ~]$
+[grid@racnode1-0 ~]$
+[grid@racnode1-0 ~]$ sqlplus "/ as sysasm"
+
+SQL*Plus: Release 19.0.0.0.0 - Production on Mon Dec 22 20:09:39 2025
+Version 19.28.0.0.0
+
+Copyright (c) 1982, 2025, Oracle.  All rights reserved.
+
+
+Connected to:
+Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production
+Version 19.28.0.0.0
+
+SQL> set lines 200
+SQL> col path format a50
+SQL> select group_number, disk_number, name, total_mb, free_mb, path from v$asm_disk;
+
+GROUP_NUMBER DISK_NUMBER NAME				  TOTAL_MB    FREE_MB PATH
+------------ ----------- ------------------------------ ---------- ---------- --------------------------------------------------
+	   1	       0 DATA_0000			     51196	39312 /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+
+SQL>

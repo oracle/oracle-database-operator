@@ -92,6 +92,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /mutate-database-oracle-com-v4-racdatabase
+  failurePolicy: Fail
+  name: mracdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - racdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /mutate-database-oracle-com-v4-shardingdatabase
   failurePolicy: Fail
   name: mshardingdatabasev4.kb.io
@@ -438,6 +458,27 @@ webhooks:
     - DELETE
     resources:
     - oraclerestarts
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-racdatabase
+  failurePolicy: Fail
+  name: vracdatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - racdatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1

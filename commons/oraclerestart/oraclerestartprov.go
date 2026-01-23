@@ -70,6 +70,7 @@ const (
 )
 
 // Constants for rac-stateful StatefulSet & Volumes
+// buildLabelsForOracleRestart provides documentation for the buildLabelsForOracleRestart function.
 func buildLabelsForOracleRestart(instance *oraclerestartdb.OracleRestart, label string) map[string]string {
 	return map[string]string{
 		"cluster": "oraclerestart",
@@ -78,17 +79,20 @@ func buildLabelsForOracleRestart(instance *oraclerestartdb.OracleRestart, label 
 	// "oralabel": getLabelForOracleRestart(instance),
 }
 
+// buildLabelsForAsmPv provides documentation for the buildLabelsForAsmPv function.
 func buildLabelsForAsmPv(instance *oraclerestartdb.OracleRestart, diskName string) map[string]string {
 	return map[string]string{
 		"asm_vol": "block-asm-pv-" + getLabelForOracleRestart(instance) + "-" + diskName[strings.LastIndex(diskName, "/")+1:],
 	}
 }
 
+// getLabelForOracleRestart provides documentation for the getLabelForOracleRestart function.
 func getLabelForOracleRestart(instance *oraclerestartdb.OracleRestart) string {
 
 	return instance.Name
 }
 
+// BuildStatefulSetForOracleRestart provides documentation for the BuildStatefulSetForOracleRestart function.
 func BuildStatefulSetForOracleRestart(
 	instance *oraclerestart.OracleRestart,
 	OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec,
@@ -112,6 +116,7 @@ func BuildStatefulSetForOracleRestart(
 }
 
 // Function to build TypeMeta
+// buildTypeMetaForOracleRestart provides documentation for the buildTypeMetaForOracleRestart function.
 func buildTypeMetaForOracleRestart() metav1.TypeMeta {
 	// building TypeMeta
 	typeMeta := metav1.TypeMeta{
@@ -122,6 +127,7 @@ func buildTypeMetaForOracleRestart() metav1.TypeMeta {
 }
 
 // Function to build ObjectMeta
+// builObjectMetaForOracleRestart provides documentation for the builObjectMetaForOracleRestart function.
 func builObjectMetaForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) metav1.ObjectMeta {
 	// building objectMeta
 	objmeta := metav1.ObjectMeta{
@@ -133,6 +139,7 @@ func builObjectMetaForOracleRestart(instance *oraclerestartdb.OracleRestart, Ora
 }
 
 // Function to build Stateful Specs
+// buildStatefulSpecForOracleRestart provides documentation for the buildStatefulSpecForOracleRestart function.
 func buildStatefulSpecForOracleRestart(
 	instance *oraclerestart.OracleRestart,
 	OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec,
@@ -187,6 +194,7 @@ func buildStatefulSpecForOracleRestart(
 	return sfsetspec, nil
 }
 
+// asmPvcsExist provides documentation for the asmPvcsExist function.
 func asmPvcsExist(instance *oraclerestart.OracleRestart, kClient client.Client) bool {
 	for _, dg := range instance.Spec.AsmStorageDetails {
 		for _, diskName := range dg.Disks {
@@ -212,6 +220,7 @@ func asmPvcsExist(instance *oraclerestart.OracleRestart, kClient client.Client) 
 
 // Function to build PodSpec
 
+// buildPodSpecForOracleRestart provides documentation for the buildPodSpecForOracleRestart function.
 func buildPodSpecForOracleRestart(
 	instance *oraclerestart.OracleRestart,
 	OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec,
@@ -343,6 +352,7 @@ func parseSGASizeBytes(sga string) int64 {
 	return val * multiplier
 }
 
+// calculateSysctls provides documentation for the calculateSysctls function.
 func calculateSysctls(
 	sgaBytes, pgaBytes, containerMemBytes, hugePagesBytes, userShmmax, userShmall int64,
 ) ([]corev1.Sysctl, error) {
@@ -440,6 +450,7 @@ func calculateSysctls(
 }
 
 // Function get the Node Affinity
+// getNodeAffinity provides documentation for the getNodeAffinity function.
 func getNodeAffinity(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) *corev1.Affinity {
 
 	nodeAffinity := &corev1.NodeAffinity{
@@ -468,6 +479,7 @@ func getNodeAffinity(instance *oraclerestartdb.OracleRestart, OracleRestartSpex 
 }
 
 // Function get the Node Affinity
+// getAsmNodeAffinity provides documentation for the getAsmNodeAffinity function.
 func getAsmNodeAffinity(instance *oraclerestartdb.OracleRestart) *corev1.VolumeNodeAffinity {
 
 	nodeAffinity := &corev1.VolumeNodeAffinity{
@@ -495,6 +507,7 @@ func getAsmNodeAffinity(instance *oraclerestartdb.OracleRestart) *corev1.VolumeN
 }
 
 // Function to build Volume Spec
+// buildVolumeSpecForOracleRestart provides documentation for the buildVolumeSpecForOracleRestart function.
 func buildVolumeSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.Volume {
 	var result []corev1.Volume
 	result = []corev1.Volume{
@@ -655,6 +668,7 @@ func buildVolumeSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, Or
 }
 
 // Function to build the container Specification
+// buildContainerSpecForOracleRestart provides documentation for the buildContainerSpecForOracleRestart function.
 func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec) []corev1.Container {
 	// building Continer spec
 	var result []corev1.Container
@@ -705,6 +719,7 @@ func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, O
 	return result
 }
 
+// resourcesForSGA provides documentation for the resourcesForSGA function.
 func resourcesForSGA(sgaSizeStr string) (corev1.ResourceRequirements, error) {
 	qty, err := resource.ParseQuantity(sgaSizeStr)
 	if err != nil {
@@ -732,6 +747,7 @@ func resourcesForSGA(sgaSizeStr string) (corev1.ResourceRequirements, error) {
 	}, nil
 }
 
+// getAsmVolumeDevices provides documentation for the getAsmVolumeDevices function.
 func getAsmVolumeDevices(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.VolumeDevice {
 	var result []corev1.VolumeDevice
 	seen := make(map[string]struct{}) // Track seen disk names
@@ -756,6 +772,7 @@ func getAsmVolumeDevices(instance *oraclerestartdb.OracleRestart, OracleRestartS
 }
 
 // Function to build the init Container Spec
+// buildInitContainerSpecForOracleRestart provides documentation for the buildInitContainerSpecForOracleRestart function.
 func buildInitContainerSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.Container {
 	var result []corev1.Container
 	// building the init Container Spec
@@ -801,6 +818,7 @@ func buildInitContainerSpecForOracleRestart(instance *oraclerestartdb.OracleRest
 	return result
 }
 
+// buildVolumeMountSpecForOracleRestart provides documentation for the buildVolumeMountSpecForOracleRestart function.
 func buildVolumeMountSpecForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) []corev1.VolumeMount {
 	var result []corev1.VolumeMount
 	if instance.Spec.SshKeySecret != nil && strings.TrimSpace(instance.Spec.SshKeySecret.KeyMountLocation) != "" {
@@ -903,6 +921,7 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestartdb.OracleRestar
 	return result
 }
 
+// VolumePVCForASM provides documentation for the VolumePVCForASM function.
 func VolumePVCForASM(instance *oraclerestartdb.OracleRestart, dgIndex, diskIdx int,
 	diskName, diskGroupName, size, dgType string, k8sClient client.Client,
 ) *corev1.PersistentVolumeClaim {
@@ -964,6 +983,7 @@ func VolumePVCForASM(instance *oraclerestartdb.OracleRestart, dgIndex, diskIdx i
 	return asmPvc
 }
 
+// GetDefaultStorageClass provides documentation for the GetDefaultStorageClass function.
 func GetDefaultStorageClass(ctx context.Context, k8sClient client.Client) (string, error) {
 	var scList storagev1.StorageClassList
 	if err := k8sClient.List(ctx, &scList); err != nil {
@@ -978,6 +998,7 @@ func GetDefaultStorageClass(ctx context.Context, k8sClient client.Client) (strin
 	return "", nil // No default StorageClass found
 }
 
+// VolumePVForASM provides documentation for the VolumePVForASM function.
 func VolumePVForASM(instance *oraclerestartdb.OracleRestart,
 	dgIndex, diskIdx int,
 	diskName, diskGroupName, size string,
@@ -1027,6 +1048,7 @@ func VolumePVForASM(instance *oraclerestartdb.OracleRestart,
 	return asmPvc
 }
 
+// BuildServiceDefForOracleRestart provides documentation for the BuildServiceDefForOracleRestart function.
 func BuildServiceDefForOracleRestart(instance *oraclerestartdb.OracleRestart, replicaCount int32, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, svctype string) *corev1.Service {
 	//service := &corev1.Service{}
 	service := &corev1.Service{
@@ -1054,6 +1076,7 @@ func BuildServiceDefForOracleRestart(instance *oraclerestartdb.OracleRestart, re
 	return service
 }
 
+// BuildExternalServiceDefForOracleRestart provides documentation for the BuildExternalServiceDefForOracleRestart function.
 func BuildExternalServiceDefForOracleRestart(instance *oraclerestartdb.OracleRestart, index int32, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, svctype string, opType string) *corev1.Service {
 	//service := &corev1.Service{}
 
@@ -1092,6 +1115,7 @@ func BuildExternalServiceDefForOracleRestart(instance *oraclerestartdb.OracleRes
 }
 
 // Function to build Service ObjectMeta
+// buildSvcObjectMetaForOracleRestart provides documentation for the buildSvcObjectMetaForOracleRestart function.
 func buildSvcObjectMetaForOracleRestart(instance *oraclerestartdb.OracleRestart, replicaCount int32, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, svctype string) metav1.ObjectMeta {
 	// building objectMeta
 	//var svcName string
@@ -1108,6 +1132,7 @@ func buildSvcObjectMetaForOracleRestart(instance *oraclerestartdb.OracleRestart,
 	return objmeta
 }
 
+// getOracleRestartSvcName provides documentation for the getOracleRestartSvcName function.
 func getOracleRestartSvcName(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, svcType string) string {
 
 	switch svcType {
@@ -1130,6 +1155,7 @@ func getOracleRestartSvcName(instance *oraclerestartdb.OracleRestart, OracleRest
 	}
 }
 
+// getSvcLabelsForOracleRestart provides documentation for the getSvcLabelsForOracleRestart function.
 func getSvcLabelsForOracleRestart(replicaCount int32, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) map[string]string {
 
 	var labelStr map[string]string = make(map[string]string)
@@ -1144,6 +1170,7 @@ func getSvcLabelsForOracleRestart(replicaCount int32, OracleRestartSpex oraclere
 }
 
 // This function cleanup the shard from GSM
+// OraCleanupForOracleRestart provides documentation for the OraCleanupForOracleRestart function.
 func OraCleanupForOracleRestart(instance *oraclerestartdb.OracleRestart,
 	OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec,
 	oldReplicaSize int32,
@@ -1160,6 +1187,7 @@ func OraCleanupForOracleRestart(instance *oraclerestartdb.OracleRestart,
 	return err1
 }
 
+// UpdateProvForOracleRestart provides documentation for the UpdateProvForOracleRestart function.
 func UpdateProvForOracleRestart(instance *oraclerestartdb.OracleRestart,
 	OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, kClient client.Client, sfSet *appsv1.StatefulSet, gsmPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
@@ -1204,6 +1232,7 @@ func UpdateProvForOracleRestart(instance *oraclerestartdb.OracleRestart,
 	return ctrl.Result{}, nil
 }
 
+// ConfigMapSpecs provides documentation for the ConfigMapSpecs function.
 func ConfigMapSpecs(instance *oraclerestartdb.OracleRestart, cmData map[string]string, cmName string) *corev1.ConfigMap {
 	//cm := &corev1.ConfigMap{}
 
@@ -1223,6 +1252,7 @@ func ConfigMapSpecs(instance *oraclerestartdb.OracleRestart, cmData map[string]s
 
 }
 
+// BuildDiskCheckDaemonSet provides documentation for the BuildDiskCheckDaemonSet function.
 func BuildDiskCheckDaemonSet(OracleRestart *oraclerestartdb.OracleRestart) *appsv1.DaemonSet {
 	labels := BuildLabelsForDaemonSet(OracleRestart, "disk-check")
 	workerNodes := getAllWorkerNodes(OracleRestart)
@@ -1329,6 +1359,7 @@ sleep 3600
 }
 
 // Helper function to flatten all disk names in AsmStorageDetails, removing duplicates
+// flattenAsmDisks provides documentation for the flattenAsmDisks function.
 func flattenAsmDisks(racDbSpec *oraclerestartdb.OracleRestartSpec) []string {
 	seen := make(map[string]struct{})
 	var allDisks []string
@@ -1343,6 +1374,7 @@ func flattenAsmDisks(racDbSpec *oraclerestartdb.OracleRestartSpec) []string {
 	return allDisks
 }
 
+// CreateServiceAccountIfNotExists provides documentation for the CreateServiceAccountIfNotExists function.
 func CreateServiceAccountIfNotExists(instance *oraclerestartdb.OracleRestart, kClient client.Client) error {
 	if instance.Spec.SrvAccountName == "" {
 		return nil
@@ -1375,6 +1407,7 @@ func CreateServiceAccountIfNotExists(instance *oraclerestartdb.OracleRestart, kC
 	return nil
 }
 
+// IsStaticProvisioning provides documentation for the IsStaticProvisioning function.
 func IsStaticProvisioning(k8sClient client.Client, instance *oraclerestartdb.OracleRestart) bool {
 	if CheckStorageClass(instance) == "NOSC" {
 		return false
@@ -1395,6 +1428,7 @@ func IsStaticProvisioning(k8sClient client.Client, instance *oraclerestartdb.Ora
 	return true // no default SC → use static
 }
 
+// SwVolumeClaimTemplatesForOracleRestart provides documentation for the SwVolumeClaimTemplatesForOracleRestart function.
 func SwVolumeClaimTemplatesForOracleRestart(instance *oraclerestartdb.OracleRestart, OracleRestartSpex oraclerestartdb.OracleRestartInstDetailSpec) corev1.PersistentVolumeClaim {
 
 	// If user-provided PVC name exists, skip volume claim template creation
@@ -1421,6 +1455,7 @@ func SwVolumeClaimTemplatesForOracleRestart(instance *oraclerestartdb.OracleRest
 	}
 }
 
+// ASMVolumeClaimTemplatesForDG provides documentation for the ASMVolumeClaimTemplatesForDG function.
 func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleRestartSpex oraclerestart.OracleRestartInstDetailSpec, StorageClass *string) []corev1.PersistentVolumeClaim {
 	var claims []corev1.PersistentVolumeClaim
 	mode := corev1.PersistentVolumeBlock
@@ -1463,6 +1498,7 @@ func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleR
 	return claims
 }
 
+// getAllWorkerNodes provides documentation for the getAllWorkerNodes function.
 func getAllWorkerNodes(instance *oraclerestartdb.OracleRestart) []string {
 	nodeSet := map[string]struct{}{}
 	for _, node := range instance.Spec.InstDetails.WorkerNode {
@@ -1476,6 +1512,7 @@ func getAllWorkerNodes(instance *oraclerestartdb.OracleRestart) []string {
 	return nodes
 }
 
+// BuildLabelsForDaemonSet provides documentation for the BuildLabelsForDaemonSet function.
 func BuildLabelsForDaemonSet(instance *oraclerestart.OracleRestart, label string) map[string]string {
 	return map[string]string{
 		"cluster": label,

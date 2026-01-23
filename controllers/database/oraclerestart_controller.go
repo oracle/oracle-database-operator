@@ -95,15 +95,31 @@ const oracleRestartFinalizer = "database.oracle.com/oraclerestartfinalizer"
 //+kubebuilder:rbac:groups="apps",resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups='',resources=statefulsets/finalizers,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the OracleRestart object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
+// Reconcile implements the reconciliation loop for OracleRestart resources.
+// It manages the lifecycle of Oracle Restart deployments on Kubernetes, including:
+// - Resource retrieval and validation
+// - Spec and status initialization
+// - Service creation and management (local, nodeport, and load balancer services)
+// - ASM (Automatic Storage Management) disk discovery and validation
+// - PV/PVC creation for ASM disk groups
+// - Configuration map generation and updates
+// - StatefulSet creation and updates for new setups and disk changes
+// - Pod readiness validation
+// - ONS (Oracle Notification Service) configuration
+// - Resource cleanup and deletion handling
 //
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.6.4/pkg/reconcile
+// The reconciler detects various scenarios:
+// - New setup: Initial deployment with no existing disk groups
+// - Upgrade scenario: Migration from old ASM storage configuration
+// - Disk changes: Addition or removal of ASM disks (cannot process both together)
+// - Missing disk sizes: Triggers disk discovery via daemonset
+//
+// Returns:
+// - ctrl.Result: Requeue policy (with or without delay)
+// - error: Any error encountered during reconciliation
+//
+// The method defers status updates and handles cleanup of temporary resources (daemonsets)
+// upon completion or error conditions.
 func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	//ctx := context.Background()
@@ -640,7 +656,8 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return resultQ, nil
 }
 
-// Function to check DaemonSet status with retry, timeout, and log analysis
+// checkRacDaemonSetStatus checks daemonset progress by polling for readiness
+// and scanning pod logs. It returns true when the disk-check job completes.
 func checkRacDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracleRestart *oraclerestartdb.OracleRestart) (bool, error) {
 	timeout := time.After(2 * time.Minute)
 	tick := time.NewTicker(10 * time.Second) // Poll every 10 seconds
@@ -769,7 +786,9 @@ func (r *OracleRestartReconciler) computeDiskChanges(
 	return addedAsmDisks, removedAsmDisks, nil
 }
 
-// Function to check the RAC topology state and return/dont proceed when matched.
+// checkOracleRestartState blocks reconcile progress when the Oracle Restart
+// resource is in restricted states such as provisioning, updates, or manual
+// operations, returning an error for requeue.
 func checkOracleRestartState(oracleRestart *oraclerestartdb.OracleRestart) error {
 	if oracleRestart.Status.State == string(oraclerestartdb.OracleRestartProvisionState) ||
 		oracleRestart.Status.State == string(oraclerestartdb.OracleRestartUpdateState) ||
@@ -785,6 +804,8 @@ func checkOracleRestartState(oracleRestart *oraclerestartdb.OracleRestart) error
 	return nil
 }
 
+// generateConfigMapAutoUpdate refreshes the envfile data in an existing
+// ConfigMap with current configuration values pulled from status and spec.
 func (r *OracleRestartReconciler) generateConfigMapAutoUpdate(ctx context.Context, instance *oraclerestartdb.OracleRestart, cmName string) (map[string]string, error) {
 	// Fetch the existing ConfigMap
 	cm := &corev1.ConfigMap{}
@@ -839,6 +860,8 @@ func (r *OracleRestartReconciler) generateConfigMapAutoUpdate(ctx context.Contex
 	return configMapData, nil
 }
 
+// updateConfigMap writes updated configuration data back to Kubernetes so the
+// Oracle Restart components observe the latest envfile contents.
 func (r *OracleRestartReconciler) updateConfigMap(ctx context.Context, instance *oraclerestartdb.OracleRestart, configMapData map[string]string, cmName string) (ctrl.Result, error) {
 	cm := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -856,11 +879,32 @@ func (r *OracleRestartReconciler) updateConfigMap(ctx context.Context, instance 
 	return ctrl.Result{}, nil
 }
 
-// #############################################################################
+// updateReconcileStatus updates the reconciliation status of an OracleRestart resource.
+// It updates the RAC topology information, sets the appropriate reconciliation condition
+// based on the current state (completed, blocked, queued, or error), and persists the
+// status changes to the API server with retry logic.
 //
-//	Update each reconcile condition/status
+// The function performs the following operations:
+// 1. Updates the Oracle Restart instance topology and database topology status
+// 2. Determines and sets the appropriate reconciliation condition based on:
+//   - *completed: Sets condition to CrdReconcileCompleteState
+//   - *blocked: Sets condition to CrdReconcileWaitingState
+//   - result.Requeue: Sets condition to CrdReconcileQueuedState
+//   - *err != nil: Sets condition to CrdReconcileErrorState
+//     3. Manages status conditions by removing duplicates and setting the new condition
+//     4. Transitions the resource state from PodAvailableState to AvailableState when
+//     reconciliation is complete
+//     5. Attempts to patch the status with up to maxRetries attempts, handling conflicts
+//     and fetch errors with exponential backoff retry strategy
 //
-// #############################################################################
+// Parameters:
+//   - oracleRestart: The OracleRestart resource to update
+//   - ctx: Context for API operations
+//   - req: The reconciliation request containing namespace and name
+//   - result: The reconciliation result indicating if requeue is needed
+//   - err: Pointer to error that occurred during reconciliation
+//   - blocked: Indicates if reconciliation is blocked on dependencies
+//   - completed: Indicates if reconciliation has completed successfully
 func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, result *ctrl.Result, err *error, blocked *bool, completed *bool) {
 	const maxRetries = 5
 	const retryDelay = 2 * time.Second
@@ -969,11 +1013,12 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 	r.Log.Info("Returning from updateReconcileStatus")
 }
 
-// #############################################################################
-//
-//	Validate the CRD specs
-//
-// #############################################################################
+// validateSpex validates the OracleRestart specification by performing a series of checks
+// on the provided OracleRestart object. It verifies image pull secrets, grid and database
+// response files, and network interface configurations. If any validation fails, it records
+// an event and returns an error. The oldSpec parameter is available for future use in
+// comparing specification changes. It logs the start and completion of validation and
+// returns nil if all validations pass successfully.
 func (r *OracleRestartReconciler) validateSpex(oracleRestart *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec, ctx context.Context) error {
 	var err error
 	eventReason := "Spec Error"
@@ -1096,33 +1141,8 @@ func (r *OracleRestartReconciler) validateSpex(oracleRestart *oraclerestartdb.Or
 
 }
 
-// // Helper function to flatten DisksBySize into a single slice of disk names
-func flattenDisksBySize(oraclerestartdbSpec *oraclerestartdb.OracleRestartSpec) []string {
-	var allDisks []string
-
-	if oraclerestartdbSpec == nil {
-		return allDisks
-	}
-
-	if oraclerestartdbSpec.AsmStorageDetails == nil {
-		return allDisks
-	}
-
-	for _, dg := range oraclerestartdbSpec.AsmStorageDetails {
-		if dg.Disks == nil {
-			continue
-		}
-		allDisks = append(allDisks, dg.Disks...)
-	}
-
-	return allDisks
-}
-
-// #############################################################################
-//
-//	Validate the CRD specs
-//
-// #############################################################################
+// validateASMDisks ensures disk discovery runs when needed and reconciles
+// asm-related DaemonSets to keep status aligned with actual storage.
 func (r *OracleRestartReconciler) validateASMDisks(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context) error {
 	//var eventMsgs []string
 
@@ -1169,6 +1189,9 @@ func (r *OracleRestartReconciler) validateASMDisks(oracleRestart *oraclerestartd
 	return nil
 
 }
+
+// createDaemonSet creates or updates the disk-check DaemonSet used to detect
+// ASM devices for Oracle Restart deployments.
 func (r *OracleRestartReconciler) createDaemonSet(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context) error {
 	r.Log.Info("Validate New ASM Disks")
 
@@ -1214,6 +1237,8 @@ func (r *OracleRestartReconciler) createDaemonSet(oracleRestart *oraclerestartdb
 	return nil
 }
 
+// updateDiskSizes captures ASM disk information from daemonset logs and
+// stores results under the Oracle Restart status block.
 func (r *OracleRestartReconciler) updateDiskSizes(
 	ctx context.Context,
 	oracleRestart *oraclerestartdb.OracleRestart,
@@ -1323,7 +1348,7 @@ func (r *OracleRestartReconciler) updateDiskSizes(
 		}
 		oracleRestart.ResourceVersion = latestInstance.ResourceVersion
 		err = r.Client.Status().Update(ctx, oracleRestart)
-		// err = r.Client.Status().Patch(ctx, racDatabase, client.MergeFrom(latestInstance))
+		// err = r.Client.Status().Patch(ctx, oracleRestart, client.MergeFrom(latestInstance))
 		if err != nil {
 			if apierrors.IsConflict(err) {
 				r.Log.Info("Conflict detected while patching disk status, retrying...", "attempt", attempt+1)
@@ -1339,6 +1364,8 @@ func (r *OracleRestartReconciler) updateDiskSizes(
 	return fmt.Errorf("failed to update disk sizes after %d retries", maxRetries)
 }
 
+// cleanupDaemonSet removes the disk-check DaemonSet when ASM discovery has
+// finished so no helper pods remain running unnecessarily.
 func (r *OracleRestartReconciler) cleanupDaemonSet(OracleRestart *oraclerestartdb.OracleRestart, ctx context.Context) error {
 	// r.Log.Info("CleanupDaemonSet")
 	desiredDaemonSet := oraclerestartcommon.BuildDiskCheckDaemonSet(OracleRestart)
@@ -1401,129 +1428,15 @@ func (r *OracleRestartReconciler) cleanupDaemonSet(OracleRestart *oraclerestartd
 	}
 }
 
-func findDisksToRemove(specDisks, statusDisks []string, instance *oraclerestartdb.OracleRestart) ([]string, error) {
-	// Convert specDisks to a set for fast lookups
-	specDiskSet := make(map[string]struct{})
-	for _, disk := range specDisks {
-		specDiskSet[disk] = struct{}{}
-	}
-
-	// Find disks in statusDisks that are not in specDiskSet
-	var disksToRemove []string
-	for _, disk := range statusDisks {
-		if _, found := specDiskSet[disk]; !found {
-			disksToRemove = append(disksToRemove, disk)
-		}
-	}
-
-	// // Validate that disks to be removed are not part of any other ASM device list
-	// combinedList := strings.Join([]string{
-	// 	instance.Spec.ConfigParams.CrsAsmDeviceList,
-	// 	instance.Spec.ConfigParams.RecoAsmDeviceList,
-	// 	instance.Spec.ConfigParams.RedoAsmDeviceList,
-	// 	instance.Spec.ConfigParams.DbAsmDeviceList,
-	// }, ",")
-	// combinedSet := make(map[string]struct{})
-	// for _, disk := range strings.Split(combinedList, ",") {
-	// 	combinedSet[disk] = struct{}{}
-	// }
-
-	// // Check for any disks to remove that are part of the combined ASM device list
-	var validatedDisks []string
-	// for _, disk := range disksToRemove {
-	// 	if _, found := combinedSet[disk]; found {
-	// 		return nil, fmt.Errorf("disk %s to be removed is part of a disk group, hence cannot be removed", disk)
-	// 	}
-	// 	validatedDisks = append(validatedDisks, disk)
-	// }
-
-	return validatedDisks, nil
-}
-
-func findDisksToAdd(newSpecDisks, statusDisks []string, instance *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec) ([]string, error) {
-	// Create a set for statusDisks to allow valid reuse of existing disks
-	// Step 1: Check for duplicates within newSpecDisks itself
-	// oldAsmDisks := flattenDisksBySize(oldSpec)
-
-	// if len(oldAsmDisks) == len(newSpecDisks) {
-	// 	oldDiskSet := make(map[string]struct{})
-	// 	for _, disk := range oldAsmDisks {
-	// 		oldDiskSet[strings.TrimSpace(disk)] = struct{}{}
-	// 	}
-
-	// 	allDisksMatch := true
-	// 	for _, newDisk := range newSpecDisks {
-	// 		if _, found := oldDiskSet[strings.TrimSpace(newDisk)]; !found {
-	// 			allDisksMatch = false
-	// 			break
-	// 		}
-	// 	}
-
-	// 	if allDisksMatch {
-	// 		return nil, nil // No new disks to add
-	// 	}
-	// }
-
-	seenDisks := make(map[string]struct{})
-	for _, newDisk := range newSpecDisks {
-		trimmedDisk := strings.TrimSpace(newDisk)
-
-		// Check if the disk is already in the seenDisks set, indicating a duplicate within newSpecDisks
-		if _, found := seenDisks[trimmedDisk]; found {
-			return nil, fmt.Errorf("disk '%s' is defined more than once in the new spec and cannot be added multiple times", trimmedDisk)
-		}
-		seenDisks[trimmedDisk] = struct{}{}
-	}
-
-	// Step 2: Create a set for the actual statusDisks by splitting each entry
-	statusDiskSet := make(map[string]struct{})
-	for _, diskEntry := range statusDisks {
-		// Split the disk entry by commas to handle multiple disks in a single string
-		for _, disk := range strings.Split(diskEntry, ",") {
-			statusDiskSet[strings.TrimSpace(disk)] = struct{}{}
-		}
-	}
-
-	// Create sets for each of the individual ASM device lists
-	crsAsmDeviceSet := make(map[string]struct{})
-	recoAsmDeviceSet := make(map[string]struct{})
-	redoAsmDeviceSet := make(map[string]struct{})
-	dbAsmDeviceSet := make(map[string]struct{})
-
-	// Step 4: Create a set to track newly added disks that are valid for addition
-	var validDisksToAdd []string
-	newDiskSet := make(map[string]struct{})
-
-	for _, newDisk := range newSpecDisks {
-		trimmedDisk := strings.TrimSpace(newDisk)
-
-		// If the disk is already part of the statusDisks (existing disks), allow it to stay
-		if _, found := statusDiskSet[trimmedDisk]; found {
-			continue
-		}
-
-		// Check if the disk is already part of any individual ASM device list
-		if _, found := crsAsmDeviceSet[trimmedDisk]; found {
-			return nil, fmt.Errorf("disk '%s' is already part of CRS ASM device list and cannot be added again", trimmedDisk)
-		}
-		if _, found := recoAsmDeviceSet[trimmedDisk]; found {
-			return nil, fmt.Errorf("disk '%s' is already part of RECO ASM device list and cannot be added again", trimmedDisk)
-		}
-		if _, found := redoAsmDeviceSet[trimmedDisk]; found {
-			return nil, fmt.Errorf("disk '%s' is already part of REDO ASM device list and cannot be added again", trimmedDisk)
-		}
-		if _, found := dbAsmDeviceSet[trimmedDisk]; found {
-			return nil, fmt.Errorf("disk '%s' is already part of DB ASM device list and cannot be added again", trimmedDisk)
-		}
-
-		// Add the disk to newDiskSet and consider it valid for addition
-		newDiskSet[trimmedDisk] = struct{}{}
-		validDisksToAdd = append(validDisksToAdd, trimmedDisk)
-	}
-
-	return validDisksToAdd, nil
-}
-
+// setDefaults sets default values for the OracleRestart specification.
+// It configures default values for:
+//   - ImagePullPolicy: defaults to "Always"
+//   - SshKeySecret: sets default SSH key mount location if not specified
+//   - DbSecret: sets default database secret mount locations for password and key files if not specified
+//   - TdeWalletSecret: sets default TDE wallet secret mount locations for password and key files if not specified
+//   - ConfigParams: sets default software mount location and database character set (AL32UTF8)
+//
+// This function modifies the OracleRestart object in place and returns an error if any issues occur.
 func (r *OracleRestartReconciler) setDefaults(oracleRestart *oraclerestartdb.OracleRestart) error {
 
 	if oracleRestart.Spec.ImagePullPolicy == nil {
@@ -1592,19 +1505,13 @@ func (r *OracleRestartReconciler) setDefaults(oracleRestart *oraclerestartdb.Ora
 
 }
 
-func parseSGASizeGB(sizeStr string) int64 {
-	s := strings.ToUpper(strings.TrimSpace(sizeStr))
-	// Remove "GB", "G" suffix if present
-	s = strings.TrimSuffix(s, "GB")
-	s = strings.TrimSuffix(s, "G")
-	// Parse integer
-	val, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0 // or a safe default, e.g., 16
-	}
-	return val
-}
-
+// updateGiConfigParamStatus updates the configuration parameters status in the OracleRestart object.
+// It populates the Status.ConfigParams fields (Inventory, GridBase, GridHome) by either copying them
+// from the Spec if provided, or by extracting them from a Grid response file stored in a ConfigMap.
+// The response file location is determined by ConfigMapName and Name fields in GridResponseFile.
+// If extraction from the response file fails, it sets IsFailed to true and returns an error.
+// It initializes Status.ConfigParams if it is nil before processing.
+// Returns an error if reading the response file fails.
 func (r *OracleRestartReconciler) updateGiConfigParamStatus(oracleRestart *oraclerestartdb.OracleRestart) error {
 
 	//orestartPod := &corev1.Pod{}
@@ -1675,53 +1582,36 @@ func (r *OracleRestartReconciler) updateGiConfigParamStatus(oracleRestart *oracl
 			}
 		}
 
-		// if oracleRestart.Status.ScanSvcName == "" {
-		// 	if oracleRestart.Spec.ScanSvcName != "" {
-		// 		oracleRestart.Status.ScanSvcName = oracleRestart.Spec.ScanSvcName
-		// 	} else {
-		// 		scanname, err := oraclerestartcommon.CheckRspData(OracleRestart, r.Client, "scanName", cName, fName)
-		// 		if err != nil {
-		// 			oracleRestart.Spec.IsFailed = true
-		// 			return errors.New(("error in responsefile, unable to read scanName"))
-		// 		} else {
-		// 			oracleRestart.Status.ScanSvcName = scanname
-		// 		}
-		// 	}
-		// }
-
-		// if oracleRestart.Status.ConfigParams.CrsAsmDiskDg == "" {
-		// 	if oracleRestart.Spec.ConfigParams.CrsAsmDiskDg != "" {
-		// 		oracleRestart.Status.ConfigParams.CrsAsmDiskDg = oracleRestart.Spec.ConfigParams.CrsAsmDiskDg
-		// 	} else {
-		// 		diskGroupName, err := oraclerestartcommon.CheckRspData(oracleRestart, r.Client, "diskGroupName", cName, fName)
-		// 		if err != nil {
-		// 			oracleRestart.Spec.IsFailed = true
-		// 			return errors.New(("error in responsefile, unable to read diskGroupName"))
-		// 		} else {
-		// 			oracleRestart.Status.ConfigParams.CrsAsmDiskDg = diskGroupName
-		// 		}
-		// 	}
-		// }
-
-		// if oracleRestart.Status.ConfigParams.CrsAsmDiskDgRedundancy == "" {
-		// 	if oracleRestart.Spec.ConfigParams.CrsAsmDiskDgRedundancy != "" {
-		// 		oracleRestart.Status.ConfigParams.CrsAsmDiskDgRedundancy = oracleRestart.Spec.ConfigParams.CrsAsmDiskDgRedundancy
-		// 	} else {
-		// 		redundancy, err := oraclerestartcommon.CheckRspData(oracleRestart, r.Client, "redundancy", cName, fName)
-		// 		if err != nil {
-		// 			oracleRestart.Spec.IsFailed = true
-		// 			return errors.New(("error in responsefile, unable to read redundancy"))
-		// 		} else {
-		// 			oracleRestart.Status.ConfigParams.CrsAsmDiskDgRedundancy = redundancy
-		// 		}
-		// 	}
-		// }
 	}
 
 	return nil
 
 }
 
+// updateDbConfigParamStatus updates the configuration parameters status in the OracleRestart resource.
+// It populates the Status.ConfigParams fields by reading values from the Spec.ConfigParams or by
+// extracting them from response files stored in ConfigMaps.
+//
+// The method handles the following configuration parameters:
+// - DbName: Database name, read from response file if not explicitly specified
+// - DbBase: Oracle base directory, read from response file if not explicitly specified
+// - DbHome: Oracle home directory, read from response file if not explicitly specified
+// - GridHome: Grid home directory, read from response file if not explicitly specified
+//
+// For each parameter, the method follows this priority:
+// 1. If the status parameter is already set, it is not modified
+// 2. If the spec parameter is set, it is copied to the status
+// 3. If neither is set, the value is extracted from the response file specified in DbResponseFile
+//
+// The response file location is determined by the ConfigMapName and Name fields in DbResponseFile.
+// If the response file cannot be read or required values are missing, the method sets IsFailed to true
+// and returns an error.
+//
+// Parameters:
+//   - oracleRestart: A pointer to the OracleRestart resource to be updated
+//
+// Returns:
+//   - error: An error if the response file cannot be read or required configuration values are missing
 func (r *OracleRestartReconciler) updateDbConfigParamStatus(oracleRestart *oraclerestartdb.OracleRestart) error {
 
 	//orestartPod := &corev1.Pod{}
@@ -1740,16 +1630,6 @@ func (r *OracleRestartReconciler) updateDbConfigParamStatus(oracleRestart *oracl
 	}
 
 	if oracleRestart.Spec.ConfigParams != nil {
-		// if oracleRestart.Spec.ConfigParams.DbAsmDeviceList != "" {
-		// 	oracleRestart.Status.ConfigParams.DbAsmDeviceList = oracleRestart.Spec.ConfigParams.DbAsmDeviceList
-		// }
-
-		// if oracleRestart.Spec.ConfigParams.RecoAsmDeviceList != "" {
-		// 	oracleRestart.Status.ConfigParams.RecoAsmDeviceList = oracleRestart.Spec.ConfigParams.RecoAsmDeviceList
-		// }
-		// if oracleRestart.Spec.ConfigParams.DBAsmDiskDgRedundancy != "" {
-		// 	oracleRestart.Status.ConfigParams.DBAsmDiskDgRedundancy = oracleRestart.Spec.ConfigParams.DBAsmDiskDgRedundancy
-		// }
 
 		if oracleRestart.Status.ConfigParams.DbName == "" {
 			if oracleRestart.Spec.ConfigParams.DbName != "" {
@@ -1768,87 +1648,6 @@ func (r *OracleRestartReconciler) updateDbConfigParamStatus(oracleRestart *oracl
 				oracleRestart.Status.ConfigParams.DbName = dbName
 			}
 		}
-
-		// if oracleRestart.Status.ConfigParams.DbDataFileDestDg == "" {
-		// 	if oracleRestart.Spec.ConfigParams.DbDataFileDestDg != "" {
-		// 		oracleRestart.Status.ConfigParams.DbDataFileDestDg = oracleRestart.Spec.ConfigParams.DbDataFileDestDg
-		// 		if oracleRestart.Spec.ConfigParams.DbAsmDeviceList != "" {
-		// 			oracleRestart.Status.ConfigParams.DbAsmDeviceList = oracleRestart.Spec.ConfigParams.DbAsmDeviceList
-		// 			// Logic to validate and set Disk group using grid response file and dbca response file
-		// 			var gcName, gfName string
-
-		// 			if oracleRestart.Spec.ConfigParams.GridResponseFile.ConfigMapName != "" {
-		// 				gcName = oracleRestart.Spec.ConfigParams.GridResponseFile.ConfigMapName
-		// 			}
-		// 			if oracleRestart.Spec.ConfigParams.GridResponseFile.Name != "" {
-		// 				gfName = oracleRestart.Spec.ConfigParams.GridResponseFile.Name
-		// 			}
-		// 			if gcName != "" && gfName != "" {
-		// 				diskGroupName, err := oraclerestartcommon.CheckRspData(oracleRestart, r.Client, "diskGroupName", gcName, gfName)
-		// 				if err != nil {
-		// 					oracleRestart.Spec.IsFailed = true
-		// 					return errors.New(("error in responsefile, unable to read diskGroupName"))
-		// 				}
-
-		// 				if oracleRestart.Status.ConfigParams.DbDataFileDestDg != diskGroupName {
-		// 					return nil
-		// 				} else {
-		// 					oracleRestart.Status.ConfigParams.DbDataFileDestDg = diskGroupName
-		// 				}
-		// 			}
-		// 		}
-		// 	} else {
-		// 		// Logic to validate and set Disk group using grid response file and dbca response file
-		// 		var gcName, gfName string
-
-		// 		if oracleRestart.Spec.ConfigParams.GridResponseFile.ConfigMapName != "" {
-		// 			gcName = oracleRestart.Spec.ConfigParams.GridResponseFile.ConfigMapName
-		// 		}
-		// 		if oracleRestart.Spec.ConfigParams.GridResponseFile.Name != "" {
-		// 			gfName = oracleRestart.Spec.ConfigParams.GridResponseFile.Name
-		// 		}
-		// 		if gcName != "" && gfName != "" {
-		// 			diskGroupName, err := oraclerestartcommon.CheckRspData(oracleRestart, r.Client, "diskGroupName", gcName, gfName)
-		// 			if err != nil {
-		// 				oracleRestart.Spec.IsFailed = true
-		// 				return errors.New(("error in grid responsefile, unable to read diskGroupName to set DbDataFileDestDg"))
-		// 			}
-		// 			oracleRestart.Status.ConfigParams.DbDataFileDestDg = diskGroupName
-		// 			dbdgloc, err := oraclerestartcommon.CheckRspData(oracleRestart, r.Client, "datafileDestination", cName, fName)
-		// 			if err != nil {
-		// 				oracleRestart.Spec.IsFailed = true
-		// 				oracleRestart.Status.ConfigParams.DbDataFileDestDg = diskGroupName
-		// 			} else {
-		// 				dbdg := strings.Split(dbdgloc, "/")
-		// 				if len(dbdg) == 0 {
-		// 					return errors.New("error in responsefile, unable to read datafileDestination diskgroup")
-		// 				}
-		// 				oracleRestart.Status.ConfigParams.DbDataFileDestDg = dbdg[0]
-		// 			}
-		// 		} else {
-		// 			return errors.New("neither DbDataFileDestDg is set , nor grid response file is set. One of them is required")
-		// 		}
-		// 	}
-		// }
-
-		// if oracleRestart.Status.ConfigParams.DbRecoveryFileDest == "" {
-		// 	if oracleRestart.Spec.ConfigParams.DbRecoveryFileDest != "" {
-		// 		oracleRestart.Status.ConfigParams.DbRecoveryFileDest = oracleRestart.Spec.ConfigParams.DbRecoveryFileDest
-		// 	} else {
-		// 		if cName != "" && fName != "" {
-		// 			recodgloc, err := oraclerestartcommon.CheckRspData(oracleRestart, r.Client, "recoveryAreaDestination", cName, fName)
-		// 			if err != nil {
-		// 				oracleRestart.Spec.IsFailed = true
-		// 				return errors.New(("error in responsefile, unable to read recoveryAreaDestination"))
-		// 			}
-		// 			recodg := strings.Split(recodgloc, "/")
-		// 			if len(recodg) == 0 {
-		// 				return errors.New("error in responsefile, unable to read recoveryAreaDestination diskgroup")
-		// 			}
-		// 			oracleRestart.Status.ConfigParams.DbDataFileDestDg = recodg[0]
-		// 		}
-		// 	}
-		// }
 
 		if oracleRestart.Status.ConfigParams.DbBase == "" {
 			if oracleRestart.Spec.ConfigParams.DbBase != "" {
@@ -1922,6 +1721,11 @@ func (r *OracleRestartReconciler) updateDbConfigParamStatus(oracleRestart *oracl
 
 }
 
+// updateOracleRestartInstTopologyStatus retrieves and returns the topology status information for an Oracle Restart instance.
+// It validates the Oracle Restart instance, retrieves the associated pod, and collects node details where the pod is running.
+// If the instance is not marked for deletion, it gathers pod names and node information.
+// If pod or node details cannot be collected, it marks the OracleRestart as failed and returns an error.
+// Returns a slice of pod names, a map of pod names to their corresponding nodes, and any error encountered during the process.
 func (r *OracleRestartReconciler) updateOracleRestartInstTopologyStatus(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request) ([]string, map[string]*corev1.Node, error) {
 
 	//orestartPod := &corev1.Pod{}
@@ -1956,6 +1760,7 @@ func (r *OracleRestartReconciler) updateOracleRestartInstTopologyStatus(oracleRe
 	return podNames, nodeDetails, nil
 }
 
+// getNodeDetails fetches Kubernetes node metadata used for topology checks.
 func (r *OracleRestartReconciler) getNodeDetails(nodeName string) (*corev1.Node, error) {
 	node := &corev1.Node{}
 	err := r.Client.Get(context.TODO(), client.ObjectKey{
@@ -1968,6 +1773,8 @@ func (r *OracleRestartReconciler) getNodeDetails(nodeName string) (*corev1.Node,
 	return node, nil
 }
 
+// updateoraclerestartdbTopologyStatus updates database-level topology status
+// using the collected pod and node information.
 func (r *OracleRestartReconciler) updateoraclerestartdbTopologyStatus(OracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podNames []string, nodeDetails map[string]*corev1.Node) error {
 
 	//orestartPod := &corev1.Pod{}
@@ -1979,6 +1786,8 @@ func (r *OracleRestartReconciler) updateoraclerestartdbTopologyStatus(OracleRest
 	return nil
 }
 
+// validateoraclerestartdb ensures Oracle Restart database status is updated
+// after verifying StatefulSet and pod health across nodes.
 func (r *OracleRestartReconciler) validateoraclerestartdb(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podNames []string, nodeDetails map[string]*corev1.Node,
 ) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
@@ -2036,7 +1845,8 @@ func (r *OracleRestartReconciler) validateoraclerestartdb(oracleRestart *oracler
 	return orestartSfSet, orestartPod, fmt.Errorf("failed to update Oracle Restart DB Status after %d attempts", maxRetries)
 }
 
-// ======= Function to validate Shard
+// validateOracleRestartInst validates a single Oracle Restart instance,
+// inspecting associated StatefulSet and pods to drive status updates.
 func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, OraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, specId int) (*appsv1.StatefulSet, *corev1.Pod, error) {
 
 	var err error
@@ -2110,6 +1920,8 @@ func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oracl
 	return orestartSfSet, orestartPod, nil
 }
 
+// updateOracleRestartInstStatus updates Oracle Restart instance status with
+// retry logic to handle concurrent modifications.
 func (r *OracleRestartReconciler) updateOracleRestartInstStatus(
 	oracleRestart *oraclerestartdb.OracleRestart,
 	ctx context.Context,
@@ -2206,6 +2018,8 @@ func GetRestrictedFields() map[string]struct{} {
 	}
 }
 
+// mergeInstancesFromLatest copies relevant fields from the latest object into
+// the working instance to avoid clobbering concurrent status updates.
 func mergeInstancesFromLatest(instance, latestInstance *oraclerestartdb.OracleRestart) error {
 	instanceVal := reflect.ValueOf(instance).Elem()
 	latestVal := reflect.ValueOf(latestInstance).Elem()
@@ -2222,6 +2036,8 @@ func mergeInstancesFromLatest(instance, latestInstance *oraclerestartdb.OracleRe
 	return mergeStructFields(instanceStatus, latestStatus)
 }
 
+// mergeStructFields recursively merges exported struct fields so only blank
+// fields are filled from the latest object.
 func mergeStructFields(instanceField, latestField reflect.Value) error {
 	if instanceField.Kind() != reflect.Struct || latestField.Kind() != reflect.Struct {
 		return fmt.Errorf("fields to be merged must be of struct type")
@@ -2258,10 +2074,14 @@ func mergeStructFields(instanceField, latestField reflect.Value) error {
 	return nil
 }
 
+// isExported reports whether a struct field is exported; merge logic ignores
+// unexported fields.
 func isExported(field reflect.StructField) bool {
 	return field.PkgPath == ""
 }
 
+// generateConfigMap builds the primary envfile ConfigMap for Oracle Restart
+// deployments, assembling data based on the current spec.
 func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.OracleRestart) (map[string]string, error) {
 	configMapData := make(map[string]string, 0)
 	// new_crs_nodes, existing_crs_nodes_healthy, existing_crs_nodes_not_healthy, install_node, new_crs_nodes_list := oraclerestartcommon.GetCrsNodes(instance, r.kubeClient, r.kubeConfig, r.Log, r.Client)
@@ -2665,6 +2485,7 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 	return configMapData, nil
 }
 
+// ensurePlusPrefix ensures ASM disk group names include the '+' prefix.
 func ensurePlusPrefix(name string) string {
 	if name == "" {
 		return ""
@@ -2675,7 +2496,8 @@ func ensurePlusPrefix(name string) string {
 	return name
 }
 
-// normalizeOracleMemoryUnit converts "Gi"/"Mi" to "G"/"M" for Oracle DBCA compatibility
+// normalizeOracleMemoryUnit converts "Gi"/"Mi" suffixes into Oracle DBCA
+// compatible units like "G" and "M".
 func normalizeOracleMemoryUnit(s string) string {
 	s = strings.TrimSpace(strings.ToUpper(s))
 	s = strings.ReplaceAll(s, "GI", "G")
@@ -2683,10 +2505,8 @@ func normalizeOracleMemoryUnit(s string) string {
 	return s
 }
 
-// ================================== CREATE FUNCTIONS =============================
-
-// Create the configmap
-
+// createConfigMap ensures the configuration ConfigMap exists and updates its
+// envfile data when changes are detected.
 func (r *OracleRestartReconciler) createConfigMap(
 	ctx context.Context,
 	instance oraclerestartdb.OracleRestart,
@@ -2729,7 +2549,8 @@ func (r *OracleRestartReconciler) createConfigMap(
 	return ctrl.Result{}, false, nil
 }
 
-// This function create a service based isExtern parameter set in the yaml file
+// createOrReplaceService reconciles Services backing Oracle Restart network
+// endpoints using the desired definition.
 func (r *OracleRestartReconciler) createOrReplaceService(ctx context.Context, instance *oraclerestartdb.OracleRestart,
 	dep *corev1.Service,
 ) (ctrl.Result, error) {
@@ -2767,9 +2588,8 @@ func (r *OracleRestartReconciler) createOrReplaceService(ctx context.Context, in
 	return ctrl.Result{}, nil
 }
 
-// ================================== CREATE FUNCTIONS =============================
-// This function create a service based isExtern parameter set in the yaml file
-
+// createOrReplaceAsmPv reconciles PersistentVolumes for ASM disk devices,
+// ensuring the existing PV matches the requested configuration.
 func (r *OracleRestartReconciler) createOrReplaceAsmPv(
 	ctx context.Context,
 	instance *oraclerestartdb.OracleRestart,
@@ -2817,8 +2637,8 @@ func (r *OracleRestartReconciler) createOrReplaceAsmPv(
 
 }
 
-// ================================== CREATE FUNCTIONS =============================
-// This function create a PVC set in the yaml file
+// createOrReplaceAsmPvC manages PersistentVolumeClaims for ASM disks,
+// creating or validating claims to satisfy storage requirements.
 func (r *OracleRestartReconciler) createOrReplaceAsmPvC(ctx context.Context, instance *oraclerestartdb.OracleRestart,
 	dep *corev1.PersistentVolumeClaim,
 	dgType string,
@@ -2857,10 +2677,8 @@ func (r *OracleRestartReconciler) createOrReplaceAsmPvC(ctx context.Context, ins
 
 }
 
-// // ensureAsmStorageStatus initializes AsmStorageDetails and AsmStorageStatus if they are nil
-// func (r *OracleRestartReconciler) ensureAsmStorageStatus(oracleRestart *oraclerestartdb.OracleRestart) {
-// / ensureAsmStorageStatus initializes ASM DiskGroup details
-// and restores ASM device and disk group info for each RAC instance.
+// ensureAsmStorageStatus initializes ASM disk group status structures when
+// missing and attempts to restore device metadata from running instances.
 func (r *OracleRestartReconciler) ensureAsmStorageStatus(oracleRestart *oraclerestartdb.OracleRestart) {
 	r.Log.Info("Ensuring ASM DiskGroup status initialization")
 
@@ -2927,6 +2745,8 @@ func (r *OracleRestartReconciler) ensureAsmStorageStatus(oracleRestart *oraclere
 	}
 }
 
+// ensureStatefulSetUpdated performs rolling updates on the Oracle Restart
+// StatefulSet when volume device configuration changes.
 func (r *OracleRestartReconciler) ensureStatefulSetUpdated(ctx context.Context,
 	reqLogger logr.Logger,
 	oracleRestart *oraclerestartdb.OracleRestart,
@@ -3009,23 +2829,14 @@ func (r *OracleRestartReconciler) ensureStatefulSetUpdated(ctx context.Context,
 	}
 }
 
+// executeDiskGroupCommand runs a command inside the specified pod to inspect
+// or manipulate ASM disk groups.
 func executeDiskGroupCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (string, string, error) {
 	return oraclerestartcommon.ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
 }
 
-// // Function to get the disk group name
-// func getDiskGroupName(deviceDg string, oracleRestart *oraclerestartdb.OracleRestart) string {
-// 	switch deviceDg {
-// 	case oracleRestart.Spec.ConfigParams.CrsAsmDeviceList:
-// 		return oracleRestart.Spec.ConfigParams.CrsAsmDiskDg
-// 	case oracleRestart.Spec.ConfigParams.DbAsmDeviceList:
-// 		return oracleRestart.Spec.ConfigParams.DbDataFileDestDg
-// 	default:
-// 		return ""
-// 	}
-// }
-
-// Function to check if a disk group exists
+// diskGroupExists checks if a disk group is present by querying the ASM state
+// within a pod.
 func (r *OracleRestartReconciler) diskGroupExists(podName, diskGroupName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (bool, error) {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	cmd := "python3 /opt/scripts/startup/scripts/main.py --getasmdiskgroup=true"
@@ -3039,7 +2850,8 @@ func (r *OracleRestartReconciler) diskGroupExists(podName, diskGroupName string,
 	return false, nil
 }
 
-// Function to add disks
+// addDisks adds new ASM devices to an existing disk group by invoking helper
+// scripts inside each Oracle Restart pod.
 func (r *OracleRestartReconciler) addDisks(ctx context.Context, podList *corev1.PodList, instance *oraclerestartdb.OracleRestart, diskGroupName string, deviceList []string) error {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	// Remove '+' prefix if present
@@ -3076,7 +2888,8 @@ func (r *OracleRestartReconciler) addDisks(ctx context.Context, podList *corev1.
 	return nil
 }
 
-// Function to check DaemonSet status with retry, timeout, and log analysis
+// checkDaemonSetStatus monitors the disk-check DaemonSet until all pods
+// complete successfully, returning readiness or timeout errors.
 func checkDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracleRestart *oraclerestartdb.OracleRestart) (bool, error) {
 	timeout := time.After(2 * time.Minute)
 	tick := time.NewTicker(10 * time.Second) // Poll every 10 seconds
@@ -3171,7 +2984,8 @@ func checkDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracl
 	}
 }
 
-// ================================== CREATE FUNCTIONS =============================
+// createOrReplaceSfs reconciles the Oracle Restart StatefulSet template with
+// the desired specification, creating or updating it as needed.
 func (r *OracleRestartReconciler) createOrReplaceSfs(
 	ctx context.Context,
 	req ctrl.Request,
@@ -3245,8 +3059,8 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(
 	return ctrl.Result{}, nil
 }
 
-// ================================== CREATE FUNCTIONS =============================
-// This function create a PVC set in the yaml file
+// createOrReplaceSfsAsm updates the StatefulSet when ASM changes require pod
+// recycling or spec adjustments.
 func (r *OracleRestartReconciler) createOrReplaceSfsAsm(ctx context.Context, req ctrl.Request, oracleRestart *oraclerestartdb.OracleRestart,
 	dep *appsv1.StatefulSet, index int, isLast bool, oldSpec *oraclerestartdb.OracleRestartSpec,
 ) (ctrl.Result, error) {
@@ -3502,95 +3316,8 @@ waitLoop:
 	return ctrl.Result{}, nil
 }
 
-// func getAddedAndRemovedDisks(oracleRestart *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec, index int) ([]string, []string) {
-// 	// addedAsmDisks := []string{}
-// 	// removedAsmDisks := []string{}
-
-// 	// // Helper function to compare desired and previous disk lists
-// 	// compareDisks := func(newDisks, oldDisks []string) ([]string, []string) {
-// 	// 	newDiskMap := make(map[string]bool)
-// 	// 	oldDiskMap := make(map[string]bool)
-
-// 	// 	for _, disk := range newDisks {
-// 	// 		if disk != "" {
-// 	// 			newDiskMap[disk] = true
-// 	// 		}
-// 	// 	}
-// 	// 	for _, disk := range oldDisks {
-// 	// 		if disk != "" {
-// 	// 			oldDiskMap[disk] = true
-// 	// 		}
-// 	// 	}
-
-// 		// Initialize added and removed slices for this comparison
-// 		added := []string{}
-// 		removed := []string{}
-
-// 		// for _, disk := range newDisks {
-// 		// 	if disk != "" && !oldDiskMap[disk] {
-// 		// 		added = append(added, disk)
-// 		// 	}
-// 		// }
-// 		// for _, disk := range oldDisks {
-// 		// 	if disk != "" && !newDiskMap[disk] {
-// 		// 		removed = append(removed, disk)
-// 		// 	}
-// 		// }
-
-// 		return added, removed
-// 	}
-
-// 	// Flatten the new desired ASM disk lists
-// 	// desiredAsmDisks := flattenDisksBySize(&oracleRestart.Spec)
-// 	// oldAsmDisks := flattenDisksBySize(oldSpec)
-
-// 	// Additional device lists
-// 	// newCrsAsmDisks := strings.Split(oracleRestart.Spec.ConfigParams.CrsAsmDeviceList, ",")
-// 	// oldCrsAsmDisks := strings.Split(oldSpec.ConfigParams.CrsAsmDeviceList, ",")
-
-// 	// newDbAsmDisks := strings.Split(oracleRestart.Spec.ConfigParams.DbAsmDeviceList, ",")
-// 	// oldDbAsmDisks := strings.Split(oldSpec.ConfigParams.DbAsmDeviceList, ",")
-
-// 	// newRecoAsmDisks := strings.Split(oracleRestart.Spec.ConfigParams.RecoAsmDeviceList, ",")
-// 	// oldRecoAsmDisks := strings.Split(oldSpec.ConfigParams.RecoAsmDeviceList, ",")
-
-// 	// newRedoAsmDisks := strings.Split(oracleRestart.Spec.ConfigParams.RedoAsmDeviceList, ",")
-// 	// oldRedoAsmDisks := strings.Split(oldSpec.ConfigParams.RedoAsmDeviceList, ",")
-
-// 	// Track unique added and removed disks
-// 	// addedDiskSet := make(map[string]bool)
-// 	// removedDiskSet := make(map[string]bool)
-
-// 	// // Compare ASM and other device lists
-// 	// for _, diskLists := range [][2][]string{
-// 	// 	{desiredAsmDisks, oldAsmDisks},
-// 	// 	{newCrsAsmDisks, oldCrsAsmDisks},
-// 	// 	{newDbAsmDisks, oldDbAsmDisks},
-// 	// 	{newRecoAsmDisks, oldRecoAsmDisks},
-// 	// 	{newRedoAsmDisks, oldRedoAsmDisks},
-// 	// } {
-// 	// 	added, removed := compareDisks(diskLists[0], diskLists[1])
-// 	// 	for _, disk := range added {
-// 	// 		addedDiskSet[disk] = true
-// 	// 	}
-// 	// 	for _, disk := range removed {
-// 	// 		removedDiskSet[disk] = true
-// 	// 	}
-// 	// }
-
-// 	// Convert sets back to slices
-// 	// for disk := range addedDiskSet {
-// 	// 	addedAsmDisks = append(addedAsmDisks, disk)
-// 	// }
-// 	// for disk := range removedDiskSet {
-// 	// 	removedAsmDisks = append(removedAsmDisks, disk)
-// 	// }
-
-// 	// Return the final list of added and removed disks
-// 	// return addedAsmDisks, removedAsmDisks
-// // }
-
-// Function to check if a disk is part of a device list
+// isDiskInDeviceList checks whether a disk name appears in the provided
+// comma-separated device list.
 func isDiskInDeviceList(disk string, deviceList string) bool {
 	devices := strings.Split(deviceList, ",")
 	for _, device := range devices {
@@ -3671,11 +3398,8 @@ func (r *OracleRestartReconciler) patchFinalizer(ctx context.Context, cr *oracle
 	})
 }
 
-// #############################################################################
-//
-//	Finalization logic for OracleRestartFinalizer
-//
-// #############################################################################
+// cleanupOracleRestart removes Oracle Restart resources such as StatefulSets,
+// services, and storage when the custom resource is being deleted.
 func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 	oracleRestart *oraclerestartdb.OracleRestart) error {
 	log := r.Log.WithValues("cleanupOracleRestart", req.NamespacedName)
@@ -3813,11 +3537,8 @@ func (r *OracleRestartReconciler) cleanupOracleRestart(req ctrl.Request,
 	return nil
 }
 
-// #############################################################################
-//
-//	CLeanup RAC Instance
-//
-// #############################################################################
+// cleanupOracleRestartInstance tears down resources for an individual Oracle
+// Restart instance, including StatefulSets, ConfigMaps, and storage artifacts.
 func (r *OracleRestartReconciler) cleanupOracleRestartInstance(req ctrl.Request, ctx context.Context, oracleRestart *oraclerestartdb.OracleRestart) (int32, error) {
 	log := r.Log.WithValues("cleanupOracleRestartInstance", req.NamespacedName)
 	// Cleanup steps that the operator needs to do before the CR can be deleted.
@@ -3848,6 +3569,8 @@ func (r *OracleRestartReconciler) cleanupOracleRestartInstance(req ctrl.Request,
 	return i, nil
 }
 
+// deleteOracleRestartInst removes an individual Oracle Restart instance and
+// its associated Kubernetes resources when requested.
 func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, req ctrl.Request, ctx context.Context, oracleRestart *oraclerestartdb.OracleRestart) error {
 	log := r.Log.WithValues("cleanupOracleRestartInstance", req.NamespacedName)
 	// delete steps that the operator needs to do before the CR can be deleted.
@@ -3941,6 +3664,8 @@ func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oracler
 	return nil
 }
 
+// IsStaticProvisioningUsed determines whether static provisioning should be
+// assumed by checking for unnamed storage class usage or listing failures.
 func IsStaticProvisioningUsed(ctx context.Context, c client.Client, storageClassName string) bool {
 	if storageClassName != "" {
 		return false
@@ -4058,6 +3783,8 @@ func (r *OracleRestartReconciler) SetCurrentSpec(ctx context.Context, oracleRest
 	return nil
 }
 
+// updateONS orchestrates ONS configuration updates across Oracle Restart pods
+// based on the requested operation state string.
 func (r *OracleRestartReconciler) updateONS(ctx context.Context, podList *corev1.PodList, instance *oraclerestartdb.OracleRestart, onsState string) error {
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 
@@ -4085,6 +3812,9 @@ func (r *OracleRestartReconciler) updateONS(ctx context.Context, podList *corev1
 
 	return nil
 }
+
+// expandStorageClassSWVolume handles StorageClass expansion for the Oracle
+// Restart software volume when config changes demand more space.
 func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context, instance *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec) error {
 	//reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 
@@ -4138,6 +3868,8 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 	return nil
 }
 
+// getDisksToRemoveStatus compares spec and status to determine which disks
+// should be removed from ASM groups.
 func getDisksToRemoveStatus(instance *oraclerestartdb.OracleRestart) ([]string, error) {
 	disksToRemove := []string{}
 	disksToRemoveSet := make(map[string]struct{})
@@ -4185,6 +3917,8 @@ func getDisksToRemoveStatus(instance *oraclerestartdb.OracleRestart) ([]string, 
 	return disksToRemove, nil
 }
 
+// findRacDisksToRemove identifies disks that exist in status but not in spec
+// so they can be removed from ASM groups.
 func findRacDisksToRemove(specDisks, statusDisks []string, instance *oraclerestartdb.OracleRestart) ([]string, error) {
 	// Convert specDisks to a set for fast lookups
 	specDiskSet := make(map[string]struct{})
@@ -4218,6 +3952,23 @@ func findRacDisksToRemove(specDisks, statusDisks []string, instance *oracleresta
 	return disksToRemove, nil
 }
 
+// findRacDisksToAdd identifies which disks from the new specification should be added to the Oracle Restart database.
+// It performs the following validations:
+// 1. Checks if the new disk specification matches the old specification (no changes needed)
+// 2. Detects duplicate disks within the new specification and returns an error if found
+// 3. Filters out disks that already exist in the status (existing disks)
+// 4. Validates that new disks are not already part of any individual ASM device list (CRS, RECO, REDO, DB)
+//
+// Parameters:
+// - newSpecDisks: List of disk paths from the new specification
+// - statusDisks: List of disks currently in status (may contain comma-separated values)
+// - instance: The OracleRestart instance being processed
+// - oldSpec: The previous specification to compare against
+//
+// Returns:
+// - A slice of disk paths that are valid to be added
+// - An error if duplicates are found in newSpecDisks or if a disk already exists in an ASM device list
+// - nil if no new disks need to be added or all validations pass
 func findRacDisksToAdd(newSpecDisks, statusDisks []string, instance *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec) ([]string, error) {
 	// Create a set for statusDisks to allow valid reuse of existing disks
 	// Step 1: Check for duplicates within newSpecDisks itself

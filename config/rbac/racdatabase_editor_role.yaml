@@ -1,0 +1,24 @@
+# permissions for end users to edit racdatabases.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: racdatabase-editor-role
+rules:
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - racdatabases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - racdatabases/status
+  verbs:
+  - get

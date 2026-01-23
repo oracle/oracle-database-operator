@@ -279,7 +279,7 @@ resources:
   domain: oracle.com
   group: database
   kind: OracleRestart
-  path: github.com/oracle/oracle-database-operator/api/database/v4
+  path: github.com/oracle/oracle-database-operator/apis/database/v4
   version: v4
   webhooks:
     defaulting: true
@@ -292,10 +292,22 @@ resources:
   domain: oracle.com
   group: privateai
   kind: PrivateAi
-  path: github.com/oracle/oracle-database-operator/api/privateai/v4
+  path: github.com/oracle/oracle-database-operator/apis/privateai/v4
   version: v4
   webhooks:
     defaulting: true
     validation: true
     webhookVersion: v1
+- api:
+    crdVersion: v1beta1
+    namespaced: true
+  controller: true
+  domain: oracle.com
+  group: database
+  kind: RacDatabase
+  path: github.com/oracle/oracle-database-operator/apis/database/v4
+  version: v4
+  webhooks:
+    conversion: true
+    webhookVersion: v1beta1
 version: "3"
