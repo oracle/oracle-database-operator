@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.5
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: privateais.privateai.oracle.com
 spec:
   group: privateai.oracle.com
@@ -21,16 +21,16 @@ spec:
     - jsonPath: .status.replicas
       name: Replicas
       type: number
-    - jsonPath: .status.apikey
+    - jsonPath: .status.paiSecret.apiKey
       name: ApiKey
       type: string
-    - jsonPath: .status.podip
+    - jsonPath: .status.podIP
       name: PodIP
       type: string
-    - jsonPath: .status.loadbalancerip
+    - jsonPath: .status.loadBalancerIP
       name: LbIP
       type: string
-    - jsonPath: .status.ReleaseUpdate
+    - jsonPath: .status.releaseUpdate
       name: ReleaseUpdate
       priority: 1
       type: string
@@ -65,7 +65,11 @@ spec:
               isDownloadScripts:
                 type: boolean
               isExternalSvc:
-                type: boolean
+                default: "true"
+                enum:
+                - "true"
+                - "false"
+                type: string
               livenessCheckPeriod:
                 type: integer
               nodePortSvc:
@@ -97,8 +101,6 @@ spec:
                       type: string
                   type: object
                 type: array
-              paiAuthentication:
-                type: boolean
               paiConfigFile:
                 properties:
                   mountLocation:
@@ -107,15 +109,24 @@ spec:
                     type: string
                 type: object
               paiEnableAuthentication:
-                default: true
-                type: boolean
+                default: "false"
+                enum:
+                - "true"
+                - "false"
+                type: string
               paiHTTPEnabled:
-                type: boolean
+                enum:
+                - "true"
+                - "false"
+                type: string
               paiHTTPPort:
                 format: int32
                 type: integer
               paiHTTPSEnabled:
-                type: boolean
+                enum:
+                - "true"
+                - "false"
+                type: string
               paiHTTPSPort:
                 format: int32
                 type: integer
@@ -124,7 +135,14 @@ spec:
               paiImagePullSecret:
                 type: string
               paiInternalLB:
-                type: boolean
+                default: "false"
+                enum:
+                - "true"
+                - "false"
+                type: string
+              paiLBExternalTrafficPolicy:
+                default: local
+                type: string
               paiLBIP:
                 type: string
               paiLBPort:
@@ -237,14 +255,14 @@ spec:
               storageSizeInGb:
                 format: int32
                 type: integer
+              workerNodes:
+                items:
+                  type: string
+                type: array
             type: object
           status:
             properties:
               NodeIP:
-                type: string
-              apiKey:
-                type: string
-              certpem:
                 type: string
               clusterIP:
                 type: string
@@ -289,6 +307,24 @@ spec:
                 x-kubernetes-list-type: map
               loadBalancerIP:
                 type: string
+              paiConfigMap:
+                properties:
+                  name:
+                    type: string
+                  resourceVersion:
+                    type: string
+                type: object
+              paiSecret:
+                properties:
+                  apiKey:
+                    type: string
+                  certpem:
+                    type: string
+                  name:
+                    type: string
+                  resourceVersion:
+                    type: string
+                type: object
               podIP:
                 type: string
               releaseUpdate:

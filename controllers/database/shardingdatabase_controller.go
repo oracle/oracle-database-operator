@@ -445,6 +445,7 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 		UpdateFunc: func(e event.UpdateEvent) bool {
 			return true
 		},
+
 		DeleteFunc: func(e event.DeleteEvent) bool {
 			// //instance := &databasev4.ShardingDatabase{}
 			// _, podOk := e.Object.GetLabels()["statefulset.kubernetes.io/pod-name"]

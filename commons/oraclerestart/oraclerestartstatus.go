@@ -55,6 +55,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// UpdateOracleRestartInstStatusData provides documentation for the UpdateOracleRestartInstStatusData function.
 func UpdateOracleRestartInstStatusData(
 	OracleRestart *oraclerestartdb.OracleRestart,
 	ctx context.Context,
@@ -160,6 +161,7 @@ func UpdateOracleRestartInstStatusData(
 	}
 }
 
+// addOracleRestartNodestatus provides documentation for the addOracleRestartNodestatus function.
 func addOracleRestartNodestatus(instance *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, idx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) {
 
 	var racState string
@@ -188,6 +190,7 @@ func addOracleRestartNodestatus(instance *oraclerestartdb.OracleRestart, ctx con
 
 }
 
+// UpdateOracleRestartInstState provides documentation for the UpdateOracleRestartInstState function.
 func UpdateOracleRestartInstState(instance *oraclerestartdb.OracleRestart, podName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) {
 
 	// if len(instance.Status.OracleRestartNodes) > 0 {
@@ -198,6 +201,7 @@ func UpdateOracleRestartInstState(instance *oraclerestartdb.OracleRestart, podNa
 
 }
 
+// UpdateoraclerestartdbTopologyState provides documentation for the UpdateoraclerestartdbTopologyState function.
 func UpdateoraclerestartdbTopologyState(instance *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) {
 	OracleRestart := &oraclerestartdb.OracleRestart{}
 	// fmt.Printf("I m inUpdateoraclerestartdbTopologyState")
@@ -231,6 +235,7 @@ func UpdateoraclerestartdbTopologyState(instance *oraclerestartdb.OracleRestart,
 
 }
 
+// UpdateoraclerestartdbStatusData provides documentation for the UpdateoraclerestartdbStatusData function.
 func UpdateoraclerestartdbStatusData(OracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podNames []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node,
 ) {
 	//mode := GetDbOpenMode(instance.Spec.Shard[0].Name+"-0", instance, kubeClient, kubeConfig, logger)
@@ -278,6 +283,7 @@ func UpdateoraclerestartdbStatusData(OracleRestart *oraclerestartdb.OracleRestar
 	}
 }
 
+// UpdateoraclerestartdbServiceStatus provides documentation for the UpdateoraclerestartdbServiceStatus function.
 func UpdateoraclerestartdbServiceStatus(instance *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) {
 	//This function update the instance.Status.ServiceDetails states
@@ -287,6 +293,7 @@ func UpdateoraclerestartdbServiceStatus(instance *oraclerestartdb.OracleRestart,
 	}
 }
 
+// contains provides documentation for the contains function.
 func contains(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus) (int, bool) {
 	var index int
 	if len(instance.Status.OracleRestartNodes) > 0 {
@@ -300,6 +307,7 @@ func contains(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerest
 	return index, false
 }
 
+// getcrsAsmDeviceList provides documentation for the getcrsAsmDeviceList function.
 func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
 	asmList := ""
 	var err error
@@ -314,6 +322,7 @@ func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart 
 	return asmList
 
 }
+// getdbAsmDeviceList provides documentation for the getdbAsmDeviceList function.
 func getdbAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
 	dbasmList := ""
 	var err error
@@ -329,6 +338,7 @@ func getdbAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *
 
 }
 
+// getMountedDevices provides documentation for the getMountedDevices function.
 func getMountedDevices(podName, namespace string, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) []string {
 	var asmList []string
 
@@ -350,6 +360,7 @@ func getMountedDevices(podName, namespace string, oracleRestart *oraclerestartdb
 	return asmList
 }
 
+// delOracleRestartNodestatus provides documentation for the delOracleRestartNodestatus function.
 func delOracleRestartNodestatus(instance *oraclerestartdb.OracleRestart, name string) []*oraclerestartdb.OracleRestartNodestatus {
 	neworacleRestart := []*oraclerestartdb.OracleRestartNodestatus{}
 	if len(instance.Status.OracleRestartNodes) > 0 {
@@ -362,6 +373,7 @@ func delOracleRestartNodestatus(instance *oraclerestartdb.OracleRestart, name st
 	return neworacleRestart
 }
 
+// getPvcDetails provides documentation for the getPvcDetails function.
 func getPvcDetails(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client) map[string]string {
 	strMap := make(map[string]string)
 	if len(oraRestartSpex.PvcName) > 0 {
@@ -371,6 +383,7 @@ func getPvcDetails(instance *oraclerestartdb.OracleRestart, oracleRestart *oracl
 	return strMap
 
 }
+// getOracleParameters provides documentation for the getOracleParameters function.
 func getOracleParameters(
 	podName string,
 	params []string,

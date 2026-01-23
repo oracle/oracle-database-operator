@@ -365,7 +365,6 @@ func PatchDBSystem(
 	patchesResp, err := dbClient.ListDbSystemPatches(ctx, database.ListDbSystemPatchesRequest{
 		DbSystemId: dbSystemId,
 	})
-
 	if err != nil {
 		logger.Error(err, "Failed to list patches for DB System", "DBSystemID", dbSystemId)
 		return fmt.Errorf("failed to list patches for DB System: %w", err)

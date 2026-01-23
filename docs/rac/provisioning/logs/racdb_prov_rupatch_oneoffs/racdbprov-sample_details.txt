@@ -1,0 +1,353 @@
+$ kubectl get all -n rac -o wide
+NAME             READY   STATUS    RESTARTS   AGE   IP            NODE            NOMINATED NODE   READINESS GATES
+pod/racnode1-0   1/1     Running   0          78m   10.244.1.8    qck-ocne19-w1   <none>           <none>
+pod/racnode2-0   1/1     Running   0          78m   10.244.2.10   qck-ocne19-w2   <none>           <none>
+
+NAME                        TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)           AGE   SELECTOR
+service/racnode-scan        ClusterIP   None            <none>        <none>            78m   cluster=racnode-scan
+service/racnode-scan-lsnr   NodePort    10.98.64.82     <none>        1521:31521/TCP    78m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0          ClusterIP   None            <none>        <none>            78m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-lsnr     NodePort    10.100.150.88   <none>        31522:31522/TCP   78m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-ons      NodePort    10.106.70.162   <none>        6200:30200/TCP    78m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-vip      ClusterIP   None            <none>        <none>            78m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode2-0          ClusterIP   None            <none>        <none>            78m   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-lsnr     NodePort    10.110.7.241    <none>        31523:31523/TCP   78m   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-ons      NodePort    10.107.153.40   <none>        6200:30201/TCP    78m   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-vip      ClusterIP   None            <none>        <none>            78m   statefulset.kubernetes.io/pod-name=racnode2-0
+
+NAME                        READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/racnode1   1/1     78m   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     78m   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+
+
+
+
+$ kubectl describe racdatabases.database.oracle.com/racdbprov-sample -n rac
+Name:         racdbprov-sample
+Namespace:    rac
+Labels:       <none>
+Annotations:  racdatabases.database.oracle.com/old-spec:
+                {"instanceDetails":{"nodeCount":2,"racHostSwLocation":"/scratch/rac/cluster01","racNodeName":"racnode","baseOnsTargetPort":30200,"baseLsnr...
+API Version:  database.oracle.com/v4
+Kind:         RacDatabase
+Metadata:
+  Creation Timestamp:  2026-01-05T18:16:53Z
+  Finalizers:
+    database.oracle.com/racdatabasefinalizer
+  Generation:        1
+  Resource Version:  3955439
+  UID:               0e228ce3-c2c9-4f66-bea7-37863f7ea189
+Spec:
+  Asm Disk Group Details:
+    Disks:
+      /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+      /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+    Name:        DATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
+  Config Params:
+    Cpu Count:               8
+    Db Base:                 /u01/app/oracle
+    Db Home:                 /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                 PORCLCDB
+    Db One Off Ids:          38336965,34436514
+    Db Sw Zip File:          db_home.zip
+    Grid Base:               /u01/app/grid
+    Grid Home:               /u01/app/19c/grid
+    Grid One Off Ids:        38336965
+    Grid Sw Zip File:        grid_home.zip
+    Host Sw Stage Location:  /scratch/software/stage/19c/19.3.0
+    Inventory:               /u01/app/oraInventory
+    O Patch Location:        /scratch/software/stage/19c/19.28/OPATCH
+    O Patch Sw Zip File:     p6880880_190000_Linux-x86-64.zip
+    One Off Location:        /scratch/software/stage/19c/19.28/one-offs
+    Pga Size:                4G
+    Processes:               2000
+    Ru Patch Location:       /scratch/software/stage/19c/19.28/RU/37957391
+    Sga Size:                8G
+    Sw Mount Location:       /u01
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Env Vars:
+    Name:             IGNORE_CRS_PREREQS
+    Value:            true
+    Name:             IGNORE_DB_PREREQS
+    Value:            true
+  Image:              phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+  Image Pull Policy:  Always
+  Instance Details:
+    Base Lsnr Target Port:  31522
+    Base Ons Target Port:   30200
+    Node Count:             2
+    Private IP Details:
+      Interface:           ens1
+      Name:                macvlan-conf1
+      Interface:           ens2
+      Name:                macvlan-conf2
+    Rac Host Sw Location:  /scratch/rac/cluster01
+    Rac Node Name:         racnode
+    Worker Node Selector:
+      Raccluster:  raccluster01
+  Resources:
+    Limits:
+      Cpu:     12
+      Memory:  36Gi
+    Requests:
+      Cpu:               12
+      Memory:            36Gi
+  Scan Svc Name:         racnode-scan
+  Scan Svc Target Port:  31521
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmall
+      Value:  8388608
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmax
+      Value:  34359738368
+      Name:   kernel.shmmni
+      Value:  4096
+      Name:   net.ipv4.conf.all.rp_filter
+      Value:  2
+  Service Details:
+    Name:  soepdb
+  Ssh Key Secret:
+    Key Mount Location:    /mnt/.ssh
+    Name:                  ssh-key-secret
+    Priv Key Secret Name:  ssh-privkey
+    Pub Key Secret Name:   ssh-pubkey
+  Tde Wallet Secret:
+    Key File Mount Location:  /mnt/.tdesecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.tdesecrets
+    Pwd File Name:            pwdfile.enc
+Status:
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+      Size In Gb:  49
+      Valid:       true
+      Name:        /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+      Size In Gb:  49
+      Valid:       true
+    Name:          DATA
+    Redundancy:    EXTERN
+    Type:          CRSDG
+  Client Etc Host:
+    10.0.1.34    racnode1-0.rac.svc.cluster.local racnode1-0-vip.rac.svc.cluster.local    racnode-scan.rac.svc.cluster.local
+    10.0.1.214    racnode2-0.rac.svc.cluster.local racnode2-0-vip.rac.svc.cluster.local    racnode-scan.rac.svc.cluster.local
+  Conditions:
+    Last Transition Time:  2026-01-05T19:36:07Z
+    Message:               no reconcile errors
+    Observed Generation:   1
+    Reason:                LastReconcileCycleCompleted
+    Status:                True
+    Type:                  ReconcileComplete
+  Config Params:
+    Db Base:       /u01/app/oracle
+    Db Home:       /u01/app/oracle/product/19c/dbhome_1
+    Db Name:       PORCLCDB
+    Grid Base:     /u01/app/grid
+    Grid Home:     /u01/app/19c/grid
+    Inventory:     /u01/app/oraInventory
+  Connect String:  racnode-scan:1521/PORCLCDB
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Db State:                   OPEN
+  External Connect String:    racnode-scan.rac.svc.cluster.local:31521/soepdb
+  Observed Generation:        1
+  Pdb Connect String:         racnode-scan:1521/soepdb
+  Rac Nodes:
+    Name:  racnode1-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+      State:  AVAILABLE
+      Vip Details:
+        Name:  racnode1-0-vip
+    Name:      racnode2-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+      State:  AVAILABLE
+      Vip Details:
+        Name:      racnode2-0-vip
+  Release Update:  19.28.0.0.0
+  Role:            PRIMARY
+  Scan Svc Name:   racnode-scan
+  Service Details:
+    Name:       soepdb
+    Svc State:  service soepdb is running on instance(s) porclcdb1,porclcdb2
+  State:        AVAILABLE
+Events:         <none>
+
+
+
+
+[grid@racnode1-0 ~]$ /u01/app/19c/grid/bin/crsctl stat res -t
+--------------------------------------------------------------------------------
+Name           Target  State        Server                   State details
+--------------------------------------------------------------------------------
+Local Resources
+--------------------------------------------------------------------------------
+ora.DBLSNR.lsnr
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+ora.LISTENER.lsnr
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+ora.chad
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+ora.net1.network
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+ora.ons
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+--------------------------------------------------------------------------------
+Cluster Resources
+--------------------------------------------------------------------------------
+ora.ASMNET1LSNR_ASM.lsnr(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.ASMNET2LSNR_ASM.lsnr(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.DATA.dg(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.LISTENER_SCAN1.lsnr
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.LISTENER_SCAN2.lsnr
+      1        ONLINE  ONLINE       racnode2-0               STABLE
+ora.asm(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               Started,STABLE
+      2        ONLINE  ONLINE       racnode2-0               Started,STABLE
+ora.asmnet1.asmnetwork(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.asmnet2.asmnetwork(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.cvu
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.porclcdb.db
+      1        ONLINE  ONLINE       racnode1-0               Open,HOME=/u01/app/o
+                                                             racle/product/19c/db
+                                                             home_1,STABLE
+      2        ONLINE  ONLINE       racnode2-0               Open,HOME=/u01/app/o
+                                                             racle/product/19c/db
+                                                             home_1,STABLE
+ora.porclcdb.soepdb.svc
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.qosmserver
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.racnode1-0.vip
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.racnode2-0.vip
+      1        ONLINE  ONLINE       racnode2-0               STABLE
+ora.scan1.vip
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.scan2.vip
+      1        ONLINE  ONLINE       racnode2-0               STABLE
+--------------------------------------------------------------------------------
+[grid@racnode1-0 ~]$ /u01/app/19c/grid/bin/srvctl config nodeapps
+Network 1 exists
+Subnet IPv4: 10.244.0.0/255.255.0.0/eth0, static
+Subnet IPv6:
+Ping Targets:
+Network is enabled
+Network is individually enabled on nodes:
+Network is individually disabled on nodes:
+VIP exists: network number 1, hosting node racnode1-0
+VIP Name: racnode1-0-vip
+VIP IPv4 Address: 10.244.1.8
+VIP IPv6 Address:
+VIP is enabled.
+VIP is individually enabled on nodes:
+VIP is individually disabled on nodes:
+VIP exists: network number 1, hosting node racnode2-0
+VIP Name: racnode2-0-vip
+VIP IPv4 Address: 10.244.2.10
+VIP IPv6 Address:
+VIP is enabled.
+VIP is individually enabled on nodes:
+VIP is individually disabled on nodes:
+ONS exists: Local port 6100, remote port 6200, EM port 2016, Uses SSL true
+ONS is enabled
+ONS is individually enabled on nodes:
+ONS is individually disabled on nodes:
+[grid@racnode1-0 ~]$
+[grid@racnode1-0 ~]$
+[grid@racnode1-0 ~]$
+[grid@racnode1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches
+38336965;OCW Interim patch for 38336965
+38124772;TOMCAT RELEASE UPDATE 19.0.0.0.0 (38124772)
+37962938;ACFS RELEASE UPDATE 19.28.0.0.0 (37962938)
+37960098;Database Release Update : 19.28.0.0.250715 (37960098)
+36758186;DBWLM RELEASE UPDATE 19.0.0.0.0 (36758186)
+
+OPatch succeeded.
+
+
+
+[oracle@racnode1-0 ~]$ srvctl status database -d PORCLCDB -v
+Instance PORCLCDB1 is running on node racnode1-0 with online services soepdb. Instance status: Open.
+Instance PORCLCDB2 is running on node racnode2-0 with online services soepdb. Instance status: Open.
+[oracle@racnode1-0 ~]$
+[oracle@racnode1-0 ~]$
+[oracle@racnode1-0 ~]$ srvctl config database -d PORCLCDB -v
+Database unique name: PORCLCDB
+Database name: PORCLCDB
+Oracle home: /u01/app/oracle/product/19c/dbhome_1
+Oracle user: oracle
+Spfile: +DATA/PORCLCDB/PARAMETERFILE/spfile.274.1221765723
+Password file: +DATA/PORCLCDB/PASSWORD/pwdporclcdb.258.1221764135
+Domain:
+Start options: open
+Stop options: immediate
+Database role: PRIMARY
+Management policy: AUTOMATIC
+Server pools:
+Disk Groups: DATA
+Mount point paths:
+Services: soepdb
+Type: RAC
+Start concurrency:
+Stop concurrency:
+OSDBA group: dba
+OSOPER group:
+Database instances: PORCLCDB1,PORCLCDB2
+Configured nodes: racnode1-0,racnode2-0
+CSS critical: no
+CPU count: 0
+Memory target: 0
+Maximum memory: 0
+Default network number for database services:
+Database is administrator managed
+[oracle@racnode1-0 ~]$
+[oracle@racnode1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches
+34436514;DBCA REPORTS INCORRECT MEMORY IN PODMAN CONTAINERS
+38336965;OCW Interim patch for 38336965
+37960098;Database Release Update : 19.28.0.0.250715 (37960098)
+
+OPatch succeeded.

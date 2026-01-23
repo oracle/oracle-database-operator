@@ -354,6 +354,10 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "PrivateAi")
 			os.Exit(1)
 		}
+		if err = (&databasev4.RacDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "RacDatabase")
+			os.Exit(1)
+		}
 	}
 
 	// LRPDBR Reconciler
@@ -409,6 +413,17 @@ func main() {
 		Recorder: mgr.GetEventRecorderFor("DatabaseObserver"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "DatabaseObserver")
+		os.Exit(1)
+	}
+	// +kubebuilder:scaffold:builder
+
+	if err = (&databasecontroller.RacDatabaseReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("controllers").WithName("RacDatabase"),
+		Scheme:   mgr.GetScheme(),
+		Recorder: record.NewFakeRecorder(0), // disable event spams
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RacDatabase")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
