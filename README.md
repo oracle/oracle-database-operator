@@ -9,7 +9,10 @@
 <p align="center">
     <a href="https://github.com/oracle/oracle-database-operator">
     <img src="./oracledatabaseoperator.svg?style=flat-square&logo=github&logoColor=white"
-         alt="GitHub last commit">
+         alt="Oracle Database Operator">
+    <a href="https://www.oracle.com/database/kubernetes-for-container-database">
+    <img src="./oracledatabaseforcontainersandkubernetes.svg?style=flat-square&logo=github&logoColor=white"
+         alt="Oracle Database For Containers and Kubernetes">
 </p>
 </div>
 
