@@ -1,21 +1,32 @@
+<div align="center">
 <h1 align="center">
   <br>
-  <img src="~/DBOperator.svg" alt="Oracle Database Operator"></a>
+  <img src="./DBOperator.svg" alt="Oracle Database Operator"></a>
 </h1>
+</div>
 
-<h4 align="center">Oracle Database Operator For Kubernetes</h4>
-
+<div align="center">
 <p align="center">
-    <a href="https://github.com/ArmynC/ArminC-AutoExec/commits/master">
-    <img src="https://img.shields.io/github/last-commit/ArmynC/ArminC-AutoExec.svg?style=flat-square&logo=github&logoColor=white"
+    <a href="https://github.com/oracle/oracle-database-operator">
+    <img src="./oracledatabaseoperator.svg?style=flat-square&logo=github&logoColor=white"
          alt="GitHub last commit">
-    <a href="https://github.com/ArmynC/ArminC-AutoExec/issues">
-    <img src="https://img.shields.io/github/issues-raw/ArmynC/ArminC-AutoExec.svg?style=flat-square&logo=github&logoColor=white"
+</p>
+</div>
+
+<div align="center">
+<p align="center">
+    <a href="https://github.com/oracle/oracle-database-operator/commits/main/">
+    <img src="./lastcommit.svg?style=flat-square&logo=github&logoColor=white"
+         alt="GitHub last commit">
+    <a href="https://github.com/oracle/oracle-database-operator/issues">
+    <img src="./issues.svg?style=flat-square&logo=github&logoColor=white"
          alt="GitHub issues">
-    <a href="https://github.com/ArmynC/ArminC-AutoExec/pulls">
-    <img src="https://img.shields.io/github/issues-pr-raw/ArmynC/ArminC-AutoExec.svg?style=flat-square&logo=github&logoColor=white"
+    <a href="https://github.com/oracle/oracle-database-operator/pulls">
+    <img src="pullrequest.svg?style=flat-square&logo=github&logoColor=white"
          alt="GitHub pull requests">
 </p>
+</div>
+
 
 # Oracle Database Operator for Kubernetes
 
@@ -23,26 +34,20 @@
 
 As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released the  _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating the management of the Oracle Database lifecycle.
 
-## What's New in v2.0.0
+## What's New in v2.1.0
 
-* **RedHat OpenShift Certification**
-  * Validation of OraOperator and Controllers
-  * Inclusion in RedHat Operators Catalog
-* **Restart Controller**
-  * Provision, add & delete asm disks, and more
-* **ORDS Service**
-  * ServiceAccount and OpenShift support
-  * Auto download of APEX installation files and APEX image on a Persistent Volume
-* **Integrations**
-  * Private Cloud Appliance (PCA)
-  * Compute Cloud@Customer (C3)
-* **Bug fixes**
-  * Bugs filed through Oracle Support
-  * GitHub issues
+* **Oracle Real Application Cluster (RAC) Database Controller**
+  * Supports provisioning, scaling up or down Oracle RAC instances, adding ASM disks, and additional operations
+* **Private AI Controller**
+  * Enables provisioning, scaling up or down, and more features
+* **LREST Controller**
+  * Manages provisioning and other related tasks
+* **Bug Fixes**
+  * Addresses issues reported via Oracle Support and GitHub
  
 
-## Supported Database Configurations v2.0.0
-In this v2.0 production release, `OraOperator` supports the following database configurations and controllers:
+## Supported Database Configurations v2.1.0
+In this v2.1 production release, `OraOperator` supports the following database configurations and controllers:
 
 * **Oracle Autonomous Database:**
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
@@ -56,7 +61,8 @@ In this v2.0 production release, `OraOperator` supports the following database c
 * **Oracle Database Observability**
 * **Oracle Database Rest Service (ORDS) instances**
 * **Oracle Restart**
-* **Oracle Globally Distributed Database**
+* **Oracle Real Application Cluster Database**
+* **Oracle Private Controller**
 
 ---
 
@@ -65,15 +71,15 @@ In this v2.0 production release, `OraOperator` supports the following database c
   - Install on SIDB and ADB
   - Provision and delete ORDS instances
 * **SIDB**
-  - Oracle Database 23ai Free support
-  - Oracle Database 23ai Free-lite support
+  - Oracle Database 26ai Free support
+  - Oracle Database 26ai Free-lite support
   - SIDB resource management
   - True Cache support for Free SIDB databases (Preview)
   - Observer for FastStartFailover with Data Guard
   - Snapshot Standby support in Data Guard setup
 * **Globally Distributed Database**
-  - Support for Oracle Database 23ai Raft replication
-  - Oracle Database 23ai Free support
+  - Support for Oracle Database 26ai Raft replication
+  - Oracle Database 26ai Free support
 * **Autonomous Database**
   - Support for Database manual failover and switchover
 * **Multitenant DB**
@@ -84,15 +90,16 @@ In this v2.0 production release, `OraOperator` supports the following database c
 * **Database Observability **
   - Support for Database Logs and Metrics
   - Support for the latest Exporter container images
- 
 * **Oracle Base Database Service**
-  - Support for Oracle Database 23ai Cloning, using KMS Vaults
+  - Support for Oracle Database 26ai Cloning, using KMS Vaults
   - PDB creation
   - Clone, Backup, Restore
   - Data Guard Setup
   - Patching and Upgrade
 * **Oracle Restart**
-  - Support for Oracle Database 19c
+  - Support for Oracle Database 26ai
+* **Oracle Real Application Cluster Database**
+  - Support for Oracle Database 19c Support
 
 ---
 
@@ -105,7 +112,7 @@ In this v2.0 production release, `OraOperator` supports the following database c
 ---
 
 ## Overall Features Summary
-As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) supports the following lifecycle operations:
+As of v2.1.0, the Oracle Database Operator for Kubernetes (`OraOperator`) supports the following lifecycle operations:
 
 * **ADB-S/ADB-D**: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning, manual failover, switchover
 * **ACD**: Provision, bind, restart, terminate (soft/hard)
@@ -123,8 +130,8 @@ As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) suppor
 ## Release Status
 
 This production release has been installed and tested on:
-* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.30 or later
-* [Redhat Openshift](https://www.redhat.com/en/technologies/cloud-computing/openshift) with version v4.16 or later
+* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.33 or later
+* [Redhat Openshift](https://www.redhat.com/en/technologies/cloud-computing/openshift) with version v4.19 or later
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.9 or later
 * [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
