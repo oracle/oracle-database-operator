@@ -103,6 +103,8 @@ In this v2.1 production release, `OraOperator` supports the following database c
   - Support for Oracle Database 26ai
 * **Oracle Real Application Cluster Database**
   - Support for Oracle Database 19c Support
+* **Oracle Private AI controller**
+  - Support for Oracle Private AI container for 26ai Databases
 
 ---
 
@@ -127,6 +129,7 @@ As of v2.1.0, the Oracle Database Operator for Kubernetes (`OraOperator`) suppor
 * **Oracle Data Guard**: Provision standby for SIDB, create Data Guard configuration, perform switchover, patch primary/standby
 * **Oracle Database Observability**: Create, patch, delete `databaseObserver` (logs and metrics)
 * **Oracle Restart**: Provision, add & delete asm disks, enable ons ports, custom storage class support, existing pvc support, load balancer  support
+* **Oracle Private Controller**: Provision, scale up or down, manage resource, load balancer service support
 * Watch namespaces using the `WATCH_NAMESPACE` environment variable
 
 
@@ -261,6 +264,8 @@ The following quickstarts are designed for specific database configurations:
 * [ORDS Services (ORDSSRVS)](./docs/ordsservices/README.md)
 * [Oracle Real Application Cluster](./docs/rac/README.md)
 * [Oracle Restart](./docs/oraclerestart/README.md)
+* [Oracle Real Application Controller](./docs/rac/README.md)
+* [Oracle Private AI Controller](./docs/privateai/README.md)
 
 
 The following quickstart is designed for non-database configurations:
@@ -338,7 +343,6 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 * [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
 * [Oracle Globally Distributed Database](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
 * [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
-
 
 ## Contributing
 
