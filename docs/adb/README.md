@@ -2,10 +2,10 @@
 
 Before you use the Oracle Database Operator for Kubernetes (the operator), ensure that your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
 
-To allow your Kubernetes cluster to interact with OCI services, your cluster must be authorized with one of the following: 
+To allow your Kubernetes cluster to interact with OCI services, your cluster must be authorized with one of the following:
+
 - Instance Principal authentication
 - API Key Authentication (specify the required configMap and Secret under `ociConfig`).
-
 
 ## Required Permissions
 
@@ -17,20 +17,21 @@ Permissions to view the work requests are also required, so that the operator ca
 
 After the operator is deployed, choose one of the following operations to create an `AutonomousDatabase` custom resource for Oracle Autonomous Database in your cluster.
 
-* [Provision](#provision-an-autonomous-database) an Autonomous Database
-* [Bind](#bind-to-an-existing-autonomous-database) to an existing Autonomous Database
+- [Provision](#provision-an-autonomous-database) an Autonomous Database
+  - Example: [Creating an Autonomous JSON Database (AJD)](#example-creating-an-autonomous-json-database-ajd)
+- [Bind](#bind-to-an-existing-autonomous-database) to an existing Autonomous Database
 
 After you create the resource, you can use the operator to perform the following tasks:
 
-* [Scale the OCPU core count or storage](#scale-the-ocpu-core-count-or-storage) an Autonomous Database
-* [Rename](#rename) an Autonomous Database
-* [Manage ADMIN database user password](#manage-admin-password) of an Autonomous Database
-* [Download instance credentials (wallets)](#download-wallets) of an Autonomous Database
-* [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
-* [Delete the resource](#delete-the-resource) from the cluster
-* [Clone](#clone-an-existing-autonomous-database) an existing Autonomous Database
-* [Switchover](#switchover-an-existing-autonomous-database) an existing Autonomous Database
-* [Perform Manual Failover](#manually-failover-an-existing-autonomous-database) to an existing Autonomous Database
+- [Scale the OCPU core count or storage](#scale-the-ocpu-core-count-or-storage) an Autonomous Database
+- [Rename](#rename) an Autonomous Database
+- [Manage ADMIN database user password](#manage-admin-password) of an Autonomous Database
+- [Download instance credentials (wallets)](#download-wallets) of an Autonomous Database
+- [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
+- [Delete the resource](#delete-the-resource) from the cluster
+- [Clone](#clone-an-existing-autonomous-database) an existing Autonomous Database
+- [Switchover](#switchover-an-existing-autonomous-database) an existing Autonomous Database
+- [Perform Manual Failover](#manually-failover-an-existing-autonomous-database) to an existing Autonomous Database
 
 To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
 
@@ -139,6 +140,44 @@ To provision an Autonomous Database that will map objects in your cluster, compl
     kubectl apply -f config/samples/adb/autonomousdatabase_create.yaml
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample created
     ```
+
+### Example: Creating an Autonomous JSON Database (AJD)
+
+The Operator also supports provisioning an Autonomous JSON Database (AJD).
+To create an AJD instead of a standard OLTP or Data Warehouse database, explicitly set the workload type using:
+
+```yaml
+spec.details.dbWorkload: AJD
+```
+
+When `dbWorkload` is set to `AJD`, the Operator provisions an **Autonomous JSON Database**, which is optimized for document-centric and JSON-based workloads.
+
+**Example:**
+
+``` yaml
+apiVersion: database.oracle.com/v1alpha1
+kind: AutonomousDatabase
+metadata:
+  name: autonomous-json-db
+spec:
+  action: Create
+  details:
+    compartmentId: ocid1.compartment...
+    dbName: MyAJD
+    displayName: MyAJD
+    dbWorkload: AJD   # <-- Required for Autonomous JSON Database
+    computeModel: ECPU
+    computeCount: 1
+    adminPassword:
+      k8sSecret:
+        name: admin-password
+    dataStorageSizeInTBs: 1
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey
+```
+
+> Note: If dbWorkload is not specified, the database will be created using the default workload type (typically OLTP). Always set AJD explicitly when you intend to provision an Autonomous JSON Database.
 
 ## Bind to an existing Autonomous Database
 
