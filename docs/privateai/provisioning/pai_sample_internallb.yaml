@@ -57,8 +57,7 @@ spec:
 
  # Worker Nodes on which the Pods will be created
  workerNodes:
-  - 10.0.10.244
-  - 10.0.10.36 
+  - <<Replace with the worker nodes>>
 
 # Specify the Memory and CPU limits on the pods
  resources:

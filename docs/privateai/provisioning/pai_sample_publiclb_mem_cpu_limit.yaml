@@ -50,7 +50,7 @@ spec:
      protocol: TCP
 
  # Public Reserved IP of the Public LoadBalancer
- paiLBIP: 129.xxx.xxx.xxx
+ paiLBIP: <<Insert Load Balancer Public IP>>
 
  # Replica Count
  replicas: 3

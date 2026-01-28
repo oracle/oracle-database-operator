@@ -50,12 +50,11 @@ spec:
      protocol: TCP
 
  # Public Reserved IP of the Public LoadBalancer
- paiLBIP: 129.xxx.xxx.xxx
+ paiLBIP: <<Insert Load Balancer Public IP>>
 
  # Worker Nodes on which the Pods will be created
  workerNodes:
-  - 10.0.10.244
-  - 10.0.10.36 
+  - <<Replace with the worker nodes>>
 
  # Replica Count
  replicas: 3

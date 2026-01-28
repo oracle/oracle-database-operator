@@ -69,20 +69,20 @@ The pre-built Private AI Service container image is available on [Oracle Contain
 
 2. If you have not already done so, create an image pull secret for the Oracle Container Registry:
 ```
-$ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<container-registry-auth-token>' --docker-email='<oracle-sso-email-address>' -n <namespace>
+$ kubectl create secret docker-registry oracle-container-registry-secret --docker-server=container-registry.oracle.com --docker-username='<oracle-sso-email-address>' --docker-password='<container-registry-auth-token>' --docker-email='<oracle-sso-email-address>' -n <<namespace>>
 ```
 Note: Generate the auth token from user profile section on top right of the page after logging into container-registry.oracle.com
 
 3. This secret can also be created from the docker config.json or from podman auth.json after a successful login  
 ```
 docker login container-registry.oracle.com
-kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=.docker/config.json --type=kubernetes.io/dockerconfigjson
+kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=.docker/config.json --type=kubernetes.io/dockerconfigjson -n <<namespace>>
 ```
 or
 
 ```
 podman login container-registry.oracle.com
-kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json --type=kubernetes.io/dockerconfigjson
+kubectl create secret generic oracle-container-registry-secret  --from-file=.dockerconfigjson=${XDG_RUNTIME_DIR}/containers/auth.json --type=kubernetes.io/ dockerconfigjson  -n <<namespace>>
 ```
 
 ### 4. Create a namespace for the Oracle PrivateAI Setup
