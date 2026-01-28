@@ -113,13 +113,13 @@ You need to download the models and you need to make sur they are available thro
 
 - The SSL certificate used during the Private AI Service Container Deployment will need a common name(hostname or IP) to be specified during the certificate creation.
 - Later, for a secure communication with the Private AI Service Container Deployed in a Kuberentes Cluster, the client will use the same `cert.pem` file and will send the connection request to same hostname or IP.
-- If you are deploying Private AI Service Container on an OKE cluster, you will need to reserve a Public IP in OCI. - OCI allows provisioning a Public LoadBalancer and assigning a reserved public ip to it. Please the [documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
+- If you are deploying Private AI Service Container on an OKE cluster, you will need to reserve a Public IP in OCI. - OCI allows provisioning a Public LoadBalancer and assigning a reserved public ip to it. Refer the [documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
 - To reserve a Public IP in OCI, refer to [OCI LoadBalancer Documentation](https://docs.public.oneportal.content.oci.oraclecloud.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm) for the details.
 - Once you have reserved the Public IP, use this Public IP as `Common Name` while generating the openssl certificate in the next step.
 
 **NOTE:** This step is required only if you are going to deploy the Private AI Service Container on OKE Cluster using OCI Public LoadBalancer.
 
-**NOTE:** The option to reserve a Private IP and use that with an OCI Internal LoadBalancer is not available as of now. Please check the [documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
+**NOTE:** The option to reserve a Private IP and use that with an OCI Internal LoadBalancer is not available as of now. Refer the [documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengconfiguringloadbalancersnetworkloadbalancers-subtopic.htm).
 
 ### 7. Create Kubernetes secret for the Oracle PrivateAI Deployment
 
@@ -158,12 +158,12 @@ There are multiple use case possible for deploying the Private AI Service Contai
 
 - **Private AI Service Container using OCI Public LoadBalancer**
   - [Change the Private AI Service Container Image](./change_privateai_container_image.md) 
-- [Private AI Service Container using OCI Public LoadBalancer without configmap](./deploy_privateai_publiclb_without_configmap.md) 
-- [Private AI Service Container using OCI Public LoadBalancer with multiple replica](./deploy_privateai_publiclb_multi_replica.md) 
-  - [Scale-out](./scale_up_privateai.md)
-  - [Scale-in](./scale_in_privateai.md)
-- [Private AI Service Container using OCI Public LoadBalancer with worker node selection](./deploy_privateai_publiclb_worker_node.md) 
-- [Private AI Service Container using OCI Public LoadBalancer with memory and cpu limits for pods](./deploy_privateai_publiclb_mem_cpu_limit.md) 
+  - [Private AI Service Container using OCI Public LoadBalancer without configmap](./deploy_privateai_publiclb_without_configmap.md) 
+  - [Private AI Service Container using OCI Public LoadBalancer with multiple replica](./deploy_privateai_publiclb_multi_replica.md) 
+    - [Scale-out](./scale_up_privateai.md)
+    - [Scale-in](./scale_in_privateai.md)
+  - [Private AI Service Container using OCI Public LoadBalancer with worker node selection](./deploy_privateai_publiclb_worker_node.md) 
+  - [Private AI Service Container using OCI Public LoadBalancer with memory and cpu limits for pods](./deploy_privateai_publiclb_mem_cpu_limit.md) 
   - [Change the memory and cpu limits for pods](./change_privateai_publiclb_mem_cpu_limit.md) 
 - **Private AI Service Container using an Internal LoadBalancer**
   - [Private AI Service Container using Single AI Model with HTTPS URL and an Internal LoadBalancer](./deploy_privateai_internallb.md) 
@@ -180,4 +180,4 @@ Please refer to [this page](./access_privateai.md) for the details to access the
 
 ## Debugging and Troubleshooting
 
-Please refer to [this page](./debug_privateai.md) for the details to access the Private AI Service Container Pod in Kubernetes.
+Refer to [this page](./debug_privateai.md) for the details to access the Private AI Service Container Pod in Kubernetes.
