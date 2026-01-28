@@ -42,7 +42,8 @@ spec:
    oke-fsspvc: /privateai/models
 
  # Container Image of the Private AI Container
- paiImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:private-ai-1.11.18
+ paiImage: container-registry.oracle.com/database/private-ai:latest
+ paiImagePullSecret: oracle-container-registry-secret
 
  # Name and port details of the Private AI Service once deployed
  paiService:

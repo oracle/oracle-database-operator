@@ -101,6 +101,8 @@ kubectl create secret generic oracle-container-registry-secret  --from-file=.doc
 
 In this step, a configmap will be created which has the details of the AI Model File. The configmap will be created according to the type of the Private AI Deployment. Below are examples of configmap used in the later examples:
 
+You need to download the models and you need to make sur they are available through HTTPS access such as object store pre-authenticated URL. For the model details, you can refer the section `Available Embedding Models' in [Private AI Services Container docuemntation](https://docs.oracle.com/en/database/oracle/oracle-database/26/prvai/index.html).
+
 - [Configmap using Single AI Model with HTTPS URL](./configmap_single_model_https.md) 
 - [Configmap using Multiple AI Models with HTTPS URL](./configmap_multi_model_https.md) 
 - [Configmap using Multiple AI Models on File System](./configmap_multi_model_filesystem.md) 
