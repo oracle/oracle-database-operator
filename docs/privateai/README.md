@@ -156,7 +156,7 @@ There are multiple use case possible for deploying the Private AI Service Contai
 
 **NOTE:** All the below deployments are using an OCI OKE Cluster.
 
-- [Private AI Service Container using OCI Public LoadBalancer](./deploy_privateai_publiclb.md) 
+- **Private AI Service Container using OCI Public LoadBalancer**
   - [Change the Private AI Service Container Image](./change_privateai_container_image.md) 
 - [Private AI Service Container using OCI Public LoadBalancer without configmap](./deploy_privateai_publiclb_without_configmap.md) 
 - [Private AI Service Container using OCI Public LoadBalancer with multiple replica](./deploy_privateai_publiclb_multi_replica.md) 
@@ -165,7 +165,7 @@ There are multiple use case possible for deploying the Private AI Service Contai
 - [Private AI Service Container using OCI Public LoadBalancer with worker node selection](./deploy_privateai_publiclb_worker_node.md) 
 - [Private AI Service Container using OCI Public LoadBalancer with memory and cpu limits for pods](./deploy_privateai_publiclb_mem_cpu_limit.md) 
   - [Change the memory and cpu limits for pods](./change_privateai_publiclb_mem_cpu_limit.md) 
-- Private AI Service Container using an Internal LoadBalancer 
+- **Private AI Service Container using an Internal LoadBalancer**
   - [Private AI Service Container using Single AI Model with HTTPS URL and an Internal LoadBalancer](./deploy_privateai_internallb.md) 
   - [Private AI Service Container using Multiple AI Models with HTTPS URL and an Internal LoadBalancer](./deploy_privateai_multi_model_https_internallb.md) 
     - [Add New Model](./deploy_privateai_multi_model_https_internallb_add_model.md) 
