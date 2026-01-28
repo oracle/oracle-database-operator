@@ -55,13 +55,13 @@
 
 * **Version 2.1**
 
-* The **Map** action has been replaced by the **autodoscovery** option. If a pluggable database is created manually via command line then the lrest  detects the new pdb and automatically creates the CRD.
+* The **Map** action is replaced by the **autodiscovery** option. If you create a pluggable database manually by command line, then `lrest`  detects the new PDB and automatically creates the CRD.
 
-* Fine grained trace level
+* Fine-grained trace levels
 
-* Oracle Wallet secret (orapki)
+* Oracle Wallet secret (`orapki`)
 
-* [sql/plsql sript execution](#sqlplsql-script-execution) this functionality enables the capability of sql/plsql code execution.
+* [SQL/PLSQL script execution](#sqlplsql-script-execution) using Kubernetes ConfigMaps.
 
 ### 1.1. <a name='Kubectlgetlrpdbformat'></a>Kubectl get lrpdb format
 
@@ -71,26 +71,26 @@
 | CDB NAME      | The name of the container DB                            |
 | PDB NAME      | The name of the **Pluggable database**                  |
 | PDB STATE     | The pdb open mode                                       |
-| PDB SIZE      | Size of the Pluggable database                          |
-| MESSAGE       | Message to verify the progress of the current request   |
+| PDB SIZE      | Size of the PDB                                         |
+| MESSAGE       | Status/progress message for the current request         |
 | RESTRICED     | Bool variable: database open in restricted mode         |
 | LAST SQLCODE  | Sqlcode of the last command (see [OCIErrorGet](https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/miscellaneous-functions.html#GUID-4B99087C-74F6-498A-8310-D6645172390A)) |
-| LAST PLSQL    | Sqlcode of the last plsql execution                     |
-| BITMASK STATUS| The status of pdb represented using a bitmask           |
-| CONNECT_STRING| The tns string for pdb connection                       |
+| LAST PLSQL    | SQLCODE of the last PLSQL execution                     |
+| BITMASK STATUS| The status (bitmask) of the PDB                         |
+| CONNECT_STRING| The TNS string for PDB connection                       |
 
-> Note that **CDB NAME** is not necessary the name of db container , it's a label to be used in the  pdb resource specification
+> Note **CDB NAME** is a label used in the PDB resource specification, not necessarily the name of the actual Container Database.
 
 ### 1.2. <a name='Pdbstatustable'></a>Pdb status table
 
 | Name    | Value     | Description                                       |
 |---------|-----------|---------------------------------------------------|
 |  PDBCRT |0x00000001 | Create PDB                                        |
-|  PDBOPN |0x00000002 | Open pdb read write                               |
-|  PDBCLS |0x00000004 | Close pdb                                         |
-|  PDBDIC |0x00000008 | Drop pdb include datafiles                        |
+|  PDBOPN |0x00000002 | Open PDB read write                               |
+|  PDBCLS |0x00000004 | Close PDB                                         |
+|  PDBDIC |0x00000008 | Drop PDB including datafiles                        |
 |  OCIHDL |0x00000010 | OCI handle allocation (**for future use**)        |
-|  OCICON |0x00000020 | Rdbms connection (**for future use**)             |
+|  OCICON |0x00000020 | RDBMS connection (**for future use**)             |
 |  FNALAZ |0x00000040 | Finalizer configured                              |
 | **ERROR CODES**                                                         |
 | PDBCRE  |0x00001000 | PDB creation error                                |
@@ -102,17 +102,22 @@
 | **OTHER INFO**                                                          |
 | PDBAUT | 0x01000000 | Autodisover                                       |
 
-> In case of error codes the reconciliation loop does  not take any action see
-[Get rid of error status](#get-rid-of-error-status); Status needs to be manually reset
+> If an error code occurs, the reconciliation loop does not take any action. You must manually reset the status. See
+[Get rid of error status](#get-rid-of-error-status). 
 
 ## 2. <a name='STEPBYSTEPCONFIGURATION'></a>STEP BY STEP CONFIGURATION
 
-Complete each of these steps in the order given.
+Prepare the environment and deploy the Oracle Database Operator and supporting infrastructure for PDB lifecycle. 
+
+Complete the following steps in order:
 
 ### 2.1. <a name='Multiplenamespacesetup'></a>Multiple namespace setup
 
-Before proceeding with controllers setup, ensure that the Oracle Database Operator (operator) is configured to work with multiple namespaces, as specified in the [README](../../../README.md).
-In this document, each controller is running in a dedicated namespace: lrest controller is running in **cdbnamespace** , lrpdb controller is running in **pdbnamespace**. The [usecase directory](./usecase/README.md) contains sample files and additional scripts for yaml files customization.
+Before configuring the controllers, ensure that the Oracle Database Operator (operator) is configured to work with multiple namespaces, as specified in the [README](../../../README.md).
+In this document, each controller is running in a dedicated namespace: 
+- The `lrest` controller is running in **cdbnamespace**. 
+- The `lrpdb` controller is running in **pdbnamespace**. 
+- The [usecase directory](./usecase/README.md) contains example files and additional scripts for YAML file customization.
 
 Configure the **WACTH_NAMESPACE** list of the operator `yaml` file
 
@@ -120,7 +125,7 @@ Configure the **WACTH_NAMESPACE** list of the operator `yaml` file
 sed -i 's/value: ""/value: "oracle-database-operator-system,pdbnamespace,cdbnamespace"/g' oracle-database-operator.yaml
 ```
 
-### 2.2. <a name='Applyrolebinding'></a>Apply rolebinding
+### 2.2. <a name='Applyrolebinding'></a>Apply Role Binding
 
 Apply the following files : [`pdbnamespace_binding.yaml`](./usecase/pdbnamespace_binding.yaml) [`cdbnamespace_binding.yaml`](./usecase/cdbnamespace_binding.yaml)
 
@@ -129,7 +134,7 @@ kubectl apply -f pdbnamespace_binding.yaml
 kubectl apply -f cdbnamespace_binding.yaml
 ```
 
-### 2.3. <a name='Createtheoperator'></a>Create the operator
+### 2.3. <a name='Createtheoperator'></a>Create the Operator
 
 Run the following command:
 
@@ -147,15 +152,15 @@ oracle-database-operator-controller-manager-796c9b87df-sckf2   1/1     Running  
 oracle-database-operator-controller-manager-796c9b87df-t4qns   1/1     Running   0          22m
 ```
 
-### 2.4. <a name='ClusterRoleandClusterRoleBindingforNodePortservices'></a>ClusterRole and ClusterRoleBinding for NodePort services
+### 2.4. <a name='ClusterRoleandClusterRoleBindingforNodePortservices'></a>ClusterRole and ClusterRoleBinding for NodePort Services
 
-To expose services on each node's IP and port (the NodePort), apply the node-rbac.yaml. Note that this step is not required for LoadBalancer services.
+To expose services on each node's IP and port (the NodePort), apply the `node-rbac.yaml`. Note that this step is not required for LoadBalancer services.
 
 ```bash
   kubectl apply -f rbac/node-rbac.yaml
 ```
 
-### 2.5. <a name='Containerdatabasesetup'></a>Container database setup
+### 2.5. <a name='Containerdatabasesetup'></a>Container Database Setup
 
 On the container database, use the following commands to configure the account for PDB administration:
 
@@ -166,7 +171,7 @@ grant create session to <ADMINUSERNAME> container=all;
 grant sysdba to <ADMINUSERNAME> container=all;
 ```
 
-### 2.6. <a name='Certificateandcredentials'></a>Certificate and credentials
+### 2.6. <a name='Certificateandcredentials'></a>Certificate and Credentials
 
 You must create the public key, private key, certificates and Kubernetes Secrets for the security configuration.
 
@@ -206,7 +211,7 @@ openssl req -newkey rsa:2048 -nodes -keyout tls.key -subj "/C=CN/ST=GD/L=SZ/O=or
 /usr/bin/openssl x509 -req -extfile extfile.txt -days 365 -in server.csr -CA ca.crt -CAkey private.key -CAcreateserial -out tls.crt
 ```
 
-### 2.7. <a name='Createsecretsforcertificateandkeys'></a>Create secrets for certificate and keys
+### 2.7. <a name='Createsecretsforcertificateandkeys'></a>Create Secrets for Certificate and Keys
 
 Create the Kubernetes Secrets.
 
@@ -225,15 +230,17 @@ kubectl create secret generic pubkey --from-file=publicKey=public.pem -n cdbname
 kubectl create secret generic prvkey --from-file=privateKey="private.key" -n pdbnamespace
 ```
 
-### 2.8. <a name='Credentialspecification'></a>Credential specification
+### 2.8. <a name='Credentialspecification'></a>Credential Specification
 
-There are three option available to create secret credential
+Create and manage database credentials using one of the supported options. 
 
-* **NATIVE** : standard base64 enconded password tipically used with a 3rd party password wallet
-* **OPENSSL3** : Creadential are encrypted using openssl and then saved into a secret.
-* **ORAPKI** : Database credentials are saved into an oracle wallet using [orapki](https://docs.oracle.com/en/database/oracle/oracle-database/26/dbseg/using-the-orapki-utility-to-manage-pki-elements.html)
+There are three options available to create secret credentials:
 
-Attribute **passwordProtection** need to be specified on lrest and lrpdb resources according to the following rules.
+* **NATIVE** : Standard base64-enconded password, commoni with third-party password wallets
+* **OPENSSL3** : Creadentials encrypted using OpenSSL and then saved into a secret.
+* **ORAPKI** : Database credentials stored in an Oracle Wallet using [orapki](https://docs.oracle.com/en/database/oracle/oracle-database/26/dbseg/using-the-orapki-utility-to-manage-pki-elements.html)
+
+Specify the attribute **passwordProtection** on `lrest` and `lrpdb` resources as follows:
 
 | LREST | LRPDB |
 |-------|-------|
@@ -247,7 +254,7 @@ Attribute **passwordProtection** need to be specified on lrest and lrpdb resourc
 | **wbuser** |**wbpass**   | the user for https authentication                         |
 | **pdbusr** |**pdbpwd**   | the administrative user of the pdbs                       |
 
-#### 2.8.1. <a name='NATIVE'></a>NATIVE
+#### 2.8.1. <a name='NATIVE'></a>NATIVE Example
 
 ```bash
 
@@ -262,7 +269,7 @@ kubectl create secret generic pdbpwd --from-literal=e_pdbpwd.txt=[PDBUSERNAME PA
 
 ```
 
-#### 2.8.2. <a name='OPENSSL3Createsecretswithencryptedpassword'></a>OPENSSL3 Create secrets with encrypted password
+#### 2.8.2. <a name='OPENSSL3Createsecretswithencryptedpassword'></a>OPENSSL3 Create Secrets with Encrypted Password Example
 
 In this example, we create the Secrets for each credential (username and password)
 
@@ -295,9 +302,9 @@ rm  dbuser.txt dbpass.txt wbuser.txt wbpass.txt pdbusr.txt pdbpwd.txt \
     e_dbuser.txt e_dbpass.txt e_wbuser.txt e_wbpass.txt e_pdbusr.txt e_pdbpwd.txt
 ```
 
-#### 2.8.3. <a name='ORAPKI'></a>ORAPKI
+#### 2.8.3. <a name='ORAPKI'></a>ORAPKI Example
 
-Webuser credential and pdb admin credentail must be generated useing NATIVE approach. In order to increase security pdb admin password can be changed immediately after pdb creation.  
+Webuser credential and pdb admin credentail must be generated useing NATIVE approach. To increase security, the PDB admin password can be changed immediately after creating the PDB.  
 
 examples:
 
@@ -450,7 +457,8 @@ Parsing sqltext=select count(*) from pdb_plug_in_violations where name =:b1
 
 ```
 
-**lrest Pod creation** - parameters list
+**Create lrest Pod** 
+parameters list
 
 |  Name                   | Dcription                                                                     |
 --------------------------|-------------------------------------------------------------------------------|
@@ -471,11 +479,12 @@ Parsing sqltext=select count(*) from pdb_plug_in_violations where name =:b1
 |clusterip                | Assigne a cluster ip                                |
 |trace_level_client       | Turn on the sqlnet **trace_level_client**           |
 
-### 2.10. <a name='Openshiftconfiguration'></a>Openshift configuration
+### 2.10. <a name='Openshiftconfiguration'></a>Openshift Configuration
+Deploy on OpenShift with the proper security context. 
 
-For the open shift installation you need to do the following
+For the open shift installation you need to do the following:
 
-* Before lrest pod creation; create a security context by appling the yaml file [security_context.yaml](./usecase/security_context.yaml): mind to specify the correnct **namespace** and the **service name account**.
+* Before `lrest` pod creation: Create a security context by applying the YAML file [security_context.yaml](./usecase/security_context.yaml): Be sure to specify the correct **namespace** and **service name account**.
 
 ```yaml
 [...]
@@ -487,7 +496,7 @@ metadata:
 [...]
 ```
 
-* Specify  `serviceAccountName` parameter  in the lrest server yaml file
+* Specify  `serviceAccountName` parameter  in the `lrest` server YAML file
 
 ```yaml
 [...]
@@ -503,7 +512,7 @@ To create a pluggable database, apply the yaml file [`create_pdb1_resource.yaml`
 kubectl apply -f create_pdb1_resource.yaml
 ```
 
-Check the status of the resource and the PDB existence on the container db:
+Check the status of the resource and the PDB existence on the container database:
 
 ```bash
 kubectl get lrpdb -n pdbnamespace
@@ -521,7 +530,7 @@ SQL> show pdbs
 SQL> 
 ```
 
-> Note that after creation, the PDB is not open. You must explicitly open it using a dedicated `yaml` file.
+> Note that after creation, the PDB is not open. You must explicitly open it using a dedicated YAML file.
 
 **pdb creation** - parameters list
 
@@ -547,9 +556,9 @@ SQL>
 
 🔥 **assertiveLrpdbDeletion** drops pluggable database using **INCLUDE DATAFILES** option
 
-The following parameters **adminpdbUser** **adminpdbPass** **lrpdbTlsKey** **lrpdbTlsCrt** **lrpdbTlsCat** **webServerUser** **webServerPwd** **cdbPrvKey** **cdbPubKey** must be specified in all PDB lifecycle management `yaml` files. For the sake of presentation they will be omitted in the subsequent tables.
+The parameters **adminpdbUser** **adminpdbPass** **lrpdbTlsKey** **lrpdbTlsCrt** **lrpdbTlsCat** **webServerUser** **webServerPwd** **cdbPrvKey** and **cdbPubKey** must be specified in all PDB lifecycle management YAML files. For the sake of presentation they will be omitted in the subsequent tables.
 
-#### 2.11.1. <a name='pdbconfigmap'></a>pdb config map
+#### 2.11.1. <a name='pdbconfigmap'></a>PDB Config Map
 
 **pdbconfigmap** parameters specifies a kubernetes `configmap` with init PDB parameters. The config map payload has the following format:
 
@@ -777,13 +786,13 @@ data:
 
 The sql and plsqlcode must be indented using tab (makefile stile). The code blocks will be executed following the alphabetic tag order.
 
-### 3.1. <a name='Applyplsqlconfigmap'></a>Apply plsql configmap
+### 3.1. <a name='Applyplsqlconfigmap'></a>Apply PL/SQL Config Map
 
 ```bash
 kubectl patch lrpdb pdb1 -n pdbnamespace -p '{"spec":{"codeconfigmap":"<config_map_name>"}}' --type=merge
 ```
 
-The **kubectl get** commands shows only the return code of the last plsql code executed.  Describe the resource if you need to verify the overall status of the whole config map execution; see the events history in the example
+The **kubectl get** commands show only the return code of the last PL/SQL code executed.  Describe the resource if you need to verify the overall status of the whole config map execution; see the events history in the example
 
 ```bash
 /usr/bin/kubectl patch lrpdb pdb1 -n pdbnamespace -p \
@@ -808,7 +817,7 @@ The message format for the **APPLYSQL** is `CODE:SQLCODE '[<tagname>]':'<PLSQL R
 
 ### 3.2. <a name='Limitation'></a>Limitation
 
-* All the objects in the plsql confgmap must be rapresented in the form `<onwer>.<object_name>`. Due to this constraint it's not possible to rename table
+* All the objects in the PL/SQL configuration map must be rapresented in the form `<onwer>.<object_name>`. Due to this constraint, it is not possible to rename the table
 
 ```bash
 +----------------------------------------------------------------------+
@@ -821,13 +830,13 @@ The message format for the **APPLYSQL** is `CODE:SQLCODE '[<tagname>]':'<PLSQL R
 
 ```
 
-* The nummber of code lines is limited by the configmap capability. To workaround this limitation you can use more configmaps.
+* The nummber of code lines is limited by the `configmap` capability. To work around this limitation, you can use more configuration maps.
 
 ## 4. <a name='TROUBLESHOOTING'></a>TROUBLESHOOTING
 
-### 4.1. <a name='Getridoferrorstatus'></a>Get rid of error status
+### 4.1. <a name='Getridoferrorstatus'></a>Get Rid of Error Status
 
-If for some reason you get an operation failure it's possible to manually fix the problem and then rest the bitmask status to re-execute the operation. Consider the following example: the unplug command does not complete successfully because xmlfile already exists ; **ORA-65170** and **PDBUPE** flag is on. You can remove the file and then rest the bitmask status in order to retry the operation.
+If an operation fails, it is possible to manually fix the problem and then rest the bitmask status to re-run the operation. Consider the following example: The unplug command does not complete successfully because the xmlfile already exists. As a result, unplug fails with **ORA-65170** and **PDBUPE**. You can fix the cause by removing the file manually and then rest the bitmask status so you can retry the operation.
 
 ```text
 RESOURCE STATUS:
@@ -857,7 +866,7 @@ pdb1   DB12       pdbdev     MOUNTED     0.80G      close:[ORA-65170]    NONE   
 
 ### 4.2. <a name='TraceLevel'></a>Trace Level
 
-**Fine grane trace level** can be enable using the bitmask parameter ``tracelevel``  
+You can enable **Fine grain trace** using the bitmask parameter ``tracelevel``  
 
 | CODE   | VALUE      | DESCRIPTION                                 |
 |--------|------------|---------------------------------------------|
@@ -880,7 +889,7 @@ pdb1   DB12       pdbdev     MOUNTED     0.80G      close:[ORA-65170]    NONE   
 | TRCTNS | 0x00010000 |  Parse tnsalias - call parseTnsAlias        |
 | TRCDEL | 0x00020000 |  Delete pdb (WIP)
 
-Parameter can be set at yaml level or modified via kubectl patch. Let's say for instance that you need to trace NewcallApi having the backtrace for each call; The tracelevel value will be  **0x00000001 | 0x00002000 = 0x2001= 8193**
+You can set the parameter at YAML level, or set it with `kubectl patch`. Suppose that you need to trace NewcallApi with the backtrace for each call; The tracelevel value will be  **0x00000001 | 0x00002000 = 0x2001= 8193**
 
 ```bash
  kubectl patch lrpdb pdb1 -n pdbnamespace -p '{"spec":{"tracelevel":8193}}' --type=merge
@@ -888,9 +897,11 @@ Parameter can be set at yaml level or modified via kubectl patch. Let's say for 
 
 ## 5. <a name='UPGRADEEXISTINGINSTALLATION'></a>UPGRADE EXISTING INSTALLATION
 
-In order to migrante an existing installation to the new version of controller you can laverage on the autodiscover installation. Patch all your lrpdb resources by setting **assertiveLrpdbDeletion** false. After that you can delete lrest resource and all lrpdbs. Upgrade the operator and create lrest server with **autodiscover** and **namespaceAutoDiscover** configured.
+Upgrade your environment to the latest controller version using autodiscover. 
 
-* For each CRD/LRPDB turn off **assertiveLrpdbDeletion**
+To migrate an existing installation to the new version of controller, you can leverage the autodiscover installation. Patch all your `lrpdb` resources by setting **assertiveLrpdbDeletion** to false. After doing that, you can delete the `lrest` resource and delete all `lrpdb`files. Upgrade the operator and then create the `lrest` server with **autodiscover** and **namespaceAutoDiscover** configured.
+
+* For each CRD/LRPDB, turn off **assertiveLrpdbDeletion**
 
 ```bash
 kubectl patch lrpdb <resourcename> -n <namespace> -p '{"spec":{"imperativeLrpdbDeletion":false}}' --type=merge
@@ -930,7 +941,7 @@ kubectl patch lrest <lrestresname> -n <lrestnamespace> -p '{"spec":{"autodiscove
 kubectl patch lrest <lrestresname> -n <lrestnamespace> -p '{"spec":{"namespaceAutoDiscover":"<namespace>}}' --type=merge
 ```
 
-Check the lrpdb resource existence
+Check the `lrpdb` resource existence
 
 * Turn off the **autodiscover**
 
@@ -938,12 +949,12 @@ Check the lrpdb resource existence
 kubectl patch lrest cdb-dev -n <lrestresname> -p '{"spec":{"autodiscover":false}}' --type=merge
 ```
 
-## 6. <a name='DEPLOYMULTITENANTCONTROLLERSONCDBWITHEXISTINGSPDBS'></a>DEPLOY MULTITENANT CONTROLLERS ON CDB WITH EXISTINGS PDBS
+## 6. <a name='DEPLOYMULTITENANTCONTROLLERSONCDBWITHEXISTINGSPDBS'></a>Deploy Multitenant Controllers on a CDB with Existing PDBs
 
-* To deploy multitenant controllers on a container database with existing pdbs start the previous procedure at point (**A**)
+* To deploy multitenant controllers on a container database with existing PDBs, start the previous procedure at point (**A**)
 
 ## 7. <a name='KNOWNISSUES'></a>KNOWN ISSUES
 
-* Error message `ORA-01005` is not reported in the lrest database login phase if password is mistakenly null. Trace log shows the message ORA-1012.
+* Error message `ORA-01005` is not reported in the `lrest` database login phase if the password is mistakenly null. The trace log shows the message ORA-1012.
 
 </span>
