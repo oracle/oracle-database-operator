@@ -2,11 +2,11 @@
 
 Oracle Restart is an option to the award-winning Oracle Database Enterprise Edition. Oracle Restart is a feature introduced in Oracle 11gR2 that automatically restarts Oracle components, such as the database instance, listener, and Oracle ASM, after a failure or system reboot. It ensures that these components are started in the correct order and that they are managed by Oracle's High Availability Services (HAS). This enhances the availability of Oracle databases in a standalone server environment. Refer [this documentation](https://docs.oracle.com/cd/E18283_01/server.112/e17120/restart001.htm)
 
-For more information on Oracle Restart Database 19c refer to the [Oracle Database Documentation](http://docs.oracle.com/en/database/).
+For more information on Oracle Restart, refer to the [Oracle Database Documentation](http://docs.oracle.com/en/database/).
 
 Kubernetes provides essential infrastructure building blocks, including compute, storage, and networking resources, and exposes them as code for infrastructure automation. This approach enables rapid provisioning of multi-node topologies. Additionally, Kubernetes offers the **StatefulSet** workload API object—ideal for managing stateful applications such as Oracle Restart, Single Instance Oracle Databases, and other Oracle features or configurations that require persistent storage and stable network identities.
 
-The Oracle Restart Controller in the Oracle Database Operator deploys Oracle Databases as a StatefulSet within Kubernetes clusters, using the Oracle Restart Slim Image. The Oracle Restart Controller manages the typical lifecycle operations of an Oracle Database in a Kubernetes environment, including deployment, monitoring, scaling, upgrades, and deletion, as illustrated below:
+The Oracle Restart Controller in the Oracle Database Operator deploys Oracle databases as a StatefulSet within Kubernetes clusters, using the Oracle Restart Slim Image. The Oracle Restart Controller manages the typical lifecycle operations of an Oracle database in a Kubernetes environment, including deployment, monitoring, scaling, upgrades, and deletion, as illustrated below:
 
 * Create Oracle Database
   * Install and Configure Oracle Grid Infrastructure
@@ -17,7 +17,7 @@ The Oracle Restart Controller in the Oracle Database Operator deploys Oracle Dat
 
 ## Using Oracle Restart Controller
 
-To create an Oracle Database, complete the steps in the following sections:
+To create an Oracle database, complete the steps in the following sections:
 
 1. [Prerequisites for running Oracle Restart Controller](#prerequisites-for-running-oracle-restart-controller)  
 2. [Provisioning Oracle Restart database in a Oracle Kubernetes Engine Environment](#provisioning-oracle-restart-database-in-an-oracle-kubernetes-engine-environment)
