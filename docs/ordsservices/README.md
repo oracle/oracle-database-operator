@@ -1,6 +1,5 @@
 # Oracle Rest Data Services (OrdsSrvs) Controller for Kubernetes -  ORDS Life cycle management
 
-
 ## Description
 
 The OrdsSrvs controller extends the Kubernetes API with a Custom Resource (CR) and Controller for automating Oracle Rest Data
@@ -18,6 +17,7 @@ The custom RestDataServices resource supports the following configurations as a 
 * Multiple OrdsSrvs resources, each with one database pool
 * Multiple OrdsSrvs resources, each with multiple database pools<sup>*</sup>
 * ORDS and APEX database schemas [automatic installation/upgrade](./autoupgrade.md)
+* Deploying ORDS with Central Configuration Server
 
 <sup>*See [Limitations](#limitations)</sup>
 
@@ -33,8 +33,63 @@ OrdsSrvs controller supports the majority of ORDS configuration settings as per 
 
 Before installing the OrdsSrvs controller, ensure that the Oracle Database Operator (OraOperator) is installed in your Kubernetes environment. Please follow the detailed installation steps provided in the [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md) to complete this process. The OraOperator must be properly configured and running, as OrdsSrvs depends on its services for functionality.
 
+There are different ways to provide database credentials and connect string for OrdsSrvs.
+For step-by-step instructions and field descriptions, refer to the [API](./api.md) reference and the Examples section for details on each configuration.
 
-### Namespace Namespace Scoped Deployment
+Here is the updated documentation in a clean Markdown format, incorporating the specific security warning and the requested structure for the ORDS controller.
+
+# Database Credentials Management
+
+Credentials for Oracle REST Data Services (ORDS) can be supplied by delegating management to native Kubernetes Secrets, providing encrypted values, or using an Oracle Wallet.
+
+> **⚠️WARNING⚠️**   
+>**Security Requirement:** When using the **K8s Secret** mode, please note that by default, Kubernetes Secrets are stored unencrypted in the API server's underlying data store (etcd). They are only Base64 encoded, which does not provide actual security. You must ensure secrets are protected at the Kubernetes level by following the [Good practices for Kubernetes Secrets](https://kubernetes.io/docs/concepts/security/secrets-good-practices/) in the official Kubernetes documentation.
+
+### Credential Modes
+
+| Mode | Attributes | Encryption | Note |
+| :--- | :--- | :--- | :--- |
+| **Kubernetes Secret** | `spec.poolSettings."db.username"`<br>`spec.poolSettings."db.secret"` | Delegated to K8s Admin  | [Existing DB Example](./examples/existing_db.md) |
+| **Encrypted Secret** | `spec.EncPrivKey.secretName`<br>`spec.poolSettings."db.username"`<br>`spec.poolSettings."db.secret"` | RSA_OAEP | [Multi-pool Example](./examples/multi_pool.md) |
+|**Pool Zip Wallet**|`spec.poolSettings.dbWalletSecret`<br>`spec.poolSettings."db.wallet.zip.service"`| mTLS Wallet (Zip)|[ADB Example](./examples/adb.md)|
+|**Shared Zip Wallets**|`spec.globalSettings.zipWalletsSecretName`<br>`spec.poolSettings.zipWalletName`<br>`spec.poolSettings."db.wallet.zip.service"`|mTLS Wallet (Zip)|[Wallets Example](examples/cc_zip_wallets.md)|
+
+
+* **Encryption at Rest:** Ensure that Encryption at Rest is enabled for your Kubernetes cluster's etcd to protect the underlying data of K8s Secrets.
+* **Rotate Credentials:** Rotate database passwords and Oracle Wallets regularly; always apply the principle of **least-privilege RBAC** to restrict access to sensitive secrets.
+ 
+
+### Database Connectivity Configuration
+The OrdsSrvs controller supports several connection methods to accommodate diverse deployment scenarios, ranging from local containerized instances to remote On-Premises clusters or Autonomous Databases (ADB).  
+Depending on your security and networking requirements, connectivity can be established using direct JDBC strings, tnsnames.ora aliases, or mTLS-secured Oracle Wallets.
+
+|Mode| Attributes| Format| Note|
+|-|-|-|-|
+|TNS String|`spec.poolSettings."db.connectionType"`: **customurl**<br>`spec.poolSettings."db.customURL"`| Connection String|[Existing DB Example](./examples/existing_db.md)|
+|tnsnames.ora|`spec.poolSettings."db.connectionType"`: **tns**<br>`spec.poolSettings.tnsAdminSecret`<br>`spec.poolSettings."db.tnsAliasName"`| Standard `tnsnames.ora`|[Resources Example](./examples/tnsnames.md)|
+|Pool Zip Wallet|`spec.poolSettings.dbWalletSecret`<br>`spec.poolSettings."db.wallet.zip.service"`| mTLS Wallet (Zip)|[ADB Example](./examples/adb.md)|
+|Shared Zip Wallets|`spec.globalSettings.zipWalletsSecretName`<br>`spec.poolSettings.zipWalletName`<br>`spec.poolSettings."db.wallet.zip.service"`|mTLS Wallet (Zip)|[Wallets Example](examples/cc_zip_wallets.md)|
+
+
+## Common configuration examples
+
+A few common configuration examples can be used to quickly familiarise yourself with the OrdsSrvs Custom Resource Definition.
+The "Conclusion" section of each example highlights specific settings to enable functionality that maybe of interest.
+
+* [Pre-existing Database](./examples/existing_db.md)
+* [Containerised Single Instance Database (SIDB)](./examples/sidb_container.md)
+* [Multidatabase using a TNS Names file](./examples/multi_pool.md)
+* [Autonomous Database using the OraOperator](./examples/adb_oraoper.md) <sup>*See [Limitations](#limitations)</sup>
+* [Autonomous Database without the OraOperator](./examples/adb.md)
+* [Oracle API for MongoDB Support](./examples/mongo_api.md)
+* [ORDS and APEX database schemas automatic installation/upgrade](./autoupgrade.md)
+* [Custom tnsnames.ora](./examples/tnsnames.md)
+* [Deploying ORDS with Central Configuration Server](./examples/central_configuration.md)
+* [Central Configuration Server with shared zip Wallets](./examples/cc_zip_wallets.md)
+
+Running through all examples in the same Kubernetes cluster illustrates the ability to run multiple ORDS instances with a variety of different configurations.
+
+### Namespace Scoped Deployment
 
 For a dedicated namespace deployment of the OrdsSrvs controller, refer to the "Namespace Scoped Deployment" section in the OraOperator [README](https://github.com/oracle/oracle-database-operator/blob/main/README.md#2-namespace-scoped-deployment).
 The following examples demonstrate deploying the controller to the ordsnamespace namespace. 
@@ -99,23 +154,23 @@ spec:
 ```
 
 
-## Common configuration examples
-
-A few common configuration examples can be used to quickly familiarise yourself with the OrdsSrvs Custom Resource Definition.
-The "Conclusion" section of each example highlights specific settings to enable functionality that maybe of interest.
-
-* [Pre-existing Database](./examples/existing_db.md)
-* [Containerised Single Instance Database (SIDB)](./examples/sidb_container.md)
-* [Multidatabase using a TNS Names file](./examples/multi_pool.md)
-* [Autonomous Database using the OraOperator](./examples/adb_oraoper.md) <sup>*See [Limitations](#limitations)</sup>
-* [Autonomous Database without the OraOperator](./examples/adb.md)
-* [Oracle API for MongoDB Support](./examples/mongo_api.md)
-* [ORDS and APEX database schemas automatic installation/upgrade](./autoupgrade.md)
-
-Running through all examples in the same Kubernetes cluster illustrates the ability to run multiple ORDS instances with a variety of different configurations.
-
-
 ## Change Log
+
+### Development
+
+
+### Version 2.1
+
+* **Native Kubernetes Secret**
+The `encPrivKey` attribute is now optional; database passwords can be managed via native Kubernetes Secrets.  
+**⚠️WARNING⚠️** When using Kubernetes Secrets ensure secrets are protected at the Kubernetes level by following the [Good practices for Kubernetes Secrets](https://kubernetes.io/docs/concepts/security/secrets-good-practices/) in the official Kubernetes documentation.
+
+* **TNSAdminSecret**
+Added a dedicated documentation page for managing `tnsnames.ora` via Secrets. See [Custom tnsnames.ora Example](./examples/tnsnames.md).
+* **Central Configuration Manager**
+New attribute `spec.globalSettings."central.config.url"` supports deploying ORDS with a Central Configuration Manager for externalized settings.
+* **Shared Zip Wallets**
+New attributes `spec.globalSettings.zipWalletsSecretName` and `spec.poolSettings.zipWalletName` allow multiple mTLS Wallets (.zip) to be defined at the global level and referenced by individual database pools.
 
 ### Version 2.0
 
@@ -132,7 +187,7 @@ Secrets can be recreated either before or after the operator upgrade. Restarting
 
 ## Limitations
 
-When connecting to a mTLS enabled ADB and using the Oracontroller to retreive the Wallet, it is currently not supported to have multiple, different databases supported by the single RestDataServices resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-controller/issues/97)).
+When connecting to a mTLS enabled ADB and using the controller to retreive the Wallet, it is currently not supported to have multiple, different databases supported by the single RestDataServices resource.  This is due to a requirement to set the `TNS_ADMIN` parameter at the Pod level ([#97](https://github.com/oracle/oracle-database-controller/issues/97)).
 
 ## Troubleshooting 
 See [Troubleshooting](./TROUBLESHOOTING.md)

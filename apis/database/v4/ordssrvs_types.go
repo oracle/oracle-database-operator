@@ -46,37 +46,53 @@ import (
 // OrdsSrvsSpec defines the desired state of OrdsSrvs
 // +kubebuilder:resource:shortName="ords"
 type OrdsSrvsSpec struct {
+	
 	// Specifies the desired Kubernetes Workload
 	//+kubebuilder:validation:Enum=Deployment;StatefulSet;DaemonSet
 	//+kubebuilder:default=Deployment
 	WorkloadType string `json:"workloadType,omitempty"`
+	
 	// Defines the number of desired Replicas when workloadType is Deployment or StatefulSet
 	//+kubebuilder:validation:Minimum=1
 	//+kubebuilder:default=1
 	Replicas int32 `json:"replicas,omitempty"`
+	
 	// Specifies whether to restart pods when Global or Pool configurations change
 	ForceRestart bool `json:"forceRestart,omitempty"`
+	
 	// Specifies the ORDS container image
 	//+kubecbuilder:default=container-registry.oracle.com/database/ords:latest
 	Image string `json:"image"`
+	
 	// Specifies the ORDS container image pull policy
 	//+kubebuilder:validation:Enum=IfNotPresent;Always;Never
 	//+kubebuilder:default=IfNotPresent
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	
 	// Specifies the Secret Name for pulling the ORDS container image
 	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
+	
 	// Contains settings that are configured across the entire ORDS instance.
-	GlobalSettings GlobalSettings `json:"globalSettings"`
-	// Contains settings for individual pools/databases
+	//+kubebuilder:default:={}
+	GlobalSettings GlobalSettings `json:"globalSettings,omitempty"`
+	
 	// Private key
 	EncPrivKey   PasswordSecret  `json:"encPrivKey,omitempty"`
+	
+	// Contains settings for individual pools/databases
 	PoolSettings []*PoolSettings `json:"poolSettings,omitempty"`
-	// +k8s:openapi-gen=true
+
 	// ServiceAccount of the OrdsSrvs Pod
+	// +k8s:openapi-gen=true
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
 }
 
 type GlobalSettings struct {
+
+	// Specifies whether the Instance API is enabled.
+	InstanceAPIEnabled *bool `json:"instance.api.enabled,omitempty"`
+
 	// Specifies the setting to enable or disable metadata caching.
 	CacheMetadataEnabled *bool `json:"cache.metadata.enabled,omitempty"`
 
@@ -218,6 +234,16 @@ type GlobalSettings struct {
 	// Specify the storage attributes for PersistenceVolume and PersistenceVolumeClaim
 	APEXInstallationPersistence Persistence `json:"apex.installation.persistence,omitempty"`
 
+	// Central Configuration URL
+	CentralConfigUrl string `json:"central.config.url,omitempty"`
+	
+	// Central Configuration Wallet
+	//CentralConfigWallet string `json:"central.config.wallet,omitempty"`
+
+	// Specifies the Secret containing one or more wallet.zip archives (whit different names) containing connection details and credentials for the pools.
+	// shared zip wallet
+	ZipWalletsSecretName string `json:"zipWalletsSecretName,omitempty"`
+
 	/*************************************************
 	* Undocumented
 	/************************************************/
@@ -316,7 +342,7 @@ type GlobalSettings struct {
 
 // Specify storage attributes of PV and PVC
 type Persistence struct {
-	//+kubebuilder:default="1Gi"
+	//+kubebuilder:default="2Gi"
 	Size         string `json:"size,omitempty"`
 	StorageClass string `json:"storageClass,omitempty"`
 	//+kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
@@ -344,19 +370,14 @@ type PoolSettings struct {
 	AutoUpgradeAPEX bool `json:"autoUpgradeAPEX,omitempty"`
 
 	// Specifies the name of the database user for the connection.
-	// For non-ADB this will default to ORDS_PUBLIC_USER
 	// For ADBs this must be specified and not ORDS_PUBLIC_USER
 	// If ORDS_PUBLIC_USER is specified for an ADB, the workload will fail
-	//+kubebuilder:default:="ORDS_PUBLIC_USER"
+	// db.username can be empty in case of SEPS zip wallets (Secure External Password Store, orapki credentials, connect /@TNSALIAS)
 	DBUsername string `json:"db.username,omitempty"`
 
-	// Specifies the password of the specified database user.
-	// Replaced by: DBSecret PasswordSecret `json:"dbSecret"`
-	// DBPassword struct{} `json:"dbPassword,omitempty"`
-
-	// Specifies the Secret with the dbUsername and dbPassword values
+	// Specifies the Secret with the db password
 	// for the connection.
-	DBSecret PasswordSecret `json:"db.secret"`
+	DBSecret PasswordSecret `json:"db.secret,omitempty"`
 
 	// Specifies the username for the database account that ORDS uses for administration operations in the database.
 	DBAdminUser string `json:"db.adminUser,omitempty"`
@@ -478,7 +499,10 @@ type PoolSettings struct {
 	DBTnsAliasName string `json:"db.tnsAliasName,omitempty"`
 
 	// Specifies the service name in the wallet archive for the pool.
-	DBWalletZipService string `json:"db.wallet.zip.service,omitempty"`
+	ZipWalletService string `json:"db.wallet.zip.service,omitempty"`
+
+	// Specifies the name of the wallet archive inside the shared zip wallets, defined in ZipWalletsSecretName .
+	ZipWalletName string `json:"zipWalletName,omitempty"`
 
 	// Specifies the JDBC driver type.
 	//+kubebuilder:validation:Enum=thin;oci8
@@ -582,6 +606,7 @@ type PoolSettings struct {
 
 	// Specifies the Secret containing the wallet archive containing connection details for the pool.
 	// Replaces: db.wallet.zip
+	// db.wallet.zip in ORDS is a wallet archive provided in BASE64 encoding
 	DBWalletSecret *DBWalletSecret `json:"dbWalletSecret,omitempty"`
 
 	/*
@@ -590,9 +615,13 @@ type PoolSettings struct {
 		// DBTnsDirectory string `json:"db.tnsDirectory,omitempty"`
 	*/
 
-	// Specifies the Secret containing the TNS_ADMIN directory
+	// Specifies the Secret containing the TNS_ADMIN directory, expected file tnanames.ora
 	// Replaces: db.tnsDirectory
 	TNSAdminSecret *TNSAdminSecret `json:"tnsAdminSecret,omitempty"`
+
+	// Pool Wallet
+	// Specifies the Secret containing the pool wallet directory, expected file cwallet.sso
+	// PoolWalletSecret *PoolWalletSecret `json:"poolWalletSecret,omitempty"`
 
 	/*************************************************
 	* Disabled
@@ -643,13 +672,19 @@ type CertificateSecret struct {
 	CertificateKey string `json:"key"`
 }
 
-// Defines the secret containing Certificates
+// Defines a secret containing tns admin folder (network/admin), e.g. tnsnames.ora
 type TNSAdminSecret struct {
-	// Specifies the name of the TNS_ADMIN Secret
+	// Specifies the name of the Secret
 	SecretName string `json:"secretName"`
 }
 
-// Defines the secret containing Certificates
+// Defines a secret containing pool wallet, Oracle Wallet with credentials, cwallet.sso
+//type PoolWalletSecret struct {
+//	// Specifies the name of the Secret
+//	SecretName string `json:"secretName"`
+//}
+
+// Defines the secret containing wallet.zip
 type DBWalletSecret struct {
 	// Specifies the name of the Database Wallet Secret
 	SecretName string `json:"secretName"`
@@ -679,6 +714,7 @@ type OrdsSrvsStatus struct {
 
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+
 }
 
 //+kubebuilder:object:root=true
@@ -701,6 +737,7 @@ type OrdsSrvs struct {
 
 	Spec   OrdsSrvsSpec   `json:"spec,omitempty"`
 	Status OrdsSrvsStatus `json:"status,omitempty"`
+	
 }
 
 //+kubebuilder:object:root=true
@@ -711,6 +748,7 @@ type OrdsSrvsList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []OrdsSrvs `json:"items"`
 }
+
 
 func init() {
 	SchemeBuilder.Register(&OrdsSrvs{}, &OrdsSrvsList{})

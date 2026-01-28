@@ -1,4 +1,4 @@
-# Example: Pre-existing Database
+# OrdsSrvs Controller: Pre-existing Database
 
 This example walks through configuring the ORDS Controller to use either a database deployed within Kubernetes, or an existing database external to your cluster.
 
@@ -12,18 +12,24 @@ This example assumes you have a running, accessible Oracle Database.
 export CONN_STRING=<database host ip or scan>:<port>/<service_name>
 ```
 
-### Create encrypted secrets 
+### Database credential secrets
+In this example, we use a native Kubernetes.  
+For production, store credentials in external vaults or use Oracle Wallets to store database credentials. Ensure any external-vault integration aligns with Oracle security and compliance guidelines.
+
+**⚠️WARNING⚠️** When using Kubernetes Secrets ensure secrets are protected at the Kubernetes level by following the [Good practices for Kubernetes Secrets](https://kubernetes.io/docs/concepts/security/secrets-good-practices/) in the official Kubernetes documentation.
 
 ```bash
-DB_PWD=<specify password here>
-openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
-openssl rsa -in ca.key -outform PEM -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=privateKey=ca.key -n ordsnamespace
+echo -n "Enter password: " && read -s DBPWD
+kubectl create secret generic db-auth \
+ --from-literal=password="${DBPWD}" \
+ -n ordsnamespace
+unset DBPWD
 
-echo "${DB_PWD}" > db-auth
-openssl pkeyutl -encrypt -pubin -inkey public.pem -in db-auth -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
-kubectl create secret generic db-auth-enc --from-file=password=e_db-auth -n ordsnamespace
-rm db-auth e_db-auth
+echo -n "Enter Admin password: " && read -s DBADMINPWD 
+kubectl create secret generic db-admin-auth \
+ --from-literal=password="${DBADMINPWD}" \
+ -n ordsnamespace 
+unset DBADMINPWD
 ```
 
 ### Create ordssrvs Resource
@@ -34,12 +40,13 @@ rm db-auth e_db-auth
 
     The following additional keys are specified for the pool:
     * `autoUpgradeORDS` - Boolean; when true the ORDS will be installed/upgraded in the database
-    * `db.adminUser` - User with privileges to install, upgrade or uninstall ORDS in the database (SYS).
-    * `db.adminUser.secret` - Secret containing the password for `db.adminUser` (created in the first step)
     * `db.username` will be used as the ORDS schema in the database during the install/upgrade process (ORDS_PUBLIC_USER).
+    * `db.secret` - Secret containing the password for `db.username`
+    * `db.adminUser` - User with privileges to install, upgrade or uninstall ORDS in the database (SYS).
+    * `db.adminUser.secret` - Secret containing the password for `db.adminUser`
 
-    ```bash
-    echo "
+    ords-db.yaml  
+    ```yaml
     apiVersion: database.oracle.com/v4
     kind: OrdsSrvs
     metadata:
@@ -48,9 +55,6 @@ rm db-auth e_db-auth
     spec:
       image: container-registry.oracle.com/database/ords:25.1.0
       forceRestart: true
-      encPrivKey:
-        secretName: prvkey
-        passwordKey: privateKey
       globalSettings:
         database.api.enabled: true
       poolSettings:
@@ -62,12 +66,13 @@ rm db-auth e_db-auth
           db.customURL: jdbc:oracle:thin:@//${CONN_STRING}
           db.username: ORDS_PUBLIC_USER
           db.secret:
-            secretName:  db-auth-enc
+            secretName:  db-auth
           db.adminUser: SYS
           db.adminUser.secret:
-            secretName:  db-auth-enc
-    " > ords-db.yaml
+            secretName:  db-admin-auth
+    ```
 
+    ```bash
     kubectl apply -f ords-db.yaml
     ```
 
@@ -75,7 +80,7 @@ rm db-auth e_db-auth
     
 1. Watch the restdataservices resource until the status is **Healthy**:
     ```bash
-    kubectl get ordssrvs ords-sidb -w
+    kubectl get ordssrvs ords-db -w
     ```
 
     **NOTE**: If this is the first time pulling the ORDS image, it may take up to 5 minutes.
@@ -83,9 +88,9 @@ rm db-auth e_db-auth
     You can watch the APEX/ORDS Installation progress by running:
 
     ```bash
-    POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-sidb" -o custom-columns=NAME:.metadata.name -n ordsnamespace --no-headers)
+    POD_NAME=$(kubectl get pod -l "app.kubernetes.io/instance=ords-db" -o custom-columns=NAME:.metadata.name -n ordsnamespace --no-headers)
 
-    kubectl logs ${POD_NAME} -c ords-sidb-init -n ordsnamespace -f
+    kubectl logs ${POD_NAME} -c ords-db-init -n ordsnamespace -f
     ```
 
 ### Test

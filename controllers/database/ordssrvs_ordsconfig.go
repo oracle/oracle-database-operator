@@ -52,91 +52,88 @@ import (
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.OrdsSrvs, configMapName string, poolIndex int) *corev1.ConfigMap {
+func readScript(ctx context.Context, filePath string) string {
+	log := ctrllog.FromContext(ctx).WithName("readScript")
 
-	log := ctrllog.FromContext(ctx).WithName("ConfigMapDefine")
+	// Read the file from controller's filesystem
+	scriptData, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Error(err, "Error reading "+filePath)
+		return "error"
+	}
+
+	return string(scriptData)
+}
+
+func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, configMapName string, poolIndex int) *corev1.ConfigMap {
+
+	//log := ctrllog.FromContext(ctx).WithName("ConfigMapDefine")
 
 	var defData map[string]string
 	switch configMapName {
-	case ords.Name + "-init-script":
-		// Read the file from controller's filesystem
-		filePath := "/ords_init.sh"
-		scriptData, err := os.ReadFile(filePath)
-		if err != nil {
-			log.Error(err, "Error reading /ords_init.sh")
-			return nil
-		}
-		log.Info("adding ords_init.sh")
-		defData = map[string]string{
-			"ords_init.sh": string(scriptData)}
-	case ords.Name + "-start-script":
-		// Read the file from controller's filesystem
-		filePath := "/ords_start.sh"
-		scriptData, err := os.ReadFile(filePath)
-		if err != nil {
-			log.Error(err, "Error reading /ords_start.sh")
-			return nil
-		}
-		log.Info("adding ords_start.sh")
-		defData = map[string]string{
-			"ords_start.sh": string(scriptData)}
-	case ords.Name + "-" + globalConfigMapName:
+	case r.ordssrvsScriptsConfigMapName:
+		defData = make(map[string]string)
+		defData["ords_init.sh"] = readScript(ctx, "/ordssrvs/ords_init.sh")
+		defData["ords_start.sh"] = readScript(ctx, "/ordssrvs/ords_start.sh")
+		defData["RSADecryptOAEP.java"] = readScript(ctx, "/ordssrvs/RSADecryptOAEP.java")
+	case r.ordssrvsGlobalSettingsConfigMapName:
 		// GlobalConfigMap
 		var defStandaloneAccessLog string
-		if ords.Spec.GlobalSettings.EnableStandaloneAccessLog {
+		if ordssrvs.Spec.GlobalSettings.EnableStandaloneAccessLog {
 			defStandaloneAccessLog = `  <entry key="standalone.access.log">` + ordsSABase + `/log/global</entry>` + "\n"
 		}
 		var defMongoAccessLog string
-		if ords.Spec.GlobalSettings.EnableMongoAccessLog {
+		if ordssrvs.Spec.GlobalSettings.EnableMongoAccessLog {
 			defMongoAccessLog = `  <entry key="mongo.access.log">` + ordsSABase + `/log/global</entry>` + "\n"
 		}
 		var defCert string
-		if ords.Spec.GlobalSettings.CertSecret != nil {
-			defCert = `  <entry key="standalone.https.cert">` + ordsSABase + `/config/certficate/` + ords.Spec.GlobalSettings.CertSecret.Certificate + `</entry>` + "\n" +
-				`  <entry key="standalone.https.cert.key">` + ordsSABase + `/config/certficate/` + ords.Spec.GlobalSettings.CertSecret.CertificateKey + `</entry>` + "\n"
+		if ordssrvs.Spec.GlobalSettings.CertSecret != nil {
+			defCert = `  <entry key="standalone.https.cert">` + ordsSABase + `/config/certficate/` + ordssrvs.Spec.GlobalSettings.CertSecret.Certificate + `</entry>` + "\n" +
+				`  <entry key="standalone.https.cert.key">` + ordsSABase + `/config/certficate/` + ordssrvs.Spec.GlobalSettings.CertSecret.CertificateKey + `</entry>` + "\n"
 		}
 		defData = map[string]string{
 			"settings.xml": fmt.Sprint(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
 				`<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">` + "\n" +
 				`<properties>` + "\n" +
-				conditionalEntry("cache.metadata.graphql.expireAfterAccess", ords.Spec.GlobalSettings.CacheMetadataGraphQLExpireAfterAccess) +
-				conditionalEntry("cache.metadata.jwks.enabled", ords.Spec.GlobalSettings.CacheMetadataJWKSEnabled) +
-				conditionalEntry("cache.metadata.jwks.initialCapacity", ords.Spec.GlobalSettings.CacheMetadataJWKSInitialCapacity) +
-				conditionalEntry("cache.metadata.jwks.maximumSize", ords.Spec.GlobalSettings.CacheMetadataJWKSMaximumSize) +
-				conditionalEntry("cache.metadata.jwks.expireAfterAccess", ords.Spec.GlobalSettings.CacheMetadataJWKSExpireAfterAccess) +
-				conditionalEntry("cache.metadata.jwks.expireAfterWrite", ords.Spec.GlobalSettings.CacheMetadataJWKSExpireAfterWrite) +
-				conditionalEntry("database.api.management.services.disabled", ords.Spec.GlobalSettings.DatabaseAPIManagementServicesDisabled) +
-				conditionalEntry("db.invalidPoolTimeout", ords.Spec.GlobalSettings.DBInvalidPoolTimeout) +
-				conditionalEntry("feature.graphql.max.nesting.depth", ords.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth) +
-				conditionalEntry("request.traceHeaderName", ords.Spec.GlobalSettings.RequestTraceHeaderName) +
-				conditionalEntry("security.credentials.attempts", ords.Spec.GlobalSettings.SecurityCredentialsAttempts) +
-				conditionalEntry("security.credentials.lock.time", ords.Spec.GlobalSettings.SecurityCredentialsLockTime) +
-				conditionalEntry("standalone.context.path", ords.Spec.GlobalSettings.StandaloneContextPath) +
-				conditionalEntry("standalone.http.port", ords.Spec.GlobalSettings.StandaloneHTTPPort) +
-				conditionalEntry("standalone.https.host", ords.Spec.GlobalSettings.StandaloneHTTPSHost) +
-				conditionalEntry("standalone.https.port", ords.Spec.GlobalSettings.StandaloneHTTPSPort) +
-				conditionalEntry("standalone.stop.timeout", ords.Spec.GlobalSettings.StandaloneStopTimeout) +
-				conditionalEntry("cache.metadata.timeout", ords.Spec.GlobalSettings.CacheMetadataTimeout) +
-				conditionalEntry("cache.metadata.enabled", ords.Spec.GlobalSettings.CacheMetadataEnabled) +
-				conditionalEntry("database.api.enabled", ords.Spec.GlobalSettings.DatabaseAPIEnabled) +
-				conditionalEntry("debug.printDebugToScreen", ords.Spec.GlobalSettings.DebugPrintDebugToScreen) +
-				conditionalEntry("error.responseFormat", ords.Spec.GlobalSettings.ErrorResponseFormat) +
-				conditionalEntry("icap.port", ords.Spec.GlobalSettings.ICAPPort) +
-				conditionalEntry("icap.secure.port", ords.Spec.GlobalSettings.ICAPSecurePort) +
-				conditionalEntry("icap.server", ords.Spec.GlobalSettings.ICAPServer) +
-				conditionalEntry("log.procedure", ords.Spec.GlobalSettings.LogProcedure) +
-				conditionalEntry("mongo.enabled", ords.Spec.GlobalSettings.MongoEnabled) +
-				conditionalEntry("mongo.port", ords.Spec.GlobalSettings.MongoPort) +
-				conditionalEntry("mongo.idle.timeout", ords.Spec.GlobalSettings.MongoIdleTimeout) +
-				conditionalEntry("mongo.op.timeout", ords.Spec.GlobalSettings.MongoOpTimeout) +
-				conditionalEntry("security.disableDefaultExclusionList", ords.Spec.GlobalSettings.SecurityDisableDefaultExclusionList) +
-				conditionalEntry("security.exclusionList", ords.Spec.GlobalSettings.SecurityExclusionList) +
-				conditionalEntry("security.inclusionList", ords.Spec.GlobalSettings.SecurityInclusionList) +
-				conditionalEntry("security.maxEntries", ords.Spec.GlobalSettings.SecurityMaxEntries) +
-				conditionalEntry("security.verifySSL", ords.Spec.GlobalSettings.SecurityVerifySSL) +
-				conditionalEntry("security.httpsHeaderCheck", ords.Spec.GlobalSettings.SecurityHTTPSHeaderCheck) +
-				conditionalEntry("security.forceHTTPS", ords.Spec.GlobalSettings.SecurityForceHTTPS) +
-				conditionalEntry("externalSessionTrustedOrigins", ords.Spec.GlobalSettings.SecuirtyExternalSessionTrustedOrigins) +
+				conditionalEntry("cache.metadata.graphql.expireAfterAccess", ordssrvs.Spec.GlobalSettings.CacheMetadataGraphQLExpireAfterAccess) +
+				conditionalEntry("cache.metadata.jwks.enabled", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSEnabled) +
+				conditionalEntry("cache.metadata.jwks.initialCapacity", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSInitialCapacity) +
+				conditionalEntry("cache.metadata.jwks.maximumSize", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSMaximumSize) +
+				conditionalEntry("cache.metadata.jwks.expireAfterAccess", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSExpireAfterAccess) +
+				conditionalEntry("cache.metadata.jwks.expireAfterWrite", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSExpireAfterWrite) +
+				conditionalEntry("database.api.management.services.disabled", ordssrvs.Spec.GlobalSettings.DatabaseAPIManagementServicesDisabled) +
+				conditionalEntry("db.invalidPoolTimeout", ordssrvs.Spec.GlobalSettings.DBInvalidPoolTimeout) +
+				conditionalEntry("feature.graphql.max.nesting.depth", ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth) +
+				conditionalEntry("request.traceHeaderName", ordssrvs.Spec.GlobalSettings.RequestTraceHeaderName) +
+				conditionalEntry("security.credentials.attempts", ordssrvs.Spec.GlobalSettings.SecurityCredentialsAttempts) +
+				conditionalEntry("security.credentials.lock.time", ordssrvs.Spec.GlobalSettings.SecurityCredentialsLockTime) +
+				conditionalEntry("standalone.context.path", ordssrvs.Spec.GlobalSettings.StandaloneContextPath) +
+				conditionalEntry("standalone.http.port", ordssrvs.Spec.GlobalSettings.StandaloneHTTPPort) +
+				conditionalEntry("standalone.https.host", ordssrvs.Spec.GlobalSettings.StandaloneHTTPSHost) +
+				conditionalEntry("standalone.https.port", ordssrvs.Spec.GlobalSettings.StandaloneHTTPSPort) +
+				conditionalEntry("standalone.stop.timeout", ordssrvs.Spec.GlobalSettings.StandaloneStopTimeout) +
+				conditionalEntry("cache.metadata.timeout", ordssrvs.Spec.GlobalSettings.CacheMetadataTimeout) +
+				conditionalEntry("cache.metadata.enabled", ordssrvs.Spec.GlobalSettings.CacheMetadataEnabled) +
+				conditionalEntry("database.api.enabled", ordssrvs.Spec.GlobalSettings.DatabaseAPIEnabled) +
+				conditionalEntry("instance.api.enabled", ordssrvs.Spec.GlobalSettings.InstanceAPIEnabled) +
+				conditionalEntry("debug.printDebugToScreen", ordssrvs.Spec.GlobalSettings.DebugPrintDebugToScreen) +
+				conditionalEntry("error.responseFormat", ordssrvs.Spec.GlobalSettings.ErrorResponseFormat) +
+				conditionalEntry("icap.port", ordssrvs.Spec.GlobalSettings.ICAPPort) +
+				conditionalEntry("icap.secure.port", ordssrvs.Spec.GlobalSettings.ICAPSecurePort) +
+				conditionalEntry("icap.server", ordssrvs.Spec.GlobalSettings.ICAPServer) +
+				conditionalEntry("log.procedure", ordssrvs.Spec.GlobalSettings.LogProcedure) +
+				conditionalEntry("mongo.enabled", ordssrvs.Spec.GlobalSettings.MongoEnabled) +
+				conditionalEntry("mongo.port", ordssrvs.Spec.GlobalSettings.MongoPort) +
+				conditionalEntry("mongo.idle.timeout", ordssrvs.Spec.GlobalSettings.MongoIdleTimeout) +
+				conditionalEntry("mongo.op.timeout", ordssrvs.Spec.GlobalSettings.MongoOpTimeout) +
+				conditionalEntry("security.disableDefaultExclusionList", ordssrvs.Spec.GlobalSettings.SecurityDisableDefaultExclusionList) +
+				conditionalEntry("security.exclusionList", ordssrvs.Spec.GlobalSettings.SecurityExclusionList) +
+				conditionalEntry("security.inclusionList", ordssrvs.Spec.GlobalSettings.SecurityInclusionList) +
+				conditionalEntry("security.maxEntries", ordssrvs.Spec.GlobalSettings.SecurityMaxEntries) +
+				conditionalEntry("security.verifySSL", ordssrvs.Spec.GlobalSettings.SecurityVerifySSL) +
+				conditionalEntry("security.httpsHeaderCheck", ordssrvs.Spec.GlobalSettings.SecurityHTTPSHeaderCheck) +
+				conditionalEntry("security.forceHTTPS", ordssrvs.Spec.GlobalSettings.SecurityForceHTTPS) +
+				conditionalEntry("externalSessionTrustedOrigins", ordssrvs.Spec.GlobalSettings.SecuirtyExternalSessionTrustedOrigins) +
 				`  <entry key="standalone.doc.root">` + ordsSABase + `/config/global/doc_root/</entry>` + "\n" +
 				// Dynamic
 				defStandaloneAccessLog +
@@ -159,69 +156,85 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.Or
 		}
 	default:
 		// PoolConfigMap
-		poolName := strings.ToLower(ords.Spec.PoolSettings[poolIndex].PoolName)
-		var defDBNetworkPath string
-		if ords.Spec.PoolSettings[poolIndex].DBWalletSecret != nil {
-			defDBNetworkPath = `  <entry key="db.wallet.zip.path">` + ordsSABase + `/config/databases/` + poolName + `/network/admin/` + ords.Spec.PoolSettings[poolIndex].DBWalletSecret.WalletName + `</entry>` + "\n" +
-				conditionalEntry("db.wallet.zip.service", strings.ToUpper(ords.Spec.PoolSettings[poolIndex].DBWalletZipService)) + "\n"
-		} else {
-			defDBNetworkPath = `  <entry key="db.tnsDirectory">` + ordsSABase + `/config/databases/` + poolName + `/network/admin/</entry>` + "\n"
+		poolName := strings.ToLower(ordssrvs.Spec.PoolSettings[poolIndex].PoolName)
+
+		// tnsadmin 
+		tnsadminEntry:=conditionalEntry("db.tnsDirectory", ordsSABase + "/config/databases/" + poolName + "/network/admin/");
+		
+		// Pool Zip Wallet
+		var zipWalletPathEntry string
+		if ordssrvs.Spec.PoolSettings[poolIndex].DBWalletSecret != nil {
+			tnsadminEntry="";
+			zipWalletPathEntry = conditionalEntry("db.wallet.zip.path", ordsSABase + "/config/databases/" + poolName + "/network/admin/" + ordssrvs.Spec.PoolSettings[poolIndex].DBWalletSecret.WalletName );
+		} 
+
+		// Shared Zip Wallets
+		// using shared zip wallet in fixed path /opt/oracle/sa/zipwallets
+		sharedZipWalletEntry:=""
+		if ordssrvs.Spec.GlobalSettings.ZipWalletsSecretName != "" && ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletName != "" {
+		  tnsadminEntry="";
+		  sharedZipWalletEntry=conditionalEntry("db.wallet.zip.path", "/opt/oracle/sa/zipwallets/"+ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletName);
 		}
+
 		defData = map[string]string{
 			"pool.xml": fmt.Sprint(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
 				`<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">` + "\n" +
 				`<properties>` + "\n" +
-				`  <entry key="db.username">` + ords.Spec.PoolSettings[poolIndex].DBUsername + `</entry>` + "\n" +
-				conditionalEntry("db.adminUser", ords.Spec.PoolSettings[poolIndex].DBAdminUser) +
-				conditionalEntry("db.cdb.adminUser", ords.Spec.PoolSettings[poolIndex].DBCDBAdminUser) +
-				conditionalEntry("apex.security.administrator.roles", ords.Spec.PoolSettings[poolIndex].ApexSecurityAdministratorRoles) +
-				conditionalEntry("apex.security.user.roles", ords.Spec.PoolSettings[poolIndex].ApexSecurityUserRoles) +
-				conditionalEntry("db.credentialsSource", ords.Spec.PoolSettings[poolIndex].DBCredentialsSource) +
-				conditionalEntry("db.poolDestroyTimeout", ords.Spec.PoolSettings[poolIndex].DBPoolDestroyTimeout) +
-				conditionalEntry("debug.trackResources", ords.Spec.PoolSettings[poolIndex].DebugTrackResources) +
-				conditionalEntry("feature.openservicebroker.exclude", ords.Spec.PoolSettings[poolIndex].FeatureOpenservicebrokerExclude) +
-				conditionalEntry("feature.sdw", ords.Spec.PoolSettings[poolIndex].FeatureSDW) +
-				conditionalEntry("http.cookie.filter", ords.Spec.PoolSettings[poolIndex].HttpCookieFilter) +
-				conditionalEntry("jdbc.auth.admin.role", ords.Spec.PoolSettings[poolIndex].JDBCAuthAdminRole) +
-				conditionalEntry("jdbc.cleanup.mode", ords.Spec.PoolSettings[poolIndex].JDBCCleanupMode) +
-				conditionalEntry("owa.trace.sql", ords.Spec.PoolSettings[poolIndex].OwaTraceSql) +
-				conditionalEntry("plsql.gateway.mode", ords.Spec.PoolSettings[poolIndex].PlsqlGatewayMode) +
-				conditionalEntry("security.jwt.profile.enabled", ords.Spec.PoolSettings[poolIndex].SecurityJWTProfileEnabled) +
-				conditionalEntry("security.jwks.size", ords.Spec.PoolSettings[poolIndex].SecurityJWKSSize) +
-				conditionalEntry("security.jwks.connection.timeout", ords.Spec.PoolSettings[poolIndex].SecurityJWKSConnectionTimeout) +
-				conditionalEntry("security.jwks.read.timeout", ords.Spec.PoolSettings[poolIndex].SecurityJWKSReadTimeout) +
-				conditionalEntry("security.jwks.refresh.interval", ords.Spec.PoolSettings[poolIndex].SecurityJWKSRefreshInterval) +
-				conditionalEntry("security.jwt.allowed.skew", ords.Spec.PoolSettings[poolIndex].SecurityJWTAllowedSkew) +
-				conditionalEntry("security.jwt.allowed.age", ords.Spec.PoolSettings[poolIndex].SecurityJWTAllowedAge) +
-				conditionalEntry("db.connectionType", ords.Spec.PoolSettings[poolIndex].DBConnectionType) +
-				conditionalEntry("db.customURL", ords.Spec.PoolSettings[poolIndex].DBCustomURL) +
-				conditionalEntry("db.hostname", ords.Spec.PoolSettings[poolIndex].DBHostname) +
-				conditionalEntry("db.port", ords.Spec.PoolSettings[poolIndex].DBPort) +
-				conditionalEntry("db.servicename", ords.Spec.PoolSettings[poolIndex].DBServicename) +
-				conditionalEntry("db.sid", ords.Spec.PoolSettings[poolIndex].DBSid) +
-				conditionalEntry("db.tnsAliasName", ords.Spec.PoolSettings[poolIndex].DBTnsAliasName) +
-				conditionalEntry("jdbc.DriverType", ords.Spec.PoolSettings[poolIndex].JDBCDriverType) +
-				conditionalEntry("jdbc.InactivityTimeout", ords.Spec.PoolSettings[poolIndex].JDBCInactivityTimeout) +
-				conditionalEntry("jdbc.InitialLimit", ords.Spec.PoolSettings[poolIndex].JDBCInitialLimit) +
-				conditionalEntry("jdbc.MaxConnectionReuseCount", ords.Spec.PoolSettings[poolIndex].JDBCMaxConnectionReuseCount) +
-				conditionalEntry("jdbc.MaxLimit", ords.Spec.PoolSettings[poolIndex].JDBCMaxLimit) +
-				conditionalEntry("jdbc.auth.enabled", ords.Spec.PoolSettings[poolIndex].JDBCAuthEnabled) +
-				conditionalEntry("jdbc.MaxStatementsLimit", ords.Spec.PoolSettings[poolIndex].JDBCMaxStatementsLimit) +
-				conditionalEntry("jdbc.MinLimit", ords.Spec.PoolSettings[poolIndex].JDBCMinLimit) +
-				conditionalEntry("jdbc.statementTimeout", ords.Spec.PoolSettings[poolIndex].JDBCStatementTimeout) +
-				conditionalEntry("jdbc.MaxConnectionReuseTime", ords.Spec.PoolSettings[poolIndex].JDBCMaxConnectionReuseTime) +
-				conditionalEntry("jdbc.SecondsToTrustIdleConnection", ords.Spec.PoolSettings[poolIndex].JDBCSecondsToTrustIdleConnection) +
-				conditionalEntry("misc.defaultPage", ords.Spec.PoolSettings[poolIndex].MiscDefaultPage) +
-				conditionalEntry("misc.pagination.maxRows", ords.Spec.PoolSettings[poolIndex].MiscPaginationMaxRows) +
-				conditionalEntry("procedure.postProcess", ords.Spec.PoolSettings[poolIndex].ProcedurePostProcess) +
-				conditionalEntry("procedure.preProcess", ords.Spec.PoolSettings[poolIndex].ProcedurePreProcess) +
-				conditionalEntry("procedure.rest.preHook", ords.Spec.PoolSettings[poolIndex].ProcedureRestPreHook) +
-				conditionalEntry("security.requestAuthenticationFunction", ords.Spec.PoolSettings[poolIndex].SecurityRequestAuthenticationFunction) +
-				conditionalEntry("security.requestValidationFunction", ords.Spec.PoolSettings[poolIndex].SecurityRequestValidationFunction) +
-				conditionalEntry("soda.defaultLimit", ords.Spec.PoolSettings[poolIndex].SODADefaultLimit) +
-				conditionalEntry("soda.maxLimit", ords.Spec.PoolSettings[poolIndex].SODAMaxLimit) +
-				conditionalEntry("restEnabledSql.active", ords.Spec.PoolSettings[poolIndex].RestEnabledSqlActive) +
-				defDBNetworkPath +
+				//`  <entry key="db.username">` + ordssrvs.Spec.PoolSettings[poolIndex].DBUsername + `</entry>` + "\n" +
+				conditionalEntry("db.username", ordssrvs.Spec.PoolSettings[poolIndex].DBUsername) +
+				conditionalEntry("db.adminUser", ordssrvs.Spec.PoolSettings[poolIndex].DBAdminUser) +
+				conditionalEntry("db.cdb.adminUser", ordssrvs.Spec.PoolSettings[poolIndex].DBCDBAdminUser) +
+				conditionalEntry("apex.security.administrator.roles", ordssrvs.Spec.PoolSettings[poolIndex].ApexSecurityAdministratorRoles) +
+				conditionalEntry("apex.security.user.roles", ordssrvs.Spec.PoolSettings[poolIndex].ApexSecurityUserRoles) +
+				conditionalEntry("db.credentialsSource", ordssrvs.Spec.PoolSettings[poolIndex].DBCredentialsSource) +
+				conditionalEntry("db.poolDestroyTimeout", ordssrvs.Spec.PoolSettings[poolIndex].DBPoolDestroyTimeout) +
+				conditionalEntry("debug.trackResources", ordssrvs.Spec.PoolSettings[poolIndex].DebugTrackResources) +
+				conditionalEntry("feature.openservicebroker.exclude", ordssrvs.Spec.PoolSettings[poolIndex].FeatureOpenservicebrokerExclude) +
+				conditionalEntry("feature.sdw", ordssrvs.Spec.PoolSettings[poolIndex].FeatureSDW) +
+				conditionalEntry("http.cookie.filter", ordssrvs.Spec.PoolSettings[poolIndex].HttpCookieFilter) +
+				conditionalEntry("jdbc.auth.admin.role", ordssrvs.Spec.PoolSettings[poolIndex].JDBCAuthAdminRole) +
+				conditionalEntry("jdbc.cleanup.mode", ordssrvs.Spec.PoolSettings[poolIndex].JDBCCleanupMode) +
+				conditionalEntry("owa.trace.sql", ordssrvs.Spec.PoolSettings[poolIndex].OwaTraceSql) +
+				conditionalEntry("plsql.gateway.mode", ordssrvs.Spec.PoolSettings[poolIndex].PlsqlGatewayMode) +
+				conditionalEntry("security.jwt.profile.enabled", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTProfileEnabled) +
+				conditionalEntry("security.jwks.size", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSSize) +
+				conditionalEntry("security.jwks.connection.timeout", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSConnectionTimeout) +
+				conditionalEntry("security.jwks.read.timeout", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSReadTimeout) +
+				conditionalEntry("security.jwks.refresh.interval", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWKSRefreshInterval) +
+				conditionalEntry("security.jwt.allowed.skew", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTAllowedSkew) +
+				conditionalEntry("security.jwt.allowed.age", ordssrvs.Spec.PoolSettings[poolIndex].SecurityJWTAllowedAge) +
+				conditionalEntry("db.connectionType", ordssrvs.Spec.PoolSettings[poolIndex].DBConnectionType) +
+				conditionalEntry("db.customURL", ordssrvs.Spec.PoolSettings[poolIndex].DBCustomURL) +
+				conditionalEntry("db.hostname", ordssrvs.Spec.PoolSettings[poolIndex].DBHostname) +
+				conditionalEntry("db.port", ordssrvs.Spec.PoolSettings[poolIndex].DBPort) +
+				conditionalEntry("db.servicename", ordssrvs.Spec.PoolSettings[poolIndex].DBServicename) +
+				conditionalEntry("db.sid", ordssrvs.Spec.PoolSettings[poolIndex].DBSid) +
+				conditionalEntry("db.tnsAliasName", ordssrvs.Spec.PoolSettings[poolIndex].DBTnsAliasName) +
+				conditionalEntry("jdbc.DriverType", ordssrvs.Spec.PoolSettings[poolIndex].JDBCDriverType) +
+				conditionalEntry("jdbc.InactivityTimeout", ordssrvs.Spec.PoolSettings[poolIndex].JDBCInactivityTimeout) +
+				conditionalEntry("jdbc.InitialLimit", ordssrvs.Spec.PoolSettings[poolIndex].JDBCInitialLimit) +
+				conditionalEntry("jdbc.MaxConnectionReuseCount", ordssrvs.Spec.PoolSettings[poolIndex].JDBCMaxConnectionReuseCount) +
+				conditionalEntry("jdbc.MaxLimit", ordssrvs.Spec.PoolSettings[poolIndex].JDBCMaxLimit) +
+				conditionalEntry("jdbc.auth.enabled", ordssrvs.Spec.PoolSettings[poolIndex].JDBCAuthEnabled) +
+				conditionalEntry("jdbc.MaxStatementsLimit", ordssrvs.Spec.PoolSettings[poolIndex].JDBCMaxStatementsLimit) +
+				conditionalEntry("jdbc.MinLimit", ordssrvs.Spec.PoolSettings[poolIndex].JDBCMinLimit) +
+				conditionalEntry("jdbc.statementTimeout", ordssrvs.Spec.PoolSettings[poolIndex].JDBCStatementTimeout) +
+				conditionalEntry("jdbc.MaxConnectionReuseTime", ordssrvs.Spec.PoolSettings[poolIndex].JDBCMaxConnectionReuseTime) +
+				conditionalEntry("jdbc.SecondsToTrustIdleConnection", ordssrvs.Spec.PoolSettings[poolIndex].JDBCSecondsToTrustIdleConnection) +
+				conditionalEntry("misc.defaultPage", ordssrvs.Spec.PoolSettings[poolIndex].MiscDefaultPage) +
+				conditionalEntry("misc.pagination.maxRows", ordssrvs.Spec.PoolSettings[poolIndex].MiscPaginationMaxRows) +
+				conditionalEntry("procedure.postProcess", ordssrvs.Spec.PoolSettings[poolIndex].ProcedurePostProcess) +
+				conditionalEntry("procedure.preProcess", ordssrvs.Spec.PoolSettings[poolIndex].ProcedurePreProcess) +
+				conditionalEntry("procedure.rest.preHook", ordssrvs.Spec.PoolSettings[poolIndex].ProcedureRestPreHook) +
+				conditionalEntry("security.requestAuthenticationFunction", ordssrvs.Spec.PoolSettings[poolIndex].SecurityRequestAuthenticationFunction) +
+				conditionalEntry("security.requestValidationFunction", ordssrvs.Spec.PoolSettings[poolIndex].SecurityRequestValidationFunction) +
+				conditionalEntry("soda.defaultLimit", ordssrvs.Spec.PoolSettings[poolIndex].SODADefaultLimit) +
+				conditionalEntry("soda.maxLimit", ordssrvs.Spec.PoolSettings[poolIndex].SODAMaxLimit) +
+				conditionalEntry("restEnabledSql.active", ordssrvs.Spec.PoolSettings[poolIndex].RestEnabledSqlActive) +
+				conditionalEntry("db.wallet.zip.service", ordssrvs.Spec.PoolSettings[poolIndex].ZipWalletService) +
+				tnsadminEntry +
+				zipWalletPathEntry + 
+				sharedZipWalletEntry +
 				// Disabled (but not forgotten)
 				// conditionalEntry("autoupgrade.api.aulocation", ords.Spec.PoolSettings[poolIndex].AutoupgradeAPIAulocation) +
 				// conditionalEntry("autoupgrade.api.enabled", ords.Spec.PoolSettings[poolIndex].AutoupgradeAPIEnabled) +
@@ -232,7 +245,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.Or
 		}
 	}
 
-	objectMeta := objectMetaDefine(ords, configMapName)
+	objectMeta := objectMetaDefine(ordssrvs, configMapName)
 	def := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
@@ -243,7 +256,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ords *dbapi.Or
 	}
 
 	// Set the ownerRef
-	if err := ctrl.SetControllerReference(ords, def, r.Scheme); err != nil {
+	if err := ctrl.SetControllerReference(ordssrvs, def, r.Scheme); err != nil {
 		return nil
 	}
 	return def
