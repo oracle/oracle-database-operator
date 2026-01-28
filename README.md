@@ -104,7 +104,7 @@ In this v2.1 production release, `OraOperator` supports the following database c
 * **Oracle Real Application Cluster Database**
   - Support for Oracle Database 19c Support
 * **Oracle Private AI controller**
-  - Support for Oracle Private AI container for 26ai Databases
+  - Support for Oracle Private AI Service Container for 26ai Databases
 
 ---
 
