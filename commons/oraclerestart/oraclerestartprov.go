@@ -1137,7 +1137,7 @@ func getOracleRestartSvcName(instance *oraclerestartdb.OracleRestart, OracleRest
 
 	switch svcType {
 	case "local":
-		return OracleRestartSpex.Name + "-0-local"
+		return OracleRestartSpex.Name + "-0"
 	case "lbservice":
 		if instance.Spec.LbService.SvcName != "" {
 			return instance.Spec.LbService.SvcName + "-0-lbsvc"
