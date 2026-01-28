@@ -1061,3 +1061,201 @@ func GetDatabasesInDataGuardConfigurationWithRole(r *DataguardBrokerReconciler, 
 
 	return []string{}, errors.New("cannot get databases in dataguard configuration")
 }
+
+// ======================= NEW: Non-SIDB (external connect string) helpers =======================
+
+// extDbInfo holds DB facts collected via sqlplus for external/non-SIDB databases.
+type extDbInfo struct {
+	Key           string // unique key for this connect string
+	ConnectString string // //host:port/svc
+	Role          string
+	OpenMode      string
+	Name          string
+	DbUniqueName  string
+	FalServer     string
+	LogArchiveD1  string
+}
+
+func buildNetService(host string, port int32, svc string) string {
+	return fmt.Sprintf("//%s:%d/%s", host, port, svc)
+}
+
+// Reads password from Secret. SecretKey defaults to "password" if empty.
+func getPwdFromSecret(r *DataguardBrokerReconciler, ns string, secretName, secretKey string, ctx context.Context) (string, error) {
+	if secretKey == "" {
+		secretKey = "password"
+	}
+	var sec corev1.Secret
+	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: ns}, &sec); err != nil {
+		return "", err
+	}
+	b, ok := sec.Data[secretKey]
+	if !ok {
+		return "", fmt.Errorf("secret %s missing key %s", secretName, secretKey)
+	}
+	return string(b), nil
+}
+
+func nonEmptyLines(s string) []string {
+	raw := strings.Split(s, "\n")
+	out := make([]string, 0, len(raw))
+	for _, l := range raw {
+		t := strings.TrimSpace(l)
+		if t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// collectExternalDbInfo runs sqlplus against each external DB and returns role/open_mode/db_unique_name + fal_server + log_archive_dest_1
+func collectExternalDbInfo(
+	r *DataguardBrokerReconciler,
+	broker *dbapi.DataguardBroker,
+	runnerPod corev1.Pod,
+	connects []dbapi.DbConnectString,
+	ctx context.Context,
+	req ctrl.Request,
+) ([]extDbInfo, error) {
+
+	results := make([]extDbInfo, 0, len(connects))
+
+	for _, c := range connects {
+		if c.UserName == "" {
+			c.UserName = "sys"
+		}
+		if c.Port == 0 {
+			c.Port = 1521
+		}
+		if c.HostName == "" || c.SvcName == "" || c.Secret == "" {
+			return nil, fmt.Errorf("invalid connect string entry: hostName/svcName/secret must be set")
+		}
+
+		pwd, err := getPwdFromSecret(r, broker.Namespace, c.Secret, c.SecretKey, ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		netSvc := buildNetService(c.HostName, c.Port, c.SvcName)
+
+		// Output lines:
+		// 1) name|database_role|open_mode|db_unique_name
+		// 2) fal_server
+		// 3) log_archive_dest_1
+		sql := `
+set heading off feedback off pages 0 echo off verify off trimspool on lines 400
+select name||'|'||database_role||'|'||open_mode||'|'||db_unique_name from v$database;
+select nvl((select value from v$parameter where name='fal_server'),'') from dual;
+select nvl((select value from v$parameter where name='log_archive_dest_1'),'') from dual;
+exit;
+`
+
+		cmd := fmt.Sprintf(`sqlplus -s "%s/%s@%s as sysdba" <<'EOF'
+%s
+EOF`, c.UserName, pwd, netSvc, sql)
+
+		out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query db %s: %w", netSvc, err)
+		}
+
+		lines := nonEmptyLines(out)
+		if len(lines) < 3 {
+			return nil, fmt.Errorf("unexpected sqlplus output for %s: %q", netSvc, out)
+		}
+
+		parts := strings.Split(lines[0], "|")
+		if len(parts) < 4 {
+			return nil, fmt.Errorf("unexpected v$database output for %s: %q", netSvc, lines[0])
+		}
+
+		info := extDbInfo{
+			Key:           netSvc,
+			ConnectString: netSvc,
+			Name:          strings.TrimSpace(parts[0]),
+			Role:          strings.TrimSpace(parts[1]),
+			OpenMode:      strings.TrimSpace(parts[2]),
+			DbUniqueName:  strings.TrimSpace(parts[3]),
+			FalServer:     strings.TrimSpace(lines[1]),
+			LogArchiveD1:  strings.TrimSpace(lines[2]),
+		}
+
+		results = append(results, info)
+	}
+
+	return results, nil
+}
+
+// inferPrimaryHintFromStandby tries to discover the primary identifier from FAL_SERVER / LOG_ARCHIVE_DEST_1.
+// Works for formats like SERVICE=..., DB_UNIQUE_NAME=...
+func inferPrimaryHintFromStandby(stby extDbInfo) string {
+	u := strings.ToUpper(stby.FalServer + " " + stby.LogArchiveD1)
+
+	for _, key := range []string{"DB_UNIQUE_NAME=", "SERVICE="} {
+		idx := strings.Index(u, key)
+		if idx >= 0 {
+			rest := u[idx+len(key):]
+			stop := len(rest)
+			for i, ch := range rest {
+				if ch == ' ' || ch == ',' || ch == ')' || ch == '(' || ch == ';' {
+					stop = i
+					break
+				}
+			}
+			val := strings.TrimSpace(rest[:stop])
+			val = strings.Trim(val, `"`)
+			if val != "" {
+				return val
+			}
+		}
+	}
+	return ""
+}
+
+// mapStandbyToPrimary returns mapping: primaryDbUniqueName -> standbyDbUniqueName
+// plus a list of standbys that cannot be mapped.
+func mapStandbyToPrimary(
+	primaries map[string]extDbInfo,
+	standbys []extDbInfo,
+) (map[string]string, []extDbInfo) {
+
+	mapping := make(map[string]string)
+	unmapped := make([]extDbInfo, 0)
+
+	primaryByUnique := make(map[string]string)
+	for pUniq := range primaries {
+		primaryByUnique[strings.ToUpper(pUniq)] = pUniq
+	}
+
+	for _, s := range standbys {
+		hint := inferPrimaryHintFromStandby(s)
+		if hint == "" {
+			unmapped = append(unmapped, s)
+			continue
+		}
+
+		// Direct unique-name match
+		if pUniq, ok := primaryByUnique[strings.ToUpper(hint)]; ok {
+			mapping[pUniq] = s.DbUniqueName
+			continue
+		}
+
+		// Last resort: substring match
+		matched := ""
+		for pUniq := range primaries {
+			if strings.Contains(strings.ToUpper(hint), strings.ToUpper(pUniq)) ||
+				strings.Contains(strings.ToUpper(pUniq), strings.ToUpper(hint)) {
+				matched = pUniq
+				break
+			}
+		}
+
+		if matched == "" {
+			unmapped = append(unmapped, s)
+			continue
+		}
+		mapping[matched] = s.DbUniqueName
+	}
+
+	return mapping, unmapped
+}

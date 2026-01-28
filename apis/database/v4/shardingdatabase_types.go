@@ -152,6 +152,14 @@ type GsmStatusDetails struct {
 //+kubebuilder:printcolumn:JSONPath=".status.gsm.state",name="Gsm State",type=string
 //+kubebuilder:printcolumn:JSONPath=".status.gsm.services",name="Services",type=string
 //+kubebuilder:printcolumn:JSONPath=".status.gsm.shards",name="shards",type=string,priority=1
+//+kubebuilder:printcolumn:name="DG",type=string,JSONPath=".status.dg.state",priority=0
+//+kubebuilder:printcolumn:name="PrimarySID",type=string,JSONPath=".status.primary.sid",priority=0
+//+kubebuilder:printcolumn:name="PrimaryRole",type=string,JSONPath=".status.primary.role",priority=0
+//+kubebuilder:printcolumn:name="PrimaryMode",type=string,JSONPath=".status.primary.openMode",priority=1
+//+kubebuilder:printcolumn:name="PrimarySvc",type=string,JSONPath=".status.primary.serviceName",priority=1
+//+kubebuilder:printcolumn:name="PrimaryIP",type=string,JSONPath=".status.primary.podIP",priority=1
+//+kubebuilder:printcolumn:name="StandbySID",type=string,JSONPath=".status.standby.sid",priority=1
+//+kubebuilder:printcolumn:name="StandbyMode",type=string,JSONPath=".status.standby.openMode",priority=1
 
 // ShardingDatabase is the Schema for the shardingdatabases API
 // +kubebuilder:resource:path=shardingdatabases,scope=Namespaced

@@ -43,6 +43,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -126,16 +127,112 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	// manage enabling and disabling faststartfailover
 	if dataguardBroker.Spec.FastStartFailover {
 
-		for _, DbResource := range dataguardBroker.Status.DatabasesInDataguardConfig {
-			var singleInstanceDatabase dbapi.SingleInstanceDatabase
-			if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: DbResource}, &singleInstanceDatabase); err != nil {
+		if dataguardBroker.Spec.IsNonSingleInstanceDatabase {
+
+			// Validate minimum connect strings
+			if len(dataguardBroker.Spec.ExternalDatabaseConnectStrings) < 2 {
+				dataguardBroker.Status.Status = dbcommons.StatusError
+				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Spec Validation",
+					"externalDatabaseConnectStrings must have at least 2 entries (primary + standby) when isNonSingleInstanceDatabase=true")
+				return ctrl.Result{Requeue: false}, nil
+			}
+
+			// We need a runner pod to execute sqlplus (use observer pod if exists)
+			runnerPod, _, _, _, err := dbcommons.FindPods(r, "", "", dataguardBroker.Name, dataguardBroker.Namespace, ctx, req)
+			if err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
-			r.Log.Info("Check the role for database", "database", singleInstanceDatabase.Name, "role", singleInstanceDatabase.Status.Role)
-			if singleInstanceDatabase.Status.Role == "SNAPSHOT_STANDBY" {
-				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Enabling FSFO failed", "database %s is a snapshot database", singleInstanceDatabase.Name)
-				r.Log.Info("Enabling FSFO failed, one of the database is a snapshot database", "snapshot database", singleInstanceDatabase.Name)
-				return ctrl.Result{Requeue: true}, nil
+
+			if runnerPod.Name == "" {
+				// If observer isn't created yet, requeue. (Your flow creates observer later; for non-sidb validation
+				// we need a pod that has sqlplus installed).
+				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Waiting",
+					"non-SIDB mode requires a runner pod (observer) to run sqlplus/dgmgrl. Pod not found yet.")
+				return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+			}
+
+			// Collect DB roles + fal_server + log_archive_dest_1 for mapping
+			dbInfos, err := collectExternalDbInfo(r, &dataguardBroker, runnerPod, dataguardBroker.Spec.ExternalDatabaseConnectStrings, ctx, req)
+			if err != nil {
+				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Waiting", err.Error())
+				return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+			}
+
+			// Reject snapshot standby
+			for _, d := range dbInfos {
+				roleU := strings.ToUpper(strings.TrimSpace(d.Role))
+				if roleU == "SNAPSHOT STANDBY" || roleU == "SNAPSHOT_STANDBY" {
+					r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Enabling FSFO failed",
+						"database %s (%s) is a snapshot standby", d.DbUniqueName, d.ConnectString)
+					return ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}, nil
+				}
+			}
+
+			// Split primaries/standbys
+			primaries := map[string]extDbInfo{} // db_unique_name -> info
+			standbys := []extDbInfo{}
+			for _, d := range dbInfos {
+				roleU := strings.ToUpper(strings.TrimSpace(d.Role))
+				if roleU == "PRIMARY" {
+					primaries[d.DbUniqueName] = d
+				} else if strings.Contains(roleU, "STANDBY") {
+					standbys = append(standbys, d)
+				}
+			}
+
+			if len(primaries) == 0 || len(standbys) == 0 {
+				dataguardBroker.Status.Status = dbcommons.StatusError
+				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Role Validation",
+					"non-SIDB mode requires at least 1 PRIMARY and 1 STANDBY in externalDatabaseConnectStrings")
+				return ctrl.Result{Requeue: false}, nil
+			}
+
+			// Map standby->primary using FAL_SERVER and LOG_ARCHIVE_DEST_1
+			mapping, unmapped := mapStandbyToPrimary(primaries, standbys)
+
+			// If any standby unmapped => do nothing, report error (per your boss guidance)
+			if len(unmapped) > 0 {
+				dataguardBroker.Status.Status = dbcommons.StatusError
+				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Mapping Failed",
+					"could not map %d standby DB(s) to a primary using FAL_SERVER / LOG_ARCHIVE_DEST_1", len(unmapped))
+				for _, s := range unmapped {
+					r.Log.Info("Unmapped standby", "db_unique_name", s.DbUniqueName, "connect", s.ConnectString,
+						"fal_server", s.FalServer, "log_archive_dest_1", s.LogArchiveD1)
+				}
+				return ctrl.Result{Requeue: false}, nil
+			}
+
+			// Ensure every primary has a standby
+			if len(mapping) != len(primaries) {
+				dataguardBroker.Status.Status = dbcommons.StatusError
+				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Mapping Failed",
+					"expected each primary to have a mapped standby. primaries=%d mapped=%d", len(primaries), len(mapping))
+				return ctrl.Result{Requeue: false}, nil
+			}
+
+			// Store mapping in status (ExternalDgMapping)
+
+			if dataguardBroker.Status.ExternalDgMapping == nil {
+				dataguardBroker.Status.ExternalDgMapping = map[string]string{}
+			}
+			for pUniq, sUniq := range mapping {
+				dataguardBroker.Status.ExternalDgMapping[pUniq] = sUniq
+			}
+
+			r.Log.Info("non-SIDB DG mapping established", "mapping", mapping)
+
+		} else {
+			for _, DbResource := range dataguardBroker.Status.DatabasesInDataguardConfig {
+				var singleInstanceDatabase dbapi.SingleInstanceDatabase
+				if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: DbResource}, &singleInstanceDatabase); err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
+				r.Log.Info("Check the role for database", "database", singleInstanceDatabase.Name, "role", singleInstanceDatabase.Status.Role)
+				if singleInstanceDatabase.Status.Role == "SNAPSHOT_STANDBY" {
+					r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Enabling FSFO failed", "database %s is a snapshot database", singleInstanceDatabase.Name)
+					r.Log.Info("Enabling FSFO failed, one of the database is a snapshot database", "snapshot database", singleInstanceDatabase.Name)
+					return ctrl.Result{Requeue: true}, nil
+				}
 			}
 		}
 
