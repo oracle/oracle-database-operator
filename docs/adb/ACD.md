@@ -1,20 +1,22 @@
 # Managing Oracle Autonomous Container Databases on Dedicated Exadata Infrastructure
 
+Learn how to provision, bind, update, and manage Oracle Autonomous Container Databases (ACDs) with the Oracle Database Operator for Kubernetes on Dedicated Exadata Infrastructure.
+
 Oracle Database Operator for Kubernetes (`OraOperator`) includes the Oracle Autonomous Container Database Controller. Autonomous Container Database is one of the resources of the Oracle Autonomous Database on Dedicated Exadata Infrastructure feature. You can create multiple Autonomous Container Database resources in a single Autonomous Exadata VM Cluster resource, but you must create at least one before you can create any Autonomous Databases.
 
 Before you use the Oracle Database Operator for Kubernetes (the operator), ensure that your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./../adb/ADB_PREREQUISITES.md).
 
-As indicated in the prerequisites (see above), to interact with OCI services, either the cluster must be authorized by using Principal Instance, or by using the API Key Authentication and specifying the configMap and the secret under the `ociConfig` field.
+As indicated in the prerequisites, to interact with OCI services, the cluster must be authorized either with an Instance Principal, or by using API key authentication and specifying both the configMap and the secret under the `ociConfig` field.
 
 ## Required Permissions
 
-The operator must be given the required type of access in a policy written by an administrator to manage the Autonomous Container Databases. See [Create an Autonomous Container Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/create-acd.html) for the required policies.
+An administrator must grant the operator required access in a policy to manage Autonomous Container Databases. See [Create an Autonomous Container Database](https://docs.oracle.com/en-us/iaas/autonomous-database/doc/create-acd.html) for the required policies.
 
-The permission to view the workrequests is also required, so that the operator will update the resources when the work is done. See [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) for sample work request policies.
+Permission to view work requests is also required so the operator can update resources when work is complete. See [Viewing Work Requests](https://docs.oracle.com/en-us/iaas/Content/ContEng/Tasks/contengviewingworkrequests.htm#contengviewingworkrequests) for example work request policies.
 
 ## Supported Features
 
-After the operator is deployed, choose one of the following operations to create an `AutonomousContainerDatabase` custom resource for Oracle Autonomous Container Database in your cluster.
+After the operator is deployed, choose one of the following operations to create an `AutonomousContainerDatabase` custom resource for Oracle Autonomous Container Database in your cluster:
 
 * [Provision](#provision-an-autonomous-container-database) an Autonomous Container Database
 * [Bind](#bind-to-an-existing-autonomous-container-database) to an existing Autonomous Container Database
@@ -87,7 +89,7 @@ Follow the steps to provision an Autonomous Database that will map objects in yo
 
 ## Bind to an existing Autonomous Container Database
 
-Other than provisioning a container database, you can bind to an existing Autonomous Container Database in your cluster.
+Instead of provisioning a new container database, you can bind to an existing Autonomous Container Database in your cluster.
 
 1. Clean up the resource you created in the earlier provision operation:
 
@@ -125,7 +127,7 @@ Other than provisioning a container database, you can bind to an existing Autono
         secretName: oci-privatekey
     ```
 
-4. Apply the yaml.
+4. Apply the YAML file.
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_bind.yaml
@@ -167,14 +169,14 @@ You can change the display name of the database by modifying the value of the `d
 
 > Note: this operation requires an `AutonomousContainerDatabase` object to be in your cluster. This example assumes the provision operation or the bind operation has been done by the users and the operator is authorized with API Key Authentication.
 
-Users can restart/terminate a database using the `action` attribute. The value will be erased after the change is applied.
-Here's a list of the values you can set for `action`:
+Users can restart or terminate a database using the `action` attribute. The value will be erased after the change is applied.
+The following is a list of the values that you can set for `action`:
 
 * `RESTART`: to restart the database
 * `TERMINATE`: to terminate the database
 * `SYNC`: to sync the local database with the remote one
 
-1. A sample .yaml file is available here: [config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml](./../../config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml)
+1. An example YAML file is available here: [config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml](./../../config/samples/acd/autonomouscontainerdatabase_restart_terminate.yaml)
 
     ```yaml
     ---
@@ -222,14 +224,14 @@ Follow the steps to delete the resource and terminate the Autonomous Container D
         secretName: oci-privatekey
     ```
 
-2. Apply the yaml
+2. Apply the YAML:
 
     ```sh
     kubectl apply -f config/samples/acd/autonomouscontainerdatabase_delete_resource.yaml
     autonomouscontainerdatabase.database.oracle.com/autonomouscontainerdatabase-sample configured
     ```
 
-3. Delete the resource in your cluster
+3. Delete the resource in your cluster:
 
     ```sh
     kubectl delete acd/autonomouscontainerdatabase-sample
