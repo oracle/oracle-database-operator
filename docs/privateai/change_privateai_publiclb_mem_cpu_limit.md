@@ -1,18 +1,18 @@
 # Change the memory and cpu limits for pods for an existing PrivateAI Container Deployment on Kubernetes
 
-You can change the CPU and Memory Limits assigned to the PrivateAI Container Pods for an existing deployment which was done using PrivateAI Controller.  
+You can change the CPU and memory limits assigned to PrivateAI container pods for an existing deployment that uses the PrivateAI Controller. 
 
-In this example, the initial deployment was done on an `OCI OKE` cluster in the example [PrivateAI Container using OCI Public LoadBalancer with memory and cpu limits for pods](./deploy_privateai_publiclb_mem_cpu_limit.md).
+This example assumes the initial deployment occurred on an `OCI OKE` cluster using the PrivateAI container, configured with the example [PrivateAI Container using OCI Public LoadBalancer with memory and cpu limits for pods](./deploy_privateai_publiclb_mem_cpu_limit.md).
 
-Using an updated YAML file with change in the memory and cpu limits, you can assign different memory and cpu to Pods according to the requirement. 
+By updating the YAML file with new memory and CPU limits, you can assign different resource allocations to pods as needed. 
 
-**NOTE:** In this case, newer pods will be created with updated limits and the exising set of Pods will be recycled.
+**NOTE:** When you update the limits in this example, Kubernetes creates new pods with the updated limits and recycles the existing pods.
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle PrivartAI Controller](./README.md#prerequisites-for-running-oracle-privartai-controller) before using Oracle PrivateAI Controller.
+**IMPORTANT:** Complete all [Prerequisites for running Oracle PrivartAI Controller](./README.md#prerequisites-for-running-oracle-privartai-controller) before using the Oracle PrivateAI Controller.
 
-**NOTE:** Modify the file `pai_sample_publiclb_mem_cpu_limit_changed.yaml` with the actual Reserved Public IP before deployment.
+**NOTE:** Update the file `pai_sample_publiclb_mem_cpu_limit_changed.yaml` with your actual Reserved Public IP before deployment.
 
-Use the file: [pai_sample_publiclb_mem_cpu_limit_changed.yaml](./provisioning/pai_sample_publiclb_mem_cpu_limit_changed.yaml) for this use case as below:
+Use the file [pai_sample_publiclb_mem_cpu_limit_changed.yaml](./provisioning/pai_sample_publiclb_mem_cpu_limit_changed.yaml) for this procedure:
 
 1. Deploy the `pai_sample_publiclb_mem_cpu_limit_changed.yaml` file:
     ```sh
