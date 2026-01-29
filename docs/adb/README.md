@@ -109,7 +109,7 @@ To provision an Autonomous Database that will map objects in your cluster, compl
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -155,7 +155,7 @@ When `dbWorkload` is set to `AJD`, the Operator provisions an **Autonomous JSON 
 **Example:**
 
 ``` yaml
-apiVersion: database.oracle.com/v1alpha1
+apiVersion: database.oracle.com/v4
 kind: AutonomousDatabase
 metadata:
   name: autonomous-json-db
@@ -208,7 +208,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -238,7 +238,7 @@ You can scale up or scale down the Oracle Autonomous Database OCPU core count or
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -271,7 +271,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -314,7 +314,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -359,7 +359,7 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -414,7 +414,7 @@ Here's a list of the values you can set for `action`:
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -446,7 +446,7 @@ To delete the resource and terminate the Autonomous Database, complete these ste
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -520,7 +520,7 @@ To clone an existing Autonomous Database, complete these steps:
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
