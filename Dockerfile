@@ -62,8 +62,9 @@ ENV COMMIT_SHA=${CI_COMMIT_SHA} \
     COMMIT_BRANCH=${CI_COMMIT_BRANCH}
 WORKDIR /
 COPY --from=builder /workspace/manager .
-COPY ords/ords_init.sh .
-COPY ords/ords_start.sh .
+COPY ordssrvs/ords_init.sh /ordssrvs/
+COPY ordssrvs/ords_start.sh /ordssrvs/
+COPY ordssrvs/RSADecryptOAEP.java /ordssrvs/
 COPY LICENSE.txt /licenses/
 COPY THIRD_PARTY_LICENSES_DOCKER.txt /licenses/
 COPY THIRD_PARTY_LICENSES.txt /licenses/
