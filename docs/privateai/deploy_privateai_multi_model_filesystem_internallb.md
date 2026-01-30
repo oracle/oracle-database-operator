@@ -10,10 +10,12 @@ See [Create OCI FSS based PVC](./create_oci_fss_based_pvc.md) for the steps to c
 
 If you want to use an OCI internal load balancer, follow these steps:
 
-1. Refer to the file [Oracle Machine Learning AI models](./Oracle_Machine_Learning_AI_models.htm) to obtain details about the AI Model files. Download the files and upload them to the OCI File System that you created earlier. For example, you can mount the same file system to an OCI Compute VM in the same VCN by adding the following entry in the `/etc/fstab` file:
+1. Download the files and upload them to the OCI File System that you created earlier. For example, you can mount the same file system to an OCI Compute VM in the same VCN by adding the following entry in the `/etc/fstab` file:
     ```sh
-    10.0.XX.XX:/privateai_models   /mnt nfs defaults 0  0
+    XX.XX.XX.XX:/privateai_models   /mnt nfs defaults 0  0
     ```
+
+    **Note:** Replace "XX.XX.XX.XX" with the IP of the OCI Internal LoadBalancer.
 
 2. Confirm you have created the [configmap](./configmap_multi_model_filesystem.md)
 
@@ -46,7 +48,7 @@ By default, the internal load balancer uses the subnet specified during OKE clus
 
 **NOTE:** At this stage, the SSL certificate used in the deployment has the `common name` as empty. In order to avoid a hostname mismatch error while using the `cert.pem` file to make a authenicated connection, we will need to replace this SSL certificate with a new certificate which has the `common name` set to the IP of the Internal LoadBalancer.
 
-4. Use the file [pai_secret_update_files.sh](./provisioning/pai_secret_update_files.sh) to do the following:
+5. Use the file [pai_secret_update_files.sh](./provisioning/pai_secret_update_files.sh) to do the following:
 
 - Generate a new set of required keys and an SSL certificate, specifyint the inernal IP load balancer noted in Step 2 for `common name` while generating the SSL certificate.
 - Encode these files using `base64` 
@@ -66,7 +68,7 @@ data:
   privateai-ssl-pwd: your-base64-encoded-password-file-content-here
 ```
 
-4. Patch the secret `paisecret`. It will replace the Internal LoadBalancer Certificate:
+6. Patch the secret `paisecret`. It will replace the Internal LoadBalancer Certificate:
     ```sh
     kubectl patch secret paisecret --patch-file secretupdate.yaml -n pai
     ```

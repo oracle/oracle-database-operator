@@ -12,6 +12,6 @@ spec:
  mountOptions:
   - nosuid
  nfs:
-  server: 10.0.XX.XX
+  server: XX.XX.XX.XX
   path: "/privateai_models"
   readOnly: false

@@ -77,7 +77,7 @@ Refer to [Environment Variables Details for Oracle RAC Database using RAC Contro
 
 ## Known Issues
 
-The known issues for the current version of the Oracle RAC Database Controller in Oracle Database Kubernetes Operator are documneted in this page: [Known Issues](./provisioning/known_issues.md)
+The known issues for the current version of the Oracle RAC Database Controller in Oracle Database Kubernetes Operator are documented in this page: [Known Issues](./provisioning/known_issues.md)
 
 ## Debugging and Troubleshooting
 
