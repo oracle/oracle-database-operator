@@ -1,4 +1,6 @@
 # Prerequisites for using Oracle RAC Database Controller
+Prepare your Kubernetes environment and nodes to deploy Oracle Real Application Clusters (RAC) using the Oracle RAC Database Controller and Oracle Database Operator.
+
 * [Mandatory roles and privileges requirements for Oracle RAC Database Controller](#mandatory-roles-and-privileges-requirements-for-oracle-rac-database-controller) 
 * [Kubernetes Cluster: Oracle Cloud Native Environment (OCNE)](#kubernetes-cluster-oracle-cloud-native-environment-ocne) 
    * [Preparing to Install Oracle RAC on OCNE](#preparing-to-install-oracle-rac-on-ocne) 
@@ -29,7 +31,8 @@
 **IMPORTANT :** You must make the changes specified in this section before you proceed to the next section.
 
 ## Mandatory roles and privileges requirements for Oracle RAC Database Controller
-  Oracle RAC Database Controller uses Kubernetes objects such as :-
+ Oracle RAC Database Controller requires the following Kubernetes object permissions:
+
 
   | Resources | Verbs |
   | --- | --- |
@@ -41,6 +44,8 @@
   | Events | create patch |
 
 ## Kubernetes Cluster: Oracle Cloud Native Environment (OCNE)
+
+Ensure your Kubernetes cluster meets all Oracle RAC deployment prerequisites on OCNE.
 
 To deploy Oracle RAC Database using Oracle RAC Database Controller in Oracle Database Operator, you need a Kubernetes Cluster like a Kubernetes Cluster Deployed on an Oracle Cloud Native Environment (OCNE). 
 
@@ -67,7 +72,7 @@ To use Oracle RAC Database Controller, ensure that your system is provisioned wi
 
 ### Preparing to Install Oracle RAC on OCNE
 
- To effectively use these instructions, you should have background knowledge of both Kubernetes technology and the underlying operating system.
+To effectively use these instructions, you should have background knowledge of both Kubernetes technology and the underlying operating system. These include:
   * Linux
   * Kubernetes
   * Oracle Cloud Native Environment (OCNE)
@@ -79,6 +84,7 @@ To use Oracle RAC Database Controller, ensure that your system is provisioned wi
 ### Software and Storage Requirements for Oracle RAC on OCNE 
 
   To prepare for the Oracle RAC Database installation, follow these steps:
+
    * Ensure that your OCNE cluster is properly configured and meets the necessary requirements.
      Each pod that you deploy as part of your cluster must satisfy the minimum hardware requirements of the Oracle RAC Database and Oracle Grid Infrastructure software. If you are planning to install Oracle Grid Infrastructure and Oracle RAC database software on host local volumes exposed from your environment, then you must have at least 50 GB space allocated for the Oracle RAC on OKE Pod.
    * In addition to the standard memory (RAM) required for Oracle Linux (Linux-x86-64), the Oracle Grid Infrastructure and Oracle Database instances, Oracle recommends that you provide an additional 2 GB of RAM to each Kubernetes node for the control plane.
@@ -97,15 +103,21 @@ To use Oracle RAC Database Controller, ensure that your system is provisioned wi
      * Oracle Linux for Operator, control plane, and Worker nodes on Oracle Linux 9 (Linux-x86-64) Update 3 or later updates. 
 
   #### Download Oracle Grid Infrastructure and Oracle Database Software
-  You need to download the Oracle Grid Infrastructure and Oracle Database software, copy the software to staging Location (under directory `/scratch/software/stage` in this case): 
-   * Download the Oracle Grid Infrastructure and Oracle Database installation media from Oracle's official sources i.e. [Oracle Technology Network](https://www.oracle.com/technetwork/database/enterprise-edition/downloads/index.html). Ensure sufficient space and security practices when using the worker node's local storage.
-   * Mounting in Pod:
-     * The Oracle RAC Database Controller is responsible for mounting the staged software into the Pod at runtime, making the installers available for use during installation or upgrade tasks.
-     * You should define the appropriate volume mounts in your deployment YAML manifests to ensure the pod sees the staged content.
+
+  Stage Oracle RAC installation media for use in pods.
+
+
+1. Download the Oracle Grid Infrastructure and Oracle Database software.
+2. Copy the software to the staging location on the worker nodes (under directory `/scratch/software/stage` in this case). 
+   * Download the Oracle Grid Infrastructure and Oracle Database installation media from Oracle's official sources: [Oracle Technology Network](https://www.oracle.com/technetwork/database/enterprise-edition/downloads/index.html). Ensure sufficient space and security practices when using the worker node's local storage.
+3. The Oracle RAC Database Controller will mount the staged software into the Pod at runtime, making the installers available for use during installation or upgrade tasks.
+4. In your deployment YAML, define the appropriate volume mount manifests so that the pod containers can access the staged content.
 
   #### Permission on the software files
 
-  Depending on the wheter you are provisioning the Oracle RAC Database using Base Release sofware or you are applying an RU patch or any one-off patch, please set the below permissions on the software files in the staging location:
+Ensure permissions on Oracle RAC installation media are set. 
+
+Whether you are provisioning the Oracle RAC Database using Base Release sofware or you are applying an RU patch or any one-off patch, you must set permissions on the software files in the staging location:
 
   - Set the permission on the GRID Infrastructure Software and RDBMS Software .zip files to be 755.
   - Set the permission on the Opatch .zip file to be 755
@@ -114,20 +126,23 @@ To use Oracle RAC Database Controller, ensure that your system is provisioned wi
 
 ### Network Setup Requirements for Oracle RAC on OCNE 
 
+Configure network interfaces for Oracle RAC deployment in OCNE.
+
 Complete the Multus and Flannel network requirements for OCNE. An Oracle Clusterware configuration requires at least two interfaces:
 
-* A public network interface, on which users and application servers connect to access data on the database server.
-* A private network interface, on which internode communication between cluster member nodes takes place.
+1. **Public network** interface: Users and application servers connect to access data on the database server.
+2. **Private network** interface: Used for internode communication between cluster member nodes. 
 
 To create these required interfaces, you can use the following pod networking technologies with your Kubernetes cluster:
 
-* Flannel: This is the default networking option when you create a Kubernetes module. We use Flannel for the Oracle RAC public network. For Oracle RAC on OCNE, we support default pod networking with Flannel.
-* Multus: You can set up the Multus module after the Kubernetes module is installed. Multus is installed as a module on top of Flannel. By default in Kubernetes, a pod is configured with single interface (and loopback)-based selected pod networking. To enable Kubernetes' multi-networking capability, Multus creates Custom Resources Definition (CRD)-based network objects, and creates a multi-container networking interface (CNI) plug-in. The Kubernetes application programming interface (API) can be expanded through CRD itself. For the Oracle RAC private network, you must configure Multus to have multiple network cards on different subnets, as described [here](https://docs.oracle.com/en/database/oracle/oracle-database/19/rackb/install-configure-rac-olcne.html#GUID-46911DE1-AA25-4B38-9D3E-845B5528B2FD).
+* **Flannel**: This is the default networking option when you create a Kubernetes module. We use Flannel for the Oracle RAC public network. For Oracle RAC on OCNE, we support default pod networking with Flannel.
+* **Multus**: You can set up the Multus module after the Kubernetes module is installed. Multus is installed as a module on top of Flannel. By default in Kubernetes, a pod is configured with single interface (and loopback)-based selected pod networking. To enable Kubernetes' multi-networking capability, Multus creates Custom Resources Definition (CRD)-based network objects, and creates a multi-container networking interface (CNI) plug-in. The Kubernetes application programming interface (API) can be expanded through CRD itself. For the Oracle RAC private network, you must configure Multus to have multiple network cards on different subnets, as described in [_Oracle Real Application Clusters Installation on Oracle Cloud Native Environment Oracle Linux x86-64_](https://docs.oracle.com/en/database/oracle/oracle-database/19/rackb/install-configure-rac-olcne.html#GUID-46911DE1-AA25-4B38-9D3E-845B5528B2FD).
 
 ### OCNE Worker Node Configuration 
 
-* When configuring your Worker node servers, follow these guidelines, and see the configuration Oracle used for testing.
-Each OCNE worker node must have sufficient resources to support the intended number of Oracle RAC Pods, each of which must meet at least the minimum requirements for Oracle Grid Infrastructure servers hosting an Oracle Real Application Clusters node.
+Configure resources and networking for Oracle RAC node pods.
+
+* Each OCNE worker node must have sufficient resources to support the intended number of Oracle RAC Pods, each of which must meet at least the minimum requirements for Oracle Grid Infrastructure servers hosting an Oracle Real Application Clusters node.
 
 * The Oracle RAC Pods in this example configuration were created on the machines "qck-ocne19-w1", "qck-ocne19-w2" and "qck-ocne19-w3" for Oracle Real Application Clusters (Oracle RAC):
 
@@ -166,19 +181,20 @@ Each OCNE worker node must have sufficient resources to support the intended num
     - /dev/sde (50 GB)
 
 **Notes:**
-  - Depending on the requirement, you will need additional shared block devices on these worker nodes. 
-  - Make sure the devices you are using for ASM Storage are cleared of any data from a previous usage or installation. 
+  - Depending on your requirements, you may need additional shared block devices on these worker nodes. 
+  - Ensure that the devices used for ASM Storage do not contain data from previous uses.  
 
 ### Configure Multus to create Oracle RAC Private Network 
 
-- To create an Oracle RAC private network, configure Multus, using either the example configuration file [multus-rac-conf.yaml](./multus-rac-conf.yaml), or your own configuration file.
+To create an Oracle RAC private network, configure Multus either by using the example configuration file [multus-rac-conf.yaml](./multus-rac-conf.yaml), or by using your own configuration file.
 
-  In the example setup, the Multus module was installed without the optional argument for a configuration file to configure it later. Also refer to "Oracle Cloud Native Environment Container Orchestration for Release 1.9" for step-by-step procedures to create, validate and deploy the Multus module. Oracle supports using Multus config types macvlan and ipvlan.
-- After you create your Multus configuration file, apply it to the system. For example, to apply multus-rac-conf.yaml, enter the following command: 
+  In the example setup, the Multus module was installed without the optional argument for a configuration file to configure it later. Also refer to "Oracle Cloud Native Environment Container Orchestration for Release 1.9" for step-by-step procedures to create, validate and deploy the Multus module. Oracle supports using Multus config types `macvlan` and `ipvlan`.
+
+After you create your Multus configuration file, apply it to the system. For example, to apply multus-rac-conf.yaml, enter the following command: 
   ```sh
   kubectl apply -f multus-rac-conf.yaml
   ```
-- Check the Multus configuration on OCNE cluster as below:
+Check the Multus network attachment definitions on the OCNE cluster:
   ```sh
   $ kubectl get all -n kube-system -l app=multus
   ```
@@ -191,49 +207,51 @@ Each OCNE worker node must have sufficient resources to support the intended num
 
 ### Set Clock Source on the Worker Node 
 
-Oracle recommends that you set the clock source to *tsc* for better performance in virtual environments (VM) on Linux x86-64.
+Oracle recommends that you set the clock source to TSC for better performance in virtual environments (VM) on Linux x86-64.
 
-The worker node containers inherit the clock source of their Linux host. For better performance, and to provide the clock source expected for the Oracle Real Application Clusters (Oracle RAC) database installation, Oracle recommends that you change the clock source setting to TSC. 
+With container deployments, the worker node containers inherit the clock source of their Linux host. For better performance, and to provide the clock source expected for an Oracle Real Application Clusters (Oracle RAC) database installation, Oracle recommends that you change the clock source setting to TSC. 
 
-1. As the root user, check if the tsc clock source is available on your system:
+1. As the root user, check if the `tsc` clock source is available on your system:
    ```sh
    # cat /sys/devices/system/clocksource/clocksource0/available_clocksource
    kvm-clock tsc acpi_pm 
    ```
 
-2. If the tsc clock source is available, then set tsc as the current clock source:
+2. If the `tsc` clock source is available, then set `tsc` as the current clock source:
    ```sh
    # echo "tsc">/sys/devices/system/clocksource/clocksource0/current_clocksource
    ```
 
-3. Verify that the current clock source is set to tsc:
+3. Verify that the current clock source is set to `tsc`:
    ```sh
    # cat /sys/devices/system/clocksource/clocksource0/current_clocksource
+
    tsc
    ```
 
-4. Using any text editor, append the clocksource directive to the `GRUB_CMDLINE_LINUX` line in the `/etc/default/grub` file to retain this clock source setting even after a restart:
+4. Using any text editor, append the clocksource directive to the `GRUB_CMDLINE_LINUX` line in the `/etc/default/grub` file to retain this clock source setting after a restart:
    ```sh
    GRUB_CMDLINE_LINUX="rd.lvm.lv=ol/root rd.lvm.lv=ol/swap rhgb quiet numa=off transparent_hugepage=never clocksource=tsc" 
    ```
 
 ### Setting up a Network Time Service
 
-You must set up the chronyd time service for Oracle Real Application Clusters (Oracle RAC).
+You must set up the `chronyd` time service for Oracle Real Application Clusters (Oracle RAC).
 
-As a clustering environment, Oracle Cloud Native Environment (OCNE) requires that the system time is synchronized across each Kubernetes control plane and worker node within the cluster. Typically, this can be achieved by installing and configuring a Network Time Protocol (NTP) daemon on each node. Oracle recommends installing and setting up the *chronyd* daemon for this purpose. 
+As a clustering environment, Oracle Cloud Native Environment (OCNE) requires that the system time is synchronized across each Kubernetes control plane and worker node within the cluster. Typically, this can be achieved by installing and configuring a Network Time Protocol (NTP) daemon on each node. Oracle recommends installing and setting up the `chrony` daemon (`chronyd`) for this purpose. 
 
-As per [Oracle Cloud Native Environment Release 1.9 installation guide](https://docs.oracle.com/en/operating-systems/olcne/1.9/install/prereq.html#sw)
+As noted in [Oracle Cloud Native Environment Release 1.9 installation guide](https://docs.oracle.com/en/operating-systems/olcne/1.9/install/prereq.html#sw):
 
 "The chronyd service is enabled and started by default on Oracle Linux systems.
 
-Systems running on Oracle Cloud Infrastructure are configured to use the chronyd time service by default, so you don't need to add or configure NTP if you're installing into an Oracle Cloud Infrastructure environment. "
+"Systems running on Oracle Cloud Infrastructure are configured to use the `chronyd` time service by default, so you don't need to add or configure NTP if you're installing into an Oracle Cloud Infrastructure environment. "
 
 ### Configuring HugePages for Oracle RAC 
 
 HugePages is a feature integrated into the Linux kernel. For Oracle Database, using HugePages reduces the operating system maintenance of page states and increases Translation Lookaside Buffer (TLB) hit ratio.
 
 To configure HugePages on the Linux operating system on OCNE, complete the following steps on the worker nodes:
+
 1. In the /etc/sysctl.conf file, add the following entry:
    ```sh
    vm.nr_hugepages=16384
@@ -245,7 +263,7 @@ To configure HugePages on the Linux operating system on OCNE, complete the follo
    sysctl -a 
    ```
 
-3. Run the following command to display the value of the Hugepagesize variable: 
+3. Run the following command to display the value of the `Hugepagesize` variable: 
    ```sh
    $ grep Hugepagesize /proc/meminfo
    ```
@@ -270,14 +288,16 @@ To configure HugePages on the Linux operating system on OCNE, complete the follo
 
 ### Prepare the Worker Node for Oracle RAC Deployment 
 
-  Preparing the worker node is a critical foundation for a secure and successful Oracle RAC Database deployment in a Kubernetes environmen. These steps need to be executed by Kuberernetes administrator as root user on worker nodes and follow these steps:
+  Preparing the worker node is a critical foundation for a secure and successful Oracle RAC Database deployment in a Kubernetes environment. These steps must be run by a Kuberernetes administrator as the root user on worker nodes.
+
+Complete all of these steps:
 
   #### System Requirements
    * Verify OS and Kernel Versions: Ensure your node’s operating system and kernel version are supported by Oracle Database and Kubernetes.
-   * Resource Allocation: Confirm the node has sufficient CPU, memory, and storage for Oracle Grid and Database.
+   * Resource Allocation: Confirm the node has sufficient CPU, memory, and storage for Oracle Grid Infrastructure and the database.
 
   #### Kernel and System Settings
-   * Use the vim editor to update `/etc/sysctl.conf` parameters to the following values:
+   * Use the `vim` editor to update `/etc/sysctl.conf` parameters to the following values:
       ```sh
       fs.file-max = 6815744
       net.core.rmem_default = 262144
@@ -290,24 +310,24 @@ To configure HugePages on the Linux operating system on OCNE, complete the follo
       * `sysctl -a`
       * `sysctl –p`
 
-   * Verify that the swap memory is disabled by running:
+   * Verify that the swap memory is disabled by running the following commands:
       ```sh
       free -m
       .....
       Swap:             0           0           0
       ```
-     Swap must be disabled, because Kubernetes doesn't allow kubelet to come up if swap is enabled.
+     Swap must be disabled, because Kubernetes doesn't allow the kubelet to come up if swap is enabled.
 
-   * Enable kernel parameters at the Kubelet level, so that kernel parameters can be set at the Pod level. This is a one-time activity.
-      * In the `/etc/sysconfig/kubelet` file, add or replace `--allowed-unsafe-sysctls` under the KUBELET_EXTRA_ARGS environment variable as shown below: 
+   * Enable kernel parameters at the kubelet level, so that kernel parameters can be set at the Pod level. This is a one-time activity.
+      * In the `/etc/sysconfig/kubelet` file, add or replace `--allowed-unsafe-sysctls` under the `KUBELET_EXTRA_ARGS` environment variable as shown below: 
       ```txt
       KUBELET_EXTRA_ARGS="--fail-swap-on=false --allowed-unsafe-sysctls='kernel.shm*,net.*,kernel.sem'"
       ```
       * Reload Configurations:
       `systemctl daemon-reload`
-      * Restart Kubelet:
+      * Restart the kubelet:
       `systemctl restart kubelet`
-      * Check the Kubelet status:
+      * Check the kubelet status:
       `systemctl status kubelet`
 
 ### Set up SELinux Module on Worker Nodes 
@@ -323,8 +343,8 @@ Traditional Unix security uses discretionary access control (DAC). SELinux is an
     # getenforce
     enforcing
     ```
-  * 2. Install the SELinux devel package on the Worker nodes: `# dnf install selinux-policy-devel`
-  * 3. Create a file `rac-ocne.te` under `/var/opt` on the Worker nodes with the below content:
+  * 2. Install the SELinux `devel` package on the Worker nodes: `# dnf install selinux-policy-devel`
+  * 3. Create a file `rac-ocne.te` under `/var/opt` on the Worker nodes with the following:
     ```sh
     module rac-ocne 1.0;
     
@@ -355,7 +375,7 @@ Traditional Unix security uses discretionary access control (DAC). SELinux is an
      * `make -f /usr/share/selinux/devel/Makefile rac-ocne.pp`
      * `semodule -i rac-ocne.pp`
      * `semodule -l | grep rac-ocne`
-* 5. Repeat steps 1 through 4 on all the other worker nodes. 
+* 5. Repeat steps 1 through 4 on all of the other worker nodes. 
 * 6. Configure the worker node directory file context for the SELinux module:
      * On worker node:
         + qck-ocne19-w1 `# semanage fcontext -a -t container_file_t /scratch/rac/cluster01`
@@ -366,8 +386,8 @@ Traditional Unix security uses discretionary access control (DAC). SELinux is an
         + qck-ocne19-w2 `# sudo restorecon -vF /scratch/rac/cluster01`      
 
   **Notes:**
-  * Change these paths as per location of your environment for setting Oracle RAC.
-  * In case of more worker nodes, you will need to repeat those commands for those worker nodes as well.
+  * Change these paths as required for the location of your environment for deploying Oracle RAC.
+  * If you want to deploy more worker nodes, you will need to repeat those commands for each of these worker nodes.
 
 
 ### Using CVU to Validate Readiness for Worker Node 
@@ -375,7 +395,7 @@ Oracle recommends that you use Cluster Verification Utility (CVU) for Container 
 
 You can use CVU to assist you with system checks in preparation for creating a container for Oracle Real Application Clusters (Oracle RAC), and installing Oracle RAC inside the containers. CVU runs the appropriate system checks automatically, and prompts you to fix problems that it detects. To obtain the benefits of system checks, you must run the utility on all the Worker Nodes that you want to configure to host the Oracle RAC containers.
 
-Please refer: [Use the latest Cluster Verification Utility (CVU) (Doc ID 2731675.1)](https://support.oracle.com/rs?type=doc&id=2731675.1)
+For details, see: [Use the latest Cluster Verification Utility (CVU) (Doc ID 2731675.1)](https://support.oracle.com/rs?type=doc&id=2731675.1)
 
 ## Create a namespace for the Oracle RAC Setup
 
@@ -513,7 +533,7 @@ kubectl apply -f rbac/multus-rbac.yaml
 ```
 ## ClusterRole and ClusterRoleBinding for PersistentVolume Access
 
-The operator creates ASM PersistentVolumes at the cluster scope.  
+The operator creates ASM Persistent Volumes (PV) at the cluster scope.  
 To allow this, Kubernetes requires cluster-level permissions for managing `PersistentVolume` resources.
 
 Apply the RBAC configuration provided in [`pv-rbac.yaml`](./../rbac/pv-rbac.yaml):
