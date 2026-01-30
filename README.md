@@ -42,7 +42,7 @@ As part of Oracle's resolution to make Oracle Database Kubernetes native (that i
 * **Oracle Real Application Cluster (RAC) Database Controller**
   * Supports provisioning, scaling up or down Oracle RAC instances, adding ASM disks, and additional operations
 * **Private AI Controller**
-  * Enables provisioning, scaling up or down, and more features
+  * Enables provisioning, scaling up or down, and more features for the Oracle Private AI Services Container
 * **LREST Controller**
   * Manages provisioning and other related tasks
 * **Bug Fixes**

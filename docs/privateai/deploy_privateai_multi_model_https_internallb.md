@@ -34,7 +34,7 @@ If you want the internal LoadBalancer to be created as an OCI load balancer with
    service.beta.kubernetes.io/oci-load-balancer-subnet1: "ocid1.subnet.oc1..aaaaaa....vdfw"
 ```
 
-**NOTE:** At this stage, the SSL certificate used in the deployment has the `common name` as empty. In order to avoid a hostname mismatch error while using the `cert.pem` file to make a authenicated connection, we will need to replace this SSL certificate with a new certificate that has the `common name` set to the IP of the Internal LoadBalancer.
+**NOTE:** At this stage, the SSL certificate used in the deployment has the `common name` as empty. In order to avoid a hostname mismatch error while using the `cert.pem` file to make a authenticated connection, we will need to replace this SSL certificate with a new certificate that has the `common name` set to the IP of the Internal LoadBalancer.
 
 4. Use the file [pai_secret_update_files.sh](./provisioning/pai_secret_update_files.sh) to do the following:
 
@@ -55,7 +55,7 @@ data:
   privateai-ssl-pwd: your-base64-encoded-password-file-content-here
 ```
 
-4. Use the following command to patch the secret `paisecret`. This secret will replace the Internal LoadBalancer Certificate:
+5. Use the following command to patch the secret `paisecret`. This secret will replace the Internal LoadBalancer Certificate:
     ```sh
     kubectl patch secret paisecret --patch-file secretupdate.yaml -n pai
     ```

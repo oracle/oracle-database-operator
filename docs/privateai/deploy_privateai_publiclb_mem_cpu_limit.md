@@ -4,13 +4,13 @@ Deploy Oracle PrivateAI Container on your Cloud based Kubernetes cluster.  In th
 
 **IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle PrivartAI Controller](./README.md#prerequisites-for-running-oracle-privartai-controller) before using Oracle PrivateAI Controller.
 
-**NOTE:** Modify the file `pai_sample_publiclb.yaml` with the actual Reserved Public IP before deployment.
+**NOTE:** Modify the file `pai_sample_publiclb_mem_cpu_limit.yaml` with the actual Reserved Public IP before deployment.
 
-Use the file: [pai_sample_publiclb.yaml](./provisioning/pai_sample_publiclb.yaml) for this use case as below:
+Use the file: [pai_sample_publiclb_mem_cpu_limit.yaml](./provisioning/pai_sample_publiclb_mem_cpu_limit.yaml) for this use case as below:
 
-1. Deploy the `pai_sample_publiclb.yaml` file:
+1. Deploy the `pai_sample_publiclb_mem_cpu_limit.yaml` file:
     ```sh
-    kubectl apply -f pai_sample_publiclb.yaml
+    kubectl apply -f pai_sample_publiclb_mem_cpu_limit.yaml
     ```
 2. Check the status of the deployment:
     ```sh

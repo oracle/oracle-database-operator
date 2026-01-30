@@ -9,13 +9,13 @@ Within this environment, the PrivateAI controller in the Oracle Database Operato
 
 ### Oracle Private AI Controller Capabilities:
 #### Automated Container Deployment
-Automates the deployment of Oracle PrivateAI Container in Kubernetes clusters using the Oracle Database Operator.Ensures end-to-end automation for lifecycle management (deployment, scaling, updates, rollback). 
+Automates the deployment of Oracle PrivateAI Container in Kubernetes clusters using the Oracle Database Operator. Ensures end-to-end automation for lifecycle management (deployment, scaling, updates, rollback). 
 #### Inference as a Service
 Provides a lightweight, containerized web service interface for performing AI inference on ONNX models via REST APIs. 
 #### Compute Offloading
 Offloads compute-intensive AI operations (e.g., embedding generation) from the database, freeing up resources for database-native functions like indexing and search. 
 #### Integration with Kubernetes
-Utilizes Kubernetes resource constructs (deployments, sets) for robust container orchestration.Leverages Kubernetes infrastructure primitives (compute, storage, networking) and makes them available as code (Infrastructure as Code).Enables declarative updates, scaling, rolling updates, and rollbacks for high availability and simplified management.
+Utilizes Kubernetes resource constructs (deployments, sets) for robust container orchestration. Leverages Kubernetes infrastructure primitives (compute, storage, networking) and makes them available as code (Infrastructure as Code). Enables declarative updates, scaling, rolling updates, and rollbacks for high availability and simplified management. 
 #### Image-based Deployment
 Uses Oracle PrivateAI Container images for reproducible and consistent environment provisioning. 
 1. Targeted for AI Vector Search Customers:   
@@ -77,7 +77,7 @@ To deploy Oracle Database Operator in a Kubernetes cluster, go to the section [I
 Note: If you are using a different namespace, make sure to update any references from the `pai` namespace to the one you intend to use.
 
 ### 4. Oracle Private AI Service Container Image
-The pre-built Private AI Service container image is available on [Oracle Container Registry](https://container-registry.oracle.com/) under `Database->private-ai` repository and fully supported by Oracle for production uses.
+The pre-built Private AI Service container image is available on [Oracle Container Registry](https://container-registry.oracle.com/ords/ocr/ba/database/private-ai) and fully supported by Oracle for production uses.
 
 1. Log into Oracle Container Registry and accept the license agreement for the Private AI Service container image; ignore if you have accepted the license agreement already.
 
@@ -103,7 +103,7 @@ kubectl create secret generic oracle-container-registry-secret  --from-file=.doc
 
 In this step, a configmap will be created which has the details of the AI Model File. The configmap will be created according to the type of the Private AI Deployment. Below are examples of configmap used in the later examples:
 
-You need to download the models and you need to make sur they are available through HTTPS access such as object store pre-authenticated URL. For the model details, you can refer the section `Available Embedding Models' in [Private AI Services Container docuemntation](https://docs.oracle.com/en/database/oracle/oracle-database/26/prvai/index.html).
+You need to download the models and you need to make sure they are available through HTTPS access such as object store pre-authenticated URL. For the model details, you can refer the section `Available Embedding Models' in [Private AI Services Container documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/prvai/index.html).
 
 - [Configmap using Single AI Model with HTTPS URL](./configmap_single_model_https.md) 
 - [Configmap using Multiple AI Models with HTTPS URL](./configmap_multi_model_https.md) 
@@ -138,7 +138,7 @@ echo "<password>" > privateai-ssl-pwd
 ./pai_secret.sh
 ```
 
-**NOTE:** In case of the Internal LoadBalancer, we can not use a reserved Private IP. In this case, you can leave `common name` empty.
+**NOTE:** In case of the Internal LoadBalancer, we can't use a reserved Private IP. In this case, you can leave `common name` empty.
 
 Use below command to check the Kubernetes Secret Created:
 
@@ -160,7 +160,7 @@ There are multiple use case possible for deploying the Private AI Service Contai
   - [Change the Private AI Service Container Image](./change_privateai_container_image.md) 
   - [Private AI Service Container using OCI Public LoadBalancer without configmap](./deploy_privateai_publiclb_without_configmap.md) 
   - [Private AI Service Container using OCI Public LoadBalancer with multiple replica](./deploy_privateai_publiclb_multi_replica.md) 
-    - [Scale-out](./scale_up_privateai.md)
+    - [Scale-out](./scale_out_privateai.md)
     - [Scale-in](./scale_in_privateai.md)
   - [Private AI Service Container using OCI Public LoadBalancer with worker node selection](./deploy_privateai_publiclb_worker_node.md) 
   - [Private AI Service Container using OCI Public LoadBalancer with memory and cpu limits for pods](./deploy_privateai_publiclb_mem_cpu_limit.md) 
