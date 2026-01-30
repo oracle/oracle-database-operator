@@ -1,6 +1,6 @@
 # Create Kubernetes secret for db user
 
-Create a Kubernetes secret named `db-user-pass` using a password in a text file and then encrypt it using an `openssl` key. The text file will be removed after secret is created. You need to make sure openssl must be installed on worker nodes.
+Create a Kubernetes secret named `db-user-pass` using a password in a text file, and then encrypt it using an `openssl` key. The text file will be removed after the secret is created. Worker nodes must have `openssl` installed.
 
 ```sh
 mkdir /tmp/.secrets/
