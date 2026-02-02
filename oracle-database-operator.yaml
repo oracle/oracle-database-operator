@@ -9949,25 +9949,21 @@ spec:
       jsonPath: .spec.cdbName
       name: CDB NAME
       type: string
-    - description: ' Name of the DB Server'
-      jsonPath: .spec.dbServer
-      name: DB Server
-      type: string
-    - description: DB server port
-      jsonPath: .spec.dbPort
-      name: DB Port
-      type: integer
-    - description: Replicas
-      jsonPath: .spec.replicas
-      name: Replicas
-      type: integer
     - description: Status of the LREST Resource
       jsonPath: .status.phase
-      name: Status
+      name: STATUS
       type: string
     - description: Error message if any
       jsonPath: .status.msg
-      name: Message
+      name: MESSAGE
+      type: string
+    - description: Autodiscover
+      jsonPath: .spec.autodiscover
+      name: AUTODISCOVER
+      type: boolean
+    - description: Number of PDBS
+      jsonPath: .status.npdbscrd
+      name: PDB:CRD
       type: string
     - description: string of the tnsalias
       jsonPath: .spec.dbTnsurl
@@ -10141,8 +10137,27 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              orapki:
+                properties:
+                  secretName:
+                    type: string
+                required:
+                - secretName
+                type: object
+              orapkitag:
+                default: orapkitag
+                type: string
+              passwordProtection:
+                default: NATIVE
+                enum:
+                - NATIVE
+                - OPENSSL3
+                - ORAPKI
+                type: string
               replicas:
                 type: integer
+              resetDbpassword:
+                type: boolean
               serviceAccountName:
                 type: string
               serviceName:
@@ -10164,6 +10179,8 @@ spec:
                 type: object
               trace_level_client:
                 default: 0
+                type: integer
+              tracelevel:
                 type: integer
               webServerPwd:
                 properties:
@@ -10195,10 +10212,18 @@ spec:
                 required:
                 - secret
                 type: object
+            required:
+            - passwordProtection
             type: object
           status:
             properties:
               msg:
+                type: string
+              ncrds:
+                type: integer
+              npdbs:
+                type: integer
+              npdbscrd:
                 type: string
               phase:
                 type: string
@@ -10382,8 +10407,6 @@ spec:
                 - NOCOPY
                 - MOVE
                 type: string
-              debug:
-                type: integer
               dropAction:
                 enum:
                 - INCLUDING
@@ -10454,6 +10477,12 @@ spec:
                 type: string
               parameterScope:
                 type: string
+              passwordProtection:
+                default: NATIVE
+                enum:
+                - NATIVE
+                - OPENSSL3
+                type: string
               pdbName:
                 type: string
               pdbState:
@@ -10523,6 +10552,8 @@ spec:
                 type: string
               totalSize:
                 type: string
+              tracelevel:
+                type: integer
               unlimitedStorage:
                 default: true
                 type: boolean
@@ -10558,6 +10589,9 @@ spec:
                 type: object
               xmlFileName:
                 type: string
+            required:
+            - imperativeLrpdbDeletion
+            - passwordProtection
             type: object
           status:
             properties:
@@ -12457,6 +12491,7 @@ spec:
               forceRestart:
                 type: boolean
               globalSettings:
+                default: {}
                 properties:
                   apex.download:
                     default: false
@@ -12473,7 +12508,7 @@ spec:
                         - ReadWriteMany
                         type: string
                       size:
-                        default: 1Gi
+                        default: 2Gi
                         type: string
                       storageClass:
                         type: string
@@ -12499,6 +12534,8 @@ spec:
                     format: int32
                     type: integer
                   cache.metadata.timeout:
+                    type: string
+                  central.config.url:
                     type: string
                   certSecret:
                     properties:
@@ -12540,6 +12577,8 @@ spec:
                     type: integer
                   icap.server:
                     type: string
+                  instance.api.enabled:
+                    type: boolean
                   log.procedure:
                     type: boolean
                   mongo.enabled:
@@ -12590,6 +12629,8 @@ spec:
                     format: int32
                     type: integer
                   standalone.stop.timeout:
+                    type: string
+                  zipWalletsSecretName:
                     type: string
                 type: object
               image:
@@ -12677,7 +12718,6 @@ spec:
                     db.tnsAliasName:
                       type: string
                     db.username:
-                      default: ORDS_PUBLIC_USER
                       type: string
                     db.wallet.zip.service:
                       type: string
@@ -12795,8 +12835,9 @@ spec:
                       required:
                       - secretName
                       type: object
+                    zipWalletName:
+                      type: string
                   required:
-                  - db.secret
                   - poolName
                   type: object
                 type: array
@@ -12815,7 +12856,6 @@ spec:
                 - DaemonSet
                 type: string
             required:
-            - globalSettings
             - image
             type: object
           status:
@@ -13028,6 +13068,9 @@ spec:
                 type: string
               paiLBExternalTrafficPolicy:
                 default: local
+                enum:
+                - local
+                - cluster
                 type: string
               paiLBIP:
                 type: string
@@ -17996,7 +18039,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
+        image: lin.ocir.io/intsanjaysingh/operator/mmalvezz_base64_auth_2.1:260202
         imagePullPolicy: Always
         name: manager
         ports:

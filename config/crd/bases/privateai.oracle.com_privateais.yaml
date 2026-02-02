@@ -142,6 +142,9 @@ spec:
                 type: string
               paiLBExternalTrafficPolicy:
                 default: local
+                enum:
+                - local
+                - cluster
                 type: string
               paiLBIP:
                 type: string
