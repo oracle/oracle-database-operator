@@ -21,16 +21,34 @@ spec:
  shard:
     - name: shard1                                                          # Name of the shard database
       storageSizeInGb: 50                                                   # Size of the Disk Storage allocated to the Shard Database pod
+      nodeSelector:                                                         # Node Selector the worker node to deploy the Pod. Worker Node with this label will be selected for the Pod.
+        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-1"
+      pvMatchLabels:                                                        # To specify the availability domain where the Persistent Volume will be created. It should be same as the nodeSelector.
+        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-1"
+      pvAnnotations:
+        volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1.phx.abyhqljrdec6b7d54uwk3h4ywhjj5ldylvd4vwcdqskgrw34ppchcjllgwrq      # Specify the OCID of the Block Volume which has the Database Gold Image      
       imagePullPolicy: "Always"                                             # Image Pull Policy for the Database Container Image
       shardGroup: shardgroup1                                               # Shard Group name for the Shard Database
       shardRegion: primary                                                  # Name of the region for the Shard Database
     - name: shard2
       storageSizeInGb: 50
+      nodeSelector:
+        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-1"
+      pvMatchLabels:
+        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-1"
+      pvAnnotations:
+        volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1.phx.abyhqljrdec6b7d54uwk3h4ywhjj5ldylvd4vwcdqskgrw34ppchcjllgwrq      
       imagePullPolicy: "Always"
       shardGroup: shardgroup1
       shardRegion: primary
     - name: shard3
       storageSizeInGb: 50
+      nodeSelector:
+        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-1"
+      pvMatchLabels:
+        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-1"
+      pvAnnotations:
+        volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1.phx.abyhqljrdec6b7d54uwk3h4ywhjj5ldylvd4vwcdqskgrw34ppchcjllgwrq      
       imagePullPolicy: "Always"
       shardGroup: shardgroup1
       shardRegion: primary
@@ -39,12 +57,13 @@ spec:
  catalog:
     - name: catalog                                                         # Name of the Catalog database
       storageSizeInGb: 50                                                   # Size of the Disk Storage allocated to the Shard Database pod
+      nodeSelector:
+        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-1"
+      pvMatchLabels:
+        "failure-domain.beta.kubernetes.io/zone": "PHX-AD-1"
+      pvAnnotations:
+        volume.beta.kubernetes.io/oci-volume-source: ocid1.volume.oc1.phx.abyhqljrdec6b7d54uwk3h4ywhjj5ldylvd4vwcdqskgrw34ppchcjllgwrq      
       imagePullPolicy: "Always"                                             # Image Pull Policy for the Database Container Image
-
-      # Specify the environment variables for the Catalog Database
-      envVars:
-        - name:  "CATALOG_CHUNKS"                                           # Specify variable for the the number of chunks to be configured
-          value: "120"                                                      # Specify the value of the variable
 
  # Details of the GSM Pods     
  gsm:
@@ -73,12 +92,18 @@ spec:
  # GSM Conrainer Image Pull Secret
  gsmImagePullSecret: ocr-reg-cred
 
+ # Parameter value for RAFT Replication for the Oracle Globally Distributed Database
+ replicationType: "native"
+
  # Whether an External Load Balancer has to be configured for the Catalog, Shard and GSM Pods
  isExternalSvc: False
 
  # If set to true, the Persistent Volumes will be deleted when the deployment for the Oracle Globally Distributed Database is deleted
  isDeleteOraPvc: True
 
+ # To specify if Catalog and Shard Databases will be deployed by cloning from the Gold Image
+ isClone: True 
+ 
  # Details of the Database Secret 
  dbSecret:
    name: db-user-pass-rsa
@@ -89,5 +114,7 @@ spec:
  gsmService:
    - name: oltp_rw_svc
      role: primary
+     ruMode: READWRITE                       # Specify the ruMode for the service as READWRITE in RAFT Replication Setup
    - name: oltp_ro_svc
      role: primary
+     ruMode: READONLY                        # Specify the ruMode for the service as READWRITE in RAFT Replication Setup

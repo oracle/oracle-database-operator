@@ -40,11 +40,11 @@ To check the logs at the GSM level, the database level, or at the host level, sw
 kubectl exec -it catalog-0 -n shns /bin/bash
 ```
 
-When you are in the correct Kubernetes container, you can troubleshooting the corresponding component using the alert log, the trace files, and so on, just as you would with a normal Sharding Database Deployment. For more information, see: [Oracle Database Sharding Documentation](https://docs.oracle.com/en/database/oracle/oracle-database/19/shard/sharding-troubleshooting.html#GUID-629262E5-7910-4690-A726-A565C59BA73E)
+When you switched to the correct Kubernetes Pod, you can troubleshooting the corresponding component using the alert log, the trace files, and so on, just as you would with a normal Sharding Database Deployment. For more information, see: [Oracle Globally Distributed Database Documentation](https://docs.oracle.com/en/database/oracle/oracle-database/26/shard/index.html)
 
 
 ## Debugging using Database Events 
 
-* You can enable database events as part of the Sharded Database Deployment
+* You can enable database events as part of the Sharded Database Deployment 
 * Enable events using `envVars` 
-* One example of enabling Database Events is [sharding_provisioning_with_db_events.md](./debugging/sharding_provisioning_with_db_events.md)
+* One example of enabling Database Events is [sharding_provisioning_with_db_events.md](./debugging/sharding_provisioning_with_db_events.md) 

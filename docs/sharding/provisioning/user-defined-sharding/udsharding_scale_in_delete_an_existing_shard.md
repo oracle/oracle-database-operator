@@ -1,23 +1,22 @@
-# Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with User Defined Sharding
+# Scale In - Delete an existing Shard from a working Oracle Globally Distributed Database provisioned earlier with User-Defined Sharding
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
+**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
 This use case demonstrates how to delete an existing Shard from an existing Oracle Database sharding topology with User Defined Sharding provisioned using Oracle Database Sharding controller.
 
 In this use case, the existing database Sharding has the following:
 
-* Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Five sharding Pods: `shard1`,`shard2`,`shard3`,`shard4` and `shard5`
-* One Catalog Pod: `catalog`
+* Primary GSM Pods `gsm1` and standby GSM Pod `gsm2` 
+* Five Shard Database Pods: `shard1`, `shard2`, `shard3`, `shard4` and `shard5` 
+* One Catalog Database Pod: `catalog` 
 * Namespace: `shns`
 * User Defined Sharding is specified using `shardingType: USER`
 
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on the [Oracle Container Registry](https://container-registry.oracle.com/)
-  * To pull these images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, then you need to change the `dbImage` and `gsmImage` tags with the images you have built in your enviornment in the file `udsharding_shard_prov_delshard.yaml`.
-  * To understand the Database and Global Data Services Docker images prerequisites, see: [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
-  * If you want to use the [Oracle Database 23ai Free image](https://www.oracle.com/database/free/get-started/) for Database and GSM, then you must add the additional parameter `dbEdition: "free"` to the `.yaml` file we show in these steps. 
-  * Ensure that the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the `openssl` commands to generate the encrypted password file during the deployment.
+  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the namespace `shns`. Please refer to [this page](./../container_reg_secret.md) for the details.  
+  * If you plan to build and use the images, then you need to change the `dbImage` and `gsmImage` tags with the images you have built in your enviornment in the file `udsharding_shard_prov_delshard.yaml`. 
+  * To understand Database and Global Data Services Docker images prerequsites, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images) 
+  * The version of `openssl` in the Oracle Database and Oracle GSM images must be compatible with the `openssl` version on the machine where you will run the openssl commands to generate the encrypted password file during the deployment. 
 
 **NOTE:** Use the tag `isDelete: enable` to delete the shard that you want to remove.
 
@@ -25,13 +24,13 @@ This use case deletes the shard `shard4` from this Sharding Topology.
 
 Use the file: [udsharding_shard_prov_delshard.yaml](./udsharding_shard_prov_delshard.yaml) for this use case, as described in the following steps:
 
-1. Move out the chunks from the shard to be deleted to another shard. For example, in the current case, before deleting `shard4`, if you want to move the chunks from `shard4` to `shard2`, then you can run the `kubectl` command where `/u01/app/oracle/product/23ai/gsmhome_1` is the GSM HOME:
+1. Move out the chunks from the shard to be deleted to another shard. For example, in the current case, before deleting `shard4`, if you want to move the chunks from `shard4` to `shard2`, then you can run the `kubectl` command where `/u01/app/oracle/product/26ai/gsmhome_1` is the GSM HOME:
     ```sh
-    kubectl exec -it pod/gsm1-0 -n shns -- /u01/app/oracle/product/23ai/gsmhome_1/bin/gdsctl "move chunk -chunk all -source shard4_shard4pdb -target shard4_shard4pdb"
+    kubectl exec -it pod/gsm1-0 -n shns -- /u01/app/oracle/product/26ai/gsmhome_1/bin/gdsctl "move chunk -chunk all -source shard4_shard4pdb -target shard4_shard4pdb"
     ```
 2. To confirm that the shard that you want to be deleted (`shard4` in this case) does not have any chunks, use the following command:
     ```sh
-    kubectl exec -it pod/gsm1-0 -n shns -- /u01/app/oracle/product/23ai/gsmhome_1/bin/gdsctl "config chunks"
+    kubectl exec -it pod/gsm1-0 -n shns -- /u01/app/oracle/product/26ai/gsmhome_1/bin/gdsctl "config chunks"
     ```
     If there is no chunk present in the shard to be deleted, you can move to the next step.
 
