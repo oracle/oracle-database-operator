@@ -68,13 +68,13 @@ spec:
  storageClass: oci
 
  # Database Container Image to be used for Catalog and Shard Database
- dbImage: container-registry.oracle.com/database/enterprise_ru:19.28.0.0
+ dbImage: container-registry.oracle.com/database/enterprise:23.26.1.0
 
  # Database Conrainer Image Pull Secret
  dbImagePullSecret: ocr-reg-cred
 
  # GSM Container Image to be used for GSM Pods
- gsmImage: container-registry.oracle.com/database/gsm_ru:19.28.0.0
+ gsmImage: container-registry.oracle.com/database/gsm:23.26.1.0
 
  # GSM Conrainer Image Pull Secret
  gsmImagePullSecret: ocr-reg-cred

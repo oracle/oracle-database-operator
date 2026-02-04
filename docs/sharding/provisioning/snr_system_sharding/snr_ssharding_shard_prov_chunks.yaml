@@ -43,8 +43,8 @@ spec:
 
       # Specify the environment variables for the Catalog Database
       envVars:
-        - name:  "CATALOG_CHUNKS"                                           # Specify variable for the the number of chunks to be configured
-          value: "120"                                                      # Specify the value of the variable
+        - name:  "CATALOG_CHUNKS"
+          value: "120"      
 
  # Details of the GSM Pods     
  gsm:
@@ -73,6 +73,9 @@ spec:
  # GSM Conrainer Image Pull Secret
  gsmImagePullSecret: ocr-reg-cred
 
+ # Parameter value for RAFT Replication for the Oracle Globally Distributed Database
+ replicationType: "native"
+
  # Whether an External Load Balancer has to be configured for the Catalog, Shard and GSM Pods
  isExternalSvc: False
 
@@ -89,5 +92,7 @@ spec:
  gsmService:
    - name: oltp_rw_svc
      role: primary
+     ruMode: READWRITE                       # Specify the ruMode for the service as READWRITE in RAFT Replication Setup
    - name: oltp_ro_svc
      role: primary
+     ruMode: READONLY                        # Specify the ruMode for the service as READWRITE in RAFT Replication Setup

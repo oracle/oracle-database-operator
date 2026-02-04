@@ -35,16 +35,23 @@ spec:
       shardGroup: shardgroup1
       shardRegion: primary
 
+    # Details of the Additional two shards to be added during the Scale Out Operation      
+    - name: shard4
+      storageSizeInGb: 50
+      imagePullPolicy: "Always"
+      shardGroup: shardgroup1
+      shardRegion: primary
+    - name: shard5
+      storageSizeInGb: 50
+      imagePullPolicy: "Always"
+      shardGroup: shardgroup1
+      shardRegion: primary      
+
  # Details of the individual shard databases     
  catalog:
     - name: catalog                                                         # Name of the Catalog database
       storageSizeInGb: 50                                                   # Size of the Disk Storage allocated to the Shard Database pod
       imagePullPolicy: "Always"                                             # Image Pull Policy for the Database Container Image
-
-      # Specify the environment variables for the Catalog Database
-      envVars:
-        - name:  "CATALOG_CHUNKS"                                           # Specify variable for the the number of chunks to be configured
-          value: "120"                                                      # Specify the value of the variable
 
  # Details of the GSM Pods     
  gsm:
@@ -73,6 +80,9 @@ spec:
  # GSM Conrainer Image Pull Secret
  gsmImagePullSecret: ocr-reg-cred
 
+ # Parameter value for RAFT Replication for the Oracle Globally Distributed Database
+ replicationType: "native"
+
  # Whether an External Load Balancer has to be configured for the Catalog, Shard and GSM Pods
  isExternalSvc: False
 
@@ -89,5 +99,8 @@ spec:
  gsmService:
    - name: oltp_rw_svc
      role: primary
+     ruMode: READWRITE                       # Specify the ruMode for the service as READWRITE in RAFT Replication Setup
    - name: oltp_ro_svc
      role: primary
+     ruMode: READONLY                        # Specify the ruMode for the service as READWRITE in RAFT Replication Setup
+
