@@ -1,4 +1,4 @@
-# Example: Containerised Single Instance Database using the OraOperator
+# OrdsSrvs Controller: Containerised Single Instance Database using the OraOperator
 
 This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database created by the **SIDB Controller** in the same Kubernetes Cluster.
 
@@ -48,12 +48,13 @@ Refer to Single Instance Database (SIDB) [README](https://github.com/oracle/orac
 ```bash
 openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
+kubectl create secret generic prvkey --from-file=password=ca.key  -n ordsnamespace
 
-echo "${DB_PWD}"     > db-auth
-openssl pkeyutl -encrypt -pubin -inkey public.pem -in db-auth -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
+echo -n "Enter Database Password: " && read -s DBPWD
+echo -n "${DBPWD}" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
 kubectl create secret generic sidb-db-auth-enc --from-file=password=e_db-auth -n  ordsnamespace
-rm db-auth e_db-auth
+rm e_db-auth
+unset DBPWD
 ```
 
 ### Create RestDataServices Resource
@@ -89,7 +90,6 @@ rm db-auth e_db-auth
       forceRestart: true
       encPrivKey:
         secretName: prvkey
-        passwordKey: privateKey
       globalSettings:
         database.api.enabled: true
       poolSettings:

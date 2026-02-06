@@ -1000,7 +1000,7 @@ Create a persistent volume by using [static provisioning](#static-persistence) a
 
 ## OracleRestDataService Resource
 
-The Oracle Database Operator creates the `OracleRestDataService` as a custom resource. In this documeent, we will refer to `OracleRestDataService` as ORDS. Creating ORDS as a custom resource enables the RESTful API access to the Oracle Database in K8s, and enables it to be managed as a native Kubernetes object.
+The Oracle Database Operator creates the `OracleRestDataService` as a custom resource. In this document, we will refer to `OracleRestDataService` as ORDS. Creating ORDS as a custom resource enables the RESTful API access to the Oracle Database in K8s, and enables it to be managed as a native Kubernetes object.
 
 ### Resource Details
 

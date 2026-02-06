@@ -53,6 +53,7 @@ import (
 )
 
 // ExecCMDInContainer execute command in first container of a pod
+// ExecCommand provides documentation for the ExecCommand function.
 func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (string, string, error) {
 
 	var msg string

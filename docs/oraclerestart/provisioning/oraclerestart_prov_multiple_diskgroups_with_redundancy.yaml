@@ -43,27 +43,34 @@ spec:
         nodePort: 30200               # Host port exposed on worker node (must be in NodePort range)        
   enableOns: "enable"                 # If you want to have ONS notification configured on the specified port. Default value is "enable"        
 
-  # ASM (Automatic Storage Management) storage configuration
-  asmStorageDetails:
-    disksBySize:
-      - storageSizeInGb: 50           # Each disk in this group has 50Gi of storage, will be used for CRSDATA Diskgroup
-        diskNames:
-          - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
-          - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
-      - storageSizeInGb: 100          # Each disk in this group has 100Gi of storage, will be used for DATA Diskgroup
-        diskNames:
-          - /dev/disk/by-partlabel/asm-disk3  # ASM disk device path 3
-          - /dev/disk/by-partlabel/asm-disk4  # ASM disk device path 4
-          - /dev/disk/by-partlabel/asm-disk5  # ASM disk device path 5
-          - /dev/disk/by-partlabel/asm-disk6  # ASM disk device path 6
-      - storageSizeInGb: 100          # Each disk in this group has 100Gi of storage, will be used for RECO Diskgroup
-        diskNames:
-          - /dev/disk/by-partlabel/asm-disk7  # ASM disk device path 7
-          - /dev/disk/by-partlabel/asm-disk8  # ASM disk device path 8
-      - storageSizeInGb: 50           # Each disk in this group has 50Gi of storage, will be used for REDO Diskgroup
-        diskNames:
-          - /dev/disk/by-partlabel/asm-disk9  # ASM disk device path 9
-          - /dev/disk/by-partlabel/asm-disk10  # ASM disk device path 10          
+  asmDiskGroupDetails:
+    - name: CRSDATA
+      redundancy: NORMAL       # Recommended: ASM-provided two-way mirroring for OCR/voting files
+      type: CRSDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk1
+        - /dev/disk/by-partlabel/asm-disk2
+
+    - name: DBDATA
+      redundancy: HIGH         # ASM three-way mirroring for critical DB data (optional, use NORMAL for balance)
+      type: DBDATAFILESDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk3
+        - /dev/disk/by-partlabel/asm-disk4
+
+    - name: RECO
+      redundancy: EXTERNAL    # Depend on storage-level RAID; change to NORMAL/EXTERNAL per risk/compliance needs
+      type: DBRECOVERY
+      disks:
+        - /dev/disk/by-partlabel/asm-disk5
+        - /dev/disk/by-partlabel/asm-disk6
+
+    - name: REDO
+      redundancy: HIGH         # Maximum protection for redo logs; use NORMAL if storage already provides redundancy
+      type: DBREDO
+      disks:
+        - /dev/disk/by-partlabel/asm-disk7
+        - /dev/disk/by-partlabel/asm-disk8       
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
@@ -100,18 +107,6 @@ spec:
     limits:
       memory: "16Gi"                 # Max memory allowed
       cpu: "2"                       # Max CPU allowed
-
-  # Kernel-level system control parameters for Oracle
-  securityContext:
-    sysctls:
-      - name: kernel.shmall
-        value: "2097152"
-      - name: kernel.sem
-        value: "250 32000 100 128"
-      - name: kernel.shmmax
-        value: "8589934592"
-      - name: kernel.shmmni
-        value: "4096"
 
   # Configuration parameters for Oracle Grid and Database homes
   configParams:

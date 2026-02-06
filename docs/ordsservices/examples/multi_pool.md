@@ -1,4 +1,4 @@
-# Example: Multipool, Multidatabase using a TNS Names file
+# OrdsSrvs Controller: Multipool, Multidatabase using a TNS Names file
 
 This example walks through using the **ORDSSRVS Operator** with multiple databases using a TNS Names file.  
 Keep in mind that all pools are running in the same Pod, therefore, changing the configuration of one pool will require
@@ -43,7 +43,7 @@ Use private key to create a secret.
 ```bash
 openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace 
+kubectl create secret generic prvkey --from-file=password=ca.key  -n ordsnamespace 
 ```
 
 ### ORDS_PUBLIC_USER Secret
@@ -54,28 +54,31 @@ If multiple databases use the same password, the same secret can be re-used.
 The following secret will be used for PDB1:
 
 ```bash
-echo "THIS_IS_A_PASSWORD"     > ordspwdfile
-openssl pkeyutl -encrypt -pubin -inkey public.pem -in ordspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
+echo -n "Enter password for PDB1: " && read -s PDB1_PWD
+echo -n "$PDB1_PWD" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
 kubectl create secret generic pdb1-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
-rm ordspwdfile e_ordspwdfile
+rm e_ordspwdfile
+unset PDB1_PWD
 ```
 
 The following secret will be used for PDB2:
 
 ```bash
-echo "THIS_IS_A_PASSWORD"     > ordspwdfile
-openssl pkeyutl -encrypt -pubin -inkey public.pem -in ordspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
+echo -n "Enter password for PDB1: " && read -s PDB2_PWD
+echo -n "$PDB2_PWD" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
 kubectl create secret generic pdb2-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
-rm ordspwdfile e_ordspwdfile
+rm e_ordspwdfile
+unset PDB2_PWD
 ```
 
 The following secret will be used for PDB3 and PDB4:
 
 ```bash
-echo "THIS_IS_A_PASSWORD"     > ordspwdfile
-openssl pkeyutl -encrypt -pubin -inkey public.pem -in ordspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
+echo -n "Enter password for PDB1: " && read -s MULTI_PWD
+echo -n "$MULTI_PWD" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_ordspwdfile
 kubectl create secret generic multi-ords-auth-enc --from-file=password=e_ordspwdfile -n  ordsnamespace 
-rm ordspwdfile e_ordspwdfile
+rm e_ordspwdfile
+unset MULTI_PWD
 ```
 
 ### Privileged Secret (*Optional)
@@ -85,10 +88,11 @@ If taking advantage of the [AutoUpgrade](../autoupgrade.md) functionality, creat
 In this example, only PDB1 will be set for [AutoUpgrade](../autoupgrade.md), the other PDBs already have APEX and ORDS installed.
 
 ```bash
-echo "THIS_IS_A_PASSWORD"     > syspwdfile
-openssl pkeyutl -encrypt -pubin -inkey public.pem -in syspwdfile -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_syspwdfile
+echo -n "Enter Admin (SYS) password: " && read -s SYS_PWD
+echo -n "$SYS_PWD" |openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_syspwdfile
 kubectl create secret generic pdb1-priv-auth-enc --from-file=password=e_syspwdfile -n  ordsnamespace
-rm syspwdfile e_syspwdfile
+rm e_syspwdfile
+unset SYS_PWD
 ```
 
 ### Create OrdsSrvs Resource
@@ -106,7 +110,6 @@ rm syspwdfile e_syspwdfile
       forceRestart: true
       encPrivKey:
         secretName: prvkey
-        passwordKey: privateKey
       globalSettings:
         database.api.enabled: true
       poolSettings:

@@ -8,5 +8,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: phx.ocir.io/intsanjaysingh/db-repo/oracle/database
-  newTag: orestart-operator-sa
+  newName: lin.ocir.io/intsanjaysingh/operator/mmalvezz_base64_auth_2.1
+  newTag: "260202"

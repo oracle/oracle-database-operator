@@ -1,4 +1,4 @@
-# Example: Autonomous Database using the OraOperator
+# OrdsSrvs Example: Autonomous Database using the OraOperator
 
 This example walks through using the **ORDS Controller** with a Containerised Oracle Database created by the **ADB Controller** in the same Kubernetes Cluster.
 
@@ -20,11 +20,11 @@ Either establish Instance Principles or create the required ConfigMap/Secret.  T
 Create a Secret for the ADB Admin password:
 
 ```bash
-DB_PWD=$(echo "ORDSpoc_$(date +%H%S%M)")
-
+echo -n "Enter password for encryption: " && read -s DBPWD
 kubectl create secret generic adb-oraoper-db-auth \
   -n ordsnamespace \
-  --from-literal=adb-oraoper-db-auth=${DB_PWD}
+  --from-literal=password="${DBPWD}"
+unset DBPWD  
 ```
 
 **NOTE**: When binding to the ADB in a later step, the OraOperator will change the ADB password to what is specified in the Secret.
@@ -74,13 +74,14 @@ kubectl create secret generic adb-oraoper-db-auth \
 ### Create encrypted password 
 
 ```bash
-echo ${DB_PWD} > db-auth
+echo -n "Enter password for encryption: " && read -s DBPWD
 openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
-openssl pkeyutl -encrypt -pubin -inkey public.pem -in db-auth -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
+kubectl create secret generic prvkey --from-file=secret=ca.key  -n ordsnamespace
+echo -n "${DBPWD}" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
 kubectl create secret generic adb-oraoper-db-auth-enc  --from-file=password=e_db-auth -n  ordsnamespace
-rm db-auth e_db-auth
+rm e_db-auth ca.key public.pem
+unset DBPWD
 ```
 
 ### Create OrdsSrvs Resource
@@ -88,7 +89,7 @@ rm db-auth e_db-auth
 1. Obtain the Service Name from the OraOperator
 
     ```bash
-    SERVICE_NAME=$(kubectl get -n ordsnamespace adb adb-oraoper -o=jsonpath='{.spec.details.dbName}'_TP)
+    SERVICE_NAME=$(kubectl get -n ordsnamespace adb adb-oraoper -o=jsonpath='{.spec.details.dbName}')_TP
     ```
 
 1. Create a manifest for ORDS.
@@ -107,7 +108,6 @@ rm db-auth e_db-auth
       forceRestart: true
       encPrivKey:
         secretName: prvkey
-        passwordKey: privateKey
       globalSettings:
         database.api.enabled: true
       poolSettings:
@@ -153,10 +153,3 @@ Direct your browser to: `https://localhost:8443/ords/adb-oraoper`
 This example has a single database pool, named `adb-oraoper`.  It is set to:
 
 * Automatically restart when the configuration changes: `forceRestart: true`
-* Automatically install/update ORDS on startup, if required.  This occurs due to the database being detected as an ADB.
-* Automatically install/update APEX on startup, if required: This occurs due to the database being detected as an ADB.
-* The ADB `ADMIN` user will be used to connect the ADB to install APEX/ORDS
-* Use a TNS connection string to connect to the database: `db.customURL: jdbc:oracle:thin:@//${CONN_STRING}`
-  The `tnsAdminSecret` Secret `adb-oraoper-tns-admin` was created by the OraOperator
-* The `passwordKey` has been specified for both `db.secret` and `db.adminUser.secret` as `adb-oraoper-password` to match the OraOperator specification.
-* The ADB `ADMIN` user will be used to connect the ADB to install APEX/ORDS
