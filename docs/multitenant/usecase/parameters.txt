@@ -2,7 +2,7 @@
 ########################
 ## REST SERVER IMAGE ###
 ########################
-LRESTIMG:container-registry.oracle.com/database/operator:lrest-241210-amd64
+LRESTIMG:container-registry.oracle.com/database/operator:lrest-[GET THE LATEST FROM OCR]-amd64
 
 ##############################
 ## TNS URL FOR CDB CREATION ##

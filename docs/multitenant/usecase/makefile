@@ -1161,7 +1161,7 @@ metadata:
   namespace: ${PDBNAMESPACE}
 data:
   plblock1.sql: |
-        create user k8stestuser identified by tkstestuser
+        create user k8stestuser 
   plblock2.sql: |
         grant dba to k8stestuser
   plblock3.sql: |
@@ -1891,7 +1891,6 @@ orapki19:
 	@$(KUBECTL) describe secret  orawallet  -n $(LRSNAMESPACE)
 
 orapki26:
-	#unzip -o $(ADE_VIEW_ROOT)/crypto/jlib/pki/standalone/oraclepki-standalone.zip -d .
 	--@rm -rf $(WALLET_DIR)
 	@mkdir $(WALLET_DIR)
 	./bin/linux/orapki  wallet create -wallet $(WALLET_DIR)   -pwd Matteo1234 -auto_login
