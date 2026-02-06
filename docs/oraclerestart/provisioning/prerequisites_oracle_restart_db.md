@@ -131,11 +131,13 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
       vm.nr_hugepages=16384
       ```
    * Run the following commands:
-      * `# sysctl -a`
-      * `# sysctl –p`
+      ```sh
+      sysctl -a
+      sysctl –p
+      ```
    * Verify that the swap memory is disabled by running:  
       ```sh
-      # free -m
+      free -m
       .....
       Swap:             0           0           0
       ```
@@ -144,27 +146,49 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
       ```txt
       Environment="KUBELET_EXTRA_ARGS=--fail-swap-on=false --allowed-unsafe-sysctls='kernel.shm*,net.*,kernel.sem'"
       ```
-      * Reload Configurations: `# systemctl daemon-reload`
-      * Restart Kubelet: `# systemctl restart kubelet`
-      * Check the Kubelet status: `# systemctl status kubelet`
+      * Reload Configurations:  
+      ```sh
+      systemctl daemon-reload
+      ```
+      * Restart Kubelet:  
+      ```sh
+      systemctl restart kubelet
+      ```
+      * Check the Kubelet status:   
+      ```sh
+      systemctl status kubelet
+      ```
       
       **Note: For openshift worker nodes**, path to edit is `/etc/systemd/system/kubelet.service.d/99-kubelet-extra-args.conf` and add below content in this file:
       ```txt
       [Service]
       Environment="KUBELET_EXTRA_ARGS=--fail-swap-on=false --allowed-unsafe-sysctls='kernel.shm*,net.*,kernel.sem'"
       ```
-      * Reload Configurations: `# systemctl daemon-reload`
-      * Restart Kubelet: `# systemctl restart kubelet`
-      * Check the Kubelet status: `# systemctl status kubelet`
+      * Reload Configurations:  
+      ```sh
+      systemctl daemon-reload
+      ```
+      * Restart Kubelet:  
+      ```sh
+      systemctl restart kubelet
+      ```
+      * Check the Kubelet status:  
+      ```sh
+      systemctl status kubelet
+      ```
 
    * Skip this step **if you are using a StorageClass**.Otherwise, create the necessary mount points on the worker node. These mount points will be used by the Oracle Restart pod for Oracle Grid Infrastructure and RDBMS Home, as well as for the software staging location.
       * On worker node:
-          + `# mkdir -p /scratch/orestart/`
-          + `# mkdir -p /scratch/software/stage`
+          ```sh
+          mkdir -p /scratch/orestart/
+          mkdir -p /scratch/software/stage
+          ```
       * For the case where you are installing Oracle Base Release with RU Patch, create the required mount points for Base Release Software, for the location to unzip the RU Patch etc:
         * For Example, for Release 19c with 19.28 RU, on worker node:
-          + `# mkdir -p /stage/software/19c/19.3.0`
-          + `# mkdir -p /stage/software/19c/19.28`     
+          ```sh 
+          mkdir -p /stage/software/19c/19.3.0
+          mkdir -p /stage/software/19c/19.28
+          ```     
   
       * Download the Oracle Grid Infrastructure and Oracle RDBMS Software .zip files. Copy those files to the worker node at the staging location `/scratch/software/stage/`
 
@@ -294,12 +318,6 @@ OpenShift requires additional Security Context Constraints (SCC) for deploying a
   ```sh
   oc apply -f custom-scc.yaml
   oc adm policy add-scc-to-user privileged -z oraclerestart -n orestart
-  ```
-
-  * Give the role "oracle-database-operator-manager-role" read-only access (get, list, watch) to the serviceaccounts resource from the core API group:
-
-  ```sh
-  oc patch clusterrole oracle-database-operator-manager-role --type='json' -p '[{"op":"add","path":"/rules/-","value":{"apiGroups":[""],"resources":["serviceaccounts"],"verbs":["get","list","watch"]}}]'
   ```
 
 ## Deploy Oracle Database Operator

@@ -1,4 +1,4 @@
-# Example: Autonomous Database without the OraOperator
+# OrdsSrvs Example: Autonomous Database without the OraOperator
 
 This example walks through using the **ORDSSRVS controller** with an Oracle Autonomous Database.  
 
@@ -21,13 +21,14 @@ kubectl create secret generic adb-wallet \
 Create a Secret for the ADB ADMIN password, replacing <ADMIN_PASSWORD> with the real password:
 
 ```bash
-echo ${ADMIN_PASSWORD} > db-auth
+echo -n "Enter ADB ADMIN password: " && read -s ADMIN_PASSWORD
 openssl genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keygen_pubexp:65537 > ca.key
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
-kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
-openssl pkeyutl -encrypt -pubin -inkey public.pem -in db-auth -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
+kubectl create secret generic prvkey --from-file=secret=ca.key  -n ordsnamespace
+echo -n "${ADMIN_PASSWORD}" |openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
 kubectl create secret generic adb-oraoper-db-auth-enc  --from-file=password=e_db-auth -n  ordsnamespace
-rm db-auth e_db-auth
+rm e_db-auth ca.key public.pem
+unset ADMIN_PASSWORD
 ```
 
 ### Create RestDataServices Resource
@@ -47,10 +48,8 @@ rm db-auth e_db-auth
       namespace: ordsnamespace
     spec:
       image: container-registry.oracle.com/database/ords:25.1.0
-      forceRestart: true
       encPrivKey:
         secretName: prvkey
-        passwordKey: privateKey
       globalSettings:
         database.api.enabled: true
       poolSettings:
@@ -61,9 +60,6 @@ rm db-auth e_db-auth
           dbWalletSecret:
             secretName: adb-wallet
             walletName: Wallet_<ADB_NAME>.zip
-          restEnabledSql.active: true
-          feature.sdw: true
-          plsql.gateway.mode: proxied
           db.username: ORDS_PUBLIC_USER_OPER
           db.secret:
             secretName:  adb-oraoper-db-auth-enc
@@ -98,7 +94,6 @@ This example has a single database pool, named `adb`.  It is set to:
 
 * Not automatically restart when the configuration changes: `forceRestart` is not set.  
   The pod must be manually resarted for new configurations to be picked-up.
-* Automatically install/update ORDS on startup, if required.  This occurs due to the database being detected as an ADB.
 * Automatically install/update APEX on startup, if required: This occurs due to the database being detected as an ADB.
 * The ADB `ADMIN` user will be used to connect the ADB to install APEX/ORDS
 * Use the ADB Wallet file to connect to the database: `db.wallet.zip.service: adbpoc_tp` and `dbWalletSecret`

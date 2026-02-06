@@ -57,19 +57,16 @@ spec:
  storageClass: oci
 
  # Database Container Image to be used for Catalog and Shard Database
- dbImage: container-registry.oracle.com/database/free:latest
+ dbImage: container-registry.oracle.com/database/enterprise:23.26.1.0
 
  # Database Conrainer Image Pull Secret
  dbImagePullSecret: ocr-reg-cred
 
  # GSM Container Image to be used for GSM Pods
- gsmImage: container-registry.oracle.com/database/gsm:latest
+ gsmImage: container-registry.oracle.com/database/gsm:23.26.1.0
 
  # GSM Conrainer Image Pull Secret
  gsmImagePullSecret: ocr-reg-cred
-
- # Specify the Database Edition as "free" for Oracle Database FREE
- dbEdition: "free"
 
  # Parameter value for RAFT Replication for the Oracle Globally Distributed Database
  replicationType: "native"

@@ -141,7 +141,8 @@ type LRPDBSpec struct {
 	// Turn on the imperative approach to delete pdb resource
 	// kubectl delete pdb command automatically triggers the pluggable database
 	// deletion
-	ImperativeLrpdbDeletion bool `json:"imperativeLrpdbDeletion,omitempty"`
+	// ++kubebuilder:default=false
+	ImperativeLrpdbDeletion bool `json:"imperativeLrpdbDeletion"`
 	// Config map containing the pdb parameters
 	PDBConfigMap string `json:"pdbconfigmap,omitempty"`
 	// Config map containing sql(ddl)/plsql code
@@ -151,8 +152,12 @@ type LRPDBSpec struct {
 	// For future use - rest bitmask status
 	// ++kubebuilder:default=0
 	PDBBitMask int `json:"reststate,omitempty"`
-	// Debug option , not yet implemented
-	Debug int `json:"debug,omitempty"`
+	// Password protection , it can be a thirdparty software or openssl encryption
+	// +kubebuilder:validation:Enum=NATIVE;OPENSSL3
+	// +kubebuilder:default=NATIVE
+	PwdProtection string `json:"passwordProtection"`
+	// Trclvl option , not yet implemented
+	Trclvl int `json:"tracelevel,omitempty"`
 }
 
 // LRPDBAdminName defines the secret containing Sys Admin User mapped to key 'adminName' for LRPDB

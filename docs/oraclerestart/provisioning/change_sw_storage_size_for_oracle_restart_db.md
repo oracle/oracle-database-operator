@@ -21,10 +21,16 @@ This example uses `oraclerestart_prov_storage_class_before_sw_home_resize.yaml` 
 
 ### In this Example: 
   * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). 
-  * The disks provisioned using storageclass are mounted inside the Oracle Restart Pod as `/dev/asm-disk1` and `/dev/asm-disk2`. 
-  * Specify the size of these devices along with names using the parameter `swLocStorageSizeInGb`. Size is by-default in GBs.
-
-**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files, Recovery Area Files and Redo Log Files, the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
+ The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
+```text
+For example:
+  - name: DATA
+    redundancy: EXTERNAL
+    type: CRSDG
+    disks:
+      - /dev/oracleoci/oraclevdd
+      - /dev/oracleoci/oraclevde
+```
   
 ### Steps - Deploy the Oracle Restart Database
 * Skip this step if you have already deployed the Oracle Restart database using storage class.

@@ -1,6 +1,6 @@
-# Scale In - Delete an existing Shard from a working Oracle Sharded Database provisioned earlier with System-Managed Sharding
+# Scale In - Delete an existing Shard from a working Oracle Globally Distributed Database provisioned earlier with System-Managed Sharding
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
+**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller. 
 
 This use case demonstrates how to delete an existing Shard from an existing Oracle Database sharding topology with System-Managed Sharding provisioned using Oracle Database Sharding controller.
 
@@ -9,16 +9,15 @@ This use case demonstrates how to delete an existing Shard from an existing Orac
 In this use case, the existing database Sharding is having:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Five sharding Pods: `shard1`,`shard2`,`shard3`,`shard4` and `shard5`
-* One Catalog Pod: `catalog`
+* Five Shard Database Pods: `shard1`, `shard2`, `shard3`, `shard4` and `shard5`
+* One Catalog Database Pod: `catalog`
 * Namespace: `shns`
 
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
-  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_delshard.yaml`.
-  * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
-  * In case you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you will need to add the additional parameter `dbEdition: "free"` to the below .yaml file. 
-  * Make sure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
+  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the namespace `shns`. Please refer to [this page](./../container_reg_secret.md) for the details. 
+  * If you plan to build and use the images, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov_delshard.yaml`. 
+  * To understand Database and Global Data Services Docker images prerequsites, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images) 
+  * The version of `openssl` in the Oracle Database and Oracle GSM images must be compatible with the `openssl` version on the machine where you will run the openssl commands to generate the encrypted password file during the deployment. 
 
 NOTE: Use tag `isDelete: enable` to delete the shard you want.
 
@@ -35,7 +34,7 @@ Use the file: [ssharding_shard_prov_delshard.yaml](./ssharding_shard_prov_delsha
     # Check the status of the Kubernetes Pods:
     kubectl get all -n shns
 
-**NOTE:** After you apply `ssharding_shard_prov_delshard.yaml`, the change may not be visible immediately. When the shard is removed, first the chunks will be moved out of that shard that is going to be deleted.
+**NOTE:** After you apply `ssharding_shard_prov_delshard.yaml`, the change may not be visible immediately. First the chunks will be moved out of that shard that is going to be deleted and then the shard will be removed from the topology.
 
 To monitor the chunk movement, use the following command:
 

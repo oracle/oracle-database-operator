@@ -1,29 +1,56 @@
+<div align="center">
+<h1 align="center">
+  <br>
+  <img src="./DBOperator.svg" alt="Oracle Database Operator"></a>
+</h1>
+</div>
+
+<div align="center">
+<p align="center">
+    <a href="https://github.com/oracle/oracle-database-operator">
+    <img src="./oracledatabaseoperator.svg?style=flat-square&logo=github&logoColor=white"
+         alt="Oracle Database Operator">
+    <a href="https://www.oracle.com/database/kubernetes-for-container-database">
+    <img src="./oracledatabaseforcontainersandkubernetes.svg?style=flat-square&logo=github&logoColor=white"
+         alt="Oracle Database For Containers and Kubernetes">
+</p>
+</div>
+
+<div align="center">
+<p align="center">
+    <a href="https://github.com/oracle/oracle-database-operator/commits/main/">
+    <img src="./lastcommit.svg?style=flat-square&logo=github&logoColor=white"
+         alt="GitHub last commit">
+    <a href="https://github.com/oracle/oracle-database-operator/issues">
+    <img src="./issues.svg?style=flat-square&logo=github&logoColor=white"
+         alt="GitHub issues">
+    <a href="https://github.com/oracle/oracle-database-operator/pulls">
+    <img src="pullrequest.svg?style=flat-square&logo=github&logoColor=white"
+         alt="GitHub pull requests">
+</p>
+</div>
+
+
 # Oracle Database Operator for Kubernetes
 
 ## Make Oracle Database Kubernetes Native
 
 As part of Oracle's resolution to make Oracle Database Kubernetes native (that is, observable and operable by Kubernetes), Oracle released the  _Oracle Database Operator for Kubernetes_ (`OraOperator` or the operator). OraOperator extends the Kubernetes API with custom resources and controllers for automating the management of the Oracle Database lifecycle.
 
-## What's New in v2.0.0
+## What's New in v2.1.0
 
-* **RedHat OpenShift**
-  * Validation of OraOperator and Controllers
-  * Inclusion in RedHat Operators Catalog
-* **Restart Controller**
-  * Provision, add & delete asm disks, and more
-* **ORDS Service**
-  * ServiceAccount and OpenShift support
-  * Auto download of APEX installation files and APEX image on a Persistent Volume
-* **Integrations**
-  * Private Cloud Appliance (PCA)
-  * Compute Cloud@Customer (C3)
-* **Bug fixes**
-  * Bugs filed through Oracle Support
-  * GitHub issues
+* **Oracle Real Application Cluster (RAC) Database Controller**
+  * Supports provisioning, scaling up or down Oracle RAC instances, adding ASM disks, and additional operations
+* **Private AI Controller**
+  * Enables provisioning, scaling up or down, and more features for the Oracle Private AI Services Container
+* **LREST Controller**
+  * Manages provisioning and other related tasks
+* **Bug Fixes**
+  * Addresses issues reported via Oracle Support and GitHub
  
 
-## Supported Database Configurations v2.0.0
-In this v2.0 production release, `OraOperator` supports the following database configurations and controllers:
+## Supported Database Configurations v2.1.0
+In this v2.1 production release, `OraOperator` supports the following database configurations and controllers:
 
 * **Oracle Autonomous Database:**
   * Oracle Autonomous Database shared Oracle Cloud Infrastructure (OCI) (ADB-S)
@@ -37,7 +64,8 @@ In this v2.0 production release, `OraOperator` supports the following database c
 * **Oracle Database Observability**
 * **Oracle Database Rest Service (ORDS) instances**
 * **Oracle Restart**
-* **Oracle Globally Distributed Database**
+* **Oracle Real Application Cluster Database**
+* **Oracle Private Controller**
 
 ---
 
@@ -46,15 +74,15 @@ In this v2.0 production release, `OraOperator` supports the following database c
   - Install on SIDB and ADB
   - Provision and delete ORDS instances
 * **SIDB**
-  - Oracle Database 23ai Free support
-  - Oracle Database 23ai Free-lite support
+  - Oracle Database 26ai Free support
+  - Oracle Database 26ai Free-lite support
   - SIDB resource management
   - True Cache support for Free SIDB databases (Preview)
   - Observer for FastStartFailover with Data Guard
   - Snapshot Standby support in Data Guard setup
 * **Globally Distributed Database**
-  - Support for Oracle Database 23ai Raft replication
-  - Oracle Database 23ai Free support
+  - Support for Oracle Database 26ai Raft replication
+  - Oracle Database 26ai Free support
 * **Autonomous Database**
   - Support for Database manual failover and switchover
 * **Multitenant DB**
@@ -65,15 +93,18 @@ In this v2.0 production release, `OraOperator` supports the following database c
 * **Database Observability **
   - Support for Database Logs and Metrics
   - Support for the latest Exporter container images
- 
 * **Oracle Base Database Service**
-  - Support for Oracle Database 23ai Cloning, using KMS Vaults
+  - Support for Oracle Database 26ai Cloning, using KMS Vaults
   - PDB creation
   - Clone, Backup, Restore
   - Data Guard Setup
   - Patching and Upgrade
 * **Oracle Restart**
-  - Support for Oracle Database 19c
+  - Support for Oracle Database 26ai
+* **Oracle Real Application Cluster Database**
+  - Support for Oracle Database 19c Support
+* **Oracle Private AI controller**
+  - Support for Oracle Private AI Service Container for 26ai Databases
 
 ---
 
@@ -86,7 +117,7 @@ In this v2.0 production release, `OraOperator` supports the following database c
 ---
 
 ## Overall Features Summary
-As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) supports the following lifecycle operations:
+As of v2.1.0, the Oracle Database Operator for Kubernetes (`OraOperator`) supports the following lifecycle operations:
 
 * **ADB-S/ADB-D**: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning, manual failover, switchover
 * **ACD**: Provision, bind, restart, terminate (soft/hard)
@@ -98,14 +129,15 @@ As of v2.0.0, the Oracle Database Operator for Kubernetes (`OraOperator`) suppor
 * **Oracle Data Guard**: Provision standby for SIDB, create Data Guard configuration, perform switchover, patch primary/standby
 * **Oracle Database Observability**: Create, patch, delete `databaseObserver` (logs and metrics)
 * **Oracle Restart**: Provision, add & delete asm disks, enable ons ports, custom storage class support, existing pvc support, load balancer  support
+* **Oracle Private Controller**: Provision, scale up or down, manage resource, load balancer service support
 * Watch namespaces using the `WATCH_NAMESPACE` environment variable
 
 
 ## Release Status
 
 This production release has been installed and tested on:
-* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.30 or later
-* [Redhat Openshift](https://www.redhat.com/en/technologies/cloud-computing/openshift) with version v4.16 or later
+* [Oracle Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) with Kubernetes 1.33 or later
+* [Redhat Openshift](https://www.redhat.com/en/technologies/cloud-computing/openshift) with version v4.19 or later
 * [Oracle Linux Cloud Native Environment(OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) 1.9 or later
 * [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
 * [Azure Kubernetes Service](https://azure.microsoft.com/en-us/services/kubernetes-service/)
@@ -179,7 +211,7 @@ Oracle strongly recommends that you ensure your system meets the following [Prer
     kubectl apply -f rbac/node-rbac.yaml
   ```
 
-## Installation
+## Install Oracle DB Operator
 
   After you have completed the preceding prerequisite changes, you can install the operator using one of the following methods:
 
@@ -230,7 +262,10 @@ The following quickstarts are designed for specific database configurations:
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Service (OBDS)](./docs/dbcs/README.md)
 * [ORDS Services (ORDSSRVS)](./docs/ordsservices/README.md)
+* [Oracle Real Application Cluster](./docs/rac/README.md)
 * [Oracle Restart](./docs/oraclerestart/README.md)
+* [Oracle Real Application Controller](./docs/rac/README.md)
+* [Oracle Private AI Controller](./docs/privateai/README.md)
 
 
 The following quickstart is designed for non-database configurations:
@@ -308,7 +343,6 @@ YAML file templates are available under [`/config/samples`](./config/samples/). 
 * [Oracle Database Single Instance](https://docs.oracle.com/en/database/oracle/oracle-database/)
 * [Oracle Globally Distributed Database](https://docs.oracle.com/en/database/oracle/oracle-database/21/shard/index.html)
 * [Oracle Database Cloud Service](https://docs.oracle.com/en/database/database-cloud-services.html)
-
 
 ## Contributing
 

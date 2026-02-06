@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: lrpdbs.database.oracle.com
 spec:
   group: database.oracle.com
@@ -166,8 +166,6 @@ spec:
                 - NOCOPY
                 - MOVE
                 type: string
-              debug:
-                type: integer
               dropAction:
                 enum:
                 - INCLUDING
@@ -238,6 +236,12 @@ spec:
                 type: string
               parameterScope:
                 type: string
+              passwordProtection:
+                default: NATIVE
+                enum:
+                - NATIVE
+                - OPENSSL3
+                type: string
               pdbName:
                 type: string
               pdbState:
@@ -307,6 +311,8 @@ spec:
                 type: string
               totalSize:
                 type: string
+              tracelevel:
+                type: integer
               unlimitedStorage:
                 default: true
                 type: boolean
@@ -342,6 +348,9 @@ spec:
                 type: object
               xmlFileName:
                 type: string
+            required:
+            - imperativeLrpdbDeletion
+            - passwordProtection
             type: object
           status:
             properties:

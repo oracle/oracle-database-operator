@@ -6,7 +6,7 @@ All of the shards together make up a single logical database, which is referred 
 
 Kubernetes provides infrastructure building blocks, such as compute, storage, and networks. Kubernetes makes the infrastructure available as code. It enables rapid provisioning of multi-node topolgies. Additionally, Kubernetes also provides statefulsets, which are the workload API objects that are used to manage stateful applications. This provides us lifecycle management elasticity for databases as a stateful application for various database topologies, such as Oracle Globally Distributed Database, Oracle Real Application Clusters (Oracle RAC), single instance Oracle Database, and other Oracle features and configurations.
 
-The Sharding Database controller in Oracle Database Operator deploys Oracle Globally Distributed Database Topology as a statefulset in the Kubernetes clusters, using Oracle Database and Global Data Services Docker images. The Oracle Sharding database controller manages the typical lifecycle of Oracle Globally Distributed Database topology in the Kubernetes cluster, as shown below:
+The Sharding Controller in Oracle Database Operator deploys Oracle Globally Distributed Database Topology as a statefulset in the Kubernetes clusters, using Oracle Database and Global Data Services Container images. The Oracle Sharding database controller manages the typical lifecycle of Oracle Globally Distributed Database topology in the Kubernetes cluster, as shown below:
 
 * Create primary statefulsets shards
 * Create master and standby Global Data Services statefulsets
@@ -27,7 +27,7 @@ The Oracle Sharding database controller provides end-to-end automation of Oracle
 Following sections provide the details for deploying Oracle Globally Distributed Database (Oracle Sharded Database) using Oracle Database Operator Sharding Controller with different use cases:
 
 * [Prerequisites for running Oracle Sharding Database Controller](#prerequisites-for-running-oracle-sharding-database-controller)
-* [Oracle Database 23ai Free](#oracle-database-23ai-free)
+* [Oracle AI Database 26ai Free](#oracle-ai-database-26ai-free)
 * [Provisioning Sharding Topology with System-Managed Sharding in a Cloud-Based Kubernetes Cluster](#provisioning-sharding-topology-with-system-managed-sharding-in-a-cloud-based-kubernetes-cluster)
 * [Provisioning Sharding Topology with User Defined Sharding in a Cloud-Based Kubernetes Cluster](#provisioning-sharding-topology-with-user-defined-sharding-in-a-cloud-based-kubernetes-cluster)
 * [Provisioning System-Managed Sharding Topology with Raft replication enabled in a Cloud-Based Kubernetes Cluster](#provisioning-system-managed-sharding-topology-with-raft-replication-enabled-in-a-cloud-based-kubernetes-cluster)
@@ -45,7 +45,7 @@ Following sections provide the details for deploying Oracle Globally Distributed
 * A Cloud-based Kubernetes cluster, such as [OCI on Container Engine for Kubernetes (OKE)](https://www.oracle.com/cloud-native/container-engine-kubernetes/) or  
 * An On-Premises Kubernetes Cluster, such as [Oracle Linux Cloud Native Environment (OLCNE)](https://docs.oracle.com/en/operating-systems/olcne/) cluster.
 
-To use Oracle Sharding Database Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Release Status Section](../../README.md#release-status).
+To use Oracle Database Operator Sharding Controller, ensure that your system is provisioned with a supported Kubernetes release. Refer to the [Release Status Section](../../README.md#release-status).
 
 #### Mandatory roles and privileges requirements for Oracle Sharding Database Controller 
 
@@ -66,34 +66,36 @@ To deploy Oracle Database Operator in a Kubernetes cluster, go to the section [I
 
 **IMPORTANT:** Make sure you have completed the steps for [Role Binding for access management](../../README.md#role-binding-for-access-management) as well before installing the Oracle DB Operator. 
 
-### 3. Oracle Database and Global Data Services Docker Images
+### 3. Oracle Database and Global Data Services Container Images
 Choose one of the following deployment options: 
 
-  **Use Oracle-Supplied Docker Images:**
+  **Use Oracle-Supplied Container Images:** 
+
    The Oracle Sharding Database controller uses Oracle Global Data Services and Oracle Database images to provision the sharding topology.
 
-   You can also download the pre-built Oracle Global Data Services and Oracle Database images from [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:10::::::). These images are functionally tested and evaluated with various use cases of Oracle Globally Distributed Database topology by deploying on OKE and OLCNE. You can refer to [Oracle Container Registry Images for Oracle Globally Distributed Database Deployment](https://github.com/oracle/db-sharding/blob/master/container-based-sharding-deployment/README.md#oracle-container-registry-images-for-oracle-globally-distributed-database-deployment)
+   You can download the pre-built Oracle Global Data Services and Oracle Database images from [Oracle Container Registry](https://container-registry.oracle.com). These images are functionally tested and evaluated with various use cases of Oracle Globally Distributed Database topology by deploying on OKE and OLCNE. You can refer to [Oracle Container Registry Images for Oracle Globally Distributed Database Deployment](https://github.com/oracle/db-sharding/blob/master/container-based-sharding-deployment/README.md#oracle-container-registry-images-for-oracle-globally-distributed-database-deployment)
   
-   **Note:** You will need to accept Agreement from container-registry.orcale.com to be able to pull the pre-built container images.
+   You can either download the images and push them to your Container Images Repository, or, if your Kubernetes cluster can reach Oracle Container Registry, you can download these images directly from Oracle Container Registry during the deployment.
+
+   **Note:** You will need to accept Agreement from `container-registry.oracle.com` to be able to pull the pre-built container images.
 
    **OR**
 
-  **Build your own Oracle Database and Global Data Services Docker Images:**
+  **Build your own Oracle Database and Global Data Services Container Images:**
+  
    You can build these images using instructions provided on Oracle official GitHub Repositories:
    * [Oracle Global Data Services Image](https://github.com/oracle/db-sharding/tree/master/container-based-sharding-deployment)
    * [Oracle Database Image](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance)
 
-After the images are ready, push them to your Docker Images Repository, so that you can pull them during Oracle Globally Distributed Database topology provisioning.
+   After the images are ready, push them to your Container Image Repository, so that you can pull them while provisioning the Oracle Globally Distributed Database topology.
 
-You can either download the images and push them to your Docker Images Repository, or, if your Kubernetes cluster can reach OCR, you can download these images directly from OCR.
+**Note**: In the Oracle Globally Distributed Database Topology examples, we are using GSM and Oracle Database images available on [Oracle Container Registry](https://container-registry.oracle.com).
 
-**Note**: In the Oracle Globally Distributed Database Topology example yaml files, we are using GDS and database images available on [Oracle Container Registry](https://container-registry.oracle.com/ords/f?p=113:10::::::).
-
-**Note:** In case you want to use the `Oracle Database 23ai Free` Image for Database and GSM, refer to section [Oracle Database 23ai Free](#oracle-database-23ai-free) for more details.
+**Note:** In case you want to use the `Oracle AI Database 26ai Free` Image for Database and GSM, refer to section [Oracle AI Database 26ai Free](#oracle-ai-database-26ai-free) for more details.
 
 ### 4. Create a namespace for the Oracle Globally Distributed Database Setup
 
-  Create a Kubernetes namespace named `shns`. All the resources belonging to the Oracle Globally Distributed Database Topology Setup will be provisioned in this namespace named `shns`. For example:
+  Create a Kubernetes namespace named `shns`. All the resources belonging to the Oracle Globally Distributed Database Topology will be provisioned in this namespace named `shns`. For example:
 
   ```sh
   #### Create the namespace 
@@ -119,20 +121,20 @@ In case of an `OCI OKE` cluster, you can use this Persistent Volume during provi
 
 You can refer [here](./provisioning/provisioning_persistent_volume_having_db_gold_image.md) for the steps involved.
 
-**NOTE:** Provisioning the Oracle Globally Distributed Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free. So, this step will not be needed if you are deploying Oracle Globally Distributed Database using Oracle 23ai Free Database and GSM Images.
+**NOTE:** Provisioning the Oracle Globally Distributed Database using Cloning from Database Gold Image is `NOT` supported with Oracle AI Database 26ai Free. So, this step will not be needed if you are deploying Oracle Globally Distributed Database using Oracle AI Database 26ai Free and GSM Images.
 
-## Oracle Database 23ai Free
+## Oracle AI Database 26ai Free
 
-Please refer to [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) documentation for more details. 
+Please refer to [Oracle AI Database 26ai Free](https://www.oracle.com/database/free/get-started/) documentation for more details. 
 
-If you want to use Oracle Database 23ai Free Image for Database and GSM for deployment of the Oracle Globally Distributed Database using Sharding Controller in Oracle Database Kubernetes Operator, you need to consider the below points:
+If you want to use Oracle AI Database 26ai Free Image for Database and GSM for deployment of the Oracle Globally Distributed Database using Sharding Controller in Oracle Database Kubernetes Operator, you need to consider the below points:
 
-* To deploy using the FREE Database and GSM Image, you will need to add the additional parameter `dbEdition: "free"` to the .yaml file.
-* Refer to [Sample Oracle Globally Distributed Database Deployment using Oracle 23ai FREE Database and GSM Images](./provisioning/free/sharding_provisioning_with_free_images.md) for an example.
-* For Oracle Database 23ai Free, you can control the `CPU` and `Memory` allocation of the PODs using tags `cpu` and `memory` respectively but tags `INIT_SGA_SIZE` and `INIT_PGA_SIZE` to control the SGA and PGA allocation at the database level are `not` supported.
-* Provisioning the Oracle Globally Distributed Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
-* Total number of chunks for FREE Database defaults to `12` if `CATALOG_CHUNKS` parameter is not specified. This default value is determined considering limitation of 12 GB of user data on disk for oracle free database.
-* Oracle 23ai FREE Database supports maximum three shards. Please refer [here](https://docs.oracle.com/en/database/oracle/oracle-database/23/dblic/Licensing-Information.html)
+* You will need to add the additional parameter `dbEdition: "free"` to the .yaml file.
+* Refer to [Sample Oracle Globally Distributed Database Deployment using Oracle AI Database 26ai Free and GSM Images](./provisioning/free/sharding_provisioning_with_free_images.md) for an example.
+* For Oracle AI Database 26ai Free, you can control the `CPU` and `Memory` allocation of the PODs using tags `cpu` and `memory` respectively but tags `INIT_SGA_SIZE` and `INIT_PGA_SIZE` to control the SGA and PGA allocation at the database level are `not` supported.
+* Provisioning the Oracle Globally Distributed Database using Cloning from Database Gold Image is `NOT` supported with Oracle AI Database 26ai Free.
+* Total number of chunks for Oracle AI Database 26ai Free defaults to `12` if `CATALOG_CHUNKS` parameter is not specified. This default value is determined considering limitation of 12 GB of user data on disk for oracle free database.
+* Oracle AI Database 26ai Free supports maximum three shards. Please refer [here](https://docs.oracle.com/en/database/oracle/oracle-database/26/dblic/Licensing-Information.html)
 
 
 ## Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding in a Cloud-Based Kubernetes Cluster
@@ -170,14 +172,19 @@ In this example, the deployment uses the YAML file based on `OCI OKE` cluster. T
 
 Deploy Oracle Globally Distributed Database Topology with `System-Managed Sharding` and with `RAFT Replication` enabled on your Cloud based Kubernetes cluster. 
 
-**NOTE:** RAFT Replication Feature is available only for Oracle 23ai RDBMS and Oracle 23ai GSM version.
-**NOTE:** RAFT Replication requires atleast three shards. Oracle 23ai FREE Database supports maximum three shards. Please refer [here](https://docs.oracle.com/en/database/oracle/oracle-database/23/dblic/Licensing-Information.html)
+**NOTE:** RAFT Replication Feature is available starting with Oracle Database 23ai version. 
+**NOTE:** RAFT Replication requires atleast three shards. Oracle AI Database 26ai Free supports maximum three shards. Please refer [here](https://docs.oracle.com/en/database/oracle/oracle-database/26/dblic/Licensing-Information.html)
 
 In this example, the deployment uses the YAML file based on `OCI OKE` cluster. There are multiple use case possible for deploying the Oracle Globally Distributed Database Topology covered by below examples:
 
-[1. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled without Database Gold Image](./provisioning/snr_system_sharding/snr_ssharding_provisioning_without_db_gold_image.md)  
-[2. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled with additional control on resources like Memory and CPU allocated to Pods](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_control_on_resources.md)  
-[3. Provisioning Oracle Globally Distributed Database Topology with System-Managed Sharding and Raft replication enabled send Notification using OCI Notification Service](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_notification_using_oci_notification.md)  
+[1. Provisioning Oracle Globally Distributed Database with System-Managed Sharding and Raft replication enabled without Database Gold Image](./provisioning/snr_system_sharding/snr_ssharding_provisioning_without_db_gold_image.md)  
+[2. Provisioning Oracle Globally Distributed Database with System-Managed Sharding and Raft replication enabled and number of chunks specified](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_chunks_specified.md)  
+[3. Provisioning Oracle Globally Distributed Database with System-Managed Sharding and Raft replication enabled and additional control on resources like Memory and CPU allocated to Pods](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_control_on_resources.md)  
+[4. Provisioning Oracle Globally Distributed Database with System-Managed Sharding and Raft replication enabled by cloning database from your own Database Gold Image in the same Availability Domain(AD)](./provisioning/snr_system_sharding/snr_ssharding_provisioning_by_cloning_db_gold_image_in_same_ad.md) 
+[5. Provisioning Oracle Globally Distributed Database with System-Managed Sharding and Raft replication enabled by cloning database from your own Database Gold Image across Availability Domains(ADs)](./provisioning/snr_system_sharding/snr_ssharding_provisioning_by_cloning_db_from_gold_image_across_ads.md)  
+[6. Provisioning Oracle Globally Distributed Database with System-Managed Sharding and Raft replication enabled send Notification using OCI Notification Service](./provisioning/snr_system_sharding/snr_ssharding_provisioning_with_notification_using_oci_notification.md)  
+[7. Scale Out - Add Shards to an existing Oracle Globally Distributed Database provisioned earlier with System-Managed Sharding and Raft replication enabled](./provisioning/snr_system_sharding/snr_ssharding_scale_out_add_shards.md)  
+[8. Scale In - Delete an existing Shard from a working Oracle Globally Distributed Database provisioned earlier with System-Managed Sharding and Raft replication enabled](./provisioning/snr_system_sharding/snr_ssharding_scale_in_delete_an_existing_shard.md) 
 
 
 ## Connecting to Oracle Globally Distributed Database

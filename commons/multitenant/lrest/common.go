@@ -47,23 +47,23 @@ import (
 	"encoding/pem"
 	"fmt"
 	"regexp"
+	"runtime"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 func CommonDecryptWithPrivKey2(Key string, Buffer string, req ctrl.Request) (string, error) {
 
-	Debug := 0
+	Trclvl := 0
 	block, _ := pem.Decode([]byte(Key))
 	pkcs8PrivateKey, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
 		fmt.Printf("Failed to parse private key %s \n", err.Error())
 		return "", err
 	}
-	if Debug == 1 {
+	if Trclvl == 1 {
 		fmt.Printf("======================================\n")
 		fmt.Printf("%s\n", Key)
 		fmt.Printf("======================================\n")
@@ -80,18 +80,20 @@ func CommonDecryptWithPrivKey2(Key string, Buffer string, req ctrl.Request) (str
 		fmt.Printf("Failed to decrypt string %s\n", err.Error())
 		return "", err
 	}
-	if Debug == 1 {
+	if Trclvl == 1 {
 		fmt.Printf("[%s]\n", string(decryptedB))
 	}
 	return strings.TrimSpace(string(decryptedB)), err
 
 }
 
-func ParseConfigMapData(cfgmap *corev1.ConfigMap) []string {
+func ParseConfigMapData(cfgmap *corev1.ConfigMap, Trclvl int) []string {
 
 	var tokens []string
 	for Key, Value := range cfgmap.Data {
-		fmt.Printf("KEY:%s\n", Key)
+		if Bit(Trclvl, TRCCFM) == true {
+			fmt.Printf("TRCCFM: (parse) key:[%s]\n", Key)
+		}
 		re0 := regexp.MustCompile("\\n")
 		re1 := regexp.MustCompile(";")
 		re2 := regexp.MustCompile(",") /* Additional separator for future use */
@@ -114,6 +116,10 @@ func ParseConfigMapData(cfgmap *corev1.ConfigMap) []string {
 
 }
 
+const (
+	NULL = ""
+)
+
 // * STATE TABLE *//
 const (
 	PDBCRT = 0x00000001 /* Create pdb */
@@ -135,6 +141,7 @@ const (
 	PDBUPE = 0x00040000 /* Unplug Error */
 	PDBPLE = 0x00080000 /* Plug Error */
 	PDBPLW = 0x00100000 /* Plug Warining */
+	PDBCNE = 0x00200000 /* Call Error */
 	/* Autodiscover */
 	PDBAUT = 0x01000000 /* Autodisover */
 )
@@ -147,6 +154,27 @@ const (
 	MPWARN = 0x00000008 /* Map applied with warnings */
 	MPINIT = 0x00000010 /* Config map init */
 	SPARE3 = 0x00000020
+)
+
+// DEBUG OPTIONS //
+const (
+	TRCAPI = 0x00000001 /* Trclvl call NewcallApi */
+	TRCGLR = 0x00000002 /* Trclvl call r.getLRESTResource */
+	TRCSEC = 0x00000004 /* Trclvl call getGenericSecret3 */
+	TRCCRT = 0x00000008 /* Trclvl pdb creation */
+	TRCOPN = 0x00000010 /* Open pdb */
+	TRCCLS = 0x00000020 /* Close pdb */
+	TRCCFM = 0x00000040 /* Trclvl config map */
+	TRCSQL = 0x00000080 /* getsqlcode and plsql related function */
+	TRCCLN = 0x00000100 /* clone pdb */
+	TRCPSQ = 0x00000200 /* plsql execution */
+	TRCPLG = 0x00000400 /* plug pdb */
+	TRCUPL = 0x00000800 /* unpplug */
+	TRCAUT = 0x00001000 /* Autodiscovery */
+	TRCSTK = 0x00002000 /* Print backtrace */
+	TRCWEB = 0x00004000 /* Enable Webhook msg in logplane */
+	TRCSTA = 0x00008000 /* Trclvl call getLRPDBState */
+	TRCTNS = 0x00010000 /* Parse tnsalias - call parseTnsAlias */
 )
 
 func ParseTnsAlias2(tns *string, lrpdbsrv *string) {
@@ -252,6 +280,9 @@ func Bitmaskprint(bitmask int) string {
 	if Bit(bitmask, PDBAUT) {
 		BitRead = strings.Join([]string{BitRead, "PDBAUT|"}, "")
 	}
+	if Bit(bitmask, PDBCNE) {
+		BitRead = strings.Join([]string{BitRead, "PDBCNE|"}, "")
+	}
 
 	BitRead = fmt.Sprintf("[%d]%s", bitmask, BitRead)
 	return BitRead
@@ -282,4 +313,33 @@ func CMBitmaskprint(bitmask int) string {
 
 	BitRead = fmt.Sprintf("[%d]%s", bitmask, BitRead)
 	return BitRead
+}
+
+func Backtrace() {
+
+	pc := make([]uintptr, 10)
+	nf := runtime.Callers(0, pc)
+	if nf == 0 {
+		fmt.Printf("NO PCs available cannot dump backtrace\n")
+		return
+	}
+
+	pc = pc[:nf]
+	frames := runtime.CallersFrames(pc)
+	fmt.Printf("TRCSTK: \n BACKTRACE\n")
+	fmt.Printf(" --------  -------------------\n")
+	for {
+		frame, more := frames.Next()
+
+		nf--
+		if nf == 0 {
+			break
+		}
+
+		fmt.Printf(" FRAME[%d]  %s\n", nf, frame.Function)
+
+		if !more {
+			break
+		}
+	}
 }
