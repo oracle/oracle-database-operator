@@ -117,7 +117,6 @@ spec:
     gridBase: "/u01/app/grid"                                 # Grid base directory
     dbHome: "/u01/app/oracle/product/19c/dbhome_1"            # Oracle DB home path
     dbBase: "/u01/app/oracle"                                 # Oracle base directory
-    crsAsmDeviceList: /dev/asm-disk1,/dev/asm-disk2           # Comma-separated list of ASM device files
     inventory: "/u01/app/oraInventory"                        # Inventory location
     gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
     dbSwZipFile: "db_home.zip"                                # Database software ZIP
