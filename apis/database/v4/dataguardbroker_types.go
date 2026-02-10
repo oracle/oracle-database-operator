@@ -71,6 +71,12 @@ type DbConnectString struct {
 	SecretKey string `json:"secretKey,omitempty"`
 }
 
+// SecretRef defines K8s secret reference (name + key)
+type SecretRef struct {
+	SecretName string `json:"secretName"`
+	SecretKey  string `json:"secretKey"`
+}
+
 type DataguardBrokerSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -93,9 +99,16 @@ type DataguardBrokerSpec struct {
 	// Minimum 2 required when IsNonSingleInstanceDatabase=true.
 	// +kubebuilder:validation:MinItems=2
 	ExternalDatabaseConnectStrings []DbConnectString `json:"externalDatabaseConnectStrings,omitempty"`
+
+	// ExternalAdminPassword is required when IsNonSingleInstanceDatabase=true.
+	// This password is used for dgmgrl/sqlplus in external mode (typically SYS).
+	ExternalAdminPassword SecretRef `json:"externalAdminPassword,omitempty"`
+
+	// ObserverImage is required when IsNonSingleInstanceDatabase=true to create observer pod.
+	// Image must contain dgmgrl + sqlplus.
+	ObserverImage string `json:"observerImage,omitempty"`
 }
 
-// DataguardBrokerStatus defines the observed state of DataguardBroker
 type DataguardBrokerStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
@@ -163,7 +176,6 @@ func (broker *DataguardBroker) GetDatabasesInDataGuardConfiguration() []string {
 				databases = append(databases, value)
 			}
 		}
-
 		return databases
 	}
 
@@ -183,7 +195,6 @@ func (broker *DataguardBroker) GetStandbyDatabasesInDgConfig() []string {
 				databases = append(databases, value)
 			}
 		}
-
 		return databases
 	}
 

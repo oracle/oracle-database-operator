@@ -1019,6 +1019,274 @@ func disableFSFOForDGConfig(r *DataguardBrokerReconciler, broker *dbapi.Dataguar
 	return nil
 }
 
+// ---------------------------
+// External password getter
+// ---------------------------
+func getExternalSysPassword(r *DataguardBrokerReconciler, broker *dbapi.DataguardBroker, ctx context.Context) (string, error) {
+	// expects:
+	// broker.Spec.ExternalAdminPassword.SecretName / SecretKey
+	if strings.TrimSpace(broker.Spec.ExternalAdminPassword.SecretName) == "" ||
+		strings.TrimSpace(broker.Spec.ExternalAdminPassword.SecretKey) == "" {
+		return "", errors.New("external admin password secret ref not set (spec.externalAdminPassword.secretName/secretKey)")
+	}
+
+	var sec corev1.Secret
+	if err := r.Get(ctx, types.NamespacedName{
+		Namespace: broker.Namespace,
+		Name:      broker.Spec.ExternalAdminPassword.SecretName,
+	}, &sec); err != nil {
+		return "", err
+	}
+
+	pwd := string(sec.Data[broker.Spec.ExternalAdminPassword.SecretKey])
+	if strings.TrimSpace(pwd) == "" {
+		return "", errors.New("external admin password secret value is empty")
+	}
+	return pwd, nil
+}
+
+// ---------------------------
+// Choose a primary connect string (host:port/svc) from extDbInfo list
+// ---------------------------
+func pickPrimaryConnectString(dbInfos []extDbInfo) (string, error) {
+	for _, d := range dbInfos {
+		if strings.EqualFold(strings.TrimSpace(d.Role), "PRIMARY") {
+			return d.ConnectString, nil
+		}
+	}
+	return "", errors.New("no PRIMARY found to choose a connect string")
+}
+
+// ---------------------------
+// Build FSFO target list for each DB_UNIQUE_NAME
+// ---------------------------
+func buildFsfoTargets(allDbUnique []string, self string) string {
+	var tgt []string
+	for _, n := range allDbUnique {
+		if !strings.EqualFold(n, self) {
+			tgt = append(tgt, n)
+		}
+	}
+	return strings.Join(tgt, ",")
+}
+
+// #############################################################################
+//
+// setFSFOTargetsExternal
+// - uses db_unique_name (as dgmgrl database identifier)
+// - connects to dgmgrl using sys/<pwd>@<primaryConnectString>
+//
+// #############################################################################
+func setFSFOTargetsExternal(
+	r *DataguardBrokerReconciler,
+	broker *dbapi.DataguardBroker,
+	runnerPod corev1.Pod,
+	primaryConnectString string,
+	sysPwd string,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+
+	log := r.Log.WithValues("setFSFOTargetsExternal", req.NamespacedName)
+
+	// collect all db_unique_names from mapping
+	uniqSet := map[string]struct{}{}
+	for p, s := range broker.Status.ExternalDgMapping {
+		if strings.TrimSpace(p) != "" {
+			uniqSet[p] = struct{}{}
+		}
+		if strings.TrimSpace(s) != "" {
+			uniqSet[s] = struct{}{}
+		}
+	}
+	if len(uniqSet) < 2 {
+		return fmt.Errorf("externalDgMapping must contain at least 2 db_unique_names; got %d", len(uniqSet))
+	}
+
+	allUniq := make([]string, 0, len(uniqSet))
+	for u := range uniqSet {
+		allUniq = append(allUniq, u)
+	}
+
+	for _, dbUnique := range allUniq {
+		targets := buildFsfoTargets(allUniq, dbUnique)
+		log.Info("Setting FSFO target", "db_unique_name", dbUnique, "targets", targets)
+
+		// Note: some dgmgrl versions accept unquoted list; safest to quote the value
+		cmd := fmt.Sprintf(`echo -e "EDIT DATABASE %s SET PROPERTY FastStartFailoverTarget='%s';" | dgmgrl sys/%s@%s`,
+			dbUnique, targets, sysPwd, primaryConnectString)
+
+		out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+		if err != nil {
+			log.Error(err, "Failed setting FSFO target", "output", out)
+			return err
+		}
+
+		// optional verify
+		verify := fmt.Sprintf(`echo -e "SHOW DATABASE %s FastStartFailoverTarget;" | dgmgrl sys/%s@%s`,
+			dbUnique, sysPwd, primaryConnectString)
+		vout, verr := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", verify)
+		if verr != nil {
+			log.Error(verr, "Failed verifying FSFO target", "output", vout)
+			return verr
+		}
+		log.Info("FSFO target set", "db_unique_name", dbUnique, "verify", vout)
+	}
+
+	return nil
+}
+
+// #############################################################################
+//
+// enableFSFOForDgConfigExternal
+// - connects to dgmgrl using sys/<pwd>@<primaryConnectString>
+//
+// #############################################################################
+func enableFSFOForDgConfigExternal(
+	r *DataguardBrokerReconciler,
+	broker *dbapi.DataguardBroker,
+	runnerPod corev1.Pod,
+	primaryConnectString string,
+	sysPwd string,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+
+	log := r.Log.WithValues("enableFSFOForDgConfigExternal", req.NamespacedName)
+
+	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Enabling FastStartFailover",
+		fmt.Sprintf("Enabling FastStartFailover for dataguard broker %s", broker.Name))
+
+	cmd := fmt.Sprintf(`echo -e "%s" | dgmgrl sys/%s@%s`,
+		dbcommons.EnableFSFOCMD, sysPwd, primaryConnectString)
+
+	out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Enabling FastStartFailover failed",
+			fmt.Sprintf("Enabling FSFO for %s failed", broker.Name))
+		log.Error(err, "Enable FSFO failed", "output", out)
+		return err
+	}
+
+	log.Info("Enable FSFO output", "output", out)
+	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Enabling FastStartFailover successful",
+		fmt.Sprintf("FSFO enabled for %s", broker.Name))
+
+	return nil
+}
+
+// #############################################################################
+//
+// createObserverPodsExternal
+// - creates an observer pod using spec.observerImage
+// - observer uses PRIMARY_DB_CONN_STR = <primaryConnectString>
+// - ORACLE_PWD comes from spec.externalAdminPassword secret
+//
+// #############################################################################
+func createObserverPodsExternal(
+	r *DataguardBrokerReconciler,
+	broker *dbapi.DataguardBroker,
+	primaryConnectString string,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+
+	log := r.Log.WithValues("createObserverPodsExternal", req.NamespacedName)
+
+	// if observer already exists, return
+	_, brokerReplicasFound, _, _, err := dbcommons.FindPods(r, "", "", broker.Name, broker.Namespace, ctx, req)
+	if err != nil {
+		log.Error(err, err.Error())
+		return err
+	}
+	if brokerReplicasFound > 0 {
+		return nil
+	}
+
+	observerImage := strings.TrimSpace(broker.Spec.ObserverImage)
+	if observerImage == "" {
+		return errors.New("spec.observerImage must be set for external mode observer pod")
+	}
+
+	// observer pod spec
+	pod := dbcommons.NewRealPodBuilder().
+		SetNamespacedName(types.NamespacedName{
+			Name:      broker.Name + "-" + dbcommons.GenerateRandomString(5),
+			Namespace: broker.Namespace,
+		}).
+		SetLabels(map[string]string{
+			"app": broker.Name,
+		}).
+		SetTerminationGracePeriodSeconds(int64(30)).
+		SetNodeSelector(func() map[string]string {
+			nsRule := map[string]string{}
+			for k, v := range broker.Spec.NodeSelector {
+				nsRule[k] = v
+			}
+			return nsRule
+		}()).
+		SetSecurityContext(corev1.PodSecurityContext{
+			RunAsUser: func() *int64 { i := int64(54321); return &i }(),
+			FSGroup:   func() *int64 { i := int64(54321); return &i }(),
+		}).
+		AppendContainers(corev1.Container{
+			Name:            broker.Name,
+			Image:           observerImage,
+			ImagePullPolicy: corev1.PullAlways,
+			Ports:           []corev1.ContainerPort{{ContainerPort: 1521}, {ContainerPort: 5500}},
+			ReadinessProbe: &corev1.Probe{
+				ProbeHandler: corev1.ProbeHandler{
+					Exec: &corev1.ExecAction{
+						Command: []string{"/bin/sh", "-c", "$ORACLE_BASE/checkDBLockStatus.sh"},
+					},
+				},
+				InitialDelaySeconds: 20,
+				TimeoutSeconds:      20,
+				PeriodSeconds:       40,
+			},
+			Env: []corev1.EnvVar{
+				{Name: "SVC_HOST", Value: broker.Name},
+				{Name: "SVC_PORT", Value: "1521"},
+				{Name: "PRIMARY_DB_CONN_STR", Value: primaryConnectString},
+				{Name: "DG_OBSERVER_ONLY", Value: "true"},
+				{Name: "DG_OBSERVER_NAME", Value: broker.Name},
+				{Name: "ORACLE_SID", Value: "OBSRVR" + dbcommons.GenerateRandomString(5)},
+				{
+					Name: "ORACLE_PWD",
+					ValueFrom: &corev1.EnvVarSource{
+						SecretKeyRef: &corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: broker.Spec.ExternalAdminPassword.SecretName,
+							},
+							Key: broker.Spec.ExternalAdminPassword.SecretKey,
+						},
+					},
+				},
+			},
+		}).
+		Build()
+
+	// owner ref
+	ctrl.SetControllerReference(broker, &pod, r.Scheme)
+
+	log.Info("Creating observer pod", "namespace", pod.Namespace, "name", pod.Name)
+	if err := r.Create(ctx, &pod); err != nil {
+		log.Error(err, "Failed to create observer pod", "namespace", pod.Namespace, "name", pod.Name)
+		return err
+	}
+
+	// wait creation
+	timeout := 30
+	if err := dbcommons.WaitForStatusChange(r, pod.Name, broker.Namespace, ctx, req, time.Duration(timeout)*time.Second, "pod", "creation"); err != nil {
+		log.Error(err, "Error waiting for observer pod creation", "name", pod.Name)
+		return err
+	}
+
+	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "SUCCESS", "observer pod created")
+	log.Info("Observer pod created", "name", pod.Name)
+	return nil
+}
+
 // #############################################################################
 //
 //	Get databases in dataguard configuration along with their roles

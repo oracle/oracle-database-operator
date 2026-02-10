@@ -137,15 +137,14 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				return ctrl.Result{Requeue: false}, nil
 			}
 
-			// We need a runner pod to execute sqlplus (use observer pod if exists)
+			// runner pod (observer) is used to run sqlplus/dgmgrl commands
 			runnerPod, _, _, _, err := dbcommons.FindPods(r, "", "", dataguardBroker.Name, dataguardBroker.Namespace, ctx, req)
 			if err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
 
 			if runnerPod.Name == "" {
-				// If observer isn't created yet, requeue. (Your flow creates observer later; for non-sidb validation
-				// we need a pod that has sqlplus installed).
+				// If observer isn't created yet, requeue.
 				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Waiting",
 					"non-SIDB mode requires a runner pod (observer) to run sqlplus/dgmgrl. Pod not found yet.")
 				return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
@@ -219,9 +218,34 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				dataguardBroker.Status.ExternalDgMapping[pUniq] = sUniq
 			}
 
-			r.Log.Info("non-SIDB DG mapping established", "mapping", mapping)
+			// pick primary connect string + sys password for dgmgrl
+			primaryConn, err := pickPrimaryConnectString(dbInfos)
+			if err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
+			sysPwd, err := getExternalSysPassword(r, &dataguardBroker, ctx)
+			if err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
+
+			// external FSFO calls
+			if err := setFSFOTargetsExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req); err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
+
+			if err := enableFSFOForDgConfigExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req); err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
+
+			if err := createObserverPodsExternal(r, &dataguardBroker, primaryConn, ctx, req); err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
+
+			// set faststartfailover status to true
+			dataguardBroker.Status.FastStartFailover = "true"
 
 		} else {
+
 			for _, DbResource := range dataguardBroker.Status.DatabasesInDataguardConfig {
 				var singleInstanceDatabase dbapi.SingleInstanceDatabase
 				if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: DbResource}, &singleInstanceDatabase); err != nil {
@@ -234,25 +258,25 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 					return ctrl.Result{Requeue: true}, nil
 				}
 			}
-		}
 
-		// set faststartfailover targets for all the singleinstancedatabases in the dataguard configuration
-		if err := setFSFOTargets(r, &dataguardBroker, ctx, req); err != nil {
-			return ctrl.Result{Requeue: false}, err
-		}
+			// set faststartfailover targets for all the singleinstancedatabases in the dataguard configuration
+			if err := setFSFOTargets(r, &dataguardBroker, ctx, req); err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
 
-		// enable faststartfailover in the dataguard configuration
-		if err := enableFSFOForDgConfig(r, &dataguardBroker, ctx, req); err != nil {
-			return ctrl.Result{Requeue: false}, err
-		}
+			// enable faststartfailover in the dataguard configuration
+			if err := enableFSFOForDgConfig(r, &dataguardBroker, ctx, req); err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
 
-		// create Observer Pod
-		if err := createObserverPods(r, &dataguardBroker, ctx, req); err != nil {
-			return ctrl.Result{Requeue: false}, err
-		}
+			// create Observer Pod
+			if err := createObserverPods(r, &dataguardBroker, ctx, req); err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
 
-		// set faststartfailover status to true
-		dataguardBroker.Status.FastStartFailover = "true"
+			// set faststartfailover status to true
+			dataguardBroker.Status.FastStartFailover = "true"
+		}
 
 	} else {
 
@@ -307,9 +331,9 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	if dataguardBroker.Spec.FastStartFailover {
 		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
-	} else {
-		return ctrl.Result{Requeue: false}, nil
 	}
+
+	return ctrl.Result{Requeue: false}, nil
 }
 
 // #############################################################################################################################
