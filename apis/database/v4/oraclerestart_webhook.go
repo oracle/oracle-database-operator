@@ -141,6 +141,7 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 	var validationErrs field.ErrorList
 	var warnings admission.Warnings
 
+	// ----- NAMESPACE VALIDATION -----
 	namespaces := utils.GetWatchNamespaces()
 	_, containsNamespace := namespaces[cr.Namespace]
 
@@ -165,70 +166,61 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 
 	cp := cr.Spec.ConfigParams
 	fldPath := field.NewPath("spec").Child("configParams")
-	safetyPct := 0.8
 
 	if cp != nil {
-		// ----- BASIC CONFIG PARAMS VALIDATION -----
+		// ----- BASIC CONFIG PARAM VALIDATION -----
 		if cp.CpuCount != 0 && cp.CpuCount < 1 {
-			validationErrs = append(validationErrs, field.Invalid(
-				fldPath.Child("cpuCount"), cp.CpuCount, "if specified, must be greater than zero"))
+			validationErrs = append(validationErrs,
+				field.Invalid(fldPath.Child("cpuCount"), cp.CpuCount, "if specified, must be greater than zero"))
 		}
 		if cp.Processes != 0 && cp.Processes < 1 {
-			validationErrs = append(validationErrs, field.Invalid(
-				fldPath.Child("processes"), cp.Processes, "if specified, must be greater than zero"))
+			validationErrs = append(validationErrs,
+				field.Invalid(fldPath.Child("processes"), cp.Processes, "if specified, must be greater than zero"))
 		}
 		if cp.HugePages < 0 {
-			validationErrs = append(validationErrs, field.Invalid(
-				fldPath.Child("hugePages"), cp.HugePages, "cannot be negative"))
+			validationErrs = append(validationErrs,
+				field.Invalid(fldPath.Child("hugePages"), cp.HugePages, "cannot be negative"))
 		}
 		if cp.SgaSize != "" {
 			if err := validateMemorySize(cp.SgaSize); err != nil {
-				validationErrs = append(validationErrs, field.Invalid(
-					fldPath.Child("sgaSize"), cp.SgaSize, err.Error()))
+				validationErrs = append(validationErrs,
+					field.Invalid(fldPath.Child("sgaSize"), cp.SgaSize, err.Error()))
 			}
 		}
 		if cp.PgaSize != "" {
 			if err := validateMemorySize(cp.PgaSize); err != nil {
-				validationErrs = append(validationErrs, field.Invalid(
-					fldPath.Child("pgaSize"), cp.PgaSize, err.Error()))
+				validationErrs = append(validationErrs,
+					field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, err.Error()))
 			}
 		}
 	}
-	var deviceWarnings []string
-	// ----- PARSE SGA AND PGA -----
+
+	// ----- PARSE SGA / PGA -----
 	sga, errSga := parseMem(cp.SgaSize)
 	pga, errPga := parseMem(cp.PgaSize)
 	if errSga != nil {
-		validationErrs = append(validationErrs, field.Invalid(fldPath.Child("sgaSize"), cp.SgaSize, "invalid format"))
+		validationErrs = append(validationErrs,
+			field.Invalid(fldPath.Child("sgaSize"), cp.SgaSize, "invalid format"))
 	}
 	if errPga != nil {
-		validationErrs = append(validationErrs, field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
+		validationErrs = append(validationErrs,
+			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
 	}
 
-	// ----- EXTRACT POD RESOURCE LIMITS -----
-	memLimit := int64(0)
+	// ----- EXTRACT POD MEMORY LIMIT -----
+	var memLimit int64
 	if cr.Spec.Resources != nil {
 		if memQ, ok := cr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
 			memLimit = memQ.Value()
 		}
 	}
 
-	// ----- SGA + PGA MUST BE WITHIN MEMORY LIMIT -----
-	totalMem := sga + pga
-	if memLimit > 0 && totalMem > int64(float64(memLimit)*safetyPct) {
-		validationErrs = append(validationErrs, field.Invalid(
-			fldPath, totalMem,
-			fmt.Sprintf("SGA (%dB) + PGA (%dB) must not exceed %d%% of pod memory limit (%dB)", sga, pga, int(safetyPct*100), memLimit)))
-	}
-
-	// ----- EXTRACT HUGE PAGES -----
-	hugeMem := int64(0)
+	// ----- EXTRACT HUGE PAGES (SEPARATE RESOURCE POOL) -----
+	var hugeMem int64
 	if cr.Spec.Resources != nil {
-		// Check limits first
 		if hpQ, ok := cr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
 			hugeMem = hpQ.Value()
 		}
-		// Fallback: check requests if limits not set
 		if hugeMem == 0 {
 			if hpQ, ok := cr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
 				hugeMem = hpQ.Value()
@@ -236,22 +228,91 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 		}
 	}
 
-	// ----- VALIDATE HUGEPAGES -----
-	if hugeMem > 0 {
-		if hugeMem < sga {
-			validationErrs = append(validationErrs, field.Invalid(
-				fldPath.Child("hugePages"), hugeMem,
-				fmt.Sprintf("HugePages (%d bytes) must be >= SGA size (%d bytes)", hugeMem, sga)))
-		}
-		if memLimit > 0 && hugeMem > memLimit {
-			validationErrs = append(validationErrs, field.Invalid(
-				fldPath.Child("hugePages"), hugeMem,
-				fmt.Sprintf("HugePages (%d bytes) exceeds pod memory limit (%d bytes)", hugeMem, memLimit)))
-		}
+	// ----- SGA + PGA SAFETY CHECK (FIXED) -----
+	totalMem := sga + pga
+	effectiveMem := memLimit + hugeMem
+
+	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+		validationErrs = append(validationErrs,
+			field.Invalid(
+				fldPath,
+				totalMem,
+				fmt.Sprintf(
+					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
+					sga, pga, int(safetyPct*100), memLimit, hugeMem,
+				),
+			),
+		)
 	}
 
-	for _, warning := range deviceWarnings {
-		warnings = append(warnings, warning)
+	// ----- VALIDATE HUGEPAGES (FIXED) -----
+	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+		validationErrs = append(validationErrs,
+			field.Invalid(
+				fldPath.Child("hugePages"),
+				hugeMem,
+				fmt.Sprintf(
+					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
+					hugeMem, sga,
+				),
+			),
+		)
+	}
+
+	// ----- MIN MEMORY VALIDATION (UNCHANGED) -----
+	const minMemoryBytes = 16 * 1024 * 1024 * 1024 // 16GiB
+	validationErrs = append(validationErrs,
+		validateMinMemoryLimit(
+			cr.Spec.Resources,
+			minMemoryBytes,
+			field.NewPath("spec"),
+		)...,
+	)
+	// ----- HUGE PAGES REQUIRE CPU + MEMORY (MANDATORY) -----
+	if hugeMem > 0 {
+
+		// ---- memory check ----
+		if memLimit == 0 {
+			validationErrs = append(validationErrs,
+				field.Required(
+					field.NewPath("spec").Child("resources").Child("limits").Child("memory"),
+					"memory limit is mandatory when hugepages are specified",
+				),
+			)
+		}
+
+		// ---- cpu check ----
+		var cpuLimit int64
+		if cr.Spec.Resources != nil {
+			if cpuQ, ok := cr.Spec.Resources.Limits[corev1.ResourceCPU]; ok {
+				cpuLimit = cpuQ.MilliValue()
+			}
+			if cpuLimit == 0 {
+				if cpuQ, ok := cr.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
+					cpuLimit = cpuQ.MilliValue()
+				}
+			}
+		}
+
+		if cpuLimit == 0 {
+			validationErrs = append(validationErrs,
+				field.Required(
+					field.NewPath("spec").Child("resources").Child("limits").Child("cpu"),
+					"cpu limit or request is mandatory when hugepages are specified",
+				),
+			)
+		}
+
+		// ---- cpuCount sanity ----
+		if cp != nil && cp.CpuCount <= 0 {
+			validationErrs = append(validationErrs,
+				field.Invalid(
+					field.NewPath("spec").Child("configParams").Child("cpuCount"),
+					cp.CpuCount,
+					"cpuCount must be set when hugepages are specified",
+				),
+			)
+		}
 	}
 
 	if len(validationErrs) > 0 {
@@ -369,6 +430,125 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 		validationErrs = append(validationErrs, field.Invalid(
 			field.NewPath("spec").Child("configParams").Child("pgaSize"),
 			newCr.Spec.ConfigParams.PgaSize, "reducing PGA size after initial deploy is not allowed"))
+	}
+
+	// ------------------------------------------------------------------
+	// REUSE CREATE-TIME MEMORY / HUGEPAGE VALIDATIONS FOR UPDATE
+	// ------------------------------------------------------------------
+
+	cp := newCr.Spec.ConfigParams
+	fldPath := field.NewPath("spec").Child("configParams")
+
+	// ----- PARSE SGA / PGA -----
+	sga, errSga := parseMem(cp.SgaSize)
+	pga, errPga := parseMem(cp.PgaSize)
+
+	if errSga != nil {
+		validationErrs = append(validationErrs,
+			field.Invalid(fldPath.Child("sgaSize"), cp.SgaSize, "invalid format"))
+	}
+	if errPga != nil {
+		validationErrs = append(validationErrs,
+			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
+	}
+
+	// ----- EXTRACT POD MEMORY LIMIT -----
+	var memLimit int64
+	if newCr.Spec.Resources != nil {
+		if memQ, ok := newCr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
+			memLimit = memQ.Value()
+		}
+	}
+
+	// ----- EXTRACT HUGE PAGES -----
+	var hugeMem int64
+	if newCr.Spec.Resources != nil {
+		if hpQ, ok := newCr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
+			hugeMem = hpQ.Value()
+		}
+		if hugeMem == 0 {
+			if hpQ, ok := newCr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
+				hugeMem = hpQ.Value()
+			}
+		}
+	}
+
+	// ----- SGA + PGA SAFETY CHECK -----
+	totalMem := sga + pga
+	effectiveMem := memLimit + hugeMem
+
+	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+		validationErrs = append(validationErrs,
+			field.Invalid(
+				fldPath,
+				totalMem,
+				fmt.Sprintf(
+					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
+					sga, pga, int(safetyPct*100), memLimit, hugeMem,
+				),
+			),
+		)
+	}
+
+	// ----- HUGE PAGES >= SGA -----
+	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+		validationErrs = append(validationErrs,
+			field.Invalid(
+				fldPath.Child("hugePages"),
+				hugeMem,
+				fmt.Sprintf(
+					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
+					hugeMem, sga,
+				),
+			),
+		)
+	}
+
+	// ----- HUGE PAGES REQUIRE CPU + MEMORY -----
+	if hugeMem > 0 {
+
+		// memory mandatory
+		if memLimit == 0 {
+			validationErrs = append(validationErrs,
+				field.Required(
+					field.NewPath("spec").Child("resources").Child("limits").Child("memory"),
+					"memory limit is mandatory when hugepages are specified",
+				),
+			)
+		}
+
+		// cpu mandatory
+		var cpuLimit int64
+		if newCr.Spec.Resources != nil {
+			if cpuQ, ok := newCr.Spec.Resources.Limits[corev1.ResourceCPU]; ok {
+				cpuLimit = cpuQ.MilliValue()
+			}
+			if cpuLimit == 0 {
+				if cpuQ, ok := newCr.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
+					cpuLimit = cpuQ.MilliValue()
+				}
+			}
+		}
+
+		if cpuLimit == 0 {
+			validationErrs = append(validationErrs,
+				field.Required(
+					field.NewPath("spec").Child("resources").Child("limits").Child("cpu"),
+					"cpu limit or request is mandatory when hugepages are specified",
+				),
+			)
+		}
+
+		// cpuCount mandatory
+		if cp != nil && cp.CpuCount <= 0 {
+			validationErrs = append(validationErrs,
+				field.Invalid(
+					field.NewPath("spec").Child("configParams").Child("cpuCount"),
+					cp.CpuCount,
+					"cpuCount must be set when hugepages are specified",
+				),
+			)
+		}
 	}
 
 	if len(validationErrs) > 0 {

@@ -41,7 +41,7 @@ To become familiar with Oracle Restart in containerized environments, review the
 Deploy Oracle Restart Database YAML files using Kubernetes Cluster on your Oracle Kubernetes Engine Environment (OKE). There are multiple use case possible for deploying the Oracle Restart Database.
 
 [1. Provisioning an Oracle Restart Database](./provisioning/provisioning_oracle_restart_db.md)  
-[2. Provisioning an Oracle Restart Database with Security Contexts](./provisioning/provisioning_oracle_restart_db_securitycontexts.md)
+[2. Provisioning an Oracle Restart Database with Security Contexts](./provisioning/provisioning_oracle_restart_db_securitycontexts.md)  
 [3. Provisioning an Oracle Restart Database with NodePort Service](./provisioning/provisioning_oracle_restart_db_nodeport.md)  
 [4. Provisioning an Oracle Restart Database with Load Balancer](./provisioning/provisioning_oracle_restart_db_loadbalancer.md)  
 [5. Change Memory and CPU allocation for an earlier provisioned Oracle Restart Database](./provisioning/change_memory_cpu_for_oracle_restart_db.md)  
