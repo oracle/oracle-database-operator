@@ -177,7 +177,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	} else {
 		// The object is being deleted
-		r.Logger.Info("Terminate DbcsSystem Database: " + dbcsInst.Spec.DbSystem.DisplayName)
+		r.Logger.Info("Terminate DbcsSystem Database: " + *dbcsInst.Spec.Id)
 		if err := dbcsv4.DeleteDbcsSystemSystem(r.dbClient, *dbcsInst.Spec.Id); err != nil {
 			r.Logger.Error(err, "Fail to terminate DbcsSystem Instance")
 			dbcsInst.Status.Message = err.Error()
