@@ -286,52 +286,53 @@ func (r *RacDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (a
 			field.NewPath("spec"),
 		)...,
 	)
-	// ----- HUGE PAGES REQUIRE CPU + MEMORY (MANDATORY) -----
-	if hugeMem > 0 {
+	// // ----- HUGE PAGES REQUIRE CPU + MEMORY (MANDATORY) -----
+	// if hugeMem > 0 {
 
-		// ---- memory check ----
-		if memLimit == 0 {
-			validationErrs = append(validationErrs,
-				field.Required(
-					field.NewPath("spec").Child("resources").Child("limits").Child("memory"),
-					"memory limit is mandatory when hugepages are specified",
-				),
-			)
-		}
+	// 	// ---- memory check ----
+	// 	if memLimit == 0 {
+	// 		validationErrs = append(validationErrs,
+	// 			field.Required(
+	// 				field.NewPath("spec").Child("resources").Child("limits").Child("memory"),
+	// 				"memory limit is mandatory when hugepages are specified",
+	// 			),
+	// 		)
+	// 	}
 
-		// ---- cpu check ----
-		var cpuLimit int64
-		if cr.Spec.Resources != nil {
-			if cpuQ, ok := cr.Spec.Resources.Limits[corev1.ResourceCPU]; ok {
-				cpuLimit = cpuQ.MilliValue()
-			}
-			if cpuLimit == 0 {
-				if cpuQ, ok := cr.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
-					cpuLimit = cpuQ.MilliValue()
-				}
-			}
-		}
+	// 	// ---- cpu check ----
+	// 	var cpuLimit int64
+	// 	if cr.Spec.Resources != nil {
+	// 		if cpuQ, ok := cr.Spec.Resources.Limits[corev1.ResourceCPU]; ok {
+	// 			cpuLimit = cpuQ.MilliValue()
+	// 		}
+	// 		if cpuLimit == 0 {
+	// 			if cpuQ, ok := cr.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
+	// 				cpuLimit = cpuQ.MilliValue()
+	// 			}
+	// 		}
+	// 	}
 
-		if cpuLimit == 0 {
-			validationErrs = append(validationErrs,
-				field.Required(
-					field.NewPath("spec").Child("resources").Child("limits").Child("cpu"),
-					"cpu limit or request is mandatory when hugepages are specified",
-				),
-			)
-		}
+	// 	if cpuLimit == 0 {
+	// 		validationErrs = append(validationErrs,
+	// 			field.Required(
+	// 				field.NewPath("spec").Child("resources").Child("limits").Child("cpu"),
+	// 				"cpu limit or request is mandatory when hugepages are specified",
+	// 			),
+	// 		)
+	// 	}
 
-		// ---- cpuCount sanity ----
-		if cp != nil && cp.CpuCount <= 0 {
-			validationErrs = append(validationErrs,
-				field.Invalid(
-					field.NewPath("spec").Child("configParams").Child("cpuCount"),
-					cp.CpuCount,
-					"cpuCount must be set when hugepages are specified",
-				),
-			)
-		}
-	}
+	// }
+
+	// ---- cpuCount sanity ----
+	// if cp != nil && cp.CpuCount <= 0 {
+	// 	validationErrs = append(validationErrs,
+	// 		field.Invalid(
+	// 			field.NewPath("spec").Child("configParams").Child("cpuCount"),
+	// 			cp.CpuCount,
+	// 			"cpuCount must be set when hugepages are specified",
+	// 		),
+	// 	)
+	// }
 
 	if len(validationErrs) > 0 {
 		return warnings, apierrors.NewInvalid(
@@ -689,52 +690,52 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object,
 		)
 	}
 
-	// ----- HUGE PAGES REQUIRE CPU + MEMORY -----
-	if hugeMem > 0 {
+	// // ----- HUGE PAGES REQUIRE CPU + MEMORY -----
+	// if hugeMem > 0 {
 
-		// memory mandatory
-		if memLimit == 0 {
-			validationErrs = append(validationErrs,
-				field.Required(
-					field.NewPath("spec").Child("resources").Child("limits").Child("memory"),
-					"memory limit is mandatory when hugepages are specified",
-				),
-			)
-		}
+	// 	// memory mandatory
+	// 	if memLimit == 0 {
+	// 		validationErrs = append(validationErrs,
+	// 			field.Required(
+	// 				field.NewPath("spec").Child("resources").Child("limits").Child("memory"),
+	// 				"memory limit is mandatory when hugepages are specified",
+	// 			),
+	// 		)
+	// 	}
 
-		// cpu mandatory
-		var cpuLimit int64
-		if newCr.Spec.Resources != nil {
-			if cpuQ, ok := newCr.Spec.Resources.Limits[corev1.ResourceCPU]; ok {
-				cpuLimit = cpuQ.MilliValue()
-			}
-			if cpuLimit == 0 {
-				if cpuQ, ok := newCr.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
-					cpuLimit = cpuQ.MilliValue()
-				}
-			}
-		}
+	// 	// cpu mandatory
+	// 	var cpuLimit int64
+	// 	if newCr.Spec.Resources != nil {
+	// 		if cpuQ, ok := newCr.Spec.Resources.Limits[corev1.ResourceCPU]; ok {
+	// 			cpuLimit = cpuQ.MilliValue()
+	// 		}
+	// 		if cpuLimit == 0 {
+	// 			if cpuQ, ok := newCr.Spec.Resources.Requests[corev1.ResourceCPU]; ok {
+	// 				cpuLimit = cpuQ.MilliValue()
+	// 			}
+	// 		}
+	// 	}
 
-		if cpuLimit == 0 {
-			validationErrs = append(validationErrs,
-				field.Required(
-					field.NewPath("spec").Child("resources").Child("limits").Child("cpu"),
-					"cpu limit or request is mandatory when hugepages are specified",
-				),
-			)
-		}
+	// 	if cpuLimit == 0 {
+	// 		validationErrs = append(validationErrs,
+	// 			field.Required(
+	// 				field.NewPath("spec").Child("resources").Child("limits").Child("cpu"),
+	// 				"cpu limit or request is mandatory when hugepages are specified",
+	// 			),
+	// 		)
+	// 	}
 
-		// cpuCount mandatory
-		if cp != nil && cp.CpuCount <= 0 {
-			validationErrs = append(validationErrs,
-				field.Invalid(
-					field.NewPath("spec").Child("configParams").Child("cpuCount"),
-					cp.CpuCount,
-					"cpuCount must be set when hugepages are specified",
-				),
-			)
-		}
-	}
+	// 	// cpuCount mandatory
+	// 	if cp != nil && cp.CpuCount <= 0 {
+	// 		validationErrs = append(validationErrs,
+	// 			field.Invalid(
+	// 				field.NewPath("spec").Child("configParams").Child("cpuCount"),
+	// 				cp.CpuCount,
+	// 				"cpuCount must be set when hugepages are specified",
+	// 			),
+	// 		)
+	// 	}
+	// }
 
 	if len(validationErrs) > 0 {
 		return nil, apierrors.NewInvalid(

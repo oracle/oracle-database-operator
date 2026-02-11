@@ -40,12 +40,9 @@ package commons
 
 import (
 	"context"
-	"encoding/json"
-	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
-	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
 	oraclerestartdb "github.com/oracle/oracle-database-operator/apis/database/v4"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -140,11 +137,6 @@ func UpdateOracleRestartInstStatusData(
 		if OracleRestart.Spec.ConfigParams.DbHome != "" {
 			OracleRestart.Status.ConfigParams.DbHome = OracleRestart.Spec.ConfigParams.DbHome
 		}
-		// OracleRestart.Status.ConfigParams.CrsAsmDeviceList = OracleRestart.Spec.ConfigParams.CrsAsmDeviceList
-		// OracleRestart.Status.ConfigParams.CrsAsmDeviceList = getcrsAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
-
-		// OracleRestart.Status.ConfigParams.DbAsmDeviceList = OracleRestart.Spec.ConfigParams.DbAsmDeviceList
-		// OracleRestart.Status.ConfigParams.DbAsmDeviceList = getdbAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
 
 	} else if state == string(oraclerestartdb.OracleRestartStatefulSetNotFound) {
 		neworacleRestart := delOracleRestartNodestatus(OracleRestart, oraRestartSpex.Name+"-0")
@@ -251,31 +243,7 @@ func UpdateoraclerestartdbStatusData(OracleRestart *oraclerestartdb.OracleRestar
 
 	UpdateoraclerestartdbServiceStatus(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
 	UpdateoraclerestartdbTopologyState(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
-	paramsToFetch := []string{"sga_target", "pga_aggregate_target", "cpu_count", "processes"}
-	paramMap, err := getOracleParameters(podName, paramsToFetch, OracleRestart, kubeClient, kubeConfig, logger)
-	if err != nil {
-		logger.Error(err, "Failed to get Oracle parameters via Python script")
-	} else {
-		// Assign string fields directly
-		OracleRestart.Status.SgaSize = paramMap["sga_target"]
-		OracleRestart.Status.PgaSize = paramMap["pga_aggregate_target"]
 
-		// Convert string to int for numeric fields
-		if cpuCountStr, ok := paramMap["cpu_count"]; ok {
-			if cpuCount, err := strconv.Atoi(cpuCountStr); err == nil {
-				OracleRestart.Status.CpuCount = cpuCount
-			} else {
-				logger.Error(err, "Failed to convert cpu_count to int")
-			}
-		}
-		if processesStr, ok := paramMap["processes"]; ok {
-			if processes, err := strconv.Atoi(processesStr); err == nil {
-				OracleRestart.Status.Processes = processes
-			} else {
-				logger.Error(err, "Failed to convert processes to int")
-			}
-		}
-	}
 	pod, err := kubeClient.CoreV1().Pods(req.Namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err == nil {
 		OracleRestart.Status.Resources = &pod.Spec.Containers[0].Resources
@@ -322,6 +290,7 @@ func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart 
 	return asmList
 
 }
+
 // getdbAsmDeviceList provides documentation for the getdbAsmDeviceList function.
 func getdbAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
 	dbasmList := ""
@@ -383,30 +352,31 @@ func getPvcDetails(instance *oraclerestartdb.OracleRestart, oracleRestart *oracl
 	return strMap
 
 }
-// getOracleParameters provides documentation for the getOracleParameters function.
-func getOracleParameters(
-	podName string,
-	params []string,
-	instance *oraclerestart.OracleRestart,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
-	logger logr.Logger,
-) (map[string]string, error) {
-	scriptMount := getOraScriptMount()
-	paramArg := strings.Join(params, ",")
-	cmd := []string{
-		scriptMount + "/cmdExec",
-		"/bin/python3",
-		scriptMount + "/main.py",
-		"--getparam=" + paramArg,
-	}
-	output, _, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
-	if err != nil {
-		return nil, err
-	}
-	paramMap := make(map[string]string)
-	if err := json.Unmarshal([]byte(output), &paramMap); err != nil {
-		return nil, err
-	}
-	return paramMap, nil
-}
+
+// // getOracleParameters provides documentation for the getOracleParameters function.
+// func getOracleParameters(
+// 	podName string,
+// 	params []string,
+// 	instance *oraclerestart.OracleRestart,
+// 	kubeClient kubernetes.Interface,
+// 	kubeConfig clientcmd.ClientConfig,
+// 	logger logr.Logger,
+// ) (map[string]string, error) {
+// 	scriptMount := getOraScriptMount()
+// 	paramArg := strings.Join(params, ",")
+// 	cmd := []string{
+// 		scriptMount + "/cmdExec",
+// 		"/bin/python3",
+// 		scriptMount + "/main.py",
+// 		"--getparam=" + paramArg,
+// 	}
+// 	output, _, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	paramMap := make(map[string]string)
+// 	if err := json.Unmarshal([]byte(output), &paramMap); err != nil {
+// 		return nil, err
+// 	}
+// 	return paramMap, nil
+// }

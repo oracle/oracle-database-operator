@@ -80,6 +80,7 @@ type OracleRestartSpec struct {
 	RecoDgStorageClass string                           `json:"recoDgStorageClass,omitempty"`
 	SwStorageClass     string                           `json:"swDgStorageClass,omitempty"`
 	CrsDgStorageClass  string                           `json:"crsDgStorageClass,omitempty"`
+	AsmStorageSizeInGb int                              `json:"asmStorageSizeInGb,omitempty"`
 	LbService          OracleRestartNodePortSvc         `json:"lbService,omitempty"`
 	NodePortSvc        OracleRestartNodePortSvc         `json:"nodePortSvc,omitempty"` // Port mappings for the service that is created. The service is created if
 	// +kubebuilder:validation:Enum=enable;disable

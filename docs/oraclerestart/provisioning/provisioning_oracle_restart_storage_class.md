@@ -23,8 +23,8 @@ For example:
     redundancy: EXTERNAL
     type: CRSDG
     disks:
-      - /dev/oracleoci/oraclevdd
-      - /dev/oracleoci/oraclevde
+      - /dev/asm-disk1
+      - /dev/asm-disk2
 ```
   
 ### Steps: Deploy Oracle Restart Database

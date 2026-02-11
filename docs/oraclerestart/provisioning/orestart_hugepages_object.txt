@@ -17,12 +17,12 @@ Spec:
   Asm Storage Details:
     Disks By Size:
       Disk Names:
-        /dev/oracleoci/oraclevdd
-        /dev/oracleoci/oraclevde
+        /dev/asm-disk1
+        /dev/asm-disk2
       Storage Size In Gb:  50
   Config Params:
     Cpu Count:                   4
-    Crs Asm Device List:         /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
     Crs Asm Disk Dg:             DATA
     Crs Asm Disk Dg Redundancy:  external
     Db Base:                     /u01/app/oracle
@@ -113,13 +113,13 @@ Status:
       Pod State:       AVAILABLE
       Cluster State:   HEALTHY
       Mounted Devices:
-        /dev/oracleoci/oraclevdd
-        /dev/oracleoci/oraclevde
+        /dev/asm-disk1
+        /dev/asm-disk2
       State:  AVAILABLE
   Asm Details:
     Diskgroup:
       Disks:
-        /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde
+        /dev/asm-disk1,/dev/asm-disk2
       Name:        DATA
       Redundancy:  EXTERN
   Conditions:
@@ -136,7 +136,7 @@ Status:
     Status:                True
     Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/oracleoci/oraclevdd,/dev/oracleoci/oraclevde
+    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
     Crs Asm Disk Dg:             DATA
     Crs Asm Disk Dg Redundancy:  external
     Db Base:                     /u01/app/oracle
