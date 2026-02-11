@@ -20,10 +20,16 @@
   * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name `dbocir/oracle/database-orestart:19.3.0-slim`. 
   * When you are building the image yourself, update the image value in the `oraclerestart_prov_rupatch_pvc.yaml` file to point to the container image you have built. 
   * Use the file [nfs_pv_stage_vol.yaml](./nfs_pv_stage_vol.yaml) to mount the Network File System as a Persistent Volume named `pv-stage-vol1`. It is assumed this NFS has the required GI and RDBMS Base Software, unzipped RU Patch binaries and Opatch binaries in the specified location. In current case, an OCI File System is used with its export path as `/stage` and Mount Target IP as `10.0.10.212`. 
-  * The disks provisioned using customer storage class (specified by `crsDgStorageClass`) for the Oracle Restart storage are `/dev/asm-disk1` and `/dev/asm-disk2`. 
-  * Specify the size of these devices using the parameter `storageSizeInGb`. Size is by-default in GBs.
-
-**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files, Recovery Area Files and Redo Log Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
+The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
+```text
+For example:
+  - name: DATA
+    redundancy: EXTERNAL
+    type: CRSDG
+    disks:
+      - /dev/oracleoci/oraclevdd
+      - /dev/oracleoci/oraclevde
+```
 
 ### Steps: Deploy Oracle Restart Database
 * Use the file: [oraclerestart_prov_rupatch_pvc.yaml](./oraclerestart_prov_rupatch_pvc.yaml) for this use case as below:

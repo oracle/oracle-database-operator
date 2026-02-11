@@ -1,16 +1,16 @@
-# Provisioning System managed Sharding Topology with Raft replication enabled and send Notification using OCI Notification Service
+# Provisioning Oracle Globally Distributed Database with System-Managed Sharding and Raft replication enabled send Notification using OCI Notification Service
 
-**NOTE: RAFT Replication Feature is available only for Oracle 23ai RDBMS and Oracle 23ai GSM version.**
+**NOTE: RAFT Replication Feature is available only starting with Oracle 23ai version.**
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
+**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller. 
 
-This use case demonstrates how to use a notification service like OCI Notification service to send an email notification when a particular operation is completed on an Oracle Database sharding topology provisioned using the Oracle Database sharding controller.
+This use case demonstrates how to use a notification service like OCI Notification service to send an email notification when a particular operation is completed. 
 
 This example uses `snr_ssharding_shard_prov_send_notification.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
-* Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
-* One Catalog Pod: `catalog`
+* Primary GSM Pods `gsm1` and standby GSM Pod `gsm2` 
+* Three Shard Database Pods: `shard1`, `shard2` and `shard3` 
+* One Catalog Database Pod: `catalog` 
 * Namespace: `shns`
 * Database Cloning from the `BLOCK VOLUME FULL BACKUP` of the Persistent Volume that has the Database Gold Image created earlier.
 * OCID of the Block Volume Backup: `ocid1.volumebackup.oc1.phx.abyhqljrxtv7tu5swqb3lzc7vpzwbwzdktd2y4k2vjjy2srmgu2w7bqdftjq`
@@ -25,7 +25,8 @@ We will create a topic in Notification Service of the OCI Console and use its OC
 
 To do this:
 
-1. Create a `configmap_data.txt` file, such as the following, which has the OCI User details that will be used to send notfication:
+1. Create a topic in Notification Service of the OCI Console and use its OCID. 
+2. Create a `configmap_data.txt` file, such as the following, which has the OCI User details that will be used to send notfication:
 
     ```sh
     user=ocid1.user.oc1........fx7omxfq
@@ -34,12 +35,12 @@ To do this:
     region=us-phoenix-1
     topicid=ocid1.onstopic.oc1.phx.aaa............6xrq
     ```
-2. Create a configmap using the below command using the file created above:
+3. Create a configmap using the below command using the file created above:
     ```sh
     kubectl create configmap onsconfigmap --from-file=./configmap_data.txt -n shns
     ```
 
-3. Create a key file `priavatekey` having the PEM key of the OCI user being used to send notification:
+4. Create a key file `priavatekey` having the PEM key of the OCI user being used to send notification:
     ```sh
     -----BEGIN PRIVATE KEY-G----
     MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCXYxA0DJvEwtVR
@@ -52,13 +53,13 @@ To do this:
     nS7CkDLg4Hcs4b9bGLHYJVY=
     -----END PRIVATE KEY-----
     ```
-4. Use the key file `privatekey` to create a Kubernetes secret in namespace `shns`:
+5. Use the key file `privatekey` to create a Kubernetes secret in namespace `shns`:
 
     ```sh
     kubectl create secret generic my-secret --from-file=./privatekey -n shns
     ```
 
-5. Use this command to check details of the secret that you created:
+6. Use this command to check details of the secret that you created:
 
     ```sh
     kubectl describe secret my-secret -n shns
@@ -66,12 +67,11 @@ To do this:
 
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
   * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `snr_ssharding_shard_prov_send_notification.yaml`.
-  * To understand the Pre-requisite of Database and Global Data Services docker images, refer [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
-  * In case you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you will need to add the additional parameter `dbEdition: "free"` to the below .yaml file.
-  * Make sure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
+  * If you plan to build and use the images, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `snr_ssharding_shard_prov_send_notification.yaml`.
+  * To understand Database and Global Data Services Docker images prerequsites, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images) 
+  * The version of `openssl` in the Oracle Database and Oracle GSM images must be compatible with the `openssl` version on the machine where you will run the openssl commands to generate the encrypted password file during the deployment. 
 
-**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle Database 23ai Free.
+**NOTE:** Provisioning the Sharded Database using Cloning from Database Gold Image is `NOT` supported with Oracle AI Database 26ai Free.
 
 Use the file: [snr_ssharding_shard_prov_send_notification.yaml](./snr_ssharding_shard_prov_send_notification.yaml) for this use case as below:
 

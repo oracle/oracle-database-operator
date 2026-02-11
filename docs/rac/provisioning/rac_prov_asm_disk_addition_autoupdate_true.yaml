@@ -1,0 +1,131 @@
+---
+# API version of the RacDatabase Custom Resource
+apiVersion: database.oracle.com/v4
+
+# Resource type being created
+kind: RacDatabase
+
+# Metadata section to define the resource's name and namespace
+metadata:
+  name: racdbprov-sample                                                           # Name assigned to this RAC database resource
+  namespace: rac                                                                   # Namespace where the resource will be created
+
+# Specification of the RAC Database custom resource
+spec:
+  # Details of RacDatabase instance configuration
+  instanceDetails:
+    nodeCount: 2                                                                   # Number of nodes in the RAC Cluster
+    racHostSwLocation: /scratch/rac/cluster01                                      # Base directory for Oracle GI HOME and Oracle RDBMS HOME on the Worker Nodes. Under this Base directory, the paths for RAC Nodes are created as: <racHostSwLocation>/<racNodeName><node-number>. Example: /scratch/rac/cluster01/racnode1
+    racNodeName: racnode                                                           # Prefix for RAC Cluster Node Hostnames
+
+    baseOnsTargetPort: 30200                                                       # Target port for the ONS
+    baseLsnrTargetPort: 31522                                                      # Target port for the Database Listener
+
+    # Private network interface configuration
+    privateIPDetails:
+      # First network configuration
+      - name: macvlan-conf1                                                        # Name of the multus network from which this Network Interface IP will be assigned
+        interface: ens1                                                            # Network interface name assigned from this network to the RAC Node's Pod
+      # Second network configuration
+      - name: macvlan-conf2                                                        # Name of the multus network from which this Network Interface IP will be assigned
+        interface: ens2                                                            # Network interface name assigned from this network to the RAC Node's Pod
+
+    # Worker node pool assignment for the RAC Cluster
+    # Specify the label of Kubernetes Worker Nodes
+    workerNodeSelector:
+      raccluster: raccluster01                                                     # All worker nodes with this label are eligible for deployment of RAC Node
+
+# Optional Environment variables in case you want to want to ignore prerequisite checks during the GI/RDBSMS Install
+#
+# envVars:
+#   - name: IGNORE_CRS_PREREQS                                                     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
+#     value: "true"
+#   - name: IGNORE_DB_PREREQS                                                      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
+#     value: "true"
+
+  # ASM Disk Group definition
+  asmDiskGroupDetails:
+    # Definition for the DATA disk group
+    - name: DATA                                                                   # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level
+      type: CRSDG                                                                  # Type of disk group. Possible types include 'CRSDG', 'DBDATAFILESDG', 'DBRECOVERY', 'DBREDO' and 'OTHERS'
+      disks:                                                                       # Shared Disks from the Worker Nodes to be used for this Disk Group
+        - /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+        - /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+        - /dev/disk/by-partlabel/qck-ocne19-asmdisk3
+        - /dev/disk/by-partlabel/qck-ocne19-asmdisk4
+      autoUpdate: "true"        
+
+  # SSH key secret used for remote access and automation
+  sshKeySecret:
+    name: ssh-key-secret                                                           # Name of the kubernetes secret containing SSH keys
+    privKeySecretName: ssh-privkey                                                 # Private key inside secret
+    pubKeySecretName: ssh-pubkey                                                   # Public key inside secret
+
+  # Secret containing DB user credentials
+  dbSecret:
+    name: db-user-pass                                                             # Secret name
+    keyFileName: key.pem                                                           # Key file name inside secret
+    pwdFileName: pwdfile.enc                                                       # Password file name inside secret
+
+  # Secret for configuring Transparent Data Encryption (TDE)
+  tdeWalletSecret:
+    name: db-user-pass                                                             # Secret name
+    keyFileName: key.pem                                                           # Key file name inside secret
+    pwdFileName: pwdfile.enc                                                       # Password file name inside secret
+
+  # Container Slim image to be used for the deploying Oracle RAC Pod
+  # Please refer to https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters for building the RAC Slim Image
+  image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim        # Replace with the container image you want to use from your container repository
+  
+  # Policy to pull image
+  # Use the value as "Always" if you want use the latest version of the image from the container image repository.
+  # Use the value as "IfNotPresent" it the image is not already present locally.
+  imagePullPolicy: Always
+
+  # Name and port for the SCAN service (Single Client Access Name)
+  scanSvcName: racnode-scan
+  scanSvcTargetPort: 31521
+
+  # Database service definition for application connections
+  serviceDetails:
+    name: soepdb                                                                   # Name of the Oracle service (pluggable DB)
+
+  # Resource requests and limits for memory and CPU
+  resources:
+    requests:
+      memory: "36Gi"                                                               # Minimum memory required
+      cpu: "12"                                                                    # Minimum CPU required
+    limits:
+      memory: "36Gi"                                                               # Max memory allowed
+      cpu: "12"                                                                    # Max CPU allowed
+      
+ # Kernel-level system control parameters for Oracle RAC Cluster
+  securityContext:
+    sysctls:
+      - name: kernel.shmall                                                        # Set shared memory pages parameter
+        value: "8388608"
+      - name: kernel.sem                                                           # Set semaphore settings
+        value: "250 32000 100 128"
+      - name: kernel.shmmax                                                        # Set max shared memory segment size
+        value: "34359738368"
+      - name: kernel.shmmni                                                        # Set max number of shared memory segments
+        value: "4096"
+      - name: net.ipv4.conf.all.rp_filter                                          # Set the reverse path filter value
+        value: "2"
+
+  # Configuration parameters for Oracle Grid Infrastructure and Oracle RDBMS
+  configParams:
+    gridHome: "/u01/app/19c/grid"                                                  # ORACLE Grid Infrastructure Home location
+    gridBase: "/u01/app/grid"                                                      # ORACLE Grid Infrastructure Base location
+    dbHome: "/u01/app/oracle/product/19c/dbhome_1"                                 # ORACLE Database Home location
+    dbBase: "/u01/app/oracle"                                                      # ORACLE Database base location
+    inventory: "/u01/app/oraInventory"                                             # ORACLE Inventory location
+    gridSwZipFile: "grid_home.zip"                                                 # Grid infrastructure software ZIP
+    dbSwZipFile: "db_home.zip"                                                     # Database software ZIP
+    sgaSize: "20G"                                                                 # Size of the System Global Area
+    pgaSize: "6G"                                                                  # Size of the Program Global Area
+    processes: 2000                                                                # Oracle process limit
+    cpuCount: 8                                                                    # Number of CPUs to allocate
+    dbName: "PORCLCDB"                                                             # Oracle database name
+    hostSwStageLocation: /scratch/software/stage/19c/19.28GoldImageSoftware        # Host location where Oracle software ZIPs are staged

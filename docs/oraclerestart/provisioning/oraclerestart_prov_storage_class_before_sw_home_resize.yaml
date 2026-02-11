@@ -50,13 +50,14 @@ spec:
   crsDgStorageClass: "oci-bv"         # Specify storage class for the CRS Diskgroup, Currently using "oci-bv" but you can specify another available storage class as well
   swDgStorageClass: "oci-bv"          # Specify storage class for the storage location for software, Currently using "oci-bv" but you can specify another available storage class as well
 
-  # ASM (Automatic Storage Management) storage configuration
-  asmStorageDetails:
-    disksBySize:
-      - storageSizeInGb: 50          # Each disk in this group has 50Gi of storage
-        diskNames:
-          - /dev/asm-disk1  # ASM disk device path 1
-          - /dev/asm-disk2  # ASM disk device path 2
+  # ASM Disk Details for various data types
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/oracleoci/oraclevdd
+        - /dev/oracleoci/oraclevde
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
@@ -94,17 +95,6 @@ spec:
       memory: "16Gi"                 # Max memory allowed
       cpu: "2"                       # Max CPU allowed
 
-  # Kernel-level system control parameters for Oracle
-  securityContext:
-    sysctls:
-      - name: kernel.shmall
-        value: "2097152"
-      - name: kernel.sem
-        value: "250 32000 100 128"
-      - name: kernel.shmmax
-        value: "8589934592"
-      - name: kernel.shmmni
-        value: "4096"
 
   # Configuration parameters for Oracle Grid and Database homes
   configParams:

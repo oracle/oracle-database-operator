@@ -44,12 +44,13 @@ spec:
   enableOns: "enable"                 # If you want to have ONS notification configured on the specified port. Default value is "enable"        
 
   # ASM (Automatic Storage Management) storage configuration
-  asmStorageDetails:
-    disksBySize:
-      - storageSizeInGb: 50          # Each disk in this group has 50Gi of storage
-        diskNames:
-          - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
-          - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/oracleoci/oraclevdd
+        - /dev/oracleoci/oraclevde
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
@@ -87,17 +88,6 @@ spec:
       memory: "16Gi"                 # Max memory allowed
       cpu: "2"                       # Max CPU allowed
 
-  # Kernel-level system control parameters for Oracle
-  securityContext:
-    sysctls:
-      - name: kernel.shmall
-        value: "2097152"
-      - name: kernel.sem
-        value: "250 32000 100 128"
-      - name: kernel.shmmax
-        value: "8589934592"
-      - name: kernel.shmmni
-        value: "4096"
 
   # Configuration parameters for Oracle Grid and Database homes
   configParams:
@@ -105,7 +95,6 @@ spec:
     gridBase: "/u01/app/grid"                                 # Grid base directory
     dbHome: "/u01/app/oracle/product/19c/dbhome_1"            # Oracle DB home path
     dbBase: "/u01/app/oracle"                                 # Oracle base directory
-    crsAsmDeviceList: /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2   # Comma-separated list of ASM device files
     inventory: "/u01/app/oraInventory"                        # Inventory location
     gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
     dbSwZipFile: "db_home.zip"                                # Database software ZIP

@@ -2,10 +2,10 @@
 
 Before you use the Oracle Database Operator for Kubernetes (the operator), ensure that your system meets all of the Oracle Autonomous Database (ADB) Prerequisites [ADB_PREREQUISITES](./ADB_PREREQUISITES.md).
 
-To allow your Kubernetes cluster to interact with OCI services, your cluster must be authorized with one of the following: 
+To allow your Kubernetes cluster to interact with OCI services, your cluster must be authorized with one of the following:
+
 - Instance Principal authentication
 - API Key Authentication (specify the required configMap and Secret under `ociConfig`).
-
 
 ## Required Permissions
 
@@ -17,20 +17,21 @@ Permissions to view the work requests are also required, so that the operator ca
 
 After the operator is deployed, choose one of the following operations to create an `AutonomousDatabase` custom resource for Oracle Autonomous Database in your cluster.
 
-* [Provision](#provision-an-autonomous-database) an Autonomous Database
-* [Bind](#bind-to-an-existing-autonomous-database) to an existing Autonomous Database
+- [Provision](#provision-an-autonomous-database) an Autonomous Database
+  - Example: [Creating an Autonomous JSON Database (AJD)](#example-creating-an-autonomous-json-database-ajd)
+- [Bind](#bind-to-an-existing-autonomous-database) to an existing Autonomous Database
 
 After you create the resource, you can use the operator to perform the following tasks:
 
-* [Scale the OCPU core count or storage](#scale-the-ocpu-core-count-or-storage) an Autonomous Database
-* [Rename](#rename) an Autonomous Database
-* [Manage ADMIN database user password](#manage-admin-password) of an Autonomous Database
-* [Download instance credentials (wallets)](#download-wallets) of an Autonomous Database
-* [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
-* [Delete the resource](#delete-the-resource) from the cluster
-* [Clone](#clone-an-existing-autonomous-database) an existing Autonomous Database
-* [Switchover](#switchover-an-existing-autonomous-database) an existing Autonomous Database
-* [Perform Manual Failover](#manually-failover-an-existing-autonomous-database) to an existing Autonomous Database
+- [Scale the OCPU core count or storage](#scale-the-ocpu-core-count-or-storage) an Autonomous Database
+- [Rename](#rename) an Autonomous Database
+- [Manage ADMIN database user password](#manage-admin-password) of an Autonomous Database
+- [Download instance credentials (wallets)](#download-wallets) of an Autonomous Database
+- [Stop/Start/Terminate](#stopstartterminate) an Autonomous Database
+- [Delete the resource](#delete-the-resource) from the cluster
+- [Clone](#clone-an-existing-autonomous-database) an existing Autonomous Database
+- [Switchover](#switchover-an-existing-autonomous-database) an existing Autonomous Database
+- [Perform Manual Failover](#manually-failover-an-existing-autonomous-database) to an existing Autonomous Database
 
 To debug the Oracle Autonomous Databases with Oracle Database Operator, see [Debugging and troubleshooting](#debugging-and-troubleshooting)
 
@@ -78,7 +79,7 @@ To provision an Autonomous Database that will map objects in your cluster, compl
     | `spec.details.compartmentId` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the compartment of the Autonomous Database. | Yes |
     | `spec.details.dbName` | string | The database name. The name must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy. | Yes |
     | `spec.details.displayName` | string | The user-friendly name for the Autonomous Database. The name does not have to be unique. | Yes |
-    | `spec.details.dbWorkload` | string | The Autonomous Database workload type. The following values are valid:<br> `OLTP` - indicates an Autonomous Transaction Processing database<br> `DW` - indicates an Autonomous Data Warehouse database<br> `AJD` - indicates an Autonomous JSON Database<br> `APEX` - indicates an Autonomous Database with the Oracle APEX Application Development workload type.<br> This cannot be updated in parallel with any of the following: licenseModel, cpuCoreCount, computeCount, computeModel, adminPassword, whitelistedIps, isMtlsConnectionRequired, privateEndpointLabel, nsgIds, dbVersion, dbName, or isFreeTier. | No |
+    | `spec.details.dbWorkload` | string | The Autonomous Database workload type. The following values are valid:<br> `OLTP` - indicates an Autonomous Transaction Processing database<br> `DW` - indicates an Autonomous Data Warehouse database<br> `AJD` - indicates an Autonomous JSON Database<br> `APEX` - indicates an Autonomous Database with the Oracle APEX Application Development workload type.<br> `LH` - indicates an Oracle Autonomous AI Lakehouse database.<br> This cannot be updated in parallel with any of the following: licenseModel, cpuCoreCount, computeCount, computeModel, adminPassword, whitelistedIps, isMtlsConnectionRequired, privateEndpointLabel, nsgIds, dbVersion, dbName, or isFreeTier. | No |
     | `spec.details.licenseModel` | string | The Oracle license model that applies to the Oracle Autonomous Database. Bring your own license (BYOL) allows you to apply your current on-premises Oracle software licenses to equivalent, highly automated Oracle services in the cloud.License Included allows you to subscribe to new Oracle Database software licenses and the Oracle Database service. Note that when provisioning an [Autonomous Database on dedicated Exadata infrastructure](https://docs.oracle.com/en/cloud/paas/autonomous-database/index.html), this attribute must be null. It is already set at the Autonomous Exadata Infrastructure level. When provisioning an [Autonomous Database Serverless ](https://docs.oracle.com/en/cloud/paas/autonomous-database/index.html) database, if a value is not specified, the system defaults the value to `BRING_YOUR_OWN_LICENSE`. Bring your own license (BYOL) also allows you to select the DB edition using the optional parameter.<br> This cannot be updated in parallel with any of the following: cpuCoreCount, computeCount, dataStorageSizeInTBs, adminPassword, isMtlsConnectionRequired, dbWorkload, privateEndpointLabel, nsgIds, dbVersion, dbName, or isFreeTier. | No |
     | `spec.details.dbVersion` | string | A valid Oracle Database version for Autonomous Database. | No |
     | `spec.details.dataStorageSizeInTBs` | int | The size, in terabytes, of the data volume that will be created and attached to the database. This storage can later be scaled up if needed. For Autonomous Databases on dedicated Exadata infrastructure, the maximum storage value is determined by the infrastructure shape. See Characteristics of [Infrastructure Shapes](https://www.oracle.com/pls/topic/lookup?ctx=en/cloud/paas/autonomous-database&id=ATPFG-GUID-B0F033C1-CC5A-42F0-B2E7-3CECFEDA1FD1) for shape details. A full Exadata service is allocated when the Autonomous Database size is set to the upper limit (384 TB). | No |
@@ -108,7 +109,7 @@ To provision an Autonomous Database that will map objects in your cluster, compl
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -140,6 +141,44 @@ To provision an Autonomous Database that will map objects in your cluster, compl
     autonomousdatabase.database.oracle.com/autonomousdatabase-sample created
     ```
 
+### Example: Creating an Autonomous JSON Database (AJD)
+
+The Operator also supports provisioning an Autonomous JSON Database (AJD).
+To create an AJD instead of a standard OLTP or Data Warehouse database, explicitly set the workload type using:
+
+```yaml
+spec.details.dbWorkload: AJD
+```
+
+When `dbWorkload` is set to `AJD`, the Operator provisions an **Autonomous JSON Database**, which is optimized for document-centric and JSON-based workloads.
+
+**Example:**
+
+``` yaml
+apiVersion: database.oracle.com/v4
+kind: AutonomousDatabase
+metadata:
+  name: autonomous-json-db
+spec:
+  action: Create
+  details:
+    compartmentId: ocid1.compartment...
+    dbName: MyAJD
+    displayName: MyAJD
+    dbWorkload: AJD   # <-- Required for Autonomous JSON Database
+    computeModel: ECPU
+    computeCount: 1
+    adminPassword:
+      k8sSecret:
+        name: admin-password
+    dataStorageSizeInTBs: 1
+  ociConfig:
+    configMapName: oci-cred
+    secretName: oci-privatekey
+```
+
+> Note: If dbWorkload is not specified, the database will be created using the default workload type (typically OLTP). Always set AJD explicitly when you intend to provision an Autonomous JSON Database.
+
 ## Bind to an existing Autonomous Database
 
 Other than provisioning a database, you can create the custom resource using an existing Autonomous Database.
@@ -169,7 +208,7 @@ The operator also generates the `AutonomousBackup` custom resources if a databas
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -199,7 +238,7 @@ You can scale up or scale down the Oracle Autonomous Database OCPU core count or
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -232,7 +271,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -275,7 +314,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -320,7 +359,7 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -375,7 +414,7 @@ Here's a list of the values you can set for `action`:
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -407,7 +446,7 @@ To delete the resource and terminate the Autonomous Database, complete these ste
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample
@@ -451,7 +490,7 @@ To clone an existing Autonomous Database, complete these steps:
     | `spec.clone.compartmentId` | string | The [OCID](https://docs.cloud.oracle.com/Content/General/Concepts/identifiers.htm) of the compartment of the Autonomous Database. | Yes |
     | `spec.clone.dbName` | string | The database name. The name must begin with an alphabetic character and can contain a maximum of 14 alphanumeric characters. Special characters are not permitted. The database name must be unique in the tenancy. | Yes |
     | `spec.clone.displayName` | string | The user-friendly name for the Autonomous Database. The name does not have to be unique. | Yes |
-    | `spec.clone.dbWorkload` | string | The Autonomous Database workload type. The following values are valid:<br> `OLTP` - indicates an Autonomous Transaction Processing database<br> `DW` - indicates an Autonomous Data Warehouse database<br> `AJD` - indicates an Autonomous JSON Database<br> `APEX` - indicates an Autonomous Database with the Oracle APEX Application Development workload type.<br> This cannot be updated in parallel with any of the following: licenseModel, cpuCoreCount, computeCount, computeModel, adminPassword, whitelistedIps, isMtlsConnectionRequired, privateEndpointLabel, nsgIds, dbVersion, dbName, or isFreeTier. | No |
+    | `spec.clone.dbWorkload` | string | The Autonomous Database workload type. The following values are valid:<br> `OLTP` - indicates an Autonomous Transaction Processing database<br> `DW` - indicates an Autonomous Data Warehouse database<br> `AJD` - indicates an Autonomous JSON Database<br> `APEX` - indicates an Autonomous Database with the Oracle APEX Application Development workload type.<br> `LH` - indicates an Oracle Autonomous AI Lakehouse database.<br> This cannot be updated in parallel with any of the following: licenseModel, cpuCoreCount, computeCount, computeModel, adminPassword, whitelistedIps, isMtlsConnectionRequired, privateEndpointLabel, nsgIds, dbVersion, dbName, or isFreeTier. | No |
     | `spec.clone.licenseModel` | string | The Oracle license model that applies to the Oracle Autonomous Database. Bring your own license (BYOL) allows you to apply your current on-premises Oracle software licenses to equivalent, highly automated Oracle services in the cloud.License Included allows you to subscribe to new Oracle Database software licenses and the Oracle Database service. Note that when provisioning an [Autonomous Database on dedicated Exadata infrastructure](https://docs.oracle.com/en/cloud/paas/autonomous-database/index.html), this attribute must be null. It is already set at the Autonomous Exadata Infrastructure level. When provisioning an [Autonomous Database Serverless ](https://docs.oracle.com/en/cloud/paas/autonomous-database/index.html) database, if a value is not specified, the system defaults the value to `BRING_YOUR_OWN_LICENSE`. Bring your own license (BYOL) also allows you to select the DB edition using the optional parameter.<br> This cannot be updated in parallel with any of the following: cpuCoreCount, computeCount, dataStorageSizeInTBs, adminPassword, isMtlsConnectionRequired, dbWorkload, privateEndpointLabel, nsgIds, dbVersion, dbName, or isFreeTier. | No |
     | `spec.clone.dbVersion` | string | A valid Oracle Database version for Autonomous Database. | No |
     | `spec.clone.dataStorageSizeInTBs` | int | The size, in terabytes, of the data volume that will be created and attached to the database. This storage can later be scaled up if needed. For Autonomous Databases on dedicated Exadata infrastructure, the maximum storage value is determined by the infrastructure shape. See Characteristics of [Infrastructure Shapes](https://www.oracle.com/pls/topic/lookup?ctx=en/cloud/paas/autonomous-database&id=ATPFG-GUID-B0F033C1-CC5A-42F0-B2E7-3CECFEDA1FD1) for shape details. A full Exadata service is allocated when the Autonomous Database size is set to the upper limit (384 TB). | No |
@@ -481,7 +520,7 @@ To clone an existing Autonomous Database, complete these steps:
 
     ```yaml
     ---
-    apiVersion: database.oracle.com/v1alpha1
+    apiVersion: database.oracle.com/v4
     kind: AutonomousDatabase
     metadata:
       name: autonomousdatabase-sample

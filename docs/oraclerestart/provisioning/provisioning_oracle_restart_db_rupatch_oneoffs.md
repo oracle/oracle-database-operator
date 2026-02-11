@@ -21,10 +21,16 @@
 
 ### In this example, 
   * We are using Oracle Restart Database slim image by building it from Git location(./https://orahub.oci.oraclecorp.com/rac-docker-dev/rac-docker-images/-/blob/master/OracleRealApplicationClusters/README.md#building-oracle-rac-database-container-slim-image) i.e. `dbocir/oracle/database-rac:19.3.0-slim`. To use this in your in own environment, update the image value in the `oraclerestart_prov_rupatch_oneoff_storageclass.yaml` file to point to your own container registry base container image.
-  * The disks provisioned using customer storage class (specified by `crsDgStorageClass`) for the Oracle Restart storage are `/dev/asm-disk1` and `/dev/asm-disk2`. 
-  * Specify the size of these devices along with names using the parameter `storageSizeInGb`. Size is by-default in GBs.
-
-**NOTE:** When no separate diskgroup names are specified for CRS Files, Database Files, Recovery Area Files and Redo Log Files, then the default diskgroup named `+DATA` is created from the disks specified by the parameter `crsAsmDeviceList`.
+ The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
+```text
+For example:
+  - name: DATA
+    redundancy: EXTERNAL
+    type: CRSDG
+    disks:
+      - /dev/oracleoci/oraclevdd
+      - /dev/oracleoci/oraclevde
+```
 
 ### Steps: Deploy Oracle Restart Database  
 * Use the file: [oraclerestart_prov_rupatch_oneoff_storageclass.yaml](./oraclerestart_prov_rupatch_oneoff_storageclass.yaml) for this use case as below:

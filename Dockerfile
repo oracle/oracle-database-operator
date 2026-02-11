@@ -36,6 +36,11 @@ COPY commons/ commons/
 COPY controllers/ controllers/
 
 # Build
+RUN go mod vendor && \
+    go mod download && \
+    sync
+
+# Build
 RUN --mount=type=cache,target=/go-cache --mount=type=cache,target=/gomod-cache CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on go build -o manager main.go
 
 # Use oraclelinux:9-slim as default base image to package the manager binary
@@ -45,20 +50,21 @@ FROM ${RUNNER_IMG}
 LABEL "provider"="Oracle"                                                                                                        \
       "issues"="https://github.com/oracle/oracle-database-operator/issues"                                                       \
       "maintainer"="paramdeep.saini@oracle.com, sanjay.singh@oracle.com, kuassi.mensah@oracle.com"                               \
-      "version"="2.0"                                                                                                            \
-      "description"="DB Operator Image V2.0"                                                                                     \
+      "version"="2.1"                                                                                                            \
+      "description"="DB Operator Image V2.1"                                                                                     \
       "vendor"="Oracle Coporation"                                                                                               \
-      "release"="2.0"                                                                                                            \
-      "summary"="Oracle Database Operator 2.0"                                                                                  \
-      "name"="oracle-database-operator.v2.0"
+      "release"="2.1"                                                                                                            \
+      "summary"="Oracle Database Operator 2.1"                                                                                  \
+      "name"="oracle-database-operator.v2.1"
 ARG CI_COMMIT_SHA 
 ARG CI_COMMIT_BRANCH
 ENV COMMIT_SHA=${CI_COMMIT_SHA} \
     COMMIT_BRANCH=${CI_COMMIT_BRANCH}
 WORKDIR /
 COPY --from=builder /workspace/manager .
-COPY ords/ords_init.sh .
-COPY ords/ords_start.sh .
+COPY ordssrvs/ords_init.sh /ordssrvs/
+COPY ordssrvs/ords_start.sh /ordssrvs/
+COPY ordssrvs/RSADecryptOAEP.java /ordssrvs/
 COPY LICENSE.txt /licenses/
 COPY THIRD_PARTY_LICENSES_DOCKER.txt /licenses/
 COPY THIRD_PARTY_LICENSES.txt /licenses/

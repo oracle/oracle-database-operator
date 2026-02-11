@@ -2,17 +2,23 @@
 ########################
 ## REST SERVER IMAGE ###
 ########################
-LRESTIMG:container-registry.oracle.com/database/operator:lrest-241210-amd64
+LRESTIMG:container-registry.oracle.com/database/operator:lrest-[GET THE LATEST FROM OCR]-amd64
 
 ##############################
 ## TNS URL FOR CDB CREATION ##
 ##############################
 TNSALIAS:"(DESCRIPTION=(CONNECT_TIMEOUT=90)(RETRY_COUNT=30)(RETRY_DELAY=10)(TRANSPORT_CONNECT_TIMEOUT=70)(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan12.testrac.com)(PORT=1521)(IP=V4_ONLY))(LOAD_BALLANCE=ON)(ADDRESS=(PROTOCOL=TCP)(HOST=scan34.testrac.com)(PORT=1521)(IP=V4_ONLY))(CONNECT_DATA=(SERVER=DEDICATED)(SERVICE_NAME=TESTORDS)))"
 
+
+###########################################
+## PASSWORD PROTECTION: NATIVE/OPENSSL3   #
+###########################################
+PASSPROTECTION:NATIVE
+
+
 ###########################################
 ## CDB USER FOR PDB LIFECYCLE MANAGMENT ###
 ###########################################
-
 DBUSER:_username_
 DBPASS:_password_
 
@@ -84,4 +90,18 @@ APIVERSION:v4
 ##########################
 CERT_MANAGER:https://github.com/cert-manager/cert-manager/releases/download/v1.16.2/cert-manager.yaml
 
+##################################
+### BITMASK LRPDB TRACE LEVEL  ###
+### BITMASK LREST TRACE LEVEL  ###
+##################################
+LRPDBTRC:0
+LRESTTRC:0
+
+###########################################
+## FILE NAME CONVERSION                  ##
+## Values : NONE|<pathdir>               ##
+## Use NONE for installation on ASM      ##
+###########################################
+#FILENAMECONVERSIONS:/opt/oracle/oradata/FREE/
+FILENAMECONVERSIONS:NONE
 

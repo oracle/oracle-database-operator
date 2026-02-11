@@ -1,3 +1,4 @@
+---
 # API version of the OracleRestart Custom Resource
 apiVersion: database.oracle.com/v4
 
@@ -42,20 +43,32 @@ spec:
         protocol: TCP                 # Protocol type (TCP for Oracle)
         nodePort: 30200               # Host port exposed on worker node (must be in NodePort range)        
   enableOns: "enable"                 # If you want to have ONS notification configured on the specified port. Default value is "enable"        
-
   # ASM (Automatic Storage Management) storage configuration
-  asmStorageDetails:
-    disksBySize:
-      - storageSizeInGb: 50          # Each disk in this group has 50Gi of storage
-        diskNames:
-          - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
-          - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
-          - /dev/disk/by-partlabel/asm-disk3  # ASM disk device path 3
-          - /dev/disk/by-partlabel/asm-disk4  # ASM disk device path 4
-          - /dev/disk/by-partlabel/asm-disk5  # ASM disk device path 5
-          - /dev/disk/by-partlabel/asm-disk6  # ASM disk device path 6
-          - /dev/disk/by-partlabel/asm-disk7  # ASM disk device path 7
-          - /dev/disk/by-partlabel/asm-disk8  # ASM disk device path 8                    
+  asmDiskGroupDetails:
+    - name: CRSDATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk1
+        - /dev/disk/by-partlabel/asm-disk2
+    - name: DBDATA
+      redundancy: EXTERNAL
+      type: DBDATAFILESDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk3
+        - /dev/disk/by-partlabel/asm-disk4
+    - name: RECO
+      redundancy: EXTERNAL
+      type: DBRECOVERY
+      disks:
+        - /dev/disk/by-partlabel/asm-disk5
+        - /dev/disk/by-partlabel/asm-disk6
+    - name: REDO
+      redundancy: EXTERNAL
+      type: DBREDO
+      disks:
+        - /dev/disk/by-partlabel/asm-disk7
+        - /dev/disk/by-partlabel/asm-disk8              
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
@@ -93,17 +106,6 @@ spec:
       memory: "16Gi"                 # Max memory allowed
       cpu: "2"                       # Max CPU allowed
 
-  # Kernel-level system control parameters for Oracle
-  securityContext:
-    sysctls:
-      - name: kernel.shmall
-        value: "2097152"
-      - name: kernel.sem
-        value: "250 32000 100 128"
-      - name: kernel.shmmax
-        value: "8589934592"
-      - name: kernel.shmmni
-        value: "4096"
 
   # Configuration parameters for Oracle Grid and Database homes
   configParams:
@@ -111,14 +113,6 @@ spec:
     gridBase: "/u01/app/grid"                                 # Grid base directory
     dbHome: "/u01/app/oracle/product/19c/dbhome_1"            # Oracle DB home path
     dbBase: "/u01/app/oracle"                                 # Oracle base directory
-    crsAsmDeviceList: /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2   # Comma-separated list of ASM devices for CRSDATA Diskgroup
-    dbAsmDeviceList: /dev/disk/by-partlabel/asm-disk3,/dev/disk/by-partlabel/asm-disk4    # Comma-separated list of ASM device files for DBDATA Diskgroup for database files
-    recoAsmDeviceList: /dev/disk/by-partlabel/asm-disk5,/dev/disk/by-partlabel/asm-disk6  # Comma-separated list of ASM device files for RECO Diskgroup for Recovery Area files
-    redoAsmDeviceList: /dev/disk/by-partlabel/asm-disk7,/dev/disk/by-partlabel/asm-disk8 # Comma-separated list of ASM device files for REDO Diskgroup for Redo files    
-    crsAsmDiskDg: "+CRSDATA"                                  # Name of the Diskgroup for CRS Files
-    dbRecoveryFileDest: "+RECO"                               # Name of the Diskgroup for Recovery Files
-    dbDataFileDestDg: "+DBDATA"                               # Name of the Diskgroup for Database Files
-    redoAsmDiskDg: "+REDO"                                    # Name of the Diskgroup for Redo Files
     inventory: "/u01/app/oraInventory"                        # Inventory location
     gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
     dbSwZipFile: "db_home.zip"                                # Database software ZIP
