@@ -77,11 +77,11 @@ const dataguardBrokerFinalizer = "database.oracle.com/dataguardbrokerfinalizer"
 //+kubebuilder:rbac:groups=database.oracle.com,resources=dataguardbrokers/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=pods;pods/log;pods/exec;persistentvolumeclaims;services,verbs=create;delete;get;list;patch;update;watch
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 
 	log := r.Log.WithValues("reconciler", req.NamespacedName)
-
 	log.Info("Reconcile requested")
 
 	// Get the dataguardbroker resource if already exists
@@ -110,12 +110,16 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		if len(dataguardBroker.Status.DatabasesInDataguardConfig) == 0 {
 			dataguardBroker.Status.DatabasesInDataguardConfig = map[string]string{}
 		}
+		if dataguardBroker.Status.ExternalDgMapping == nil {
+			dataguardBroker.Status.ExternalDgMapping = map[string]string{}
+		}
 	}
 
 	// Always refresh status before a reconcile
 	defer r.Status().Update(ctx, &dataguardBroker)
 
 	// Mange DataguardBroker Creation
+	// IMPORTANT: manageDataguardBrokerCreation() must NOT try to Get() SIDB when isNonSingleInstanceDatabase=true
 	result, err := r.manageDataguardBrokerCreation(&dataguardBroker, ctx, req)
 	if err != nil {
 		return ctrl.Result{Requeue: false}, err
@@ -137,16 +141,21 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				return ctrl.Result{Requeue: false}, nil
 			}
 
-			// runner pod (observer) is used to run sqlplus/dgmgrl commands
+			// runner pod is used to run sqlplus/dgmgrl commands
 			runnerPod, _, _, _, err := dbcommons.FindPods(r, "", "", dataguardBroker.Name, dataguardBroker.Namespace, ctx, req)
 			if err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
-
 			if runnerPod.Name == "" {
-				// If observer isn't created yet, requeue.
-				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Waiting",
-					"non-SIDB mode requires a runner pod (observer) to run sqlplus/dgmgrl. Pod not found yet.")
+				// bootstrap connect string from first entry (primary is typically first)
+				cs := dataguardBroker.Spec.ExternalDatabaseConnectStrings[0]
+				bootstrapPrimaryConn := fmt.Sprintf("%s:%d/%s", cs.HostName, cs.Port, cs.SvcName)
+
+				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeNormal, "Creating Runner",
+					"creating runner/observer pod for non-SIDB FSFO flow")
+				if err := createObserverPodsExternal(r, &dataguardBroker, bootstrapPrimaryConn, ctx, req); err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
 				return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
 			}
 
@@ -189,14 +198,17 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			// Map standby->primary using FAL_SERVER and LOG_ARCHIVE_DEST_1
 			mapping, unmapped := mapStandbyToPrimary(primaries, standbys)
 
-			// If any standby unmapped => do nothing, report error (per your boss guidance)
+			// If any standby unmapped => do nothing, report error
 			if len(unmapped) > 0 {
 				dataguardBroker.Status.Status = dbcommons.StatusError
 				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Mapping Failed",
 					"could not map %d standby DB(s) to a primary using FAL_SERVER / LOG_ARCHIVE_DEST_1", len(unmapped))
 				for _, s := range unmapped {
-					r.Log.Info("Unmapped standby", "db_unique_name", s.DbUniqueName, "connect", s.ConnectString,
-						"fal_server", s.FalServer, "log_archive_dest_1", s.LogArchiveD1)
+					r.Log.Info("Unmapped standby",
+						"db_unique_name", s.DbUniqueName,
+						"connect", s.ConnectString,
+						"fal_server", s.FalServer,
+						"log_archive_dest_1", s.LogArchiveD1)
 				}
 				return ctrl.Result{Requeue: false}, nil
 			}
@@ -210,13 +222,13 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			}
 
 			// Store mapping in status (ExternalDgMapping)
-
 			if dataguardBroker.Status.ExternalDgMapping == nil {
 				dataguardBroker.Status.ExternalDgMapping = map[string]string{}
 			}
 			for pUniq, sUniq := range mapping {
 				dataguardBroker.Status.ExternalDgMapping[pUniq] = sUniq
 			}
+			r.Log.Info("non-SIDB DG mapping established", "mapping", mapping)
 
 			// pick primary connect string + sys password for dgmgrl
 			primaryConn, err := pickPrimaryConnectString(dbInfos)
@@ -232,20 +244,18 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			if err := setFSFOTargetsExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req); err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
-
 			if err := enableFSFOForDgConfigExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req); err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
 
-			if err := createObserverPodsExternal(r, &dataguardBroker, primaryConn, ctx, req); err != nil {
-				return ctrl.Result{Requeue: false}, err
-			}
+			// runner already exists; if you want to ensure it’s correct, your external create can no-op if found.
 
 			// set faststartfailover status to true
 			dataguardBroker.Status.FastStartFailover = "true"
 
 		} else {
 
+			// SIDB flow (existing)
 			for _, DbResource := range dataguardBroker.Status.DatabasesInDataguardConfig {
 				var singleInstanceDatabase dbapi.SingleInstanceDatabase
 				if err := r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: DbResource}, &singleInstanceDatabase); err != nil {
@@ -253,8 +263,10 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				}
 				r.Log.Info("Check the role for database", "database", singleInstanceDatabase.Name, "role", singleInstanceDatabase.Status.Role)
 				if singleInstanceDatabase.Status.Role == "SNAPSHOT_STANDBY" {
-					r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Enabling FSFO failed", "database %s is a snapshot database", singleInstanceDatabase.Name)
-					r.Log.Info("Enabling FSFO failed, one of the database is a snapshot database", "snapshot database", singleInstanceDatabase.Name)
+					r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Enabling FSFO failed",
+						"database %s is a snapshot database", singleInstanceDatabase.Name)
+					r.Log.Info("Enabling FSFO failed, one of the database is a snapshot database",
+						"snapshot database", singleInstanceDatabase.Name)
 					return ctrl.Result{Requeue: true}, nil
 				}
 			}
@@ -280,38 +292,52 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	} else {
 
-		// disable faststartfailover
-		if err := disableFSFOForDGConfig(r, &dataguardBroker, ctx, req); err != nil {
-			return ctrl.Result{Requeue: false}, err
-		}
-
-		// delete Observer Pod
-		observerReadyPod, _, _, _, err := dbcommons.FindPods(r, "", "", dataguardBroker.Name, dataguardBroker.Namespace, ctx, req)
-		if err != nil {
-			return ctrl.Result{Requeue: false}, err
-		}
-		if observerReadyPod.Name != "" {
-			if err := r.Delete(ctx, &observerReadyPod); err != nil {
+		// IMPORTANT: In non-SIDB flow, do NOT call SIDB-only disable/delete logic
+		if dataguardBroker.Spec.IsNonSingleInstanceDatabase {
+			dataguardBroker.Status.FastStartFailover = "false"
+		} else {
+			// disable faststartfailover (SIDB flow)
+			if err := disableFSFOForDGConfig(r, &dataguardBroker, ctx, req); err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
+
+			// delete Observer Pod (SIDB flow)
+			observerReadyPod, _, _, _, err := dbcommons.FindPods(r, "", "", dataguardBroker.Name, dataguardBroker.Namespace, ctx, req)
+			if err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
+			if observerReadyPod.Name != "" {
+				if err := r.Delete(ctx, &observerReadyPod); err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
+			}
+
+			r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeNormal, "Observer Deleted", "database observer pod deleted")
+			log.Info("database observer deleted")
+
+			// set faststartfailover status to false
+			dataguardBroker.Status.FastStartFailover = "false"
 		}
-
-		r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeNormal, "Observer Deleted", "database observer pod deleted")
-		log.Info("database observer deleted")
-
-		// set faststartfailover status to false
-		dataguardBroker.Status.FastStartFailover = "false"
 	}
 
-	// manage manual switchover
-	if dataguardBroker.Spec.SetAsPrimaryDatabase != "" && dataguardBroker.Spec.SetAsPrimaryDatabase != dataguardBroker.Status.PrimaryDatabase {
+	// manage manual switchover (SIDB only)
+	if !dataguardBroker.Spec.IsNonSingleInstanceDatabase &&
+		dataguardBroker.Spec.SetAsPrimaryDatabase != "" &&
+		dataguardBroker.Spec.SetAsPrimaryDatabase != dataguardBroker.Status.PrimaryDatabase {
+
 		if _, ok := dataguardBroker.Status.DatabasesInDataguardConfig[dataguardBroker.Spec.SetAsPrimaryDatabase]; !ok {
-			r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Cannot Switchover", fmt.Sprintf("database with SID %v not found in dataguardbroker configuration", dataguardBroker.Spec.SetAsPrimaryDatabase))
-			log.Info(fmt.Sprintf("cannot perform switchover, database with SID %v not found in dataguardbroker configuration", dataguardBroker.Spec.SetAsPrimaryDatabase))
+			r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Cannot Switchover",
+				fmt.Sprintf("database with SID %v not found in dataguardbroker configuration", dataguardBroker.Spec.SetAsPrimaryDatabase))
+			log.Info(fmt.Sprintf("cannot perform switchover, database with SID %v not found in dataguardbroker configuration",
+				dataguardBroker.Spec.SetAsPrimaryDatabase))
 			return ctrl.Result{Requeue: false}, nil
 		}
-		r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Manual Switchover", fmt.Sprintf("Switching over to %s database", dataguardBroker.Status.DatabasesInDataguardConfig[dataguardBroker.Spec.SetAsPrimaryDatabase]))
-		log.Info(fmt.Sprintf("switching over to %s database", dataguardBroker.Status.DatabasesInDataguardConfig[dataguardBroker.Spec.SetAsPrimaryDatabase]))
+
+		r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Manual Switchover",
+			fmt.Sprintf("Switching over to %s database", dataguardBroker.Status.DatabasesInDataguardConfig[dataguardBroker.Spec.SetAsPrimaryDatabase]))
+		log.Info(fmt.Sprintf("switching over to %s database",
+			dataguardBroker.Status.DatabasesInDataguardConfig[dataguardBroker.Spec.SetAsPrimaryDatabase]))
+
 		result, err := r.manageManualSwitchOver(dataguardBroker.Spec.SetAsPrimaryDatabase, &dataguardBroker, ctx, req)
 		if err != nil {
 			return ctrl.Result{Requeue: false}, err
@@ -321,9 +347,12 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	// Update Status for broker and sidb resources
-	if err := updateReconcileStatus(r, &dataguardBroker, ctx, req); err != nil {
-		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, err
+	// Update Status
+	// updateReconcileStatus() is SIDB-specific in most codebases.
+	if !dataguardBroker.Spec.IsNonSingleInstanceDatabase {
+		if err := updateReconcileStatus(r, &dataguardBroker, ctx, req); err != nil {
+			return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, err
+		}
 	}
 
 	dataguardBroker.Status.Status = dbcommons.StatusReady
@@ -462,20 +491,40 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerCreation(broker *dbapi.
 
 	log.Info(" ", "Found Existing Service ", service.Name)
 
+	// -----------------------------
+	// Non-SIDB creation path
+	// -----------------------------
+	if broker.Spec.IsNonSingleInstanceDatabase {
+
+		// minimal validation only
+		if len(broker.Spec.ExternalDatabaseConnectStrings) < 2 {
+			broker.Status.Status = dbcommons.StatusError
+			r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Spec Validation",
+				"externalDatabaseConnectStrings must have at least 2 entries (primary + standby) when isNonSingleInstanceDatabase=true")
+			return ctrl.Result{Requeue: false}, nil
+		}
+
+		// If you want the observer/runner pod to exist before FSFO, you can just let reconcile handle it.
+		// Creation done for non-SIDB.
+		return ctrl.Result{Requeue: false}, nil
+	}
+
 	// validate if all the databases have only one replicas
 	for _, databaseRef := range broker.GetDatabasesInDataGuardConfiguration() {
 		var singleinstancedatabase dbapi.SingleInstanceDatabase
 		if err := r.Get(ctx, types.NamespacedName{Name: databaseRef, Namespace: broker.Namespace}, &singleinstancedatabase); err != nil {
 			if apierrors.IsNotFound(err) {
 				broker.Status.Status = dbcommons.StatusError
-				r.Recorder.Eventf(broker, corev1.EventTypeWarning, "SingleInstanceDatabase Not Found", fmt.Sprintf("SingleInstanceDatabase %s not found", singleinstancedatabase.Name))
+				r.Recorder.Eventf(broker, corev1.EventTypeWarning, "SingleInstanceDatabase Not Found",
+					fmt.Sprintf("SingleInstanceDatabase %s not found", databaseRef))
 				log.Info(fmt.Sprintf("singleinstancedatabase %s not found", databaseRef))
 				return ctrl.Result{Requeue: false}, nil
 			}
 			return ctrl.Result{Requeue: false}, err
 		}
 		if broker.Spec.FastStartFailover && singleinstancedatabase.Status.Replicas > 1 {
-			r.Recorder.Eventf(broker, corev1.EventTypeWarning, "SIDB Not supported", "dataguardbroker doesn't support multiple replicas sidb in FastStartFailover mode")
+			r.Recorder.Eventf(broker, corev1.EventTypeWarning, "SIDB Not supported",
+				"dataguardbroker doesn't support multiple replicas sidb in FastStartFailover mode")
 			log.Info("dataguardbroker doesn't support multiple replicas sidb in FastStartFailover mode")
 			broker.Status.Status = dbcommons.StatusError
 			return ctrl.Result{Requeue: false}, nil
@@ -491,14 +540,17 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerCreation(broker *dbapi.
 	if err := r.Get(ctx, namespacedName, &sidb); err != nil {
 		if apierrors.IsNotFound(err) {
 			broker.Status.Status = dbcommons.StatusError
-			r.Recorder.Eventf(broker, corev1.EventTypeWarning, "SingleInstanceDatabase Not Found", fmt.Sprintf("SingleInstanceDatabase %s not found", sidb.Name))
+			r.Recorder.Eventf(broker, corev1.EventTypeWarning, "SingleInstanceDatabase Not Found",
+				fmt.Sprintf("SingleInstanceDatabase %s not found", namespacedName.Name))
 			log.Info(fmt.Sprintf("singleinstancedatabase %s not found", namespacedName.Name))
 			return ctrl.Result{Requeue: false}, nil
 		}
 		return ctrl.Result{Requeue: false}, err
 	}
+
 	if sidb.Status.Role != "PRIMARY" {
-		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Spec Validation", fmt.Sprintf("singleInstanceDatabase %v not in primary role", sidb.Name))
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Spec Validation",
+			fmt.Sprintf("singleInstanceDatabase %v not in primary role", sidb.Name))
 		log.Info(fmt.Sprintf("singleinstancedatabase %s expected to be in primary role", sidb.Name))
 		log.Info("updating database status to check for possible FSFO")
 		if err := updateReconcileStatus(r, broker, ctx, req); err != nil {
@@ -513,7 +565,8 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerCreation(broker *dbapi.
 		if errors.Is(err, ErrCurrentPrimaryDatabaseNotReady) {
 			fastStartFailoverStatus, _ := strconv.ParseBool(broker.Status.FastStartFailover)
 			if broker.Status.Status != "" && fastStartFailoverStatus {
-				r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Possible Failover", "Primary db not in ready state after setting up DG configuration")
+				r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Possible Failover",
+					"Primary db not in ready state after setting up DG configuration")
 			}
 			if err := updateReconcileStatus(r, broker, ctx, req); err != nil {
 				log.Info("Error updating Dgbroker status")
@@ -539,6 +592,12 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerCreation(broker *dbapi.
 //
 // #############################################################################################################################
 func (r *DataguardBrokerReconciler) manageManualSwitchOver(targetSidbSid string, broker *dbapi.DataguardBroker, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+
+	if broker.Spec.IsNonSingleInstanceDatabase {
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Cannot Switchover",
+			"manual switchover is not supported when isNonSingleInstanceDatabase=true")
+		return ctrl.Result{Requeue: false}, nil
+	}
 
 	log := r.Log.WithValues("SetAsPrimaryDatabase", req.NamespacedName)
 

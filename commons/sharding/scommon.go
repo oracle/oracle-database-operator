@@ -365,13 +365,15 @@ func buildEnvVarsSpec(
 				connWithSlash = connWithSlash + "/" + svc
 			}
 
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connWithSlash})
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connWithSlash})
+			// use NO-leading-slash for the variables consumed by standby scripts/DBCA/RMAN
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connNoSlash})
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connNoSlash})
 
-			// Optional: keep the old form for debugging/compat
+			// both versions for debugging/compat
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_NOSLASH", Value: connNoSlash})
-
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_WITHSLASH", Value: connWithSlash})
 		}
+
 	}
 
 	// CATALOG specific
