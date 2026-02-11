@@ -58,8 +58,8 @@ spec:
       redundancy: EXTERNAL
       type: CRSDG
       disks:
-        - /dev/asm-disk1
-        - /dev/asm-disk2
+        - /dev/oracleoci/oraclevdd
+        - /dev/oracleoci/oraclevde
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
