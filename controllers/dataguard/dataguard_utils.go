@@ -1138,6 +1138,46 @@ func setFSFOTargetsExternal(
 
 // #############################################################################
 //
+// disableFSFOForDGConfigExternal
+// - connects to dgmgrl using sys/<pwd>@<primaryConnectString>
+//
+// #############################################################################
+func disableFSFOForDGConfigExternal(
+	r *DataguardBrokerReconciler,
+	broker *dbapi.DataguardBroker,
+	runnerPod corev1.Pod,
+	primaryConnectString string,
+	sysPwd string,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+
+	log := r.Log.WithValues("disableFSFOForDGConfigExternal", req.NamespacedName)
+
+	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Disabling FastStartFailover",
+		fmt.Sprintf("Disabling FastStartFailover for dataguard broker %s", broker.Name))
+	log.Info("Disabling FastStartFailover (external)", "broker", broker.Name, "primaryConnectString", primaryConnectString)
+
+	cmd := fmt.Sprintf(`echo -e "%s" | dgmgrl sys/%s@%s`,
+		fmt.Sprintf(dbcommons.DisableFSFOCMD, broker.Name), sysPwd, primaryConnectString)
+
+	out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Disabling FastStartFailover failed",
+			fmt.Sprintf("Disabling FSFO for %s failed", broker.Name))
+		log.Error(err, "Disable FSFO failed", "output", out)
+		return err
+	}
+
+	log.Info("Disable FSFO output", "output", out)
+	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Disabling FastStartFailover successful",
+		fmt.Sprintf("FSFO disabled for %s", broker.Name))
+
+	return nil
+}
+
+// #############################################################################
+//
 // enableFSFOForDgConfigExternal
 // - connects to dgmgrl using sys/<pwd>@<primaryConnectString>
 //
@@ -1330,7 +1370,35 @@ func GetDatabasesInDataGuardConfigurationWithRole(r *DataguardBrokerReconciler, 
 	return []string{}, errors.New("cannot get databases in dataguard configuration")
 }
 
-// ======================= NEW: Non-SIDB (external connect string) helpers =======================
+func stopObserverIfExistsExternal(
+	r *DataguardBrokerReconciler,
+	broker *dbapi.DataguardBroker,
+	runnerPod corev1.Pod,
+	primaryConnectString string, // host:port/svc (same you pass to dgmgrl)
+	sysPwd string,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+
+	log := r.Log.WithValues("stopObserverIfExistsExternal", req.NamespacedName)
+
+	// Best-effort stop; do not fail reconcile if it errors
+	cmd := fmt.Sprintf(`echo -e "STOP OBSERVER %s;" | dgmgrl sys/%s@%s`,
+		broker.Name, sysPwd, primaryConnectString)
+
+	out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		log.Info("STOP OBSERVER best-effort failed; continuing",
+			"err", err.Error(),
+			"output", out)
+		return nil
+	}
+
+	log.Info("STOP OBSERVER executed", "output", out)
+	return nil
+}
+
+// ======================= Non-SIDB (external connect string) helpers =======================
 
 // extDbInfo holds DB facts collected via sqlplus for external/non-SIDB databases.
 type extDbInfo struct {

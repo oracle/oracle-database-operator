@@ -146,9 +146,14 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			if err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
+
+			// If no runner/observer pod exists yet, create it and requeue.
+			// (We can't STOP OBSERVER until we have a pod to exec dgmgrl from.)
 			if runnerPod.Name == "" {
-				// bootstrap connect string from first entry (primary is typically first)
 				cs := dataguardBroker.Spec.ExternalDatabaseConnectStrings[0]
+				if cs.Port == 0 {
+					cs.Port = 1521
+				}
 				bootstrapPrimaryConn := fmt.Sprintf("%s:%d/%s", cs.HostName, cs.Port, cs.SvcName)
 
 				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeNormal, "Creating Runner",
@@ -248,10 +253,18 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				return ctrl.Result{Requeue: false}, err
 			}
 
-			// runner already exists; if you want to ensure it’s correct, your external create can no-op if found.
+			// IMPORTANT: avoid ORA-16814 duplicate observer
+			// Stop observer (best-effort), then restart pod cleanly.
+			_ = stopObserverIfExistsExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req)
+
+			// Delete the runner/observer pod so reconcile will recreate it cleanly
+			_ = r.Delete(ctx, &runnerPod)
 
 			// set faststartfailover status to true
 			dataguardBroker.Status.FastStartFailover = "true"
+
+			// requeue so new observer pod gets created and stabilizes
+			return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
 
 		} else {
 
@@ -294,7 +307,48 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 		// IMPORTANT: In non-SIDB flow, do NOT call SIDB-only disable/delete logic
 		if dataguardBroker.Spec.IsNonSingleInstanceDatabase {
+
+			// Find observer/runner pod (same label: app=<broker.Name>)
+			runnerPod, _, _, _, err := dbcommons.FindPods(r, "", "", dataguardBroker.Name, dataguardBroker.Namespace, ctx, req)
+			if err != nil {
+				return ctrl.Result{Requeue: false}, err
+			}
+
+			// If pod exists, disable FSFO and then delete the observer pod
+			if runnerPod.Name != "" {
+
+				// Use first entry as primary connect string target (consistent with your bootstrap behavior)
+				cs := dataguardBroker.Spec.ExternalDatabaseConnectStrings[0]
+				if cs.Port == 0 {
+					cs.Port = 1521
+				}
+				primaryConn := fmt.Sprintf("%s:%d/%s", cs.HostName, cs.Port, cs.SvcName)
+
+				sysPwd, err := getExternalSysPassword(r, &dataguardBroker, ctx)
+				if err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
+
+				// Disable FSFO
+				if err := disableFSFOForDGConfigExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req); err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
+
+				// best-effort STOP OBSERVER before deleting pod
+				_ = stopObserverIfExistsExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req)
+
+				// Delete observer pod
+				if err := r.Delete(ctx, &runnerPod); err != nil {
+					return ctrl.Result{Requeue: false}, err
+				}
+
+				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeNormal, "Observer Deleted", "external observer pod deleted")
+				log.Info("external observer deleted")
+			}
+
+			// set faststartfailover status to false
 			dataguardBroker.Status.FastStartFailover = "false"
+
 		} else {
 			// disable faststartfailover (SIDB flow)
 			if err := disableFSFOForDGConfig(r, &dataguardBroker, ctx, req); err != nil {
@@ -378,6 +432,37 @@ func (r *DataguardBrokerReconciler) manageDataguardBrokerDeletion(broker *dbapi.
 	// Check if the DataguardBroker instance is marked to be deleted, which is
 	// indicated by the deletion timestamp being set.
 	if controllerutil.ContainsFinalizer(broker, dataguardBrokerFinalizer) {
+
+		// IMPORTANT: non-SIDB brokers must NOT run SIDB cleanup logic (cleanupDataguardBroker does Get() on SIDB)
+		if broker.Spec.IsNonSingleInstanceDatabase {
+
+			// Best-effort delete external observer/runner pod (if exists)
+			runnerPod, _, _, _, err := dbcommons.FindPods(r, "", "", broker.Name, broker.Namespace, ctx, req)
+			if err != nil {
+				// if we cannot list/find pods, requeue by returning error (keeps finalizer)
+				return ctrl.Result{Requeue: false}, err
+			}
+			if runnerPod.Name != "" {
+				if err := r.Delete(ctx, &runnerPod); err != nil {
+					// keep finalizer so controller retries deletion next reconcile
+					return ctrl.Result{Requeue: false}, err
+				}
+				r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Observer Deleted", "external observer pod deleted")
+				log.Info("external observer deleted", "pod", runnerPod.Name)
+			}
+
+			// Remove dataguardBrokerFinalizer. Once all finalizers have been
+			// removed, the object will be deleted.
+			controllerutil.RemoveFinalizer(broker, dataguardBrokerFinalizer)
+			if err := r.Update(ctx, broker); err != nil {
+				r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Updating Resource", "Error while removing resource finalizers")
+				log.Info("Error while removing resource finalizers")
+				return ctrl.Result{Requeue: false}, err
+			}
+
+			return ctrl.Result{Requeue: false}, nil
+		}
+
 		// Run finalization logic for dataguardBrokerFinalizer. If the
 		// finalization logic fails, don't remove the finalizer so
 		// that we can retry during the next reconciliation.
