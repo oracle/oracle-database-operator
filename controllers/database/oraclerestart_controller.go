@@ -2626,24 +2626,19 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 			}
 		}
 	}
-	isStatic := oraclerestartcommon.CheckStorageClass(instance) == "NOSC"
 
 	asmDevicesByType := func(
 		specGroups []oraclerestartdb.AsmDiskGroupDetails,
 		statusGroups []oraclerestartdb.AsmDiskGroupStatus,
 		typ oraclerestartdb.AsmDiskDGTypes,
-		isStatic bool,
 	) string {
 
 		var result []string
 
-		if isStatic {
-
-			for _, group := range specGroups {
-				if group.Type == typ {
-					for _, diskName := range group.Disks {
-						result = append(result, diskName)
-					}
+		for _, group := range specGroups {
+			if group.Type == typ {
+				for _, diskName := range group.Disks {
+					result = append(result, diskName)
 				}
 			}
 		}
@@ -2655,28 +2650,24 @@ func (r *OracleRestartReconciler) generateConfigMap(instance *oraclerestartdb.Or
 		instance.Spec.AsmStorageDetails,
 		instance.Status.AsmDiskGroups,
 		oraclerestartdb.CrsAsmDiskDg,
-		isStatic,
 	)
 
 	dataDeviceList = asmDevicesByType(
 		instance.Spec.AsmStorageDetails,
 		instance.Status.AsmDiskGroups,
 		oraclerestartdb.DbDataDiskDg,
-		isStatic,
 	)
 
 	recoDeviceList = asmDevicesByType(
 		instance.Spec.AsmStorageDetails,
 		instance.Status.AsmDiskGroups,
 		oraclerestartdb.DbRecoveryDiskDg,
-		isStatic,
 	)
 
 	redoDeviceList = asmDevicesByType(
 		instance.Spec.AsmStorageDetails,
 		instance.Status.AsmDiskGroups,
 		oraclerestartdb.RedoDiskDg,
-		isStatic,
 	)
 
 	// Environment variables ("KEY=VAL" entries), set only if non-empty
