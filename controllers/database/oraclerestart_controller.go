@@ -85,6 +85,20 @@ type OracleRestartReconciler struct {
 	Recorder   record.EventRecorder
 }
 
+type RestartFacts struct {
+
+	// ----- Setup / storage facts -----
+	IsNewSetup    bool
+	IsDiskChanged bool
+	AddedDisks    []string
+	RemovedDisks  []string
+	IsStatic      bool
+
+	// ----- Runtime change facts -----
+	IsResourcesChanged bool
+	IsConfigMapChanged bool
+}
+
 const oracleRestartFinalizer = "database.oracle.com/oraclerestartfinalizer"
 
 //+kubebuilder:rbac:groups="database.oracle.com",resources=oraclerestarts,verbs=get;list;watch;create;update;patch;delete
@@ -135,7 +149,6 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	resultQ := ctrl.Result{Requeue: true, RequeueAfter: 60 * time.Second}
 
 	oracleRestart := &oraclerestartdb.OracleRestart{}
-	configMapData := make(map[string]string)
 	// time.Sleep(50000 * time.Second)
 	// Execute for every reconcile
 	defer r.updateReconcileStatus(oracleRestart, ctx, req, &result, &err, &blocked, &completed)
@@ -305,345 +318,25 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		req,
 	)
 
-	isNewSetup := true
-	upgradeSetup := false
-
-	// Detect upgrade scenario — if old spec has no ASM storage details
-	if oldSpec != nil && oldSpec.AsmStorageDetailsOld != nil {
-		upgradeSetup = true
-		isNewSetup = false // explicitly not a new install
-		r.Log.Info("Detected upgrade scenario — marking upgradeSetup = true")
-	} else {
-		// Normal check for new setups
-		for _, diskgroup := range oracleRestart.Status.AsmDiskGroups {
-			if len(diskgroup.Disks) > 0 && diskgroup.Name != "Pending" {
-				isNewSetup = false
-				break
-			}
-		}
-	}
-
-	isDiskChanged := false
-	addedAsmDisks := []string{}
-	removedAsmDisks := []string{}
-
-	if !isNewSetup && oldSpec != nil {
-		addedAsmDisks, removedAsmDisks, err = r.computeDiskChanges(oracleRestart, oldSpec)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-
-		// Cannot process add & remove together
-		if len(addedAsmDisks) > 0 && len(removedAsmDisks) > 0 {
-			r.Log.Info("Detected addition as well as deletion; cannot process both together",
-				"addedAsmDisks", addedAsmDisks, "removedAsmDisks", removedAsmDisks)
-			return resultQ, fmt.Errorf("cannot add and remove ASM disks in the same step")
-		}
-
-		// Set change flags and log
-		if len(addedAsmDisks) > 0 {
-			r.Log.Info("Detected addition of ASM disks", "addedAsmDisks", addedAsmDisks)
-			isDiskChanged = true
-		}
-		if len(removedAsmDisks) > 0 {
-			r.Log.Info("Detected removal of ASM disks", "removedAsmDisks", removedAsmDisks)
-			isDiskChanged = true
-		}
-	}
-	// Check if any ASM disk has missing/zero size
-	missingSize := false
-	for _, dg := range oracleRestart.Status.AsmDiskGroups {
-		for _, disk := range dg.Disks {
-			if disk.SizeInGb == 0 {
-				missingSize = true
-				break
-			}
-		}
-		if missingSize {
-			break
-		}
-	}
-
-	shouldRunDiscovery :=
-		oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" &&
-			(len(removedAsmDisks) == 0) && (isNewSetup ||
-			upgradeSetup ||
-			missingSize ||
-			len(addedAsmDisks) > 0 ||
-			len(oracleRestart.Status.AsmDiskGroups) == 0)
-
-	if shouldRunDiscovery {
-		if err := r.createDaemonSet(oracleRestart, ctx); err != nil {
-			r.Log.Error(err, "failed to create disk-check daemonset")
-			return ctrl.Result{}, err // Return error to requeue on failure
-		}
-
-		ready, err := checkRacDaemonSetStatus(ctx, r, oracleRestart)
-		if err != nil || !ready {
-			if err != nil {
-				r.Log.Error(err, "ASM disk-check daemonset status error, will requeue")
-			} else {
-				r.Log.Info("ASM disks not ready yet. Waiting for disk-check daemonset to complete discovery.")
-			}
-			// Requeue until daemonset is ready
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-		}
-
-		// Update disk sizes into Status
-		if err := r.updateDiskSizes(ctx, oracleRestart); err != nil {
-			r.Log.Error(err, "failed updating ASM disk sizes")
-			// Continue reconcile, do not block on this failure
-		}
-	}
-
-	// PV/PVC creation using discovered sizes
-	if len(oracleRestart.Status.AsmDiskGroups) == 0 && oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
-		return resultNq, fmt.Errorf("no ASM disk group status available")
-	}
-
-	err = setRacDgFromStatusAndSpecWithMinimumDefaults(oracleRestart, r.Client, cName, fName)
+	facts, err := r.detectRestartFacts(ctx, oracleRestart, oldSpec)
 	if err != nil {
-		r.Log.Info("Failed to set disk group defaults")
 		return ctrl.Result{}, err
 	}
-
-	for dgIndex, dgSpec := range oracleRestart.Spec.AsmStorageDetails {
-		groupName := dgSpec.Name
-		dgType := dgSpec.Type
-
-		var dgStatus *oraclerestartdb.AsmDiskGroupStatus
-
-		// Find matching group in status
-		for i, dgSt := range oracleRestart.Status.AsmDiskGroups {
-			if dgSt.Name == groupName {
-				dgStatus = &oracleRestart.Status.AsmDiskGroups[i]
-				break
-			}
-		}
-
-		if dgStatus == nil && oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
-			r.Log.Info("Disk group and +DATA not present in ASM status, skipping", "diskGroup", dgSpec.Name)
-			continue
-		}
-
-		// Decide provisioning mode once
-		isStatic := oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC"
-
-		// For each disk in the spec'd disk group...
-		for diskIdx, diskName := range dgSpec.Disks {
-
-			var diskStatus *oraclerestartdb.AsmDiskStatus
-
-			// Only relevant for static provisioning
-			if isStatic {
-				for i, d := range dgStatus.Disks {
-					if d.Name == diskName {
-						diskStatus = &dgStatus.Disks[i]
-						break
-					}
-				}
-
-				if diskStatus == nil {
-					r.Log.Info("Disk not present in ASM status for group, skipping",
-						"disk", diskName, "diskGroup", groupName)
-					continue
-				}
-
-				if diskStatus.SizeInGb == 0 || !diskStatus.Valid {
-					r.Log.Info("Invalid or missing size for disk in ASM status, skipping",
-						"disk", diskName, "diskGroup", groupName)
-					continue
-				}
-			}
-
-			// Determine size
-			var sizeStr string
-			if isStatic {
-				sizeStr = fmt.Sprintf("%dGi", diskStatus.SizeInGb)
-			} else {
-				sizeStr = fmt.Sprintf("%dGi", oracleRestart.Spec.AsmStorageSizeInGb)
-			}
-
-			// --------------------------------------------------
-			// STATIC MODE → create PV + PVC
-			// --------------------------------------------------
-			if isStatic {
-
-				pvVolume := oraclerestartcommon.VolumePVForASM(
-					oracleRestart,
-					dgIndex,
-					diskIdx,
-					diskName,
-					groupName,
-					sizeStr,
-					r.Client,
-				)
-
-				if _, result, err = r.createOrReplaceAsmPv(
-					ctx, oracleRestart, pvVolume, string(dgType)); err != nil {
-					return resultNq, err
-				}
-			}
-
-			// --------------------------------------------------
-			// BOTH MODES → create PVC
-			// --------------------------------------------------
-			pvcVolume := oraclerestartcommon.VolumePVCForASM(
-				oracleRestart,
-				dgIndex,
-				diskIdx,
-				diskName,
-				groupName,
-				sizeStr,
-				string(dgType),
-				r.Client,
-			)
-
-			if _, result, err = r.createOrReplaceAsmPvC(
-				ctx, oracleRestart, pvcVolume, string(dgType)); err != nil {
-				return resultNq, err
-			}
-		}
-
+	result, err = r.reconcileAsmStorage(ctx, oracleRestart, facts)
+	if err != nil || result.Requeue || result.RequeueAfter > 0 {
+		return result, err
 	}
 
-	if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
-		err = r.cleanupDaemonSet(oracleRestart, ctx)
-		if err != nil {
-			result = resultQ
-			// r.Log.Info(err.Error())
-			err = nilErr
-			return result, err
-		}
+	result, err = r.executeOracleRestartOperation(
+		ctx,
+		req,
+		oracleRestart,
+		oldSpec,
+		facts,
+	)
+	if err != nil || result.Requeue || result.RequeueAfter > 0 {
+		return result, err
 	}
-
-	if oracleRestart.Spec.ConfigParams != nil {
-		configMapData, err = r.generateConfigMap(oracleRestart)
-		if err != nil {
-			result = resultNq
-			return result, err
-		}
-	}
-
-	index := 0
-	isLast := true
-	oldState := oracleRestart.Status.State
-	// time.Sleep(15 * time.Minute)
-	if !utils.CheckStatusFlag(oracleRestart.Spec.InstDetails.IsDelete) {
-		switch {
-		case isNewSetup && !isDiskChanged:
-			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
-			cm := oraclerestartcommon.ConfigMapSpecs(oracleRestart, configMapData, cmName)
-			result, configmapEnvKeyChanged, err := r.createConfigMap(ctx, *oracleRestart, cm)
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-			err = oraclerestartcommon.CreateServiceAccountIfNotExists(oracleRestart, r.Client)
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-
-			oracleRestart.Spec.InstDetails.EnvFile = cmName
-			dep, err := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-			result, err = r.createOrReplaceSfs(ctx, req, *oracleRestart, dep, index, isLast, oldState, configmapEnvKeyChanged)
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-
-		case isDiskChanged && !isNewSetup:
-			if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
-				if len(addedAsmDisks) > 0 {
-					err = r.validateASMDisks(oracleRestart, ctx)
-					if err != nil {
-						result = resultQ
-						r.Log.Info(err.Error())
-						err = nilErr
-						return result, err
-					}
-					if ready, err := checkDaemonSetStatus(ctx, r, oracleRestart); err != nil || !ready {
-						msg := "Any of provided ASM Disks are invalid, pls check disk-check daemon set for logs. Fix the asm disk to the valid one and redeploy."
-						r.Log.Info(msg)
-						err = r.cleanupDaemonSet(oracleRestart, ctx)
-						if err != nil {
-							result = resultQ
-							r.Log.Info(err.Error())
-							err = nilErr
-							return result, err
-						}
-						addedAsmDisksMap := make(map[string]bool)
-						for _, disk := range addedAsmDisks {
-							addedAsmDisksMap[disk] = true
-						}
-						for pindex, dgSpec := range oracleRestart.Spec.AsmStorageDetails {
-							for cindex, diskName := range dgSpec.Disks {
-								if _, ok := addedAsmDisksMap[diskName]; ok {
-									// r.Log.Info("Found disk at index", "index", index)
-
-									err = oraclerestartcommon.DelORestartPVC(oracleRestart, pindex, cindex, diskName, r.Client, r.Log)
-									if err != nil {
-										return resultQ, err
-									}
-
-									err = oraclerestartcommon.DelORestartPv(oracleRestart, pindex, cindex, diskName, r.Client, r.Log)
-									if err != nil {
-										return resultQ, err
-									}
-								}
-							}
-						}
-
-						if err = r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
-							r.Log.Error(err, "Failed to set current spec annotation")
-							oracleRestart.Spec.IsFailed = true
-							return resultQ, err
-						}
-						return result, errors.New(msg)
-					} else {
-						r.Log.Info("Provided ASM Disks are valid, proceeding further")
-					}
-				}
-			}
-			cmName := oracleRestart.Spec.InstDetails.Name + oracleRestart.Name + "-cmap"
-			configMapDataAutoUpdate, err := r.generateConfigMapAutoUpdate(ctx, oracleRestart, cmName)
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-			result, err = r.updateConfigMap(ctx, oracleRestart, configMapDataAutoUpdate, cmName)
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-			r.Log.Info("Config Map updated successfully with new asm details")
-			oracleRestart.Spec.InstDetails.EnvFile = cmName
-			// result, err = r.createOrReplaceSfsAsm(ctx, req, oracleRestart, oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client), index, isLast, oldSpec)
-			dep, err := oraclerestartcommon.BuildStatefulSetForOracleRestart(oracleRestart, oracleRestart.Spec.InstDetails, r.Client)
-			result, err = r.createOrReplaceSfsAsm(ctx, req, oracleRestart, dep, index, isLast, oldSpec)
-			if err != nil {
-				result = resultNq
-				return result, err
-			}
-		}
-	}
-	// if oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC" {
-	// 	if len(addedAsmDisks) > 0 {
-
-	// 		err = r.cleanupDaemonSet(oracleRestart, ctx)
-	// 		if err != nil {
-	// 			result = resultQ
-	// 			r.Log.Info(err.Error())
-	// 			err = nilErr
-	// 			return result, err
-	// 		}
-	// 	}
-	// }
 
 	err = r.expandStorageClassSWVolume(ctx, oracleRestart, oldSpec)
 	if err != nil {
@@ -710,6 +403,557 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	r.Log.Info("Reconcile completed. Requeuing....")
 	// time.Sleep(1 * time.Minute)
 	return resultQ, nil
+}
+
+func (r *OracleRestartReconciler) executeOracleRestartOperation(
+	ctx context.Context,
+	req ctrl.Request,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	oldSpec *oraclerestartdb.OracleRestartSpec,
+	facts *RestartFacts,
+) (ctrl.Result, error) {
+
+	resultNq := ctrl.Result{}
+	resultQ := ctrl.Result{Requeue: true}
+
+	index := 0
+	isLast := true
+	oldState := oracleRestart.Status.State
+
+	//--------------------------------------------------
+	// Build ConfigMap data if needed
+	//--------------------------------------------------
+
+	var configMapData map[string]string
+	var err error
+
+	if oracleRestart.Spec.ConfigParams != nil {
+		configMapData, err = r.generateConfigMap(oracleRestart)
+		if err != nil {
+			return resultNq, err
+		}
+	}
+
+	cmName :=
+		oracleRestart.Spec.InstDetails.Name +
+			oracleRestart.Name + "-cmap"
+
+	//--------------------------------------------------
+	// Decide operation STRICTLY from facts
+	// (DELETE intentionally skipped)
+	//--------------------------------------------------
+
+	op := "none"
+
+	switch {
+
+	case facts.IsDiskChanged && !facts.IsNewSetup:
+		op = "disk"
+
+	case facts.IsResourcesChanged || facts.IsConfigMapChanged:
+		op = "update"
+
+	case facts.IsNewSetup:
+		op = "new"
+
+	default:
+		return resultNq, nil
+	}
+
+	r.Log.Info("Atomic reconcile decision", "operation", op)
+
+	//--------------------------------------------------
+	// DISK CHANGE FLOW
+	//--------------------------------------------------
+
+	if op == "disk" {
+
+		// Static validation only when disks were added
+		if facts.IsStatic && len(facts.AddedDisks) > 0 {
+
+			if err := r.validateASMDisks(oracleRestart, ctx); err != nil {
+				return resultQ, err
+			}
+
+			ready, err := checkDaemonSetStatus(ctx, r, oracleRestart)
+			if err != nil || !ready {
+
+				msg := "Any of provided ASM Disks are invalid, pls check disk-check daemon set logs."
+
+				_ = r.cleanupDaemonSet(oracleRestart, ctx)
+
+				addedMap := map[string]bool{}
+				for _, d := range facts.AddedDisks {
+					addedMap[d] = true
+				}
+
+				for p, dg := range oracleRestart.Spec.AsmStorageDetails {
+					for c, disk := range dg.Disks {
+
+						if addedMap[disk] {
+
+							if err :=
+								oraclerestartcommon.DelORestartPVC(
+									oracleRestart, p, c, disk,
+									r.Client, r.Log); err != nil {
+								return resultQ, err
+							}
+
+							if err :=
+								oraclerestartcommon.DelORestartPv(
+									oracleRestart, p, c, disk,
+									r.Client, r.Log); err != nil {
+								return resultQ, err
+							}
+						}
+					}
+				}
+
+				if err :=
+					r.SetCurrentSpec(ctx, oracleRestart, req); err != nil {
+
+					oracleRestart.Spec.IsFailed = true
+					return resultQ, err
+				}
+
+				return resultQ, fmt.Errorf(msg)
+			}
+		}
+
+		//--------------------------------------------------
+		// Update configmap for ASM change
+		//--------------------------------------------------
+
+		data, err :=
+			r.generateConfigMapAutoUpdate(ctx, oracleRestart, cmName)
+		if err != nil {
+			return resultNq, err
+		}
+
+		if _, err :=
+			r.updateConfigMap(ctx, oracleRestart, data, cmName); err != nil {
+			return resultNq, err
+		}
+
+		r.Log.Info("Config Map updated successfully with new asm details")
+
+		oracleRestart.Spec.InstDetails.EnvFile = cmName
+
+		dep, err :=
+			oraclerestartcommon.BuildStatefulSetForOracleRestart(
+				oracleRestart,
+				oracleRestart.Spec.InstDetails,
+				r.Client,
+			)
+		if err != nil {
+			return resultNq, err
+		}
+
+		return r.createOrReplaceSfsAsm(
+			ctx, req, oracleRestart, dep, index, isLast, oldSpec)
+	}
+
+	//--------------------------------------------------
+	// NEW OR UPDATE FLOW
+	//--------------------------------------------------
+
+	cm := oraclerestartcommon.ConfigMapSpecs(
+		oracleRestart, configMapData, cmName)
+
+	_, configmapEnvKeyChanged, err :=
+		r.createConfigMap(ctx, *oracleRestart, cm)
+	if err != nil {
+		return resultNq, err
+	}
+
+	if err :=
+		oraclerestartcommon.CreateServiceAccountIfNotExists(
+			oracleRestart, r.Client); err != nil {
+		return resultNq, err
+	}
+
+	oracleRestart.Spec.InstDetails.EnvFile = cmName
+
+	dep, err :=
+		oraclerestartcommon.BuildStatefulSetForOracleRestart(
+			oracleRestart,
+			oracleRestart.Spec.InstDetails,
+			r.Client,
+		)
+	if err != nil {
+		return resultNq, err
+	}
+
+	return r.createOrReplaceSfs(
+		ctx, req, *oracleRestart,
+		dep, index, isLast,
+		oldState,
+		facts.IsResourcesChanged,
+		configmapEnvKeyChanged,
+	)
+}
+
+func (r *OracleRestartReconciler) detectRestartFacts(
+	ctx context.Context,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	oldSpec *oraclerestartdb.OracleRestartSpec,
+) (*RestartFacts, error) {
+
+	f := &RestartFacts{}
+
+	//--------------------------------------------------
+	// STATIC vs DYNAMIC provisioning
+	//--------------------------------------------------
+	f.IsStatic =
+		oraclerestartcommon.CheckStorageClass(oracleRestart) == "NOSC"
+
+	//--------------------------------------------------
+	// Detect NEW setup
+	//--------------------------------------------------
+	f.IsNewSetup = true
+
+	if oldSpec != nil && oldSpec.AsmStorageDetailsOld != nil {
+		f.IsNewSetup = false
+	} else {
+		for _, dg := range oracleRestart.Status.AsmDiskGroups {
+			if len(dg.Disks) > 0 && dg.Name != "Pending" {
+				f.IsNewSetup = false
+				break
+			}
+		}
+	}
+
+	//--------------------------------------------------
+	// Detect DISK changes
+	//--------------------------------------------------
+	if !f.IsNewSetup && oldSpec != nil {
+
+		added, removed, err :=
+			r.computeDiskChanges(oracleRestart, oldSpec)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(added) > 0 && len(removed) > 0 {
+			return nil,
+				fmt.Errorf("cannot add and remove ASM disks in the same step")
+		}
+
+		f.AddedDisks = added
+		f.RemovedDisks = removed
+		f.IsDiskChanged = len(added) > 0 || len(removed) > 0
+	}
+
+	//--------------------------------------------------
+	// Detect StatefulSet resource change
+	//--------------------------------------------------
+	resChanged, err :=
+		r.isStatefulSetResourcesChanged(ctx, oracleRestart)
+	if err != nil {
+		return nil, err
+	}
+	f.IsResourcesChanged = resChanged
+
+	//--------------------------------------------------
+	// Detect ConfigMap change
+	//--------------------------------------------------
+
+	var configMapData map[string]string
+
+	if oracleRestart.Spec.ConfigParams != nil {
+		configMapData, err = r.generateConfigMap(oracleRestart)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	cmName :=
+		oracleRestart.Spec.InstDetails.Name +
+			oracleRestart.Name + "-cmap"
+
+	cm := oraclerestartcommon.ConfigMapSpecs(
+		oracleRestart, configMapData, cmName)
+
+	cfgChanged, err :=
+		r.isConfigMapChanged(ctx, oracleRestart, cm)
+	if err != nil {
+		return nil, err
+	}
+
+	f.IsConfigMapChanged = cfgChanged
+
+	return f, nil
+}
+func (r *OracleRestartReconciler) reconcileAsmStorage(
+	ctx context.Context,
+	oracleRestart *oraclerestartdb.OracleRestart,
+	facts *RestartFacts,
+) (ctrl.Result, error) {
+
+	resultNq := ctrl.Result{}
+	resultQ := ctrl.Result{Requeue: true}
+
+	//--------------------------------------------------
+	// Missing size detection
+	//--------------------------------------------------
+
+	missingSize := false
+	for _, dg := range oracleRestart.Status.AsmDiskGroups {
+		for _, disk := range dg.Disks {
+			if disk.SizeInGb == 0 {
+				missingSize = true
+				break
+			}
+		}
+		if missingSize {
+			break
+		}
+	}
+
+	//--------------------------------------------------
+	// SHOULD RUN DISCOVERY  ⭐ now uses FACTS
+	//--------------------------------------------------
+
+	shouldRunDiscovery :=
+		facts.IsStatic &&
+			(len(facts.RemovedDisks) == 0) &&
+			(facts.IsNewSetup ||
+				missingSize ||
+				len(facts.AddedDisks) > 0 ||
+				len(oracleRestart.Status.AsmDiskGroups) == 0)
+
+	if shouldRunDiscovery {
+
+		if err := r.createDaemonSet(oracleRestart, ctx); err != nil {
+			return ctrl.Result{}, err
+		}
+
+		ready, err := checkRacDaemonSetStatus(ctx, r, oracleRestart)
+		if err != nil || !ready {
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+
+		if err := r.updateDiskSizes(ctx, oracleRestart); err != nil {
+			r.Log.Error(err, "failed updating ASM disk sizes")
+		}
+	}
+
+	//--------------------------------------------------
+	// REQUIRE STATUS (STATIC only)
+	//--------------------------------------------------
+
+	if facts.IsStatic && len(oracleRestart.Status.AsmDiskGroups) == 0 {
+		return resultNq,
+			fmt.Errorf("no ASM disk group status available")
+	}
+
+	//--------------------------------------------------
+	// DEFAULTS
+	//--------------------------------------------------
+
+	if err := setRacDgFromStatusAndSpecWithMinimumDefaults(
+		oracleRestart, r.Client, "", "",
+	); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	//--------------------------------------------------
+	// PV / PVC CREATION
+	//--------------------------------------------------
+
+	for dgIndex, dgSpec := range oracleRestart.Spec.AsmStorageDetails {
+
+		var dgStatus *oraclerestartdb.AsmDiskGroupStatus
+
+		// Only needed for STATIC provisioning
+		if facts.IsStatic {
+			for i, dgSt := range oracleRestart.Status.AsmDiskGroups {
+				if dgSt.Name == dgSpec.Name {
+					dgStatus = &oracleRestart.Status.AsmDiskGroups[i]
+					break
+				}
+			}
+
+			if dgStatus == nil {
+				continue
+			}
+		}
+
+		for diskIdx, diskName := range dgSpec.Disks {
+
+			var sizeStr string
+
+			//--------------------------------------------------
+			// STATIC → size from ASM status
+			//--------------------------------------------------
+
+			if facts.IsStatic {
+
+				var diskStatus *oraclerestartdb.AsmDiskStatus
+
+				for i, d := range dgStatus.Disks {
+					if d.Name == diskName {
+						diskStatus = &dgStatus.Disks[i]
+						break
+					}
+				}
+
+				if diskStatus == nil ||
+					diskStatus.SizeInGb == 0 ||
+					!diskStatus.Valid {
+					continue
+				}
+
+				sizeStr = fmt.Sprintf("%dGi", diskStatus.SizeInGb)
+
+			} else {
+
+				//--------------------------------------------------
+				// DYNAMIC → size from spec
+				//--------------------------------------------------
+
+				sizeStr =
+					fmt.Sprintf("%dGi",
+						oracleRestart.Spec.AsmStorageSizeInGb)
+			}
+
+			//--------------------------------------------------
+			// STATIC → create PV
+			//--------------------------------------------------
+
+			if facts.IsStatic {
+
+				pv := oraclerestartcommon.VolumePVForASM(
+					oracleRestart, dgIndex, diskIdx,
+					diskName, dgSpec.Name, sizeStr, r.Client)
+
+				if _, _, err := r.createOrReplaceAsmPv(
+					ctx, oracleRestart, pv,
+					string(dgSpec.Type)); err != nil {
+					return resultNq, err
+				}
+			}
+
+			//--------------------------------------------------
+			// BOTH → create PVC
+			//--------------------------------------------------
+
+			pvc := oraclerestartcommon.VolumePVCForASM(
+				oracleRestart, dgIndex, diskIdx,
+				diskName, dgSpec.Name, sizeStr,
+				string(dgSpec.Type), r.Client)
+
+			if _, _, err := r.createOrReplaceAsmPvC(
+				ctx, oracleRestart, pvc,
+				string(dgSpec.Type)); err != nil {
+				return resultNq, err
+			}
+		}
+	}
+
+	//--------------------------------------------------
+	// CLEANUP DS (STATIC only)
+	//--------------------------------------------------
+
+	if facts.IsStatic {
+		if err := r.cleanupDaemonSet(oracleRestart, ctx); err != nil {
+			return resultQ, nil
+		}
+	}
+
+	return resultNq, nil
+}
+
+func (r *OracleRestartReconciler) isStatefulSetResourcesChanged(
+	ctx context.Context,
+	oracleRestart *oraclerestartdb.OracleRestart,
+) (bool, error) {
+
+	sfsName := oracleRestart.Spec.InstDetails.Name
+
+	found := &appsv1.StatefulSet{}
+
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      sfsName,
+		Namespace: oracleRestart.Namespace,
+	}, found)
+
+	if apierrors.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	if len(found.Spec.Template.Spec.Containers) == 0 {
+		return false, nil
+	}
+
+	foundRes := found.Spec.Template.Spec.Containers[0].Resources
+
+	// Handle nil safely
+	if oracleRestart.Spec.Resources == nil {
+		return false, nil
+	}
+
+	specRes := *oracleRestart.Spec.Resources
+
+	// ---- Compare limits ----
+	for name, specQty := range specRes.Limits {
+
+		foundQty, ok := foundRes.Limits[name]
+		if !ok {
+			return true, nil
+		}
+
+		if specQty.Cmp(foundQty) != 0 {
+			return true, nil
+		}
+	}
+
+	// ---- Compare requests ----
+	for name, specQty := range specRes.Requests {
+
+		foundQty, ok := foundRes.Requests[name]
+		if !ok {
+			return true, nil
+		}
+
+		if specQty.Cmp(foundQty) != 0 {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (r *OracleRestartReconciler) isConfigMapChanged(
+	ctx context.Context,
+	instance *oraclerestartdb.OracleRestart,
+	cm *corev1.ConfigMap,
+) (bool, error) {
+
+	found := &corev1.ConfigMap{}
+
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      cm.Name,
+		Namespace: instance.Namespace,
+	}, found)
+
+	// If not found → treated as changed (needs create)
+	if apierrors.IsNotFound(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	// Compare envfile key only (same logic as your createConfigMap)
+	if found.Data["envfile"] != cm.Data["envfile"] {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // checkRacDaemonSetStatus checks daemonset progress by polling for readiness
@@ -886,28 +1130,6 @@ func (r *OracleRestartReconciler) generateConfigMapAutoUpdate(ctx context.Contex
 			envVars[parts[0]] = parts[1]
 		}
 	}
-
-	// Get latest ASM devices
-	// asmDevices := oraclerestartcommon.GetAsmDevices(instance)
-
-	// // Update selective fields
-	// if instance.Spec.ConfigParams.CrsAsmDeviceList != "" {
-	// 	envVars["CRS_ASM_DEVICE_LIST"] = instance.Spec.ConfigParams.CrsAsmDeviceList
-	// } else {
-	// 	envVars["CRS_ASM_DEVICE_LIST"] = asmDevices
-	// }
-
-	// if instance.Spec.ConfigParams.RecoAsmDeviceList != "" {
-	// 	envVars["RECO_ASM_DEVICE_LIST"] = instance.Spec.ConfigParams.RecoAsmDeviceList
-	// } else if instance.Status.ConfigParams != nil && instance.Status.ConfigParams.RecoAsmDeviceList != "" {
-	// 	envVars["RECO_ASM_DEVICE_LIST"] = instance.Status.ConfigParams.RecoAsmDeviceList
-	// }
-
-	// if instance.Spec.ConfigParams.RedoAsmDeviceList != "" {
-	// 	envVars["REDO_ASM_DEVICE_LIST"] = instance.Spec.ConfigParams.RedoAsmDeviceList
-	// } else if instance.Status.ConfigParams != nil && instance.Status.ConfigParams.RedoAsmDeviceList != "" {
-	// 	envVars["REDO_ASM_DEVICE_LIST"] = instance.Status.ConfigParams.RedoAsmDeviceList
-	// }
 
 	// Convert the envVars map back to a single string
 	var updatedData []string
@@ -3125,7 +3347,19 @@ func (r *OracleRestartReconciler) ensureStatefulSetUpdated(ctx context.Context,
 	}
 
 	// Compare the existing StatefulSet spec with the desired spec, sfs is replaced when ASM devices are added or removed
-	if len(existing.Spec.Template.Spec.Containers[0].VolumeDevices) != len(desired.Spec.Template.Spec.Containers[0].VolumeDevices) {
+	volumeChanged :=
+		!reflect.DeepEqual(
+			existing.Spec.Template.Spec.Containers[0].VolumeDevices,
+			desired.Spec.Template.Spec.Containers[0].VolumeDevices,
+		)
+
+	resourceChanged :=
+		!reflect.DeepEqual(
+			existing.Spec.Template.Spec.Containers[0].Resources,
+			desired.Spec.Template.Spec.Containers[0].Resources,
+		)
+
+	if volumeChanged || resourceChanged {
 		r.Log.Info("Change State to UPDATING")
 
 		// Update status for each instance
@@ -3177,12 +3411,6 @@ func (r *OracleRestartReconciler) ensureStatefulSetUpdated(ctx context.Context,
 		reqLogger.Info("StatefulSet matches for  ASM devices, SFS wont be updated", "StatefulSet.Namespace", oracleRestart.Namespace, "StatefulSet.Name", desired.Name)
 		return nil
 	}
-}
-
-// executeDiskGroupCommand runs a command inside the specified pod to inspect
-// or manipulate ASM disk groups.
-func executeDiskGroupCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (string, string, error) {
-	return oraclerestartcommon.ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
 }
 
 // diskGroupExists checks if a disk group is present by querying the ASM state
@@ -3344,9 +3572,15 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(
 	index int,
 	isLast bool,
 	oldState string,
+	resourcesChanged bool,
 	configmapChanged bool,
 ) (ctrl.Result, error) {
-	reqLogger := r.Log.WithValues("Instance.Namespace", oracleRestart.Namespace, "Instance.Name", oracleRestart.Name)
+
+	reqLogger := r.Log.WithValues(
+		"Instance.Namespace", oracleRestart.Namespace,
+		"Instance.Name", oracleRestart.Name,
+	)
+
 	found := &appsv1.StatefulSet{}
 
 	err := r.Get(ctx, types.NamespacedName{
@@ -3354,56 +3588,146 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(
 		Namespace: oracleRestart.Namespace,
 	}, found)
 
+	//--------------------------------------------------
+	// CREATE (unchanged)
+	//--------------------------------------------------
 	if err != nil && apierrors.IsNotFound(err) {
-		// CREATE
-		r.updateOracleRestartInstStatus(&oracleRestart, ctx, req, oracleRestart.Spec.InstDetails,
-			string(oraclerestartdb.OracleRestartProvisionState), r.Client, true)
-		reqLogger.Info("Creating a StatefulSet Normally", "StatefulSetName", dep.Name)
-		err = r.Create(ctx, dep)
-		if err != nil {
+
+		r.updateOracleRestartInstStatus(
+			&oracleRestart,
+			ctx,
+			req,
+			oracleRestart.Spec.InstDetails,
+			string(oraclerestartdb.OracleRestartProvisionState),
+			r.Client,
+			true,
+		)
+
+		reqLogger.Info("Creating StatefulSet", "StatefulSetName", dep.Name)
+
+		if err := r.Create(ctx, dep); err != nil {
 			oracleRestart.Spec.IsFailed = true
-			reqLogger.Error(err, "Failed to create StatefulSet", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
+			reqLogger.Error(err, "Failed to create StatefulSet")
 			return ctrl.Result{}, err
-		} else if !isLast {
-			// StatefulSet creation was successful
-			return ctrl.Result{}, nil
 		}
-	} else if err != nil {
-		// Any other Get error
-		reqLogger.Error(err, "Failed to find the StatefulSet details")
+
+		return ctrl.Result{}, nil
+	}
+
+	//--------------------------------------------------
+	// GET ERROR
+	//--------------------------------------------------
+	if err != nil {
+		reqLogger.Error(err, "Failed to find StatefulSet")
 		return ctrl.Result{}, err
+	}
+
+	//--------------------------------------------------
+	// COMPARE RESOURCES
+	//--------------------------------------------------
+
+	if len(found.Spec.Template.Spec.Containers) == 0 ||
+		len(dep.Spec.Template.Spec.Containers) == 0 {
+
+		reqLogger.Info("StatefulSet container spec empty — forcing update")
+
 	} else {
-		// Compare resource requirements
+
 		foundRes := found.Spec.Template.Spec.Containers[0].Resources
 		depRes := dep.Spec.Template.Spec.Containers[0].Resources
+
 		resourcesChanged := !reflect.DeepEqual(foundRes, depRes)
 
-		// Compare configMap relevant data (example: pass in variable configmapChanged)
-		if resourcesChanged || configmapChanged {
-			// Copy metadata fields that must be preserved
-			dep.ResourceVersion = found.ResourceVersion
-			dep.UID = found.UID
-			dep.CreationTimestamp = found.CreationTimestamp
-			dep.ManagedFields = found.ManagedFields
-			dep.Status = found.Status
+		//--------------------------------------------------
+		// IF NOTHING CHANGED → RETURN FAST
+		//--------------------------------------------------
+		if !resourcesChanged && !configmapChanged {
 
-			reason := "unknown"
-			if resourcesChanged && configmapChanged {
-				reason = "resource and configmap change"
-			} else if resourcesChanged {
-				reason = "resource change"
-			} else if configmapChanged {
-				reason = "configmap change"
-			}
+			reqLogger.Info("StatefulSet already up-to-date — skipping update")
+			return ctrl.Result{}, nil
+		}
 
-			reqLogger.Info("Updating StatefulSet due to "+reason, "StatefulSetName", dep.Name)
-			err = r.Update(ctx, dep)
-			if err != nil {
-				oracleRestart.Spec.IsFailed = true
-				reqLogger.Error(err, "Failed to update StatefulSet", "StatefulSet.Namespace", dep.Namespace, "StatefulSet.Name", dep.Name)
-				return ctrl.Result{}, err
+		reason := "unknown"
+		switch {
+		case resourcesChanged && configmapChanged:
+			reason = "resource + configmap change"
+		case resourcesChanged:
+			reason = "resource change"
+		case configmapChanged:
+			reason = "configmap change"
+		}
+
+		reqLogger.Info(
+			"Delegating StatefulSet update to ensureStatefulSetUpdated",
+			"reason", reason,
+		)
+
+		//--------------------------------------------------
+		// REAL UPDATE PATH (CENTRALIZED HERE)
+		//--------------------------------------------------
+
+		err = r.ensureStatefulSetUpdated(
+			ctx,
+			reqLogger,
+			&oracleRestart,
+			dep,
+			false, // asmAutoUpdate=false for normal update
+			req,
+		)
+		if err != nil {
+			oracleRestart.Spec.IsFailed = true
+			return ctrl.Result{}, err
+		}
+		// --------------------------------------------------
+		// WAIT FOR PODS RUNNING
+		// --------------------------------------------------
+
+		timeout := 15 * time.Minute
+		pollInterval := 30 * time.Second
+
+		// Set a timeout context
+		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		// Start a ticker for polling every 30 seconds
+		ticker := time.NewTicker(pollInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-timeoutCtx.Done():
+				// Timeout exceeded
+				return ctrl.Result{}, fmt.Errorf("timeout waiting for pods to be ready")
+
+			case <-ticker.C:
+				// Check if the pods are ready
+				podList, err := oraclerestartcommon.GetPodList(
+					dep.Name,
+					&oracleRestart,
+					r.Client,
+					oracleRestart.Spec.InstDetails,
+				)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+
+				ready, _, _ := oraclerestartcommon.PodListValidation(
+					podList,
+					dep.Name,
+					&oracleRestart,
+					r.Client,
+				)
+
+				// If the pods are ready, stop waiting
+				if ready {
+					r.Log.Info("Pods are ready")
+					return ctrl.Result{}, nil
+				}
+
+				r.Log.Info("Waiting for pods to be ready...", "statefulset", dep.Name)
 			}
 		}
+
 	}
 
 	return ctrl.Result{}, nil
@@ -3667,18 +3991,6 @@ podsReady:
 	}
 
 	return ctrl.Result{}, nil
-}
-
-// isDiskInDeviceList checks whether a disk name appears in the provided
-// comma-separated device list.
-func isDiskInDeviceList(disk string, deviceList string) bool {
-	devices := strings.Split(deviceList, ",")
-	for _, device := range devices {
-		if strings.TrimSpace(device) == disk {
-			return true
-		}
-	}
-	return false
 }
 
 // #############################################################################
