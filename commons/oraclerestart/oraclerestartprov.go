@@ -699,7 +699,6 @@ func buildContainerSpecForOracleRestart(instance *oraclerestart.OracleRestart, O
 			ProbeHandler:        corev1.ProbeHandler{TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt(int(oraLsnrPort))}},
 		},
 	}
-	containerSpec.Resources = corev1.ResourceRequirements{}
 	if instance.Spec.Resources != nil {
 		containerSpec.Resources = *instance.Spec.Resources
 	}
