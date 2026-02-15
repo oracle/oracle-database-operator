@@ -228,26 +228,31 @@ func UpdateoraclerestartdbTopologyState(instance *oraclerestartdb.OracleRestart,
 }
 
 // UpdateoraclerestartdbStatusData provides documentation for the UpdateoraclerestartdbStatusData function.
-func UpdateoraclerestartdbStatusData(OracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podNames []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node,
+func UpdateoraclerestartdbStatusData(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podNames []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node,
 ) {
 	//mode := GetDbOpenMode(instance.Spec.Shard[0].Name+"-0", instance, kubeClient, kubeConfig, logger)
 	podName := podNames[len(podNames)-1]
-	OracleRestart.Status.DbState = getDbState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.Role = getDbRole(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ReleaseUpdate = getDBVersion(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ConnectString = getConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.PdbConnectString = getPdbConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ExternalConnectString = getExternalConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.DbSecret = OracleRestart.Spec.DbSecret
-	// OracleRestart.Status.AsmDetails = getAsmInstState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.DbState = getDbState(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.Role = getDbRole(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.ReleaseUpdate = getDBVersion(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.ConnectString = getConnStr(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.PdbConnectString = getPdbConnStr(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.ExternalConnectString = getExternalConnStr(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.DbSecret = oracleRestart.Spec.DbSecret
+	raw := GetAsmInstState(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
 
-	UpdateoraclerestartdbServiceStatus(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
-	UpdateoraclerestartdbTopologyState(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.AsmDiskGroups =
+		NormalizeAsmDiskGroupsMergeSize(
+			raw,
+			oracleRestart.Status.AsmDiskGroups,
+		)
 
+	UpdateoraclerestartdbServiceStatus(oracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
+	UpdateoraclerestartdbTopologyState(oracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
 	pod, err := kubeClient.CoreV1().Pods(req.Namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err == nil {
-		OracleRestart.Status.Resources = &pod.Spec.Containers[0].Resources
-		OracleRestart.Status.SecurityContext = pod.Spec.SecurityContext
+		oracleRestart.Status.Resources = &pod.Spec.Containers[0].Resources
+		oracleRestart.Status.SecurityContext = pod.Spec.SecurityContext
 	}
 }
 
@@ -275,37 +280,37 @@ func contains(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerest
 	return index, false
 }
 
-// getcrsAsmDeviceList provides documentation for the getcrsAsmDeviceList function.
-func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-	asmList := ""
-	var err error
-	if len(instance.Status.OracleRestartNodes) > 0 {
-		asmList, err = CheckAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-		if err != nil {
-			return ""
-		}
+// // getcrsAsmDeviceList provides documentation for the getcrsAsmDeviceList function.
+// func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
+// 	asmList := ""
+// 	var err error
+// 	if len(instance.Status.OracleRestartNodes) > 0 {
+// 		asmList, err = CheckAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
+// 		if err != nil {
+// 			return ""
+// 		}
 
-	}
+// 	}
 
-	return asmList
+// 	return asmList
 
-}
+// }
 
-// getdbAsmDeviceList provides documentation for the getdbAsmDeviceList function.
-func getdbAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-	dbasmList := ""
-	var err error
-	if len(instance.Status.OracleRestartNodes) > 0 {
-		dbasmList, err = CheckDbAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-		if err != nil {
-			return ""
-		}
+// // getdbAsmDeviceList provides documentation for the getdbAsmDeviceList function.
+// func getdbAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
+// 	dbasmList := ""
+// 	var err error
+// 	if len(instance.Status.OracleRestartNodes) > 0 {
+// 		dbasmList, err = CheckDbAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
+// 		if err != nil {
+// 			return ""
+// 		}
 
-	}
+// 	}
 
-	return dbasmList
+// 	return dbasmList
 
-}
+// }
 
 // getMountedDevices provides documentation for the getMountedDevices function.
 func getMountedDevices(podName, namespace string, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) []string {

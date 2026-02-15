@@ -50,6 +50,7 @@ import (
 	"strconv"
 
 	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
+	v4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
 
 	"strings"
@@ -701,6 +702,69 @@ func getDbInstState(podName string, instance *oraclerestart.OracleRestart, speci
 		return msg
 	}
 	return strings.TrimSpace(stdoutput)
+}
+func NormalizeAsmDiskGroupsMergeSize(
+	raw []v4.AsmDiskGroupStatus,
+	old []v4.AsmDiskGroupStatus,
+) []v4.AsmDiskGroupStatus {
+
+	// build lookup: disk → previous size
+	oldSize := make(map[string]int)
+
+	for _, dg := range old {
+		for _, d := range dg.Disks {
+			oldSize[strings.TrimSpace(d.Name)] = d.SizeInGb
+		}
+	}
+
+	var formatted []v4.AsmDiskGroupStatus
+
+	for _, dg := range raw {
+
+		newDG := v4.AsmDiskGroupStatus{
+			Name:         dg.Name,
+			Redundancy:   dg.Redundancy,
+			Type:         dg.Type,
+			AutoUpdate:   dg.AutoUpdate,
+			StorageClass: dg.StorageClass,
+		}
+
+		seen := map[string]struct{}{}
+
+		for _, d := range dg.Disks {
+
+			parts := strings.Split(d.Name, ",")
+
+			for _, p := range parts {
+
+				name := strings.TrimSpace(p)
+				if name == "" {
+					continue
+				}
+
+				if _, ok := seen[name]; ok {
+					continue
+				}
+				seen[name] = struct{}{}
+
+				// ONLY preserve size if disk already existed
+				size := d.SizeInGb
+				if prev, ok := oldSize[name]; ok {
+					size = prev
+				}
+
+				newDG.Disks = append(newDG.Disks, v4.AsmDiskStatus{
+					Name:     name,
+					Valid:    true,
+					SizeInGb: size,
+				})
+			}
+		}
+
+		formatted = append(formatted, newDG)
+	}
+
+	return formatted
 }
 
 // GetAsmInstState provides documentation for the GetAsmInstState function.
