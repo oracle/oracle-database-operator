@@ -3,34 +3,31 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","value":"tru...
+                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"]},"configParams":{"cpuCount":4,"sgaSize":"8G","pgaSiz...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-10-09T13:31:37Z
+  Creation Timestamp:  2026-02-15T00:48:13Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  246434925
-  UID:               0a283621-f64c-4d34-ad46-92e02376d7ad
+  Resource Version:  301494154
+  UID:               2700edb7-a3cd-47f9-93ad-49843fa170e1
 Spec:
-  Asm Storage Details:
-    Disks By Size:
-      Disk Names:
-        /dev/asm-disk1
-        /dev/asm-disk2
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/asm-disk1
+      /dev/asm-disk2
+    Name:                  DATA
+    Redundancy:            EXTERNAL
+    Type:                  CRSDG
+  Asm Storage Size In Gb:  50
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       DATA
+    Cpu Count:    4
+    Db Base:      /u01/app/oracle
+    Db Char Set:  AL32UTF8
+    Db Home:      /u01/app/oracle/product/19c/dbhome_1
+    Db Name:      PORCLCDB
     Db Response File:
     Db Sw Zip File:  db_home.zip
     Grid Base:       /u01/app/grid
@@ -42,10 +39,10 @@ Spec:
     O Patch Location:             /stage/software/19c
     O Patch Sw Zip File:          p6880880_190000_Linux-x86-64.zip
     Pdb Name:                     TESTPDB
-    Pga Size:                     1G
+    Pga Size:                     4G
     Processes:                    2000
     Ru Patch Location:            /stage/software/19c/19.28/37957391
-    Sga Size:                     3G
+    Sga Size:                     8G
     Sw Mount Location:            /u01
     Sw Stage Pvc:                 pv-stage-vol-claim
     Sw Stage Pvc Mount Location:  /stage
@@ -57,14 +54,9 @@ Spec:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Enable Ons:                 enable
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
   Image Pull Policy:          IfNotPresent
   Inst Details:
-    Env Vars:
-      Name:                     IGNORE_CRS_PREREQS
-      Value:                    true
-      Name:                     IGNORE_DB_PREREQS
-      Value:                    true
     Name:                       dbmc1
     Sw Loc Storage Size In Gb:  300
     Worker Node:
@@ -84,21 +76,11 @@ Spec:
     Svc Type:       nodeport
   Resources:
     Limits:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
     Requests:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -117,35 +99,34 @@ Status:
       Mounted Devices:
         /dev/asm-disk1
         /dev/asm-disk2
-      State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/asm-disk1,/dev/asm-disk2
-      Name:        DATA
-      Redundancy:  EXTERN
+      State:  PROVISIONING
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/asm-disk1
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk2
+      Size In Gb:  50
+      Valid:       true
+    Name:          DATA
+    Type:          CRSDG
   Conditions:
-    Last Transition Time:  2025-10-09T15:39:34Z
-    Message:               reconcile has been queued
-    Observed Generation:   1
-    Reason:                LastReconcileCycleQueued
-    Status:                True
-    Type:                  ReconcileQueued
-    Last Transition Time:  2025-10-09T17:29:10Z
+    Last Transition Time:  2026-02-15T01:47:19Z
     Message:               reconcile completed successfully
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
+    Last Transition Time:  2026-02-15T02:13:06Z
+    Message:               reconcile has been queued
+    Observed Generation:   1
+    Reason:                LastReconcileCycleQueued
+    Status:                True
+    Type:                  ReconcileQueued
   Config Params:
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       DATA
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -162,12 +143,29 @@ Status:
   External Connect String:    129.146.0.149:30007/soepdb
   Pdb Connect String:         dbmc1-0:1521/ORCLPDB
   Release Update:             19.28.0.0.0
-  Role:                       PRIMARY
+  Resources:
+    Limits:
+      Cpu:     4
+      Memory:  16Gi
+    Requests:
+      Cpu:     4
+      Memory:  16Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  9663676416
+      Name:   kernel.shmall
+      Value:  2359296
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running
   State:        AVAILABLE
-Events:         <none>
+Events:   <none>
 
 
 $ kubectl get pvc -n orestart
@@ -175,7 +173,6 @@ NAME                                                   STATUS   VOLUME          
 asm-pvc-crsdg-asm-disk1-oraclerestart-sample-dbmc1-0   Bound    csi-dd26294f-caa3-4c1c-b5f4-a64145afe926   50Gi       RWO            oci-bv            <unset>                 3h57m
 asm-pvc-crsdg-asm-disk2-oraclerestart-sample-dbmc1-0   Bound    csi-972a9dc2-f49b-4475-8add-c185f4cfe05f   50Gi       RWO            oci-bv            <unset>                 3h57m
 dbmc1-oradata-sw-vol-pvc-dbmc1-0                       Bound    csi-6722f64f-71a2-458d-857f-921aee569b43   300Gi      RWO            oci-bv            <unset>                 3h57m
-pv-stage-vol-claim                                     Bound    pv-stage-vol1                              500Gi      ROX            fss-dyn-storage   <unset>                 11h
 
 
 
@@ -207,3 +204,21 @@ drwxrwxrwx. 2 2001 2001     13 Jul 15 14:19 automation
 -rwxrwxrwx. 1 2001 2001 152522 Jul 15 14:29 README.html
 -rwxrwxrwx. 1 2001 2001   5824 Jul 15 14:47 bundle.xml
 [root@dbmc1-0 rac-work-dir]#
+
+
+[grid@dbmc1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches
+38124772;TOMCAT RELEASE UPDATE 19.0.0.0.0 (38124772)
+37962946;OCW RELEASE UPDATE 19.28.0.0.0 (37962946)
+37962938;ACFS RELEASE UPDATE 19.28.0.0.0 (37962938)
+37960098;Database Release Update : 19.28.0.0.250715 (37960098)
+36758186;DBWLM RELEASE UPDATE 19.0.0.0.0 (36758186)
+
+OPatch succeeded.
+
+
+
+[oracle@dbmc1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches
+37962946;OCW RELEASE UPDATE 19.28.0.0.0 (37962946)
+37960098;Database Release Update : 19.28.0.0.250715 (37960098)
+
+OPatch succeeded.

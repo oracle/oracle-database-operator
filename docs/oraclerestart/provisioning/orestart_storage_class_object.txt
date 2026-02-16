@@ -3,34 +3,31 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","value":"tru...
+                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"]},"configParams":{"cpuCount":4,"sgaSize":"8G","pgaSiz...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-10-09T18:01:21Z
+  Creation Timestamp:  2026-02-13T05:54:21Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  246453216
-  UID:               c42b7961-6cdb-416e-a17c-616cc0c08b1f
+  Resource Version:  300840553
+  UID:               f6ccdafa-36dd-4e6c-bc3a-fdde94933e0d
 Spec:
-  Asm Storage Details:
-    Disks By Size:
-      Disk Names:
-        /dev/asm-disk1
-        /dev/asm-disk2
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/asm-disk1
+      /dev/asm-disk2
+    Name:                  DATA
+    Redundancy:            EXTERNAL
+    Type:                  CRSDG
+  Asm Storage Size In Gb:  50
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       DATA
+    Cpu Count:    4
+    Db Base:      /u01/app/oracle
+    Db Char Set:  AL32UTF8
+    Db Home:      /u01/app/oracle/product/19c/dbhome_1
+    Db Name:      PORCLCDB
     Db Response File:
     Db Sw Zip File:  db_home.zip
     Grid Base:       /u01/app/grid
@@ -39,9 +36,9 @@ Spec:
     Grid Sw Zip File:        grid_home.zip
     Host Sw Stage Location:  /scratch/software/stage
     Inventory:               /u01/app/oraInventory
-    Pga Size:                1G
+    Pga Size:                4G
     Processes:               2000
-    Sga Size:                3G
+    Sga Size:                8G
     Sw Mount Location:       /u01
   Crs Dg Storage Class:      oci-bv
   Db Secret:
@@ -51,14 +48,9 @@ Spec:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Enable Ons:                 enable
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
   Image Pull Policy:          IfNotPresent
   Inst Details:
-    Env Vars:
-      Name:                     IGNORE_CRS_PREREQS
-      Value:                    true
-      Name:                     IGNORE_DB_PREREQS
-      Value:                    true
     Name:                       dbmc1
     Sw Loc Storage Size In Gb:  300
     Worker Node:
@@ -78,21 +70,11 @@ Spec:
     Svc Type:       nodeport
   Resources:
     Limits:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
     Requests:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -112,34 +94,23 @@ Status:
         /dev/asm-disk1
         /dev/asm-disk2
       State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/asm-disk1,/dev/asm-disk2
-      Name:        DATA
-      Redundancy:  EXTERN
   Conditions:
-    Last Transition Time:  2025-10-09T18:10:31Z
+    Last Transition Time:  2026-02-13T06:04:23Z
     Message:               reconcile has been queued
     Observed Generation:   1
     Reason:                LastReconcileCycleQueued
     Status:                True
     Type:                  ReconcileQueued
-    Last Transition Time:  2025-10-09T18:28:17Z
+    Last Transition Time:  2026-02-13T14:04:34Z
     Message:               reconcile completed successfully
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       DATA
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -156,7 +127,24 @@ Status:
   External Connect String:    129.146.0.149:30007/soepdb
   Pdb Connect String:         dbmc1-0:1521/ORCLPDB
   Release Update:             19.28.0.0.0
-  Role:                       PRIMARY
+  Resources:
+    Limits:
+      Cpu:     4
+      Memory:  16Gi
+    Requests:
+      Cpu:     4
+      Memory:  16Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  9663676416
+      Name:   kernel.shmall
+      Value:  2359296
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running
@@ -166,15 +154,22 @@ Events:         <none>
 
 
 $ kubectl get pvc -n orestart
-NAME                                                   STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      VOLUMEATTRIBUTESCLASS   AGE
-asm-pvc-crsdg-asm-disk1-oraclerestart-sample-dbmc1-0   Bound    csi-4c9b2faa-9cd5-45a5-9ca1-dd77e708f03f   50Gi       RWO            oci-bv            <unset>                 27m
-asm-pvc-crsdg-asm-disk2-oraclerestart-sample-dbmc1-0   Bound    csi-ed7630fc-4f79-426b-a877-ab70ca6ebb87   50Gi       RWO            oci-bv            <unset>                 27m
-dbmc1-oradata-sw-vol-pvc-dbmc1-0                       Bound    csi-15fbddd5-3994-4e3e-b072-c760eaa76188   300Gi      RWO            oci-bv            <unset>                 27m
-pv-stage-vol-claim                                     Bound    pv-stage-vol1                              500Gi      ROX            fss-dyn-storage   <unset>                 12h
+NAME                                      STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      VOLUMEATTRIBUTESCLASS   AGE
+asm-pvc-0122353b-oraclerestart-sample     Bound    csi-5b570902-e282-4100-b6bb-b48d88194f38   50Gi       RWO            oci-bv            <unset>                 8h
+asm-pvc-ddf9e1c3-oraclerestart-sample     Bound    csi-26a93174-32e2-4849-946c-1377e8135c77   50Gi       RWO            oci-bv            <unset>                 8h
+odb-sw-pvc-oraclerestart-sample-dbmc1-0   Bound    csi-d56394be-2817-457b-98db-4a1201dc5cab   300Gi      RWO            oci-bv            <unset>                 8h
 
 
 $ kubectl get pv
-NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                                           STORAGECLASS      VOLUMEATTRIBUTESCLASS   REASON   AGE
-csi-15fbddd5-3994-4e3e-b072-c760eaa76188   300Gi      RWO            Delete           Bound    orestart/dbmc1-oradata-sw-vol-pvc-dbmc1-0                       oci-bv            <unset>                          27m
-csi-4c9b2faa-9cd5-45a5-9ca1-dd77e708f03f   50Gi       RWO            Delete           Bound    orestart/asm-pvc-crsdg-asm-disk1-oraclerestart-sample-dbmc1-0   oci-bv            <unset>                          27m
-csi-ed7630fc-4f79-426b-a877-ab70ca6ebb87   50Gi       RWO            Delete           Bound    orestart/asm-pvc-crsdg-asm-disk2-oraclerestart-sample-dbmc1-0   oci-bv            <unset>                          27m
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                                              STORAGECLASS      VOLUMEATTRIBUTESCLASS   REASON   AGE
+csi-26a93174-32e2-4849-946c-1377e8135c77   50Gi       RWO            Delete           Bound    orestart/asm-pvc-ddf9e1c3-oraclerestart-sample     oci-bv            <unset>                          8h
+csi-5b570902-e282-4100-b6bb-b48d88194f38   50Gi       RWO            Delete           Bound    orestart/asm-pvc-0122353b-oraclerestart-sample     oci-bv            <unset>                          8h
+csi-d56394be-2817-457b-98db-4a1201dc5cab   300Gi      RWO            Delete           Bound    orestart/odb-sw-pvc-oraclerestart-sample-dbmc1-0   oci-bv            <unset>                          8h
+
+$ kubectl exec -it pod/dbmc1-0 -n orestart /bin/bash
+kubectl exec [POD] [COMMAND] is DEPRECATED and will be removed in a future version. Use kubectl exec [POD] -- [COMMAND] instead.
+Defaulted container "dbmc1" out of: dbmc1, dbmc1-init1 (init)
+[root@dbmc1-0 rac-work-dir]#
+[root@dbmc1-0 rac-work-dir]# ls -lrt /dev/asm-disk*
+brw-rw----. 1 grid asmadmin 8, 208 Feb 13 14:06 /dev/asm-disk2
+brw-rw----. 1 grid asmadmin 8, 192 Feb 13 14:06 /dev/asm-disk1

@@ -1,34 +1,35 @@
 # Provisioning an Oracle Restart Database with RU Patch on Existing PVC
 
 ### In this Usecase:
-* The Oracle Grid Infrastructure and Oracle Restart Database are deployed automatically using Oracle Restart Controller. In this case, no storage location from the worker node is used for ASM Disks or GI HOME or RDBMS HOME or Software Staging etc. 
-* This example uses `oraclerestart_prov_rupatch_pvc.yaml` to provision an Oracle Restart Database using Oracle Restart Controller with:
-  * Oracle Restart Database pod
-  * Headless services for Oracle Restart
-    * Oracle Restart Node hostname
-  * Node Port 30007 mapped to port 1521 for Database Listener
-  * Persistent volumes created automatically based on specified disks for Oracle ASM storage.
+* The Oracle Grid Infrastructure and Oracle Restart Database are deployed automatically using Oracle Restart Controller. In this case, no storage location from the worker node is used for ASM Disks or GI HOME or RDBMS HOME or Software Staging etc 
+* This example uses `oraclerestart_prov_rupatch_pvc.yaml` to provision an Oracle Restart Database using Oracle Restart Controller with: 
+  * Oracle Restart Database pod 
+  * Headless services for Oracle Restart 
+    * Oracle Restart Node hostname 
+  * Node Port 30007 mapped to port 1521 for Database Listener 
+  * Persistent volumes created automatically based on specified disks for Oracle ASM storage 
   * Staged Software location using a mount location which is using a pre created Persistent Volume from a network file system(NFS)
   * Namespace: `orestart`
-  * Mount point for the Software Stage Location inside the Pod is specified by `swStagePvcMountLocation`.
-  * Staged Software location inside the Pod is specified by `hostSwStageLocation`. It is assumed that the Grid Infrastructure and RDBMS Binaries are already available in this path on the Persistent Volume used.
-  * The GI HOME and the RDBMS HOME in the Oracle Restart Pod are mounted using a Persistent Volume created using the Storage Class (specified using `swDgStorageClass`). This Persistent Volume is mounted to `/u01` inside the Pod. Size of this Persistent Volume is specified using `swLocStorageSizeInGb`.
-  * Location where the `RU Patch` has been unzipped on the mounted PV is specified by `ruPatchLocation`.
-  * Path to the Opatch Software compatible with the RU Patch is specified using `oPatchLocation`.
+  * Mount point for the Software Stage Location inside the Pod is specified by `swStagePvcMountLocation` 
+  * Staged Software location inside the Pod is specified by `hostSwStageLocation`. It is assumed that the Grid Infrastructure and RDBMS Binaries are already available in this path on the Persistent Volume used 
+  * The GI HOME and the RDBMS HOME in the Oracle Restart Pod are mounted using a Persistent Volume created using the Storage Class (specified using `swDgStorageClass`). This Persistent Volume is mounted to `/u01` inside the Pod. Size of this Persistent Volume is specified using `swLocStorageSizeInGb` 
+  * Location where the `RU Patch` has been unzipped on the mounted PV is specified by `ruPatchLocation` 
+  * Path to the Opatch Software compatible with the RU Patch is specified using `oPatchLocation` 
 
 ### In this Example: 
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name `dbocir/oracle/database-orestart:19.3.0-slim`. 
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name you want. You can also push the image to your container repository. 
   * When you are building the image yourself, update the image value in the `oraclerestart_prov_rupatch_pvc.yaml` file to point to the container image you have built. 
   * Use the file [nfs_pv_stage_vol.yaml](./nfs_pv_stage_vol.yaml) to mount the Network File System as a Persistent Volume named `pv-stage-vol1`. It is assumed this NFS has the required GI and RDBMS Base Software, unzipped RU Patch binaries and Opatch binaries in the specified location. In current case, an OCI File System is used with its export path as `/stage` and Mount Target IP as `10.0.10.212`. 
 The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
 ```text
 For example:
-  - name: DATA
-    redundancy: EXTERNAL
-    type: CRSDG
-    disks:
-      - /dev/oracleoci/oraclevdd
-      - /dev/oracleoci/oraclevde
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
+        - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
 ```
 
 ### Steps: Deploy Oracle Restart Database

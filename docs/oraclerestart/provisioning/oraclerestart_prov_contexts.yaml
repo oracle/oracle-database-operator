@@ -20,19 +20,21 @@ spec:
       - 10.0.10.58                   # IP address of the target node for deployment
 
     # Environment variables in case you want to want to ignore prerequisite checks during the GI/RDBSMS Install
-    envVars:
-      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
-        value: "true"
-      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
-        value: "true"
-  # ASM Disk Details for various data types
+#    envVars:
+#      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
+#        value: "true"
+#      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
+#        value: "true"
+
+  # ASM (Automatic Storage Management) storage configuration
   asmDiskGroupDetails:
     - name: DATA
       redundancy: EXTERNAL
       type: CRSDG
       disks:
-        - /dev/oracleoci/oraclevdd
-        - /dev/oracleoci/oraclevde
+        - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
+        - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
+
   securityContext:
     sysctls:
       - name: kernel.shmall
@@ -75,10 +77,10 @@ spec:
   resources:
     requests:
       memory: "16Gi"                 # Minimum memory required
-      cpu: "2"                       # Minimum CPU required
+      cpu: "4"                       # Minimum CPU required
     limits:
       memory: "16Gi"                 # Max memory allowed
-      cpu: "2"                       # Max CPU allowed
+      cpu: "4"                       # Max CPU allowed
 
   # Configuration parameters for Oracle Grid and Database homes
   configParams:
@@ -89,8 +91,8 @@ spec:
     inventory: "/u01/app/oraInventory"                        # Inventory location
     gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
     dbSwZipFile: "db_home.zip"                                # Database software ZIP
-    sgaSize: "3G"                                             # Size of the System Global Area
-    pgaSize: "1G"                                             # Size of the Program Global Area
+    sgaSize: "6G"                                             # Size of the System Global Area
+    pgaSize: "2G"                                             # Size of the Program Global Area
     processes: 2000                                           # Oracle process limit
     cpuCount: 4                                               # Number of CPUs to allocate
     dbName: "PORCLCDB"                                        # Oracle database name

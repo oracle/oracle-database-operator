@@ -79,8 +79,8 @@ If you are using an Oracle Kubernetes Engine (OKE) Kubernetes Cluster, you will 
         - /scratch/software/stage (the worker node directory will be exposed as local host volume to the Oracle Restart pod for staging Oracle Grid Infrastructure and Oracle RDBMS software)
         - Block devices:
           - You can use any supported storage options for Oracle Grid Infrastructure. Ensure that your storage has at least the following space available:
-            - /dev/oracleoci/oraclevdd (50 GB)
-            - /dev/oracleoci/oraclevde (50 GB)
+            - /dev/disk/by-partlabel/asm-disk1 (50 GB)
+            - /dev/disk/by-partlabel/asm-disk2 (50 GB)
 
         **Notes**  
           - Make sure the devices you are using for ASM Storage are cleared of any data from a previous usage or installation.**

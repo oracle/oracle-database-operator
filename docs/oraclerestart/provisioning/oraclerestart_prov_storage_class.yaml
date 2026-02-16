@@ -22,11 +22,11 @@ spec:
     swLocStorageSizeInGb: 300
 
     # Environment variables in case you want to want to ignore prerequisite checks during the GI/RDBSMS Install
-    envVars:
-      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
-        value: "true"
-      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
-        value: "true"
+#    envVars:
+#      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
+#        value: "true"
+#      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
+#        value: "true"
 
   # NodePort service configuration for exposing DB port externally
   nodePortSvc:
@@ -49,8 +49,11 @@ spec:
   # You have separate parameters to specify the storage class for all the diskgroups (CRS, DATA, RECO, REDO)
   crsDgStorageClass: "oci-bv"         # Specify storage class for the CRS Diskgroup, Currently using "oci-bv" but you can specify another available storage class as well
   swDgStorageClass: "oci-bv"          # Specify storage class for the storage location for software, Currently using "oci-bv" but you can specify another available storage class as well
+  
+  # Size of the Persistent Volumes created using custom storage class for ASM Storage
   asmStorageSizeInGb: 50
-  # ASM Disk Details for various data types
+  
+  # ASM (Automatic Storage Management) storage configuration
   asmDiskGroupDetails:
     - name: DATA
       redundancy: EXTERNAL
@@ -90,10 +93,10 @@ spec:
   resources:
     requests:
       memory: "16Gi"                 # Minimum memory required
-      cpu: "2"                       # Minimum CPU required
+      cpu: "4"                       # Minimum CPU required
     limits:
       memory: "16Gi"                 # Max memory allowed
-      cpu: "2"                       # Max CPU allowed
+      cpu: "4"                       # Max CPU allowed
 
   # Configuration parameters for Oracle Grid and Database homes
   configParams:
@@ -104,9 +107,9 @@ spec:
     inventory: "/u01/app/oraInventory"                        # Inventory location
     gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
     dbSwZipFile: "db_home.zip"                                # Database software ZIP
-    sgaSize: "3G"                                             # Size of the System Global Area
-    pgaSize: "1G"                                             # Size of the Program Global Area
+    sgaSize: "8G"                                             # Size of the System Global Area
+    pgaSize: "4G"                                             # Size of the Program Global Area
     processes: 2000                                           # Oracle process limit
     cpuCount: 4                                               # Number of CPUs to allocate
     dbName: "PORCLCDB"                                        # Oracle database name
-    hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged, same location will be mounted inside the Oracle Restart Pod
+    hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged
