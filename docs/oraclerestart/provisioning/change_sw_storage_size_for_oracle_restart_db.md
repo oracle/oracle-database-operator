@@ -18,18 +18,21 @@ This example uses `oraclerestart_prov_storage_class_before_sw_home_resize.yaml` 
   * Staged Software location on the worker nodes is specified by `hostSwStageLocation`. The Grid Infrastructure and RDBMS Binaries are copied to this location on the worker node.
   * Name of Custom Storage Class is specified by `storageClass`.
   * You will be using storageclass to dynamically allcate the storage. using the storage class **oci-bv**.
+  * Name of Custom Storage Class for Diskgroup having CRS files is specified by `crsDgStorageClass`.  
+  * Name of Custom Storage Class for the storage location for software is specified by `swDgStorageClass`.  
 
 ### In this Example: 
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). 
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name you want. You can also push the image to your container repository.  
  The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
 ```text
 For example:
-  - name: DATA
-    redundancy: EXTERNAL
-    type: CRSDG
-    disks:
-      - /dev/oracleoci/oraclevdd
-      - /dev/oracleoci/oraclevde
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/asm-disk1  # ASM disk device path 1
+        - /dev/asm-disk2  # ASM disk device path 2
 ```
   
 ### Steps - Deploy the Oracle Restart Database
@@ -56,7 +59,6 @@ For example:
 
 ### Steps - Update the Software Home Location in Oracle Restart Database
 *  To `increase` the size of the Software Home Location, you can use the updated file [oraclerestart_prov_storage_class_after_sw_home_resize.yaml](./oraclerestart_prov_storage_class_after_sw_home_resize.yaml). 
-* Update the Oracle Restart container image. In this example, we use the file `dbocir/oracle/database-orestart:19.3.0-slim` in [oraclerestart_prov_storage_class_before_sw_home_resize.yaml](./oraclerestart_prov_storage_class_before_sw_home_resize.yaml) to point to the container image that you have built.
 *  Deploy the `oraclerestart_prov_storage_class_after_sw_home_resize.yaml` file:
     ```sh
     $ kubectl apply -f oraclerestart_prov_storage_class_after_sw_home_resize.yaml

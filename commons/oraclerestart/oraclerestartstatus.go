@@ -40,12 +40,9 @@ package commons
 
 import (
 	"context"
-	"encoding/json"
-	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
-	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
 	oraclerestartdb "github.com/oracle/oracle-database-operator/apis/database/v4"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -140,11 +137,6 @@ func UpdateOracleRestartInstStatusData(
 		if OracleRestart.Spec.ConfigParams.DbHome != "" {
 			OracleRestart.Status.ConfigParams.DbHome = OracleRestart.Spec.ConfigParams.DbHome
 		}
-		// OracleRestart.Status.ConfigParams.CrsAsmDeviceList = OracleRestart.Spec.ConfigParams.CrsAsmDeviceList
-		// OracleRestart.Status.ConfigParams.CrsAsmDeviceList = getcrsAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
-
-		// OracleRestart.Status.ConfigParams.DbAsmDeviceList = OracleRestart.Spec.ConfigParams.DbAsmDeviceList
-		// OracleRestart.Status.ConfigParams.DbAsmDeviceList = getdbAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
 
 	} else if state == string(oraclerestartdb.OracleRestartStatefulSetNotFound) {
 		neworacleRestart := delOracleRestartNodestatus(OracleRestart, oraRestartSpex.Name+"-0")
@@ -236,50 +228,31 @@ func UpdateoraclerestartdbTopologyState(instance *oraclerestartdb.OracleRestart,
 }
 
 // UpdateoraclerestartdbStatusData provides documentation for the UpdateoraclerestartdbStatusData function.
-func UpdateoraclerestartdbStatusData(OracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podNames []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node,
+func UpdateoraclerestartdbStatusData(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podNames []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node,
 ) {
 	//mode := GetDbOpenMode(instance.Spec.Shard[0].Name+"-0", instance, kubeClient, kubeConfig, logger)
 	podName := podNames[len(podNames)-1]
-	OracleRestart.Status.DbState = getDbState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.Role = getDbRole(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ReleaseUpdate = getDBVersion(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ConnectString = getConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.PdbConnectString = getPdbConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ExternalConnectString = getExternalConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.DbSecret = OracleRestart.Spec.DbSecret
-	// OracleRestart.Status.AsmDetails = getAsmInstState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.DbState = getDbState(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.Role = getDbRole(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.ReleaseUpdate = getDBVersion(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.ConnectString = getConnStr(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.PdbConnectString = getPdbConnStr(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.ExternalConnectString = getExternalConnStr(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.DbSecret = oracleRestart.Spec.DbSecret
+	raw := GetAsmInstState(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
 
-	UpdateoraclerestartdbServiceStatus(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
-	UpdateoraclerestartdbTopologyState(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
-	paramsToFetch := []string{"sga_target", "pga_aggregate_target", "cpu_count", "processes"}
-	paramMap, err := getOracleParameters(podName, paramsToFetch, OracleRestart, kubeClient, kubeConfig, logger)
-	if err != nil {
-		logger.Error(err, "Failed to get Oracle parameters via Python script")
-	} else {
-		// Assign string fields directly
-		OracleRestart.Status.SgaSize = paramMap["sga_target"]
-		OracleRestart.Status.PgaSize = paramMap["pga_aggregate_target"]
+	oracleRestart.Status.AsmDiskGroups =
+		NormalizeAsmDiskGroupsMergeSize(
+			raw,
+			oracleRestart.Status.AsmDiskGroups,
+		)
 
-		// Convert string to int for numeric fields
-		if cpuCountStr, ok := paramMap["cpu_count"]; ok {
-			if cpuCount, err := strconv.Atoi(cpuCountStr); err == nil {
-				OracleRestart.Status.CpuCount = cpuCount
-			} else {
-				logger.Error(err, "Failed to convert cpu_count to int")
-			}
-		}
-		if processesStr, ok := paramMap["processes"]; ok {
-			if processes, err := strconv.Atoi(processesStr); err == nil {
-				OracleRestart.Status.Processes = processes
-			} else {
-				logger.Error(err, "Failed to convert processes to int")
-			}
-		}
-	}
+	UpdateoraclerestartdbServiceStatus(oracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
+	UpdateoraclerestartdbTopologyState(oracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
 	pod, err := kubeClient.CoreV1().Pods(req.Namespace).Get(ctx, podName, metav1.GetOptions{})
 	if err == nil {
-		OracleRestart.Status.Resources = &pod.Spec.Containers[0].Resources
-		OracleRestart.Status.SecurityContext = pod.Spec.SecurityContext
+		oracleRestart.Status.Resources = &pod.Spec.Containers[0].Resources
+		oracleRestart.Status.SecurityContext = pod.Spec.SecurityContext
 	}
 }
 
@@ -307,36 +280,37 @@ func contains(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerest
 	return index, false
 }
 
-// getcrsAsmDeviceList provides documentation for the getcrsAsmDeviceList function.
-func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-	asmList := ""
-	var err error
-	if len(instance.Status.OracleRestartNodes) > 0 {
-		asmList, err = CheckAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-		if err != nil {
-			return ""
-		}
+// // getcrsAsmDeviceList provides documentation for the getcrsAsmDeviceList function.
+// func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
+// 	asmList := ""
+// 	var err error
+// 	if len(instance.Status.OracleRestartNodes) > 0 {
+// 		asmList, err = CheckAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
+// 		if err != nil {
+// 			return ""
+// 		}
 
-	}
+// 	}
 
-	return asmList
+// 	return asmList
 
-}
-// getdbAsmDeviceList provides documentation for the getdbAsmDeviceList function.
-func getdbAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-	dbasmList := ""
-	var err error
-	if len(instance.Status.OracleRestartNodes) > 0 {
-		dbasmList, err = CheckDbAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-		if err != nil {
-			return ""
-		}
+// }
 
-	}
+// // getdbAsmDeviceList provides documentation for the getdbAsmDeviceList function.
+// func getdbAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
+// 	dbasmList := ""
+// 	var err error
+// 	if len(instance.Status.OracleRestartNodes) > 0 {
+// 		dbasmList, err = CheckDbAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
+// 		if err != nil {
+// 			return ""
+// 		}
 
-	return dbasmList
+// 	}
 
-}
+// 	return dbasmList
+
+// }
 
 // getMountedDevices provides documentation for the getMountedDevices function.
 func getMountedDevices(podName, namespace string, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) []string {
@@ -383,30 +357,31 @@ func getPvcDetails(instance *oraclerestartdb.OracleRestart, oracleRestart *oracl
 	return strMap
 
 }
-// getOracleParameters provides documentation for the getOracleParameters function.
-func getOracleParameters(
-	podName string,
-	params []string,
-	instance *oraclerestart.OracleRestart,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
-	logger logr.Logger,
-) (map[string]string, error) {
-	scriptMount := getOraScriptMount()
-	paramArg := strings.Join(params, ",")
-	cmd := []string{
-		scriptMount + "/cmdExec",
-		"/bin/python3",
-		scriptMount + "/main.py",
-		"--getparam=" + paramArg,
-	}
-	output, _, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
-	if err != nil {
-		return nil, err
-	}
-	paramMap := make(map[string]string)
-	if err := json.Unmarshal([]byte(output), &paramMap); err != nil {
-		return nil, err
-	}
-	return paramMap, nil
-}
+
+// // getOracleParameters provides documentation for the getOracleParameters function.
+// func getOracleParameters(
+// 	podName string,
+// 	params []string,
+// 	instance *oraclerestart.OracleRestart,
+// 	kubeClient kubernetes.Interface,
+// 	kubeConfig clientcmd.ClientConfig,
+// 	logger logr.Logger,
+// ) (map[string]string, error) {
+// 	scriptMount := getOraScriptMount()
+// 	paramArg := strings.Join(params, ",")
+// 	cmd := []string{
+// 		scriptMount + "/cmdExec",
+// 		"/bin/python3",
+// 		scriptMount + "/main.py",
+// 		"--getparam=" + paramArg,
+// 	}
+// 	output, _, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	paramMap := make(map[string]string)
+// 	if err := json.Unmarshal([]byte(output), &paramMap); err != nil {
+// 		return nil, err
+// 	}
+// 	return paramMap, nil
+// }

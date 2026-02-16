@@ -50,6 +50,7 @@ import (
 	"strconv"
 
 	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
+	v4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
 
 	"strings"
@@ -436,9 +437,10 @@ func checkPv(pvName string, instance *oraclerestart.OracleRestart, kClient clien
 	}
 	return pvFound, nil
 }
+
 // DelORestartPVC provides documentation for the DelORestartPVC function.
 func DelORestartPVC(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, kClient client.Client, logger logr.Logger) error {
-	pvcName := GetAsmPvcName(instance.Name, diskName)
+	pvcName := GetAsmPvcName(diskName, instance.Name)
 	LogMessages("DEBUG", "Attempting to delete PVC: "+GetFmtStr(pvcName), nil, instance, logger)
 
 	pvc, err := checkPvc(pvcName, instance, kClient)
@@ -490,7 +492,7 @@ func DelRestartSwPvc(instance *oraclerestart.OracleRestart, kClient client.Clien
 // DelORestartPv provides documentation for the DelORestartPv function.
 func DelORestartPv(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, kClient client.Client, logger logr.Logger) error {
 
-	pvName := GetAsmPvName(instance.Name, diskName)
+	pvName := GetAsmPvName(diskName, instance.Name)
 	LogMessages("DEBUG", "Inside the delPv and received param: "+GetFmtStr(pvName), nil, instance, logger)
 	pvFound, err := checkPv(pvName, instance, kClient)
 	if err != nil {
@@ -701,6 +703,69 @@ func getDbInstState(podName string, instance *oraclerestart.OracleRestart, speci
 	}
 	return strings.TrimSpace(stdoutput)
 }
+func NormalizeAsmDiskGroupsMergeSize(
+	raw []v4.AsmDiskGroupStatus,
+	old []v4.AsmDiskGroupStatus,
+) []v4.AsmDiskGroupStatus {
+
+	// build lookup: disk → previous size
+	oldSize := make(map[string]int)
+
+	for _, dg := range old {
+		for _, d := range dg.Disks {
+			oldSize[strings.TrimSpace(d.Name)] = d.SizeInGb
+		}
+	}
+
+	var formatted []v4.AsmDiskGroupStatus
+
+	for _, dg := range raw {
+
+		newDG := v4.AsmDiskGroupStatus{
+			Name:         dg.Name,
+			Redundancy:   dg.Redundancy,
+			Type:         dg.Type,
+			AutoUpdate:   dg.AutoUpdate,
+			StorageClass: dg.StorageClass,
+		}
+
+		seen := map[string]struct{}{}
+
+		for _, d := range dg.Disks {
+
+			parts := strings.Split(d.Name, ",")
+
+			for _, p := range parts {
+
+				name := strings.TrimSpace(p)
+				if name == "" {
+					continue
+				}
+
+				if _, ok := seen[name]; ok {
+					continue
+				}
+				seen[name] = struct{}{}
+
+				// ONLY preserve size if disk already existed
+				size := d.SizeInGb
+				if prev, ok := oldSize[name]; ok {
+					size = prev
+				}
+
+				newDG.Disks = append(newDG.Disks, v4.AsmDiskStatus{
+					Name:     name,
+					Valid:    true,
+					SizeInGb: size,
+				})
+			}
+		}
+
+		formatted = append(formatted, newDG)
+	}
+
+	return formatted
+}
 
 // GetAsmInstState provides documentation for the GetAsmInstState function.
 func GetAsmInstState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
@@ -716,7 +781,7 @@ func GetAsmInstState(podName string, instance *oraclerestart.OracleRestart, spec
 		asmdg := oraclerestart.AsmDiskGroupStatus{}
 		asmdg.Name = strings.TrimSpace(dg)
 		asmdg.Disks = stringsToAsmDiskStatus(
-			getAsmDisks(podName, dg, instance, specidx, kubeClient, kubeConfig, logger),
+			GetAsmDisks(podName, dg, instance, specidx, kubeClient, kubeConfig, logger),
 		)
 		asmdg.Redundancy = getAsmDgRedundancy(podName, dg, instance, specidx, kubeClient, kubeConfig, logger)
 		// Optionally fill other fields (Type, AutoUpdate, StorageClass) if available in spec:
@@ -732,6 +797,7 @@ func GetAsmInstState(podName string, instance *oraclerestart.OracleRestart, spec
 	}
 	return diskGroups
 }
+
 // stringsToAsmDiskStatus provides documentation for the stringsToAsmDiskStatus function.
 func stringsToAsmDiskStatus(disks []string) []oraclerestart.AsmDiskStatus {
 	var result []oraclerestart.AsmDiskStatus
@@ -755,7 +821,7 @@ func GetAsmDiskgroup(podName string, instance *oraclerestart.OracleRestart, spec
 }
 
 // getAsmDisks provides documentation for the getAsmDisks function.
-func getAsmDisks(podName string, dg string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+func GetAsmDisks(podName string, dg string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) []string {
 
 	stdoutput, _, err := ExecCommand(podName, getAsmDisksCmd(dg), kubeClient, kubeConfig, instance, logger)
@@ -1444,46 +1510,13 @@ func GetHealthyNodeCounts(instance *oraclerestart.OracleRestart) (int, error) {
 	}
 	return 0, fmt.Errorf("healthy cluster node counts are not matching with total cluster nodes")
 }
+
 // GetSwPvcName provides documentation for the GetSwPvcName function.
 func GetSwPvcName(name string, instance *oraclerestart.OracleRestart) string {
 	//// If you are making any change, please refer SwVolumeClaimTemplatesForOracleRestart function as we add instance.Spec.InstDetails.Name + "-0"
 	pvcName := "odb-sw-pvc-" + name + "-" + instance.Spec.InstDetails.Name + "-0"
 	return pvcName
 }
-
-// func CheckDiskInAsmDeviceList(instance *oraclerestart.OracleRestart, diskName string) string {
-// 	dgDisk := []string{"CRS", "DATA", "RECO", "REDO"}
-
-// 	recoDisk := strings.Split(instance.Spec.ConfigParams.RecoAsmDeviceList, ",")
-// 	redoDisk := strings.Split(instance.Spec.ConfigParams.RedoAsmDeviceList, ",")
-// 	dataDisk := strings.Split(instance.Spec.ConfigParams.DbAsmDeviceList, ",")
-// 	crsDisk := strings.Split(instance.Spec.ConfigParams.CrsAsmDeviceList, ",")
-
-// 	for _, value := range dgDisk {
-// 		switch value {
-// 		case "CRS":
-// 			if slices.Contains(crsDisk, diskName) {
-// 				return "CRSDG"
-// 			}
-// 		case "DATA":
-// 			if slices.Contains(dataDisk, diskName) {
-// 				return "DATADG"
-// 			}
-// 		case "RECO":
-// 			if slices.Contains(recoDisk, diskName) {
-// 				return "RECODG"
-// 			}
-// 		case "REDO":
-// 			if slices.Contains(redoDisk, diskName) {
-// 				return "REDODG"
-// 			}
-// 		default:
-// 			return "NODG"
-// 		}
-
-// 	}
-// 	return "NODG"
-// }
 
 // CheckStorageClass provides documentation for the CheckStorageClass function.
 func CheckStorageClass(instance *oraclerestart.OracleRestart) string {

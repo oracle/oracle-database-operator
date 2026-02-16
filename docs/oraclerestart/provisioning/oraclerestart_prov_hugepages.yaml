@@ -23,10 +23,10 @@ spec:
 
     # Environment variables in case you want to want to ignore prerequisite checks during the GI/RDBSMS Install
     envVars:
-      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
-        value: "true"
-      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
-        value: "true"
+#      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
+#        value: "true"
+#      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
+#        value: "true"
       - name: TOTAL_MEMORY
         value: "53248"
 
@@ -52,14 +52,17 @@ spec:
   crsDgStorageClass: "oci-bv"         # Specify storage class for the CRS Diskgroup, Currently using "oci-bv" but you can specify another available storage class as well
   swDgStorageClass: "oci-bv"          # Specify storage class for the storage location for software, Currently using "oci-bv" but you can specify another available storage class as well
 
-  # ASM Disk Details for various data types
+  # Size of the Persistent Volumes created using custom storage class for ASM Storage
+  asmStorageSizeInGb: 50
+  
+  # ASM (Automatic Storage Management) storage configuration
   asmDiskGroupDetails:
     - name: DATA
       redundancy: EXTERNAL
       type: CRSDG
       disks:
-        - /dev/oracleoci/oraclevdd
-        - /dev/oracleoci/oraclevde
+        - /dev/asm-disk1  # ASM disk device path 1
+        - /dev/asm-disk2  # ASM disk device path 2
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
@@ -125,4 +128,4 @@ spec:
     processes: 2000                                           # Oracle process limit
     cpuCount: 4                                               # Number of CPUs to allocate
     dbName: "PORCLCDB"                                        # Oracle database name
-    hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged, same location will be mounted inside the Oracle Restart Pod
+    hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged

@@ -10722,6 +10722,8 @@ spec:
                       type: object
                     type: array
                 type: object
+              asmStorageSizeInGb:
+                type: integer
               configParams:
                 properties:
                   cpuCount:
@@ -18039,7 +18041,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: container-registry.oracle.com/database/operator:latest
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-sa
         imagePullPolicy: Always
         name: manager
         ports:

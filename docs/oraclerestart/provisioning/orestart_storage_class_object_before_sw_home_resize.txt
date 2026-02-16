@@ -3,34 +3,31 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","value":"tru...
+                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"]},"configParams":{"cpuCount":4,"sgaSize":"8G","pgaSiz...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-10-09T18:01:21Z
+  Creation Timestamp:  2026-02-14T03:13:28Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  246491127
-  UID:               c42b7961-6cdb-416e-a17c-616cc0c08b1f
+  Resource Version:  301106436
+  UID:               f87edbe4-52ae-4180-8fdf-95dabf187649
 Spec:
-  Asm Storage Details:
-    Disks By Size:
-      Disk Names:
-        /dev/asm-disk1
-        /dev/asm-disk2
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/asm-disk1
+      /dev/asm-disk2
+    Name:                  DATA
+    Redundancy:            EXTERNAL
+    Type:                  CRSDG
+  Asm Storage Size In Gb:  50
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       DATA
+    Cpu Count:    4
+    Db Base:      /u01/app/oracle
+    Db Char Set:  AL32UTF8
+    Db Home:      /u01/app/oracle/product/19c/dbhome_1
+    Db Name:      PORCLCDB
     Db Response File:
     Db Sw Zip File:  db_home.zip
     Grid Base:       /u01/app/grid
@@ -39,9 +36,9 @@ Spec:
     Grid Sw Zip File:        grid_home.zip
     Host Sw Stage Location:  /scratch/software/stage
     Inventory:               /u01/app/oraInventory
-    Pga Size:                1G
+    Pga Size:                4G
     Processes:               2000
-    Sga Size:                3G
+    Sga Size:                8G
     Sw Mount Location:       /u01
   Crs Dg Storage Class:      oci-bv
   Db Secret:
@@ -51,14 +48,9 @@ Spec:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Enable Ons:                 enable
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
   Image Pull Policy:          IfNotPresent
   Inst Details:
-    Env Vars:
-      Name:                     IGNORE_CRS_PREREQS
-      Value:                    true
-      Name:                     IGNORE_DB_PREREQS
-      Value:                    true
     Name:                       dbmc1
     Sw Loc Storage Size In Gb:  300
     Worker Node:
@@ -78,21 +70,11 @@ Spec:
     Svc Type:       nodeport
   Resources:
     Limits:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
     Requests:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -112,34 +94,33 @@ Status:
         /dev/asm-disk1
         /dev/asm-disk2
       State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/asm-disk1,/dev/asm-disk2
-      Name:        DATA
-      Redundancy:  EXTERN
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/asm-disk1
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk2
+      Size In Gb:  50
+      Valid:       true
+    Name:          DATA
+    Type:          CRSDG
   Conditions:
-    Last Transition Time:  2025-10-09T18:10:31Z
+    Last Transition Time:  2026-02-14T03:26:36Z
     Message:               reconcile has been queued
     Observed Generation:   1
     Reason:                LastReconcileCycleQueued
     Status:                True
     Type:                  ReconcileQueued
-    Last Transition Time:  2025-10-09T20:35:50Z
+    Last Transition Time:  2026-02-14T04:49:54Z
     Message:               reconcile completed successfully
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       DATA
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -156,7 +137,24 @@ Status:
   External Connect String:    129.146.0.149:30007/soepdb
   Pdb Connect String:         dbmc1-0:1521/ORCLPDB
   Release Update:             19.28.0.0.0
-  Role:                       PRIMARY
+  Resources:
+    Limits:
+      Cpu:     4
+      Memory:  16Gi
+    Requests:
+      Cpu:     4
+      Memory:  16Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  9663676416
+      Name:   kernel.shmall
+      Value:  2359296
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running
@@ -165,32 +163,28 @@ Events:         <none>
 
 
 $ kubectl get pvc -n orestart
-NAME                                                   STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      VOLUMEATTRIBUTESCLASS   AGE
-asm-pvc-crsdg-asm-disk1-oraclerestart-sample-dbmc1-0   Bound    csi-4c9b2faa-9cd5-45a5-9ca1-dd77e708f03f   50Gi       RWO            oci-bv            <unset>                 154m
-asm-pvc-crsdg-asm-disk2-oraclerestart-sample-dbmc1-0   Bound    csi-ed7630fc-4f79-426b-a877-ab70ca6ebb87   50Gi       RWO            oci-bv            <unset>                 154m
-dbmc1-oradata-sw-vol-pvc-dbmc1-0                       Bound    csi-15fbddd5-3994-4e3e-b072-c760eaa76188   300Gi      RWO            oci-bv            <unset>                 154m
-
-
+NAME                                      STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      VOLUMEATTRIBUTESCLASS   AGE
+asm-pvc-0122353b-oraclerestart-sample     Bound    csi-cf7ad5fa-aa5a-4164-b5db-216e743def44   50Gi       RWO            oci-bv            <unset>                 97m
+asm-pvc-ddf9e1c3-oraclerestart-sample     Bound    csi-f3019163-b533-43d9-8c63-fca9a31ca2ff   50Gi       RWO            oci-bv            <unset>                 97m
+odb-sw-pvc-oraclerestart-sample-dbmc1-0   Bound    csi-b6ecea6b-aaa5-4aba-84c1-4a7a1926f280   300Gi      RWO            oci-bv            <unset>                 97m
 
 
 [root@dbmc1-0 rac-work-dir]# df -h
 Filesystem                  Size  Used Avail Use% Mounted on
-overlay                     489G   37G  452G   8% /
+overlay                     489G   53G  437G  11% /
 tmpfs                        64M     0   64M   0% /dev
 tmpfs                        46G     0   46G   0% /sys/fs/cgroup
-tmpfs                        45G  3.9G   42G   9% /etc/hostname
-tmpfs                        46G  112K   46G   1% /run
-/dev/sdo                    295G   14G  281G   5% /u01
-tmpfs                        83G  8.0K   83G   1% /mnt/.ssh
-tmpfs                        83G  8.0K   83G   1% /mnt/.dbsecrets
-tmpfs                        83G  1.1G   82G   2% /dev/shm
-/dev/mapper/ocivolume-root  489G   37G  452G   8% /etc/hosts
-/dev/sdb1                   196G   55G  132G  30% /scratch/software/stage
+tmpfs                        45G  4.0G   42G   9% /etc/hostname
+tmpfs                        46G  120K   46G   1% /run
+/dev/sdn                    295G   23G  272G   8% /u01
+tmpfs                        36G  8.0K   36G   1% /mnt/.ssh
+tmpfs                        36G  8.0K   36G   1% /mnt/.dbsecrets
+tmpfs                        36G  1.1G   35G   4% /dev/shm
+/dev/mapper/ocivolume-root  489G   53G  437G  11% /etc/hosts
 tmpfs                        46G     0   46G   0% /run/lock
-tmpfs                        46G   71M   46G   1% /tmp
-tmpfs                        46G   64M   46G   1% /var/log/journal
+tmpfs                        46G   40M   46G   1% /tmp
+tmpfs                        46G   40M   46G   1% /var/log/journal
 tmpfs                        46G     0   46G   0% /proc/acpi
 tmpfs                        46G     0   46G   0% /proc/scsi
 tmpfs                        46G     0   46G   0% /sys/firmware
 tmpfs                        46G     0   46G   0% /sys/fs/selinux
-[root@dbmc1-0 rac-work-dir]#
