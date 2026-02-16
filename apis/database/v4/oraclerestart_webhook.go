@@ -663,15 +663,19 @@ func (r *OracleRestart) validateServiceSpecs() field.ErrorList {
 	return validationErrs
 }
 
-// validateAsmStorage ensures ASM storage details are provided when required.
 func (r *OracleRestart) validateAsmStorage() field.ErrorList {
 	var validationErrs field.ErrorList
-	asmPath := field.NewPath("spec").Child("AsmStorageDetails")
 
-	if r.Spec.AsmStorageDetails == nil {
-		validationErrs = append(validationErrs,
-			field.Required(asmPath, "ASM storage details must be provided"))
+	if r.ObjectMeta.DeletionTimestamp != nil {
 		return validationErrs
+	}
+
+	if len(r.Spec.AsmStorageDetails) == 0 {
+		validationErrs = append(validationErrs,
+			field.Required(
+				field.NewPath("spec").Child("asmDiskGroupDetails"),
+				"ASM disk group details must be provided",
+			))
 	}
 
 	return validationErrs

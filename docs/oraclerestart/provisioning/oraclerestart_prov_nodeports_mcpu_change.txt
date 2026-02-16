@@ -6,34 +6,30 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","...
+                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"envFile":"dbmc1oraclerestart-sample-cmap...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-09-10T15:45:13Z
+  Creation Timestamp:  2026-02-16T01:29:30Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  234001859
-  UID:               4b261940-9e2e-4ee0-8c21-75a57eb1b0ed
+  Resource Version:  301920451
+  UID:               bce4942d-6656-42fe-a958-b72a8f93ba49
 Spec:
-  Asm Storage Details:
-    Disks By Size:
-      Disk Names:
-        /dev/disk/by-partlabel/asm-disk1
-        /dev/disk/by-partlabel/asm-disk2
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/disk/by-partlabel/asm-disk1
+      /dev/disk/by-partlabel/asm-disk2
+    Name:        DATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Cpu Count:    4
+    Db Base:      /u01/app/oracle
+    Db Char Set:  AL32UTF8
+    Db Home:      /u01/app/oracle/product/19c/dbhome_1
+    Db Name:      PORCLCDB
     Db Response File:
     Db Sw Zip File:  db_home.zip
     Grid Base:       /u01/app/grid
@@ -42,9 +38,9 @@ Spec:
     Grid Sw Zip File:        grid_home.zip
     Host Sw Stage Location:  /scratch/software/stage
     Inventory:               /u01/app/oraInventory
-    Pga Size:                1G
+    Pga Size:                4G
     Processes:               2000
-    Sga Size:                3G
+    Sga Size:                8G
     Sw Mount Location:       /u01
   Db Secret:
     Key File Mount Location:  /mnt/.dbsecrets
@@ -53,14 +49,9 @@ Spec:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Enable Ons:                 enable
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
   Image Pull Policy:          IfNotPresent
   Inst Details:
-    Env Vars:
-      Name:            IGNORE_CRS_PREREQS
-      Value:           true
-      Name:            IGNORE_DB_PREREQS
-      Value:           true
     Host Sw Location:  /scratch/orestart/
     Name:              dbmc1
     Worker Node:
@@ -80,21 +71,11 @@ Spec:
     Svc Type:       nodeport
   Resources:
     Limits:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
     Requests:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -113,34 +94,28 @@ Status:
         /dev/disk/by-partlabel/asm-disk1
         /dev/disk/by-partlabel/asm-disk2
       State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-      Name:        DATA
-      Redundancy:  EXTERN
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/disk/by-partlabel/asm-disk1
+      Size In Gb:  49
+      Valid:       true
+      Name:        /dev/disk/by-partlabel/asm-disk2
+      Size In Gb:  49
+      Valid:       true
+    Name:          DATA
+    Redundancy:    EXTERN
+    Type:          CRSDG
   Conditions:
-    Last Transition Time:  2025-09-10T15:57:27Z
-    Message:               reconcile has been queued
-    Observed Generation:   1
-    Reason:                LastReconcileCycleQueued
-    Status:                True
-    Type:                  ReconcileQueued
-    Last Transition Time:  2025-09-10T20:38:23Z
+    Last Transition Time:  2026-02-16T01:29:40Z
     Message:               reconcile completed successfully
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -154,10 +129,27 @@ Status:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Db State:                   OPEN
-  External Connect String:    Pending
+  External Connect String:    129.146.0.149:30007/soepdb
   Pdb Connect String:         dbmc1-0:1521/ORCLPDB
   Release Update:             19.28.0.0.0
-  Role:                       PRIMARY
+  Resources:
+    Limits:
+      Cpu:     4
+      Memory:  16Gi
+    Requests:
+      Cpu:     4
+      Memory:  16Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  9663676416
+      Name:   kernel.shmall
+      Value:  2359296
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running
@@ -165,15 +157,12 @@ Status:
 Events:         <none>
 
 
-[root@dbmc1-0 rac-work-dir]# cd /sys/fs/cgroup/memory
-[root@dbmc1-0 memory]#  cat memory.limit_in_bytes
+- from inside the Oracle Restart Pod:
+[root@dbmc1-0 rac-work-dir]# cat /sys/fs/cgroup/memory/memory.limit_in_bytes
 17179869184
-[root@dbmc1-0 memory]#
-[root@dbmc1-0 memory]# cd /sys/fs/cgroup/cpu/
-[root@dbmc1-0 cpu]# cat cpu.cfs_quota_us
-200000
-[root@dbmc1-0 cpu]#
-
+[root@dbmc1-0 rac-work-dir]#
+[root@dbmc1-0 rac-work-dir]# cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us
+400000
 
 
 
@@ -185,29 +174,41 @@ $ kubectl apply -f oraclerestart_prov_nodeports_mcpu_change.yaml
 -- The Oracle Restart Database Pod will be recreated:
 
 $ kubectl get all -n orestart
-NAME          READY   STATUS    RESTARTS   AGE   IP             NODE         NOMINATED NODE   READINESS GATES
-pod/dbmc1-0   0/1     Running   0          13s   10.244.0.124   10.0.10.58   <none>           <none>
+NAME          READY   STATUS        RESTARTS   AGE   IP            NODE         NOMINATED NODE   READINESS GATES
+pod/dbmc1-0   1/1     Terminating   0          37m   10.244.0.46   10.0.10.58   <none>           <none>
 
-NAME                                     TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                         AGE    SELECTOR
-service/dbmc1-0-local                    ClusterIP   None            <none>        <none>                          5h3m   statefulset.kubernetes.io/pod-name=dbmc1-0
-service/dbmc1-service-nodeport-0-npsvc   NodePort    10.96.249.147   <none>        1521:30007/TCP,6200:30200/TCP   5h3m   statefulset.kubernetes.io/pod-name=dbmc1-0
+NAME                                     TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                         AGE   SELECTOR
+service/dbmc1-0                          ClusterIP   None           <none>        <none>                          37m   statefulset.kubernetes.io/pod-name=dbmc1-0
+service/dbmc1-service-nodeport-0-npsvc   NodePort    10.96.234.52   <none>        1521:30007/TCP,6200:30200/TCP   37m   statefulset.kubernetes.io/pod-name=dbmc1-0
 
-NAME                     READY   AGE    CONTAINERS   IMAGES
-statefulset.apps/dbmc1   0/1     5h3m   dbmc1        localhost/oracle/database-orestart:19.3.0-slim
+NAME                     READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/dbmc1   1/1     37m   dbmc1        dbocir/oracle/database-orestart:19.3.0-slim
 
+
+
+$ kubectl get all -n orestart
+NAME          READY   STATUS    RESTARTS   AGE   IP            NODE         NOMINATED NODE   READINESS GATES
+pod/dbmc1-0   0/1     Running   0          49s   10.244.0.48   10.0.10.58   <none>           <none>
+
+NAME                                     TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                         AGE   SELECTOR
+service/dbmc1-0                          ClusterIP   None           <none>        <none>                          38m   statefulset.kubernetes.io/pod-name=dbmc1-0
+service/dbmc1-service-nodeport-0-npsvc   NodePort    10.96.234.52   <none>        1521:30007/TCP,6200:30200/TCP   38m   statefulset.kubernetes.io/pod-name=dbmc1-0
+
+NAME                     READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/dbmc1   0/1     38m   dbmc1        dbocir/oracle/database-orestart:19.3.0-slim
 
 
 -- After some time:
 $ kubectl get all -n orestart
-NAME          READY   STATUS    RESTARTS   AGE   IP             NODE         NOMINATED NODE   READINESS GATES
-pod/dbmc1-0   1/1     Running   0           3m   10.244.0.124   10.0.10.58   <none>           <none>
+NAME          READY   STATUS    RESTARTS   AGE     IP            NODE         NOMINATED NODE   READINESS GATES
+pod/dbmc1-0   1/1     Running   0          2m10s   10.244.0.48   10.0.10.58   <none>           <none>
 
-NAME                                     TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)                         AGE     SELECTOR
-service/dbmc1-0-local                    ClusterIP   None            <none>        <none>                          5h17m   statefulset.kubernetes.io/pod-name=dbmc1-0
-service/dbmc1-service-nodeport-0-npsvc   NodePort    10.96.249.147   <none>        1521:30007/TCP,6200:30200/TCP   5h17m   statefulset.kubernetes.io/pod-name=dbmc1-0
+NAME                                     TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)                         AGE   SELECTOR
+service/dbmc1-0                          ClusterIP   None           <none>        <none>                          39m   statefulset.kubernetes.io/pod-name=dbmc1-0
+service/dbmc1-service-nodeport-0-npsvc   NodePort    10.96.234.52   <none>        1521:30007/TCP,6200:30200/TCP   39m   statefulset.kubernetes.io/pod-name=dbmc1-0
 
-NAME                     READY   AGE     CONTAINERS   IMAGES
-statefulset.apps/dbmc1   1/1     5h17m   dbmc1        localhost/oracle/database-orestart:19.3.0-slim
+NAME                     READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/dbmc1   1/1     39m   dbmc1        dbocir/oracle/database-orestart:19.3.0-slim
 
 
 
@@ -218,34 +219,30 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","...
+                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"envFile":"dbmc1oraclerestart-sample-cmap...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-09-10T15:45:13Z
+  Creation Timestamp:  2026-02-16T01:29:30Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        2
-  Resource Version:  234009515
-  UID:               4b261940-9e2e-4ee0-8c21-75a57eb1b0ed
+  Resource Version:  301921876
+  UID:               bce4942d-6656-42fe-a958-b72a8f93ba49
 Spec:
-  Asm Storage Details:
-    Disks By Size:
-      Disk Names:
-        /dev/disk/by-partlabel/asm-disk1
-        /dev/disk/by-partlabel/asm-disk2
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/disk/by-partlabel/asm-disk1
+      /dev/disk/by-partlabel/asm-disk2
+    Name:        DATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Cpu Count:    4
+    Db Base:      /u01/app/oracle
+    Db Char Set:  AL32UTF8
+    Db Home:      /u01/app/oracle/product/19c/dbhome_1
+    Db Name:      PORCLCDB
     Db Response File:
     Db Sw Zip File:  db_home.zip
     Grid Base:       /u01/app/grid
@@ -254,9 +251,9 @@ Spec:
     Grid Sw Zip File:        grid_home.zip
     Host Sw Stage Location:  /scratch/software/stage
     Inventory:               /u01/app/oraInventory
-    Pga Size:                1G
+    Pga Size:                4G
     Processes:               2000
-    Sga Size:                3G
+    Sga Size:                8G
     Sw Mount Location:       /u01
   Db Secret:
     Key File Mount Location:  /mnt/.dbsecrets
@@ -265,14 +262,9 @@ Spec:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Enable Ons:                 enable
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
   Image Pull Policy:          IfNotPresent
   Inst Details:
-    Env Vars:
-      Name:            IGNORE_CRS_PREREQS
-      Value:           true
-      Name:            IGNORE_DB_PREREQS
-      Value:           true
     Host Sw Location:  /scratch/orestart/
     Name:              dbmc1
     Worker Node:
@@ -292,21 +284,12 @@ Spec:
     Svc Type:       nodeport
   Resources:
     Limits:
-      Cpu:     4
+      Cpu:     8
       Memory:  20Gi
     Requests:
-      Cpu:     4
+      Cpu:     8
       Memory:  20Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
+
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -325,34 +308,28 @@ Status:
         /dev/disk/by-partlabel/asm-disk1
         /dev/disk/by-partlabel/asm-disk2
       State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-      Name:        DATA
-      Redundancy:  EXTERN
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/disk/by-partlabel/asm-disk1
+      Size In Gb:  49
+      Valid:       true
+      Name:        /dev/disk/by-partlabel/asm-disk2
+      Size In Gb:  49
+      Valid:       true
+    Name:          DATA
+    Redundancy:    EXTERN
+    Type:          CRSDG
   Conditions:
-    Last Transition Time:  2025-09-10T15:57:27Z
-    Message:               reconcile has been queued
-    Observed Generation:   1
-    Reason:                LastReconcileCycleQueued
-    Status:                True
-    Type:                  ReconcileQueued
-    Last Transition Time:  2025-09-10T21:03:50Z
+    Last Transition Time:  2026-02-16T01:29:40Z
     Message:               reconcile completed successfully
-    Observed Generation:   2
+    Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -366,10 +343,27 @@ Status:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Db State:                   OPEN
-  External Connect String:    Pending
+  External Connect String:    129.146.0.149:30007/soepdb
   Pdb Connect String:         dbmc1-0:1521/ORCLPDB
   Release Update:             19.28.0.0.0
-  Role:                       PRIMARY
+  Resources:
+    Limits:
+      Cpu:     8
+      Memory:  20Gi
+    Requests:
+      Cpu:     8
+      Memory:  20Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  10737418240
+      Name:   kernel.shmall
+      Value:  2621440
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running
@@ -378,12 +372,9 @@ Events:         <none>
 
 
 
-
-[root@dbmc1-0 rac-work-dir]# cd /sys/fs/cgroup/memory
-[root@dbmc1-0 memory]# cat memory.limit_in_bytes
+- from inside the Oracle Restart Pod:
+[root@dbmc1-0 rac-work-dir]# cat /sys/fs/cgroup/memory/memory.limit_in_bytes
 21474836480
-[root@dbmc1-0 memory]#
-[root@dbmc1-0 memory]# cd /sys/fs/cgroup/cpu/
-[root@dbmc1-0 cpu]# cat cpu.cfs_quota_us
-400000
-[root@dbmc1-0 cpu]#
+[root@dbmc1-0 rac-work-dir]#
+[root@dbmc1-0 rac-work-dir]# cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us
+800000

@@ -5,34 +5,30 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"nodePortSvc":[{"name":"dbmc1-service-nod...
+                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"envFile":"dbmc1oraclerestart-sample-cmap...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-08-22T05:09:46Z
+  Creation Timestamp:  2026-02-16T03:29:37Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  226218859
-  UID:               e3378459-8aa7-4c05-98b2-9c03a44b3a57
+  Resource Version:  301957187
+  UID:               e364c9e4-0fa8-480e-acbc-4d84262eba1d
 Spec:
-  Asm Storage Details:
-    Disks By Size:
-      Disk Names:
-        /dev/disk/by-partlabel/asm-disk1
-        /dev/disk/by-partlabel/asm-disk2
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/disk/by-partlabel/asm-disk1
+      /dev/disk/by-partlabel/asm-disk2
+    Name:        DATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Cpu Count:    4
+    Db Base:      /u01/app/oracle
+    Db Char Set:  AL32UTF8
+    Db Home:      /u01/app/oracle/product/19c/dbhome_1
+    Db Name:      PORCLCDB
     Db Response File:
     Db Sw Zip File:  db_home.zip
     Grid Base:       /u01/app/grid
@@ -41,9 +37,9 @@ Spec:
     Grid Sw Zip File:        grid_home.zip
     Host Sw Stage Location:  /scratch/software/stage
     Inventory:               /u01/app/oraInventory
-    Pga Size:                1G
+    Pga Size:                4G
     Processes:               2000
-    Sga Size:                3G
+    Sga Size:                8G
     Sw Mount Location:       /u01
   Db Secret:
     Key File Mount Location:  /mnt/.dbsecrets
@@ -51,38 +47,34 @@ Spec:
     Name:                     db-user-pass-pkutl
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
-  Image Pull Policy:          Always
+  Enable Ons:                 enable
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
+  Image Pull Policy:          IfNotPresent
   Inst Details:
     Host Sw Location:  /scratch/orestart/
     Name:              dbmc1
-    Node Port Svc:
-      Name:      dbmc1-service-nodeport
-      Svc Type:  nodeport
+    Worker Node:
+      10.0.10.58
+  Lb Service:
+  Node Port Svc:
+    Name:  dbmc1-service-nodeport
     Port Mappings:
       Node Port:    30007
       Port:         1521
       Protocol:     TCP
       Target Port:  1521
-    Worker Node:
-      10.0.10.58
+      Node Port:    30200
+      Port:         6200
+      Protocol:     TCP
+      Target Port:  6200
+    Svc Type:       nodeport
   Resources:
     Limits:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
     Requests:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -101,34 +93,28 @@ Status:
         /dev/disk/by-partlabel/asm-disk1
         /dev/disk/by-partlabel/asm-disk2
       State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-      Name:        DATA
-      Redundancy:  EXTERN
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/disk/by-partlabel/asm-disk1
+      Size In Gb:  49
+      Valid:       true
+      Name:        /dev/disk/by-partlabel/asm-disk2
+      Size In Gb:  49
+      Valid:       true
+    Name:          DATA
+    Redundancy:    EXTERN
+    Type:          CRSDG
   Conditions:
-    Last Transition Time:  2025-08-22T05:22:19Z
-    Message:               oracle restart database is in a restricted state: PROVISIONING
+    Last Transition Time:  2026-02-16T03:29:53Z
+    Message:               reconcile has been queued
     Observed Generation:   1
     Reason:                LastReconcileCycleQueued
     Status:                True
     Type:                  ReconcileQueued
-    Last Transition Time:  2025-08-23T13:45:49Z
-    Message:               no reconcile errors
-    Observed Generation:   1
-    Reason:                LastReconcileCycleCompleted
-    Status:                True
-    Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -143,11 +129,26 @@ Status:
     Pwd File Name:            pwdfile.enc
   Db State:                   OPEN
   External Connect String:    129.146.0.149:30007/soepdb
-  Inst Details:
-    Name:
-  Pdb Connect String:  dbmc1-0:1521/ORCLPDB
-  Release Update:      19.28.0.0.0
-  Role:                PRIMARY
+  Pdb Connect String:         dbmc1-0:1521/ORCLPDB
+  Release Update:             19.28.0.0.0
+  Resources:
+    Limits:
+      Cpu:     4
+      Memory:  16Gi
+    Requests:
+      Cpu:     4
+      Memory:  16Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  9663676416
+      Name:   kernel.shmall
+      Value:  2359296
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running
@@ -155,15 +156,17 @@ Status:
 Events:         <none>
 
 
+
+-- From inside the Oracle Restart Pod
 [grid@dbmc1-0 ~]$ export ORACLE_SID=+ASM
 [grid@dbmc1-0 ~]$ asmcmd lsdsk
 Path
 /dev/disk/by-partlabel/asm-disk1
 /dev/disk/by-partlabel/asm-disk2
-
 [grid@dbmc1-0 ~]$ ls -lrt /dev/disk/by-partlabel/asm-disk*
-brw-rw----. 1 grid asmadmin 8, 33 Aug 22 11:17 /dev/disk/by-partlabel/asm-disk2
-brw-rw----. 1 grid asmadmin 8, 49 Aug 22 11:17 /dev/disk/by-partlabel/asm-disk1
+brw-rw----. 1 grid asmadmin 8, 49 Feb 16 04:06 /dev/disk/by-partlabel/asm-disk2
+brw-rw----. 1 grid asmadmin 8, 33 Feb 16 04:06 /dev/disk/by-partlabel/asm-disk1
+
 
 
 ### Apply the file "orestart_prov_asm_disk_deletion.yaml" to delete an exising ASM Disk
@@ -174,194 +177,73 @@ brw-rw----. 1 grid asmadmin 8, 49 Aug 22 11:17 /dev/disk/by-partlabel/asm-disk1
 $ kubectl logs -f pod/oracle-database-operator-controller-manager-bc8dd8f68-pwfdk -n oracle-database-operator-system
 .
 .
-2025-08-23T13:48:51Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:48:51Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:48:51Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:48:51Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:48:51Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:48:54Z	INFO	controllers.OracleRestart	Disk is in use and cannot be removed. Must be manually removed before proceeding	{"disk": "/dev/disk/by-partlabel/asm-disk2", "diskgroup": "DATA"}
-2025-08-23T13:49:05Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:49:05Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:49:24Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "ae8e9e7d-ee7c-4cae-b19a-63c57471a0d7", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA' and must be manually removed before proceeding"}
+2026-02-16T04:07:29Z	INFO	controllers.OracleRestart	Detected removal of ASM disks	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
+2026-02-16T04:07:29Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-5bf2e507-oraclerestart-sample", "dgType": "CRSDG"}
+2026-02-16T04:07:29Z	INFO	controllers.OracleRestart	PVC Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pvc-5bf2e507-oraclerestart-sample", "dgType": "CRSDG"}
+2026-02-16T04:07:29Z	INFO	controllers.OracleRestart	Provided ASM Disks are valid, proceeding further
+2026-02-16T04:07:29Z	INFO	controllers.OracleRestart	ConfigMap env key changed, updating	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample"}
+2026-02-16T04:07:29Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
+2026-02-16T04:07:31Z	ERROR	controllers.OracleRestart	Failed to remove disk in use	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Disk": "/dev/disk/by-partlabel/asm-disk2", "DiskGroup": "DATA"}
+github.com/oracle/oracle-database-operator/controllers/database.(*OracleRestartReconciler).createOrReplaceSfsAsm
+	/workspace/controllers/database/oraclerestart_controller.go:3636
+github.com/oracle/oracle-database-operator/controllers/database.(*OracleRestartReconciler).Reconcile
+	/workspace/controllers/database/oraclerestart_controller.go:675
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Reconcile
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:216
 sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:353
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:461
 sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:300
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func2.1
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:202
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	Reconcile requested
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	Entering reconcile validation
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	Completed reconcile validation
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:49:24Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:49:27Z	INFO	controllers.OracleRestart	Disk is in use and cannot be removed. Must be manually removed before proceeding	{"disk": "/dev/disk/by-partlabel/asm-disk2", "diskgroup": "DATA"}
-2025-08-23T13:49:38Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:49:38Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:49:57Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "e379037b-4a89-415c-b3f5-aad5e72ff818", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA' and must be manually removed before proceeding"}
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:421
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func1.1
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:296
+2026-02-16T04:07:41Z	INFO	controllers.OracleRestart	Reconciling ASM DiskGroup status
+2026-02-16T04:07:41Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
+2026-02-16T04:07:41Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
+2026-02-16T04:07:58Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "6c4447f5-4554-4c62-97e5-e075082eafe2", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA'"}
 sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:353
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:474
 sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:300
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func2.1
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:202
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	Reconcile requested
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	Entering reconcile validation
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	Completed reconcile validation
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:49:57Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:49:59Z	INFO	controllers.OracleRestart	Disk is in use and cannot be removed. Must be manually removed before proceeding	{"disk": "/dev/disk/by-partlabel/asm-disk2", "diskgroup": "DATA"}
-2025-08-23T13:50:11Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:50:11Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:50:36Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "e51d673e-6475-445e-bb4f-21e175057290", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA' and must be manually removed before proceeding"}
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:421
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func1.1
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:296
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Reconcile requested
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Entering reconcile validation
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Reconciling ASM DiskGroup status
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Validating Disk to remove	{"DiskgroupName": "DATA"}
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Completed reconcile validation
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Reconciling ASM DiskGroup status
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Detected removal of ASM disks	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-5bf2e507-oraclerestart-sample", "dgType": "CRSDG"}
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	PVC Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pvc-5bf2e507-oraclerestart-sample", "dgType": "CRSDG"}
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Provided ASM Disks are valid, proceeding further
+2026-02-16T04:07:58Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
+2026-02-16T04:08:00Z	ERROR	controllers.OracleRestart	Failed to remove disk in use	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Disk": "/dev/disk/by-partlabel/asm-disk2", "DiskGroup": "DATA"}
+github.com/oracle/oracle-database-operator/controllers/database.(*OracleRestartReconciler).createOrReplaceSfsAsm
+	/workspace/controllers/database/oraclerestart_controller.go:3636
+github.com/oracle/oracle-database-operator/controllers/database.(*OracleRestartReconciler).Reconcile
+	/workspace/controllers/database/oraclerestart_controller.go:675
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Reconcile
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:216
 sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:353
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:461
 sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:300
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func2.1
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:202
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	Reconcile requested
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	Entering reconcile validation
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	Completed reconcile validation
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:50:36Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:50:43Z	INFO	controllers.OracleRestart	Disk is in use and cannot be removed. Must be manually removed before proceeding	{"disk": "/dev/disk/by-partlabel/asm-disk2", "diskgroup": "DATA"}
-2025-08-23T13:50:54Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:50:54Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:51:14Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "9fd9fffb-ea21-44a6-9fde-7481106503ca", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA' and must be manually removed before proceeding"}
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:353
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:300
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func2.1
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:202
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	Reconcile requested
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	Entering reconcile validation
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	Completed reconcile validation
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:51:14Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:51:18Z	INFO	controllers.OracleRestart	Disk is in use and cannot be removed. Must be manually removed before proceeding	{"disk": "/dev/disk/by-partlabel/asm-disk2", "diskgroup": "DATA"}
-2025-08-23T13:51:30Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:51:30Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:51:51Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "39f5168e-cf8e-4d0d-990e-e291b024cbc8", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA' and must be manually removed before proceeding"}
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:353
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:300
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func2.1
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:202
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	Reconcile requested
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	Entering reconcile validation
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	Completed reconcile validation
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:51:51Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:51:55Z	INFO	controllers.OracleRestart	Disk is in use and cannot be removed. Must be manually removed before proceeding	{"disk": "/dev/disk/by-partlabel/asm-disk2", "diskgroup": "DATA"}
-2025-08-23T13:52:06Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:52:06Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:52:28Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "6120c33d-b761-4661-b2f9-a45042e50790", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA' and must be manually removed before proceeding"}
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:353
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:300
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func2.1
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:202
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	Reconcile requested
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	Entering reconcile validation
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	Completed reconcile validation
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:52:28Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:52:32Z	INFO	controllers.OracleRestart	Disk is in use and cannot be removed. Must be manually removed before proceeding	{"disk": "/dev/disk/by-partlabel/asm-disk2", "diskgroup": "DATA"}
-2025-08-23T13:52:44Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:52:44Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:53:05Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "8cd9f41c-c062-44ab-8436-781b70e41602", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA' and must be manually removed before proceeding"}
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:353
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:300
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func2.1
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:202
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	Reconcile requested
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	Entering reconcile validation
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	Completed reconcile validation
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:53:05Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:53:10Z	INFO	controllers.OracleRestart	Disk is in use and cannot be removed. Must be manually removed before proceeding	{"disk": "/dev/disk/by-partlabel/asm-disk2", "diskgroup": "DATA"}
-2025-08-23T13:53:21Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:53:21Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:53:43Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "f29aaac7-f09b-4036-9adb-3615fb8357d7", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA' and must be manually removed before proceeding"}
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:353
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:300
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func2.1
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:202
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	Reconcile requested
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	Entering reconcile validation
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	Completed reconcile validation
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:53:43Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:53:47Z	INFO	controllers.OracleRestart	Disk is in use and cannot be removed. Must be manually removed before proceeding	{"disk": "/dev/disk/by-partlabel/asm-disk2", "diskgroup": "DATA"}
-2025-08-23T13:53:59Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:53:59Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	Updating Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	Updated Oracle Restart instance status with validateoraclerestartdb	{"Instance": "oraclerestart-sample"}
-2025-08-23T13:54:18Z	ERROR	Reconciler error	{"controller": "oraclerestart", "controllerGroup": "database.oracle.com", "controllerKind": "OracleRestart", "OracleRestart": {"name":"oraclerestart-sample","namespace":"orestart"}, "namespace": "orestart", "name": "oraclerestart-sample", "reconcileID": "c656d21f-6cb5-4006-9cfa-9d3800fbdda3", "error": "disk '/dev/disk/by-partlabel/asm-disk2' is part of diskgroup 'DATA' and must be manually removed before proceeding"}
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:353
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:300
-sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func2.1
-	/gomod-cache/sigs.k8s.io/controller-runtime@v0.21.0/pkg/internal/controller/controller.go:202
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	Reconcile requested
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	Entering reconcile validation
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	Completed reconcile validation
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:421
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func1.1
+	/workspace/vendor/sigs.k8s.io/controller-runtime/pkg/internal/controller/controller.go:296
+2026-02-16T04:08:10Z	INFO	controllers.OracleRestart	Reconciling ASM DiskGroup status
+2026-02-16T04:08:10Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
+2026-02-16T04:08:10Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
 
 
 
 ### Now, in the meanwhile, when the Operator is waiting, if the disk is dropped at the ASM Level using "ALTER DISKGROUP DROP DISK" command as below, it will be detected by the Operator:
 
+[grid@dbmc1-0 ~]$ export ORACLE_SID=+ASM
 [grid@dbmc1-0 ~]$ sqlplus "/ as sysasm"
 
-SQL*Plus: Release 19.0.0.0.0 - Production on Sat Aug 23 13:49:55 2025
+SQL*Plus: Release 19.0.0.0.0 - Production on Mon Feb 16 04:09:16 2026
 Version 19.28.0.0.0
 
 Copyright (c) 1982, 2025, Oracle.  All rights reserved.
@@ -377,8 +259,8 @@ SQL> select group_number, disk_number, name, total_mb, free_mb, path from v$asm_
 
 GROUP_NUMBER DISK_NUMBER NAME				  TOTAL_MB    FREE_MB PATH
 ------------ ----------- ------------------------------ ---------- ---------- --------------------------------------------------
-	   1	       1 DATA_0001			     51196	46452 /dev/disk/by-partlabel/asm-disk2
-	   1	       0 DATA_0000			     51196	46464 /dev/disk/by-partlabel/asm-disk1
+	   1	       1 DATA_0001			     51196	46592 /dev/disk/by-partlabel/asm-disk2
+	   1	       0 DATA_0000			     51196	46572 /dev/disk/by-partlabel/asm-disk1
 
 SQL> ALTER DISKGROUP DATA DROP DISK 'DATA_0001' REBALANCE POWER 10;
 
@@ -389,7 +271,7 @@ SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
 EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
 ----------- ---------- ---------- ----------
 	  0	     0	       10	   0
-	  0	  1183	       10	 122
+	  0	  1148	       10	  10
 	  0	     0	       10	   0
 
 SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
@@ -397,7 +279,29 @@ SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
 EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
 ----------- ---------- ---------- ----------
 	  0	     0	       10	   0
-	  0	  1183	       10	 723
+	  1	  1148	       10	 154
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  1	  1148	       10	 154
+	  0	     0	       10	   0
+
+SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  1	  1148	       10	 374
+	  0	     0	       10	   0
+
+EST_MINUTES   EST_WORK	   ACTUAL      SOFAR
+----------- ---------- ---------- ----------
+	  0	     0	       10	   0
+	  0	  1148	       10	1003
 	  0	     0	       10	   0
 
 SQL> select EST_MINUTES,EST_WORK,ACTUAL,SOFAR from v$asm_operation;
@@ -409,7 +313,9 @@ SQL> select group_number, disk_number, name, total_mb, free_mb, path from v$asm_
 GROUP_NUMBER DISK_NUMBER NAME				  TOTAL_MB    FREE_MB PATH
 ------------ ----------- ------------------------------ ---------- ---------- --------------------------------------------------
 	   0	       0					 0	    0 /dev/disk/by-partlabel/asm-disk2
-	   1	       0 DATA_0000			     51196	41732 /dev/disk/by-partlabel/asm-disk1
+	   1	       0 DATA_0000			     51196	41980 /dev/disk/by-partlabel/asm-disk1
+
+SQL>
 
 
 
@@ -419,30 +325,27 @@ GROUP_NUMBER DISK_NUMBER NAME				  TOTAL_MB    FREE_MB PATH
 $ kubectl logs -f pod/oracle-database-operator-controller-manager-bc8dd8f68-pwfdk -n oracle-database-operator-system
 .
 .
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	Detected Removal of ASM Disks:	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	Initialized autoUpdate as true (default)
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-disk-0-oraclerestart-sample"}
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	Updating existing configmap
-2025-08-23T13:54:18Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
-2025-08-23T13:54:20Z	INFO	controllers.OracleRestart	Change State to UPDATING
-2025-08-23T13:54:20Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:54:20Z	INFO	controllers.OracleRestart	StatefulSet spec differs for volume devices, updating StatefulSet (pods may be recreated)	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
-2025-08-23T13:54:20Z	INFO	controllers.OracleRestart	StatefulSet update applied, waiting for pod recreation	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
-2025-08-23T13:54:20Z	INFO	controllers.OracleRestart	Waiting for StatefulSet update to be applied	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
-2025-08-23T13:54:25Z	INFO	controllers.OracleRestart	StatefulSet update is applied successfully	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
-2025-08-23T13:55:25Z	INFO	controllers.OracleRestart	All Pods are running	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
-2025-08-23T13:55:40Z	INFO	controllers.OracleRestart	Pod is not ready yet	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
-2025-08-23T13:56:10Z	INFO	controllers.OracleRestart	Pod is not ready yet	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
-2025-08-23T13:56:40Z	INFO	controllers.OracleRestart	Pod is not ready yet	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
-2025-08-23T13:57:10Z	INFO	controllers.OracleRestart	Pod is not ready yet	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
-2025-08-23T13:57:40Z	INFO	controllers.OracleRestart	Pod is ready	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "Pod.Name": "dbmc1-0"}
-2025-08-23T13:57:40Z	INFO	controllers.OracleRestart	Successfully deleted PVC	{"PVC.Name": "asm-pvc-disk-1-oraclerestart-sample"}
-2025-08-23T13:57:40Z	INFO	controllers.OracleRestart	Successfully deleted PV	{"PV.Name": "asm-pv-disk-1-oraclerestart-sample"}
-2025-08-23T13:57:40Z	INFO	controllers.OracleRestart	Oracle Restart Object annotations updated with current spec annotation
-2025-08-23T13:57:40Z	INFO	controllers.OracleRestart	Reconcile completed. Requeuing....
-2025-08-23T13:57:52Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
-2025-08-23T13:57:52Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
-
+2026-02-16T04:13:07Z	INFO	controllers.OracleRestart	Detected removal of ASM disks	{"removedAsmDisks": ["/dev/disk/by-partlabel/asm-disk2"]}
+2026-02-16T04:13:07Z	INFO	controllers.OracleRestart	PV Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pv-5bf2e507-oraclerestart-sample", "dgType": "CRSDG"}
+2026-02-16T04:13:07Z	INFO	controllers.OracleRestart	PVC Found	{"Instance.Namespace": "orestart", "Instance.Name": "oraclerestart-sample", "dep.Name": "asm-pvc-5bf2e507-oraclerestart-sample", "dgType": "CRSDG"}
+2026-02-16T04:13:07Z	INFO	controllers.OracleRestart	Provided ASM Disks are valid, proceeding further
+2026-02-16T04:13:07Z	INFO	controllers.OracleRestart	Config Map updated successfully with new asm details
+2026-02-16T04:13:09Z	INFO	controllers.OracleRestart	Change State to UPDATING
+2026-02-16T04:13:09Z	INFO	controllers.OracleRestart	Reconciling ASM DiskGroup status
+2026-02-16T04:13:09Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
+2026-02-16T04:13:09Z	INFO	controllers.OracleRestart	StatefulSet spec differs for volume devices, updating StatefulSet (pods may be recreated)	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
+2026-02-16T04:13:09Z	INFO	controllers.OracleRestart	StatefulSet update applied, waiting for pod recreation	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
+2026-02-16T04:13:09Z	INFO	controllers.OracleRestart	Waiting for StatefulSet update to be applied	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
+2026-02-16T04:13:14Z	INFO	controllers.OracleRestart	StatefulSet update is applied successfully	{"oracleRestart.Namespace": "orestart", "oracleRestart.Name": "oraclerestart-sample", "StatefulSet.Namespace": "orestart", "StatefulSet.Name": "dbmc1"}
+2026-02-16T04:16:15Z	INFO	OracleRestart-resource	validate update	{"name": "oraclerestart-sample"}
+2026-02-16T04:16:15Z	INFO	OracleRestart-resource	validate create	{"name": "oraclerestart-sample"}
+2026-02-16T04:16:15Z	INFO	controllers.OracleRestart	Oracle Restart Object annotations updated with current spec annotation
+2026-02-16T04:16:15Z	INFO	controllers.OracleRestart	ONS Running successfully	{"podName": "dbmc1-0"}
+2026-02-16T04:16:15Z	INFO	controllers.OracleRestart
+2026-02-16T04:16:15Z	INFO	controllers.OracleRestart	Reconcile completed. Requeuing....
+2026-02-16T04:16:25Z	INFO	controllers.OracleRestart	Reconciling ASM DiskGroup status
+2026-02-16T04:16:25Z	INFO	controllers.OracleRestart	Oracle Restart Object updated with updateOracleRestartInstStatus
+2026-02-16T04:16:25Z	INFO	controllers.OracleRestart	Completed Update of Oracle Restart instance status
 
 
 
@@ -459,34 +362,29 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"nodePortSvc":[{"name":"dbmc1-service-nod...
+                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"envFile":"dbmc1oraclerestart-sample-cmap...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-08-22T05:09:46Z
+  Creation Timestamp:  2026-02-16T03:29:37Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        2
-  Resource Version:  226226031
-  UID:               e3378459-8aa7-4c05-98b2-9c03a44b3a57
+  Resource Version:  301960613
+  UID:               e364c9e4-0fa8-480e-acbc-4d84262eba1d
 Spec:
-  Asm Storage Details:
-    Auto Update:  true
-    Disks By Size:
-      Disk Names:
-        /dev/disk/by-partlabel/asm-disk1
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/disk/by-partlabel/asm-disk1
+    Name:        DATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Cpu Count:    4
+    Db Base:      /u01/app/oracle
+    Db Char Set:  AL32UTF8
+    Db Home:      /u01/app/oracle/product/19c/dbhome_1
+    Db Name:      PORCLCDB
     Db Response File:
     Db Sw Zip File:  db_home.zip
     Grid Base:       /u01/app/grid
@@ -495,9 +393,9 @@ Spec:
     Grid Sw Zip File:        grid_home.zip
     Host Sw Stage Location:  /scratch/software/stage
     Inventory:               /u01/app/oraInventory
-    Pga Size:                1G
+    Pga Size:                4G
     Processes:               2000
-    Sga Size:                3G
+    Sga Size:                8G
     Sw Mount Location:       /u01
   Db Secret:
     Key File Mount Location:  /mnt/.dbsecrets
@@ -505,38 +403,34 @@ Spec:
     Name:                     db-user-pass-pkutl
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
-  Image Pull Policy:          Always
+  Enable Ons:                 enable
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
+  Image Pull Policy:          IfNotPresent
   Inst Details:
     Host Sw Location:  /scratch/orestart/
     Name:              dbmc1
-    Node Port Svc:
-      Name:      dbmc1-service-nodeport
-      Svc Type:  nodeport
+    Worker Node:
+      10.0.10.58
+  Lb Service:
+  Node Port Svc:
+    Name:  dbmc1-service-nodeport
     Port Mappings:
       Node Port:    30007
       Port:         1521
       Protocol:     TCP
       Target Port:  1521
-    Worker Node:
-      10.0.10.58
+      Node Port:    30200
+      Port:         6200
+      Protocol:     TCP
+      Target Port:  6200
+    Svc Type:       nodeport
   Resources:
     Limits:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
     Requests:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -554,34 +448,25 @@ Status:
       Mounted Devices:
         /dev/disk/by-partlabel/asm-disk1
       State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/disk/by-partlabel/asm-disk1
-      Name:        DATA
-      Redundancy:  EXTERN
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/disk/by-partlabel/asm-disk1
+      Size In Gb:  49
+      Valid:       true
+    Name:          DATA
+    Redundancy:    EXTERN
+    Type:          CRSDG
   Conditions:
-    Last Transition Time:  2025-08-22T05:22:19Z
-    Message:               oracle restart database is in a restricted state: PROVISIONING
+    Last Transition Time:  2026-02-16T03:29:53Z
+    Message:               reconcile has been queued
     Observed Generation:   1
     Reason:                LastReconcileCycleQueued
     Status:                True
     Type:                  ReconcileQueued
-    Last Transition Time:  2025-08-23T14:06:52Z
-    Message:               no reconcile errors
-    Observed Generation:   2
-    Reason:                LastReconcileCycleCompleted
-    Status:                True
-    Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -596,11 +481,26 @@ Status:
     Pwd File Name:            pwdfile.enc
   Db State:                   OPEN
   External Connect String:    129.146.0.149:30007/soepdb
-  Inst Details:
-    Name:
-  Pdb Connect String:  dbmc1-0:1521/ORCLPDB
-  Release Update:      19.28.0.0.0
-  Role:                PRIMARY
+  Pdb Connect String:         dbmc1-0:1521/ORCLPDB
+  Release Update:             19.28.0.0.0
+  Resources:
+    Limits:
+      Cpu:     4
+      Memory:  16Gi
+    Requests:
+      Cpu:     4
+      Memory:  16Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  9663676416
+      Name:   kernel.shmall
+      Value:  2359296
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running
@@ -614,6 +514,5 @@ Events:         <none>
 Path
 /dev/disk/by-partlabel/asm-disk1
 
-
 [grid@dbmc1-0 ~]$ ls -lrt /dev/disk/by-partlabel/asm-disk*
-brw-rw----. 1 grid asmadmin 8, 49 Aug 23 14:10 /dev/disk/by-partlabel/asm-disk1
+brw-rw----. 1 grid asmadmin 8, 33 Feb 16 04:17 /dev/disk/by-partlabel/asm-disk1

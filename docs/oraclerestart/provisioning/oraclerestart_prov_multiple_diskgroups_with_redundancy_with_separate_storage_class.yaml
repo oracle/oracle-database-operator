@@ -22,11 +22,11 @@ spec:
     swLocStorageSizeInGb: 300
 
     # Environment variables in case you want to want to ignore prerequisite checks during the GI/RDBSMS Install
-    envVars:
-      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
-        value: "true"
-      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
-        value: "true"
+#    envVars:
+#      - name: IGNORE_CRS_PREREQS     # If set to true, it will use flags -ignorePreReq and -ignorePrereqFailure during the CRS Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the CRS Installation.
+#        value: "true"
+#      - name: IGNORE_DB_PREREQS      # If set to true, it will use flags -ignorePrereq and -ignorePrereqFailure during the DB Software Installation. Do not set this parameter in the .yaml file if you do not want to use the parameters -ignorePreReq and -ignorePrereqFailure during the DB Software Installation.
+#        value: "true"
 
   # NodePort service configuration for exposing DB port externally
   nodePortSvc:
@@ -54,38 +54,41 @@ spec:
   redoDgStorageClass: "oci-bv"        # Specify storage class for the REDO Diskgroup, Currently using "oci-bv" but you can specify another available storage class as well
   swDgStorageClass: "oci-bv"          # Specify storage class for the storage location for software, Currently using "oci-bv" but you can specify another available storage class as well
 
+  # Size of the Persistent Volumes created using custom storage class for ASM Storage
+  asmStorageSizeInGb: 50
+
+  # ASM (Automatic Storage Management) storage configuration  
   asmDiskGroupDetails:
-    - name: CRSDATA
-      redundancy: NORMAL       # Recommended: ASM-provided two-way mirroring for OCR/voting files
-      type: CRSDG
-      disks:
-        - /dev/disk/by-partlabel/asm-disk1
-        - /dev/disk/by-partlabel/asm-disk2
-
-    - name: DBDATA
-      redundancy: HIGH         # ASM three-way mirroring for critical DB data (optional, use NORMAL for balance)
-      type: DBDATAFILESDG
-      disks:
-        - /dev/disk/by-partlabel/asm-disk3
-        - /dev/disk/by-partlabel/asm-disk4
-
-    - name: RECO
-      redundancy: EXTERNAL    # Depend on storage-level RAID; change to NORMAL/EXTERNAL per risk/compliance needs
-      type: DBRECOVERY
-      disks:
-        - /dev/disk/by-partlabel/asm-disk5
-        - /dev/disk/by-partlabel/asm-disk6
-
-    - name: REDO
-      redundancy: HIGH         # Maximum protection for redo logs; use NORMAL if storage already provides redundancy
-      type: DBREDO
-      disks:
-        - /dev/disk/by-partlabel/asm-disk7
-        - /dev/disk/by-partlabel/asm-disk8
+    - name: CRSDATA                                                                # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level for CRSDATA Diskgroup
+      type: CRSDG                                                                  # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk1
+        - /dev/asm-disk2
+    - name: DATA                                                                   # Name of the ASM Disk Group
+      redundancy: NORMAL                                                           # ASM Diskgroup Redundancy Level for DATA Diskgroup
+      type: DBDATAFILESDG                                                          # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk3
+        - /dev/asm-disk4
+        - /dev/asm-disk5
+        - /dev/asm-disk6        
+    - name: RECO                                                                   # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level for RECO Diskgroup
+      type: DBRECOVERY                                                             # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk7
+        - /dev/asm-disk8
+    - name: REDO                                                                   # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level for REDO Diskgroup
+      type: DBREDO                                                                 # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk9
+        - /dev/asm-disk10
 
   # SSH key secret used for remote access and automation
   sshKeySecret:
-    name: ssh-key-secret          # Kubernetes secret name
+    name: ssh-key-secret            # Kubernetes secret name
     privKeySecretName: ssh-privkey  # Private key inside secret
     pubKeySecretName: ssh-pubkey    # Public key inside secret
 
@@ -114,10 +117,10 @@ spec:
   resources:
     requests:
       memory: "16Gi"                 # Minimum memory required
-      cpu: "2"                       # Minimum CPU required
+      cpu: "4"                       # Minimum CPU required
     limits:
       memory: "16Gi"                 # Max memory allowed
-      cpu: "2"                       # Max CPU allowed
+      cpu: "4"                       # Max CPU allowed
 
   # Configuration parameters for Oracle Grid and Database homes
   configParams:
@@ -125,25 +128,13 @@ spec:
     gridBase: "/u01/app/grid"                                 # Grid base directory
     dbHome: "/u01/app/oracle/product/19c/dbhome_1"            # Oracle DB home path
     dbBase: "/u01/app/oracle"                                 # Oracle base directory
-    crsAsmDiskDg: "+CRSDATA"                                  # Name of the Diskgroup for Voting Disks
-    dbDataFileDestDg: "+DBDATA"                               # Name of the Diskgroup for Database Files
-    dbRecoveryFileDest: "+RECO"                               # Name of the Diskgroup for Recovery Files
-    redoAsmDiskDg: "+REDO"                                    # Name of the Diskgroup for Redo Files    
-    crsAsmDeviceList: /dev/asm-disk1,/dev/asm-disk2           # Comma-separated list of ASM device files for CRS Diskgroup CRSDATA
-    dbAsmDeviceList: /dev/asm-disk3,/dev/asm-disk4,/dev/asm-disk5,/dev/asm-disk6          # Comma-separated list of ASM device files for DBDATA Diskgroup for database files
-    recoAsmDeviceList: /dev/asm-disk7,/dev/asm-disk8          # Comma-separated list of ASM device files for RECO Diskgroup for Recovery Area files
-    redoAsmDeviceList: /dev/asm-disk9,/dev/asm-disk10         # Comma-separated list of ASM device files for REDO Diskgroup for Redo files
-    crsAsmDiskDgRedundancy: "EXTERNAL"                        # Specify the Redudancy for the diskgroup with CRS Files
-    dbAsmDiskDgRedundancy: "NORMAL"                           # Specify the Redudancy for the diskgroup with Database Files
-    recoAsmDiskDgRedundancy: "EXTERNAL"                       # Specify the Redudancy for the diskgroup with Recovery Files
-    redoAsmDiskDgRedundancy: "EXTERNAL"                       # Specify the Redudancy for the diskgroup with Redo Files
     inventory: "/u01/app/oraInventory"                        # Inventory location
     gridSwZipFile: "grid_home.zip"                            # Grid infrastructure software ZIP
     dbSwZipFile: "db_home.zip"                                # Database software ZIP
-    sgaSize: "3G"                                             # Size of the System Global Area
-    pgaSize: "1G"                                             # Size of the Program Global Area
+    sgaSize: "8G"                                             # Size of the System Global Area
+    pgaSize: "4G"                                             # Size of the Program Global Area
     processes: 2000                                           # Oracle process limit
     cpuCount: 4                                               # Number of CPUs to allocate
     dbName: "PORCLCDB"                                        # Oracle database name
-    pdbName: "TESTPDB"                                        # PDB name, in case you want to explicitly specify the PDB Name    
-    hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged, same location will be mounted inside the Oracle Restart Pod
+    pdbName: "TESTPDB"                                        # PDB name, in case you want to explicitly specify the PDB Name
+    hostSwStageLocation: /scratch/software/stage              # Host location where Oracle software ZIPs are staged

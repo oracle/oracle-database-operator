@@ -16,19 +16,41 @@ This example uses `oraclerestart_prov_multiple_diskgroups_with_redundancy_with_s
   * Name of Custom Storage Class for Diskgroup having Database files is specified by `dataDgStorageClass`.  
   * Name of Custom Storage Class for Diskgroup having Recovery Area files is specified by `recoDgStorageClass`.  
   * Name of Custom Storage Class for Diskgroup having Redo Log files is specified by `redoDgStorageClass`.  
+  * Name of Custom Storage Class for the storage location for software is specified by `swDgStorageClass`.    
 
 ### In this example, 
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name `localhost/oracle/database-orestart:19.3.0-slim`. 
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name you want. You can also push the image to your container repository.  
   * When you are building the image yourself, update the image value in the `oraclerestart_prov_multiple_diskgroups_with_redundancy_with_separate_storage_class.yaml` file to point to the container image you have built. 
 The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
 ```text
 For example:
-  - name: DATA
-    redundancy: EXTERNAL
-    type: CRSDG
-    disks:
-      - /dev/oracleoci/oraclevdd
-      - /dev/oracleoci/oraclevde
+  asmDiskGroupDetails:
+    - name: CRSDATA                                                                # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level for CRSDATA Diskgroup
+      type: CRSDG                                                                  # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk1
+        - /dev/asm-disk2
+    - name: DATA                                                                   # Name of the ASM Disk Group
+      redundancy: NORMAL                                                           # ASM Diskgroup Redundancy Level for DATA Diskgroup
+      type: DBDATAFILESDG                                                          # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk3
+        - /dev/asm-disk4
+        - /dev/asm-disk5
+        - /dev/asm-disk6        
+    - name: RECO                                                                   # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level for RECO Diskgroup
+      type: DBRECOVERY                                                             # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk7
+        - /dev/asm-disk8
+    - name: REDO                                                                   # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level for REDO Diskgroup
+      type: DBREDO                                                                 # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk9
+        - /dev/asm-disk10
 ```
 
 ### Steps: Deploy Oracle Restart Database

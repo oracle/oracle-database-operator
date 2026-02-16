@@ -82,6 +82,8 @@ spec:
                       type: object
                     type: array
                 type: object
+              asmStorageSizeInGb:
+                type: integer
               configParams:
                 properties:
                   cpuCount:

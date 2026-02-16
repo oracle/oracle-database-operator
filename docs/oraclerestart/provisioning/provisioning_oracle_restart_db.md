@@ -2,27 +2,28 @@
 ### In this Usecase:
 * In this use case, the Oracle Grid Infrastructure and Oracle Restart Database are deployed automatically using Oracle Restart Controller.
 * This example uses `oraclerestart_prov.yaml` to provision an Oracle Database configured with Oracle Restart using Oracle Restart Controller. The provisioning includes:
-  * Oracle Restart Pod
-  * Headless services for Oracle Restart.
-    * Oracle Database Node hostname.
-  * Persistent volumes created automatically based on specified disks for Oracle ASM Storage.
-  * Software Persistent Volume and Staged Software Persistent Volume using the specified location on the corresponding worker node.
-  * Namespace: `orestart`
-  * Staged Software location on the worker nodes is specified by `hostSwStageLocation`. The Grid Infrastructure and RDBMS Binaries are copied to this location on the worker node.
-  * Software location on the worker nodes is specified by `hostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using this location on the worker node.
+  * Oracle Restart Pod 
+  * Headless services for Oracle Restart 
+    * Oracle Database Node hostname 
+  * Persistent volumes created automatically based on specified disks for Oracle ASM Storage 
+  * Software Persistent Volume and Staged Software Persistent Volume using the specified location on the corresponding worker node 
+  * Namespace: `orestart` 
+  * Staged Software location on the worker nodes is specified by `hostSwStageLocation`. The Grid Infrastructure and RDBMS Binaries are copied to this location on the worker node 
+  * Software location on the worker nodes is specified by `hostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using this location on the worker node 
 
 ### In this Example:
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from thsi [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). The default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You must tag it with the name `dbocir/oracle/database-orestart:19.3.0-slim`.
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name you want. You can also push the image to your container repository. 
   * When you are building the image yourself, update the image value in the `oraclerestart_prov.yaml` file to point to the container image that you have built. 
 The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
 ```text
 For example:
-  - name: DATA
-    redundancy: EXTERNAL
-    type: CRSDG
-    disks:
-      - /dev/oracleoci/oraclevdd
-      - /dev/oracleoci/oraclevde
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
+        - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
 ```
 
 ### Steps: Deploy Oracle Restart Database
