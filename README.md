@@ -63,9 +63,9 @@ In this v2.1 production release, `OraOperator` supports the following database c
 * **Oracle Data Guard**
 * **Oracle Database Observability**
 * **Oracle Database Rest Service (ORDS) instances**
-* **Oracle Restart**
+* **Oracle Restart Database**
 * **Oracle Real Application Cluster Database**
-* **Oracle Private Controller**
+* **Oracle Private AI Services Container**
 
 ---
 
@@ -90,7 +90,7 @@ In this v2.1 production release, `OraOperator` supports the following database c
   - New LRES-based Controller (ARM & AM)
     - PDBs settings with init parameters config map
     - Assertive deletion policy
-* **Database Observability **
+* **Database Observability**
   - Support for Database Logs and Metrics
   - Support for the latest Exporter container images
 * **Oracle Base Database Service**
@@ -99,12 +99,12 @@ In this v2.1 production release, `OraOperator` supports the following database c
   - Clone, Backup, Restore
   - Data Guard Setup
   - Patching and Upgrade
-* **Oracle Restart**
+* **Oracle Restart Database**
   - Support for Oracle Database 26ai
 * **Oracle Real Application Cluster Database**
   - Support for Oracle Database 19c Support
-* **Oracle Private AI controller**
-  - Support for Oracle Private AI Service Container for 26ai Databases
+* **Oracle Private AI Services Container**
+  - Support for Oracle Private AI Services Container for 26ai Databases
 
 ---
 
@@ -119,17 +119,18 @@ In this v2.1 production release, `OraOperator` supports the following database c
 ## Overall Features Summary
 As of v2.1.0, the Oracle Database Operator for Kubernetes (`OraOperator`) supports the following lifecycle operations:
 
-* **ADB-S/ADB-D**: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning, manual failover, switchover
-* **ACD**: Provision, bind, restart, terminate (soft/hard)
-* **SIDB**: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS), PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), Snapshot Standby (Data Guard)
-* **ORDS Services**: Provision and delete ORDS instances
-* **Globally Distributed (Sharded)**: Provision/deploy sharded databases and topology, add/delete shards, Raft replication
-* **Oracle Multitenant Database**: Bind to a CDB, create/plug/unplug/delete/clone/open/close PDBs, assertive deletion policy
-* **Oracle Base Database Service (OBDS)**: Provision, scale shape/storage, terminate/update license, cloning, PDB creation, using KMS Vaults, backup/restore, Data Guard setup, patching/upgrade
-* **Oracle Data Guard**: Provision standby for SIDB, create Data Guard configuration, perform switchover, patch primary/standby
-* **Oracle Database Observability**: Create, patch, delete `databaseObserver` (logs and metrics)
-* **Oracle Restart**: Provision, add & delete asm disks, enable ons ports, custom storage class support, existing pvc support, load balancer  support
-* **Oracle Private Controller**: Provision, scale up or down, manage resource, load balancer service support
+* **ADB-S/ADB-D**: Provision, bind, start, stop, terminate (soft/hard), scale (up/down), long-term backup, manual restore, cloning, manual failover, switchover 
+* **ACD**: Provision, bind, restart, terminate (soft/hard) 
+* **SIDB**: Provision, clone, patch (in-place/out-of-place), update database initialization parameters, update database configuration (Flashback, archiving), Oracle Enterprise Manager (EM) Express (basic console), Oracle REST Data Service (ORDS), PDB management, SQL Developer Web, Application Express (Apex), Resource management, True Cache, Observer for FastStartFailover (Data Guard), Snapshot Standby (Data Guard) 
+* **ORDS Services**: Provision and delete ORDS instances 
+* **Globally Distributed (Sharded)**: Provision/deploy sharded databases and topology, add/delete shards, Raft replication 
+* **Oracle Multitenant Database**: Bind to a CDB, create/plug/unplug/delete/clone/open/close PDBs, assertive deletion policy 
+* **Oracle Base Database Service (OBDS)**: Provision, scale shape/storage, terminate/update license, cloning, PDB creation, using KMS Vaults, backup/restore, Data Guard setup, patching/upgrade 
+* **Oracle Data Guard**: Provision standby for SIDB, create Data Guard configuration, perform switchover, patch primary/standby 
+* **Oracle Database Observability**: Create, patch, delete `databaseObserver` (logs and metrics) 
+* **Oracle Real Application Cluster Database**: Supports provisioning, scaling up and down, adding and deleting ASM disks, existing PVC integration, and NodePort access 
+* **Oracle Restart Database**: Provision, add & delete asm disks, enable ons ports, custom storage class support, existing pvc support, load balancer  support 
+* **Oracle Private AI Services Container**: Provision, scale up or down, manage resource, load balancer service support 
 * Watch namespaces using the `WATCH_NAMESPACE` environment variable
 
 
@@ -262,10 +263,9 @@ The following quickstarts are designed for specific database configurations:
 * [Oracle Multitenant Database](./docs/multitenant/README.md)
 * [Oracle Base Database Service (OBDS)](./docs/dbcs/README.md)
 * [ORDS Services (ORDSSRVS)](./docs/ordsservices/README.md)
-* [Oracle Real Application Cluster](./docs/rac/README.md)
-* [Oracle Restart](./docs/oraclerestart/README.md)
-* [Oracle Real Application Controller](./docs/rac/README.md)
-* [Oracle Private AI Controller](./docs/privateai/README.md)
+* [Oracle Real Application Cluster Database](./docs/rac/README.md)
+* [Oracle Restart Database](./docs/oraclerestart/README.md)
+* [Oracle Private AI Services Container](./docs/privateai/README.md)
 
 
 The following quickstart is designed for non-database configurations:
