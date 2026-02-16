@@ -7,27 +7,29 @@
   * Oracle Restart Pod
   * Headless services for Oracle Restart
     * Oracle Restart Node hostname
-  * Node Port 30007 mapped to port 1521 for Database Listener. If you are using Load Balancer,  then you will see the LB service. 
+  * Node Port 30007 mapped to port 1521 for Database Listener. If you are using Load Balancer,  then you will see the LB service 
   * Persistent volumes created automatically based on specified disks for Oracle ASM storage
-  * Software Persistent Volume and Staged Software Persistent Volume using the specified location on the corresponding worker node.
+  * Software Persistent Volume and Staged Software Persistent Volume using the specified location on the corresponding worker node 
   * Namespace: `orestart`
-  * Staged Software location on the worker nodes is specified by `hostSwStageLocation`. The Grid Infrastructure and RDBMS Binaries are copied to this location on the worker node.
-  * Software location on the worker nodes is specified by `hostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using this location on the worker node.
+  * Staged Software location on the worker nodes is specified by `hostSwStageLocation`. The Grid Infrastructure and RDBMS Binaries are copied to this location on the worker node 
+  * Software location on the worker nodes is specified by `hostSwLocation`. The GI HOME and the RDBMS HOME in the Oracle Restart Pod will be mounted using this location on the worker node 
 
 ### In this exapmple:
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used. It is built using files from this [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image).
-The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name you want. You can also push the image to your container repository. 
+ The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
 ```text
 For example:
-  - name: DATA
-    redundancy: EXTERNAL
-    type: CRSDG
-    disks:
-      - /dev/oracleoci/oraclevdd
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
+        - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
 ```
   * Before deleting the disk, **you will need to remove the disk at the ASM Level** using `ALTER DISKGROUP DROP DISK` command. 
   * If you delete the disk’s YAML file before first removing the disk at the ASM level, thne the Operator will not delete the disk from the StatefulSet, and the Oracle Restart Database Pod will not be recreated. Instead, to prevent data loss, the operator will wait until you remove the disk at the ASM level before proceeding.
-  * In this example, out of the two disks mentioned above, the disk `/dev/oracleoci/oraclevde` will be deleted from the existing Oracle Restart Database Deployment. 
+  * In this example, out of the two disks mentioned above, the disk `/dev/disk/by-partlabel/asm-disk2` will be deleted from the existing Oracle Restart Database Deployment. 
 
 ### Steps: Delete the ASM Disk
 Use the file: [orestart_prov_asm_disk_deletion.yaml](./orestart_prov_asm_disk_deletion.yaml) for this procedure:

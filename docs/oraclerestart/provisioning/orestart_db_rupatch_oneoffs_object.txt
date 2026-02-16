@@ -3,35 +3,32 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","value":"tru...
+                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"]},"configParams":{"cpuCount":4,"sgaSize":"8G","pgaSiz...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-10-09T05:53:39Z
+  Creation Timestamp:  2026-02-13T14:25:48Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  246360830
-  UID:               d37b51c4-58ae-42d9-bec4-983ce94ee540
+  Resource Version:  300907158
+  UID:               57d36cb9-d3cf-4c2f-920d-3e536d64aa57
 Spec:
-  Asm Storage Details:
-    Disks By Size:
-      Disk Names:
-        /dev/asm-disk1
-        /dev/asm-disk2
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/asm-disk1
+      /dev/asm-disk2
+    Name:                  DATA
+    Redundancy:            EXTERNAL
+    Type:                  CRSDG
+  Asm Storage Size In Gb:  50
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db One Off Ids:              38336965,34436514
-    Db Recovery File Dest:       DATA
+    Cpu Count:       4
+    Db Base:         /u01/app/oracle
+    Db Char Set:     AL32UTF8
+    Db Home:         /u01/app/oracle/product/19c/dbhome_1
+    Db Name:         PORCLCDB
+    Db One Off Ids:  38336965,34436514
     Db Response File:
     Db Sw Zip File:    db_home.zip
     Grid Base:         /u01/app/grid
@@ -45,10 +42,10 @@ Spec:
     O Patch Sw Zip File:          p6880880_190000_Linux-x86-64.zip
     One Off Location:             /stage/software/19c/oneoff
     Pdb Name:                     TESTPDB
-    Pga Size:                     1G
+    Pga Size:                     4G
     Processes:                    2000
     Ru Patch Location:            /stage/software/19c/19.28/37957391
-    Sga Size:                     3G
+    Sga Size:                     8G
     Sw Mount Location:            /u01
     Sw Stage Pvc:                 pv-stage-vol-claim
     Sw Stage Pvc Mount Location:  /stage
@@ -60,14 +57,9 @@ Spec:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Enable Ons:                 enable
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
   Image Pull Policy:          IfNotPresent
   Inst Details:
-    Env Vars:
-      Name:                     IGNORE_CRS_PREREQS
-      Value:                    true
-      Name:                     IGNORE_DB_PREREQS
-      Value:                    true
     Name:                       dbmc1
     Sw Loc Storage Size In Gb:  300
     Worker Node:
@@ -87,21 +79,11 @@ Spec:
     Svc Type:       nodeport
   Resources:
     Limits:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
     Requests:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -118,38 +100,26 @@ Status:
       Pod State:       AVAILABLE
       Cluster State:   HEALTHY
       Mounted Devices:
-
         /dev/asm-disk1
         /dev/asm-disk2
       State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/asm-disk1,/dev/asm-disk2
-      Name:        DATA
-      Redundancy:  EXTERN
   Conditions:
-    Last Transition Time:  2025-10-09T08:04:31Z
+    Last Transition Time:  2026-02-13T16:48:13Z
     Message:               reconcile has been queued
     Observed Generation:   1
     Reason:                LastReconcileCycleQueued
     Status:                True
     Type:                  ReconcileQueued
-    Last Transition Time:  2025-10-09T13:21:11Z
+    Last Transition Time:  2026-02-13T17:46:45Z
     Message:               reconcile completed successfully
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       DATA
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -166,7 +136,24 @@ Status:
   External Connect String:    129.146.0.149:30007/soepdb
   Pdb Connect String:         dbmc1-0:1521/ORCLPDB
   Release Update:             19.28.0.0.0
-  Role:                       PRIMARY
+  Resources:
+    Limits:
+      Cpu:     4
+      Memory:  16Gi
+    Requests:
+      Cpu:     4
+      Memory:  16Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  9663676416
+      Name:   kernel.shmall
+      Value:  2359296
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running

@@ -55,7 +55,7 @@ Deploy Oracle Restart Database YAML files using Kubernetes Cluster on your Oracl
 [13. Provisioning an Oracle Restart Database with multiple diskgroups with different redundancy and option to specify separate storage class](./provisioning/oraclerestart_prov_multiple_diskgroups_with_redundancy_with_separate_storage_class.md)  
 [14. Adding ASM Disks - Add ASM Disks to an existing Oracle Restart Database](./provisioning/add_asm_disk_to_an_existing_restart_database.md)  
 [15. Deleting ASM Disks - Delete ASM Disks from an existing Oracle Restart Database](./provisioning/delete_asm_disks_from_an_existing_restart_database.md)  
-[16. Provisioning an Oracle Restart Database with Huge Page allocation ](./provisioning/provisioning_oracle_restart_hugepages.md)
+[16. Provisioning an Oracle Restart Database with Huge Page allocation ](./provisioning/provisioning_oracle_restart_hugepages.md) 
 
 
 **NOTE:** Resizing of the `ASM Disks` is _not_ allowed. You can add new ASM Disks to an exising Oracle Restart Database.  

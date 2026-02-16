@@ -866,6 +866,10 @@ func buildVolumeMountSpecForOracleRestart(instance *oraclerestartdb.OracleRestar
 	}
 	if len(OracleRestartSpex.HostSwLocation) != 0 {
 		result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-oradata-sw-vol", MountPath: instance.Spec.ConfigParams.SwMountLocation})
+	} else if len(instance.Spec.SwStorageClass) != 0 {
+		result = append(result, corev1.VolumeMount{Name: OracleRestartSpex.Name + "-oradata-sw-vol", MountPath: instance.Spec.ConfigParams.SwMountLocation})
+	} else {
+		fmt.Println("No Location is passed for the software storage in" + OracleRestartSpex.Name)
 	}
 
 	//var mountLoc string

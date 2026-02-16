@@ -22,12 +22,13 @@
 The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
 ```text
 For example:
-  - name: DATA
-    redundancy: EXTERNAL
-    type: CRSDG
-    disks:
-      - /dev/oracleoci/oraclevdd
-      - /dev/oracleoci/oraclevde
+  asmDiskGroupDetails:
+    - name: DATA
+      redundancy: EXTERNAL
+      type: CRSDG
+      disks:
+        - /dev/disk/by-partlabel/asm-disk1  # ASM disk device path 1
+        - /dev/disk/by-partlabel/asm-disk2  # ASM disk device path 2
 ```
 
 ### Steps - Deploy initial Oracle Restart Database 
