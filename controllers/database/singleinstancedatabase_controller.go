@@ -1097,7 +1097,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						}
 					}
 
-					return []corev1.EnvVar{
+					env := []corev1.EnvVar{
 						{
 							Name:  "SVC_HOST",
 							Value: m.Name,
@@ -1123,7 +1123,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name: "WALLET_DIR",
 							Value: func() string {
 								if m.Spec.Image.PrebuiltDB {
-									return "" // No wallets for prebuilt DB
+									return ""
 								}
 								return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
 							}(),
@@ -1163,6 +1163,15 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Value: "true",
 						},
 					}
+
+					dbType := strings.ToUpper(strings.TrimSpace(m.Spec.DbType))
+					if dbType == "NON_CDB" {
+						env = append(env, corev1.EnvVar{Name: "CONTAINER_DATABASE", Value: "false"})
+					} else {
+						env = append(env, corev1.EnvVar{Name: "CONTAINER_DATABASE", Value: "true"})
+					}
+
+					return env
 
 				}(),
 
