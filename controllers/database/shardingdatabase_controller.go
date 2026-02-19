@@ -66,6 +66,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	shardingv1 "github.com/oracle/oracle-database-operator/commons/sharding"
 )
 
@@ -1633,9 +1634,9 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 	gsmPod := &corev1.Pod{}
 
 	var sparams1 string
-	var deployFlag = true
-	var errStr = false
-	var setLifeCycleFlag = false
+	deployFlag := true
+	errStr := false
+	setLifeCycleFlag := false
 
 	shardingv1.LogMessages("DEBUG", "Starting standby shard adding operation.", nil, instance, r.Log)
 
@@ -1646,22 +1647,25 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 	for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
 		OraShardSpex := instance.Spec.Shard[i]
 
+		// skip delete shards
 		if shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
 			continue
 		}
 
+		// only standby/active_standby here
 		deployAs := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
 		if deployAs != "STANDBY" && deployAs != "ACTIVE_STANDBY" {
 			continue
 		}
 
+		// set reconcile waiting once
 		if !setLifeCycleFlag {
 			setLifeCycleFlag = true
 			stateType := string(databasev4.CrdReconcileWaitingState)
 			r.setCrdLifeCycleState(instance, &result, &err, &stateType)
 		}
 
-		// Validate shard pod is ready
+		// 1) validate standby shard pod is ready
 		shardSfSet, _, err = r.validateShard(instance, OraShardSpex, int(i))
 		if err != nil {
 			errStr = true
@@ -1669,25 +1673,24 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			continue
 		}
 
-		// Validate GSM is ready
+		// 2) validate gsm is ready
 		_, gsmPod, err = r.validateGsm(instance)
 		if err != nil {
 			deployFlag = false
 			return err
 		}
 
-		// Check if shard already exists in GSM
+		// 3) check if shard is already in GSM
 		sparamsCheck := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
 		sparams1 = sparamsCheck
 
 		inGsmErr := shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeClient, r.kubeConfig, r.Log)
 		if inGsmErr != nil {
-			// Not in GSM -> add it
+			// not in gsm -> add shard
 			sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, OraShardSpex)
 
 			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardState))
 			err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeClient, r.kubeConfig, r.Log)
-
 			if err != nil {
 				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
 				deployFlag = false
@@ -1695,11 +1698,9 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			}
 		}
 
-		// ---------------- DG Broker Setup (only for standby shards, when IsDataGuard=true) ----------------
-		// This does NOT change YAML flow; it enables/configures broker after standby shard is ready/added.
+		// 4) DG broker setup (only if user enabled isDataGuard)
 		if instance.Spec.IsDataGuard && !r.dgBrokerDone(instance, OraShardSpex.Name) {
 
-			// init status maps once
 			if instance.Status.Dg.Broker == nil {
 				instance.Status.Dg.Broker = map[string]string{}
 			}
@@ -1716,48 +1717,96 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			primaryPod := primary.Name + "-0"
 			standbyPod := OraShardSpex.Name + "-0"
 
-			primaryDbUnique := strings.ToUpper(primary.Name)
-			standbyDbUnique := strings.ToUpper(OraShardSpex.Name)
+			primaryDbUnique := strings.ToUpper(strings.TrimSpace(primary.Name))
+			standbyDbUnique := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name))
 
 			primaryConnect := shardingv1.BuildDgmgrlConnectIdentifier(instance, primary.Name, primaryDbUnique)
 			standbyConnect := shardingv1.BuildDgmgrlConnectIdentifier(instance, OraShardSpex.Name, standbyDbUnique)
 
-			cfgName := strings.ToUpper(instance.Name) + "_DGCFG"
+			cfgName := strings.ToUpper(strings.TrimSpace(instance.Name)) + "_DGCFG"
 
+			// -------------------- PRIMARY prereqs --------------------
+			// (same idea as SIDB flow; keep this on PRIMARY only)
+			if e := shardingv1.RunStandbyDatabasePrerequisitesSQL(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:prereqs-primary:"+e.Error())
+				return e
+			}
+
+			// Ensure ARCHIVELOG (PRIMARY)
+			if e := shardingv1.EnableArchiveLogInPod(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:archivelog-primary:"+e.Error())
+				return e
+			}
+
+			// FORCE LOGGING (PRIMARY)
+			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.ForceLoggingTrueSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:forcelogging:"+e.Error())
+				return e
+			}
+
+			// FLASHBACK (PRIMARY)
+			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.FlashBackTrueSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:flashback:"+e.Error())
+				return e
+			}
+
+			// -------------------- FIX: LOG_ARCHIVE_CONFIG (PRIMARY + STANDBY) --------------------
+			logArchiveConfigSQL := fmt.Sprintf(
+				"alter system set log_archive_config='dg_config=(%s,%s)' scope=both sid='*';",
+				primaryDbUnique, standbyDbUnique,
+			)
+
+			if e := shardingv1.RunSQLPlusInPod(primaryPod, logArchiveConfigSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:log_archive_config-primary:"+e.Error())
+				return e
+			}
+			if e := shardingv1.RunSQLPlusInPod(standbyPod, logArchiveConfigSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:log_archive_config-standby:"+e.Error())
+				return e
+			}
+
+			// -------------------- Broker start on both --------------------
 			if e := shardingv1.EnableDgBrokerStart(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:dg_broker_start-primary:"+e.Error())
 				return e
 			}
 			if e := shardingv1.EnableDgBrokerStart(standbyPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:dg_broker_start-standby:"+e.Error())
 				return e
 			}
 
+			// -------------------- Broker config on PRIMARY --------------------
 			if e := shardingv1.CreateDgBrokerConfig(primaryPod, cfgName, primaryDbUnique, primaryConnect, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:create-config:"+e.Error())
 				return e
 			}
 
 			if e := shardingv1.AddStandbyToDgBrokerConfig(primaryPod, standbyDbUnique, standbyConnect, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:add-standby:"+e.Error())
 				return e
 			}
 
 			if e := shardingv1.EnableAndValidateDgBroker(primaryPod, cfgName, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:enable-validate:"+e.Error())
 				return e
 			}
 
+			// mark done
 			r.setDgBrokerStatus(instance, OraShardSpex.Name, "true")
 			instance.Status.Dg.State = "ENABLED"
 			_ = r.Status().Update(context.Background(), instance)
 		}
-		// -----------------------------------------------------------------------------------------------
 	}
 
 	if errStr {

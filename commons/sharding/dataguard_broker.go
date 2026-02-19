@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
+	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-
-	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 )
 
 // BuildDgmgrlConnectIdentifier matches your observed style:
@@ -149,4 +149,90 @@ func looksLikeAlreadyExists(stdout, stderr string) bool {
 		strings.Contains(x, "exists") ||
 		strings.Contains(x, "ora-165") ||
 		strings.Contains(x, "ora-166")
+}
+
+// RunStandbyDatabasePrerequisitesSQL runs the same prereq SQL used by SIDB flow
+// (dbcommons.StandbyDatabasePrerequisitesSQL) inside the given pod.
+func RunStandbyDatabasePrerequisitesSQL(
+	podName string,
+	instance *databasev4.ShardingDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	log logr.Logger,
+) error {
+
+	sql := strings.TrimSpace(dbcommons.StandbyDatabasePrerequisitesSQL)
+	if sql == "" {
+		return fmt.Errorf("StandbyDatabasePrerequisitesSQL is empty")
+	}
+
+	cmd := []string{"bash", "-lc", fmt.Sprintf(`
+%s -s / as sysdba <<'EOF'
+whenever sqlerror exit 1
+%s
+exit
+EOF
+`, dbcommons.SQLPlusCLI, sql)}
+
+	stdout, stderr, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, log)
+	if err != nil {
+		LogMessages("ERROR", "RunStandbyDatabasePrerequisitesSQL failed on "+podName+
+			" stdout="+stdout+" stderr="+stderr, err, instance, log)
+		return err
+	}
+
+	LogMessages("INFO", "RunStandbyDatabasePrerequisitesSQL succeeded on "+podName, nil, instance, log)
+	return nil
+}
+
+func RunSQLPlusInPod(
+	podName string,
+	sql string,
+	instance *databasev4.ShardingDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	log logr.Logger,
+) error {
+	sql = strings.TrimSpace(sql)
+	if sql == "" {
+		return fmt.Errorf("sql is empty")
+	}
+
+	cmd := []string{"bash", "-lc", fmt.Sprintf(`
+%s -s / as sysdba <<'EOF'
+whenever sqlerror exit 1
+%s
+exit
+EOF
+`, dbcommons.SQLPlusCLI, sql)}
+
+	stdout, stderr, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, log)
+	if err != nil {
+		LogMessages("ERROR", "RunSQLPlusInPod failed on "+podName+
+			" stdout="+stdout+" stderr="+stderr, err, instance, log)
+		return err
+	}
+	LogMessages("INFO", "RunSQLPlusInPod succeeded on "+podName, nil, instance, log)
+	return nil
+}
+func EnableArchiveLogInPod(
+	podName string,
+	instance *databasev4.ShardingDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	log logr.Logger,
+) error {
+
+	// ArchiveLogTrueCMD expects SQLPlusCLI inserted using %s
+	cmdStr := fmt.Sprintf(dbcommons.ArchiveLogTrueCMD, dbcommons.SQLPlusCLI)
+
+	cmd := []string{"bash", "-lc", cmdStr}
+	stdout, stderr, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, log)
+	if err != nil {
+		LogMessages("ERROR", "EnableArchiveLogInPod failed on "+podName+
+			" stdout="+stdout+" stderr="+stderr, err, instance, log)
+		return err
+	}
+	LogMessages("INFO", "EnableArchiveLogInPod succeeded on "+podName, nil, instance, log)
+	return nil
 }
