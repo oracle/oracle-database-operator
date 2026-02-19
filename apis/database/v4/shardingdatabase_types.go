@@ -114,12 +114,25 @@ type ShardingDatabaseStatus struct {
 	Catalog map[string]string `json:"catalogs,omitempty"`
 
 	Gsm GsmStatus `json:"gsm,omitempty"`
+	Dg  DgStatus  `json:"dg,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
 	CrdStatus []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// DG status for sharding (tracks broker enable/config per standby shard)
+type DgStatus struct {
+	// Overall DG state for the topology: PENDING / ENABLED / ERROR
+	State string `json:"state,omitempty"`
+
+	// Per-standby shard broker status: shardName -> "true" / "pending" / "error:<msg>"
+	Broker map[string]string `json:"broker,omitempty"`
+
+	// Optional extra details
+	Details map[string]string `json:"details,omitempty"`
 }
 
 type GsmStatus struct {

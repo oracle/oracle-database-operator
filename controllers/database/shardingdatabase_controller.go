@@ -1680,21 +1680,84 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 		sparamsCheck := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
 		sparams1 = sparamsCheck
 
-		err = shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeClient, r.kubeConfig, r.Log)
-		if err == nil {
-			continue
+		inGsmErr := shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeClient, r.kubeConfig, r.Log)
+		if inGsmErr != nil {
+			// Not in GSM -> add it
+			sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, OraShardSpex)
+
+			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardState))
+			err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeClient, r.kubeConfig, r.Log)
+
+			if err != nil {
+				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
+				deployFlag = false
+				continue
+			}
 		}
 
-		sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, OraShardSpex)
+		// ---------------- DG Broker Setup (only for standby shards, when IsDataGuard=true) ----------------
+		// This does NOT change YAML flow; it enables/configures broker after standby shard is ready/added.
+		if instance.Spec.IsDataGuard && !r.dgBrokerDone(instance, OraShardSpex.Name) {
 
-		r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardState))
-		err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeClient, r.kubeConfig, r.Log)
+			// init status maps once
+			if instance.Status.Dg.Broker == nil {
+				instance.Status.Dg.Broker = map[string]string{}
+			}
+			instance.Status.Dg.State = "PENDING"
+			r.setDgBrokerStatus(instance, OraShardSpex.Name, "pending")
 
-		if err != nil {
-			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
-			deployFlag = false
-			continue
+			primary, perr := r.findPrimaryForStandby(instance, OraShardSpex)
+			if perr != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+perr.Error())
+				return perr
+			}
+
+			primaryPod := primary.Name + "-0"
+			standbyPod := OraShardSpex.Name + "-0"
+
+			primaryDbUnique := strings.ToUpper(primary.Name)
+			standbyDbUnique := strings.ToUpper(OraShardSpex.Name)
+
+			primaryConnect := shardingv1.BuildDgmgrlConnectIdentifier(instance, primary.Name, primaryDbUnique)
+			standbyConnect := shardingv1.BuildDgmgrlConnectIdentifier(instance, OraShardSpex.Name, standbyDbUnique)
+
+			cfgName := strings.ToUpper(instance.Name) + "_DGCFG"
+
+			if e := shardingv1.EnableDgBrokerStart(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				return e
+			}
+			if e := shardingv1.EnableDgBrokerStart(standbyPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				return e
+			}
+
+			if e := shardingv1.CreateDgBrokerConfig(primaryPod, cfgName, primaryDbUnique, primaryConnect, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				return e
+			}
+
+			if e := shardingv1.AddStandbyToDgBrokerConfig(primaryPod, standbyDbUnique, standbyConnect, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				return e
+			}
+
+			if e := shardingv1.EnableAndValidateDgBroker(primaryPod, cfgName, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+e.Error())
+				return e
+			}
+
+			r.setDgBrokerStatus(instance, OraShardSpex.Name, "true")
+			instance.Status.Dg.State = "ENABLED"
+			_ = r.Status().Update(context.Background(), instance)
 		}
+		// -----------------------------------------------------------------------------------------------
 	}
 
 	if errStr {
@@ -1710,7 +1773,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 		return fmt.Errorf("standby shard addition pending")
 	}
 
-	shardingv1.LogMessages("INFO", "Completed standby shard addition operation.", nil, instance, r.Log)
+	shardingv1.LogMessages("INFO", "Completed standby shard adding operation.", nil, instance, r.Log)
 	return nil
 }
 
@@ -2099,4 +2162,44 @@ func (r *ShardingDatabaseReconciler) checkShardState(instance *databasev4.Shardi
 		}
 	}
 	return err
+}
+
+func (r *ShardingDatabaseReconciler) dgBrokerDone(instance *databasev4.ShardingDatabase, shardName string) bool {
+	if instance.Status.Dg.Broker == nil {
+		return false
+	}
+	v := strings.ToLower(strings.TrimSpace(instance.Status.Dg.Broker[shardName]))
+	return v == "true" || v == "enabled" || v == "configured"
+}
+
+func (r *ShardingDatabaseReconciler) setDgBrokerStatus(instance *databasev4.ShardingDatabase, shardName string, val string) {
+	if instance.Status.Dg.Broker == nil {
+		instance.Status.Dg.Broker = map[string]string{}
+	}
+	instance.Status.Dg.Broker[shardName] = val
+	_ = r.Status().Update(context.Background(), instance)
+}
+
+func (r *ShardingDatabaseReconciler) findPrimaryForStandby(instance *databasev4.ShardingDatabase, standby databasev4.ShardSpec) (*databasev4.ShardSpec, error) {
+	sg := strings.TrimSpace(standby.ShardGroup)
+
+	// prefer same shardGroup primary
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
+		if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
+			if sg != "" && strings.EqualFold(strings.TrimSpace(s.ShardGroup), sg) {
+				return s, nil
+			}
+		}
+	}
+
+	// fallback: first primary
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
+		if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
+			return s, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no PRIMARY shard found for standby %s", standby.Name)
 }
