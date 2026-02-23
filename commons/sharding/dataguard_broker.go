@@ -31,7 +31,13 @@ func EnableDgBrokerStart(
 
 	cmd := []string{"bash", "-lc", `
 sqlplus -s / as sysdba <<'EOF'
+set echo on
 whenever sqlerror exit 1
+
+-- basic readiness check (fail fast if DB not up)
+select database_role, open_mode from v$database;
+
+-- try best option first
 alter system set dg_broker_start=true scope=both sid='*';
 exit
 EOF
@@ -234,5 +240,23 @@ func EnableArchiveLogInPod(
 		return err
 	}
 	LogMessages("INFO", "EnableArchiveLogInPod succeeded on "+podName, nil, instance, log)
+	return nil
+}
+
+// ExecShellInPod runs a shell command in the given pod and returns error on failure.
+func ExecShellInPod(
+	podName string,
+	shellCmd string,
+	instance *databasev4.ShardingDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	log logr.Logger,
+) error {
+	cmd := []string{"bash", "-lc", shellCmd}
+	stdout, stderr, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, log)
+	if err != nil {
+		LogMessages("ERROR", "ExecShellInPod failed on "+podName+" stdout="+stdout+" stderr="+stderr, err, instance, log)
+		return err
+	}
 	return nil
 }
