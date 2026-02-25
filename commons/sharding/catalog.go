@@ -316,7 +316,7 @@ func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, Ora
 		Name:  OraCatalogSpex.Name + "-init1",
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             BoolPointer(true),
+			RunAsNonRoot:             BoolPointer(false),
 			AllowPrivilegeEscalation: BoolPointer(false),
 			Privileged:               &privFlag,
 			RunAsUser:                &uid,

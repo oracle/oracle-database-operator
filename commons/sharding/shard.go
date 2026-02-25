@@ -482,7 +482,7 @@ func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraSh
 		Name:  OraShardSpex.Name + "-init1",
 		Image: instance.Spec.DbImage,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             BoolPointer(true),
+			RunAsNonRoot:             BoolPointer(false),
 			AllowPrivilegeEscalation: BoolPointer(false),
 			Privileged:               &privFlag,
 			RunAsUser:                &uid,

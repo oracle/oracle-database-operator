@@ -303,7 +303,7 @@ func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmS
 		Name:  OraGsmSpex.Name + "-init1",
 		Image: instance.Spec.GsmImage,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             BoolPointer(true),
+			RunAsNonRoot:             BoolPointer(false),
 			AllowPrivilegeEscalation: BoolPointer(false),
 			Privileged:               &privFlag,
 			RunAsUser:                &uid,
