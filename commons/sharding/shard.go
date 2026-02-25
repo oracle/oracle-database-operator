@@ -466,7 +466,7 @@ exec /opt/oracle/runOracle.sh`,
 // Function to build the init Container Spec
 func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Container {
 	var result []corev1.Container
-	privFlag := false
+	privFlag := true
 	// var uid int64 = 0
 	uid := oraRunAsUser
 
