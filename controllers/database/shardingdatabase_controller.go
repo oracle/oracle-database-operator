@@ -1716,6 +1716,23 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 
 			primaryPod := primary.Name + "-0"
 			standbyPod := OraShardSpex.Name + "-0"
+			// -------------------- PRIMARY: PRE_STANDBY_SETUP (DG broker prereq) --------------------
+			if instance.Spec.IsDataGuard {
+				// This runs your python path: --prestandbysetup=...
+				_, _, e := shardingv1.ExecCommand(
+					primaryPod,
+					shardingv1.GetPreStandbySetupCmd(primaryPod),
+					r.kubeClient,
+					r.kubeConfig,
+					instance,
+					r.Log,
+				)
+				if e != nil {
+					instance.Status.Dg.State = "ERROR"
+					r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:pre-standby-setup:"+e.Error())
+					return e
+				}
+			}
 
 			primaryDbUnique := strings.ToUpper(strings.TrimSpace(primary.Name))
 			standbyDbUnique := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name))

@@ -1190,6 +1190,18 @@ func GetShardInviteNodeCmd(shardName string) []string {
 	return oraShardInviteCmd
 }
 
+func GetPreStandbySetupCmd(primaryPodName string) []string {
+	shard_host := primaryPodName + "." + strings.Split(primaryPodName, "-0")[0]
+	var preStandbyCmd = []string{
+		oraDbScriptMount + "/cmdExec",
+		"/bin/python",
+		oraDbScriptMount + "/main.py ",
+		"--prestandbysetup=" + strconv.Quote(shard_host),
+		"--optype=primaryshard",
+	}
+	return preStandbyCmd
+}
+
 func getCancelChunksCmd(sparamStr string) []string {
 	var cancelChunkCmd []string = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", "--cancelchunks=" + strconv.Quote(sparamStr), "--optype=gsm"}
 	return cancelChunkCmd
