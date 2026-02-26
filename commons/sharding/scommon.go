@@ -1082,11 +1082,10 @@ func BuildShardParamsForAdd(
 	sfSet *appsv1.StatefulSet,
 	OraShardSpex databasev4.ShardSpec,
 ) string {
-
 	// start with existing params (NO deploy_as)
 	p := BuildShardParams(instance, sfSet, OraShardSpex)
 
-	// decide deploy_as
+	// append deploy_as only for addshard command
 	deployAs := strings.ToLower(strings.TrimSpace(OraShardSpex.DeployAs))
 	switch deployAs {
 	case "standby", "active_standby":
@@ -1097,47 +1096,10 @@ func BuildShardParamsForAdd(
 		deployAs = "primary"
 	}
 
-	// -------------------- FIX: DG standby shard_pdb must be primary PDB --------------------
-	// In DG, standby shard's PDB name remains same as primary (e.g., PSHARD1PDB).
-	// Do NOT patch pod env. Only override the shard_pdb parameter passed to GSM add shard.
-	if instance.Spec.IsDataGuard && (deployAs == "standby" || deployAs == "active_standby") {
-		primaryPdb := ""
-
-		// Prefer primaryDatabaseRef.cdbName if present (your YAML has cdbName: PSHARD1)
-		if OraShardSpex.PrimaryDatabaseRef != nil && strings.TrimSpace(OraShardSpex.PrimaryDatabaseRef.CdbName) != "" {
-			primaryPdb = strings.ToUpper(strings.TrimSpace(OraShardSpex.PrimaryDatabaseRef.CdbName)) + "PDB"
-		}
-
-		// Fallback: use spec shard primary name if needed (rare). If you want this fallback,
-		// pass it in from controller; BuildShardParamsForAdd currently doesn't know primary shard spec.
-		// If primaryPdb is still empty, we leave p unchanged.
-
-		if primaryPdb != "" {
-			// replace existing shard_pdb=... if present, else append it
-			if strings.Contains(p, "shard_pdb=") {
-				parts := strings.Split(p, ";")
-				for i := range parts {
-					if strings.HasPrefix(parts[i], "shard_pdb=") {
-						parts[i] = "shard_pdb=" + primaryPdb
-					}
-				}
-				p = strings.Join(parts, ";")
-			} else {
-				if p != "" {
-					p += ";"
-				}
-				p += "shard_pdb=" + primaryPdb
-			}
-		}
-	}
-	// ---------------------------------------------------------------------
-
-	// append deploy_as only for addshard command
 	if p != "" {
 		p += ";"
 	}
 	p += "deploy_as=" + deployAs
-
 	return p
 }
 
