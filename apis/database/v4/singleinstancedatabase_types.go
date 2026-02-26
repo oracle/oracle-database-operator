@@ -89,8 +89,6 @@ type SingleInstanceDatabaseSpec struct {
 	Resources     SingleInstanceDatabaseResources     `json:"resources,omitempty"`
 
 	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
-	// +kubebuilder:validation:Enum=CDB;NON_CDB
-	DbType string `json:"dbType,omitempty"`
 }
 
 type SingleInstanceDatabaseResource struct {
