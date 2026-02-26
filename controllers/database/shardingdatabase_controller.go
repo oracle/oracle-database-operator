@@ -1665,7 +1665,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			r.setCrdLifeCycleState(instance, &result, &err, &stateType)
 		}
 
-		// 1) validate standby shard pod is ready
+		// 1) validate standby shard pod is ready (pod exists + DB scripts are reachable)
 		shardSfSet, _, err = r.validateShard(instance, OraShardSpex, int(i))
 		if err != nil {
 			errStr = true
@@ -1673,15 +1673,19 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			continue
 		}
 
-		// 2) validate gsm is ready
+		// 2) validate GSM is ready (needed for non-DG flow; harmless for DG too)
 		_, gsmPod, err = r.validateGsm(instance)
 		if err != nil {
 			deployFlag = false
 			return err
 		}
 
-		// 3) check if shard is already in GSM
+		// --------------------------------------------------------------------------------
+		// 3) GSM add/deploy for standby shard (ONLY when IsDataGuard == false)
+		// --------------------------------------------------------------------------------
 		if !instance.Spec.IsDataGuard {
+
+			// check if shard is already in GSM
 			sparamsCheck := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
 			sparams1 = sparamsCheck
 
@@ -1699,11 +1703,21 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				}
 			}
 		} else {
-			// optional status marker for visibility
-			r.updateGsmShardStatus(instance, OraShardSpex.Name, "SKIPPED_DG_STANDBY")
+			// DG flow: manager asked to SKIP adding standby shard into GSM for now.
+			// Do NOT write fake values into GSM shard status; keep GSM status for real GSM states only.
+			if instance.Status.Dg.Broker == nil {
+				instance.Status.Dg.Broker = map[string]string{}
+			}
+			// Marker just for visibility in DG status map
+			if strings.TrimSpace(instance.Status.Dg.Broker[OraShardSpex.Name]) == "" {
+				instance.Status.Dg.Broker[OraShardSpex.Name] = "SKIPPED_GSM"
+				_ = r.Status().Update(context.Background(), instance)
+			}
 		}
 
-		// 4) DG broker setup (only if user enabled isDataGuard)
+		// --------------------------------------------------------------------------------
+		// 4) DG broker setup (ONLY if IsDataGuard == true) - independent of GSM add
+		// --------------------------------------------------------------------------------
 		if instance.Spec.IsDataGuard && !r.dgBrokerDone(instance, OraShardSpex.Name) {
 
 			if instance.Status.Dg.Broker == nil {
@@ -1721,23 +1735,19 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 
 			primaryPod := primary.Name + "-0"
 			standbyPod := OraShardSpex.Name + "-0"
-			// -------------------- PRIMARY: PRE_STANDBY_SETUP (DG broker prereq) --------------------
-			// if instance.Spec.IsDataGuard {
-			// 	// This runs your python path: --prestandbysetup=...
-			// 	_, _, e := shardingv1.ExecCommand(
-			// 		primaryPod,
-			// 		shardingv1.GetPreStandbySetupCmd(primaryPod),
-			// 		r.kubeClient,
-			// 		r.kubeConfig,
-			// 		instance,
-			// 		r.Log,
-			// 	)
-			// 	if e != nil {
-			// 		instance.Status.Dg.State = "ERROR"
-			// 		r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:pre-standby-setup:"+e.Error())
-			// 		return e
-			// 	}
-			// }
+
+			// Gate: if standby DBCA/RMAN duplicate is still running or DB not ready, do NOT proceed.
+			// This avoids flapping and avoids pushing broker steps too early.
+			// validateShard() proves pod exists; now confirm DB responds to SYSDBA.
+			readySQL := "select database_role, open_mode from v$database;"
+			if e := shardingv1.RunSQLPlusInPod(primaryPod, readySQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				shardingv1.LogMessages("INFO", "Primary DB not ready for DG broker yet: "+e.Error(), nil, instance, r.Log)
+				return fmt.Errorf("primary db not ready yet for dg broker")
+			}
+			if e := shardingv1.RunSQLPlusInPod(standbyPod, readySQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+				shardingv1.LogMessages("INFO", "Standby DB not ready for DG broker yet: "+e.Error(), nil, instance, r.Log)
+				return fmt.Errorf("standby db not ready yet for dg broker")
+			}
 
 			primaryDbUnique := strings.ToUpper(strings.TrimSpace(primary.Name))
 			standbyDbUnique := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name))
@@ -1748,7 +1758,6 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			cfgName := strings.ToUpper(strings.TrimSpace(instance.Name)) + "_DGCFG"
 
 			// -------------------- PRIMARY prereqs --------------------
-			// (same idea as SIDB flow; keep this on PRIMARY only)
 			if e := shardingv1.RunStandbyDatabasePrerequisitesSQL(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:prereqs-primary:"+e.Error())
@@ -1776,12 +1785,11 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				return e
 			}
 
-			// -------------------- FIX: LOG_ARCHIVE_CONFIG (PRIMARY + STANDBY) --------------------
+			// LOG_ARCHIVE_CONFIG (PRIMARY + STANDBY)
 			logArchiveConfigSQL := fmt.Sprintf(
 				"alter system set log_archive_config='dg_config=(%s,%s)' scope=both sid='*';",
 				primaryDbUnique, standbyDbUnique,
 			)
-
 			if e := shardingv1.RunSQLPlusInPod(primaryPod, logArchiveConfigSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:log_archive_config-primary:"+e.Error())
@@ -1793,10 +1801,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				return e
 			}
 
-			// -------------------- FIX: DG BROKER CONFIG FILES (PRIMARY + STANDBY) --------------------
-			// Standby currently points dg_broker_config_file* to PSHARD1 -> ORA-16604.
-			// Ensure each DB has its own broker config files under dbconfig/<DB_UNIQUE_NAME>.
-			// Requires shardingv1.ExecShellInPod helper (mkdir -p).
+			// DG broker config files must be per-DB (fixes ORA-16604 "config file inaccessible")
 			if e := shardingv1.ExecShellInPod(
 				primaryPod,
 				fmt.Sprintf("mkdir -p /opt/oracle/oradata/dbconfig/%s", primaryDbUnique),
@@ -1840,7 +1845,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				return e
 			}
 
-			// -------------------- Broker start on both --------------------
+			// dg_broker_start=true (PRIMARY + STANDBY)
 			if e := shardingv1.EnableDgBrokerStart(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:dg_broker_start-primary:"+e.Error())
@@ -1852,19 +1857,17 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				return e
 			}
 
-			// -------------------- Broker config on PRIMARY --------------------
+			// Broker config on PRIMARY
 			if e := shardingv1.CreateDgBrokerConfig(primaryPod, cfgName, primaryDbUnique, primaryConnect, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:create-config:"+e.Error())
 				return e
 			}
-
 			if e := shardingv1.AddStandbyToDgBrokerConfig(primaryPod, standbyDbUnique, standbyConnect, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:add-standby:"+e.Error())
 				return e
 			}
-
 			if e := shardingv1.EnableAndValidateDgBroker(primaryPod, cfgName, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:enable-validate:"+e.Error())
@@ -1879,23 +1882,26 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 	}
 
 	if errStr {
-		shardingv1.LogMessages("INFO", "Some standby shards are still pending for addition. Requeue reconcile loop.", nil, instance, r.Log)
-		return fmt.Errorf("standby shards are not ready for addition")
+		shardingv1.LogMessages("INFO", "Some standby shards are still pending for readiness. Requeue reconcile loop.", nil, instance, r.Log)
+		return fmt.Errorf("standby shards are not ready for operation")
 	}
 
+	// --------------------------------------------------------------------------------
+	// 5) Deploy shard in GSM only when NOT DataGuard (DG flow skips GSM deploy for standby)
+	// --------------------------------------------------------------------------------
 	if deployFlag {
 		if !instance.Spec.IsDataGuard {
 			_ = shardingv1.DeployShardInGsm(gsmPod.Name, sparams1, instance, r.kubeClient, r.kubeConfig, r.Log)
 			r.updateShardTopologyShardsInGsm(instance, gsmPod)
 		} else {
-			shardingv1.LogMessages("INFO", "DG standby shard flow: skipping DeployShardInGsm()", nil, instance, r.Log)
+			shardingv1.LogMessages("INFO", "DG standby shard flow: skipping DeployShardInGsm() for standby shard", nil, instance, r.Log)
 		}
 	} else {
-		shardingv1.LogMessages("INFO", "Standby shards are not added in GSM yet. Deploy will happen after addition. Requeue.", nil, instance, r.Log)
-		return fmt.Errorf("standby shard addition pending")
+		shardingv1.LogMessages("INFO", "Standby shard flow not complete yet; requeue.", nil, instance, r.Log)
+		return fmt.Errorf("standby shard flow pending")
 	}
 
-	shardingv1.LogMessages("INFO", "Completed standby shard adding operation.", nil, instance, r.Log)
+	shardingv1.LogMessages("INFO", "Completed standby shard operation.", nil, instance, r.Log)
 	return nil
 }
 
