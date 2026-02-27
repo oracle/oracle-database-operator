@@ -34,10 +34,9 @@ sqlplus -s / as sysdba <<'EOF'
 set echo on
 whenever sqlerror exit 1
 
--- basic readiness check (fail fast if DB not up)
-select database_role, open_mode from v$database;
+-- NOMOUNT-safe readiness check 
+select status from v$instance;
 
--- try best option first
 alter system set dg_broker_start=true scope=both sid='*';
 exit
 EOF

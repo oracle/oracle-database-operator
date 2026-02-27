@@ -418,6 +418,15 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 			"-lc",
 			`set -euo pipefail
 
+# ------------------------------------------------------------------------------------
+# FIX: DBCA/RMAN expects ORACLE_HOME/dbs to exist (spfile/orapw symlinks).
+# In our standby container the path /opt/oracle/dbs may not exist -> DBCA post step fails.
+# Make it idempotent and writable for oracle user.
+# ------------------------------------------------------------------------------------
+mkdir -p /opt/oracle/dbs
+chown oracle:oinstall /opt/oracle/dbs || true
+chmod 775 /opt/oracle/dbs || true
+
 # If ORACLE_PWD is not already set, seed it like SIDB does + support our secret formats.
 if [ -z "${ORACLE_PWD:-}" ]; then
   # 1) SIDB/Podman secret style (no K8S volume mount needed)
