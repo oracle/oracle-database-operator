@@ -371,25 +371,7 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 				},
 			},
 		},
-		/**
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					//Command: getReadinessCmd("SHARD"),
-					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
-				},
-			},
-			InitialDelaySeconds: 20,
-			TimeoutSeconds:      20,
-			PeriodSeconds: func() int32 {
-				if instance.Spec.ReadinessCheckPeriod > 0 {
-					return int32(instance.Spec.ReadinessCheckPeriod)
-				}
-				return 60
-			}(),
-		},
-		**/
-		// Disabling this because ping stop working and sharding topologu never gets configured.
+		// Disabling readiness probe because ping stop working and sharding topology never gets configured.
 		StartupProbe: &corev1.Probe{
 			FailureThreshold:    int32(30),
 			PeriodSeconds:       int32(180),
@@ -403,9 +385,11 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 		Env: buildEnvVarsSpec(instance, OraShardSpex.EnvVars, OraShardSpex.Name, "SHARD", false, "NONE", OraShardSpex.DeployAs, OraShardSpex.PrimaryDatabaseRef),
 	}
 
-	// DBCA/RMAN to use our dbconfig tnsnames
+	// DBCA/RMAN to use our dbconfig tnsnames (standby only)
 	role := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
 	if role == "STANDBY" || role == "ACTIVE_STANDBY" {
+
+		// Use per-DB dbconfig path
 		containerSpec.Env = append(containerSpec.Env,
 			corev1.EnvVar{
 				Name:  "TNS_ADMIN",
@@ -413,19 +397,23 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 			},
 		)
 
+		// IMPORTANT:
+		// - /opt/oracle/dbs must exist BEFORE DBCA post steps to avoid standby failing once.
+		// - Also avoid "set -u" killing the script if env vars are missing.
+		// - Make this idempotent and never fail the container if chown/chmod aren't allowed.
 		containerSpec.Command = []string{
 			"/bin/bash",
 			"-lc",
-			`set -euo pipefail
+			`set -eEo pipefail
 
 # ------------------------------------------------------------------------------------
 # FIX: DBCA/RMAN expects ORACLE_HOME/dbs to exist (spfile/orapw symlinks).
-# In our standby container the path /opt/oracle/dbs may not exist -> DBCA post step fails.
-# Make it idempotent and writable for oracle user.
+# In some images /opt/oracle/dbs may not exist -> DBCA post step fails once (DBT-05505 etc).
+# Make it idempotent and best-effort (never crash container if perms differ).
 # ------------------------------------------------------------------------------------
-mkdir -p /opt/oracle/dbs
-chown oracle:oinstall /opt/oracle/dbs || true
-chmod 775 /opt/oracle/dbs || true
+( mkdir -p /opt/oracle/dbs \
+  && chown oracle:oinstall /opt/oracle/dbs 2>/dev/null || true \
+  && chmod 775 /opt/oracle/dbs 2>/dev/null || true ) || true
 
 # If ORACLE_PWD is not already set, seed it like SIDB does + support our secret formats.
 if [ -z "${ORACLE_PWD:-}" ]; then
@@ -437,20 +425,28 @@ if [ -z "${ORACLE_PWD:-}" ]; then
   elif [ -f "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd" ]; then
     export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd")"
 
-  # 3) Your existing encrypted file flow (pwdfile.enc + key.pem)
+  # 3) Encrypted password file flow (pwdfile.enc + key.pem)
   elif [ -n "${COMMON_OS_PWD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" ]; then
+    umask 077
     openssl pkeyutl -decrypt \
       -in "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" \
       -inkey "${KEY_SECRET_VOLUME:-/mnt/secrets}/${PWD_KEY:-key.pem}" \
-      -out /tmp/.orapwd
-    export ORACLE_PWD="$(cat /tmp/.orapwd)"
+      -out /tmp/.orapwd 2>/dev/null || \
+    openssl rsautl -decrypt \
+      -in "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" \
+      -inkey "${KEY_SECRET_VOLUME:-/mnt/secrets}/${PWD_KEY:-key.pem}" \
+      -out /tmp/.orapwd 2>/dev/null
+
+    if [ -f /tmp/.orapwd ]; then
+      export ORACLE_PWD="$(cat /tmp/.orapwd)"
+    fi
     rm -f /tmp/.orapwd
 
-  # 4) Your existing plain password file variable
+  # 4) Plain password file variable
   elif [ -n "${PASSWORD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}" ]; then
     export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}")"
 
-  # 5) Optional: base64 env support (if you want)
+  # 5) Optional base64 env support
   elif [ -n "${ORACLE_PWD_B64:-}" ]; then
     export ORACLE_PWD="$(echo "${ORACLE_PWD_B64}" | base64 -d)"
   fi

@@ -1748,8 +1748,8 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			primaryDbUnique := strings.ToUpper(strings.TrimSpace(primary.Name))
 			standbyDbUnique := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name))
 
-			primaryConnect := shardingv1.BuildDgmgrlConnectIdentifier(instance, primary.Name, primaryDbUnique)
-			standbyConnect := shardingv1.BuildDgmgrlConnectIdentifier(instance, OraShardSpex.Name, standbyDbUnique)
+			primaryConnects := shardingv1.BuildDgmgrlConnectIdentifiers(instance, primary.Name, primaryDbUnique)
+			standbyConnects := shardingv1.BuildDgmgrlConnectIdentifiers(instance, OraShardSpex.Name, standbyDbUnique)
 
 			cfgName := strings.ToUpper(strings.TrimSpace(instance.Name)) + "_DGCFG"
 
@@ -1761,63 +1761,38 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 
 			// -------------------- A) PRIMARY-ONLY UPDATES FIRST --------------------
 
-			// PRIMARY prereqs
 			if e := shardingv1.RunStandbyDatabasePrerequisitesSQL(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:prereqs-primary:"+e.Error())
 				return e
 			}
 
-			// Ensure ARCHIVELOG (PRIMARY)
 			if e := shardingv1.EnableArchiveLogInPod(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:archivelog-primary:"+e.Error())
 				return e
 			}
 
-			// FORCE LOGGING (PRIMARY)
 			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.ForceLoggingTrueSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:forcelogging-primary:"+e.Error())
 				return e
 			}
 
-			// FLASHBACK (PRIMARY)
 			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.FlashBackTrueSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:flashback-primary:"+e.Error())
 				return e
 			}
 
-			// LOG_ARCHIVE_CONFIG (PRIMARY)
 			if e := shardingv1.RunSQLPlusInPod(primaryPod, logArchiveConfigSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:log_archive_config-primary:"+e.Error())
 				return e
 			}
 
-			// Broker config dir (PRIMARY)
-			if e := shardingv1.ExecShellInPod(
-				primaryPod,
-				fmt.Sprintf("mkdir -p /opt/oracle/oradata/dbconfig/%s", primaryDbUnique),
-				instance, r.kubeClient, r.kubeConfig, r.Log,
-			); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:mkdir_primary:"+e.Error())
-				return e
-			}
-
-			// set broker files only after dg_broker_start=false
-			primaryBrokerFilesSQL := fmt.Sprintf(
-				"alter system set dg_broker_start=false scope=both sid='*';\n"+
-					"alter system set dg_broker_config_file1='/opt/oracle/oradata/dbconfig/%s/dr1%s.dat' scope=both sid='*';\n"+
-					"alter system set dg_broker_config_file2='/opt/oracle/oradata/dbconfig/%s/dr2%s.dat' scope=both sid='*';\n"+
-					"alter system set dg_broker_start=true scope=both sid='*';",
-				primaryDbUnique, primaryDbUnique,
-				primaryDbUnique, primaryDbUnique,
-			)
-
-			if e := shardingv1.RunSQLPlusInPod(primaryPod, primaryBrokerFilesSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			// Ensure broker files + start broker (PRIMARY)
+			if e := shardingv1.EnsureDgBrokerFilesAndStart(primaryPod, primaryDbUnique, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:broker_files_primary:"+e.Error())
 				return e
@@ -1825,34 +1800,14 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 
 			// -------------------- B) STANDBY-ONLY UPDATES NEXT --------------------
 
-			// LOG_ARCHIVE_CONFIG (STANDBY)
 			if e := shardingv1.RunSQLPlusInPod(standbyPod, logArchiveConfigSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:log_archive_config-standby:"+e.Error())
 				return e
 			}
 
-			// Broker dir (STANDBY)
-			if e := shardingv1.ExecShellInPod(
-				standbyPod,
-				fmt.Sprintf("mkdir -p /opt/oracle/oradata/dbconfig/%s", standbyDbUnique),
-				instance, r.kubeClient, r.kubeConfig, r.Log,
-			); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:mkdir_standby:"+e.Error())
-				return e
-			}
-
-			standbyBrokerFilesSQL := fmt.Sprintf(
-				"alter system set dg_broker_start=false scope=both sid='*';\n"+
-					"alter system set dg_broker_config_file1='/opt/oracle/oradata/dbconfig/%s/dr1%s.dat' scope=both sid='*';\n"+
-					"alter system set dg_broker_config_file2='/opt/oracle/oradata/dbconfig/%s/dr2%s.dat' scope=both sid='*';\n"+
-					"alter system set dg_broker_start=true scope=both sid='*';",
-				standbyDbUnique, standbyDbUnique,
-				standbyDbUnique, standbyDbUnique,
-			)
-
-			if e := shardingv1.RunSQLPlusInPod(standbyPod, standbyBrokerFilesSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			// Ensure broker files + start broker (STANDBY)
+			if e := shardingv1.EnsureDgBrokerFilesAndStart(standbyPod, standbyDbUnique, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:broker_files_standby:"+e.Error())
 				return e
@@ -1860,16 +1815,18 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 
 			// -------------------- C) BROKER CONFIG STEPS LAST (PRIMARY RUNS DGMGRL) --------------------
 
-			if e := shardingv1.CreateDgBrokerConfig(primaryPod, cfgName, primaryDbUnique, primaryConnect, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.CreateDgBrokerConfigTryConnects(primaryPod, cfgName, primaryDbUnique, primaryConnects, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:create-config:"+e.Error())
 				return e
 			}
-			if e := shardingv1.AddStandbyToDgBrokerConfig(primaryPod, standbyDbUnique, standbyConnect, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+
+			if e := shardingv1.AddStandbyToDgBrokerConfigTryConnects(primaryPod, standbyDbUnique, standbyConnects, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:add-standby:"+e.Error())
 				return e
 			}
+
 			if e := shardingv1.EnableAndValidateDgBroker(primaryPod, cfgName, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:enable-validate:"+e.Error())
