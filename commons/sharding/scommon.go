@@ -365,11 +365,11 @@ func buildEnvVarsSpec(
 				connWithSlash = connWithSlash + "/" + svc
 			}
 
-			// use NO-leading-slash for the variables consumed by standby scripts/DBCA/RMAN
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connNoSlash})
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connNoSlash})
+			// Canonical EZCONNECT form for DBCA/RMAN
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connWithSlash})
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connWithSlash})
 
-			// both versions for debugging/compat
+			// Keep both variants for compatibility/debug
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_NOSLASH", Value: connNoSlash})
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_WITHSLASH", Value: connWithSlash})
 		}

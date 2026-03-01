@@ -141,6 +141,16 @@ ${PRIMARY_SID} =
    )
  )
  `
+const PrimaryTnsnamesEntrySharding string = `
+${PRIMARY_SID} =
+(DESCRIPTION =
+  (ADDRESS = (PROTOCOL = TCP)(HOST = ${PRIMARY_IP})(PORT = ${PRIMARY_DB_PORT:-1521} ))
+  (CONNECT_DATA =
+    (SERVER = DEDICATED)
+    (SERVICE_NAME = ${PRIMARY_SID})
+  )
+)
+`
 
 const ListenerEntry string = `LISTENER = 
 (DESCRIPTION_LIST = 

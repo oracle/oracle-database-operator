@@ -40,6 +40,7 @@ package commons
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -152,6 +153,10 @@ func buildStandbyNetInitContainerForShard(instance *databasev4.ShardingDatabase,
 
 	primarySid := strings.ToUpper(strings.TrimSpace(OraShardSpex.PrimaryDatabaseRef.CdbName))
 	primaryHost := strings.TrimSpace(OraShardSpex.PrimaryDatabaseRef.Host)
+	primaryPort := 1521
+	if OraShardSpex.PrimaryDatabaseRef.Port > 0 {
+		primaryPort = int(OraShardSpex.PrimaryDatabaseRef.Port)
+	}
 
 	// Writes into:
 	// 1) /opt/oracle/oradata/dbconfig/<SID>  (SIDB style)
@@ -180,7 +185,7 @@ EOF
 
 # tnsnames.ora (SIDB constant) -> PRIMARY_SID alias (ex: PSHARD1 -> primary host)
 cat > "${CFG_DIR}/tnsnames.ora" <<EOF
-` + dbcommons.PrimaryTnsnamesEntry + `
+` + dbcommons.PrimaryTnsnamesEntrySharding + `
 EOF
 
 # sqlnet.ora -> allow TNSNAMES + EZCONNECT resolution
@@ -216,13 +221,11 @@ ls -l "${CFG_DIR}" || true
 		Command:      []string{"/bin/bash", "-lc", script},
 		VolumeMounts: buildVolumeMountSpecForShard(instance, OraShardSpex),
 		Env: []corev1.EnvVar{
-			// Used by ListenerEntry (${ORACLE_SID^^}) and our script
 			{Name: "ORACLE_SID", Value: strings.ToUpper(OraShardSpex.Name)},
-			// Used by PrimaryTnsnamesEntry
 			{Name: "PRIMARY_SID", Value: primarySid},
 			{Name: "PRIMARY_IP", Value: primaryHost},
-			// Helpful for diagnostics (not required by constants)
-			{Name: "PRIMARY_DB_CONN_STR", Value: "//" + primaryHost + ":1521/" + primarySid},
+			{Name: "PRIMARY_DB_PORT", Value: strconv.Itoa(primaryPort)},
+			{Name: "PRIMARY_DB_CONN_STR", Value: fmt.Sprintf("//%s:%d/%s", primaryHost, primaryPort, primarySid)},
 		},
 	}
 
