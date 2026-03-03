@@ -59,10 +59,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-const standbySqlnetOra = `NAMES.DIRECTORY_PATH=(TNSNAMES,EZCONNECT,HOSTNAME)
-`
-
+const standbySqlnetOra = `NAMES.DIRECTORY_PATH=(TNSNAMES,EZCONNECT,HOSTNAME)`
 const pmonCheckCmd = `pgrep -fa "ora_pmon_${ORACLE_SID}" >/dev/null`
+const readinessCheckCmd = `bash -lc '
+set -e
+# DB must be reachable and in a usable open mode
+out="$(echo "set heading off feedback off pages 0; select open_mode from v\\$database; exit;" | sqlplus -s / as sysdba | tr -d "\r" | tr -s " " | tail -n 1)"
+echo "$out" | egrep -qi "READ WRITE|READ ONLY|MOUNTED"
+'`
 
 func execProbe(cmd string, initialDelay, period, timeout, failure int32) *corev1.Probe {
 	return &corev1.Probe{
@@ -307,10 +311,6 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 		initList = append(initList, c)
 	}
 
-	if c, ok := buildDecryptOraclePwdInitContainerForShard(instance, OraShardSpex); ok {
-		initList = append(initList, c)
-	}
-
 	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
 		initList = append(initList, buildInitContainerSpecForShard(instance, OraShardSpex)...)
 	}
@@ -335,114 +335,6 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 	}
 
 	return spec
-}
-
-func buildDecryptOraclePwdInitContainerForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) (corev1.Container, bool) {
-	role := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
-	if role != "STANDBY" && role != "ACTIVE_STANDBY" {
-		return corev1.Container{}, false
-	}
-
-	// if pwd filename is empty, nothing to do
-	if strings.TrimSpace(instance.Spec.DbSecret.PwdFileName) == "" {
-		return corev1.Container{}, false
-	}
-
-	privFlag := false
-	uid := oraRunAsUser
-	gid := oraFsGroup
-
-	// NOTE:
-	// - Supports EncryptionType: base64/plain OR RSA (anything else)
-	// - Writes final SYS password into /run/secrets/oracle_pwd
-	encType := strings.ToLower(strings.TrimSpace(instance.Spec.DbSecret.EncryptionType))
-	if encType == "" {
-		encType = "plain"
-	}
-
-	secDir := oraSecretMount
-	pwdFile := strings.TrimSpace(instance.Spec.DbSecret.PwdFileName)
-	keyFile := strings.TrimSpace(instance.Spec.DbSecret.KeyFileName)
-
-	script := `set -euo pipefail
-
-SEC_DIR="` + secDir + `"
-OUT="/run/secrets/oracle_pwd"
-ENC_TYPE="` + encType + `"
-PWD_FILE="` + pwdFile + `"
-KEY_FILE="` + keyFile + `"
-
-echo "[decrypt-oracle-pwd] ENC_TYPE=${ENC_TYPE} PWD_FILE=${PWD_FILE} KEY_FILE=${KEY_FILE}"
-
-# base64/plain -> just decode/copy to OUT
-if [ "${ENC_TYPE}" = "base64" ] || [ "${ENC_TYPE}" = "plain" ]; then
-  if [ -z "${PWD_FILE}" ]; then
-    echo "ERROR: DbSecret.PwdFileName is empty"; exit 1
-  fi
-  if [ ! -f "${SEC_DIR}/${PWD_FILE}" ]; then
-    echo "ERROR: password file not found: ${SEC_DIR}/${PWD_FILE}"
-    echo "Files in ${SEC_DIR}:"; ls -l "${SEC_DIR}" || true
-    exit 1
-  fi
-
-  if [ "${ENC_TYPE}" = "base64" ]; then
-    base64 -d "${SEC_DIR}/${PWD_FILE}" > "${OUT}"
-  else
-    cp -f "${SEC_DIR}/${PWD_FILE}" "${OUT}"
-  fi
-
-  chmod 0400 "${OUT}"
-  chown ` + fmt.Sprint(uid) + `:` + fmt.Sprint(gid) + ` "${OUT}" || true
-  echo "[decrypt-oracle-pwd] wrote ${OUT} (ENC_TYPE=${ENC_TYPE})"
-  exit 0
-fi
-
-# RSA decrypt (default for non-base64/plain)
-if [ -z "${PWD_FILE}" ] || [ -z "${KEY_FILE}" ]; then
-  echo "ERROR: DbSecret.PwdFileName or KeyFileName is empty for ENC_TYPE=${ENC_TYPE}"
-  exit 1
-fi
-if [ ! -f "${SEC_DIR}/${PWD_FILE}" ] || [ ! -f "${SEC_DIR}/${KEY_FILE}" ]; then
-  echo "ERROR: encrypted pwd or key file not found under ${SEC_DIR}"
-  echo "Expected: ${SEC_DIR}/${PWD_FILE} and ${SEC_DIR}/${KEY_FILE}"
-  echo "Files in ${SEC_DIR}:"; ls -l "${SEC_DIR}" || true
-  exit 1
-fi
-
-openssl pkeyutl -decrypt \
-  -in "${SEC_DIR}/${PWD_FILE}" \
-  -inkey "${SEC_DIR}/${KEY_FILE}" \
-  -out "${OUT}"
-
-chmod 0400 "${OUT}"
-chown ` + fmt.Sprint(uid) + `:` + fmt.Sprint(gid) + ` "${OUT}" || true
-echo "[decrypt-oracle-pwd] wrote ${OUT} (ENC_TYPE=${ENC_TYPE})"
-`
-
-	c := corev1.Container{
-		Name:  OraShardSpex.Name + "-decrypt-oracle-pwd",
-		Image: instance.Spec.DbImage, // openssl/base64 available
-		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot:             BoolPointer(true),
-			AllowPrivilegeEscalation: BoolPointer(false),
-			Privileged:               &privFlag,
-			RunAsUser:                &uid,
-			RunAsGroup:               &gid,
-			Capabilities: &corev1.Capabilities{
-				Drop: []corev1.Capability{"ALL"},
-			},
-		},
-		Command: []string{"/bin/bash", "-lc", script},
-		VolumeMounts: []corev1.VolumeMount{
-			{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true},
-			{Name: OraShardSpex.Name + "-oraclepwd-vol", MountPath: "/run/secrets"},
-		},
-	}
-
-	if OraShardSpex.ImagePulllPolicy != nil {
-		c.ImagePullPolicy = *OraShardSpex.ImagePulllPolicy
-	}
-	return c, true
 }
 
 // Function to build Volume Spec
@@ -491,13 +383,6 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 			result = append(result, corev1.Volume{Name: OraShardSpex.Name + "shared-storage-vol8", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.TdeWalletPvc}}})
 		}
 	}
-	// For standby: decrypted primary SYS password will be written here by init container
-	result = append(result, corev1.Volume{
-		Name: OraShardSpex.Name + "-oraclepwd-vol",
-		VolumeSource: corev1.VolumeSource{
-			EmptyDir: &corev1.EmptyDirVolumeSource{},
-		},
-	})
 
 	return result
 }
@@ -539,17 +424,9 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 			3,
 		),
 
-		// Startup: generous, avoids kubelet killing container during long init/duplicate
-		StartupProbe: execProbe(
-			pmonCheckCmd,
-			30,
-			20,
-			10,
-			60,
-		),
+		StartupProbe: execProbe(pmonCheckCmd, 30, 20, 10, 60),
 
-		// (optional) If you want explicit readiness too, uncomment:
-		// ReadinessProbe: execProbe(pmonCheckCmd, 20, 20, 10, 6),
+		ReadinessProbe: execProbe(readinessCheckCmd, 60, 20, 10, 30),
 
 		Env: buildEnvVarsSpec(
 			instance,
@@ -593,40 +470,26 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
   && chown oracle:oinstall /opt/oracle/dbs 2>/dev/null || true \
   && chmod 775 /opt/oracle/dbs 2>/dev/null || true ) || true
 
-# If ORACLE_PWD is not already set, seed it like SIDB does + support our secret formats.
-if [ -z "${ORACLE_PWD:-}" ]; then
-  # 1) SIDB/Podman secret style (no K8S volume mount needed)
-  if [ -f "/run/secrets/oracle_pwd" ]; then
-    export ORACLE_PWD="$(cat /run/secrets/oracle_pwd)"
+# ------------------------------------------------------------------------------------
+# FINAL (plain secret file only):
+# Expect secret mounted at ${SECRET_VOLUME}/oracle_pwd (or ${SECRET_VOLUME}/${PASSWORD_FILE})
+# Your CR should set:
+#   dbSecret.name: db-admin-password
+#   dbSecret.pwdFileName: oracle_pwd
+#   dbSecret.encryptionType: base64
+# so buildEnvVarsSpec sets:
+#   SECRET_VOLUME=/mnt/secrets
+#   PASSWORD_FILE=oracle_pwd
+# ------------------------------------------------------------------------------------
 
-  # 2) K8S plain secret file (your current mount)
+if [ -z "${ORACLE_PWD:-}" ]; then
+  if [ -n "${PASSWORD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}" ]; then
+    export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}")"
   elif [ -f "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd" ]; then
     export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd")"
-
-  # 3) Encrypted password file flow (pwdfile.enc + key.pem)
-  elif [ -n "${COMMON_OS_PWD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" ]; then
-    umask 077
-    openssl pkeyutl -decrypt \
-      -in "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" \
-      -inkey "${KEY_SECRET_VOLUME:-/mnt/secrets}/${PWD_KEY:-key.pem}" \
-      -out /tmp/.orapwd 2>/dev/null || \
-    openssl rsautl -decrypt \
-      -in "${SECRET_VOLUME:-/mnt/secrets}/${COMMON_OS_PWD_FILE}" \
-      -inkey "${KEY_SECRET_VOLUME:-/mnt/secrets}/${PWD_KEY:-key.pem}" \
-      -out /tmp/.orapwd 2>/dev/null
-
-    if [ -f /tmp/.orapwd ]; then
-      export ORACLE_PWD="$(cat /tmp/.orapwd)"
-    fi
-    rm -f /tmp/.orapwd
-
-  # 4) Plain password file variable
-  elif [ -n "${PASSWORD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}" ]; then
-    export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}")"
-
-  # 5) Optional base64 env support
-  elif [ -n "${ORACLE_PWD_B64:-}" ]; then
-    export ORACLE_PWD="$(echo "${ORACLE_PWD_B64}" | base64 -d)"
+  else
+    echo "ERROR: ORACLE_PWD not set and password file not found. Expected ${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE:-oracle_pwd}" >&2
+    exit 1
   fi
 fi
 
@@ -717,14 +580,6 @@ func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShar
 			}
 		}
 	}
-	// /run/secrets is the path Oracle scripts check for oracle_pwd
-	result = append(result,
-		corev1.VolumeMount{
-			Name:      OraShardSpex.Name + "-oraclepwd-vol",
-			MountPath: "/run/secrets",
-			ReadOnly:  false,
-		},
-	)
 
 	return result
 }

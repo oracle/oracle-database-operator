@@ -101,6 +101,16 @@ const (
 	errorDialingBackendEOF    = "error dialing backend: EOF"
 )
 
+func upsertEnv(env []corev1.EnvVar, v corev1.EnvVar) []corev1.EnvVar {
+	for i := range env {
+		if env[i].Name == v.Name {
+			env[i] = v
+			return env
+		}
+	}
+	return append(env, v)
+}
+
 // Function to build the env var specification
 func buildEnvVarsSpec(
 	instance *databasev4.ShardingDatabase,
@@ -368,6 +378,8 @@ func buildEnvVarsSpec(
 			// Canonical EZCONNECT form for DBCA/RMAN
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connNoSlash})
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connNoSlash})
+			result = upsertEnv(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connNoSlash})
+			result = upsertEnv(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connNoSlash})
 
 			// Keep both variants for compatibility/debug
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_NOSLASH", Value: connNoSlash})
