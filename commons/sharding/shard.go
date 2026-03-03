@@ -62,6 +62,23 @@ import (
 const standbySqlnetOra = `NAMES.DIRECTORY_PATH=(TNSNAMES,EZCONNECT,HOSTNAME)
 `
 
+const pmonCheckCmd = `pgrep -fa "ora_pmon_${ORACLE_SID}" >/dev/null`
+
+func execProbe(cmd string, initialDelay, period, timeout, failure int32) *corev1.Probe {
+	return &corev1.Probe{
+		FailureThreshold:    failure,
+		InitialDelaySeconds: initialDelay,
+		PeriodSeconds:       period,
+		TimeoutSeconds:      timeout,
+		SuccessThreshold:    1,
+		ProbeHandler: corev1.ProbeHandler{
+			Exec: &corev1.ExecAction{
+				Command: []string{"/bin/sh", "-c", cmd},
+			},
+		},
+	}
+}
+
 func buildLabelsForShard(instance *databasev4.ShardingDatabase, label string, shardName string) map[string]string {
 	return map[string]string{
 		"app":      "OracleSharding",
@@ -158,6 +175,35 @@ func buildStandbyNetInitContainerForShard(instance *databasev4.ShardingDatabase,
 		primaryPort = int(OraShardSpex.PrimaryDatabaseRef.Port)
 	}
 
+	// ------------------ NEW: add DGMGRL aliases for broker ------------------
+	standbySid := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name)) // e.g. SSHARD2
+
+	// Primary host should already be a resolvable DNS name; use it directly.
+	primaryDgmgrlEntry := fmt.Sprintf(`
+%s_DGMGRL =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = %s)(PORT = %d))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = %s_DGMGRL)
+    )
+  )
+`, primarySid, primaryHost, primaryPort, primarySid)
+
+	// Standby uses stable ordinal-0 pod DNS
+	standbyHost := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", OraShardSpex.Name, OraShardSpex.Name, instance.Namespace)
+	standbyDgmgrlEntry := fmt.Sprintf(`
+%s_DGMGRL =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = %s)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = %s_DGMGRL)
+    )
+  )
+`, standbySid, standbyHost, standbySid)
+	// ----------------------------------------------------------------------
+
 	// Writes into:
 	// 1) /opt/oracle/oradata/dbconfig/<SID>  (SIDB style)
 	// 2) $ORACLE_HOME/network/admin          (so DBCA/RMAN can resolve aliases during bootstrap)
@@ -183,9 +229,11 @@ cat > "${CFG_DIR}/listener.ora" <<EOF
 ` + dbcommons.ListenerEntry + `
 EOF
 
-# tnsnames.ora (SIDB constant) -> PRIMARY_SID alias (ex: PSHARD1 -> primary host)
+# tnsnames.ora -> PRIMARY + DGMGRL aliases (PRIMARY + STANDBY)
 cat > "${CFG_DIR}/tnsnames.ora" <<EOF
 ` + dbcommons.PrimaryTnsnamesEntrySharding + `
+` + primaryDgmgrlEntry + `
+` + standbyDgmgrlEntry + `
 EOF
 
 # sqlnet.ora -> allow TNSNAMES + EZCONNECT resolution
@@ -259,6 +307,10 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 		initList = append(initList, c)
 	}
 
+	if c, ok := buildDecryptOraclePwdInitContainerForShard(instance, OraShardSpex); ok {
+		initList = append(initList, c)
+	}
+
 	if (instance.Spec.IsDownloadScripts) && (instance.Spec.ScriptsLocation != "") {
 		initList = append(initList, buildInitContainerSpecForShard(instance, OraShardSpex)...)
 	}
@@ -283,6 +335,114 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 	}
 
 	return spec
+}
+
+func buildDecryptOraclePwdInitContainerForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) (corev1.Container, bool) {
+	role := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
+	if role != "STANDBY" && role != "ACTIVE_STANDBY" {
+		return corev1.Container{}, false
+	}
+
+	// if pwd filename is empty, nothing to do
+	if strings.TrimSpace(instance.Spec.DbSecret.PwdFileName) == "" {
+		return corev1.Container{}, false
+	}
+
+	privFlag := false
+	uid := oraRunAsUser
+	gid := oraFsGroup
+
+	// NOTE:
+	// - Supports EncryptionType: base64/plain OR RSA (anything else)
+	// - Writes final SYS password into /run/secrets/oracle_pwd
+	encType := strings.ToLower(strings.TrimSpace(instance.Spec.DbSecret.EncryptionType))
+	if encType == "" {
+		encType = "plain"
+	}
+
+	secDir := oraSecretMount
+	pwdFile := strings.TrimSpace(instance.Spec.DbSecret.PwdFileName)
+	keyFile := strings.TrimSpace(instance.Spec.DbSecret.KeyFileName)
+
+	script := `set -euo pipefail
+
+SEC_DIR="` + secDir + `"
+OUT="/run/secrets/oracle_pwd"
+ENC_TYPE="` + encType + `"
+PWD_FILE="` + pwdFile + `"
+KEY_FILE="` + keyFile + `"
+
+echo "[decrypt-oracle-pwd] ENC_TYPE=${ENC_TYPE} PWD_FILE=${PWD_FILE} KEY_FILE=${KEY_FILE}"
+
+# base64/plain -> just decode/copy to OUT
+if [ "${ENC_TYPE}" = "base64" ] || [ "${ENC_TYPE}" = "plain" ]; then
+  if [ -z "${PWD_FILE}" ]; then
+    echo "ERROR: DbSecret.PwdFileName is empty"; exit 1
+  fi
+  if [ ! -f "${SEC_DIR}/${PWD_FILE}" ]; then
+    echo "ERROR: password file not found: ${SEC_DIR}/${PWD_FILE}"
+    echo "Files in ${SEC_DIR}:"; ls -l "${SEC_DIR}" || true
+    exit 1
+  fi
+
+  if [ "${ENC_TYPE}" = "base64" ]; then
+    base64 -d "${SEC_DIR}/${PWD_FILE}" > "${OUT}"
+  else
+    cp -f "${SEC_DIR}/${PWD_FILE}" "${OUT}"
+  fi
+
+  chmod 0400 "${OUT}"
+  chown ` + fmt.Sprint(uid) + `:` + fmt.Sprint(gid) + ` "${OUT}" || true
+  echo "[decrypt-oracle-pwd] wrote ${OUT} (ENC_TYPE=${ENC_TYPE})"
+  exit 0
+fi
+
+# RSA decrypt (default for non-base64/plain)
+if [ -z "${PWD_FILE}" ] || [ -z "${KEY_FILE}" ]; then
+  echo "ERROR: DbSecret.PwdFileName or KeyFileName is empty for ENC_TYPE=${ENC_TYPE}"
+  exit 1
+fi
+if [ ! -f "${SEC_DIR}/${PWD_FILE}" ] || [ ! -f "${SEC_DIR}/${KEY_FILE}" ]; then
+  echo "ERROR: encrypted pwd or key file not found under ${SEC_DIR}"
+  echo "Expected: ${SEC_DIR}/${PWD_FILE} and ${SEC_DIR}/${KEY_FILE}"
+  echo "Files in ${SEC_DIR}:"; ls -l "${SEC_DIR}" || true
+  exit 1
+fi
+
+openssl pkeyutl -decrypt \
+  -in "${SEC_DIR}/${PWD_FILE}" \
+  -inkey "${SEC_DIR}/${KEY_FILE}" \
+  -out "${OUT}"
+
+chmod 0400 "${OUT}"
+chown ` + fmt.Sprint(uid) + `:` + fmt.Sprint(gid) + ` "${OUT}" || true
+echo "[decrypt-oracle-pwd] wrote ${OUT} (ENC_TYPE=${ENC_TYPE})"
+`
+
+	c := corev1.Container{
+		Name:  OraShardSpex.Name + "-decrypt-oracle-pwd",
+		Image: instance.Spec.DbImage, // openssl/base64 available
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot:             BoolPointer(true),
+			AllowPrivilegeEscalation: BoolPointer(false),
+			Privileged:               &privFlag,
+			RunAsUser:                &uid,
+			RunAsGroup:               &gid,
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+		},
+		Command: []string{"/bin/bash", "-lc", script},
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true},
+			{Name: OraShardSpex.Name + "-oraclepwd-vol", MountPath: "/run/secrets"},
+		},
+	}
+
+	if OraShardSpex.ImagePulllPolicy != nil {
+		c.ImagePullPolicy = *OraShardSpex.ImagePulllPolicy
+	}
+	return c, true
 }
 
 // Function to build Volume Spec
@@ -331,6 +491,13 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 			result = append(result, corev1.Volume{Name: OraShardSpex.Name + "shared-storage-vol8", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.TdeWalletPvc}}})
 		}
 	}
+	// For standby: decrypted primary SYS password will be written here by init container
+	result = append(result, corev1.Volume{
+		Name: OraShardSpex.Name + "-oraclepwd-vol",
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	})
 
 	return result
 }
@@ -357,35 +524,43 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 			Requests: make(map[corev1.ResourceName]resource.Quantity),
 		},
 		VolumeMounts: buildVolumeMountSpecForShard(instance, OraShardSpex),
-		LivenessProbe: &corev1.Probe{
-			// TODO: Investigate if it's ok to call status every 10 seconds
-			FailureThreshold:    int32(3),
-			InitialDelaySeconds: int32(30),
-			PeriodSeconds: func() int32 {
+
+		//Liveness: simple + reliable (PMON exists)
+		LivenessProbe: execProbe(
+			pmonCheckCmd,
+			30,
+			func() int32 {
 				if instance.Spec.LivenessCheckPeriod > 0 {
 					return int32(instance.Spec.LivenessCheckPeriod)
 				}
 				return 60
 			}(),
-			TimeoutSeconds: int32(30),
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
-				},
-			},
-		},
-		// Disabling readiness probe because ping stop working and sharding topology never gets configured.
-		StartupProbe: &corev1.Probe{
-			FailureThreshold:    int32(30),
-			PeriodSeconds:       int32(180),
-			InitialDelaySeconds: int32(30),
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{"/bin/sh", "-c", "if [ -f $ORACLE_BASE/checkDBLockStatus.sh ]; then $ORACLE_BASE/checkDBLockStatus.sh ; else $ORACLE_BASE/checkDBStatus.sh; fi "},
-				},
-			},
-		},
-		Env: buildEnvVarsSpec(instance, OraShardSpex.EnvVars, OraShardSpex.Name, "SHARD", false, "NONE", OraShardSpex.DeployAs, OraShardSpex.PrimaryDatabaseRef),
+			10,
+			3,
+		),
+
+		// Startup: generous, avoids kubelet killing container during long init/duplicate
+		StartupProbe: execProbe(
+			pmonCheckCmd,
+			30,
+			20,
+			10,
+			60,
+		),
+
+		// (optional) If you want explicit readiness too, uncomment:
+		// ReadinessProbe: execProbe(pmonCheckCmd, 20, 20, 10, 6),
+
+		Env: buildEnvVarsSpec(
+			instance,
+			OraShardSpex.EnvVars,
+			OraShardSpex.Name,
+			"SHARD",
+			false,
+			"NONE",
+			OraShardSpex.DeployAs,
+			OraShardSpex.PrimaryDatabaseRef,
+		),
 	}
 
 	// DBCA/RMAN to use our dbconfig tnsnames (standby only)
@@ -542,6 +717,14 @@ func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShar
 			}
 		}
 	}
+	// /run/secrets is the path Oracle scripts check for oracle_pwd
+	result = append(result,
+		corev1.VolumeMount{
+			Name:      OraShardSpex.Name + "-oraclepwd-vol",
+			MountPath: "/run/secrets",
+			ReadOnly:  false,
+		},
+	)
 
 	return result
 }

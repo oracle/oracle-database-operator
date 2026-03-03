@@ -39,9 +39,19 @@ func BuildDgmgrlConnectIdentifier(instance *databasev4.ShardingDatabase, shardNa
 func BuildDgmgrlConnectIdentifiers(instance *databasev4.ShardingDatabase, shardName string, dbUniqueName string) []string {
 	host := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", shardName, shardName, instance.Namespace)
 	base := strings.ToUpper(strings.TrimSpace(dbUniqueName))
+	if base == "" {
+		base = strings.ToUpper(strings.TrimSpace(shardName))
+	}
+
+	// prefer correct _DGMGRL service, add old typo fallback just in case
+	svc1 := fmt.Sprintf("%s_DGMGRL", base)
+	svc2 := fmt.Sprintf("%s_DGMRL", base) // fallback (typo seen in some setups)
+
 	return []string{
-		fmt.Sprintf("%s:1521/%s_DGMGRL", host, base), // canonical
-		fmt.Sprintf("%s:1521/%s_DGMRL", host, base),  // fallback
+		fmt.Sprintf("//%s:1521/%s", host, svc1),
+		fmt.Sprintf("%s:1521/%s", host, svc1),
+		fmt.Sprintf("//%s:1521/%s", host, svc2),
+		fmt.Sprintf("%s:1521/%s", host, svc2),
 	}
 }
 

@@ -366,8 +366,8 @@ func buildEnvVarsSpec(
 			}
 
 			// Canonical EZCONNECT form for DBCA/RMAN
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connWithSlash})
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connWithSlash})
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connNoSlash})
+			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connNoSlash})
 
 			// Keep both variants for compatibility/debug
 			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_NOSLASH", Value: connNoSlash})
