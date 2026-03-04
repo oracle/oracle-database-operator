@@ -1395,6 +1395,9 @@ func SetDBCSDatabaseLifecycleState(compartmentId string, logger logr.Logger, kub
 
 	// Return if the desired lifecycle state is the same as the current lifecycle state
 	if string(dbcs.Status.State) == string(resp.LifecycleState) {
+		// if statusErr := SetLifecycleState(compartmentId, kubeClient, dbClient, dbcs, databasev4.LifecycleState(resp.LifecycleState), nwClient, wrClient); statusErr != nil {
+		// 	return statusErr
+		// }
 		return nil
 	} else if string(resp.LifecycleState) == string(databasev4.Available) {
 		// Change the phase to "Available"
@@ -1625,10 +1628,21 @@ func UpdateDbcsSystemIdInst(compartmentId string, log logr.Logger, dbClient data
 	}
 
 	current := response.DbSystem // OCI's current state
+	log.Info("Current DB System lifecycle state",
+		"state", current.LifecycleState)
+	state := string(current.LifecycleState)
+	dbcs.Status.State = databasev4.LifecycleState(current.LifecycleState)
+	log.Info("DB System State: " + state)
+
 	log.Info("Details of updateFlag -> " + fmt.Sprint(updateFlag))
 	if dbcs.Spec.DbSystem == nil {
 		dbcs.Spec.DbSystem = &databasev4.DbSystemDetails{}
 	}
+
+	if current.LifecycleState == database.DbSystemLifecycleStateTerminated {
+		return nil
+	}
+
 	// Compare and update CPU Core Count
 	if dbcs.Spec.DbSystem.CpuCoreCount > 0 &&
 		(dbcs.Spec.DbSystem.CpuCoreCount != oldSpec.DbSystem.CpuCoreCount ||
