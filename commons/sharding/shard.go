@@ -61,12 +61,6 @@ import (
 
 const standbySqlnetOra = `NAMES.DIRECTORY_PATH=(TNSNAMES,EZCONNECT,HOSTNAME)`
 const pmonCheckCmd = `pgrep -fa "ora_pmon_${ORACLE_SID}" >/dev/null`
-const readinessCheckCmd = `bash -lc '
-set -e
-# DB must be reachable and in a usable open mode
-out="$(echo "set heading off feedback off pages 0; select open_mode from v\\$database; exit;" | sqlplus -s / as sysdba | tr -d "\r" | tr -s " " | tail -n 1)"
-echo "$out" | egrep -qi "READ WRITE|READ ONLY|MOUNTED"
-'`
 
 func execProbe(cmd string, initialDelay, period, timeout, failure int32) *corev1.Probe {
 	return &corev1.Probe{
@@ -426,7 +420,7 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 
 		StartupProbe: execProbe(pmonCheckCmd, 30, 20, 10, 60),
 
-		ReadinessProbe: execProbe(readinessCheckCmd, 60, 20, 10, 30),
+		ReadinessProbe: execProbe(pmonCheckCmd, 60, 20, 10, 6),
 
 		Env: buildEnvVarsSpec(
 			instance,
@@ -484,11 +478,11 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 
 if [ -z "${ORACLE_PWD:-}" ]; then
   if [ -n "${PASSWORD_FILE:-}" ] && [ -f "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}" ]; then
-    export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}")"
+    export ORACLE_PWD="$(base64 -d "${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE}")"
   elif [ -f "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd" ]; then
-    export ORACLE_PWD="$(cat "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd")"
+    export ORACLE_PWD="$(base64 -d "${SECRET_VOLUME:-/mnt/secrets}/oracle_pwd")"
   else
-    echo "ERROR: ORACLE_PWD not set and password file not found. Expected ${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE:-oracle_pwd}" >&2
+    echo "ERROR: password file missing at ${SECRET_VOLUME:-/mnt/secrets}/${PASSWORD_FILE:-oracle_pwd}" >&2
     exit 1
   fi
 fi
