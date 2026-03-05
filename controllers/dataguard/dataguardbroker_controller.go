@@ -127,6 +127,24 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if result.Requeue {
 		return result, nil
 	}
+	// ----------------------------
+	// manual switchover for non-SIDB flow
+	// ----------------------------
+	if dataguardBroker.Spec.IsNonSingleInstanceDatabase &&
+		dataguardBroker.Spec.SetAsPrimaryDatabase != "" &&
+		!strings.EqualFold(dataguardBroker.Spec.SetAsPrimaryDatabase, dataguardBroker.Status.PrimaryDatabase) {
+
+		log.Info("Manual Switchover requested (non-SIDB)",
+			"target", dataguardBroker.Spec.SetAsPrimaryDatabase)
+
+		result, err := r.manageManualSwitchOverExternal(&dataguardBroker, ctx, req)
+		if err != nil {
+			return ctrl.Result{Requeue: false}, err
+		}
+		if result.Requeue {
+			return result, nil
+		}
+	}
 
 	// manage enabling and disabling faststartfailover
 	if dataguardBroker.Spec.FastStartFailover {
@@ -415,6 +433,133 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if dataguardBroker.Spec.FastStartFailover {
 		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
 	}
+
+	return ctrl.Result{Requeue: false}, nil
+}
+
+func (r *DataguardBrokerReconciler) manageManualSwitchOverExternal(broker *dbapi.DataguardBroker, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+
+	log := r.Log.WithValues("manageManualSwitchOverExternal", req.NamespacedName)
+
+	// Validate connect strings
+	if len(broker.Spec.ExternalDatabaseConnectStrings) < 2 {
+		broker.Status.Status = dbcommons.StatusError
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Spec Validation",
+			"externalDatabaseConnectStrings must have at least 2 entries (primary + standby) when isNonSingleInstanceDatabase=true")
+		return ctrl.Result{Requeue: false}, nil
+	}
+
+	target := strings.ToUpper(strings.TrimSpace(broker.Spec.SetAsPrimaryDatabase))
+	if target == "" {
+		return ctrl.Result{Requeue: false}, nil
+	}
+
+	// Ensure runner pod exists (same logic you used in FSFO external flow)
+	runnerPod, _, _, _, err := dbcommons.FindPods(r, "", "", broker.Name, broker.Namespace, ctx, req)
+	if err != nil {
+		return ctrl.Result{Requeue: false}, err
+	}
+	if runnerPod.Name == "" {
+		cs := broker.Spec.ExternalDatabaseConnectStrings[0]
+		if cs.Port == 0 {
+			cs.Port = 1521
+		}
+		bootstrapPrimaryConn := fmt.Sprintf("%s:%d/%s", cs.HostName, cs.Port, cs.SvcName)
+
+		r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Creating Runner",
+			"creating runner/observer pod for non-SIDB switchover flow")
+		if err := createObserverPodsExternal(r, broker, bootstrapPrimaryConn, ctx, req); err != nil {
+			return ctrl.Result{Requeue: false}, err
+		}
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// Discover current roles from DBs themselves
+	dbInfos, err := collectExternalDbInfo(r, broker, runnerPod, broker.Spec.ExternalDatabaseConnectStrings, ctx, req)
+	if err != nil {
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Waiting", err.Error())
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// Find current primary + validate target exists
+	var currentPrimary extDbInfo
+	foundPrimary := false
+	foundTarget := false
+
+	for _, d := range dbInfos {
+		roleU := strings.ToUpper(strings.TrimSpace(d.Role))
+		if roleU == "PRIMARY" && !foundPrimary {
+			currentPrimary = d
+			foundPrimary = true
+		}
+		if strings.ToUpper(strings.TrimSpace(d.DbUniqueName)) == target {
+			foundTarget = true
+		}
+	}
+
+	if !foundPrimary {
+		broker.Status.Status = dbcommons.StatusError
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Role Validation",
+			"could not find PRIMARY in externalDatabaseConnectStrings")
+		return ctrl.Result{Requeue: false}, nil
+	}
+	if !foundTarget {
+		broker.Status.Status = dbcommons.StatusError
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Target Validation",
+			"target %s not found in externalDatabaseConnectStrings", target)
+		return ctrl.Result{Requeue: false}, nil
+	}
+
+	// sys password from secret
+	sysPwd, err := getExternalSysPassword(r, broker, ctx)
+	if err != nil {
+		return ctrl.Result{Requeue: false}, err
+	}
+
+	// Primary connect string for DGMGRL (use the one that matches the ACTIVE primary)
+	// NOTE: pickPrimaryConnectString() already does role-based selection in your codebase.
+	primaryConn, err := pickPrimaryConnectString(dbInfos)
+	if err != nil {
+		return ctrl.Result{Requeue: false}, err
+	}
+	// Ensure SRLs exist on BOTH sides (current standby + current primary as future standby)
+	if err := ensureStandbyRedoLogsExternal(r, runnerPod, dbInfos, sysPwd, ctx, req); err != nil {
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "SRL Setup Failed", err.Error())
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// DGMGRL database names in config appear as lower-case in your output: pshard1 / sshard2
+	targetDgmgrlName := strings.ToLower(target)
+
+	// Execute switchover from runner pod (NOT from operator container)
+	cmd := fmt.Sprintf(`
+set -euo pipefail
+dgmgrl -silent "sys/%s@%s" <<EOF
+show configuration;
+validate database %s;
+validate database %s;
+switchover to %s;
+show configuration;
+exit
+EOF
+`, sysPwd, primaryConn,
+		strings.ToLower(strings.TrimSpace(currentPrimary.DbUniqueName)),
+		targetDgmgrlName,
+		targetDgmgrlName,
+	)
+
+	out, execErr := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-lc", cmd)
+	log.Info("DGMGRL switchover output", "out", out)
+	if execErr != nil {
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Switchover Failed", execErr.Error())
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// Update status
+	broker.Status.PrimaryDatabase = target
+	broker.Status.Status = dbcommons.StatusReady
+	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Switchover Succeeded",
+		"switched primary to %s", target)
 
 	return ctrl.Result{Requeue: false}, nil
 }
@@ -775,4 +920,191 @@ func (r *DataguardBrokerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		WithEventFilter(dbcommons.ResourceEventHandler()).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 100}). //ReconcileHandler is never invoked concurrently with the same object.
 		Complete(r)
+}
+
+// execSqlPlusExternal runs sqlplus against a remote DB using sys/<pwd>@<connectString> as sysdba
+// and returns non-empty output lines.
+func execSqlPlusExternal(
+	r *DataguardBrokerReconciler,
+	runnerPod corev1.Pod,
+	sysPwd string,
+	connectString string, // //host:port/svc
+	sql string,
+	ctx context.Context,
+	req ctrl.Request,
+) ([]string, string, error) {
+
+	// Use quoted heredoc to avoid shell expansion issues.
+	cmd := fmt.Sprintf(`sqlplus -s "sys/%s@%s as sysdba" <<'EOF'
+set heading off feedback off pages 0 echo off verify off trimspool on lines 400
+%s
+exit;
+EOF`, sysPwd, connectString, sql)
+
+	out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	if err != nil {
+		return nil, out, err
+	}
+	return nonEmptyLines(out), out, nil
+}
+
+// ensureStandbyRedoLogsExternal ensures Standby Redo Logs exist on *each* DB in the config,
+// so that switchover won't fail/warn (ORA-16789) and standby SRL creation is automatic.
+//
+// Behavior:
+// - Computes ONLINE redo groups + redo size from v$log (thread 1) per DB
+// - Checks SRL count + SRL size from v$standby_log (thread 1)
+// - If SRLs missing (< online+1) or size mismatch -> add SRLs
+// - If DB is currently a standby, cancels MRP before adding SRLs and restarts after (avoids ORA-01156)
+func ensureStandbyRedoLogsExternal(
+	r *DataguardBrokerReconciler,
+	runnerPod corev1.Pod,
+	dbInfos []extDbInfo,
+	sysPwd string,
+	ctx context.Context,
+	req ctrl.Request,
+) error {
+	log := r.Log.WithValues("ensureStandbyRedoLogsExternal", req.NamespacedName)
+
+	if len(dbInfos) < 2 {
+		return fmt.Errorf("need at least 2 databases to ensure SRLs; got %d", len(dbInfos))
+	}
+
+	for _, d := range dbInfos {
+		conn := strings.TrimSpace(d.ConnectString)
+		if conn == "" {
+			return fmt.Errorf("empty connect string for db_unique_name=%s", d.DbUniqueName)
+		}
+
+		// 1) ONLINE groups + redo size (MB) from v$log (thread#=1)
+		// returns: "<online_groups>|<mb>"
+		lines, raw, err := execSqlPlusExternal(r, runnerPod, sysPwd, conn, `
+select to_char(count(*))||'|'||to_char(nvl(round(max(bytes)/1024/1024),0))
+from v$log
+where thread# = 1;
+`, ctx, req)
+		if err != nil {
+			return fmt.Errorf("failed to query v$log on %s (%s): %w; out=%q", d.DbUniqueName, conn, err, raw)
+		}
+		if len(lines) < 1 || !strings.Contains(lines[0], "|") {
+			return fmt.Errorf("unexpected v$log output on %s (%s): %q", d.DbUniqueName, conn, raw)
+		}
+		parts := strings.Split(lines[0], "|")
+		if len(parts) < 2 {
+			return fmt.Errorf("unexpected v$log parsed output on %s: %q", d.DbUniqueName, lines[0])
+		}
+		onlineCnt, err := strconv.Atoi(strings.TrimSpace(parts[0]))
+		if err != nil || onlineCnt <= 0 {
+			return fmt.Errorf("invalid online redo group count on %s: %q", d.DbUniqueName, parts[0])
+		}
+		redoMB, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil || redoMB <= 0 {
+			return fmt.Errorf("invalid redo log size (MB) on %s: %q", d.DbUniqueName, parts[1])
+		}
+		required := onlineCnt + 1
+
+		// 2) SRL count + SRL size from v$standby_log (thread#=1)
+		// returns: "<srl_count>|<mb>"
+		lines, raw, err = execSqlPlusExternal(r, runnerPod, sysPwd, conn, `
+select to_char(count(*))||'|'||to_char(nvl(round(max(bytes)/1024/1024),0))
+from v$standby_log
+where thread# = 1;
+`, ctx, req)
+		if err != nil {
+			return fmt.Errorf("failed to query v$standby_log on %s (%s): %w; out=%q", d.DbUniqueName, conn, err, raw)
+		}
+		if len(lines) < 1 || !strings.Contains(lines[0], "|") {
+			return fmt.Errorf("unexpected v$standby_log output on %s (%s): %q", d.DbUniqueName, conn, raw)
+		}
+		parts = strings.Split(lines[0], "|")
+		if len(parts) < 2 {
+			return fmt.Errorf("unexpected v$standby_log parsed output on %s: %q", d.DbUniqueName, lines[0])
+		}
+		srlCnt, _ := strconv.Atoi(strings.TrimSpace(parts[0]))
+		srlMB, _ := strconv.Atoi(strings.TrimSpace(parts[1]))
+
+		needCreate := false
+		if srlCnt < required {
+			needCreate = true
+		}
+		// If SRLs exist but size differs, still fix by adding more SRLs of correct size.
+		// (We won't drop old SRLs automatically here to stay safe.)
+		if srlCnt > 0 && srlMB > 0 && srlMB != redoMB {
+			needCreate = true
+		}
+
+		if !needCreate {
+			log.Info("SRLs OK",
+				"db_unique_name", d.DbUniqueName,
+				"connect", conn,
+				"online_groups", onlineCnt,
+				"redo_mb", redoMB,
+				"srl_count", srlCnt,
+				"srl_mb", srlMB)
+			continue
+		}
+
+		toAdd := required - srlCnt
+		if toAdd < 0 {
+			// size mismatch case: still add at least 1 correct-size SRL
+			toAdd = 1
+		}
+
+		roleU := strings.ToUpper(strings.TrimSpace(d.Role))
+		isStandby := strings.Contains(roleU, "STANDBY")
+
+		log.Info("SRLs missing/insufficient; creating",
+			"db_unique_name", d.DbUniqueName,
+			"connect", conn,
+			"role", roleU,
+			"online_groups", onlineCnt,
+			"redo_mb", redoMB,
+			"existing_srl_count", srlCnt,
+			"existing_srl_mb", srlMB,
+			"required_srl", required,
+			"to_add", toAdd)
+
+		// 3) Build SRL creation SQL
+		var b strings.Builder
+		if isStandby {
+			// Cancel apply to avoid ORA-01156
+			b.WriteString("alter database recover managed standby database cancel;\n")
+		}
+
+		for i := 0; i < toAdd; i++ {
+			b.WriteString(fmt.Sprintf("alter database add standby logfile thread 1 size %dM;\n", redoMB))
+		}
+
+		if isStandby {
+			// Restart apply
+			b.WriteString("alter database recover managed standby database using current logfile disconnect from session;\n")
+		}
+
+		// Verify
+		b.WriteString("set pages 200 lines 200\n")
+		b.WriteString("select count(*)||'|'||to_char(nvl(round(max(bytes)/1024/1024),0)) from v$standby_log where thread#=1;\n")
+
+		lines, raw, err = execSqlPlusExternal(r, runnerPod, sysPwd, conn, b.String(), ctx, req)
+		if err != nil {
+			return fmt.Errorf("failed to create SRLs on %s (%s): %w; out=%q", d.DbUniqueName, conn, err, raw)
+		}
+		if len(lines) < 1 || !strings.Contains(lines[len(lines)-1], "|") {
+			// not fatal but suspicious
+			log.Info("SRL verify output unexpected", "db_unique_name", d.DbUniqueName, "out", raw)
+		} else {
+			last := strings.Split(lines[len(lines)-1], "|")
+			if len(last) >= 2 {
+				newCnt, _ := strconv.Atoi(strings.TrimSpace(last[0]))
+				newMB, _ := strconv.Atoi(strings.TrimSpace(last[1]))
+				log.Info("SRLs created/verified",
+					"db_unique_name", d.DbUniqueName,
+					"new_srl_count", newCnt,
+					"new_srl_mb", newMB,
+					"required_srl", required,
+					"redo_mb", redoMB)
+			}
+		}
+	}
+
+	return nil
 }

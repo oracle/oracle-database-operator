@@ -339,6 +339,19 @@ func buildEnvVarsSpec(
 
 		result = append(result, corev1.EnvVar{Name: "KUBE_SVC", Value: name})
 
+		// set per-DB broker config file paths (primary + standby)
+		dbu := strings.ToUpper(strings.TrimSpace(name))
+		for _, v := range result {
+			if v.Name == "DB_UNIQUE_NAME" && strings.TrimSpace(v.Value) != "" {
+				dbu = strings.ToUpper(strings.TrimSpace(v.Value))
+				break
+			}
+		}
+		cfg1 := fmt.Sprintf("%s/dbconfig/%s/dr1%s.dat", oraDataMount, dbu, dbu)
+		cfg2 := fmt.Sprintf("%s/dbconfig/%s/dr2%s.dat", oraDataMount, dbu, dbu)
+		result = upsertEnv(result, corev1.EnvVar{Name: "DG_BROKER_CONFIG_FILE1", Value: cfg1})
+		result = upsertEnv(result, corev1.EnvVar{Name: "DG_BROKER_CONFIG_FILE2", Value: cfg2})
+
 		// only for standby roles ---
 		if (role == "STANDBY" || role == "ACTIVE_STANDBY") &&
 			primaryRef != nil &&
@@ -376,16 +389,13 @@ func buildEnvVarsSpec(
 			}
 
 			// Canonical EZCONNECT form for DBCA/RMAN
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connNoSlash})
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connNoSlash})
 			result = upsertEnv(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR", Value: connNoSlash})
 			result = upsertEnv(result, corev1.EnvVar{Name: "PRIMARY_CONNECT", Value: connNoSlash})
 
 			// Keep both variants for compatibility/debug
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_NOSLASH", Value: connNoSlash})
-			result = append(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_WITHSLASH", Value: connWithSlash})
+			result = upsertEnv(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_NOSLASH", Value: connNoSlash})
+			result = upsertEnv(result, corev1.EnvVar{Name: "PRIMARY_DB_CONN_STR_WITHSLASH", Value: connWithSlash})
 		}
-
 	}
 
 	// CATALOG specific

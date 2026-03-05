@@ -148,7 +148,7 @@ func buildStatefulSpecForShard(instance *databasev4.ShardingDatabase, OraShardSp
 	return sfsetspec
 }
 
-// NEW: Standby Net initContainer (listener.ora + tnsnames.ora + sqlnet.ora) BEFORE DBCA/RMAN runs.
+// Standby Net initContainer (listener.ora + tnsnames.ora + sqlnet.ora) BEFORE DBCA/RMAN runs.
 func buildStandbyNetInitContainerForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) (corev1.Container, bool) {
 	role := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
 	if role != "STANDBY" && role != "ACTIVE_STANDBY" {
@@ -176,17 +176,28 @@ func buildStandbyNetInitContainerForShard(instance *databasev4.ShardingDatabase,
 	// ------------------ NEW: add DGMGRL aliases for broker ------------------
 	standbySid := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name)) // e.g. SSHARD2
 
-	// Primary host should already be a resolvable DNS name; use it directly.
+	// primaryHost is FQDN like: pshard1-0.pshard1.shns.svc.cluster.local
+	// The listener registers service as: <DB_UNIQUE_NAME>_DGMGRL + <domain>
+	// where domain is derived from ORACLE_HOSTNAME (everything after "<pod>.").
+	//
+	// So we must use: PSHARD1_DGMGRLpshard1.shns.svc.cluster.local
+	primaryDomainSuffix := ""
+	if parts := strings.Split(primaryHost, "."); len(parts) >= 2 {
+		primaryDomainSuffix = strings.Join(parts[1:], ".")
+	}
+
+	primaryDgmgrlSvc := fmt.Sprintf("%s_DGMGRL%s", primarySid, primaryDomainSuffix)
+
 	primaryDgmgrlEntry := fmt.Sprintf(`
 %s_DGMGRL =
   (DESCRIPTION =
     (ADDRESS = (PROTOCOL = TCP)(HOST = %s)(PORT = %d))
     (CONNECT_DATA =
       (SERVER = DEDICATED)
-      (SERVICE_NAME = %s_DGMGRL)
+      (SERVICE_NAME = %s)
     )
   )
-`, primarySid, primaryHost, primaryPort, primarySid)
+`, primarySid, primaryHost, primaryPort, primaryDgmgrlSvc)
 
 	// Standby uses stable ordinal-0 pod DNS
 	standbyHost := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", OraShardSpex.Name, OraShardSpex.Name, instance.Namespace)
