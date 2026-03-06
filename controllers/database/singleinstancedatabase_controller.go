@@ -588,8 +588,12 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 //	Instantiate POD spec from SingleInstanceDatabase spec
 //
 // #############################################################################
+
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase,
 	requiredAffinity bool) *corev1.Pod {
+	// PVC override locals: read from spec.persistence only
+	dbPVC := m.Spec.Persistence.DbFilesPvc
+	stagePVC := m.Spec.Persistence.StagePvc
 
 	// POD spec
 	pod := &corev1.Pod{
@@ -664,6 +668,15 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			Volumes: []corev1.Volume{{
 				Name: "datafiles-vol",
 				VolumeSource: func() corev1.VolumeSource {
+					// External PVC override when dbPVC provided
+					if dbPVC != "" {
+						return corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: dbPVC,
+								ReadOnly:  false,
+							},
+						}
+					}
 					if m.Spec.Persistence.Size == "" {
 						return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
 					}
@@ -674,6 +687,19 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							ReadOnly:  false,
 						},
 					}
+				}(),
+			}, {
+				Name: "stage-vol",
+				VolumeSource: func() corev1.VolumeSource {
+					if stagePVC != "" {
+						return corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: stagePVC,
+								ReadOnly:  false,
+							},
+						}
+					}
+					return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
 				}(),
 			}, {
 				Name: "oracle-pwd-vol",
@@ -743,6 +769,155 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						}},
 					})
 				}
+				if len(m.Spec.Persistence.Size) == 0 && dbPVC != "" {
+					initContainers = append(initContainers, corev1.Container{
+						Name:    "init-permissions-dbfilpvc",
+						Image:   m.Spec.Image.PullFrom,
+						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata || true", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
+						SecurityContext: &corev1.SecurityContext{
+							// User ID 0 means, root user
+							RunAsUser: func() *int64 { i := int64(0); return &i }(),
+						},
+						VolumeMounts: []corev1.VolumeMount{{
+							MountPath: "/opt/oracle/oradata",
+							Name:      "datafiles-vol",
+						}},
+					})
+				}
+				if stagePVC != "" {
+					initContainers = append(initContainers, corev1.Container{
+						Name:    "init-permissions-stage",
+						Image:   m.Spec.Image.PullFrom,
+						Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /stage || true", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
+						SecurityContext: &corev1.SecurityContext{
+							// User ID 0 means, root user
+							RunAsUser: func() *int64 { i := int64(0); return &i }(),
+						},
+						VolumeMounts: []corev1.VolumeMount{{
+							MountPath: "/stage",
+							Name:      "stage-vol",
+						}},
+					})
+				}
+				if dbPVC != "" {
+					pfilePath := dbcommons.PfilePath
+					// ${ORACLE_SID} is provided via Env
+					spfilePath := "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/spfile${ORACLE_SID}.ora"
+					markerPath := "/opt/oracle/oradata/.spfileMdone"
+
+					initContainers = append(initContainers,
+						// check marker using markerPath
+						corev1.Container{
+							Name:  "init-check-marker",
+							Image: m.Spec.Image.PullFrom,
+							Command: []string{"/bin/sh", "-c",
+								fmt.Sprintf("if [ -f %s ]; then echo 'spfile already initialized'; fi", markerPath),
+							},
+							SecurityContext: &corev1.SecurityContext{
+								RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+								RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+							},
+							VolumeMounts: []corev1.VolumeMount{{
+								MountPath: "/opt/oracle/oradata",
+								Name:      "datafiles-vol",
+							}},
+							Env: []corev1.EnvVar{{
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
+							}},
+						},
+						corev1.Container{
+							Name:  "init-pfile1",
+							Image: m.Spec.Image.PullFrom,
+							Command: []string{"/bin/sh", "-c",
+								fmt.Sprintf("if [ ! -f %s ]; then %s; fi",
+									markerPath,
+									fmt.Sprintf(dbcommons.CreatePfileFromSpfileCMD, pfilePath, spfilePath)),
+							},
+							SecurityContext: &corev1.SecurityContext{
+								RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+								RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+							},
+							VolumeMounts: []corev1.VolumeMount{{
+								MountPath: "/opt/oracle/oradata",
+								Name:      "datafiles-vol",
+							}},
+							Env: []corev1.EnvVar{{
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
+							}},
+						},
+						corev1.Container{
+							Name:  "init-pfile2",
+							Image: m.Spec.Image.PullFrom,
+							Command: []string{"/bin/sh", "-c",
+								fmt.Sprintf(
+									dbcommons.PatchInitParamsInPfileCMD,
+									pfilePath,
+									m.Spec.InitParams.SgaTarget,
+									m.Spec.InitParams.PgaAggregateTarget,
+									m.Spec.InitParams.CpuCount,
+									m.Spec.InitParams.Processes,
+								),
+							},
+							SecurityContext: &corev1.SecurityContext{
+								RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+								RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+							},
+							VolumeMounts: []corev1.VolumeMount{{
+								MountPath: "/opt/oracle/oradata",
+								Name:      "datafiles-vol",
+							}},
+							Env: []corev1.EnvVar{{
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
+							}},
+						},
+						corev1.Container{
+							Name:  "init-pfile3",
+							Image: m.Spec.Image.PullFrom,
+							Command: []string{"/bin/sh", "-c",
+								fmt.Sprintf("if [ ! -f %s ]; then %s; fi",
+									markerPath,
+									fmt.Sprintf(dbcommons.CreateSpfileFromPfileCMD, spfilePath, pfilePath)),
+							},
+							SecurityContext: &corev1.SecurityContext{
+								RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+								RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+							},
+							VolumeMounts: []corev1.VolumeMount{{
+								MountPath: "/opt/oracle/oradata",
+								Name:      "datafiles-vol",
+							}},
+							Env: []corev1.EnvVar{{
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
+							}},
+						},
+
+						//  mark done
+						corev1.Container{
+							Name:  "init-mark-done",
+							Image: m.Spec.Image.PullFrom,
+							Command: []string{"/bin/sh", "-c",
+								fmt.Sprintf("if [ ! -f %s ]; then touch %s; fi", markerPath, markerPath),
+							},
+							SecurityContext: &corev1.SecurityContext{
+								RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+								RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+							},
+							VolumeMounts: []corev1.VolumeMount{{
+								MountPath: "/opt/oracle/oradata",
+								Name:      "datafiles-vol",
+							}},
+							Env: []corev1.EnvVar{{
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
+							}},
+						},
+					)
+				}
+
 				if m.Spec.Image.PrebuiltDB {
 					initContainers = append(initContainers, corev1.Container{
 						Name:    "init-prebuiltdb",
@@ -879,10 +1054,16 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				}(),
 				VolumeMounts: func() []corev1.VolumeMount {
 					mounts := []corev1.VolumeMount{}
-					if m.Spec.Persistence.Size != "" {
+					if dbPVC != "" {
 						mounts = append(mounts, corev1.VolumeMount{
 							MountPath: "/opt/oracle/oradata",
 							Name:      "datafiles-vol",
+						})
+					}
+					if stagePVC != "" {
+						mounts = append(mounts, corev1.VolumeMount{
+							MountPath: "/stage",
+							Name:      "stage-vol",
 						})
 					}
 					if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB {
@@ -1553,12 +1734,21 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 				log.Error(err, "Error while updating the PVCs")
 				return requeueY, fmt.Errorf("error while updating the PVCs")
 			}
+			if m.Spec.Persistence.DbFilesPvc == "" {
+				m.Status.Persistence.DbFilesPvc = pvc.Name
+			}
+			_ = r.Status().Update(ctx, m)
 
 		} else {
 
 			log.Info("Found Existing PVC", "Name", pvc.Name)
 			return requeueN, nil
+			if m.Spec.Persistence.DbFilesPvc == "" {
+				m.Status.Persistence.DbFilesPvc = pvc.Name
+			}
+			_ = r.Status().Update(ctx, m)
 
+			return requeueN, nil
 		}
 	}
 
@@ -1571,6 +1761,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 			log.Error(err, "Failed to create new PVC", "PVC.Namespace", pvc.Namespace, "PVC.Name", pvc.Name)
 			return requeueY, err
 		}
+		if m.Spec.Persistence.DbFilesPvc == "" {
+			m.Status.Persistence.DbFilesPvc = pvc.Name
+		}
+		_ = r.Status().Update(ctx, m)
 		return requeueN, nil
 	} else if err != nil {
 		log.Error(err, "Failed to get PVC")
