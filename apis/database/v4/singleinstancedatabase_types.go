@@ -88,7 +88,9 @@ type SingleInstanceDatabaseSpec struct {
 	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
 	Resources     SingleInstanceDatabaseResources     `json:"resources,omitempty"`
 
-	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
+	ConvertToSnapshotStandby bool   `json:"convertToSnapshotStandby,omitempty"`
+	DbFilesPvc               string `json:"dbFilesPvc,omitempty"`
+	StagePvc                 string `json:"stagePvc,omitempty"`
 }
 
 type SingleInstanceDatabaseResource struct {
@@ -111,6 +113,9 @@ type SingleInstanceDatabasePersistence struct {
 	ScriptsVolumeName     string `json:"scriptsVolumeName,omitempty"`
 	VolumeClaimAnnotation string `json:"volumeClaimAnnotation,omitempty"`
 	SetWritePermissions   *bool  `json:"setWritePermissions,omitempty"`
+	// New PVC fields
+	DbFilesPvc string `json:"dbFilesPvc,omitempty"`
+	StagePvc   string `json:"stagePvc,omitempty"`
 }
 
 // SingleInstanceDatabaseInitParams defines the Init Parameters
