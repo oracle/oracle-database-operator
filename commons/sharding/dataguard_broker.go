@@ -358,3 +358,180 @@ func ExecShellInPod(
 	}
 	return nil
 }
+
+func SetDgBrokerConnectIdentifiers(
+	primaryPod string,
+	primaryDbUnique string,
+	primaryConnects []string,
+	standbyDbUnique string,
+	standbyConnects []string,
+	instance *databasev4.ShardingDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	log logr.Logger,
+) error {
+
+	if len(primaryConnects) == 0 {
+		return fmt.Errorf("primary connect identifiers are empty for %s", primaryDbUnique)
+	}
+	if len(standbyConnects) == 0 {
+		return fmt.Errorf("standby connect identifiers are empty for %s", standbyDbUnique)
+	}
+
+	primaryConn := strings.TrimSpace(primaryConnects[0])
+	standbyConn := strings.TrimSpace(standbyConnects[0])
+
+	primaryHost := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local",
+		strings.ToLower(primaryDbUnique), strings.ToLower(primaryDbUnique), instance.Namespace)
+	standbyHost := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local",
+		strings.ToLower(standbyDbUnique), strings.ToLower(standbyDbUnique), instance.Namespace)
+
+	primarySvc := BuildDgmgrlServiceName(primaryDbUnique)
+	standbySvc := BuildDgmgrlServiceName(standbyDbUnique)
+
+	cmd := []string{"bash", "-lc", fmt.Sprintf(`
+dgmgrl -silent / <<'EOF'
+edit database %s set property DGConnectIdentifier='%s';
+edit database %s set property StaticConnectIdentifier='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=%s)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=%s)(INSTANCE_NAME=%s)(SERVER=DEDICATED)))';
+
+edit database %s set property DGConnectIdentifier='%s';
+edit database %s set property StaticConnectIdentifier='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=%s)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=%s)(INSTANCE_NAME=%s)(SERVER=DEDICATED)))';
+
+show database verbose %s;
+show database verbose %s;
+exit
+EOF
+`,
+		safeIdent(primaryDbUnique), primaryConn,
+		safeIdent(primaryDbUnique), primaryHost, primarySvc, strings.ToUpper(primaryDbUnique),
+
+		safeIdent(standbyDbUnique), standbyConn,
+		safeIdent(standbyDbUnique), standbyHost, standbySvc, strings.ToUpper(standbyDbUnique),
+
+		safeIdent(primaryDbUnique),
+		safeIdent(standbyDbUnique),
+	)}
+
+	stdout, stderr, err := ExecCommand(primaryPod, cmd, kubeClient, kubeConfig, instance, log)
+	if err != nil {
+		LogMessages("ERROR",
+			"SetDgBrokerConnectIdentifiers failed stdout="+stdout+" stderr="+stderr,
+			err, instance, log)
+		return err
+	}
+
+	LogMessages("INFO", "Set DG broker connect identifiers for "+primaryDbUnique+" and "+standbyDbUnique, nil, instance, log)
+	return nil
+}
+
+func EnsureStandbyRedoLogsForShards(
+	primaryPod string,
+	standbyPod string,
+	instance *databasev4.ShardingDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	log logr.Logger,
+) error {
+
+	primarySQL := `
+set pages 200 lines 200
+prompt === ONLINE REDO (v$log) ===
+select thread#, count(*) online_groups, round(max(bytes)/1024/1024) mb
+from v$log group by thread# order by thread#;
+
+select group#, thread#, round(bytes/1024/1024) mb, status
+from v$log order by group#;
+
+prompt === STANDBY REDO (v$standby_log) ===
+select thread#, count(*) srl_groups, round(nvl(max(bytes),0)/1024/1024) mb
+from v$standby_log group by thread# order by thread#;
+
+select group#, thread#, round(bytes/1024/1024) mb, status
+from v$standby_log order by group#;
+`
+
+	if err := RunSQLPlusInPod(primaryPod, primarySQL, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	standbySQL := `
+set pages 200 lines 200
+prompt === ONLINE REDO (v$log) ===
+select thread#, count(*) online_groups, round(max(bytes)/1024/1024) mb
+from v$log group by thread# order by thread#;
+
+select group#, thread#, round(bytes/1024/1024) mb, status
+from v$log order by group#;
+
+prompt === STANDBY REDO (v$standby_log) ===
+select thread#, count(*) srl_groups, round(nvl(max(bytes),0)/1024/1024) mb
+from v$standby_log group by thread# order by thread#;
+
+select group#, thread#, round(bytes/1024/1024) mb, status
+from v$standby_log order by group#;
+`
+
+	if err := RunSQLPlusInPod(standbyPod, standbySQL, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	addPrimarySRLs := `
+alter database add standby logfile thread 1 size 200M;
+alter database add standby logfile thread 1 size 200M;
+alter database add standby logfile thread 1 size 200M;
+alter database add standby logfile thread 1 size 200M;
+`
+	if err := RunSQLPlusInPod(primaryPod, addPrimarySRLs, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	addStandbySRLs := `
+alter database recover managed standby database cancel;
+alter database add standby logfile thread 1 size 200M;
+alter database add standby logfile thread 1 size 200M;
+alter database add standby logfile thread 1 size 200M;
+alter database add standby logfile thread 1 size 200M;
+`
+	if err := RunSQLPlusInPod(standbyPod, addStandbySRLs, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	LogMessages("INFO", "Added standby redo logs on primary and standby", nil, instance, log)
+	return nil
+}
+
+func RestartStandbyApplyAndForceRedo(
+	primaryPod string,
+	standbyPod string,
+	instance *databasev4.ShardingDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	log logr.Logger,
+) error {
+
+	startApplySQL := `
+alter database recover managed standby database using current logfile disconnect from session;
+`
+	if err := RunSQLPlusInPod(standbyPod, startApplySQL, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	forceRedoSQL := `
+alter system archive log current;
+alter system archive log current;
+`
+	if err := RunSQLPlusInPod(primaryPod, forceRedoSQL, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	verifyApplySQL := `
+set pages 200 lines 200
+select process, status, thread#, sequence# from v$managed_standby order by process;
+`
+	if err := RunSQLPlusInPod(standbyPod, verifyApplySQL, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	LogMessages("INFO", "Restarted standby apply and forced redo shipping", nil, instance, log)
+	return nil
+}

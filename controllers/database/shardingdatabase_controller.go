@@ -1833,6 +1833,48 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				return e
 			}
 
+			if e := shardingv1.SetDgBrokerConnectIdentifiers(
+				primaryPod,
+				primaryDbUnique,
+				primaryConnects,
+				standbyDbUnique,
+				standbyConnects,
+				instance,
+				r.kubeClient,
+				r.kubeConfig,
+				r.Log,
+			); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:set-connect-identifiers:"+e.Error())
+				return e
+			}
+
+			if e := shardingv1.EnsureStandbyRedoLogsForShards(
+				primaryPod,
+				standbyPod,
+				instance,
+				r.kubeClient,
+				r.kubeConfig,
+				r.Log,
+			); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:add-srl:"+e.Error())
+				return e
+			}
+
+			if e := shardingv1.RestartStandbyApplyAndForceRedo(
+				primaryPod,
+				standbyPod,
+				instance,
+				r.kubeClient,
+				r.kubeConfig,
+				r.Log,
+			); e != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:restart-apply:"+e.Error())
+				return e
+			}
+
 			if e := shardingv1.EnableAndValidateDgBroker(primaryPod, cfgName, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:enable-validate:"+e.Error())
