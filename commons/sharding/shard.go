@@ -173,20 +173,10 @@ func buildStandbyNetInitContainerForShard(instance *databasev4.ShardingDatabase,
 		primaryPort = int(OraShardSpex.PrimaryDatabaseRef.Port)
 	}
 
-	// ------------------ NEW: add DGMGRL aliases for broker ------------------
+	// ------------------ DGMGRL aliases for broker ------------------
 	standbySid := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name)) // e.g. SSHARD2
 
-	// primaryHost is FQDN like: pshard1-0.pshard1.shns.svc.cluster.local
-	// The listener registers service as: <DB_UNIQUE_NAME>_DGMGRL + <domain>
-	// where domain is derived from ORACLE_HOSTNAME (everything after "<pod>.").
-	//
-	// So we must use: PSHARD1_DGMGRLpshard1.shns.svc.cluster.local
-	primaryDomainSuffix := ""
-	if parts := strings.Split(primaryHost, "."); len(parts) >= 2 {
-		primaryDomainSuffix = strings.Join(parts[1:], ".")
-	}
-
-	primaryDgmgrlSvc := fmt.Sprintf("%s_DGMGRL%s", primarySid, primaryDomainSuffix)
+	primaryDgmgrlSvc := fmt.Sprintf("%s_DGMGRL", primarySid)
 
 	primaryDgmgrlEntry := fmt.Sprintf(`
 %s_DGMGRL =
@@ -201,16 +191,19 @@ func buildStandbyNetInitContainerForShard(instance *databasev4.ShardingDatabase,
 
 	// Standby uses stable ordinal-0 pod DNS
 	standbyHost := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", OraShardSpex.Name, OraShardSpex.Name, instance.Namespace)
+
+	standbyDgmgrlSvc := fmt.Sprintf("%s_DGMGRL", standbySid)
+
 	standbyDgmgrlEntry := fmt.Sprintf(`
 %s_DGMGRL =
   (DESCRIPTION =
     (ADDRESS = (PROTOCOL = TCP)(HOST = %s)(PORT = 1521))
     (CONNECT_DATA =
       (SERVER = DEDICATED)
-      (SERVICE_NAME = %s_DGMGRL)
+      (SERVICE_NAME = %s)
     )
   )
-`, standbySid, standbyHost, standbySid)
+`, standbySid, standbyHost, standbyDgmgrlSvc)
 	// ----------------------------------------------------------------------
 
 	// Writes into:
