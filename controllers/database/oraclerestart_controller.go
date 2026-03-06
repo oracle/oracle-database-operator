@@ -747,6 +747,7 @@ func (r *OracleRestartReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	return resultQ, nil
 }
 
+// normalizeDisks trims whitespace and sorts disk lists for stable comparison
 func normalizeDisks(disks []string) []string {
 	var cleaned []string
 
@@ -760,12 +761,15 @@ func normalizeDisks(disks []string) []string {
 	sort.Strings(cleaned) // IMPORTANT for stable comparison
 	return cleaned
 }
+
+// dgKey generates a unique key for a disk group based on its name and type, used for mapping old vs new disk groups during change detection.
 func dgKey(name string, t v4.AsmDiskDGTypes) string {
 	return name + "|" + string(t)
 }
 
 // checkRacDaemonSetStatus checks daemonset progress by polling for readiness
 // and scanning pod logs. It returns true when the disk-check job completes.
+// checkRacDaemonSetStatus verifies the ASM discovery daemonset for Oracle Restart has succeeded before continuing reconciliation.
 func checkRacDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracleRestart *oraclerestartdb.OracleRestart) (bool, error) {
 	timeout := time.After(2 * time.Minute)
 	tick := time.NewTicker(10 * time.Second) // Poll every 10 seconds
@@ -897,9 +901,7 @@ func (r *OracleRestartReconciler) computeDiskChanges(
 	return addedAsmDisks, removedAsmDisks, nil
 }
 
-// checkOracleRestartState blocks reconcile progress when the Oracle Restart
-// resource is in restricted states such as provisioning, updates, or manual
-// operations, returning an error for requeue.
+// checkOracleRestartState blocks reconciliation when Oracle Restart enters restricted lifecycle states.
 func checkOracleRestartState(oracleRestart *oraclerestartdb.OracleRestart) error {
 	if oracleRestart.Status.State == string(oraclerestartdb.OracleRestartProvisionState) ||
 		oracleRestart.Status.State == string(oraclerestartdb.OracleRestartUpdateState) ||
@@ -1271,6 +1273,7 @@ func flattenDisksBySize(spec *oraclerestartdb.OracleRestartSpec) []string {
 	return all
 }
 
+// findDisksToRemove identifies disks that are present in the runtime status but missing from the new spec, indicating they should be removed. It returns a list of disks to remove and any validation errors encountered during the comparison.
 func findDisksToRemove(
 	specDisks []string,
 	statusDisks []string,
@@ -1305,6 +1308,8 @@ func findDisksToRemove(
 
 	return toRemove, nil
 }
+
+// findDisksToAdd identifies disks that are present in the new spec but missing from the runtime status, indicating they should be added. It also checks for duplicates in the new spec and returns any validation errors encountered during the comparison.
 func findDisksToAdd(
 	newSpecDisks []string,
 	statusDisks []string,
@@ -2109,12 +2114,12 @@ func (r *OracleRestartReconciler) validateOracleRestartInst(oracleRestart *oracl
 			// Log the name of the first not ready pod
 			msg = "unable to validate Oracle Restart pod. The  pod not ready  is: " + notReadyPod.Name
 			oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
-			return orestartSfSet, orestartPod, fmt.Errorf(msg)
+			return orestartSfSet, orestartPod, errors.New(msg)
 		} else {
 			// Handle the case where no pods were found at all
 			msg = "unable to validate Oracle Restart pod. No pods matching the criteria were found"
 			oraclerestartcommon.LogMessages("INFO", msg, nil, oracleRestart, r.Log)
-			return orestartSfSet, orestartPod, fmt.Errorf(msg)
+			return orestartSfSet, orestartPod, errors.New(msg)
 		}
 
 	}
@@ -2253,6 +2258,7 @@ func GetRestrictedFields() map[string]struct{} {
 
 // mergeInstancesFromLatest copies relevant fields from the latest object into
 // the working instance to avoid clobbering concurrent status updates.
+// mergeInstancesFromLatest copies exported fields from the latest Oracle Restart object into the reconcile instance.
 func mergeInstancesFromLatest(instance, latestInstance *oraclerestartdb.OracleRestart) error {
 	instanceVal := reflect.ValueOf(instance).Elem()
 	latestVal := reflect.ValueOf(latestInstance).Elem()
@@ -2271,6 +2277,7 @@ func mergeInstancesFromLatest(instance, latestInstance *oraclerestartdb.OracleRe
 
 // mergeStructFields recursively merges exported struct fields so only blank
 // fields are filled from the latest object.
+// mergeStructFields recursively merges exported struct fields from the latest object onto the target instance.
 func mergeStructFields(instanceField, latestField reflect.Value) error {
 
 	if instanceField.Kind() != reflect.Struct || latestField.Kind() != reflect.Struct {
@@ -2352,6 +2359,7 @@ func mergeStructFields(instanceField, latestField reflect.Value) error {
 
 // isExported reports whether a struct field is exported; merge logic ignores
 // unexported fields.
+// isExported reports whether a struct field is exported so reflection merges can manipulate it.
 func isExported(field reflect.StructField) bool {
 	return field.PkgPath == ""
 }
@@ -2798,6 +2806,7 @@ func ensurePlusPrefix(name string) string {
 
 // normalizeOracleMemoryUnit converts "Gi"/"Mi" suffixes into Oracle DBCA
 // compatible units like "G" and "M".
+// normalizeOracleMemoryUnit ensures Oracle memory values include canonical units for downstream comparisons.
 func normalizeOracleMemoryUnit(s string) string {
 	s = strings.TrimSpace(strings.ToUpper(s))
 	s = strings.ReplaceAll(s, "GI", "G")
@@ -2976,6 +2985,8 @@ func (r *OracleRestartReconciler) createOrReplaceAsmPvC(ctx context.Context, ins
 	return found.Name, ctrl.Result{}, nil
 
 }
+
+// ensureAsmStorageStatus updates the Oracle Restart status with the current state of ASM disk groups,
 func (r *OracleRestartReconciler) ensureAsmStorageStatus(
 	ctx context.Context,
 	oracleRestart *oraclerestartdb.OracleRestart,
@@ -3239,6 +3250,7 @@ func (r *OracleRestartReconciler) ensureStatefulSetUpdated(ctx context.Context,
 
 // executeDiskGroupCommand runs a command inside the specified pod to inspect
 // or manipulate ASM disk groups.
+// executeDiskGroupCommand runs an ASM disk management command on the target pod and returns stdout and stderr.
 func executeDiskGroupCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (string, string, error) {
 	return oraclerestartcommon.ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
 }
@@ -3298,6 +3310,7 @@ func (r *OracleRestartReconciler) addDisks(ctx context.Context, podList *corev1.
 
 // checkDaemonSetStatus monitors the disk-check DaemonSet until all pods
 // complete successfully, returning readiness or timeout errors.
+// checkDaemonSetStatus inspects the Oracle Restart daemonset and reports success once all pods complete.
 func checkDaemonSetStatus(ctx context.Context, r *OracleRestartReconciler, oracleRestart *oraclerestartdb.OracleRestart) (bool, error) {
 	timeout := time.After(2 * time.Minute)
 	tick := time.NewTicker(10 * time.Second) // Poll every 10 seconds
@@ -3467,6 +3480,8 @@ func (r *OracleRestartReconciler) createOrReplaceSfs(
 
 	return ctrl.Result{}, nil
 }
+
+// getAsmAutoUpdateForDisk checks if a given ASM disk is configured for auto-update based on the OracleRestart spec.
 func getAsmAutoUpdateForDisk(
 	instance *oraclerestartdb.OracleRestart,
 	disk string,
@@ -3794,12 +3809,6 @@ podsReady:
 	return ctrl.Result{}, nil
 }
 
-// #############################################################################
-//
-//	Manage Finalizer to cleanup before deletion of OracleRestart
-//
-// #############################################################################
-
 // manageOracleRestartDeletion manages the deletion of the OracleRestart resource
 func (r *OracleRestartReconciler) manageOracleRestartDeletion(req ctrl.Request, ctx context.Context, oracleRestart *oraclerestartdb.OracleRestart) error {
 	log := r.Log.WithValues("manageOracleRestartDeletion", req.NamespacedName)
@@ -4102,6 +4111,7 @@ func (r *OracleRestartReconciler) deleteOracleRestartInst(OraRestartSpex oracler
 
 // IsStaticProvisioningUsed determines whether static provisioning should be
 // assumed by checking for unnamed storage class usage or listing failures.
+// IsStaticProvisioningUsed checks a storage class to determine whether static provisioning is configured.
 func IsStaticProvisioningUsed(ctx context.Context, c client.Client, storageClassName string) bool {
 	if storageClassName != "" {
 		return false
@@ -4257,7 +4267,7 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 	if oldSpec != nil {
 		// fmt.Printf("Received OldSpec", oldSpec.InstDetails.SwLocStorageSizeInGb)
 		if instance.Spec.InstDetails.SwLocStorageSizeInGb > oldSpec.InstDetails.SwLocStorageSizeInGb {
-			fmt.Printf("Inside OldSpec and newSpec Change", oldSpec.InstDetails.SwLocStorageSizeInGb, instance.Spec.InstDetails.SwLocStorageSizeInGb)
+			fmt.Printf("Inside OldSpec and newSpec Change: old=%d new=%d\n", oldSpec.InstDetails.SwLocStorageSizeInGb, instance.Spec.InstDetails.SwLocStorageSizeInGb)
 			storageClass := &storagev1.StorageClass{}
 			pvc := &corev1.PersistentVolumeClaim{}
 
@@ -4285,13 +4295,13 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 					newPVCSize := resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")
 					newPVCSizeAdd := &newPVCSize
 
-					fmt.Printf("New PvcSize set to ", newPVCSizeAdd)
+					fmt.Printf("New PvcSize set to %s\n", newPVCSizeAdd.String())
 					if newPVCSizeAdd.Cmp(pvc.Spec.Resources.Requests["storage"]) < 0 {
 						return fmt.Errorf("Resizing PVC to lower size volume not allowed")
 					}
 
 					pvc.Spec.Resources.Requests["storage"] = resource.MustParse(strconv.Itoa(instance.Spec.InstDetails.SwLocStorageSizeInGb) + "Gi")
-					fmt.Printf("Updating PVC", "pvc", pvc.Name, "volume", pvc.Spec.VolumeName)
+					fmt.Printf("Updating PVC %s volume %s\n", pvc.Name, pvc.Spec.VolumeName)
 					err = r.Update(ctx, pvc)
 					if err != nil {
 						return fmt.Errorf("error while updating the PVCs")
@@ -4306,6 +4316,7 @@ func (r *OracleRestartReconciler) expandStorageClassSWVolume(ctx context.Context
 
 // getDisksToRemoveStatus compares spec and status to determine which disks
 // should be removed from ASM groups.
+// getDisksToRemoveStatus derives the ASM disks requested for removal from Oracle Restart status fields.
 func getDisksToRemoveStatus(instance *oraclerestartdb.OracleRestart) ([]string, error) {
 	disksToRemove := []string{}
 	disksToRemoveSet := make(map[string]struct{})
@@ -4355,6 +4366,7 @@ func getDisksToRemoveStatus(instance *oraclerestartdb.OracleRestart) ([]string, 
 
 // findRacDisksToRemove identifies disks that exist in status but not in spec
 // so they can be removed from ASM groups.
+// findRacDisksToRemove compares spec and status disks to compute removals for Oracle Restart setups.
 func findRacDisksToRemove(specDisks, statusDisks []string, instance *oraclerestartdb.OracleRestart) ([]string, error) {
 	// Convert specDisks to a set for fast lookups
 	specDiskSet := make(map[string]struct{})
@@ -4405,6 +4417,7 @@ func findRacDisksToRemove(specDisks, statusDisks []string, instance *oracleresta
 // - A slice of disk paths that are valid to be added
 // - An error if duplicates are found in newSpecDisks or if a disk already exists in an ASM device list
 // - nil if no new disks need to be added or all validations pass
+// findRacDisksToAdd identifies ASM disks newly requested in spec compared to status and old spec.
 func findRacDisksToAdd(newSpecDisks, statusDisks []string, instance *oraclerestartdb.OracleRestart, oldSpec *oraclerestartdb.OracleRestartSpec) ([]string, error) {
 	// Create a set for statusDisks to allow valid reuse of existing disks
 	// Step 1: Check for duplicates within newSpecDisks itself
@@ -4489,6 +4502,7 @@ func findRacDisksToAdd(newSpecDisks, statusDisks []string, instance *oracleresta
 	return validDisksToAdd, nil
 }
 
+// getDisksToAddStatus reads status annotations to determine ASM disks pending addition.
 func getDisksToAddStatus(instance *oraclerestartdb.OracleRestart) ([]string, error) {
 	disksToAdd := []string{}
 	disksToAddSet := make(map[string]struct{})
@@ -4537,6 +4551,7 @@ func getDisksToAddStatus(instance *oraclerestartdb.OracleRestart) ([]string, err
 }
 
 // Helper function to flatten all disk names in AsmStorageDetails
+// flattenAsmDisks flattens nested ASM disk group definitions into a single slice of device names.
 func flattenAsmDisks(oraclerestartdbSpec *oraclerestartdb.OracleRestartSpec) []string {
 	var allDisks []string
 
@@ -4558,6 +4573,7 @@ func flattenAsmDisks(oraclerestartdbSpec *oraclerestartdb.OracleRestartSpec) []s
 	return allDisks
 }
 
+// getRACDisksChangedSpec returns ASM disks added or removed between current and previous Oracle Restart specs.
 func getRACDisksChangedSpec(racDatabase oraclerestartdb.OracleRestart, oldSpec oraclerestartdb.OracleRestartSpec) ([]string, []string) {
 	addedAsmDisks := []string{}
 	removedAsmDisks := []string{}
@@ -4626,6 +4642,7 @@ func getRACDisksChangedSpec(racDatabase oraclerestartdb.OracleRestart, oldSpec o
 	return addedAsmDisks, removedAsmDisks
 }
 
+// setRacDgFromStatusAndSpecWithMinimumDefaults ensures ASM disk group definitions include minimum default values.
 func setRacDgFromStatusAndSpecWithMinimumDefaults(
 	racDatabase *oraclerestartdb.OracleRestart,
 	client client.Client,
@@ -4638,6 +4655,8 @@ func setRacDgFromStatusAndSpecWithMinimumDefaults(
 
 	return nil
 }
+
+// ensureCrsDiskGroup guarantees the CRS ASM disk group configuration exists and applies default parameters.
 func ensureCrsDiskGroup(racDatabase *oraclerestartdb.OracleRestart, client client.Client, cName, fName string) {
 	crsDgFound := false
 	for i, dg := range racDatabase.Spec.AsmStorageDetails {
@@ -4673,6 +4692,7 @@ func ensureCrsDiskGroup(racDatabase *oraclerestartdb.OracleRestart, client clien
 	}
 }
 
+// lookupCrsDgResponseValue retrieves CRS disk group values from response files or returns defaults.
 func lookupCrsDgResponseValue(racDatabase *oraclerestartdb.OracleRestart, client client.Client, cName, fName string) string {
 	name, err := oraclerestartcommon.CheckRspData(racDatabase, client, "oracle.install.asm.diskGroup.name", cName, fName)
 	if err == nil && name != "" {
@@ -4685,6 +4705,7 @@ func lookupCrsDgResponseValue(racDatabase *oraclerestartdb.OracleRestart, client
 	return "+DATA"
 }
 
+// lookupRedundancyResponseValue obtains redundancy settings from response files, defaulting when absent.
 func lookupRedundancyResponseValue(racDatabase *oraclerestartdb.OracleRestart, client client.Client, cName, fName string) string {
 	redundancy, err := oraclerestartcommon.CheckRspData(racDatabase, client, "redundancy", cName, fName)
 	if err == nil && redundancy != "" {
@@ -4693,6 +4714,7 @@ func lookupRedundancyResponseValue(racDatabase *oraclerestartdb.OracleRestart, c
 	return "EXTERNAL"
 }
 
+// ensureDbDataDiskGroup validates or sets defaults for the database data ASM disk group.
 func ensureDbDataDiskGroup(racDatabase *oraclerestartdb.OracleRestart) {
 	var crsName string
 	for _, dg := range racDatabase.Spec.AsmStorageDetails {
@@ -4717,6 +4739,7 @@ func ensureDbDataDiskGroup(racDatabase *oraclerestartdb.OracleRestart) {
 	})
 }
 
+// ensureDbRecoveryDiskGroup validates or defaults the recovery ASM disk group configuration.
 func ensureDbRecoveryDiskGroup(racDatabase *oraclerestartdb.OracleRestart) {
 	var dataName string
 	for _, dg := range racDatabase.Spec.AsmStorageDetails {
@@ -4740,6 +4763,7 @@ func ensureDbRecoveryDiskGroup(racDatabase *oraclerestartdb.OracleRestart) {
 	})
 }
 
+// ensureDefaultCharset assigns a default database character set when the spec omits one.
 func ensureDefaultCharset(racDatabase *oraclerestartdb.OracleRestart) {
 	if racDatabase.Spec.ConfigParams != nil && racDatabase.Spec.ConfigParams.DbCharSet == "" {
 		racDatabase.Spec.ConfigParams.DbCharSet = "AL32UTF8"

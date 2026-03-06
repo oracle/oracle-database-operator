@@ -280,38 +280,6 @@ func contains(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerest
 	return index, false
 }
 
-// // getcrsAsmDeviceList provides documentation for the getcrsAsmDeviceList function.
-// func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-// 	asmList := ""
-// 	var err error
-// 	if len(instance.Status.OracleRestartNodes) > 0 {
-// 		asmList, err = CheckAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-// 		if err != nil {
-// 			return ""
-// 		}
-
-// 	}
-
-// 	return asmList
-
-// }
-
-// // getdbAsmDeviceList provides documentation for the getdbAsmDeviceList function.
-// func getdbAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-// 	dbasmList := ""
-// 	var err error
-// 	if len(instance.Status.OracleRestartNodes) > 0 {
-// 		dbasmList, err = CheckDbAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-// 		if err != nil {
-// 			return ""
-// 		}
-
-// 	}
-
-// 	return dbasmList
-
-// }
-
 // getMountedDevices provides documentation for the getMountedDevices function.
 func getMountedDevices(podName, namespace string, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) []string {
 	var asmList []string
@@ -357,31 +325,3 @@ func getPvcDetails(instance *oraclerestartdb.OracleRestart, oracleRestart *oracl
 	return strMap
 
 }
-
-// // getOracleParameters provides documentation for the getOracleParameters function.
-// func getOracleParameters(
-// 	podName string,
-// 	params []string,
-// 	instance *oraclerestart.OracleRestart,
-// 	kubeClient kubernetes.Interface,
-// 	kubeConfig clientcmd.ClientConfig,
-// 	logger logr.Logger,
-// ) (map[string]string, error) {
-// 	scriptMount := getOraScriptMount()
-// 	paramArg := strings.Join(params, ",")
-// 	cmd := []string{
-// 		scriptMount + "/cmdExec",
-// 		"/bin/python3",
-// 		scriptMount + "/main.py",
-// 		"--getparam=" + paramArg,
-// 	}
-// 	output, _, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, logger)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	paramMap := make(map[string]string)
-// 	if err := json.Unmarshal([]byte(output), &paramMap); err != nil {
-// 		return nil, err
-// 	}
-// 	return paramMap, nil
-// }

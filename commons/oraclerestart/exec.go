@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -34,8 +34,9 @@
 ** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
- */
+*/
 
+// Package commons provides utility helpers for Oracle Restart workflows.
 package commons
 
 import (
@@ -52,8 +53,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-// ExecCMDInContainer execute command in first container of a pod
-// ExecCommand provides documentation for the ExecCommand function.
+// ExecCommand runs a command inside the first container of the given pod and returns captured stdout and stderr.
 func ExecCommand(podName string, cmd []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, instance *oraclerestartdb.OracleRestart, logger logr.Logger) (string, string, error) {
 
 	var msg string

@@ -36,9 +36,9 @@
 ** SOFTWARE.
  */
 
-// Package v4 contains API Schema definitions for the observability v4 API group
 // +kubebuilder:object:generate=true
 // +groupName=observability.oracle.com
+
 package v4
 
 import (

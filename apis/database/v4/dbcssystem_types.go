@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022-2024 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -35,6 +35,7 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
+
 package v4
 
 import (
@@ -47,9 +48,6 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // DbcsSystemSpec defines the desired state of DbcsSystem
 type DbcsSystemSpec struct {
@@ -70,8 +68,7 @@ type DbcsSystemSpec struct {
 	DataGuard      DataGuardConfig  `json:"dataGuard,omitempty"`
 }
 
-// DbSystemDetails Spec
-
+// DbSystemDetails captures the desired configuration for a Database Cloud Service instance, including its shape, storage, networking, database settings, and other attributes. This struct is used in the Spec of the DbcsSystem resource to define the intended state of the DB system that the operator will manage and reconcile towards. It includes fields for compartment ID, availability domain, subnet ID, shape, SSH keys, host name, CPU core count, fault domains, display name, backup configuration, time zone, database name and version, license model, and more. This comprehensive set of fields allows users to specify all necessary details for provisioning and managing an Oracle Database Cloud Service instance through Kubernetes custom resources.
 type DbSystemDetails struct {
 	CompartmentId              string            `json:"compartmentId,omitempty"`
 	AvailabilityDomain         string            `json:"availabilityDomain,omitempty"`
@@ -111,6 +108,7 @@ type DbSystemDetails struct {
 	UpgradeVersion             string            `json:"dbUpgradeVersion,omitempty"`
 }
 
+// DataGuardConfig captures desired settings when enabling Data Guard on a DBCS system.
 type DataGuardConfig struct {
 	Enabled               bool              `json:"enabled,omitempty"`
 	ProtectionMode        *string           `json:"protectionMode,omitempty"` // Options: "MAXIMUM_PROTECTION", "MAXIMUM_AVAILABILITY", "MAXIMUM_PERFORMANCE"
@@ -131,7 +129,7 @@ type DataGuardConfig struct {
 	IsDelete              bool              `json:"isDelete,omitempty"`
 }
 
-// DB Backup Config Network Struct
+// Backupconfig defines automatic backup enablement and scheduling details.
 type Backupconfig struct {
 	AutoBackupEnabled        *bool   `json:"autoBackupEnabled,omitempty"`
 	RecoveryWindowsInDays    *int    `json:"recoveryWindowsInDays,omitempty"`
@@ -139,20 +137,21 @@ type Backupconfig struct {
 	BackupDestinationDetails *string `json:"backupDestinationDetails,omitempty"`
 }
 
-// Manual backup information
+// BackupInfo records metadata about a manual backup created for the database.
 type BackupInfo struct {
 	Name      string `json:"name"`
 	BackupID  string `json:"backupId"`
 	Timestamp string `json:"timestamp"` // Optional: for sorting, audit, GC
 }
 
+// RestoreConfig specifies options for point-in-time database restore operations.
 type RestoreConfig struct {
 	Timestamp *metav1.Time `json:"timestamp,omitempty"` // Restore to specific point in time
 	SCN       *string      `json:"scn,omitempty"`       // Restore to specific SCN (as string)
 	Latest    bool         `json:"latest,omitempty"`    // Restore to latest state
 }
 
-// DbcsSystemStatus defines the observed state of DbcsSystem
+// DbcsSystemStatus represents the observed state of a DbcsSystem resource.
 type DbcsSystemStatus struct {
 	Id                 *string `json:"id,omitempty"`
 	DisplayName        string  `json:"displayName,omitempty"`
@@ -183,7 +182,7 @@ type DbcsSystemStatus struct {
 	Message          string             `json:"message,omitempty"`
 }
 
-// DbcsSystemStatus defines the observed state of DbcsSystem
+// DbStatus summarizes state for an individual database within the system.
 type DbStatus struct {
 	Id                   *string `json:"id,omitempty"`
 	DbName               string  `json:"dbName,omitempty"`
@@ -194,6 +193,7 @@ type DbStatus struct {
 	ConnectionStringLong string  `json:"connectionStringLong,omitempty"`
 }
 
+// DbWorkrequests tracks OCI work request execution for long running operations.
 type DbWorkrequests struct {
 	OperationType   *string `json:"operationType,omitempty"`
 	OperationId     *string `json:"operationId,omitempty"`
@@ -203,6 +203,7 @@ type DbWorkrequests struct {
 	TimeFinished    string  `json:"timeFinished,omitempty"`
 }
 
+// VmNetworkDetails captures networking attributes for the VM-based DB system.
 type VmNetworkDetails struct {
 	VcnName      *string `json:"vcnName,omitempty"`
 	SubnetName   *string `json:"clientSubnet,omitempty"`
@@ -232,6 +233,7 @@ type DbCloneConfig struct {
 	PrivateIp                  string   `json:"privateIp,omitempty"`
 }
 
+// DataGuardStatus conveys runtime Data Guard association information.
 type DataGuardStatus struct {
 	Id                         *string `json:"id,omitempty"`
 	IsActiveDataGuardEnabled   bool    `json:"isActiveDataGuardEnabled,omitempty"`
@@ -275,6 +277,7 @@ type DbCloneStatus struct {
 // +kubebuilder:printcolumn:name="State",type="string",JSONPath=".status.state"
 // +kubebuilder:printcolumn:name="DB Version",type="string",JSONPath=".status.dbInfo[0].dbVersion"
 // +kubebuilder:printcolumn:name="ConnString",type="string",JSONPath=".status.dbInfo[0].connectionString"
+// DbcsSystem represents a Database Cloud Service instance managed by the operator.
 type DbcsSystem struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -291,6 +294,7 @@ type DbcsSystemList struct {
 	Items           []DbcsSystem `json:"items"`
 }
 
+// LifecycleState enumerates possible states reported by the OCI Database service.
 type LifecycleState string
 
 const (
@@ -323,6 +327,8 @@ func (dbcs *DbcsSystem) GetLastSuccessfulSpec() (*DbcsSystemSpec, error) {
 
 	return &sucSpec, nil
 }
+
+// GetLastSuccessfulSpecWithLog is the same as GetLastSuccessfulSpec but with additional logging for debugging purposes.
 func (dbcs *DbcsSystem) GetLastSuccessfulSpecWithLog(log logr.Logger) (*DbcsSystemSpec, error) {
 	val, ok := dbcs.GetAnnotations()[lastSuccessfulSpec]
 	if !ok {
@@ -359,6 +365,7 @@ func (dbcs *DbcsSystem) UpdateLastSuccessfulSpec(kubeClient client.Client) error
 
 }
 
+// UpdateLastSuccessfulSpecWithLog is the same as UpdateLastSuccessfulSpec but with additional logging for debugging purposes.
 func init() {
 	SchemeBuilder.Register(&DbcsSystem{}, &DbcsSystemList{})
 }

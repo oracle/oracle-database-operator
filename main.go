@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -36,6 +36,11 @@
 ** SOFTWARE.
  */
 
+// Package main bootstraps the Oracle Database Operator manager and registers
+// controllers for CRDs including AutonomousDatabase, AutonomousDatabaseBackup,
+// AutonomousDatabaseRestore, AutonomousContainerDatabase, SingleInstanceDatabase,
+// ShardingDatabase, DbcsSystem, OracleRestDataService, OracleRestart, LRPDB,
+// LREST, DataguardBroker, OrdsSrvs, RacDatabase, and PrivateAi.
 package main
 
 import (
@@ -79,10 +84,11 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+    scheme   = runtime.NewScheme()
+    setupLog = ctrl.Log.WithName("setup")
 )
 
+// init registers all API schemas used by the manager.
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(observabilityv1alpha1.AddToScheme(scheme))
@@ -95,6 +101,7 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
+// main configures and starts the controller manager for the Oracle Database Operator.
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -443,6 +450,7 @@ func main() {
 	}
 }
 
+// getWatchNamespace reads WATCH_NAMESPACE and returns the cache configuration per namespace.
 func getWatchNamespace() (map[string]cache.Config, error) {
 	// WatchNamespaceEnvVar is the constant for env variable WATCH_NAMESPACE
 	// which specifies the Namespace to watch.

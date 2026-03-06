@@ -52,6 +52,8 @@ import (
 	"github.com/oracle/oracle-database-operator/commons/finalizer"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 
+	"errors"
+
 	"github.com/go-logr/logr"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
@@ -59,7 +61,7 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/keymanagement"
 	"github.com/oracle/oci-go-sdk/v65/workrequests"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -108,7 +110,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	dbcsInst := &databasev4.DbcsSystem{}
 	r.Logger.Info("Reconciling DbSystemDetails", "name", req.NamespacedName)
 	if err := r.KubeClient.Get(ctx, req.NamespacedName, dbcsInst); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			// CR was deleted → stop reconciling
 			r.Logger.Info("DbcsSystem resource not found.", "name", req.NamespacedName)
 			return ctrl.Result{}, nil
@@ -1033,6 +1035,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 }
 
+// -----------------Data Guard Deletion Flow---------------------------------//
 func (r *DbcsSystemReconciler) DeleteDataGuard(
 	ctx context.Context,
 	compartmentId string,
@@ -1192,7 +1195,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 	if association == nil {
 		msg := fmt.Sprintf(
 			"Skipping Data Guard deletion — peer DB %s is not associated with primary DB %s",
-			*peerDbSystemId, primaryDatabaseId,
+			strVal(peerDbSystemId), strVal(primaryDatabaseId),
 		)
 		log.Info(msg)
 		dbcsInst.Status.Message = msg
@@ -1203,7 +1206,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
 
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 	}
 
 	// At this point, we know the primary and peer DB are actually in Data Guard
@@ -1606,8 +1609,8 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 
 	if !exists {
 		errMsg := fmt.Sprintf("Database does not exist: %s", dbSystemId)
-		r.Logger.Error(fmt.Errorf(errMsg), "Database not found")
-		return "", fmt.Errorf(errMsg)
+		r.Logger.Error(errors.New(errMsg), "Database not found")
+		return "", errors.New(errMsg)
 	}
 
 	// Fetch secrets for TdeWalletPassword and PdbAdminPassword

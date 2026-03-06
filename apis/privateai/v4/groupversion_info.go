@@ -36,9 +36,9 @@
 ** SOFTWARE.
  */
 
-// Package v4 contains API Schema definitions for the privateai v4 API group.
 // +kubebuilder:object:generate=true
 // +groupName=privateai.oracle.com
+
 package v4
 
 import (

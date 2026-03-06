@@ -69,8 +69,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Function to build the env var specification
-// buildEnvVarsSpec provides documentation for the buildEnvVarsSpec function.
+// buildEnvVarsSpec normalizes Oracle Restart container environment variables.
 func buildEnvVarsSpec(envVariables []corev1.EnvVar) []corev1.EnvVar {
 	var result []corev1.EnvVar
 
@@ -85,13 +84,12 @@ func buildEnvVarsSpec(envVariables []corev1.EnvVar) []corev1.EnvVar {
 	return result
 }
 
-// checkAbsPath provides documentation for the checkAbsPath function.
+// checkAbsPath reports whether the supplied filesystem path is absolute.
 func checkAbsPath(location string) bool {
 	return filepath.IsAbs(location)
 }
 
-// FUnction to build the svc definition for RAC
-// buildContainerPortsDef provides documentation for the buildContainerPortsDef function.
+// buildContainerPortsDef assembles default container ports required by Oracle Restart pods.
 func buildContainerPortsDef(instance *oraclerestart.OracleRestart) []corev1.ContainerPort {
 	var result []corev1.ContainerPort
 
@@ -122,7 +120,7 @@ func buildContainerPortsDef(instance *oraclerestart.OracleRestart) []corev1.Cont
 	return result
 }
 
-// truncateName provides documentation for the truncateName function.
+// truncateName trims a name to the maximum length supported by Kubernetes resources.
 func truncateName(name string) string {
 	if len(name) > 15 {
 		return name[:15]
@@ -130,8 +128,7 @@ func truncateName(name string) string {
 	return name
 }
 
-// FUnction to build the svc definition for RAC
-// buildOracleRestartSvcPortsDef provides documentation for the buildOracleRestartSvcPortsDef function.
+// buildOracleRestartSvcPortsDef constructs Kubernetes service ports for Oracle Restart node services.
 func buildOracleRestartSvcPortsDef(npsvc oraclerestart.OracleRestartNodePortSvc) []corev1.ServicePort {
 	var result []corev1.ServicePort
 
@@ -158,8 +155,7 @@ func buildOracleRestartSvcPortsDef(npsvc oraclerestart.OracleRestartNodePortSvc)
 	return result
 }
 
-// Function to generate the Name
-// generateName provides documentation for the generateName function.
+// generateName creates a deterministic-length name with a random suffix.
 func generateName(base string) string {
 	maxNameLength := 50
 	randomLength := 5
@@ -170,14 +166,13 @@ func generateName(base string) string {
 	return fmt.Sprintf("%s%s", base, rand.String(randomLength))
 }
 
-// Function to generate the port mapping
-// generatePortMapping provides documentation for the generatePortMapping function.
+// generatePortMapping builds a unique identifier string for a port mapping definition.
 func generatePortMapping(portMapping oraclerestart.OracleRestartPortMapping) string {
 	return generateName(fmt.Sprintf("%s-%d-%d-", "tcp",
 		portMapping.Port, portMapping.TargetPort))
 }
 
-// LogMessages provides documentation for the LogMessages function.
+// LogMessages emits Oracle Restart controller logs with respect to debug flags.
 func LogMessages(msgtype string, msg string, err error, instance *oraclerestart.OracleRestart, logger logr.Logger) {
 	// setting logrus formatter
 	//logrus.SetFormatter(&logrus.JSONFormatter{})
@@ -194,26 +189,25 @@ func LogMessages(msgtype string, msg string, err error, instance *oraclerestart.
 	}
 }
 
-// GetRacPodName provides documentation for the GetRacPodName function.
+// GetRacPodName returns the name used for Oracle Restart pods.
 func GetRacPodName(racName string) string {
 	podName := racName
 	return podName
 }
 
-// getlabelsForRac provides documentation for the getlabelsForRac function.
+// getlabelsForRac returns the default label set applied to Oracle Restart resources.
 func getlabelsForRac(instance *oraclerestart.OracleRestart) map[string]string {
 	return buildLabelsForOracleRestart(instance, "OracleRestart")
 }
 
-// Short, deterministic hex hash
-// shortHash provides documentation for the shortHash function.
+// shortHash returns a deterministic truncated SHA-1 hex string.
 func shortHash(text string, n int) string {
 	h := sha1.New()
 	h.Write([]byte(text))
 	return hex.EncodeToString(h.Sum(nil))[:n]
 }
 
-// GetAsmPvcName provides documentation for the GetAsmPvcName function.
+// GetAsmPvcName generates a unique PVC name for ASM storage.
 func GetAsmPvcName(diskPath, dbName string) string {
 	// Use a hash of the device path for uniqueness, keep it short but collision-resistant
 	hash := shortHash(diskPath, 8)
@@ -224,7 +218,7 @@ func GetAsmPvcName(diskPath, dbName string) string {
 	return base
 }
 
-// GetAsmPvName provides documentation for the GetAsmPvName function.
+// GetAsmPvName generates a unique PV name for ASM storage.
 func GetAsmPvName(diskPath, dbName string) string {
 	hash := shortHash(diskPath, 8)
 	base := fmt.Sprintf("asm-pv-%s-%s", hash, sanitizeK8sName(dbName))
@@ -234,7 +228,7 @@ func GetAsmPvName(diskPath, dbName string) string {
 	return base
 }
 
-// CheckSfset provides documentation for the CheckSfset function.
+// CheckSfset looks up an Oracle Restart StatefulSet by name.
 func CheckSfset(sfsetName string, instance *oraclerestart.OracleRestart, kClient client.Client) (*appsv1.StatefulSet, error) {
 	sfSetFound := &appsv1.StatefulSet{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
@@ -252,7 +246,7 @@ func CheckSfset(sfsetName string, instance *oraclerestart.OracleRestart, kClient
 	return sfSetFound, nil
 }
 
-// GetRacK8sClientConfig provides documentation for the GetRacK8sClientConfig function.
+// GetRacK8sClientConfig initializes shared Kubernetes client configuration for Oracle Restart helpers.
 func GetRacK8sClientConfig(kClient client.Client) (clientcmd.ClientConfig, kubernetes.Interface, error) {
 	var err1 error
 	var kubeConfig clientcmd.ClientConfig
@@ -275,7 +269,7 @@ func GetRacK8sClientConfig(kClient client.Client) (clientcmd.ClientConfig, kuber
 	return kubeConfig, kubeClient, err1
 }
 
-// oraclerestartValidationCmd provides documentation for the oraclerestartValidationCmd function.
+// oraclerestartValidationCmd builds the validation command for Oracle Restart setup.
 func oraclerestartValidationCmd() []string {
 
 	oraScriptMount1 := getOraScriptMount()
@@ -283,61 +277,61 @@ func oraclerestartValidationCmd() []string {
 	return oraShardValidateCmd
 }
 
-// OracleRestartNodeDelCmd provides documentation for the OracleRestartNodeDelCmd function.
+// OracleRestartNodeDelCmd builds the command to remove an Oracle Restart node.
 func OracleRestartNodeDelCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	var oraOracleRestartNodeDelCmd = []string{oraScriptMount1 + "/cmdExec", "/bin/python3", oraScriptMount1 + "/main.py ", "--delOracleRestartNode=\"del_rachome=true;del_gridnode=true\""}
 	return oraOracleRestartNodeDelCmd
 }
 
-// oraclerestartLsnrSetup provides documentation for the oraclerestartLsnrSetup function.
+// oraclerestartLsnrSetup returns the command for listener configuration.
 func oraclerestartLsnrSetup() []string {
 	oraScriptMount1 := getOraScriptMount()
 	var oraOracleRestartNodeDelCmd = []string{oraScriptMount1 + "/cmdExec", "/bin/python3", oraScriptMount1 + "/main.py ", "--setupdblsnr=\"del_rachome=true;del_gridnode=true\""}
 	return oraOracleRestartNodeDelCmd
 }
 
-// getAsmCmd provides documentation for the getAsmCmd function.
+// getAsmCmd constructs the command to read CRS ASM device list.
 func getAsmCmd() []string {
 	asmCmd := []string{"bash", "-c", "cat /etc/rac_env_vars/envfile | grep CRS_ASM_DEVICE_LIST"}
 	return asmCmd
 }
 
-// getDbAsmCmd provides documentation for the getDbAsmCmd function.
+// getDbAsmCmd constructs the command to read database ASM device list.
 func getDbAsmCmd() []string {
 	asmCmd := []string{"bash", "-c", "cat /etc/rac_env_vars/envfile | grep DB_ASM_DEVICE_LIST"}
 	return asmCmd
 }
 
-// getOraScriptMount provides documentation for the getOraScriptMount function.
+// getOraScriptMount returns the base path where Oracle scripts are mounted.
 func getOraScriptMount() string {
 
 	return utils.OraScriptMount
 
 }
 
-// getOraDbUser provides documentation for the getOraDbUser function.
+// getOraDbUser returns the Oracle database operating system user.
 func getOraDbUser() string {
 
 	return utils.OraDBUser
 
 }
 
-// getOraGiUser provides documentation for the getOraGiUser function.
+// getOraGiUser returns the Oracle Grid Infrastructure operating system user.
 func getOraGiUser() string {
 
 	return utils.OraGridUser
 
 }
 
-// getOraPythonCmd provides documentation for the getOraPythonCmd function.
+// getOraPythonCmd provides the Python interpreter path used by Oracle scripts.
 func getOraPythonCmd() string {
 
 	return "/bin/python3"
 
 }
 
-// UpdateAsmCount provides documentation for the UpdateAsmCount function.
+// UpdateAsmCount executes the command that updates ASM cardinality for a node.
 func UpdateAsmCount(gihome string, podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
@@ -349,7 +343,7 @@ func UpdateAsmCount(gihome string, podName string, instance *oraclerestart.Oracl
 	return nil
 }
 
-// ValidateDbSetup provides documentation for the ValidateDbSetup function.
+// ValidateDbSetup runs the validation command ensuring the database setup is healthy.
 func ValidateDbSetup(podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
@@ -360,7 +354,7 @@ func ValidateDbSetup(podName string, instance *oraclerestart.OracleRestart, kube
 	return nil
 }
 
-// DelOracleRestartNode provides documentation for the DelOracleRestartNode function.
+// DelOracleRestartNode removes an Oracle Restart node by executing the appropriate command.
 func DelOracleRestartNode(podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
@@ -371,7 +365,7 @@ func DelOracleRestartNode(podName string, instance *oraclerestart.OracleRestart,
 	return nil
 }
 
-// CheckAsmList provides documentation for the CheckAsmList function.
+// CheckAsmList returns the CRS ASM device list from the Oracle Restart pod.
 func CheckAsmList(podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) (string, error) {
 	output, _, err := ExecCommand(podName, getAsmCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -389,7 +383,7 @@ func CheckAsmList(podName string, instance *oraclerestart.OracleRestart, kubeCli
 	return deviceList, nil
 }
 
-// CheckDbAsmList provides documentation for the CheckDbAsmList function.
+// CheckDbAsmList returns the database ASM device list from the Oracle Restart pod.
 func CheckDbAsmList(podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) (string, error) {
 	output, _, err := ExecCommand(podName, getDbAsmCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {

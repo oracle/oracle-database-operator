@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -36,8 +36,34 @@
 ** SOFTWARE.
  */
 
+// Package controllers houses the controller-runtime reconcilers for Oracle
+// Database API groups. It manages Autonomous Databases, Autonomous Container
+// Databases, database backups and restores, Data Guard broker resources,
+// Oracle Restart, ORDS, LREST/LRPDB services, Single Instance databases,
+// sharding deployments, and RAC clusters.
+//
+// Highlights:
+//   - RAC controllers coordinate shared storage (ASM) and cluster resources
+//     following docs/rac guidance.
+//   - Autonomous family controllers integrate with OCI to provision and manage
+//     ADB and ACD lifecycle events.
+//   - DBCS, ORDS, Oracle Restart, and sharding reconcilers reuse helpers from
+//     commons/ to assemble Kubernetes objects and interact with Oracle services.
+//
+// Support resources:
+//   - Operator user guide: docs/rac and docs/adbs
+//   - Kubernetes controller overview: https://kubernetes.io/docs/concepts/architecture/controller/
+//
+// Contribution references:
+//   - Repository guidelines: https://github.com/oracle/oracle-database-operator/blob/main/CONTRIBUTING.md
+//   - Example manifests: docs/rac/provisioning/racdb_prov_quickstart.yaml and docs/adbs
+//
+// Additional help:
+//   - Issues tracker: https://github.com/oracle/oracle-database-operator/blob/main/README.md#help
+//   - Sample CRD walkthroughs: docs/rac/README.md and docs/rac/provisioning
 package controllers
 
+// This file implements the RacDatabaseReconciler, which manages the lifecycle of RacDatabase resources.
 import (
 	"bufio"
 	"bytes"
@@ -79,7 +105,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-// RacDatabaseReconciler reconciles a RacDatabase object
+// RacDatabaseReconciler reconciles `RacDatabase` resources defined in
+// apis/database/v4 and orchestrates their associated Kubernetes primitives.
 type RacDatabaseReconciler struct {
 	client.Client
 	Log        logr.Logger
@@ -99,8 +126,8 @@ const racDatabaseFinalizer = "database.oracle.com/racdatabasefinalizer"
 //+kubebuilder:rbac:groups="apps",resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups='',resources=statefulsets/finalizers,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile implements the reconciliation loop for RacDatabase resources.
-// It orchestrates the complete lifecycle management of Oracle RAC databases in Kubernetes, including:
+// Reconcile implements the controller-runtime loop for `RacDatabase` resources.
+// It orchestrates the lifecycle described in docs/rac/provisioning/racdb_prov_quickstart.yaml, including:
 //
 // 1. Resource Retrieval and Validation
 //   - Fetches the RacDatabase resource from the cluster
@@ -910,6 +937,8 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	r.Log.Info("Reconcile completed. Requeuing....")
 	return resultQ, nil
 }
+
+// podsOwnedByRacDatabase returns pods owned by the specified RAC database based on naming and owner references.
 func podsOwnedByRacDatabase(pods []corev1.Pod, racdb *racdb.RacDatabase) []corev1.Pod {
 	var owned []corev1.Pod
 
@@ -949,6 +978,7 @@ func podsOwnedByRacDatabase(pods []corev1.Pod, racdb *racdb.RacDatabase) []corev
 	return owned
 }
 
+// updatePendingStateIfAny sets the RAC status to pending when owned pods remain pending.
 func updatePendingStateIfAny(
 	ctx context.Context,
 	r *RacDatabaseReconciler,
@@ -1186,6 +1216,8 @@ func (r *RacDatabaseReconciler) computeDiskChanges(
 
 	return addedAsmDisks, removedAsmDisks, nil
 }
+
+// isRacSetupStable reports whether the RAC cluster is fully available with every pod ready.
 func isRacSetupStable(racDatabase *racdb.RacDatabase, pods []corev1.Pod) bool {
 	// State-based guard
 	switch racdb.RacLifecycleState(racDatabase.Status.State) {
@@ -1213,6 +1245,7 @@ func isRacSetupStable(racDatabase *racdb.RacDatabase, pods []corev1.Pod) bool {
 // getPendingDisksToMount walks desired ASM disk entries and cross-checks
 // mounted device information from status. It returns disks not yet mounted
 // so the controller can trigger discovery or retry orchestration steps.
+// getPendingDisksToMount returns ASM disks requested in spec but not yet mounted on any RAC node.
 func getPendingDisksToMount(racDatabase *racdb.RacDatabase) []string {
 	pending := make(map[string]bool)
 	specDisks := map[string]bool{}
@@ -1250,6 +1283,7 @@ func getPendingDisksToMount(racDatabase *racdb.RacDatabase) []string {
 // checkRACStateAndReturn guards reconcile operations against restricted
 // lifecycle phases on the RAC object. It returns an error when the state or
 // spec flags indicate work should not proceed.
+// checkRACStateAndReturn blocks reconcile operations for restricted RAC lifecycle states.
 func checkRACStateAndReturn(racDatabase *racdb.RacDatabase) error {
 
 	// Block only transient in-progress states
@@ -3128,14 +3162,14 @@ func (r *RacDatabaseReconciler) validateRacNodeCluster(
 
 	isPodExist, racPod, notReadyPod := raccommon.PodListValidation(podList, racSfSet.Name, racDatabase, r.Client)
 	if !isPodExist {
-		msg := ""
+		var msg string
 		if notReadyPod != nil {
 			msg = "unable to validate RAC pod. The  pod not ready  is: " + notReadyPod.Name
 		} else {
 			msg = "unable to validate RAC pod. No pods matching the criteria were found"
 		}
 		raccommon.LogMessages("INFO", msg, nil, racDatabase, r.Log)
-		return racSfSet, racPod, fmt.Errorf(msg)
+		return racSfSet, racPod, fmt.Errorf("%s", msg)
 	}
 
 	// Update status when PODs are ready
@@ -3255,16 +3289,15 @@ func (r *RacDatabaseReconciler) validateRacInst(
 
 	isPodExist, racPod, notReadyPod := raccommon.PodListValidation(podList, racSfSet.Name, racDatabase, r.Client)
 	if !isPodExist {
-		msg := ""
+		var msg string
 		if notReadyPod != nil {
 			msg = "unable to validate RAC pod. The  pod not ready  is: " + notReadyPod.Name
 			raccommon.LogMessages("INFO", msg, nil, racDatabase, r.Log)
-			return racSfSet, racPod, fmt.Errorf(msg)
-		} else {
-			msg = "unable to validate RAC pod. No pods matching the criteria were found"
-			raccommon.LogMessages("INFO", msg, nil, racDatabase, r.Log)
-			return racSfSet, racPod, fmt.Errorf(msg)
+			return racSfSet, racPod, fmt.Errorf("%s", msg)
 		}
+		msg = "unable to validate RAC pod. No pods matching the criteria were found"
+		raccommon.LogMessages("INFO", msg, nil, racDatabase, r.Log)
+		return racSfSet, racPod, fmt.Errorf("%s", msg)
 	}
 
 	// Update status when PODs are ready
@@ -3367,9 +3400,8 @@ func (r *RacDatabaseReconciler) updateRacInstStatus(
 	}
 }
 
-// RacGetRestrictedFields returns a set of field names that are restricted from being updated.
-// RacGetRestrictedFields returns the set of fields that are protected from
-// modification via manual updates, allowing validation logic to block edits.
+// RacGetRestrictedFields lists immutable spec fields enforced by webhook
+// validation to prevent unsupported manual edits.
 func RacGetRestrictedFields() map[string]struct{} {
 	return map[string]struct{}{
 		"ConfigParams.DbName":                         {},
@@ -5868,9 +5900,9 @@ func extractNodeIndexFromName(nodeName string) int {
 	return 0
 }
 
-// SetupWithManager sets up the controller with the Manager.
-// SetupWithManager wires the reconciler into the controller manager so it
-// watches RAC resources and their owned objects with configured concurrency.
+// SetupWithManager registers the reconciler with controller-runtime so RAC
+// resources and their owned objects are watched with the configured
+// concurrency.
 func (r *RacDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&racdb.RacDatabase{}).
@@ -5885,10 +5917,9 @@ func (r *RacDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 const oldRacSpecAnnotation = "racdatabases.database.oracle.com/old-spec"
 
-// GetOldSpec retrieves the old spec from annotations.
-// Returns nil, nil if the annotation does not exist.
-// GetOldSpec reads the previous RAC spec from annotations so reconcile can
-// detect changes across iterations. Missing annotations yield a nil result.
+// GetOldSpec returns the previous RAC spec snapshot stored in annotations,
+// allowing reconciles to detect specification changes. Missing annotations yield
+// a nil result.
 func (r *RacDatabaseReconciler) GetOldSpec(racDatabase *racdb.RacDatabase) (*racdb.RacDatabaseSpec, error) {
 	// Check if annotations exist
 	annotations := racDatabase.GetAnnotations()
@@ -6069,6 +6100,8 @@ func (r *RacDatabaseReconciler) updateRacNodeStatusForCluster(
 		r.Log.Info("Failed to update RAC instance (cluster) after 5 attempts", "lastErr", lastErr)
 	}
 }
+
+// waitForPodReady polls the specified pod until it is in Ready state or the timeout is reached, returning an error if the pod does not become ready in time.
 func (r *RacDatabaseReconciler) waitForPodReady(ctx context.Context, podName string, namespace string, timeout time.Duration) error {
 	t := time.After(timeout)
 	for {
@@ -6098,6 +6131,8 @@ func (r *RacDatabaseReconciler) waitForPodReady(ctx context.Context, podName str
 		}
 	}
 }
+
+// updateStatusWithRetry attempts to update the status of the RacDatabase resource with retry logic to handle conflicts.
 func (r *RacDatabaseReconciler) updateStatusWithRetry(
 	ctx context.Context,
 	req ctrl.Request,
@@ -6136,6 +6171,8 @@ func (r *RacDatabaseReconciler) updateStatusWithRetry(
 
 	return fmt.Errorf("status update failed after retries: %w", lastErr)
 }
+
+// updateStatusNoGetRetry attempts to update the status of the RacDatabase resource without re-fetching the latest version on conflict, instead relying on the caller to ensure the object is up-to-date before calling this function.
 func (r *RacDatabaseReconciler) updateStatusNoGetRetry(
 	ctx context.Context,
 	obj *racdb.RacDatabase,

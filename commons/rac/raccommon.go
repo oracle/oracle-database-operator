@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -36,6 +36,21 @@
 ** SOFTWARE.
  */
 
+// Package commons provides shared RAC helper utilities used by the controller
+// to build Kubernetes resources. The helpers align with docs/rac guidance and
+// Kubernetes API conventions referenced in the quickstart manifests.
+//
+// Support:
+//   - Operator user guide: docs/rac
+//   - Kubernetes controller overview: https://kubernetes.io/docs/concepts/architecture/controller/
+//
+// Contributing:
+//   - Repository guidelines: https://github.com/oracle/oracle-database-operator/blob/main/CONTRIBUTING.md
+//   - Example manifests: https://github.com/oracle/oracle-database-operator/blob/main/docs/rac/provisioning/racdb_prov_quickstart.yaml
+//
+// Help:
+//   - Issues tracker: https://github.com/oracle/oracle-database-operator/blob/main/README.md#help
+//   - Sample CRD walkthrough: https://github.com/oracle/oracle-database-operator/blob/main/docs/rac/README.md
 package commons
 
 import (
@@ -359,8 +374,7 @@ func UpdateScanEP(gihome string, scanname string, podName string, instance *racd
 	return nil
 }
 
-// UpdateCDP reconciles CDP configuration within the specified pod.
-// CDP is recreated if required but NOT enabled or started.
+// UpdateCDP reconciles Cluster Domain Services configuration inside the pod without enabling it.
 func UpdateCDP(
 	gihome string,
 	podName string,
@@ -995,6 +1009,8 @@ func getAsmInstState(
 
 	return diskGroups
 }
+
+// getExistingAsmDiskSize returns the recorded size of an ASM disk from status, if present.
 func getExistingAsmDiskSize(
 	racDatabase *racdb.RacDatabase,
 	dgName string,

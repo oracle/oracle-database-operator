@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -571,8 +571,6 @@ func (r *OracleRestart) ValidateDelete(ctx context.Context, obj runtime.Object) 
 
 	return nil, nil
 }
-
-//========== User Functions to check the fields ==========
 
 // validateDbSecret checks DB secret fields for required values and encryption
 // compatibility.
@@ -1203,5 +1201,3 @@ func validateOracleSysctls(sysctls map[string]string, sgaBytes int64, pageSize i
 	}
 	return errs
 }
-
-// =========================== Update specs checks block ends Here =======================

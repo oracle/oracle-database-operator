@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -35,6 +35,19 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
+// Package commons provides RAC helper utilities aligned with docs/rac and Kubernetes guidance.
+//
+// Support:
+//   - Operator user guide: docs/rac
+//   - Kubernetes controller overview: https://kubernetes.io/docs/concepts/architecture/controller/
+//
+// Contributing:
+//   - Repository guidelines: https://github.com/oracle/oracle-database-operator/blob/main/CONTRIBUTING.md
+//   - Example manifests: https://github.com/oracle/oracle-database-operator/blob/main/docs/rac/provisioning/racdb_prov_quickstart.yaml
+//
+// Help:
+//   - Issues tracker: https://github.com/oracle/oracle-database-operator/blob/main/README.md#help
+//   - Sample CRD walkthrough: https://github.com/oracle/oracle-database-operator/blob/main/docs/rac/README.md
 
 package commons
 
@@ -141,6 +154,7 @@ func buildPodSpecForRacCluster(
 	return spec
 }
 
+// CreateServiceAccountIfNotExists ensures the configured service account exists in the namespace.
 func CreateServiceAccountIfNotExists(instance *racdb.RacDatabase, kClient client.Client) error {
 	if instance.Spec.SrvAccountName == "" {
 		return nil
@@ -993,170 +1007,6 @@ func buildContainerPortsDefForCluster(
 
 	return result
 }
-
-// func BuildClusterServiceDefForRac(
-// 	instance *racdb.RacDatabase,
-// 	clusterSpec *racdb.RacClusterDetailSpec,
-// 	nodeIndex int,
-// 	svctype string,
-// ) *corev1.Service {
-// 	nodeName := fmt.Sprintf("%s%d", clusterSpec.RacNodeName, nodeIndex+1)
-// 	objmeta := metav1.ObjectMeta{
-// 		Name:      GetClusterSvcName(instance, clusterSpec, nodeIndex, svctype),
-// 		Namespace: instance.Namespace,
-// 		Labels:    buildLabelsForRac(instance, "RAC"),
-// 	}
-
-// 	svc := &corev1.Service{
-// 		ObjectMeta: objmeta,
-// 		Spec: corev1.ServiceSpec{
-// 			PublishNotReadyAddresses: true,
-// 		},
-// 	}
-
-// 	svctypeUpper := strings.ToUpper(svctype)
-
-// 	if svctypeUpper == "VIP" || svctypeUpper == "LOCAL" {
-// 		svc.Spec.ClusterIP = corev1.ClusterIPNone
-// 		svc.Spec.Selector = map[string]string{
-// 			"statefulset.kubernetes.io/pod-name": nodeName + "-0",
-// 		}
-// 		// Add a standard port for K8s compliance (not used)
-// 		svc.Spec.Ports = []corev1.ServicePort{{
-// 			Name:       "default",
-// 			Port:       1521,
-// 			Protocol:   corev1.ProtocolTCP,
-// 			TargetPort: intstr.FromInt(1521),
-// 		}}
-// 	} else if svctypeUpper == "SCAN" {
-// 		svc.Spec.ClusterIP = corev1.ClusterIPNone
-// 		svc.Spec.Selector = buildLabelsForRac(instance, "RAC")
-// 		scanPort := int32(1521)
-// 		if instance.Spec.ScanSvcTargetPort != nil {
-// 			scanPort = *instance.Spec.ScanSvcTargetPort
-// 		}
-// 		svc.Spec.Ports = []corev1.ServicePort{{
-// 			Name:       "scan",
-// 			Port:       scanPort,
-// 			Protocol:   corev1.ProtocolTCP,
-// 			TargetPort: intstr.FromInt(int(scanPort)),
-// 		}}
-// 	} else {
-// 		svc.Spec.Selector = map[string]string{
-// 			"statefulset.kubernetes.io/pod-name": nodeName + "-0",
-// 		}
-// 		svc.Spec.Ports = []corev1.ServicePort{{
-// 			Name:       "default",
-// 			Port:       1521,
-// 			Protocol:   corev1.ProtocolTCP,
-// 			TargetPort: intstr.FromInt(1521),
-// 		}}
-// 	}
-
-// 	return svc
-// }
-// func BuildClusterExternalServiceDefForRac(
-// 	instance *racdb.RacDatabase,
-// 	clusterSpec *racdb.RacClusterDetailSpec,
-// 	nodeIndex int,
-// 	svctype string, // "lsnrsvc", "onssvc", "scansvc", or "nodeport"
-// 	opType string, // same as above
-// ) *corev1.Service {
-// 	nodeName := fmt.Sprintf("%s-%d", clusterSpec.RacNodeName, nodeIndex+1)
-// 	serviceName := GetClusterSvcName(instance, clusterSpec, nodeIndex, opType)
-
-// 	service := &corev1.Service{
-// 		ObjectMeta: metav1.ObjectMeta{
-// 			Name:      serviceName,
-// 			Namespace: instance.Namespace,
-// 			Labels:    buildLabelsForRac(instance, "RAC"),
-// 		},
-// 		Spec: corev1.ServiceSpec{
-// 			Selector: map[string]string{
-// 				"statefulset.kubernetes.io/pod-name": nodeName + "-0",
-// 			},
-// 			PublishNotReadyAddresses: true,
-// 		},
-// 	}
-
-// 	// Compose the port list for this service:
-// 	var portList []struct {
-// 		Protocol                   corev1.Protocol
-// 		Port, TargetPort, NodePort int32
-// 		Name                       string
-// 	}
-
-// 	switch opType {
-// 	case "lsnrsvc":
-// 		port := clusterSpec.BaseLsnrTargetPort + int32(nodeIndex)
-// 		nodePort := port
-// 		portList = append(portList, struct {
-// 			Protocol                   corev1.Protocol
-// 			Port, TargetPort, NodePort int32
-// 			Name                       string
-// 		}{
-// 			Protocol:   corev1.ProtocolTCP,
-// 			Port:       port,
-// 			TargetPort: port,
-// 			NodePort:   nodePort,
-// 			Name:       "lsnrsvc",
-// 		})
-// 		service.Spec.Type = corev1.ServiceTypeNodePort
-
-// 	case "onssvc":
-// 		nodePort := clusterSpec.BaseOnsTargetPort + int32(nodeIndex)
-// 		localPort := int32(6200)
-// 		portList = append(portList, struct {
-// 			Protocol                   corev1.Protocol
-// 			Port, TargetPort, NodePort int32
-// 			Name                       string
-// 		}{
-// 			Protocol:   corev1.ProtocolTCP,
-// 			Port:       localPort,
-// 			TargetPort: localPort,
-// 			NodePort:   nodePort,
-// 			Name:       "onssvc",
-// 		})
-// 		service.Spec.Type = corev1.ServiceTypeNodePort
-
-// 	case "scansvc":
-// 		if instance.Spec.ScanSvcTargetPort != nil {
-// 			port := *instance.Spec.ScanSvcTargetPort
-// 			nodePort := port
-// 			portList = append(portList, struct {
-// 				Protocol                   corev1.Protocol
-// 				Port, TargetPort, NodePort int32
-// 				Name                       string
-// 			}{
-// 				Protocol:   corev1.ProtocolTCP,
-// 				Port:       port,
-// 				TargetPort: port,
-// 				NodePort:   int32(nodePort),
-// 				Name:       "scansvc",
-// 			})
-// 			service.Spec.Type = corev1.ServiceTypeNodePort
-// 		}
-
-// 	case "nodeport":
-// 		port := clusterSpec.BaseLsnrTargetPort + int32(nodeIndex)
-// 		nodePort := port
-// 		portList = append(portList, struct {
-// 			Protocol                   corev1.Protocol
-// 			Port, TargetPort, NodePort int32
-// 			Name                       string
-// 		}{
-// 			Protocol:   corev1.ProtocolTCP,
-// 			Port:       port,
-// 			TargetPort: port,
-// 			NodePort:   nodePort,
-// 			Name:       "nodeport",
-// 		})
-// 		service.Spec.Type = corev1.ServiceTypeNodePort
-// 	}
-
-// 	if svctype == "lbservice" {
-// 		service.Spec.Type = corev1.ServiceTypeClusterIP
-// 	}
 
 //		service.Spec.Ports = buildRacSvcPortsDefForCluster(portList)
 //		return service

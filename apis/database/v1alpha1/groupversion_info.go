@@ -36,9 +36,9 @@
 ** SOFTWARE.
  */
 
-// Package v1alpha1 contains API Schema definitions for the database v1alpha1 API group
 // +kubebuilder:object:generate=true
 // +groupName=database.oracle.com
+
 package v1alpha1
 
 import (
