@@ -14,56 +14,49 @@ import (
 // -----------------------------------------------------------------------------
 // DGMGRL service/connect helpers
 // -----------------------------------------------------------------------------
+
 // Canonical service name: <DB_UNIQUE_NAME>_DGMGRL
 func BuildDgmgrlServiceName(dbUnique string) string {
 	base := strings.ToUpper(strings.TrimSpace(dbUnique))
 	return base + "_DGMGRL"
 }
 
-// Legacy/typo service name some images/scripts expose: <DB_UNIQUE_NAME>_DGMRL
-func BuildDgmrLServiceName(dbUnique string) string {
-	base := strings.ToUpper(strings.TrimSpace(dbUnique))
-	return base + "_DGMRL"
-}
-
-// BuildDgmgrlConnectIdentifier returns canonical connect identifier.
-//
-//	<shard>-0.<shard>.<ns>.svc.cluster.local:1521/<DB_UNIQUE_NAME>_DGMGRL
+// BuildDgmgrlConnectIdentifier returns canonical easy connect identifier.
+// Format: //<pod>-0.<svc>.<ns>.svc.cluster.local:1521/<DB_UNIQUE_NAME>_DGMGRL
 func BuildDgmgrlConnectIdentifier(instance *databasev4.ShardingDatabase, shardName string, dbUniqueName string) string {
 	host := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", shardName, shardName, instance.Namespace)
-	return fmt.Sprintf("%s:1521/%s", host, BuildDgmgrlServiceName(dbUniqueName))
+	return fmt.Sprintf("//%s:1521/%s", host, BuildDgmgrlServiceName(dbUniqueName))
 }
 
-// BuildDgmgrlConnectIdentifiers tries canonical first, then legacy/typo.
-// Recommended for robustness while keeping customer YAML canonical.
+// BuildDgmgrlConnectIdentifiers returns canonical connect identifiers.
+// Keeping slice form because existing controller flow uses []string.
 func BuildDgmgrlConnectIdentifiers(instance *databasev4.ShardingDatabase, shardName string, dbUniqueName string) []string {
-	host := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", shardName, shardName, instance.Namespace)
-	base := strings.ToUpper(strings.TrimSpace(dbUniqueName))
-	if base == "" {
-		base = strings.ToUpper(strings.TrimSpace(shardName))
-	}
-
-	// prefer correct _DGMGRL service, add old typo fallback just in case
-	svc1 := fmt.Sprintf("%s_DGMGRL", base)
-	svc2 := fmt.Sprintf("%s_DGMRL", base) // fallback (typo seen in some setups)
-
 	return []string{
-		fmt.Sprintf("//%s:1521/%s", host, svc1),
-		fmt.Sprintf("%s:1521/%s", host, svc1),
-		fmt.Sprintf("//%s:1521/%s", host, svc2),
-		fmt.Sprintf("%s:1521/%s", host, svc2),
+		BuildDgmgrlConnectIdentifier(instance, shardName, dbUniqueName),
 	}
+}
+
+// BuildDgmgrlStaticConnectIdentifier returns broker StaticConnectIdentifier.
+// We use host FQDN + canonical _DGMGRL service name.
+func BuildDgmgrlStaticConnectIdentifier(instance *databasev4.ShardingDatabase, shardName string, dbUniqueName string) string {
+	host := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", shardName, shardName, instance.Namespace)
+	svc := BuildDgmgrlServiceName(dbUniqueName)
+	inst := strings.ToUpper(strings.TrimSpace(dbUniqueName))
+
+	return fmt.Sprintf(
+		"(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=%s)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=%s)(INSTANCE_NAME=%s)(SERVER=DEDICATED)))",
+		host, svc, inst,
+	)
 }
 
 // -----------------------------------------------------------------------------
 // DG broker parameter + start helper (must run on EACH DB: primary + standby)
 // -----------------------------------------------------------------------------
+
 // Ensures:
-// - dg_broker_start is toggled OFF (so we can change broker files)
+// - dg_broker_start is toggled OFF
 // - dg_broker_config_file1/2 point to per-DB location under dbconfig/<DB_UNIQUE_NAME>
 // - dg_broker_start is ON again
-//
-// This is the proven sequence you tested manually (avoids ORA-16573/ORA-16604).
 func EnsureDgBrokerFilesAndStart(
 	podName string,
 	dbUnique string,
@@ -89,10 +82,8 @@ whenever sqlerror exit 1
 set echo on
 set pages 0 feedback on verify off heading on
 
--- NOMOUNT-safe readiness check
 select status from v$instance;
 
--- Stop broker so file params can be changed (avoid ORA-16573/ORA-16604)
 begin
   execute immediate q'[alter system set dg_broker_start=false scope=both sid='*']';
 exception when others then
@@ -128,10 +119,9 @@ EOF
 }
 
 // -----------------------------------------------------------------------------
-// DG broker config steps (TryConnects variants only; no duplicates)
+// DG broker config steps
 // -----------------------------------------------------------------------------
-// CreateDgBrokerConfigTryConnects creates broker configuration on PRIMARY.
-// It tries connect identifiers in order (DGMGRL then DGMRL fallback).
+
 func CreateDgBrokerConfigTryConnects(
 	primaryPod string,
 	cfgName string,
@@ -173,8 +163,6 @@ EOF
 	return fmt.Errorf("CreateDgBrokerConfig failed for all connect identifiers")
 }
 
-// AddStandbyToDgBrokerConfigTryConnects adds standby to existing broker config (run on primary).
-// It tries connect identifiers in order (DGMGRL then DGMRL fallback).
 func AddStandbyToDgBrokerConfigTryConnects(
 	primaryPod string,
 	standbyDbUniqueName string,
@@ -215,7 +203,6 @@ EOF
 	return fmt.Errorf("AddStandbyToDgBrokerConfig failed for all connect identifiers")
 }
 
-// EnableAndValidateDgBroker enables config and prints status.
 func EnableAndValidateDgBroker(
 	primaryPod string,
 	cfgName string,
@@ -241,7 +228,10 @@ EOF
 	return nil
 }
 
-// ---------- helpers ----------
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
 func safeIdent(s string) string {
 	return strings.ReplaceAll(strings.TrimSpace(s), " ", "")
 }
@@ -254,8 +244,10 @@ func looksLikeAlreadyExists(stdout, stderr string) bool {
 		strings.Contains(x, "ora-166")
 }
 
-// RunStandbyDatabasePrerequisitesSQL runs the same prereq SQL used by SIDB flow
-// (dbcommons.StandbyDatabasePrerequisitesSQL) inside the given pod.
+// -----------------------------------------------------------------------------
+// SQL helpers
+// -----------------------------------------------------------------------------
+
 func RunStandbyDatabasePrerequisitesSQL(
 	podName string,
 	instance *databasev4.ShardingDatabase,
@@ -326,8 +318,6 @@ func EnableArchiveLogInPod(
 	kubeConfig clientcmd.ClientConfig,
 	log logr.Logger,
 ) error {
-
-	// ArchiveLogTrueCMD expects SQLPlusCLI inserted using %s
 	cmdStr := fmt.Sprintf(dbcommons.ArchiveLogTrueCMD, dbcommons.SQLPlusCLI)
 
 	cmd := []string{"bash", "-lc", cmdStr}
@@ -341,7 +331,6 @@ func EnableArchiveLogInPod(
 	return nil
 }
 
-// ExecShellInPod runs a shell command in the given pod and returns error on failure.
 func ExecShellInPod(
 	podName string,
 	shellCmd string,
@@ -359,10 +348,16 @@ func ExecShellInPod(
 	return nil
 }
 
+// -----------------------------------------------------------------------------
+// Broker property helpers
+// -----------------------------------------------------------------------------
+
 func SetDgBrokerConnectIdentifiers(
 	primaryPod string,
+	primaryShardName string,
 	primaryDbUnique string,
 	primaryConnects []string,
+	standbyShardName string,
 	standbyDbUnique string,
 	standbyConnects []string,
 	instance *databasev4.ShardingDatabase,
@@ -381,21 +376,16 @@ func SetDgBrokerConnectIdentifiers(
 	primaryConn := strings.TrimSpace(primaryConnects[0])
 	standbyConn := strings.TrimSpace(standbyConnects[0])
 
-	primaryHost := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local",
-		strings.ToLower(primaryDbUnique), strings.ToLower(primaryDbUnique), instance.Namespace)
-	standbyHost := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local",
-		strings.ToLower(standbyDbUnique), strings.ToLower(standbyDbUnique), instance.Namespace)
-
-	primarySvc := BuildDgmgrlServiceName(primaryDbUnique)
-	standbySvc := BuildDgmgrlServiceName(standbyDbUnique)
+	primaryStatic := BuildDgmgrlStaticConnectIdentifier(instance, primaryShardName, primaryDbUnique)
+	standbyStatic := BuildDgmgrlStaticConnectIdentifier(instance, standbyShardName, standbyDbUnique)
 
 	cmd := []string{"bash", "-lc", fmt.Sprintf(`
 dgmgrl -silent / <<'EOF'
 edit database %s set property DGConnectIdentifier='%s';
-edit database %s set property StaticConnectIdentifier='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=%s)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=%s)(INSTANCE_NAME=%s)(SERVER=DEDICATED)))';
+edit database %s set property StaticConnectIdentifier='%s';
 
 edit database %s set property DGConnectIdentifier='%s';
-edit database %s set property StaticConnectIdentifier='(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=%s)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=%s)(INSTANCE_NAME=%s)(SERVER=DEDICATED)))';
+edit database %s set property StaticConnectIdentifier='%s';
 
 show database verbose %s;
 show database verbose %s;
@@ -403,10 +393,10 @@ exit
 EOF
 `,
 		safeIdent(primaryDbUnique), primaryConn,
-		safeIdent(primaryDbUnique), primaryHost, primarySvc, strings.ToUpper(primaryDbUnique),
+		safeIdent(primaryDbUnique), primaryStatic,
 
 		safeIdent(standbyDbUnique), standbyConn,
-		safeIdent(standbyDbUnique), standbyHost, standbySvc, strings.ToUpper(standbyDbUnique),
+		safeIdent(standbyDbUnique), standbyStatic,
 
 		safeIdent(primaryDbUnique),
 		safeIdent(standbyDbUnique),
@@ -423,6 +413,10 @@ EOF
 	LogMessages("INFO", "Set DG broker connect identifiers for "+primaryDbUnique+" and "+standbyDbUnique, nil, instance, log)
 	return nil
 }
+
+// -----------------------------------------------------------------------------
+// SRL / apply helpers
+// -----------------------------------------------------------------------------
 
 func EnsureStandbyRedoLogsForShards(
 	primaryPod string,
@@ -533,5 +527,50 @@ select process, status, thread#, sequence# from v$managed_standby order by proce
 	}
 
 	LogMessages("INFO", "Restarted standby apply and forced redo shipping", nil, instance, log)
+	return nil
+}
+
+// -----------------------------------------------------------------------------
+// Redo transport helper
+// -----------------------------------------------------------------------------
+
+func ConfigurePrimaryRedoTransport(
+	primaryPod string,
+	standbyShardName string,
+	standbyDbUniqueName string,
+	instance *databasev4.ShardingDatabase,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	log logr.Logger,
+) error {
+
+	standbyConn := BuildDgmgrlConnectIdentifier(instance, standbyShardName, standbyDbUniqueName)
+
+	logArchiveDest2SQL := fmt.Sprintf(
+		"alter system set log_archive_dest_2='service=\"%s\" async valid_for=(online_logfiles,primary_role) db_unique_name=%s' scope=both sid='*';",
+		standbyConn,
+		strings.ToUpper(strings.TrimSpace(standbyDbUniqueName)),
+	)
+
+	enableDest2SQL := "alter system set log_archive_dest_state_2=enable scope=both sid='*';"
+
+	switchLogSQL := `
+alter system archive log current;
+alter system archive log current;
+`
+
+	if err := RunSQLPlusInPod(primaryPod, logArchiveDest2SQL, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	if err := RunSQLPlusInPod(primaryPod, enableDest2SQL, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	if err := RunSQLPlusInPod(primaryPod, switchLogSQL, instance, kubeClient, kubeConfig, log); err != nil {
+		return err
+	}
+
+	LogMessages("INFO", "Configured primary redo transport to standby "+standbyDbUniqueName, nil, instance, log)
 	return nil
 }
