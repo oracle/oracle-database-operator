@@ -530,11 +530,12 @@ func (r *DataguardBrokerReconciler) manageManualSwitchOverExternal(broker *dbapi
 
 	// DGMGRL database names in config appear as lower-case in your output: pshard1 / sshard2
 	targetDgmgrlName := strings.ToLower(target)
+	currentPrimaryDgmgrlName := strings.ToLower(strings.TrimSpace(currentPrimary.DbUniqueName))
 
 	// Execute switchover from runner pod (NOT from operator container)
 	cmd := fmt.Sprintf(`
 set -euo pipefail
-dgmgrl -silent "sys/%s@%s" <<EOF
+dgmgrl -silent "sys/%s@%s as sysdba" <<EOF
 show configuration;
 validate database %s;
 validate database %s;
@@ -543,7 +544,7 @@ show configuration;
 exit
 EOF
 `, sysPwd, primaryConn,
-		strings.ToLower(strings.TrimSpace(currentPrimary.DbUniqueName)),
+		currentPrimaryDgmgrlName,
 		targetDgmgrlName,
 		targetDgmgrlName,
 	)

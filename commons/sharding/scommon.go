@@ -172,9 +172,10 @@ func buildEnvVarsSpec(
 		result = append(result, corev1.EnvVar{Name: variable.Name, Value: variable.Value})
 	}
 
-	// FREE DB helpers
-	if !dbUnameFlag && strings.ToLower(instance.Spec.DbEdition) == "free" {
-		result = append(result, corev1.EnvVar{Name: "DB_UNIQUE_NAME", Value: strings.ToUpper(name)})
+	if !dbUnameFlag {
+		if restype == "SHARD" || restype == "CATALOG" || strings.ToLower(instance.Spec.DbEdition) == "free" {
+			result = append(result, corev1.EnvVar{Name: "DB_UNIQUE_NAME", Value: strings.ToUpper(name)})
+		}
 	}
 
 	if !ofreePdbFlag && strings.ToLower(instance.Spec.DbEdition) == "free" {
