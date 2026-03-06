@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -36,23 +36,8 @@
 ** SOFTWARE.
  */
 
-// +kubebuilder:object:generate=true
-// +groupName=observability.oracle.com
-
+// Package v1alpha1 contains the initial Oracle observability API schemas. The
+// types capture the first-generation telemetry integration resources and remain
+// available for compatibility with existing clusters that still reference the
+// v1alpha1 API group.
 package v1alpha1
-
-import (
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/scheme"
-)
-
-var (
-	// GroupVersion is group version used to register these objects
-	GroupVersion = schema.GroupVersion{Group: "observability.oracle.com", Version: "v1alpha1"}
-
-	// SchemeBuilder is used to add go types to the GroupVersionKind scheme
-	SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
-
-	// AddToScheme adds the types in this group-version to the given scheme.
-	AddToScheme = SchemeBuilder.AddToScheme
-)

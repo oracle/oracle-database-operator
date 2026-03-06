@@ -18041,7 +18041,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: container-registry.oracle.com/database/operator:latest
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
         imagePullPolicy: Always
         name: manager
         ports:

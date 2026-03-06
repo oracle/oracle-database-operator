@@ -38,6 +38,7 @@
 
 package v4
 
+// Package v4 provides RAC webhook and type definitions aligned with docs/rac and Kubernetes guidance.
 import (
 	"sync"
 
@@ -87,6 +88,7 @@ type OracleRestartSpec struct {
 	// +kubebuilder:default="enable"
 	EnableOns string `json:"enableOns,omitempty"`
 }
+
 type AsmDiskDetails struct {
 	DisksBySize []DiskBySize `json:"disksBySize,omitempty"`
 	AutoUpdate  string       `json:"autoUpdate,omitempty"`
@@ -309,6 +311,7 @@ type OracleRestartStatus struct {
 	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext,omitempty"`
 }
 
+// OracleRestartNodePortSvc defines the structure for node port service configuration in Oracle Restart. It includes details about port mappings, service name, type, load balancer IP, annotations, and ONS port configurations. This struct is used to specify how the Oracle Restart instance should be exposed via Kubernetes services, allowing for external access and communication with the database instances.
 type OracleRestartNodePortSvc struct {
 	PortMappings  []OracleRestartPortMapping `json:"portMappings,omitempty"`
 	SvcName       string                     `json:"name,omitempty"`
@@ -319,6 +322,7 @@ type OracleRestartNodePortSvc struct {
 	OnsLocalPort  *int32                     `json:"onsLocalPort,omitempty"`  // Port that will be exposed on the service.
 }
 
+// OracleRestartPortMapping defines the structure for port mapping configuration in Oracle Restart. It includes details about the port number, target port, protocol, and node port. This struct is used to specify how the ports should be mapped for the services created for Oracle Restart instances, allowing for proper routing of network traffic to the database instances.
 type OracleRestartPortMapping struct {
 	Port       int32 `json:"port,omitempty"`
 	TargetPort int32 `json:"targetPort,omitempty"`
@@ -328,11 +332,13 @@ type OracleRestartPortMapping struct {
 	NodePort int32           `json:"nodePort,omitempty"`
 }
 
+// OracleRestartNodestatus defines the status of an individual node in the Oracle Restart cluster. It includes the name of the node and detailed status information such as worker node, persistent volume claim names, node port service configurations, port mappings, cluster state, instance state, pod state, deletion status, overall state, and mounted devices. This struct is used to represent the real-time status of each node in the Oracle Restart cluster, which is essential for monitoring and managing the health and performance of the database instances.
 type OracleRestartNodestatus struct {
 	Name        string                           `json:"name,omitempty"`
 	NodeDetails *OracleRestartNodeDetailedStatus `json:"nodeDetails,omitempty"`
 }
 
+// OracleRestartNodeDetailedStatus provides detailed status information for a node in the Oracle Restart cluster. It includes the worker node name, persistent volume claim names, node port service configurations, port mappings, cluster state, instance state, pod state, deletion status, overall state, and mounted devices. This struct is used to capture the comprehensive status of each node in the Oracle Restart cluster, which is crucial for effective monitoring and troubleshooting of the database instances.
 type OracleRestartNodeDetailedStatus struct {
 	WorkerNode     string                     `json:"workerNode,omitempty"` //Optional Env variables for Shards
 	PvcName        map[string]string          `json:"pvcName,omitempty"`
@@ -346,6 +352,7 @@ type OracleRestartNodeDetailedStatus struct {
 	MountedDevices []string                   `json:"mountedDevices,omitempty"`
 }
 
+// OracleRestartLifecycleState defines the various lifecycle states that an Oracle Restart instance can be in. These states include available, failed, updating, provisioning, pending, and various error states related to pods and stateful sets. This enum is used to represent the current lifecycle state of the Oracle Restart instance, which is essential for monitoring and managing the health and performance of the database instances.
 type OracleRestartLifecycleState string
 
 const (
@@ -370,6 +377,7 @@ const (
 	OracleRestartManualState         OracleRestartLifecycleState = "MANUAL"
 )
 
+// OracleRestartCrdReconcileState defines the various reconcile states that an Oracle Restart CRD can be in. These states include reconcile error, reconcile queued, reconcile complete, and reconcile waiting, along with their corresponding reasons. This enum is used to represent the current reconcile state of the Oracle Restart CRD, which is essential for monitoring the reconciliation process and troubleshooting any issues that may arise during the lifecycle of the CRD.
 type OracleRestartCrdReconcileState string
 
 const (
@@ -383,7 +391,7 @@ const (
 	OracleRestartCrdReconcileWaitingReason  OracleRestartCrdReconcileState = "LastReconcileCycleWaiting"
 )
 
-// var
+// OracleRestartKubeConfigOnce is a sync.Once variable used to ensure that the Kubernetes client configuration for Oracle Restart is initialized only once during the lifecycle of the application. This helps to optimize performance and resource usage by preventing redundant initialization of the Kubernetes client configuration, which can be an expensive operation. By using sync.Once, we can guarantee that the configuration is set up in a thread-safe manner, even in concurrent environments.
 var OracleRestartKubeConfigOnce sync.Once
 
 // +kubebuilder:object:root=true
@@ -413,6 +421,7 @@ type OracleRestartList struct {
 	Items           []OracleRestart `json:"items"`
 }
 
+// Repository type metadata.
 func init() {
 	SchemeBuilder.Register(&OracleRestart{}, &OracleRestartList{})
 }

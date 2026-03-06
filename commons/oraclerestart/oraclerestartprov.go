@@ -1468,7 +1468,7 @@ func ASMVolumeClaimTemplatesForDG(instance *oraclerestart.OracleRestart, OracleR
 		return claims
 	}
 
-	fmt.Printf("INFO", "working on asm storage class "+*StorageClass)
+	fmt.Printf("INFO: working on asm storage class %s\n", *StorageClass)
 
 	for _, dg := range instance.Spec.AsmStorageDetails {
 		for _, diskName := range dg.Disks {
