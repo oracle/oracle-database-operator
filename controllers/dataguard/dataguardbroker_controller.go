@@ -535,7 +535,11 @@ func (r *DataguardBrokerReconciler) manageManualSwitchOverExternal(broker *dbapi
 	// Execute switchover from runner pod (NOT from operator container)
 	cmd := fmt.Sprintf(`
 set -euo pipefail
-dgmgrl -silent "sys/%s@%s as sysdba" <<EOF
+
+SYS_PWD="$(cat ${SECRET_VOLUME}/${PASSWORD_FILE} | base64 -d)"
+
+dgmgrl /nolog <<EOF
+connect sys/"${SYS_PWD}"@%s as sysdba
 show configuration;
 validate database %s;
 validate database %s;
@@ -543,7 +547,8 @@ switchover to %s;
 show configuration;
 exit
 EOF
-`, sysPwd, primaryConn,
+`,
+		primaryConn,
 		currentPrimaryDgmgrlName,
 		targetDgmgrlName,
 		targetDgmgrlName,
