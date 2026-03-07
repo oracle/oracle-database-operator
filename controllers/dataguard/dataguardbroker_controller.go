@@ -128,16 +128,17 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return result, nil
 	}
 	// ----------------------------
-	// manual switchover for non-SIDB flow
+	// manual switchover for non-SIDB flow (FSFO must be false)
 	// ----------------------------
 	if dataguardBroker.Spec.IsNonSingleInstanceDatabase &&
+		!dataguardBroker.Spec.FastStartFailover &&
 		dataguardBroker.Spec.SetAsPrimaryDatabase != "" &&
 		!strings.EqualFold(dataguardBroker.Spec.SetAsPrimaryDatabase, dataguardBroker.Status.PrimaryDatabase) {
 
-		log.Info("Manual Switchover requested (non-SIDB)",
+		log.Info("Manual Switchover requested (non-SIDB, FSFO disabled)",
 			"target", dataguardBroker.Spec.SetAsPrimaryDatabase)
 
-		result, err := r.manageManualSwitchOverExternal(&dataguardBroker, ctx, req)
+		result, err := r.manageManualSwitchOverExternalDirect(&dataguardBroker, ctx, req)
 		if err != nil {
 			return ctrl.Result{Requeue: false}, err
 		}
@@ -218,20 +219,32 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				return ctrl.Result{Requeue: false}, nil
 			}
 
-			// Map standby->primary using FAL_SERVER and LOG_ARCHIVE_DEST_1
+			// Map standby->primary using FAL_SERVER / LOG_ARCHIVE_DEST_1 / LOG_ARCHIVE_DEST_2
 			mapping, unmapped := mapStandbyToPrimary(primaries, standbys)
+
+			// TEMP fallback for simple 1-primary + 1-standby topology
+			if len(mapping) == 0 && len(primaries) == 1 && len(standbys) == 1 {
+				for pUniq := range primaries {
+					mapping[pUniq] = standbys[0].DbUniqueName
+					r.Log.Info("TEMP DEBUG: forcing mapping for simple topology",
+						"primary", pUniq,
+						"standby", standbys[0].DbUniqueName)
+				}
+				unmapped = nil
+			}
 
 			// If any standby unmapped => do nothing, report error
 			if len(unmapped) > 0 {
 				dataguardBroker.Status.Status = dbcommons.StatusError
 				r.Recorder.Eventf(&dataguardBroker, corev1.EventTypeWarning, "Mapping Failed",
-					"could not map %d standby DB(s) to a primary using FAL_SERVER / LOG_ARCHIVE_DEST_1", len(unmapped))
+					"could not map %d standby DB(s) to a primary using FAL_SERVER / LOG_ARCHIVE_DEST_1 / LOG_ARCHIVE_DEST_2", len(unmapped))
 				for _, s := range unmapped {
 					r.Log.Info("Unmapped standby",
 						"db_unique_name", s.DbUniqueName,
 						"connect", s.ConnectString,
 						"fal_server", s.FalServer,
-						"log_archive_dest_1", s.LogArchiveD1)
+						"log_archive_dest_1", s.LogArchiveD1,
+						"log_archive_dest_2", s.LogArchiveD2)
 				}
 				return ctrl.Result{Requeue: false}, nil
 			}
@@ -262,27 +275,38 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			if err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
+			log.Info("DEBUG_FSFO: calling setFSFOTargetsExternal",
+				"primaryConn", primaryConn,
+				"mapping", dataguardBroker.Status.ExternalDgMapping)
 
 			// external FSFO calls
 			if err := setFSFOTargetsExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req); err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
+			log.Info("DEBUG_FSFO: calling enableFSFOForDgConfigExternal",
+				"primaryConn", primaryConn)
 			if err := enableFSFOForDgConfigExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req); err != nil {
 				return ctrl.Result{Requeue: false}, err
 			}
 
-			// IMPORTANT: avoid ORA-16814 duplicate observer
-			// Stop observer (best-effort), then restart pod cleanly.
-			_ = stopObserverIfExistsExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req)
+			// recycle observer only once after FSFO becomes enabled
+			if dataguardBroker.Status.FastStartFailover != "true" {
+				// mark FSFO enabled in status BEFORE deleting pod
+				dataguardBroker.Status.FastStartFailover = "true"
 
-			// Delete the runner/observer pod so reconcile will recreate it cleanly
-			_ = r.Delete(ctx, &runnerPod)
+				// IMPORTANT: avoid ORA-16814 duplicate observer
+				// Stop observer (best-effort), then restart pod cleanly.
+				_ = stopObserverIfExistsExternal(r, &dataguardBroker, runnerPod, primaryConn, sysPwd, ctx, req)
 
-			// set faststartfailover status to true
-			dataguardBroker.Status.FastStartFailover = "true"
+				// Delete the runner/observer pod so reconcile will recreate it cleanly once
+				if runnerPod.Name != "" {
+					_ = r.Delete(ctx, &runnerPod)
+					return ctrl.Result{Requeue: true, RequeueAfter: 20 * time.Second}, nil
+				}
 
-			// requeue so new observer pod gets created and stabilizes
-			return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+				return ctrl.Result{Requeue: true, RequeueAfter: 20 * time.Second}, nil
+			}
+			dataguardBroker.Status.Status = dbcommons.StatusReady
 
 		} else {
 
@@ -1113,4 +1137,154 @@ where thread# = 1;
 	}
 
 	return nil
+}
+func (r *DataguardBrokerReconciler) manageManualSwitchOverExternalDirect(
+	broker *dbapi.DataguardBroker,
+	ctx context.Context,
+	req ctrl.Request,
+) (ctrl.Result, error) {
+
+	log := r.Log.WithValues("manageManualSwitchOverExternalDirect", req.NamespacedName)
+
+	// Validate connect strings
+	if len(broker.Spec.ExternalDatabaseConnectStrings) < 2 {
+		broker.Status.Status = dbcommons.StatusError
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Spec Validation",
+			"externalDatabaseConnectStrings must have at least 2 entries (primary + standby) when isNonSingleInstanceDatabase=true")
+		return ctrl.Result{Requeue: false}, nil
+	}
+
+	target := strings.ToUpper(strings.TrimSpace(broker.Spec.SetAsPrimaryDatabase))
+	if target == "" {
+		return ctrl.Result{Requeue: false}, nil
+	}
+
+	// Use actual DB pod, NOT observer/runner pod
+	execPodName := getPodNameFromExternalHost(broker.Spec.ExternalDatabaseConnectStrings[0].HostName)
+	if execPodName == "" {
+		broker.Status.Status = dbcommons.StatusError
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Pod Resolution Failed",
+			"could not derive DB pod name from externalDatabaseConnectStrings[0].hostName")
+		return ctrl.Result{Requeue: false}, nil
+	}
+
+	var execPod corev1.Pod
+	if err := r.Get(ctx, types.NamespacedName{Name: execPodName, Namespace: broker.Namespace}, &execPod); err != nil {
+		return ctrl.Result{Requeue: false}, err
+	}
+
+	// Discover current roles from DBs themselves
+	dbInfos, err := collectExternalDbInfo(r, broker, execPod, broker.Spec.ExternalDatabaseConnectStrings, ctx, req)
+	if err != nil {
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Waiting", err.Error())
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+	}
+
+	var currentPrimary extDbInfo
+	foundPrimary := false
+	foundTarget := false
+
+	for _, d := range dbInfos {
+		roleU := strings.ToUpper(strings.TrimSpace(d.Role))
+		if roleU == "PRIMARY" && !foundPrimary {
+			currentPrimary = d
+			foundPrimary = true
+		}
+		if strings.EqualFold(strings.TrimSpace(d.DbUniqueName), target) {
+			foundTarget = true
+		}
+	}
+
+	if !foundPrimary {
+		broker.Status.Status = dbcommons.StatusError
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Role Validation",
+			"could not find PRIMARY in externalDatabaseConnectStrings")
+		return ctrl.Result{Requeue: false}, nil
+	}
+
+	if !foundTarget {
+		broker.Status.Status = dbcommons.StatusError
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Target Validation",
+			"target %s not found in externalDatabaseConnectStrings", target)
+		return ctrl.Result{Requeue: false}, nil
+	}
+
+	// Get SYS password from secret
+	sysPwd, err := getExternalSysPassword(r, broker, ctx)
+	if err != nil {
+		return ctrl.Result{Requeue: false}, err
+	}
+
+	// Choose current PRIMARY connect string
+	primaryConn, err := pickPrimaryConnectString(dbInfos)
+	if err != nil {
+		return ctrl.Result{Requeue: false}, err
+	}
+
+	// DGMGRL names in config are usually lowercase
+	targetDgmgrlName := strings.ToLower(target)
+	currentPrimaryDgmgrlName := strings.ToLower(strings.TrimSpace(currentPrimary.DbUniqueName))
+
+	cmd := fmt.Sprintf(`
+set -euo pipefail
+
+dgmgrl /nolog <<EOF
+connect sys/"%s"@%s as sysdba
+show configuration;
+show database %s;
+show database %s;
+validate database %s;
+validate database %s;
+switchover to %s;
+show configuration;
+show database %s;
+show database %s;
+exit
+EOF
+`,
+		sysPwd,
+		primaryConn,
+		currentPrimaryDgmgrlName,
+		targetDgmgrlName,
+		currentPrimaryDgmgrlName,
+		targetDgmgrlName,
+		targetDgmgrlName,
+		currentPrimaryDgmgrlName,
+		targetDgmgrlName,
+	)
+
+	out, execErr := dbcommons.ExecCommand(r, r.Config, execPod.Name, execPod.Namespace, "", ctx, req, false, "bash", "-lc", cmd)
+	log.Info("DGMGRL switchover output", "out", out)
+	if execErr != nil {
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Switchover Failed", execErr.Error())
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// Refresh roles after switchover
+	dbInfos, err = collectExternalDbInfo(r, broker, execPod, broker.Spec.ExternalDatabaseConnectStrings, ctx, req)
+	if err != nil {
+		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Post Switchover Validation Failed", err.Error())
+		return ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}, nil
+	}
+
+	for _, d := range dbInfos {
+		if strings.EqualFold(strings.TrimSpace(d.Role), "PRIMARY") {
+			broker.Status.PrimaryDatabase = strings.ToUpper(strings.TrimSpace(d.DbUniqueName))
+			break
+		}
+	}
+
+	broker.Status.Status = dbcommons.StatusReady
+	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Switchover Succeeded",
+		"switched primary to %s", broker.Status.PrimaryDatabase)
+
+	return ctrl.Result{Requeue: false}, nil
+}
+
+func getPodNameFromExternalHost(host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return ""
+	}
+	return strings.Split(host, ".")[0]
 }

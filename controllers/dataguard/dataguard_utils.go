@@ -1194,23 +1194,47 @@ func enableFSFOForDgConfigExternal(
 
 	log := r.Log.WithValues("enableFSFOForDgConfigExternal", req.NamespacedName)
 
-	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Enabling FastStartFailover",
-		fmt.Sprintf("Enabling FastStartFailover for dataguard broker %s", broker.Name))
+	r.Recorder.Eventf(
+		broker,
+		corev1.EventTypeNormal,
+		"Enabling FastStartFailover",
+		fmt.Sprintf("Enabling FastStartFailover for dataguard broker %s", broker.Name),
+	)
 
-	cmd := fmt.Sprintf(`echo -e "%s" | dgmgrl sys/%s@%s`,
-		dbcommons.EnableFSFOCMD, sysPwd, primaryConnectString)
+	cmd := fmt.Sprintf(`
+dgmgrl /nolog <<EOF
+connect sys/"%s"@%s as sysdba
+show configuration;
+enable fast_start failover;
+show fast_start failover;
+show configuration;
+exit
+EOF
+`, sysPwd, primaryConnectString)
 
-	out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	out, err := dbcommons.ExecCommand(
+		r, r.Config, runnerPod.Name, runnerPod.Namespace, "",
+		ctx, req, false, "bash", "-lc", cmd,
+	)
 	if err != nil {
-		r.Recorder.Eventf(broker, corev1.EventTypeWarning, "Enabling FastStartFailover failed",
-			fmt.Sprintf("Enabling FSFO for %s failed", broker.Name))
+		r.Recorder.Eventf(
+			broker,
+			corev1.EventTypeWarning,
+			"Enabling FastStartFailover failed",
+			fmt.Sprintf("Enabling FSFO for %s failed", broker.Name),
+		)
 		log.Error(err, "Enable FSFO failed", "output", out)
-		return err
+		return fmt.Errorf("enable FSFO failed: %w output=%s", err, out)
 	}
 
 	log.Info("Enable FSFO output", "output", out)
-	r.Recorder.Eventf(broker, corev1.EventTypeNormal, "Enabling FastStartFailover successful",
-		fmt.Sprintf("FSFO enabled for %s", broker.Name))
+
+	r.Recorder.Eventf(
+		broker,
+		corev1.EventTypeNormal,
+		"Enabling FastStartFailover successful",
+		fmt.Sprintf("FSFO enabled for %s", broker.Name),
+	)
 
 	return nil
 }
@@ -1374,7 +1398,7 @@ func stopObserverIfExistsExternal(
 	r *DataguardBrokerReconciler,
 	broker *dbapi.DataguardBroker,
 	runnerPod corev1.Pod,
-	primaryConnectString string, // host:port/svc (same you pass to dgmgrl)
+	primaryConnectString string,
 	sysPwd string,
 	ctx context.Context,
 	req ctrl.Request,
@@ -1382,11 +1406,17 @@ func stopObserverIfExistsExternal(
 
 	log := r.Log.WithValues("stopObserverIfExistsExternal", req.NamespacedName)
 
-	// Best-effort stop; do not fail reconcile if it errors
-	cmd := fmt.Sprintf(`echo -e "STOP OBSERVER %s;" | dgmgrl sys/%s@%s`,
-		broker.Name, sysPwd, primaryConnectString)
+	cmd := fmt.Sprintf(`
+dgmgrl /nolog <<EOF
+connect sys/"%s"@%s as sysdba
+show fast_start failover;
+stop observer;
+show fast_start failover;
+exit
+EOF
+`, sysPwd, primaryConnectString)
 
-	out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-c", cmd)
+	out, err := dbcommons.ExecCommand(r, r.Config, runnerPod.Name, runnerPod.Namespace, "", ctx, req, false, "bash", "-lc", cmd)
 	if err != nil {
 		log.Info("STOP OBSERVER best-effort failed; continuing",
 			"err", err.Error(),
@@ -1410,6 +1440,7 @@ type extDbInfo struct {
 	DbUniqueName  string
 	FalServer     string
 	LogArchiveD1  string
+	LogArchiveD2  string
 }
 
 func buildNetService(host string, port int32, svc string) string {
@@ -1474,15 +1505,12 @@ func collectExternalDbInfo(
 
 		netSvc := buildNetService(c.HostName, c.Port, c.SvcName)
 
-		// Output lines:
-		// 1) name|database_role|open_mode|db_unique_name
-		// 2) fal_server
-		// 3) log_archive_dest_1
 		sql := `
 set heading off feedback off pages 0 echo off verify off trimspool on lines 400
 select name||'|'||database_role||'|'||open_mode||'|'||db_unique_name from v$database;
 select nvl((select value from v$parameter where name='fal_server'),'') from dual;
 select nvl((select value from v$parameter where name='log_archive_dest_1'),'') from dual;
+select nvl((select value from v$parameter where name='log_archive_dest_2'),'') from dual;
 exit;
 `
 
@@ -1495,14 +1523,35 @@ EOF`, c.UserName, pwd, netSvc, sql)
 			return nil, fmt.Errorf("failed to query db %s: %w", netSvc, err)
 		}
 
-		lines := nonEmptyLines(out)
-		if len(lines) < 3 {
+		lines := sanitizeSQLPlusLines(out)
+
+		dbIdx := -1
+		var parts []string
+		for i, line := range lines {
+			p := strings.Split(line, "|")
+			if len(p) >= 4 {
+				dbIdx = i
+				parts = p
+				break
+			}
+		}
+
+		if dbIdx == -1 {
 			return nil, fmt.Errorf("unexpected sqlplus output for %s: %q", netSvc, out)
 		}
 
-		parts := strings.Split(lines[0], "|")
-		if len(parts) < 4 {
-			return nil, fmt.Errorf("unexpected v$database output for %s: %q", netSvc, lines[0])
+		falServer := ""
+		logArchiveD1 := ""
+		logArchiveD2 := ""
+
+		if dbIdx+1 < len(lines) {
+			falServer = strings.TrimSpace(lines[dbIdx+1])
+		}
+		if dbIdx+2 < len(lines) {
+			logArchiveD1 = strings.TrimSpace(lines[dbIdx+2])
+		}
+		if dbIdx+3 < len(lines) {
+			logArchiveD2 = strings.TrimSpace(lines[dbIdx+3])
 		}
 
 		info := extDbInfo{
@@ -1512,9 +1561,18 @@ EOF`, c.UserName, pwd, netSvc, sql)
 			Role:          strings.TrimSpace(parts[1]),
 			OpenMode:      strings.TrimSpace(parts[2]),
 			DbUniqueName:  strings.TrimSpace(parts[3]),
-			FalServer:     strings.TrimSpace(lines[1]),
-			LogArchiveD1:  strings.TrimSpace(lines[2]),
+			FalServer:     falServer,
+			LogArchiveD1:  logArchiveD1,
+			LogArchiveD2:  logArchiveD2,
 		}
+
+		r.Log.Info("Collected external DB info",
+			"db_unique_name", info.DbUniqueName,
+			"role", info.Role,
+			"connect", info.ConnectString,
+			"fal_server", info.FalServer,
+			"log_archive_dest_1", info.LogArchiveD1,
+			"log_archive_dest_2", info.LogArchiveD2)
 
 		results = append(results, info)
 	}
@@ -1522,10 +1580,54 @@ EOF`, c.UserName, pwd, netSvc, sql)
 	return results, nil
 }
 
+func sanitizeSQLPlusLines(out string) []string {
+	raw := strings.Split(out, "\n")
+	lines := make([]string, 0, len(raw))
+
+	for _, line := range raw {
+		s := strings.TrimSpace(line)
+		if s == "" {
+			continue
+		}
+
+		low := strings.ToLower(s)
+
+		// Ignore SQL*Plus/banner/noise lines
+		if strings.HasPrefix(s, "SQL>") {
+			continue
+		}
+		if strings.HasPrefix(low, "connected to:") {
+			continue
+		}
+		if strings.HasPrefix(low, "copyright") {
+			continue
+		}
+		if strings.Contains(low, "oracle database") {
+			continue
+		}
+		if strings.Contains(low, "release ") {
+			continue
+		}
+		if strings.HasPrefix(low, "version ") {
+			continue
+		}
+
+		lines = append(lines, s)
+	}
+
+	return lines
+}
+
 // inferPrimaryHintFromStandby tries to discover the primary identifier from FAL_SERVER / LOG_ARCHIVE_DEST_1.
 // Works for formats like SERVICE=..., DB_UNIQUE_NAME=...
 func inferPrimaryHintFromStandby(stby extDbInfo) string {
-	u := strings.ToUpper(stby.FalServer + " " + stby.LogArchiveD1)
+	u := strings.ToUpper(
+		strings.Join([]string{
+			stby.FalServer,
+			stby.LogArchiveD1,
+			stby.LogArchiveD2,
+		}, " "),
+	)
 
 	for _, key := range []string{"DB_UNIQUE_NAME=", "SERVICE="} {
 		idx := strings.Index(u, key)
@@ -1545,6 +1647,7 @@ func inferPrimaryHintFromStandby(stby extDbInfo) string {
 			}
 		}
 	}
+
 	return ""
 }
 
