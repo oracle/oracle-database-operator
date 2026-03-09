@@ -43,9 +43,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -197,6 +199,17 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			shardingv1.LogMessages("INFO", "Patched primaryDatabaseRef for standby shards", nil, instance, r.Log)
 		}
 		// IMPORTANT: do NOT return/requeue here
+	}
+	origScale := instance.DeepCopy()
+	scaleChanged := r.applyReplicaScaleInMarks(instance)
+	if scaleChanged {
+		if perr := r.Patch(ctx, instance, client.MergeFrom(origScale)); perr != nil {
+			shardingv1.LogMessages("INFO", "Failed to patch scale-in isDelete marks: "+perr.Error(), nil, instance, r.Log)
+			result = resultQ
+			err = nilErr
+			return result, err
+		}
+		shardingv1.LogMessages("INFO", "Patched scale-in isDelete marks into spec", nil, instance, r.Log)
 	}
 
 	// ========================= Service Setup For Catalog===================
@@ -1870,149 +1883,167 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 	var i int32
 	var err error
 	shardSfSet := &appsv1.StatefulSet{}
-	shardPod := &corev1.Pod{}
-	//gsmSfSet := &appsv1.StatefulSet{}
+	var shardPod *corev1.Pod
 	gsmPod := &corev1.Pod{}
 	var msg string
 	var setLifeCycleFlag = false
 
 	shardingv1.LogMessages("DEBUG", "Starting shard deletion operation.", nil, instance, r.Log)
-	// ================================ Shard Delete Logic ===================
 
 	if len(instance.Spec.Shard) > 0 {
 		for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
 			OraShardSpex := instance.Spec.Shard[i]
-			if shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
-				if setLifeCycleFlag != true {
-					setLifeCycleFlag = true
-					stateType := string(databasev4.CrdReconcileWaitingState)
-					r.setCrdLifeCycleState(instance, &result, &err, &stateType)
+
+			if !shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
+				continue
+			}
+
+			if setLifeCycleFlag != true {
+				setLifeCycleFlag = true
+				stateType := string(databasev4.CrdReconcileWaitingState)
+				r.setCrdLifeCycleState(instance, &result, &err, &stateType)
+			}
+
+			// Step 1: validate GSM
+			_, gsmPod, err = r.validateGsm(instance)
+			if err != nil {
+				return err
+			}
+
+			chkState := shardingv1.GetGsmShardStatus(instance, OraShardSpex.Name)
+
+			// Step 2: check physical shard existence directly
+			shardSfSet, err = shardingv1.CheckSfset(OraShardSpex.Name, instance, r.Client)
+			if err != nil {
+				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
+				r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
+				continue
+			}
+
+			// best effort pod lookup
+			shardPod = nil
+			podList, perr := shardingv1.GetPodList(shardSfSet.Name, "SHARD", instance, r.Client)
+			if perr == nil {
+				_, pod := shardingv1.PodListValidation(podList, shardSfSet.Name, instance, r.Client)
+				if pod != nil && pod.Name != "" {
+					shardPod = pod
 				}
-				// Step 1st to check if GSM is in good state if not then just return because you can't do anything
-				_, gsmPod, err = r.validateGsm(instance)
-				if err != nil {
-					return err
-				}
-				// 2nd Step is to check if Shard is in good state if not then just continue
-				// 1St check if the instance.Status.Gsm.Shards contains the shard. If not then shard is already deleted
-				// If the shard is found then check if shard exist
-				// validateShard will change  the shard state in Shard Status
-				chkState := shardingv1.GetGsmShardStatus(instance, OraShardSpex.Name)
-				if chkState != "NOSTATE" {
-					shardSfSet, shardPod, err = r.validateShard(instance, OraShardSpex, int(i))
+			}
+
+			// If shard is not present in GSM status cache, still delete physical resources
+			if chkState == "NOSTATE" {
+				shardingv1.LogMessages(
+					"INFO",
+					"Shard "+OraShardSpex.Name+" not found in GSM status cache; deleting physical resources directly",
+					nil,
+					instance,
+					r.Log,
+				)
+				r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
+				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
+				r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
+				continue
+			}
+
+			// Step 3: validate shard if it exists in GSM cache
+			_, _, err = r.validateShard(instance, OraShardSpex, int(i))
+			if err != nil {
+				continue
+			}
+
+			// Step 4: check if shard exists in GSM
+			sparams := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
+			err = shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+			if err != nil {
+				r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
+				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
+				r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
+				continue
+			}
+
+			// Step 5: ensure online in GSM
+			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeletingState))
+			err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+			if err != nil {
+				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeleteErrorState))
+				continue
+			}
+
+			// Step 6: move chunks for non-native flow
+			if strings.ToUpper(instance.Spec.ReplicationType) != "NATIVE" {
+				if len(instance.Spec.ReplicationType) == 0 {
+					err = shardingv1.MoveChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
 					if err != nil {
+						r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
+						instance.Spec.Shard[i].IsDelete = "failed"
+						err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
+						if err != nil {
+							msg = "Error occurred while changing the isDelete value to failed in Spec struct"
+							shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
+							return err
+						}
 						continue
 					}
-				} else {
-					continue
-				}
-				// 3rd step to check if shard is in GSM if not then continue
-				sparams := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
-				err = shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-				if err != nil {
-					// If the shard doesn't exist in GSM then just delete the shard statefulset and update GSM shard status
-					/// Terminate state means we will remove teh shard entry from GSM shard status
-					r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
-					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
-					r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
-					continue
-				}
-				// 4th step to check if shard is in GSM and shard is online if not then continue
-				// CHeck before deletion if GSM is not ready set the Shard State to Delete Error
-				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeletingState))
-				err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-				if err != nil {
-					// If the shard doesn't exist in GSM then just delete the shard statefulset and update GSM shard status
-					/// Terminate state means we will remove teh shard entry from GSM shard status
-					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeleteErrorState))
-					continue
-				}
-				// 5th Step
-				// Move the chunks before performing any Delete
-				// If you are in this block then it means that shard is ONline and can be deleted
-				if strings.ToUpper(instance.Spec.ReplicationType) != "NATIVE" {
-					if len(instance.Spec.ReplicationType) == 0 {
-						err = shardingv1.MoveChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-						if err != nil {
-							r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
+
+					for {
+						msg = "Sleeping for 120 seconds and will check status again of chunks movement in gsm for shard: " + shardingv1.GetFmtStr(OraShardSpex.Name) + "ShardType=" + strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType))
+						shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+						time.Sleep(120 * time.Second)
+
+						err = shardingv1.VerifyChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+						if err == nil {
+							break
+						} else {
+							if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
+								continue
+							}
 							instance.Spec.Shard[i].IsDelete = "failed"
 							err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
 							if err != nil {
 								msg = "Error occurred while changing the isDelete value to failed in Spec struct"
 								shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-								return err
 							}
-							continue
-						}
-						// 6th Step
-						// Check if Chunks has moved before performing actual delete
-						// This is a loop and will check unless there is a error or chunks has moved
-						// Validate if the chunks has moved before performing shard deletion
-						for {
-							msg = "Sleeping for 120 seconds and will check status again of chunks movement in gsm for shard: " + shardingv1.GetFmtStr(OraShardSpex.Name) + "ShardType=" + strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType))
-							shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-							time.Sleep(120 * time.Second)
-							err = shardingv1.VerifyChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-							if err == nil {
-								break
-							} else {
-								if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
-									// If ShardingType is not "USER", do not perform the patching.. continue
-									continue
-								}
-								instance.Spec.Shard[i].IsDelete = "failed"
-								err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
-								if err != nil {
-									// r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
-									msg = "Error occurred while changing the isDelete value to failed in Spec struct"
-									shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-									// return err
-								}
-								return err
-							}
+							return err
 						}
 					}
 				}
-
-				// 7th Step remove the shards from the GSM
-				// This steps will delete the shard entry from the GSM
-				// It will delete CDB from catalog
-				// 6th Step has already moved the chunks so it is safe to delete
-				err = shardingv1.RemoveShardFromGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-				if err != nil {
-					msg = "Error occurred during shard" + shardingv1.GetFmtStr(OraShardSpex.Name) + "removal from Gsm"
-					shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-					r.updateShardStatus(instance, int(i), string(databasev4.ShardRemoveError))
-					instance.Spec.Shard[i].IsDelete = "failed"
-					continue
-				}
-
-				// 8th Step
-				// Delete the Statefulset as all the chunks has moved and Shard can be phyiscally deleted
-				r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
-				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
-				r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
 			}
+
+			// Step 7: remove from GSM
+			err = shardingv1.RemoveShardFromGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+			if err != nil {
+				msg = "Error occurred during shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " removal from Gsm"
+				shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
+				r.updateShardStatus(instance, int(i), string(databasev4.ShardRemoveError))
+				instance.Spec.Shard[i].IsDelete = "failed"
+				continue
+			}
+
+			// Step 8: delete physical resources
+			r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
+			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
+			r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
 		}
 	}
+
 	shardingv1.LogMessages("DEBUG", "Completed the shard deletion operation. For details, check the CRD resource status for GSM and Shards.", nil, instance, r.Log)
 	return nil
 }
 
 // This function delete the physical shard
 func (r *ShardingDatabaseReconciler) delShard(instance *databasev4.ShardingDatabase, sfSetName string, sfSetFound *appsv1.StatefulSet, sfsetPod *corev1.Pod, specIdx int) {
-
-	//var status bool
 	var err error
 	var msg string
 	svcFound := &corev1.Service{}
 
-	err = shardingv1.SfsetLabelPatch(sfSetFound, sfsetPod, instance, r.Client)
-	if err != nil {
-		msg := "Failed to patch the Shard StatefulSet: " + sfSetFound.Name
-		shardingv1.LogMessages("DEBUG", msg, err, instance, r.Log)
-		r.updateShardStatus(instance, specIdx, string(databasev4.LabelPatchingError))
-		return
+	if sfsetPod != nil && sfsetPod.Name != "" {
+		err = shardingv1.SfsetLabelPatch(sfSetFound, sfsetPod, instance, r.Client)
+		if err != nil {
+			msg = "Failed to patch the Shard StatefulSet: " + sfSetFound.Name
+			shardingv1.LogMessages("DEBUG", msg, err, instance, r.Log)
+			r.updateShardStatus(instance, specIdx, string(databasev4.LabelPatchingError))
+			return
+		}
 	}
 
 	err = r.Client.Delete(context.Background(), sfSetFound)
@@ -2022,11 +2053,10 @@ func (r *ShardingDatabaseReconciler) delShard(instance *databasev4.ShardingDatab
 		r.updateShardStatus(instance, specIdx, string(databasev4.DeleteErrorState))
 		return
 	}
-	/// Delete External Service
+
 	if instance.Spec.IsExternalSvc {
 		svcFound, err = shardingv1.CheckSvc(sfSetName+strconv.FormatInt(int64(0), 10)+"-svc", instance, r.Client)
 		if err == nil {
-			// See if StatefulSets already exists and create if it doesn't
 			err = r.Client.Delete(context.Background(), svcFound)
 			if err != nil {
 				return
@@ -2034,10 +2064,8 @@ func (r *ShardingDatabaseReconciler) delShard(instance *databasev4.ShardingDatab
 		}
 	}
 
-	// Delete Internal Service
 	svcFound, err = shardingv1.CheckSvc(sfSetName, instance, r.Client)
 	if err == nil {
-		// See if StatefulSets already exists and create if it doesn't
 		err = r.Client.Delete(context.Background(), svcFound)
 		if err != nil {
 			return
@@ -2457,4 +2485,115 @@ func (r *ShardingDatabaseReconciler) findPrimaryForStandby(instance *databasev4.
 	}
 
 	return nil, fmt.Errorf("no PRIMARY shard found for standby %s", standby.Name)
+}
+
+func shardOrdinal(name string) int {
+	n := 0
+	mult := 1
+	foundDigit := false
+
+	for i := len(name) - 1; i >= 0; i-- {
+		if unicode.IsDigit(rune(name[i])) {
+			foundDigit = true
+			n += int(name[i]-'0') * mult
+			mult *= 10
+			continue
+		}
+		if foundDigit {
+			return n
+		}
+	}
+	if foundDigit {
+		return n
+	}
+	return 0
+}
+
+func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *databasev4.ShardingDatabase) bool {
+	type shardRef struct {
+		idx   int
+		name  string
+		order int
+	}
+
+	desiredByPrefix := map[string]int32{}
+	for i := range instance.Spec.ShardInfo {
+		info := instance.Spec.ShardInfo[i]
+		prefix := strings.TrimSpace(info.ShardPreFixName)
+		if prefix == "" {
+			continue
+		}
+		desiredByPrefix[prefix] = info.Replicas
+	}
+
+	if len(desiredByPrefix) == 0 || len(instance.Spec.Shard) == 0 {
+		return false
+	}
+
+	currentByPrefix := map[string][]shardRef{}
+	for i := range instance.Spec.Shard {
+		s := instance.Spec.Shard[i]
+		for prefix := range desiredByPrefix {
+			if strings.HasPrefix(s.Name, prefix) {
+				currentByPrefix[prefix] = append(currentByPrefix[prefix], shardRef{
+					idx:   i,
+					name:  s.Name,
+					order: shardOrdinal(s.Name),
+				})
+				break
+			}
+		}
+	}
+
+	changed := false
+
+	for prefix, shards := range currentByPrefix {
+		sort.Slice(shards, func(i, j int) bool {
+			return shards[i].order > shards[j].order
+		})
+
+		desired := desiredByPrefix[prefix]
+		current := int32(len(shards))
+
+		// highest ordinals beyond desired count => enable delete
+		for i, s := range shards {
+			wantDelete := int32(i) < (current - desired)
+
+			curr := strings.ToLower(strings.TrimSpace(instance.Spec.Shard[s.idx].IsDelete))
+
+			if wantDelete {
+				if curr != "enable" {
+					instance.Spec.Shard[s.idx].IsDelete = "enable"
+					changed = true
+					shardingv1.LogMessages(
+						"INFO",
+						fmt.Sprintf(
+							"Auto-marking shard %s for deletion due to replica scale-in for prefix %s (desired=%d current=%d)",
+							s.name, prefix, desired, current,
+						),
+						nil,
+						instance,
+						r.Log,
+					)
+				}
+			} else {
+				if curr != "disable" {
+					instance.Spec.Shard[s.idx].IsDelete = "disable"
+					changed = true
+					shardingv1.LogMessages(
+						"INFO",
+						fmt.Sprintf(
+							"Auto-marking shard %s to keep due to replica target for prefix %s (desired=%d current=%d)",
+							s.name, prefix, desired, current,
+						),
+						nil,
+						instance,
+						r.Log,
+					)
+				}
+			}
+		}
+	}
+
+	return changed
 }
