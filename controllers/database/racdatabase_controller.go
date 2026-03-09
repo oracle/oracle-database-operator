@@ -1593,6 +1593,7 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 		string(racdb.CrdReconcileCompeleteState),
 		string(racdb.CrdReconcileQueuedState),
 		string(racdb.CrdReconcileWaitingState),
+		string(racdb.CrdReconcileErrorState), // ← ADD THIS
 	} {
 		meta.RemoveStatusCondition(&racDatabase.Status.Conditions, t)
 	}
@@ -5047,10 +5048,12 @@ func (r *RacDatabaseReconciler) createOrReplaceSfsAsmCluster(
 		for _, dg := range racDatabase.Spec.AsmStorageDetails {
 			if strings.EqualFold(dg.AutoUpdate, "true") {
 				dgAutoUpdate[dg.Name] = true
+			} else if strings.EqualFold(dg.AutoUpdate, "false") {
+				dgAutoUpdate[dg.Name] = false
 			} else {
-				// only set false if key does not exist yet
+				// default only if key does not exist yet
 				if _, exists := dgAutoUpdate[dg.Name]; !exists {
-					dgAutoUpdate[dg.Name] = false
+					dgAutoUpdate[dg.Name] = true // default true
 				}
 			}
 		}
