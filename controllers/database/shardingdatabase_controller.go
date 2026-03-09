@@ -210,6 +210,10 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return result, err
 		}
 		shardingv1.LogMessages("INFO", "Patched scale-in isDelete marks into spec", nil, instance, r.Log)
+
+		result = resultQ
+		err = nilErr
+		return result, err
 	}
 
 	// ========================= Service Setup For Catalog===================
@@ -338,6 +342,16 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return result, err
 	}
 
+	// we don't need to run the requeue loop but still putting this condition to address any unkown situation
+	// delShard function set the state to blocked and we do not allow any other operationn while delete is going on
+	err = r.delGsmShard(instance)
+	if err != nil {
+		//	time.Sleep(30 * time.Second)
+		err = nilErr
+		result = resultQ
+		return result, err
+	}
+
 	err = r.checkShardState(instance)
 	if err != nil {
 		err = nilErr
@@ -368,16 +382,6 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return result, err
 	}
 	defer r.updateShardTopologyStatus(instance)
-
-	// we don't need to run the requeue loop but still putting this condition to address any unkown situation
-	// delShard function set the state to blocked and we do not allow any other operationn while delete is going on
-	err = r.delGsmShard(instance)
-	if err != nil {
-		//	time.Sleep(30 * time.Second)
-		err = nilErr
-		result = resultQ
-		return result, err
-	}
 
 	// ====================== Update Setup for Catalog ==============================
 	for i = 0; i < int32(len(instance.Spec.Catalog)); i++ {
@@ -2511,9 +2515,10 @@ func shardOrdinal(name string) int {
 
 func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *databasev4.ShardingDatabase) bool {
 	type shardRef struct {
-		idx   int
-		name  string
-		order int
+		idx      int
+		name     string
+		order    int
+		existsIn bool
 	}
 
 	desiredByPrefix := map[string]int32{}
@@ -2526,21 +2531,52 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 		desiredByPrefix[prefix] = info.Replicas
 	}
 
-	if len(desiredByPrefix) == 0 || len(instance.Spec.Shard) == 0 {
+	if len(desiredByPrefix) == 0 {
 		return false
 	}
 
 	currentByPrefix := map[string][]shardRef{}
+
+	// 1. collect shards still present in spec
 	for i := range instance.Spec.Shard {
 		s := instance.Spec.Shard[i]
 		for prefix := range desiredByPrefix {
 			if strings.HasPrefix(s.Name, prefix) {
 				currentByPrefix[prefix] = append(currentByPrefix[prefix], shardRef{
-					idx:   i,
-					name:  s.Name,
-					order: shardOrdinal(s.Name),
+					idx:      i,
+					name:     s.Name,
+					order:    shardOrdinal(s.Name),
+					existsIn: true,
 				})
 				break
+			}
+		}
+	}
+
+	// 2. also collect existing shard StatefulSets from cluster
+	for prefix := range desiredByPrefix {
+		sfList := &appsv1.StatefulSetList{}
+		listOpts := []client.ListOption{
+			client.InNamespace(instance.Namespace),
+			client.MatchingLabels(shardingv1.LabelsForProvShardKind(instance, "shard")),
+		}
+		if err := r.Client.List(context.TODO(), sfList, listOpts...); err != nil {
+			continue
+		}
+
+		existingNames := map[string]bool{}
+		for _, s := range currentByPrefix[prefix] {
+			existingNames[s.name] = true
+		}
+
+		for _, sts := range sfList.Items {
+			if strings.HasPrefix(sts.Name, prefix) && !existingNames[sts.Name] {
+				currentByPrefix[prefix] = append(currentByPrefix[prefix], shardRef{
+					idx:      -1,
+					name:     sts.Name,
+					order:    shardOrdinal(sts.Name),
+					existsIn: false,
+				})
 			}
 		}
 	}
@@ -2554,43 +2590,81 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 
 		desired := desiredByPrefix[prefix]
 		current := int32(len(shards))
+		extra := current - desired
 
-		// highest ordinals beyond desired count => enable delete
+		if extra <= 0 {
+			// keep all spec shards disable
+			for _, s := range shards {
+				if s.idx >= 0 {
+					curr := strings.ToLower(strings.TrimSpace(instance.Spec.Shard[s.idx].IsDelete))
+					if curr != "disable" {
+						instance.Spec.Shard[s.idx].IsDelete = "disable"
+						changed = true
+					}
+				}
+			}
+			continue
+		}
+
 		for i, s := range shards {
-			wantDelete := int32(i) < (current - desired)
+			wantDelete := int32(i) < extra
 
-			curr := strings.ToLower(strings.TrimSpace(instance.Spec.Shard[s.idx].IsDelete))
+			// shard still present in spec -> just toggle isDelete
+			if s.idx >= 0 {
+				curr := strings.ToLower(strings.TrimSpace(instance.Spec.Shard[s.idx].IsDelete))
+				want := "disable"
+				if wantDelete {
+					want = "enable"
+				}
 
+				if curr != want {
+					instance.Spec.Shard[s.idx].IsDelete = want
+					changed = true
+					shardingv1.LogMessages(
+						"INFO",
+						fmt.Sprintf(
+							"Auto-marking shard %s as isDelete=%s due to replica reconciliation for prefix %s (desired=%d current=%d)",
+							s.name, want, prefix, desired, current,
+						),
+						nil,
+						instance,
+						r.Log,
+					)
+				}
+				continue
+			}
+
+			// shard exists physically but got removed from spec by webhook/defaulter
+			// re-add it into spec as delete candidate so existing delete flow can remove it
 			if wantDelete {
-				if curr != "enable" {
-					instance.Spec.Shard[s.idx].IsDelete = "enable"
-					changed = true
-					shardingv1.LogMessages(
-						"INFO",
-						fmt.Sprintf(
-							"Auto-marking shard %s for deletion due to replica scale-in for prefix %s (desired=%d current=%d)",
-							s.name, prefix, desired, current,
-						),
-						nil,
-						instance,
-						r.Log,
-					)
+				var template *databasev4.ShardSpec
+				for j := range instance.Spec.Shard {
+					if strings.HasPrefix(instance.Spec.Shard[j].Name, prefix) {
+						template = &instance.Spec.Shard[j]
+						break
+					}
 				}
-			} else {
-				if curr != "disable" {
-					instance.Spec.Shard[s.idx].IsDelete = "disable"
-					changed = true
-					shardingv1.LogMessages(
-						"INFO",
-						fmt.Sprintf(
-							"Auto-marking shard %s to keep due to replica target for prefix %s (desired=%d current=%d)",
-							s.name, prefix, desired, current,
-						),
-						nil,
-						instance,
-						r.Log,
-					)
+				if template == nil {
+					continue
 				}
+
+				newShard := *template
+				newShard.Name = s.name
+				newShard.IsDelete = "enable"
+
+				instance.Spec.Shard = append(instance.Spec.Shard, newShard)
+				changed = true
+
+				shardingv1.LogMessages(
+					"INFO",
+					fmt.Sprintf(
+						"Re-added existing shard %s into spec with isDelete=enable for scale-in reconciliation (prefix=%s desired=%d current=%d)",
+						s.name, prefix, desired, current,
+					),
+					nil,
+					instance,
+					r.Log,
+				)
 			}
 		}
 	}
