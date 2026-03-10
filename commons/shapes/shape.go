@@ -36,20 +36,31 @@ func (c ShapeConfig) totalMemGi() int {
 	return c.SGAGB + c.PGAGB + 1
 }
 
+func (c ShapeConfig) sgaMB() int {
+	return c.SGAGB * 1024
+}
+
+func (c ShapeConfig) pgaMB() int {
+	return c.PGAGB * 1024
+}
+
+func (c ShapeConfig) totalMB() int {
+	return c.totalMemGi() * 1024
+}
+
 func (c ShapeConfig) EnvPairs() [][2]string {
 	return [][2]string{
-		{"INIT_SGA_SIZE", fmt.Sprintf("%dG", c.SGAGB)},
-		{"INIT_PGA_SIZE", fmt.Sprintf("%dG", c.PGAGB)},
+		{"INIT_SGA_SIZE", fmt.Sprintf("%d", c.sgaMB())},
+		{"INIT_PGA_SIZE", fmt.Sprintf("%d", c.pgaMB())},
 		{"INIT_PROCESS", fmt.Sprintf("%d", c.Processes)},
 		{"INIT_CPU_COUNT", fmt.Sprintf("%d", c.CPU)},
-		{"INIT_TOTAL_SIZE", fmt.Sprintf("%dG", c.totalMemGi())},
+		{"INIT_TOTAL_SIZE", fmt.Sprintf("%d", c.totalMB())},
 	}
 }
 
 func (c ShapeConfig) ResourceRequirements() *corev1.ResourceRequirements {
 	cpuQ := resource.MustParse(fmt.Sprintf("%d", c.CPU))
 	memQ := resource.MustParse(fmt.Sprintf("%dGi", c.totalMemGi()))
-
 	return &corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{
 			corev1.ResourceCPU:    cpuQ,
