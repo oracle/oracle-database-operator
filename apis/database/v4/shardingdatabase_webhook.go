@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"strings"
 
+	shapes "github.com/oracle/oracle-database-operator/commons/shapes"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,6 +54,15 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+)
+
+type shardingMode string
+
+const (
+	modeSystem    shardingMode = "system"
+	modeUser      shardingMode = "user"
+	modeComposite shardingMode = "composite"
+	modeUnknown   shardingMode = "unknown"
 )
 
 var totalShard int32 = 0
@@ -76,49 +86,56 @@ var _ webhook.CustomDefaulter = &ShardingDatabase{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) error {
-
 	cr, ok := obj.(*ShardingDatabase)
-
 	if !ok {
-		return fmt.Errorf("xpected  obj.*ShardingDatabase but got %T", obj)
+		return fmt.Errorf("expected obj *ShardingDatabase but got %T", obj)
 	}
 
 	shardingdatabaselog.Info("default", "name", cr.Name)
 
-	var replicas int32
-
-	// TODO(user): fill in your defaulting logic.
-	if cr.Spec.GsmDevMode != "" {
+	if strings.TrimSpace(cr.Spec.GsmDevMode) == "" {
 		cr.Spec.GsmDevMode = "dev"
 	}
-
-	if cr.Spec.IsTdeWallet == "" {
+	if strings.TrimSpace(cr.Spec.IsTdeWallet) == "" {
 		cr.Spec.IsTdeWallet = "disable"
 	}
-	for pindex := range cr.Spec.Shard {
-		if strings.ToLower(cr.Spec.Shard[pindex].IsDelete) == "" {
-			cr.Spec.Shard[pindex].IsDelete = "disable"
+
+	for i := range cr.Spec.Shard {
+		if strings.TrimSpace(strings.ToLower(cr.Spec.Shard[i].IsDelete)) == "" {
+			cr.Spec.Shard[i].IsDelete = "disable"
 		}
 	}
 
-	for pindex := range cr.Spec.ShardInfo {
-		if strings.ToLower(cr.Spec.ShardInfo[pindex].ShardGroupDetails.IsDelete) == "" {
-			cr.Spec.ShardInfo[pindex].ShardGroupDetails.IsDelete = "disable"
+	for i := range cr.Spec.ShardInfo {
+		if cr.Spec.ShardInfo[i].ShardGroupDetails != nil &&
+			strings.TrimSpace(strings.ToLower(cr.Spec.ShardInfo[i].ShardGroupDetails.IsDelete)) == "" {
+			cr.Spec.ShardInfo[i].ShardGroupDetails.IsDelete = "disable"
 		}
 	}
 
 	totalShard = 0
-	for pindex := range cr.Spec.ShardInfo {
-		replicas = 2
-		if cr.Spec.ShardInfo[pindex].Replicas != 0 {
-			replicas = cr.Spec.ShardInfo[pindex].Replicas
+	for i := range cr.Spec.ShardInfo {
+		if cr.Spec.ShardInfo[i].Replicas == 0 {
+			cr.Spec.ShardInfo[i].Replicas = 2
 		}
-		totalShard = totalShard + replicas
+		totalShard += cr.Spec.ShardInfo[i].Replicas
 	}
 
 	if totalShard > 0 {
 		cr.Spec.Shard = make([]ShardSpec, totalShard)
-		cr.initShardsSpec()
+		_ = cr.initShardsSpec()
+	}
+
+	// apply shape on catalog
+	for i := range cr.Spec.Catalog {
+		if cfg, ok := shapes.LookupShapeConfig(cr.Spec.Catalog[i].Shape); ok {
+			cr.Spec.Catalog[i].EnvVars = upsertEnvVars(
+				cr.Spec.Catalog[i].EnvVars,
+				envVarsFromPairs(cfg.EnvPairs()),
+				true,
+			)
+			cr.Spec.Catalog[i].Resources = cfg.ResourceRequirements()
+		}
 	}
 
 	return nil
@@ -254,11 +271,39 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj runtime.Objec
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	shardingdatabaselog.Info("validate update", "name", r.Name)
 
-	// TODO(user): fill in your validation logic upon object update.
-	return nil, nil
+	var validationErr field.ErrorList
+
+	oldCR, ok1 := oldObj.(*ShardingDatabase)
+	newCR, ok2 := newObj.(*ShardingDatabase)
+	if !ok1 || !ok2 {
+		validationErr = append(validationErr,
+			field.Invalid(field.NewPath("objectType"),
+				fmt.Sprintf("%T -> %T", oldObj, newObj),
+				"expected *ShardingDatabase for both old and new objects"))
+		return nil, apierrors.NewInvalid(
+			schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
+			r.Name, validationErr)
+	}
+
+	oldMode := detectShardingMode(&oldCR.Spec)
+	newMode := detectShardingMode(&newCR.Spec)
+
+	if oldMode == modeSystem && (newMode == modeUser || newMode == modeComposite) {
+		validationErr = append(validationErr,
+			field.Forbidden(field.NewPath("spec").Child("shardInfo"),
+				"Cannot switch from System Sharding to User-Defined/Composite after creation"))
+	}
+
+	if len(validationErr) == 0 {
+		return nil, nil
+	}
+
+	return nil, apierrors.NewInvalid(
+		schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
+		r.Name, validationErr)
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
@@ -373,30 +418,83 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	var validationErrs field.ErrorList
 	var replicas int32
 
+	typeCounts := struct {
+		groupOnly int
+		spaceOnly int
+		both      int
+	}{}
+
+	sysPrimaryGroups := 0
+	spacePrimaryGroupCount := map[string]int{}
+
 	totalShard = 0
+
 	for pindex := range r.Spec.ShardInfo {
-		replicas = 2
-		if r.Spec.ShardInfo[pindex].Replicas != 0 {
-			replicas = r.Spec.ShardInfo[pindex].Replicas
-		} else {
+		replicas = r.Spec.ShardInfo[pindex].Replicas
+		if replicas == 0 {
+			replicas = 2
 			r.Spec.ShardInfo[pindex].Replicas = replicas
 		}
+		totalShard += replicas
 
-		totalShard = totalShard + replicas
-		if r.Spec.ShardInfo[pindex].ShardGroupDetails != nil {
-			if r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs == "" {
-				r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs = "primary"
+		sg := r.Spec.ShardInfo[pindex].ShardGroupDetails
+		ss := r.Spec.ShardInfo[pindex].ShardSpaceDetails
+
+		hasGroup := sg != nil && strings.TrimSpace(sg.Name) != ""
+		hasSpace := ss != nil && strings.TrimSpace(ss.Name) != ""
+
+		switch {
+		case hasGroup && !hasSpace:
+			typeCounts.groupOnly++
+			if strings.TrimSpace(sg.DeployAs) == "" {
+				sg.DeployAs = "PRIMARY"
 			}
-			if (r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs == "primary") && (replicas > 1) {
-				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("replicas"), r.Spec.ShardInfo[pindex].Replicas,
-						"Primary++ Shard Group can have only one replicas"))
+			if strings.EqualFold(strings.TrimSpace(sg.DeployAs), "PRIMARY") {
+				sysPrimaryGroups++
 			}
-		} else {
-			if replicas > 1 {
+
+		case !hasGroup && hasSpace:
+			typeCounts.spaceOnly++
+			if sg != nil {
 				validationErrs = append(validationErrs,
-					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("replicas"), r.Spec.ShardInfo[pindex].Replicas,
-						"Primary!! Shard Group can have only one replicas"))
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardGroupDetails"),
+						sg,
+						"User-defined sharding: shardGroupDetails must be omitted when only shardSpaceDetails is used"))
+			}
+
+		case hasGroup && hasSpace:
+			typeCounts.both++
+			if strings.TrimSpace(sg.DeployAs) == "" {
+				sg.DeployAs = "PRIMARY"
+			}
+			if strings.EqualFold(strings.TrimSpace(sg.DeployAs), "PRIMARY") {
+				spacePrimaryGroupCount[strings.TrimSpace(ss.Name)]++
+			}
+
+		default:
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex),
+					r.Spec.ShardInfo[pindex],
+					"Each shardInfo entry must define shardGroupDetails (system), shardSpaceDetails (user), or both (composite)"))
+		}
+	}
+
+	if typeCounts.groupOnly > 0 && typeCounts.spaceOnly == 0 && typeCounts.both == 0 {
+		if sysPrimaryGroups != 1 {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardGroupDetails").Child("deployAs"),
+					"PRIMARY",
+					"System sharding: exactly one shardGroup must be PRIMARY"))
+		}
+	}
+
+	if typeCounts.both > 0 || (typeCounts.groupOnly > 0 && typeCounts.spaceOnly > 0) {
+		for sp, cnt := range spacePrimaryGroupCount {
+			if cnt > 1 {
+				validationErrs = append(validationErrs,
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardSpaceDetails").Child("name"),
+						sp,
+						"Composite sharding: each shardSpace can have only one PRIMARY shardGroup"))
 			}
 		}
 	}
@@ -408,29 +506,129 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 }
 
 func (r *ShardingDatabase) initShardsSpec() error {
-	var shardIndex int
+	shardIndex := 0
 
-	shardIndex = 0
 	for pindex := range r.Spec.ShardInfo {
-		for i := 0; i < int(r.Spec.ShardInfo[pindex].Replicas); i++ {
+		replicas := r.Spec.ShardInfo[pindex].Replicas
+		if replicas == 0 {
+			replicas = 2
+		}
+
+		for i := 0; i < int(replicas); i++ {
 			r.Spec.Shard[shardIndex].Name = r.Spec.ShardInfo[pindex].ShardPreFixName + strconv.Itoa(shardIndex+1)
 			r.Spec.Shard[shardIndex].StorageSizeInGb = r.Spec.ShardInfo[pindex].StorageSizeInGb
-			r.Spec.Shard[shardIndex].ShardGroup = r.Spec.ShardInfo[pindex].ShardGroupDetails.Name
-			r.Spec.Shard[shardIndex].ShardRegion = r.Spec.ShardInfo[pindex].ShardGroupDetails.Region
-			r.Spec.Shard[shardIndex].DeployAs = r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs
+
+			if r.Spec.ShardInfo[pindex].ShardGroupDetails != nil {
+				r.Spec.Shard[shardIndex].ShardGroup = r.Spec.ShardInfo[pindex].ShardGroupDetails.Name
+				r.Spec.Shard[shardIndex].ShardRegion = r.Spec.ShardInfo[pindex].ShardGroupDetails.Region
+				r.Spec.Shard[shardIndex].DeployAs = r.Spec.ShardInfo[pindex].ShardGroupDetails.DeployAs
+				r.Spec.Shard[shardIndex].IsDelete = r.Spec.ShardInfo[pindex].ShardGroupDetails.IsDelete
+			}
+
 			r.Spec.Shard[shardIndex].PrimaryDatabaseRef = r.Spec.ShardInfo[pindex].PrimaryDatabaseRef
-			r.Spec.Shard[shardIndex].IsDelete = r.Spec.ShardInfo[pindex].ShardGroupDetails.IsDelete
+
 			r.Spec.Shard[shardIndex].ImagePulllPolicy = new(corev1.PullPolicy)
 			*(r.Spec.Shard[shardIndex].ImagePulllPolicy) = corev1.PullPolicy("Always")
-			fmt.Println("ShardName=[" + r.Spec.Shard[shardIndex].Name + "]")
+
 			if r.Spec.ShardInfo[pindex].ShardSpaceDetails != nil {
 				r.Spec.Shard[shardIndex].ShardSpace = r.Spec.ShardInfo[pindex].ShardSpaceDetails.Name
 			}
 
+			// Apply shape defaults
+			if cfg, ok := shapes.LookupShapeConfig(r.Spec.ShardInfo[pindex].Shape); ok {
+				r.Spec.Shard[shardIndex].EnvVars = upsertEnvVars(
+					r.Spec.Shard[shardIndex].EnvVars,
+					envVarsFromPairs(cfg.EnvPairs()),
+					true,
+				)
+				r.Spec.Shard[shardIndex].Resources = cfg.ResourceRequirements()
+			}
+
+			// Explicit shardInfo env/resources override shape defaults
+			if len(r.Spec.ShardInfo[pindex].EnvVars) > 0 {
+				r.Spec.Shard[shardIndex].EnvVars = upsertEnvVars(
+					r.Spec.Shard[shardIndex].EnvVars,
+					r.Spec.ShardInfo[pindex].EnvVars,
+					true,
+				)
+			}
+			if r.Spec.ShardInfo[pindex].Resources != nil {
+				r.Spec.Shard[shardIndex].Resources = r.Spec.ShardInfo[pindex].Resources
+			}
+
+			fmt.Println("ShardName=[" + r.Spec.Shard[shardIndex].Name + "]")
 			shardIndex++
 		}
-
 	}
 
 	return nil
+}
+
+func detectShardingMode(spec *ShardingDatabaseSpec) shardingMode {
+	hasGroupOnly := false
+	hasSpaceOnly := false
+	hasBoth := false
+
+	for i := range spec.ShardInfo {
+		sg := spec.ShardInfo[i].ShardGroupDetails
+		ss := spec.ShardInfo[i].ShardSpaceDetails
+
+		hasGroup := sg != nil && strings.TrimSpace(sg.Name) != ""
+		hasSpace := ss != nil && strings.TrimSpace(ss.Name) != ""
+
+		switch {
+		case hasGroup && !hasSpace:
+			hasGroupOnly = true
+		case !hasGroup && hasSpace:
+			hasSpaceOnly = true
+		case hasGroup && hasSpace:
+			hasBoth = true
+		}
+	}
+
+	if hasBoth || (hasGroupOnly && hasSpaceOnly) {
+		return modeComposite
+	}
+	if hasGroupOnly {
+		return modeSystem
+	}
+	if hasSpaceOnly {
+		return modeUser
+	}
+	return modeUnknown
+}
+
+func upsertEnvVars(base []EnvironmentVariable, add []EnvironmentVariable, overwrite bool) []EnvironmentVariable {
+	if base == nil {
+		return append([]EnvironmentVariable{}, add...)
+	}
+
+	idx := map[string]int{}
+	for i, e := range base {
+		idx[strings.ToLower(strings.TrimSpace(e.Name))] = i
+	}
+
+	for _, e := range add {
+		k := strings.ToLower(strings.TrimSpace(e.Name))
+		if pos, ok := idx[k]; ok {
+			if overwrite {
+				base[pos].Value = e.Value
+			}
+		} else {
+			base = append(base, e)
+		}
+	}
+
+	return base
+}
+
+func envVarsFromPairs(pairs [][2]string) []EnvironmentVariable {
+	out := make([]EnvironmentVariable, 0, len(pairs))
+	for _, kv := range pairs {
+		out = append(out, EnvironmentVariable{
+			Name:  kv[0],
+			Value: kv[1],
+		})
+	}
+	return out
 }

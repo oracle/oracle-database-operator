@@ -452,13 +452,15 @@ type ConfigMapData struct {
 
 // Shard structures based on managed Replicas
 type ShardingDetails struct {
-	ShardPreFixName    string          `json:"shardPreFixName"`
-	Shape              string          `json:"shape,omitempty"`
-	Replicas           int32           `json:"replicas,omitempty"`
-	StorageSizeInGb    int32           `json:"storageSizeInGb,omitempty"`
-	ShardGroupDetails  *ShardGroupSpec `json:"shardGroupDetails,omitempty"`
-	ShardSpaceDetails  *ShardSpaceSpec `json:"shardSpaceDetails,omitempty"`
-	PrimaryDatabaseRef *DatabaseRef    `json:"primaryDatabaseRef,omitempty"`
+	ShardPreFixName    string                       `json:"shardPreFixName"`
+	Shape              string                       `json:"shape,omitempty"`
+	Replicas           int32                        `json:"replicas,omitempty"`
+	StorageSizeInGb    int32                        `json:"storageSizeInGb,omitempty"`
+	ShardGroupDetails  *ShardGroupSpec              `json:"shardGroupDetails,omitempty"`
+	ShardSpaceDetails  *ShardSpaceSpec              `json:"shardSpaceDetails,omitempty"`
+	PrimaryDatabaseRef *DatabaseRef                 `json:"primaryDatabaseRef,omitempty"`
+	EnvVars            []EnvironmentVariable        `json:"envVars,omitempty"`
+	Resources          *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
 }
 
 type ShardStatusMapKeys string
