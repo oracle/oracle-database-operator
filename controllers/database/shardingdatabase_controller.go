@@ -2680,6 +2680,14 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 }
 
 func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *databasev4.ShardingDatabase) error {
+	shardingv1.LogMessages(
+		"INFO",
+		fmt.Sprintf("cleanupOrphanShardResources shardInfo snapshot: %+v", instance.Spec.ShardInfo),
+		nil,
+		instance,
+		r.Log,
+	)
+
 	desired := desiredShardNamesFromShardInfo(instance)
 
 	shardingv1.LogMessages(
@@ -2708,30 +2716,16 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 		}
 
 		if desired[name] {
-			shardingv1.LogMessages(
-				"INFO",
-				"cleanupOrphanShardResources keeping shard "+name,
-				nil,
-				instance,
-				r.Log,
-			)
+			shardingv1.LogMessages("INFO", "cleanupOrphanShardResources keeping shard "+name, nil, instance, r.Log)
 			continue
 		}
 
-		shardingv1.LogMessages(
-			"INFO",
-			"cleanupOrphanShardResources deleting orphan shard "+name,
-			nil,
-			instance,
-			r.Log,
-		)
+		shardingv1.LogMessages("INFO", "cleanupOrphanShardResources deleting orphan shard "+name, nil, instance, r.Log)
 
-		// delete StatefulSet
 		if err := r.Client.Delete(context.Background(), sf); err != nil && !errors.IsNotFound(err) {
 			return err
 		}
 
-		// delete internal service
 		svcFound, err := shardingv1.CheckSvc(name, instance, r.Client)
 		if err == nil {
 			if derr := r.Client.Delete(context.Background(), svcFound); derr != nil && !errors.IsNotFound(derr) {
@@ -2739,7 +2733,6 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 			}
 		}
 
-		// delete external service if any
 		if instance.Spec.IsExternalSvc {
 			svcExt, err := shardingv1.CheckSvc(name+strconv.Itoa(0)+"-svc", instance, r.Client)
 			if err == nil {
@@ -2749,7 +2742,6 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 			}
 		}
 
-		// delete pvc if enabled
 		if instance.Spec.IsDeleteOraPvc && len(instance.Spec.StorageClass) > 0 {
 			pvcName := name + "-oradata-vol4-" + name + "-0"
 			if err := shardingv1.DelPvc(pvcName, instance, r.Client, r.Log); err != nil && !errors.IsNotFound(err) {
@@ -2757,7 +2749,6 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 			}
 		}
 
-		// cleanup status maps
 		if instance.Status.Shard != nil {
 			for k := range instance.Status.Shard {
 				if strings.HasPrefix(k, name+"_") {
