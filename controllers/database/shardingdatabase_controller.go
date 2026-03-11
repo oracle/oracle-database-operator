@@ -80,6 +80,7 @@ type ShardingDatabaseReconciler struct {
 	kubeClient kubernetes.Interface
 	kubeConfig clientcmd.ClientConfig
 	Recorder   record.EventRecorder
+	APIReader  client.Reader
 }
 
 var exportedTDEKeys bool = false
@@ -2680,26 +2681,36 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 }
 
 func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *databasev4.ShardingDatabase) error {
+	// Always read the latest CR from apiserver, not the in-memory possibly stale object
+	latest := &databasev4.ShardingDatabase{}
+	if err := r.APIReader.Get(
+		context.Background(),
+		types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace},
+		latest,
+	); err != nil {
+		return err
+	}
+
 	shardingv1.LogMessages(
 		"INFO",
-		fmt.Sprintf("cleanupOrphanShardResources shardInfo snapshot: %+v", instance.Spec.ShardInfo),
+		fmt.Sprintf("cleanupOrphanShardResources shardInfo snapshot: %+v", latest.Spec.ShardInfo),
 		nil,
-		instance,
+		latest,
 		r.Log,
 	)
 
-	desired := desiredShardNamesFromShardInfo(instance)
+	desired := desiredShardNamesFromShardInfo(latest)
 
 	shardingv1.LogMessages(
 		"INFO",
 		fmt.Sprintf("cleanupOrphanShardResources desired shards: %+v", desired),
 		nil,
-		instance,
+		latest,
 		r.Log,
 	)
 
 	sfList := &appsv1.StatefulSetList{}
-	if err := r.Client.List(context.TODO(), sfList, client.InNamespace(instance.Namespace)); err != nil {
+	if err := r.Client.List(context.TODO(), sfList, client.InNamespace(latest.Namespace)); err != nil {
 		return err
 	}
 
@@ -2711,30 +2722,33 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 		if lbls["type"] != "Shard" {
 			continue
 		}
-		if lbls["oralabel"] != instance.Name {
+		if lbls["oralabel"] != latest.Name {
 			continue
 		}
 
 		if desired[name] {
-			shardingv1.LogMessages("INFO", "cleanupOrphanShardResources keeping shard "+name, nil, instance, r.Log)
+			shardingv1.LogMessages("INFO", "cleanupOrphanShardResources keeping shard "+name, nil, latest, r.Log)
 			continue
 		}
 
-		shardingv1.LogMessages("INFO", "cleanupOrphanShardResources deleting orphan shard "+name, nil, instance, r.Log)
+		shardingv1.LogMessages("INFO", "cleanupOrphanShardResources deleting orphan shard "+name, nil, latest, r.Log)
 
+		// delete StatefulSet
 		if err := r.Client.Delete(context.Background(), sf); err != nil && !errors.IsNotFound(err) {
 			return err
 		}
 
-		svcFound, err := shardingv1.CheckSvc(name, instance, r.Client)
+		// delete internal service
+		svcFound, err := shardingv1.CheckSvc(name, latest, r.Client)
 		if err == nil {
 			if derr := r.Client.Delete(context.Background(), svcFound); derr != nil && !errors.IsNotFound(derr) {
 				return derr
 			}
 		}
 
-		if instance.Spec.IsExternalSvc {
-			svcExt, err := shardingv1.CheckSvc(name+strconv.Itoa(0)+"-svc", instance, r.Client)
+		// delete external service if enabled
+		if latest.Spec.IsExternalSvc {
+			svcExt, err := shardingv1.CheckSvc(name+strconv.Itoa(0)+"-svc", latest, r.Client)
 			if err == nil {
 				if derr := r.Client.Delete(context.Background(), svcExt); derr != nil && !errors.IsNotFound(derr) {
 					return derr
@@ -2742,13 +2756,15 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 			}
 		}
 
-		if instance.Spec.IsDeleteOraPvc && len(instance.Spec.StorageClass) > 0 {
+		// delete pvc if enabled
+		if latest.Spec.IsDeleteOraPvc && len(latest.Spec.StorageClass) > 0 {
 			pvcName := name + "-oradata-vol4-" + name + "-0"
-			if err := shardingv1.DelPvc(pvcName, instance, r.Client, r.Log); err != nil && !errors.IsNotFound(err) {
+			if err := shardingv1.DelPvc(pvcName, latest, r.Client, r.Log); err != nil && !errors.IsNotFound(err) {
 				return err
 			}
 		}
 
+		// cleanup status maps on original instance object
 		if instance.Status.Shard != nil {
 			for k := range instance.Status.Shard {
 				if strings.HasPrefix(k, name+"_") {
@@ -2780,8 +2796,7 @@ func desiredShardNamesFromShardInfo(instance *databasev4.ShardingDatabase) map[s
 		}
 
 		for j := 1; j <= int(replicas); j++ {
-			name := prefix + strconv.Itoa(j)
-			desired[name] = true
+			desired[prefix+strconv.Itoa(j)] = true
 		}
 	}
 
