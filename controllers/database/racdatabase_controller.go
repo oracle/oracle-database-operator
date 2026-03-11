@@ -3721,6 +3721,9 @@ func (r *RacDatabaseReconciler) generateConfigMap(instance *racdb.RacDatabase, i
 	if instance.Spec.ConfigParams.HostSwStageLocation != "" {
 		data = append(data, "STAGING_SOFTWARE_LOC="+utils.OraSwStageLocation)
 
+	} else if instance.Spec.ConfigParams.SwStagePvcMountLocation != "" {
+		data = append(data, "STAGING_SOFTWARE_LOC="+instance.Spec.ConfigParams.SwStagePvcMountLocation)
+
 	}
 
 	if instance.Spec.ConfigParams.RuPatchLocation != "" {
