@@ -80,6 +80,7 @@ type ShardingDatabaseReconciler struct {
 	kubeClient kubernetes.Interface
 	kubeConfig clientcmd.ClientConfig
 	Recorder   record.EventRecorder
+	APIReader  client.Reader
 }
 
 var exportedTDEKeys bool = false
@@ -2685,7 +2686,7 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 	}
 
 	latest := &databasev4.ShardingDatabase{}
-	if err := r.Client.Get(
+	if err := r.APIReader.Get(
 		context.Background(),
 		types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace},
 		latest,
@@ -2764,22 +2765,8 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 				return err
 			}
 		}
-
-		if instance.Status.Shard != nil {
-			for k := range instance.Status.Shard {
-				if strings.HasPrefix(k, name+"_") {
-					delete(instance.Status.Shard, k)
-				}
-			}
-		}
-		if instance.Status.Gsm.Shards != nil {
-			delete(instance.Status.Gsm.Shards, name)
-		}
 	}
 
-	if err := r.Status().Update(context.Background(), instance); err != nil && !errors.IsNotFound(err) {
-		return err
-	}
 	return nil
 }
 

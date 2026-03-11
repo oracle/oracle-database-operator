@@ -188,10 +188,11 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&databasecontroller.ShardingDatabaseReconciler{
-		Client:   mgr.GetClient(),
-		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("ShardingDatabase"),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("ShardingDatabase"),
+		Client:    mgr.GetClient(),
+		Log:       ctrl.Log.WithName("controllers").WithName("database").WithName("ShardingDatabase"),
+		Scheme:    mgr.GetScheme(),
+		Recorder:  mgr.GetEventRecorderFor("ShardingDatabase"),
+		APIReader: mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ShardingDatabase")
 		os.Exit(1)
