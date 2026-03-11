@@ -80,7 +80,6 @@ type ShardingDatabaseReconciler struct {
 	kubeClient kubernetes.Interface
 	kubeConfig clientcmd.ClientConfig
 	Recorder   record.EventRecorder
-	APIReader  client.Reader
 }
 
 var exportedTDEKeys bool = false
@@ -2681,9 +2680,12 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 }
 
 func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *databasev4.ShardingDatabase) error {
-	// Always read the latest CR from apiserver, not the in-memory possibly stale object
+	if instance == nil {
+		return fmt.Errorf("cleanupOrphanShardResources: instance is nil")
+	}
+
 	latest := &databasev4.ShardingDatabase{}
-	if err := r.APIReader.Get(
+	if err := r.Client.Get(
 		context.Background(),
 		types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace},
 		latest,
@@ -2718,6 +2720,9 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 		sf := &sfList.Items[i]
 		name := strings.TrimSpace(sf.Name)
 		lbls := sf.GetLabels()
+		if lbls == nil {
+			continue
+		}
 
 		if lbls["type"] != "Shard" {
 			continue
@@ -2733,30 +2738,26 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 
 		shardingv1.LogMessages("INFO", "cleanupOrphanShardResources deleting orphan shard "+name, nil, latest, r.Log)
 
-		// delete StatefulSet
 		if err := r.Client.Delete(context.Background(), sf); err != nil && !errors.IsNotFound(err) {
 			return err
 		}
 
-		// delete internal service
 		svcFound, err := shardingv1.CheckSvc(name, latest, r.Client)
-		if err == nil {
+		if err == nil && svcFound != nil {
 			if derr := r.Client.Delete(context.Background(), svcFound); derr != nil && !errors.IsNotFound(derr) {
 				return derr
 			}
 		}
 
-		// delete external service if enabled
 		if latest.Spec.IsExternalSvc {
 			svcExt, err := shardingv1.CheckSvc(name+strconv.Itoa(0)+"-svc", latest, r.Client)
-			if err == nil {
+			if err == nil && svcExt != nil {
 				if derr := r.Client.Delete(context.Background(), svcExt); derr != nil && !errors.IsNotFound(derr) {
 					return derr
 				}
 			}
 		}
 
-		// delete pvc if enabled
 		if latest.Spec.IsDeleteOraPvc && len(latest.Spec.StorageClass) > 0 {
 			pvcName := name + "-oradata-vol4-" + name + "-0"
 			if err := shardingv1.DelPvc(pvcName, latest, r.Client, r.Log); err != nil && !errors.IsNotFound(err) {
@@ -2764,7 +2765,6 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 			}
 		}
 
-		// cleanup status maps on original instance object
 		if instance.Status.Shard != nil {
 			for k := range instance.Status.Shard {
 				if strings.HasPrefix(k, name+"_") {
@@ -2777,7 +2777,9 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 		}
 	}
 
-	_ = r.Status().Update(context.Background(), instance)
+	if err := r.Status().Update(context.Background(), instance); err != nil && !errors.IsNotFound(err) {
+		return err
+	}
 	return nil
 }
 
