@@ -2523,10 +2523,9 @@ func shardOrdinal(name string) int {
 
 func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *databasev4.ShardingDatabase) bool {
 	type shardRef struct {
-		idx      int
-		name     string
-		order    int
-		existsIn bool
+		idx   int
+		name  string
+		order int
 	}
 
 	desiredByPrefix := map[string]int32{}
@@ -2545,46 +2544,17 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 
 	currentByPrefix := map[string][]shardRef{}
 
-	// 1. collect shards still present in spec
+	// collect shards present in spec only
 	for i := range instance.Spec.Shard {
 		s := instance.Spec.Shard[i]
 		for prefix := range desiredByPrefix {
 			if strings.HasPrefix(s.Name, prefix) {
 				currentByPrefix[prefix] = append(currentByPrefix[prefix], shardRef{
-					idx:      i,
-					name:     s.Name,
-					order:    shardOrdinal(s.Name),
-					existsIn: true,
+					idx:   i,
+					name:  s.Name,
+					order: shardOrdinal(s.Name),
 				})
 				break
-			}
-		}
-	}
-
-	// 2. also collect existing shard StatefulSets from cluster
-	for prefix := range desiredByPrefix {
-		sfList := &appsv1.StatefulSetList{}
-		listOpts := []client.ListOption{
-			client.InNamespace(instance.Namespace),
-			client.MatchingLabels(shardingv1.LabelsForProvShardKind(instance, "shard")),
-		}
-		if err := r.Client.List(context.TODO(), sfList, listOpts...); err != nil {
-			continue
-		}
-
-		existingNames := map[string]bool{}
-		for _, s := range currentByPrefix[prefix] {
-			existingNames[s.name] = true
-		}
-
-		for _, sts := range sfList.Items {
-			if strings.HasPrefix(sts.Name, prefix) && !existingNames[sts.Name] {
-				currentByPrefix[prefix] = append(currentByPrefix[prefix], shardRef{
-					idx:      -1,
-					name:     sts.Name,
-					order:    shardOrdinal(sts.Name),
-					existsIn: false,
-				})
 			}
 		}
 	}
@@ -2601,73 +2571,43 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 		extra := current - desired
 
 		if extra <= 0 {
-			// keep all spec shards disable
+			// scale-out or same size: ensure all existing spec shards stay disable
 			for _, s := range shards {
-				if s.idx >= 0 {
-					curr := strings.ToLower(strings.TrimSpace(instance.Spec.Shard[s.idx].IsDelete))
-					if curr != "disable" {
-						instance.Spec.Shard[s.idx].IsDelete = "disable"
-						changed = true
-					}
-				}
-			}
-			continue
-		}
-
-		for i, s := range shards {
-			wantDelete := int32(i) < extra
-
-			// shard still present in spec -> just toggle isDelete
-			if s.idx >= 0 {
 				curr := strings.ToLower(strings.TrimSpace(instance.Spec.Shard[s.idx].IsDelete))
-				want := "disable"
-				if wantDelete {
-					want = "enable"
-				}
-
-				if curr != want {
-					instance.Spec.Shard[s.idx].IsDelete = want
+				if curr != "disable" {
+					instance.Spec.Shard[s.idx].IsDelete = "disable"
 					changed = true
 					shardingv1.LogMessages(
 						"INFO",
 						fmt.Sprintf(
-							"Auto-marking shard %s as isDelete=%s due to replica reconciliation for prefix %s (desired=%d current=%d)",
-							s.name, want, prefix, desired, current,
+							"Auto-marking shard %s as isDelete=disable for prefix %s (desired=%d current=%d)",
+							s.name, prefix, desired, current,
 						),
 						nil,
 						instance,
 						r.Log,
 					)
 				}
-				continue
+			}
+			continue
+		}
+
+		// scale-in: mark highest ordinals for deletion, but ONLY if shard is still in spec
+		for i, s := range shards {
+			want := "disable"
+			if int32(i) < extra {
+				want = "enable"
 			}
 
-			// shard exists physically but got removed from spec by webhook/defaulter
-			// re-add it into spec as delete candidate so existing delete flow can remove it
-			if wantDelete {
-				var template *databasev4.ShardSpec
-				for j := range instance.Spec.Shard {
-					if strings.HasPrefix(instance.Spec.Shard[j].Name, prefix) {
-						template = &instance.Spec.Shard[j]
-						break
-					}
-				}
-				if template == nil {
-					continue
-				}
-
-				newShard := *template
-				newShard.Name = s.name
-				newShard.IsDelete = "enable"
-
-				instance.Spec.Shard = append(instance.Spec.Shard, newShard)
+			curr := strings.ToLower(strings.TrimSpace(instance.Spec.Shard[s.idx].IsDelete))
+			if curr != want {
+				instance.Spec.Shard[s.idx].IsDelete = want
 				changed = true
-
 				shardingv1.LogMessages(
 					"INFO",
 					fmt.Sprintf(
-						"Re-added existing shard %s into spec with isDelete=enable for scale-in reconciliation (prefix=%s desired=%d current=%d)",
-						s.name, prefix, desired, current,
+						"Auto-marking shard %s as isDelete=%s due to replica reconciliation for prefix %s (desired=%d current=%d)",
+						s.name, want, prefix, desired, current,
 					),
 					nil,
 					instance,
