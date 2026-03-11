@@ -216,6 +216,14 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return result, err
 	}
 
+	// cleanup any shard resources that are no longer present in desired spec
+	if cerr := r.cleanupOrphanShardResources(instance); cerr != nil {
+		shardingv1.LogMessages("INFO", "Failed to cleanup orphan shard resources: "+cerr.Error(), nil, instance, r.Log)
+		result = resultQ
+		err = nilErr
+		return result, err
+	}
+
 	// ========================= Service Setup For Catalog===================
 	// Following check and loop will make sure  to create the service
 	for i = 0; i < int32(len(instance.Spec.Catalog)); i++ {
@@ -2670,4 +2678,91 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 	}
 
 	return changed
+}
+
+func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *databasev4.ShardingDatabase) error {
+	desired := map[string]bool{}
+	for i := range instance.Spec.Shard {
+		name := strings.TrimSpace(instance.Spec.Shard[i].Name)
+		if name != "" {
+			desired[name] = true
+		}
+	}
+
+	sfList := &appsv1.StatefulSetList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(instance.Namespace),
+		client.MatchingLabels(map[string]string{
+			"app":      "OracleSharding",
+			"oralabel": instance.Name,
+			"type":     "Shard",
+		}),
+	}
+
+	if err := r.Client.List(context.TODO(), sfList, listOpts...); err != nil {
+		return err
+	}
+
+	for i := range sfList.Items {
+		sf := &sfList.Items[i]
+		shardName := strings.TrimSpace(sf.Name)
+
+		if desired[shardName] {
+			continue
+		}
+
+		shardingv1.LogMessages(
+			"INFO",
+			"Found orphan shard resources for "+shardName+"; deleting StatefulSet/Service/PVC",
+			nil,
+			instance,
+			r.Log,
+		)
+
+		// delete statefulset
+		if err := r.Client.Delete(context.Background(), sf); err != nil && !errors.IsNotFound(err) {
+			return err
+		}
+
+		// delete local service
+		svcFound, err := shardingv1.CheckSvc(shardName, instance, r.Client)
+		if err == nil {
+			if derr := r.Client.Delete(context.Background(), svcFound); derr != nil && !errors.IsNotFound(derr) {
+				return derr
+			}
+		}
+
+		// delete external service if any
+		if instance.Spec.IsExternalSvc {
+			svcExt, err := shardingv1.CheckSvc(shardName+strconv.FormatInt(int64(0), 10)+"-svc", instance, r.Client)
+			if err == nil {
+				if derr := r.Client.Delete(context.Background(), svcExt); derr != nil && !errors.IsNotFound(derr) {
+					return derr
+				}
+			}
+		}
+
+		// delete pvc if enabled
+		if instance.Spec.IsDeleteOraPvc && len(instance.Spec.StorageClass) > 0 {
+			pvcName := shardName + "-oradata-vol4-" + shardName + "-0"
+			if err := shardingv1.DelPvc(pvcName, instance, r.Client, r.Log); err != nil && !errors.IsNotFound(err) {
+				return err
+			}
+		}
+
+		// best effort status cleanup
+		if instance.Status.Gsm.Shards != nil {
+			delete(instance.Status.Gsm.Shards, shardName)
+		}
+		if instance.Status.Shard != nil {
+			for k := range instance.Status.Shard {
+				if strings.HasPrefix(k, shardName+"_") {
+					delete(instance.Status.Shard, k)
+				}
+			}
+		}
+	}
+
+	_ = r.Status().Update(context.Background(), instance)
+	return nil
 }
