@@ -60,6 +60,7 @@ type RacDatabaseSpec struct {
 	UseNfsforSwStorage   string                       `json:"useNfsforSwStorage,omitempty"`
 	StorageClass         string                       `json:"storageClass,omitempty"`
 	StorageSizeInGB      int                          `json:"storageSizeInGB,omitempty"`
+	RacSwPrefix          string                       `json:"racSwPrefix,omitempty"`
 	Image                string                       `json:"image,omitempty"`
 	ImagePullSecret      string                       `json:"imagePullSecret,omitempty"`
 	ScriptsLocation      string                       `json:"scriptsLocation,omitempty"`
@@ -133,29 +134,32 @@ type RacInitParams struct {
 	OneOffLocation          string           `json:"oneOffLocation,omitempty"`
 	DbOneOffIds             string           `json:"dbOneOffIds,omitempty"`
 	GridOneOffIds           string           `json:"gridOneOffIds,omitempty"`
+	SwStagePvc              string           `json:"swStagePvc,omitempty"`
+	SwStagePvcMountLocation string           `json:"swStagePvcMountLocation,omitempty"`
 }
 
 // RacInstDetailSpec describes per-instance configuration in old-style specs.
 type RacInstDetailSpec struct {
-	Name             string                       `json:"name"`
-	HostSwLocation   string                       `json:"hostSwLocation,omitempty"`
-	WorkerNode       []string                     `json:"workerNode,omitempty"`
-	EnvVars          []corev1.EnvVar              `json:"envVars,omitempty"`
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requiremen
-	Label            string                       `json:"label,omitempty"`
-	IsDelete         string                       `json:"isDelete,omitempty"`
-	IsForceDelete    string                       `json:"isForceDelete,omitempty"`
-	IsKeepPVC        string                       `json:"isKeepPVC,omitempty"`
-	PvcName          map[string]string            `json:"pvcName,omitempty"`
-	VipSvcName       string                       `json:"vipSvcName"`
-	NodePortSvc      []RacNodePortSvc             `json:"nodePortSvc,omitempty"`  // Port mappings for the service that is created. The service is created if
-	PortMappings     []RacPortMapping             `json:"portMappings,omitempty"` // Port mappings for the service that is created. The service is created if there is at least
-	PrivateIPDetails []PrivIpDetailSpec           `json:"privateIPDetails,omitempty"`
-	EnvFile          string                       `json:"envFile,omitempty"`
-	OnsTargetPort    *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
-	LsnrTargetPort   *int32                       `json:"lsnrTargetPort,omitempty"`
-	OnsLocalPort     *int32                       `json:"onsLocalPort,omitempty"` // Port that will be exposed on the service.
-	LsnrLocalPort    *int32                       `json:"lsnrLocalPort,omitempty"`
+	Name                 string                       `json:"name"`
+	HostSwLocation       string                       `json:"hostSwLocation,omitempty"`
+	SwLocStorageSizeInGb int                          `json:"swLocStorageSizeInGb,omitempty"`
+	WorkerNode           []string                     `json:"workerNode,omitempty"`
+	EnvVars              []corev1.EnvVar              `json:"envVars,omitempty"`
+	Resources            *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requiremen
+	Label                string                       `json:"label,omitempty"`
+	IsDelete             string                       `json:"isDelete,omitempty"`
+	IsForceDelete        string                       `json:"isForceDelete,omitempty"`
+	IsKeepPVC            string                       `json:"isKeepPVC,omitempty"`
+	PvcName              map[string]string            `json:"pvcName,omitempty"`
+	VipSvcName           string                       `json:"vipSvcName"`
+	NodePortSvc          []RacNodePortSvc             `json:"nodePortSvc,omitempty"`  // Port mappings for the service that is created. The service is created if
+	PortMappings         []RacPortMapping             `json:"portMappings,omitempty"` // Port mappings for the service that is created. The service is created if there is at least
+	PrivateIPDetails     []PrivIpDetailSpec           `json:"privateIPDetails,omitempty"`
+	EnvFile              string                       `json:"envFile,omitempty"`
+	OnsTargetPort        *int32                       `json:"onsTargetPort,omitempty"` // Port that will be exposed on the service.
+	LsnrTargetPort       *int32                       `json:"lsnrTargetPort,omitempty"`
+	OnsLocalPort         *int32                       `json:"onsLocalPort,omitempty"` // Port that will be exposed on the service.
+	LsnrLocalPort        *int32                       `json:"lsnrLocalPort,omitempty"`
 }
 
 // RacClusterDetailSpec defines cluster-wide configuration for new-style specs.
@@ -210,8 +214,13 @@ type MacvlanConfig struct {
 // RacDbPwdSecretDetails contains secret reference data for database password
 // files and keys.
 type RacDbPwdSecretDetails struct {
-	Name                 string `json:"name,omitempty"`        // Name of the secret.
-	KeyFileName          string `json:"keyFileName,omitempty"` // Name of the key.
+	Name string `json:"name,omitempty"` // Secret name
+
+	// NEW STYLE (simple base64 secret key)
+	SecretKey string `json:"key,omitempty"`
+
+	// OLD STYLE (encrypted files for openssl)
+	KeyFileName          string `json:"keyFileName,omitempty"`
 	PwdFileName          string `json:"pwdFileName,omitempty"`
 	PwdFileMountLocation string `json:"pwdFileMountLocation,omitempty"`
 	KeyFileMountLocation string `json:"keyFileMountLocation,omitempty"`

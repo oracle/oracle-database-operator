@@ -13437,10 +13437,16 @@ spec:
                     type: string
                   swMountLocation:
                     type: string
+                  swStagePvc:
+                    type: string
+                  swStagePvcMountLocation:
+                    type: string
                 type: object
               dbSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string
@@ -13764,6 +13770,8 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    swLocStorageSizeInGb:
+                      type: integer
                     vipSvcName:
                       type: string
                     workerNode:
@@ -13837,6 +13845,8 @@ spec:
                 - path
                 - server
                 type: object
+              racSwPrefix:
+                type: string
               readinessProbe:
                 properties:
                   exec:
@@ -14122,6 +14132,8 @@ spec:
                 properties:
                   encryptionType:
                     type: string
+                  key:
+                    type: string
                   keyFileMountLocation:
                     type: string
                   keyFileName:
@@ -14293,12 +14305,18 @@ spec:
                     type: string
                   swMountLocation:
                     type: string
+                  swStagePvc:
+                    type: string
+                  swStagePvcMountLocation:
+                    type: string
                 type: object
               connectString:
                 type: string
               dbSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string
@@ -14543,6 +14561,8 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    swLocStorageSizeInGb:
+                      type: integer
                     vipSvcName:
                       type: string
                     workerNode:
@@ -14957,6 +14977,8 @@ spec:
               tdeWalletSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string
@@ -16596,6 +16618,8 @@ spec:
                 - clone
                 - truecache
                 type: string
+              dbFilesPvc:
+                type: string
               edition:
                 enum:
                 - standard
@@ -16652,11 +16676,15 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
+                  dbFilesPvc:
+                    type: string
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
+                    type: string
+                  stagePvc:
                     type: string
                   storageClass:
                     type: string
@@ -16695,6 +16723,8 @@ spec:
               sid:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
+                type: string
+              stagePvc:
                 type: string
               tcpsCertRenewInterval:
                 type: string
@@ -16823,11 +16853,15 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
+                  dbFilesPvc:
+                    type: string
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
+                    type: string
+                  stagePvc:
                     type: string
                   storageClass:
                     type: string

@@ -602,8 +602,10 @@ func buildVolumeSpecForRacCluster(
 	})
 
 	// Host software volumes from ClusterDetails
-	if len(clusterSpec.RacHostSwLocation) != 0 {
+	if clusterSpec.RacHostSwLocation != "" {
+
 		hostPath := fmt.Sprintf("%s/%s", clusterSpec.RacHostSwLocation, nodeName)
+
 		result = append(result, corev1.Volume{
 			Name: nodeName + "-oradata-sw-vol",
 			VolumeSource: corev1.VolumeSource{
@@ -612,18 +614,59 @@ func buildVolumeSpecForRacCluster(
 				},
 			},
 		})
-	}
 
-	// Optionally, HostSwStageLocation if needed from ConfigParams
-	if instance.Spec.ConfigParams != nil && instance.Spec.ConfigParams.HostSwStageLocation != "" {
+	} else if instance.Spec.RacSwPrefix != "" {
+
+		pvcName := fmt.Sprintf("%s%d", instance.Spec.RacSwPrefix, nodeIndex+1)
+
 		result = append(result, corev1.Volume{
-			Name: nodeName + "-oradata-swstage-vol",
+			Name: nodeName + "-oradata-sw-vol",
 			VolumeSource: corev1.VolumeSource{
-				HostPath: &corev1.HostPathVolumeSource{
-					Path: instance.Spec.ConfigParams.HostSwStageLocation,
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: pvcName,
 				},
 			},
 		})
+
+	} else if len(instance.Spec.StorageClass) != 0 {
+
+		// handled by VolumeClaimTemplates
+		result = append(result, corev1.Volume{
+			Name: nodeName + "-oradata-sw-vol",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: nodeName + "-oradata-sw-pvc",
+				},
+			},
+		})
+	}
+
+	if instance.Spec.ConfigParams != nil {
+
+		// If PVC stage claim exists
+		if instance.Spec.ConfigParams.SwStagePvc != "" {
+
+			result = append(result, corev1.Volume{
+				Name: nodeName + "-oradata-swstage-vol",
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: instance.Spec.ConfigParams.SwStagePvc,
+					},
+				},
+			})
+
+			// fallback to hostPath
+		} else if instance.Spec.ConfigParams.HostSwStageLocation != "" {
+
+			result = append(result, corev1.Volume{
+				Name: nodeName + "-oradata-swstage-vol",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: instance.Spec.ConfigParams.HostSwStageLocation,
+					},
+				},
+			})
+		}
 	}
 
 	// Optionally, OPatch/RU locations
@@ -896,27 +939,33 @@ func buildVolumeMountSpecForRacCluster(
 		MountPath: utils.OraWritableEnvFile,
 	})
 
-	// Host software location
-	if len(clusterSpec.RacHostSwLocation) != 0 {
+	// Host software location / PVC / StorageClass software volume
+	if clusterSpec.RacHostSwLocation != "" || instance.Spec.RacSwPrefix != "" || instance.Spec.StorageClass != "" {
+
 		swMountPath := instance.Spec.ConfigParams.SwMountLocation
 		if swMountPath == "" {
 			swMountPath = utils.OraSwLocation
 		}
+
 		result = append(result, corev1.VolumeMount{
 			Name:      nodeName + "-oradata-sw-vol",
 			MountPath: swMountPath,
 		})
-	} else if len(instance.Spec.StorageClass) != 0 {
-		result = append(result, corev1.VolumeMount{
-			Name:      nodeName + "-oradata-sw-vol",
-			MountPath: instance.Spec.ConfigParams.SwMountLocation,
-		})
 	}
+	if instance.Spec.ConfigParams != nil &&
+		(instance.Spec.ConfigParams.SwStagePvc != "" ||
+			instance.Spec.ConfigParams.HostSwStageLocation != "") {
 
-	if instance.Spec.ConfigParams != nil && len(instance.Spec.ConfigParams.HostSwStageLocation) != 0 {
+		mountPath := utils.OraSwStageLocation
+
+		if instance.Spec.ConfigParams != nil &&
+			instance.Spec.ConfigParams.SwStagePvcMountLocation != "" {
+			mountPath = instance.Spec.ConfigParams.SwStagePvcMountLocation
+		}
+
 		result = append(result, corev1.VolumeMount{
 			Name:      nodeName + "-oradata-swstage-vol",
-			MountPath: utils.OraSwStageLocation,
+			MountPath: mountPath,
 		})
 	}
 
@@ -938,11 +987,6 @@ func buildVolumeMountSpecForRacCluster(
 			MountPath: instance.Spec.ConfigParams.OneOffLocation,
 		})
 	}
-
-	// PVC-based ASM devices: adapt as needed if you want per-node ASM
-	// Otherwise, can leave as is or extend further later.
-
-	// If you want to mount PVCs, can use same naming as in buildVolumeSpecForRacCluster
 
 	return result
 }

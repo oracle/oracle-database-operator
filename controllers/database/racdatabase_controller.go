@@ -3661,30 +3661,56 @@ func (r *RacDatabaseReconciler) generateConfigMap(instance *racdb.RacDatabase, i
 		data = append(data, "SSH_PUBLIC_KEY="+instance.Spec.SshKeySecret.KeyMountLocation+"/"+instance.Spec.SshKeySecret.PubKeySecretName)
 	}
 
-	if instance.Spec.DbSecret != nil {
-		if instance.Spec.DbSecret.Name != "" {
-			data = append(data, "SECRET_VOLUME="+instance.Spec.DbSecret.PwdFileMountLocation)
-			commonpassflag, pwdkeyflag, _ := raccommon.GetDbSecret(instance, instance.Spec.DbSecret.Name, r.Client)
-			if commonpassflag && pwdkeyflag {
-				data = append(data, "DB_PWD_FILE="+instance.Spec.DbSecret.PwdFileName)
-				data = append(data, "PWD_KEY="+instance.Spec.DbSecret.KeyFileName)
-			} else {
-				data = append(data, "PASSWORD_FILE=pwdfile")
+	if instance.Spec.DbSecret != nil && instance.Spec.DbSecret.Name != "" {
+		// 1. Handle Secret Volume Location (with default)
+		mountLoc := instance.Spec.DbSecret.PwdFileMountLocation
+		if mountLoc == "" {
+			mountLoc = "/tmp/dbsecret" // Default fallback
+		}
+		data = append(data, "SECRET_VOLUME="+mountLoc)
+
+		// 2. Fetch Secret Metadata
+		commonpassflag, pwdkeyflag, _ := raccommon.GetDbSecret(instance, instance.Spec.DbSecret.Name, r.Client)
+
+		if commonpassflag && pwdkeyflag {
+			// Support specific fields OR fallback to the generic 'Key'
+			pwdFile := instance.Spec.DbSecret.PwdFileName
+			keyFile := instance.Spec.DbSecret.KeyFileName
+
+			// If specific fields are empty, check the generic 'Key'
+			if keyFile == "" && instance.Spec.DbSecret.SecretKey != "" {
+				keyFile = instance.Spec.DbSecret.SecretKey
 			}
+
+			data = append(data, "DB_PWD_FILE="+pwdFile)
+			data = append(data, "PWD_KEY="+keyFile)
+		} else {
+			data = append(data, "PASSWORD_FILE=pwdfile")
 		}
 	}
 
-	if instance.Spec.TdeWalletSecret != nil {
-		if instance.Spec.TdeWalletSecret.Name != "" {
-			data = append(data, "TDE_SECRET_VOLUME="+instance.Spec.TdeWalletSecret.PwdFileMountLocation)
-			data = append(data, "SETUP_TDE_WALLET=true")
-			tdepassflag, tdepwdkeyflag, _ := raccommon.GetTdeWalletSecret(instance, instance.Spec.TdeWalletSecret.Name, r.Client)
-			if tdepassflag && tdepwdkeyflag {
-				data = append(data, "TDE_PWD_FILE="+instance.Spec.TdeWalletSecret.PwdFileName)
-				data = append(data, "TDE_PWD_KEY="+instance.Spec.TdeWalletSecret.KeyFileName)
-			} else {
-				data = append(data, "PASSWORD_FILE=tdepwdfile")
+	if instance.Spec.TdeWalletSecret != nil && instance.Spec.TdeWalletSecret.Name != "" {
+		mountLoc := instance.Spec.TdeWalletSecret.PwdFileMountLocation
+		if mountLoc == "" {
+			mountLoc = "/tmp/tdesecret"
+		}
+		data = append(data, "TDE_SECRET_VOLUME="+mountLoc)
+		data = append(data, "SETUP_TDE_WALLET=true")
+
+		tdepassflag, tdepwdkeyflag, _ := raccommon.GetTdeWalletSecret(instance, instance.Spec.TdeWalletSecret.Name, r.Client)
+
+		if tdepassflag && tdepwdkeyflag {
+			tdePwdFile := instance.Spec.TdeWalletSecret.PwdFileName
+			tdeKeyFile := instance.Spec.TdeWalletSecret.KeyFileName
+
+			if tdeKeyFile == "" && instance.Spec.TdeWalletSecret.SecretKey != "" {
+				tdeKeyFile = instance.Spec.TdeWalletSecret.SecretKey
 			}
+
+			data = append(data, "TDE_PWD_FILE="+tdePwdFile)
+			data = append(data, "TDE_PWD_KEY="+tdeKeyFile)
+		} else {
+			data = append(data, "PASSWORD_FILE=tdepwdfile")
 		}
 	}
 
@@ -3720,6 +3746,9 @@ func (r *RacDatabaseReconciler) generateConfigMap(instance *racdb.RacDatabase, i
 	}
 	if instance.Spec.ConfigParams.HostSwStageLocation != "" {
 		data = append(data, "STAGING_SOFTWARE_LOC="+utils.OraSwStageLocation)
+
+	} else if instance.Spec.ConfigParams.SwStagePvcMountLocation != "" {
+		data = append(data, "STAGING_SOFTWARE_LOC="+instance.Spec.ConfigParams.SwStagePvcMountLocation)
 
 	}
 
