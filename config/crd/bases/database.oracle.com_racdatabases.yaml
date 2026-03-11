@@ -164,10 +164,16 @@ spec:
                     type: string
                   swMountLocation:
                     type: string
+                  swStagePvc:
+                    type: string
+                  swStagePvcMountLocation:
+                    type: string
                 type: object
               dbSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string
@@ -491,6 +497,8 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    swLocStorageSizeInGb:
+                      type: integer
                     vipSvcName:
                       type: string
                     workerNode:
@@ -564,6 +572,8 @@ spec:
                 - path
                 - server
                 type: object
+              racSwPrefix:
+                type: string
               readinessProbe:
                 properties:
                   exec:
@@ -849,6 +859,8 @@ spec:
                 properties:
                   encryptionType:
                     type: string
+                  key:
+                    type: string
                   keyFileMountLocation:
                     type: string
                   keyFileName:
@@ -1020,12 +1032,18 @@ spec:
                     type: string
                   swMountLocation:
                     type: string
+                  swStagePvc:
+                    type: string
+                  swStagePvcMountLocation:
+                    type: string
                 type: object
               connectString:
                 type: string
               dbSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string
@@ -1270,6 +1288,8 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    swLocStorageSizeInGb:
+                      type: integer
                     vipSvcName:
                       type: string
                     workerNode:
@@ -1684,6 +1704,8 @@ spec:
               tdeWalletSecret:
                 properties:
                   encryptionType:
+                    type: string
+                  key:
                     type: string
                   keyFileMountLocation:
                     type: string

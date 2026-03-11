@@ -814,55 +814,84 @@ func (r *RacDatabase) validateDbSecret() field.ErrorList {
 
 	var validationErrs field.ErrorList
 
-	if r.Spec.SshKeySecret != nil {
-		if r.Spec.DbSecret.Name != "" && strings.ToLower(r.Spec.DbSecret.EncryptionType) != "base64" {
-			if r.Spec.DbSecret.KeyFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("DbSecret").Child("KeyFileName"), r.Spec.DbSecret.KeyFileName,
-					"KeyFileName cannot be set to empty"))
-			}
-
-			if r.Spec.DbSecret.PwdFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("DbSecret").Child("PwdFileName"), r.Spec.DbSecret.PwdFileName,
-					"PwdFileName cannot be set to empty"))
-			}
-
-		}
+	if r.Spec.DbSecret == nil {
+		return nil
 	}
-	if len(validationErrs) > 0 {
+
+	// simple secret mode
+	if r.Spec.DbSecret.SecretKey != "" {
+		return nil
+	}
+
+	// legacy encrypted mode
+	if r.Spec.DbSecret.KeyFileName != "" || r.Spec.DbSecret.PwdFileName != "" {
+
+		if r.Spec.DbSecret.KeyFileName == "" {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("KeyFileName"),
+					r.Spec.DbSecret.KeyFileName,
+					"KeyFileName cannot be empty when using encrypted secret"))
+		}
+
+		if r.Spec.DbSecret.PwdFileName == "" {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("PwdFileName"),
+					r.Spec.DbSecret.PwdFileName,
+					"PwdFileName cannot be empty when using encrypted secret"))
+		}
+
 		return validationErrs
 	}
 
-	return nil
+	validationErrs = append(validationErrs,
+		field.Invalid(field.NewPath("spec").Child("DbSecret"),
+			r.Spec.DbSecret,
+			"either 'key' OR ('keyFileName' and 'pwdFileName') must be specified"))
+
+	return validationErrs
 }
 
-// validateTdeSecret validates TDE wallet secret references.
-// validateTdeSecret validates TDE wallet secret references.
 func (r *RacDatabase) validateTdeSecret() field.ErrorList {
 
 	var validationErrs field.ErrorList
 
-	if r.Spec.TdeWalletSecret != nil {
-		if r.Spec.TdeWalletSecret.Name != "" && strings.ToLower(r.Spec.TdeWalletSecret.EncryptionType) != "base64" {
-			if r.Spec.TdeWalletSecret.KeyFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"), r.Spec.TdeWalletSecret.KeyFileName,
-					"KeyFileName cannot be set to empty"))
-			}
-
-			if r.Spec.DbSecret.PwdFileName == "" {
-				validationErrs = append(validationErrs, field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"), r.Spec.TdeWalletSecret.PwdFileName,
-					"PwdFileName cannot be set to empty"))
-			}
-
-		}
+	if r.Spec.TdeWalletSecret == nil {
+		return nil
 	}
-	if len(validationErrs) > 0 {
+
+	// simple secret mode
+	if r.Spec.TdeWalletSecret.SecretKey != "" {
+		return nil
+	}
+
+	// legacy encrypted mode
+	if r.Spec.TdeWalletSecret.KeyFileName != "" || r.Spec.TdeWalletSecret.PwdFileName != "" {
+
+		if r.Spec.TdeWalletSecret.KeyFileName == "" {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("KeyFileName"),
+					r.Spec.TdeWalletSecret.KeyFileName,
+					"KeyFileName cannot be empty when using encrypted secret"))
+		}
+
+		if r.Spec.TdeWalletSecret.PwdFileName == "" {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("TdeWalletSecret").Child("PwdFileName"),
+					r.Spec.TdeWalletSecret.PwdFileName,
+					"PwdFileName cannot be empty when using encrypted secret"))
+		}
+
 		return validationErrs
 	}
 
-	return nil
+	validationErrs = append(validationErrs,
+		field.Invalid(field.NewPath("spec").Child("TdeWalletSecret"),
+			r.Spec.TdeWalletSecret,
+			"either 'key' OR ('keyFileName' and 'pwdFileName') must be specified"))
+
+	return validationErrs
 }
 
-// validateServiceSpecs validates RAC service configuration settings.
 // validateServiceSpecs validates RAC service configuration settings.
 func (r *RacDatabase) validateServiceSpecs() field.ErrorList {
 
@@ -1273,12 +1302,47 @@ func (r *RacDatabase) validateGeneric() field.ErrorList {
 		}
 
 		if !utils.CheckStatusFlag(r.Spec.UseNfsforSwStorage) {
+
+			// PVC mode
+			if cfg.SwStagePvc != "" || cfg.SwStagePvcMountLocation != "" {
+
+				if cfg.SwStagePvc == "" {
+					validationErrs = append(validationErrs,
+						field.Invalid(
+							field.NewPath("spec").Child("ConfigParams").Child("swStagePvc"),
+							cfg.SwStagePvc,
+							"swStagePvc must be specified when using PVC staging",
+						))
+				}
+
+				if cfg.SwStagePvcMountLocation == "" {
+					validationErrs = append(validationErrs,
+						field.Invalid(
+							field.NewPath("spec").Child("ConfigParams").Child("swStagePvcMountLocation"),
+							cfg.SwStagePvcMountLocation,
+							"swStagePvcMountLocation must be specified when using PVC staging",
+						))
+				}
+
+				if cfg.HostSwStageLocation != "" {
+					validationErrs = append(validationErrs,
+						field.Invalid(
+							field.NewPath("spec").Child("ConfigParams").Child("hostSwStageLocation"),
+							cfg.HostSwStageLocation,
+							"hostSwStageLocation cannot be used when swStagePvc is specified",
+						))
+				}
+
+				return validationErrs
+			}
+
+			// Host mode
 			if cfg.HostSwStageLocation == "" {
 				validationErrs = append(validationErrs,
 					field.Invalid(
-						field.NewPath("spec").Child("ConfigParams").Child("HostSwStageLocation"),
-						cfg.HostSwStageLocation,
-						"HostSwStageLocation and StorageClass both cannot be empty. You must set one of them.",
+						field.NewPath("spec").Child("ConfigParams"),
+						cfg,
+						"either (swStagePvc + swStagePvcMountLocation) OR hostSwStageLocation must be specified",
 					))
 			}
 		}

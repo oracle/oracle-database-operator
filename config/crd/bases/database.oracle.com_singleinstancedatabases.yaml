@@ -435,6 +435,8 @@ spec:
                 - clone
                 - truecache
                 type: string
+              dbFilesPvc:
+                type: string
               edition:
                 enum:
                 - standard
@@ -491,11 +493,15 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
+                  dbFilesPvc:
+                    type: string
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
+                    type: string
+                  stagePvc:
                     type: string
                   storageClass:
                     type: string
@@ -534,6 +540,8 @@ spec:
               sid:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
+                type: string
+              stagePvc:
                 type: string
               tcpsCertRenewInterval:
                 type: string
@@ -662,11 +670,15 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
+                  dbFilesPvc:
+                    type: string
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
+                    type: string
+                  stagePvc:
                     type: string
                   storageClass:
                     type: string
