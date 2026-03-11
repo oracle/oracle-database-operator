@@ -972,6 +972,72 @@ func (r *ShardingDatabaseReconciler) comapreGsmEnvVariables(instance *databasev4
 	return true
 }
 
+func isShapeManagedEnv(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "init_sga_size",
+		"init_pga_size",
+		"init_process",
+		"init_cpu_count",
+		"init_total_size":
+		return true
+	default:
+		return false
+	}
+}
+
+func filterShapeManagedEnvVars(envs []databasev4.EnvironmentVariable) []databasev4.EnvironmentVariable {
+	out := make([]databasev4.EnvironmentVariable, 0, len(envs))
+	for _, e := range envs {
+		if isShapeManagedEnv(e.Name) {
+			continue
+		}
+		out = append(out, e)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(strings.TrimSpace(out[i].Name)) <
+			strings.ToLower(strings.TrimSpace(out[j].Name))
+	})
+
+	return out
+}
+
+func equalEnvVarsIgnoringShapeManaged(a, b []databasev4.EnvironmentVariable) bool {
+	return reflect.DeepEqual(
+		filterShapeManagedEnvVars(a),
+		filterShapeManagedEnvVars(b),
+	)
+}
+
+func syncStatefulSetContainerShape(found, desired *appsv1.StatefulSet) bool {
+	changed := false
+
+	desiredByName := map[string]corev1.Container{}
+	for _, c := range desired.Spec.Template.Spec.Containers {
+		desiredByName[c.Name] = c
+	}
+
+	for i := range found.Spec.Template.Spec.Containers {
+		curr := &found.Spec.Template.Spec.Containers[i]
+		want, ok := desiredByName[curr.Name]
+		if !ok {
+			continue
+		}
+
+		if !reflect.DeepEqual(curr.Env, want.Env) {
+			curr.Env = want.Env
+			changed = true
+		}
+
+		if !reflect.DeepEqual(curr.Resources, want.Resources) {
+			curr.Resources = want.Resources
+			changed = true
+		}
+	}
+
+	return changed
+}
+
 func (r *ShardingDatabaseReconciler) comapreCatalogEnvVariables(instance *databasev4.ShardingDatabase, lastSuccSpec *databasev4.ShardingDatabaseSpec) bool {
 	var eventMsg string
 	var eventErr string = "Spec Error"
@@ -982,15 +1048,13 @@ func (r *ShardingDatabaseReconciler) comapreCatalogEnvVariables(instance *databa
 			OraCatalogSpex := instance.Spec.Catalog[i]
 			for j = 0; j < int32(len(lastSuccSpec.Catalog)); j++ {
 				if OraCatalogSpex.Name == lastSuccSpec.Catalog[j].Name {
-					if !reflect.DeepEqual(OraCatalogSpex.EnvVars, lastSuccSpec.Catalog[j].EnvVars) {
+					if !equalEnvVarsIgnoringShapeManaged(OraCatalogSpex.EnvVars, lastSuccSpec.Catalog[j].EnvVars) {
 						eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " env vairable changes are not supported."
 						r.Recorder.Eventf(instance, corev1.EventTypeWarning, eventErr, eventMsg)
 						return false
 					}
 				}
-				// child for loop ens here
 			}
-			//Main  For loop ends here
 		}
 	}
 
@@ -1007,15 +1071,13 @@ func (r *ShardingDatabaseReconciler) comapreShardEnvVariables(instance *database
 			OraShardSpex := instance.Spec.Shard[i]
 			for j = 0; j < int32(len(lastSuccSpec.Shard)); j++ {
 				if OraShardSpex.Name == lastSuccSpec.Shard[j].Name {
-					if !reflect.DeepEqual(OraShardSpex.EnvVars, lastSuccSpec.Shard[j].EnvVars) {
+					if !equalEnvVarsIgnoringShapeManaged(OraShardSpex.EnvVars, lastSuccSpec.Shard[j].EnvVars) {
 						eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " env vairable changes are not supported."
 						r.Recorder.Eventf(instance, corev1.EventTypeWarning, eventErr, eventMsg)
 						return false
 					}
 				}
-				// child for loop ens here
 			}
-			//Main  For loop ends here
 		}
 	}
 
@@ -2187,6 +2249,7 @@ func (r *ShardingDatabaseReconciler) createService(instance *databasev4.Sharding
 }
 
 // This function deploy the statefulset
+
 func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev4.ShardingDatabase,
 	dep *appsv1.StatefulSet,
 	resType string,
@@ -2205,12 +2268,15 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev4.Shar
 			break
 		}
 	}
+
 	controllerutil.SetControllerReference(instance, dep, r.Scheme)
+
 	found := &appsv1.StatefulSet{}
 	err := r.Client.Get(context.TODO(), types.NamespacedName{
 		Name:      dep.Name,
 		Namespace: instance.Namespace,
 	}, found)
+
 	jsn, _ := json.Marshal(dep)
 	shardingv1.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
 
@@ -2226,13 +2292,33 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev4.Shar
 		if err != nil {
 			// StatefulSet failed
 			reqLogger.Error(err, "Failed to create StatefulSet", "StatefulSet.space", dep.Namespace, "StatefulSet.Name", dep.Name)
-			//instance.Status.ShardStatus[dep.Name] = "Deployment Failed"
 			return ctrl.Result{}, err
 		}
+
+		return ctrl.Result{Requeue: true}, nil
 	} else if err != nil {
 		// Error that isn't due to the StaefulSet not existing
 		reqLogger.Error(err, "Failed to get StatefulSet")
 		return ctrl.Result{}, err
+	}
+
+	needUpdate := false
+
+	if syncStatefulSetContainerShape(found, dep) {
+		needUpdate = true
+	}
+
+	if needUpdate {
+		message = "Updating StatefulSet pod template for shape/env/resource change " + shardingv1.GetFmtStr(dep.Name)
+		shardingv1.LogMessages("INFO", message, nil, instance, r.Log)
+
+		err = r.Client.Update(context.TODO(), found)
+		if err != nil {
+			reqLogger.Error(err, "Failed to update StatefulSet for shape change", "StatefulSet.space", found.Namespace, "StatefulSet.Name", found.Name)
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	message = "Statefulset Exist " + shardingv1.GetFmtStr(dep.Name) + " already exist"
