@@ -216,7 +216,6 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return result, err
 	}
 
-	// cleanup on scale in
 	if cerr := r.cleanupOrphanShardResources(instance); cerr != nil {
 		shardingv1.LogMessages("INFO", "Failed to cleanup orphan shard resources: "+cerr.Error(), nil, instance, r.Log)
 		result = resultQ
@@ -2681,15 +2680,15 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 }
 
 func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *databasev4.ShardingDatabase) error {
-	desired := map[string]bool{}
-	for i := range instance.Spec.Shard {
-		name := strings.TrimSpace(instance.Spec.Shard[i].Name)
-		if name != "" {
-			desired[name] = true
-		}
-	}
+	desired := desiredShardNamesFromShardInfo(instance)
 
-	shardingv1.LogMessages("INFO", fmt.Sprintf("cleanupOrphanShardResources desired shards: %+v", desired), nil, instance, r.Log)
+	shardingv1.LogMessages(
+		"INFO",
+		fmt.Sprintf("cleanupOrphanShardResources desired shards: %+v", desired),
+		nil,
+		instance,
+		r.Log,
+	)
 
 	sfList := &appsv1.StatefulSetList{}
 	if err := r.Client.List(context.TODO(), sfList, client.InNamespace(instance.Namespace)); err != nil {
@@ -2699,9 +2698,8 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 	for i := range sfList.Items {
 		sf := &sfList.Items[i]
 		name := strings.TrimSpace(sf.Name)
-
-		// only shard statefulsets owned by this CR
 		lbls := sf.GetLabels()
+
 		if lbls["type"] != "Shard" {
 			continue
 		}
@@ -2710,18 +2708,30 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 		}
 
 		if desired[name] {
-			shardingv1.LogMessages("INFO", "cleanupOrphanShardResources keeping shard "+name, nil, instance, r.Log)
+			shardingv1.LogMessages(
+				"INFO",
+				"cleanupOrphanShardResources keeping shard "+name,
+				nil,
+				instance,
+				r.Log,
+			)
 			continue
 		}
 
-		shardingv1.LogMessages("INFO", "cleanupOrphanShardResources deleting orphan shard "+name, nil, instance, r.Log)
+		shardingv1.LogMessages(
+			"INFO",
+			"cleanupOrphanShardResources deleting orphan shard "+name,
+			nil,
+			instance,
+			r.Log,
+		)
 
-		// delete statefulset
+		// delete StatefulSet
 		if err := r.Client.Delete(context.Background(), sf); err != nil && !errors.IsNotFound(err) {
 			return err
 		}
 
-		// delete service
+		// delete internal service
 		svcFound, err := shardingv1.CheckSvc(name, instance, r.Client)
 		if err == nil {
 			if derr := r.Client.Delete(context.Background(), svcFound); derr != nil && !errors.IsNotFound(derr) {
@@ -2729,9 +2739,9 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 			}
 		}
 
-		// delete external service if present
+		// delete external service if any
 		if instance.Spec.IsExternalSvc {
-			svcExt, err := shardingv1.CheckSvc(name+strconv.FormatInt(int64(0), 10)+"-svc", instance, r.Client)
+			svcExt, err := shardingv1.CheckSvc(name+strconv.Itoa(0)+"-svc", instance, r.Client)
 			if err == nil {
 				if derr := r.Client.Delete(context.Background(), svcExt); derr != nil && !errors.IsNotFound(derr) {
 					return derr
@@ -2739,7 +2749,7 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 			}
 		}
 
-		// delete pvc
+		// delete pvc if enabled
 		if instance.Spec.IsDeleteOraPvc && len(instance.Spec.StorageClass) > 0 {
 			pvcName := name + "-oradata-vol4-" + name + "-0"
 			if err := shardingv1.DelPvc(pvcName, instance, r.Client, r.Log); err != nil && !errors.IsNotFound(err) {
@@ -2747,7 +2757,7 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 			}
 		}
 
-		// cleanup shard status map
+		// cleanup status maps
 		if instance.Status.Shard != nil {
 			for k := range instance.Status.Shard {
 				if strings.HasPrefix(k, name+"_") {
@@ -2762,4 +2772,27 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 
 	_ = r.Status().Update(context.Background(), instance)
 	return nil
+}
+
+func desiredShardNamesFromShardInfo(instance *databasev4.ShardingDatabase) map[string]bool {
+	desired := map[string]bool{}
+
+	for i := range instance.Spec.ShardInfo {
+		prefix := strings.TrimSpace(instance.Spec.ShardInfo[i].ShardPreFixName)
+		if prefix == "" {
+			continue
+		}
+
+		replicas := instance.Spec.ShardInfo[i].Replicas
+		if replicas == 0 {
+			replicas = 2
+		}
+
+		for j := 1; j <= int(replicas); j++ {
+			name := prefix + strconv.Itoa(j)
+			desired[name] = true
+		}
+	}
+
+	return desired
 }
