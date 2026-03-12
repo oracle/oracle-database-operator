@@ -338,6 +338,19 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 	}
+	blocked, serr := r.reconcileOrderedShapeChanges(instance)
+	if serr != nil {
+		shardingv1.LogMessages("INFO", "Ordered shape reconcile failed: "+serr.Error(), nil, instance, r.Log)
+		result = resultQ
+		err = nilErr
+		return result, err
+	}
+	if blocked {
+		shardingv1.LogMessages("INFO", "Ordered shape reconcile in progress. Requeue.", nil, instance, r.Log)
+		result = resultQ
+		err = nilErr
+		return result, err
+	}
 	//================ Validate the GSM and Catalog before procedding for Shard Setup ==============
 	// If the GSM and Catalog is not configured then Requeue the loop unless it returns nil
 	// Until GSM and Catalog is configured, the topology state remain provisioning
@@ -462,6 +475,18 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	stateType = string(databasev4.CrdReconcileCompeleteState)
 	//	r.setCrdLifeCycleState(instance, &result, &err, stateType)
 	// Set error to ni to avoid reconcilation state reconcilation error as we are passing err to setCrdLifeCycleState
+
+	if uerr := instance.UpdateLastSuccessfulSpec(r.Client); uerr != nil {
+		shardingv1.LogMessages("INFO", "Failed to update lastSuccessfulSpec: "+uerr.Error(), nil, instance, r.Log)
+		result = resultQ
+		err = nilErr
+		return result, err
+	}
+
+	shardingv1.LogMessages("INFO", "Completed the Sharding topology setup reconcilation loop.", nil, instance, r.Log)
+	result = resultNq
+	err = nilErr
+	return result, err
 
 	shardingv1.LogMessages("INFO", "Completed the Sharding topology setup reconcilation loop.", nil, instance, r.Log)
 	result = resultNq
@@ -1045,14 +1070,27 @@ func (r *ShardingDatabaseReconciler) comapreCatalogEnvVariables(instance *databa
 
 	if len(instance.Spec.Catalog) > 0 {
 		for i = 0; i < int32(len(instance.Spec.Catalog)); i++ {
-			OraCatalogSpex := instance.Spec.Catalog[i]
+			curr := instance.Spec.Catalog[i]
 			for j = 0; j < int32(len(lastSuccSpec.Catalog)); j++ {
-				if OraCatalogSpex.Name == lastSuccSpec.Catalog[j].Name {
-					if !equalEnvVarsIgnoringShapeManaged(OraCatalogSpex.EnvVars, lastSuccSpec.Catalog[j].EnvVars) {
-						eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " env vairable changes are not supported."
+				old := lastSuccSpec.Catalog[j]
+				if curr.Name != old.Name {
+					continue
+				}
+
+				// Allow shape-driven env changes, but still block non-shape env changes
+				if !strings.EqualFold(strings.TrimSpace(curr.Shape), strings.TrimSpace(old.Shape)) {
+					if !reflect.DeepEqual(stripShapeManagedDbEnv(curr.EnvVars), stripShapeManagedDbEnv(old.EnvVars)) {
+						eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " non-shape catalog env variable changes are not supported."
 						r.Recorder.Eventf(instance, corev1.EventTypeWarning, eventErr, eventMsg)
 						return false
 					}
+					continue
+				}
+
+				if !reflect.DeepEqual(curr.EnvVars, old.EnvVars) {
+					eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " env vairable changes are not supported."
+					r.Recorder.Eventf(instance, corev1.EventTypeWarning, eventErr, eventMsg)
+					return false
 				}
 			}
 		}
@@ -1068,14 +1106,27 @@ func (r *ShardingDatabaseReconciler) comapreShardEnvVariables(instance *database
 
 	if len(instance.Spec.Shard) > 0 {
 		for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
-			OraShardSpex := instance.Spec.Shard[i]
+			curr := instance.Spec.Shard[i]
 			for j = 0; j < int32(len(lastSuccSpec.Shard)); j++ {
-				if OraShardSpex.Name == lastSuccSpec.Shard[j].Name {
-					if !equalEnvVarsIgnoringShapeManaged(OraShardSpex.EnvVars, lastSuccSpec.Shard[j].EnvVars) {
-						eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " env vairable changes are not supported."
+				old := lastSuccSpec.Shard[j]
+				if curr.Name != old.Name {
+					continue
+				}
+
+				// Allow shape-driven env changes, but still block non-shape env changes
+				if shardShapeChangedForName(&instance.Spec, lastSuccSpec, curr.Name) {
+					if !reflect.DeepEqual(stripShapeManagedDbEnv(curr.EnvVars), stripShapeManagedDbEnv(old.EnvVars)) {
+						eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " non-shape shard env variable changes are not supported."
 						r.Recorder.Eventf(instance, corev1.EventTypeWarning, eventErr, eventMsg)
 						return false
 					}
+					continue
+				}
+
+				if !reflect.DeepEqual(curr.EnvVars, old.EnvVars) {
+					eventMsg = "ShardingDatabase CRD resource " + shardingv1.GetFmtStr(instance.Name) + " env vairable changes are not supported."
+					r.Recorder.Eventf(instance, corev1.EventTypeWarning, eventErr, eventMsg)
+					return false
 				}
 			}
 		}
@@ -2043,44 +2094,53 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 				continue
 			}
 
-			// Step 6: move chunks for non-native flow
-			if strings.ToUpper(instance.Spec.ReplicationType) != "NATIVE" {
-				if len(instance.Spec.ReplicationType) == 0 {
-					err = shardingv1.MoveChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+			// Step 6: move chunks before deleting PRIMARY shard
+			if r.shouldMoveChunksBeforeDelete(instance, OraShardSpex) {
+				err = shardingv1.MoveChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+				if err != nil {
+					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
+					instance.Spec.Shard[i].IsDelete = "failed"
+					err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
 					if err != nil {
-						r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
-						instance.Spec.Shard[i].IsDelete = "failed"
-						err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
-						if err != nil {
-							msg = "Error occurred while changing the isDelete value to failed in Spec struct"
-							shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-							return err
-						}
+						msg = "Error occurred while changing the isDelete value to failed in Spec struct"
+						shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
+						return err
+					}
+					continue
+				}
+
+				for {
+					msg = "Sleeping for 120 seconds and will check status again of chunks movement in gsm for shard: " +
+						shardingv1.GetFmtStr(OraShardSpex.Name) +
+						" ShardType=" + strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType))
+					shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
+					time.Sleep(120 * time.Second)
+
+					err = shardingv1.VerifyChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+					if err == nil {
+						break
+					}
+
+					if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
 						continue
 					}
 
-					for {
-						msg = "Sleeping for 120 seconds and will check status again of chunks movement in gsm for shard: " + shardingv1.GetFmtStr(OraShardSpex.Name) + "ShardType=" + strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType))
-						shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-						time.Sleep(120 * time.Second)
-
-						err = shardingv1.VerifyChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-						if err == nil {
-							break
-						} else {
-							if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
-								continue
-							}
-							instance.Spec.Shard[i].IsDelete = "failed"
-							err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
-							if err != nil {
-								msg = "Error occurred while changing the isDelete value to failed in Spec struct"
-								shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-							}
-							return err
-						}
+					instance.Spec.Shard[i].IsDelete = "failed"
+					err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
+					if err != nil {
+						msg = "Error occurred while changing the isDelete value to failed in Spec struct"
+						shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
 					}
+					return err
 				}
+			} else {
+				shardingv1.LogMessages(
+					"INFO",
+					"Skipping chunk movement for shard "+OraShardSpex.Name+" because it is standby/active_standby or NATIVE replication",
+					nil,
+					instance,
+					r.Log,
+				)
 			}
 
 			// Step 7: remove from GSM
@@ -2728,11 +2788,20 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 		r.Log,
 	)
 
-	desired := desiredShardNamesFromShardInfo(latest)
+	desiredFromShardInfo := desiredShardNamesFromShardInfo(latest)
+	specShardNames := shardNamesFromSpec(latest)
 
 	shardingv1.LogMessages(
 		"INFO",
-		fmt.Sprintf("cleanupOrphanShardResources desired shards: %+v", desired),
+		fmt.Sprintf("cleanupOrphanShardResources desired shards from shardInfo: %+v", desiredFromShardInfo),
+		nil,
+		latest,
+		r.Log,
+	)
+
+	shardingv1.LogMessages(
+		"INFO",
+		fmt.Sprintf("cleanupOrphanShardResources shard names currently present in spec: %+v", specShardNames),
 		nil,
 		latest,
 		r.Log,
@@ -2758,11 +2827,15 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 			continue
 		}
 
-		if desired[name] {
+		// Keep:
+		// 1. shards still desired by shardInfo
+		// 2. shards still present in spec.shard (including isDelete=enable scale-in candidates)
+		if desiredFromShardInfo[name] || specShardNames[name] {
 			shardingv1.LogMessages("INFO", "cleanupOrphanShardResources keeping shard "+name, nil, latest, r.Log)
 			continue
 		}
 
+		// Only true orphans reach here
 		shardingv1.LogMessages("INFO", "cleanupOrphanShardResources deleting orphan shard "+name, nil, latest, r.Log)
 
 		if err := r.Client.Delete(context.Background(), sf); err != nil && !errors.IsNotFound(err) {
@@ -2816,4 +2889,259 @@ func desiredShardNamesFromShardInfo(instance *databasev4.ShardingDatabase) map[s
 	}
 
 	return desired
+}
+
+func shardNamesFromSpec(instance *databasev4.ShardingDatabase) map[string]bool {
+	out := map[string]bool{}
+
+	for i := range instance.Spec.Shard {
+		name := strings.TrimSpace(instance.Spec.Shard[i].Name)
+		if name == "" {
+			continue
+		}
+		out[name] = true
+	}
+
+	return out
+}
+
+func shouldMoveChunksForDelete(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) bool {
+	deployAs := strings.ToUpper(strings.TrimSpace(shard.DeployAs))
+	if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
+		return false
+	}
+
+	if strings.EqualFold(strings.TrimSpace(instance.Spec.ReplicationType), "NATIVE") {
+		return false
+	}
+
+	return true
+}
+
+var shapeManagedEnvKeys = map[string]bool{
+	"INIT_SGA_SIZE":   true,
+	"INIT_PGA_SIZE":   true,
+	"INIT_PROCESS":    true,
+	"INIT_CPU_COUNT":  true,
+	"INIT_TOTAL_SIZE": true,
+}
+
+func isShapeManagedEnvName(name string) bool {
+	return shapeManagedEnvKeys[strings.ToUpper(strings.TrimSpace(name))]
+}
+
+func stripShapeManagedDbEnv(envs []databasev4.EnvironmentVariable) []databasev4.EnvironmentVariable {
+	out := make([]databasev4.EnvironmentVariable, 0, len(envs))
+	for _, e := range envs {
+		if isShapeManagedEnvName(e.Name) {
+			continue
+		}
+		out = append(out, e)
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(strings.TrimSpace(out[i].Name)) < strings.ToLower(strings.TrimSpace(out[j].Name))
+	})
+	return out
+}
+
+func findCatalogShape(spec *databasev4.ShardingDatabaseSpec, name string) string {
+	for i := range spec.Catalog {
+		if strings.TrimSpace(spec.Catalog[i].Name) == strings.TrimSpace(name) {
+			return strings.TrimSpace(spec.Catalog[i].Shape)
+		}
+	}
+	return ""
+}
+
+func findShardShapeForName(spec *databasev4.ShardingDatabaseSpec, shardName string) string {
+	name := strings.TrimSpace(shardName)
+	for i := range spec.ShardInfo {
+		prefix := strings.TrimSpace(spec.ShardInfo[i].ShardPreFixName)
+		if prefix == "" {
+			continue
+		}
+		if strings.HasPrefix(name, prefix) {
+			return strings.TrimSpace(spec.ShardInfo[i].Shape)
+		}
+	}
+	return ""
+}
+
+func shardShapeChangedForName(curr *databasev4.ShardingDatabaseSpec, old *databasev4.ShardingDatabaseSpec, shardName string) bool {
+	currShape := findShardShapeForName(curr, shardName)
+	oldShape := findShardShapeForName(old, shardName)
+
+	if currShape == "" || oldShape == "" {
+		return false
+	}
+	return !strings.EqualFold(currShape, oldShape)
+}
+
+type shapeRollTarget struct {
+	kind    string
+	name    string
+	specIdx int
+}
+
+func extractShapeEnvCore(envs []corev1.EnvVar) map[string]string {
+	out := map[string]string{}
+	for _, e := range envs {
+		k := strings.ToUpper(strings.TrimSpace(e.Name))
+		if shapeManagedEnvKeys[k] {
+			out[k] = e.Value
+		}
+	}
+	return out
+}
+
+func statefulSetNeedsShapeRecreate(current, desired *appsv1.StatefulSet) bool {
+	if current == nil || desired == nil {
+		return false
+	}
+	if len(current.Spec.Template.Spec.Containers) == 0 || len(desired.Spec.Template.Spec.Containers) == 0 {
+		return false
+	}
+
+	currC := current.Spec.Template.Spec.Containers[0]
+	wantC := desired.Spec.Template.Spec.Containers[0]
+
+	if !reflect.DeepEqual(currC.Resources, wantC.Resources) {
+		return true
+	}
+
+	if !reflect.DeepEqual(extractShapeEnvCore(currC.Env), extractShapeEnvCore(wantC.Env)) {
+		return true
+	}
+
+	return false
+}
+
+func (r *ShardingDatabaseReconciler) orderedShapeChangeTargets(instance *databasev4.ShardingDatabase) ([]shapeRollTarget, error) {
+	lastSuccSpec, err := instance.GetLastSuccessfulSpec()
+	if err != nil {
+		return nil, nil
+	}
+	if lastSuccSpec == nil {
+		return nil, nil
+	}
+
+	targets := make([]shapeRollTarget, 0)
+
+	// catalog first, in spec order
+	for i := range instance.Spec.Catalog {
+		curr := instance.Spec.Catalog[i]
+		for j := range lastSuccSpec.Catalog {
+			old := lastSuccSpec.Catalog[j]
+			if strings.TrimSpace(curr.Name) != strings.TrimSpace(old.Name) {
+				continue
+			}
+			if !strings.EqualFold(strings.TrimSpace(curr.Shape), strings.TrimSpace(old.Shape)) {
+				targets = append(targets, shapeRollTarget{
+					kind:    "CATALOG",
+					name:    curr.Name,
+					specIdx: i,
+				})
+			}
+			break
+		}
+	}
+
+	// then shards one by one in ordinal order
+	shardTargets := make([]shapeRollTarget, 0)
+	for i := range instance.Spec.Shard {
+		curr := instance.Spec.Shard[i]
+		if shardingv1.CheckIsDeleteFlag(curr.IsDelete, instance, r.Log) {
+			continue
+		}
+		if shardShapeChangedForName(&instance.Spec, lastSuccSpec, curr.Name) {
+			shardTargets = append(shardTargets, shapeRollTarget{
+				kind:    "SHARD",
+				name:    curr.Name,
+				specIdx: i,
+			})
+		}
+	}
+
+	sort.Slice(shardTargets, func(i, j int) bool {
+		return shardOrdinal(shardTargets[i].name) < shardOrdinal(shardTargets[j].name)
+	})
+
+	targets = append(targets, shardTargets...)
+	return targets, nil
+}
+
+func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *databasev4.ShardingDatabase) (bool, error) {
+	targets, err := r.orderedShapeChangeTargets(instance)
+	if err != nil {
+		return false, err
+	}
+	if len(targets) == 0 {
+		return false, nil
+	}
+
+	for _, t := range targets {
+		currSts, err := shardingv1.CheckSfset(t.name, instance, r.Client)
+		if err != nil {
+			// If it was deleted in previous reconcile, wait for normal create path to recreate and stabilize
+			shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for StatefulSet "+t.name+" to be recreated", nil, instance, r.Log)
+			return true, nil
+		}
+
+		var desiredSts *appsv1.StatefulSet
+		switch t.kind {
+		case "CATALOG":
+			desiredSts = shardingv1.BuildStatefulSetForCatalog(instance, instance.Spec.Catalog[t.specIdx])
+		case "SHARD":
+			desiredSts = shardingv1.BuildStatefulSetForShard(instance, instance.Spec.Shard[t.specIdx])
+		default:
+			continue
+		}
+
+		if statefulSetNeedsShapeRecreate(currSts, desiredSts) {
+			shardingv1.LogMessages("INFO", "Ordered shape rollout deleting "+t.name+" for recreate", nil, instance, r.Log)
+			if derr := r.Client.Delete(context.Background(), currSts); derr != nil && !errors.IsNotFound(derr) {
+				return true, derr
+			}
+			return true, nil
+		}
+
+		// Once recreated, wait until this target is really ready before moving to next one
+		switch t.kind {
+		case "CATALOG":
+			if _, _, verr := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx); verr != nil {
+				shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for catalog "+t.name+" to become ready", nil, instance, r.Log)
+				return true, nil
+			}
+		case "SHARD":
+			if _, _, verr := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx); verr != nil {
+				shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for shard "+t.name+" to become ready", nil, instance, r.Log)
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}
+
+func (r *ShardingDatabaseReconciler) shouldMoveChunksBeforeDelete(
+	instance *databasev4.ShardingDatabase,
+	shard databasev4.ShardSpec,
+) bool {
+	deployAs := strings.ToUpper(strings.TrimSpace(shard.DeployAs))
+
+	// Never move chunks for standby shards
+	if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
+		return false
+	}
+
+	// Native replication flow should skip chunk movement
+	if strings.ToUpper(strings.TrimSpace(instance.Spec.ReplicationType)) == "NATIVE" {
+		return false
+	}
+
+	// For PRIMARY shards:
+	// allow chunk movement for normal non-native flow
+	// and also for DG primary shard scale-in/delete flow
+	return true
 }
