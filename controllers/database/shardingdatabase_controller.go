@@ -487,11 +487,6 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	result = resultNq
 	err = nilErr
 	return result, err
-
-	shardingv1.LogMessages("INFO", "Completed the Sharding topology setup reconcilation loop.", nil, instance, r.Log)
-	result = resultNq
-	err = nilErr
-	return result, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -2310,7 +2305,8 @@ func (r *ShardingDatabaseReconciler) createService(instance *databasev4.Sharding
 
 // This function deploy the statefulset
 
-func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev4.ShardingDatabase,
+func (r *ShardingDatabaseReconciler) deployStatefulSet(
+	instance *databasev4.ShardingDatabase,
 	dep *appsv1.StatefulSet,
 	resType string,
 ) (ctrl.Result, error) {
@@ -2318,9 +2314,7 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev4.Shar
 	reqLogger := r.Log.WithValues("Instance.Namespace", instance.Namespace, "Instance.Name", instance.Name)
 	message := "Inside the deployStatefulSet function"
 	shardingv1.LogMessages("DEBUG", message, nil, instance, r.Log)
-	// See if StatefulSets already exists and create if it doesn't
-	// Error : invalid memory address or nil pointer dereference" (runtime error: invalid memory address or nil pointer dereference)
-	// This happens during unit test cases
+
 	for i := 0; i < 5; i++ {
 		if r.Scheme == nil {
 			time.Sleep(time.Second * 40)
@@ -2341,47 +2335,22 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(instance *databasev4.Shar
 	shardingv1.LogMessages("DEBUG", string(jsn), nil, instance, r.Log)
 
 	if err != nil && errors.IsNotFound(err) {
-
-		// Create the StatefulSet
-		reqLogger.Info("Creating Stateful Shard")
+		reqLogger.Info("Creating StatefulSet")
 		err = r.Client.Create(context.TODO(), dep)
-
-		message := "Inside the create Stateful set block to create statefulset " + shardingv1.GetFmtStr(dep.Name)
-		shardingv1.LogMessages("DEBUG", message, nil, instance, r.Log)
-
 		if err != nil {
-			// StatefulSet failed
 			reqLogger.Error(err, "Failed to create StatefulSet", "StatefulSet.space", dep.Namespace, "StatefulSet.Name", dep.Name)
 			return ctrl.Result{}, err
 		}
 
+		message = "Created StatefulSet " + shardingv1.GetFmtStr(dep.Name)
+		shardingv1.LogMessages("INFO", message, nil, instance, r.Log)
 		return ctrl.Result{Requeue: true}, nil
 	} else if err != nil {
-		// Error that isn't due to the StaefulSet not existing
 		reqLogger.Error(err, "Failed to get StatefulSet")
 		return ctrl.Result{}, err
 	}
 
-	needUpdate := false
-
-	if syncStatefulSetContainerShape(found, dep) {
-		needUpdate = true
-	}
-
-	if needUpdate {
-		message = "Updating StatefulSet pod template for shape/env/resource change " + shardingv1.GetFmtStr(dep.Name)
-		shardingv1.LogMessages("INFO", message, nil, instance, r.Log)
-
-		err = r.Client.Update(context.TODO(), found)
-		if err != nil {
-			reqLogger.Error(err, "Failed to update StatefulSet for shape change", "StatefulSet.space", found.Namespace, "StatefulSet.Name", found.Name)
-			return ctrl.Result{}, err
-		}
-
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	message = "Statefulset Exist " + shardingv1.GetFmtStr(dep.Name) + " already exist"
+	message = "Statefulset " + shardingv1.GetFmtStr(dep.Name) + " already exists"
 	shardingv1.LogMessages("DEBUG", message, nil, instance, r.Log)
 
 	return ctrl.Result{}, nil
@@ -2690,7 +2659,6 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 
 	currentByPrefix := map[string][]shardRef{}
 
-	// collect shards present in spec only
 	for i := range instance.Spec.Shard {
 		s := instance.Spec.Shard[i]
 		for prefix := range desiredByPrefix {
@@ -2717,7 +2685,6 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 		extra := current - desired
 
 		if extra <= 0 {
-			// scale-out or same size: ensure all existing spec shards stay disable
 			for _, s := range shards {
 				curr := strings.ToLower(strings.TrimSpace(instance.Spec.Shard[s.idx].IsDelete))
 				if curr != "disable" {
@@ -2738,7 +2705,6 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 			continue
 		}
 
-		// scale-in: mark highest ordinals for deletion, but ONLY if shard is still in spec
 		for i, s := range shards {
 			want := "disable"
 			if int32(i) < extra {
@@ -2903,19 +2869,6 @@ func shardNamesFromSpec(instance *databasev4.ShardingDatabase) map[string]bool {
 	}
 
 	return out
-}
-
-func shouldMoveChunksForDelete(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) bool {
-	deployAs := strings.ToUpper(strings.TrimSpace(shard.DeployAs))
-	if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
-		return false
-	}
-
-	if strings.EqualFold(strings.TrimSpace(instance.Spec.ReplicationType), "NATIVE") {
-		return false
-	}
-
-	return true
 }
 
 var shapeManagedEnvKeys = map[string]bool{
@@ -3083,7 +3036,6 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 	for _, t := range targets {
 		currSts, err := shardingv1.CheckSfset(t.name, instance, r.Client)
 		if err != nil {
-			// If it was deleted in previous reconcile, wait for normal create path to recreate and stabilize
 			shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for StatefulSet "+t.name+" to be recreated", nil, instance, r.Log)
 			return true, nil
 		}
@@ -3106,7 +3058,6 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 			return true, nil
 		}
 
-		// Once recreated, wait until this target is really ready before moving to next one
 		switch t.kind {
 		case "CATALOG":
 			if _, _, verr := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx); verr != nil {

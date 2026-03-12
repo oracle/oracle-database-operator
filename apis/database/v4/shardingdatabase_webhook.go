@@ -41,8 +41,10 @@ package v4
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	shapes "github.com/oracle/oracle-database-operator/commons/shapes"
 	corev1 "k8s.io/api/core/v1"
@@ -122,8 +124,8 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) erro
 	}
 
 	if totalShard > 0 {
-		cr.Spec.Shard = make([]ShardSpec, totalShard)
-		_ = cr.initShardsSpec()
+		desired := cr.buildDesiredShardSpec()
+		cr.Spec.Shard = mergeDesiredAndExistingShards(cr.Spec.Shard, desired)
 	}
 
 	// apply shape on catalog
@@ -562,6 +564,107 @@ func (r *ShardingDatabase) initShardsSpec() error {
 	}
 
 	return nil
+}
+func (r *ShardingDatabase) buildDesiredShardSpec() []ShardSpec {
+	tmp := &ShardingDatabase{}
+	tmp.Spec = r.Spec
+
+	tmp.Spec.Shard = make([]ShardSpec, totalShard)
+	_ = tmp.initShardsSpec()
+
+	return tmp.Spec.Shard
+}
+
+func mergeDesiredAndExistingShards(existing []ShardSpec, desired []ShardSpec) []ShardSpec {
+	existingByName := map[string]ShardSpec{}
+	for _, s := range existing {
+		name := strings.TrimSpace(s.Name)
+		if name == "" {
+			continue
+		}
+		existingByName[name] = s
+	}
+
+	desiredNames := map[string]bool{}
+	out := make([]ShardSpec, 0, len(existing)+len(desired))
+
+	for _, d := range desired {
+		name := strings.TrimSpace(d.Name)
+		if name == "" {
+			continue
+		}
+		desiredNames[name] = true
+
+		if old, ok := existingByName[name]; ok {
+			merged := old
+
+			// refresh generated/defaulted fields from desired
+			merged.Name = d.Name
+			merged.StorageSizeInGb = d.StorageSizeInGb
+			merged.ShardGroup = d.ShardGroup
+			merged.ShardRegion = d.ShardRegion
+			merged.DeployAs = d.DeployAs
+			merged.PrimaryDatabaseRef = d.PrimaryDatabaseRef
+			merged.ImagePulllPolicy = d.ImagePulllPolicy
+			merged.ShardSpace = d.ShardSpace
+			merged.EnvVars = d.EnvVars
+			merged.Resources = d.Resources
+
+			// preserve controller-marked delete flag if already set
+			if strings.TrimSpace(strings.ToLower(old.IsDelete)) != "" {
+				merged.IsDelete = old.IsDelete
+			} else {
+				merged.IsDelete = d.IsDelete
+			}
+
+			out = append(out, merged)
+		} else {
+			out = append(out, d)
+		}
+	}
+
+	// preserve extra old shards during scale-in so controller can mark/delete them properly
+	extras := make([]ShardSpec, 0)
+	for _, s := range existing {
+		name := strings.TrimSpace(s.Name)
+		if name == "" {
+			continue
+		}
+		if desiredNames[name] {
+			continue
+		}
+		extras = append(extras, s)
+	}
+
+	sort.Slice(extras, func(i, j int) bool {
+		return shardOrdinalWebhook(extras[i].Name) < shardOrdinalWebhook(extras[j].Name)
+	})
+
+	out = append(out, extras...)
+	return out
+}
+
+func shardOrdinalWebhook(name string) int {
+	n := 0
+	mult := 1
+	foundDigit := false
+
+	for i := len(name) - 1; i >= 0; i-- {
+		if unicode.IsDigit(rune(name[i])) {
+			foundDigit = true
+			n += int(name[i]-'0') * mult
+			mult *= 10
+			continue
+		}
+		if foundDigit {
+			return n
+		}
+	}
+
+	if foundDigit {
+		return n
+	}
+	return 0
 }
 
 func detectShardingMode(spec *ShardingDatabaseSpec) shardingMode {
