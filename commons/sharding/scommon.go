@@ -1502,14 +1502,21 @@ func CheckChunksRemaining(
 ) (bool, string, error) {
 	stdout, stderr, err := ExecCommand(gsmPodName, getNoChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
 
-	LogMessages("INFO", "CheckChunksRemaining stdout: "+stdout, nil, instance, logger)
-	LogMessages("INFO", "CheckChunksRemaining stderr: "+stderr, nil, instance, logger)
+	if strings.TrimSpace(stdout) != "" {
+		LogMessages("DEBUG", "CheckChunksRemaining stdout: "+strings.TrimSpace(stdout), nil, instance, logger)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		LogMessages("DEBUG", "CheckChunksRemaining stderr: "+strings.TrimSpace(stderr), nil, instance, logger)
+	}
 
+	// no chunks remain
 	if err == nil {
 		return false, "", nil
 	}
 
 	errStr := err.Error()
+
+	// existing behavior: command returns exit 127 while chunks still remain
 	if strings.Contains(errStr, "exit code 127") {
 		summary := strings.TrimSpace(stdout)
 		if summary == "" {

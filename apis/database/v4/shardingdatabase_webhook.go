@@ -434,7 +434,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	for pindex := range r.Spec.ShardInfo {
 		replicas = r.Spec.ShardInfo[pindex].Replicas
 		if replicas == 0 {
-			replicas = 2
+			replicas = 1
 			r.Spec.ShardInfo[pindex].Replicas = replicas
 		}
 		totalShard += replicas
