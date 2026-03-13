@@ -1481,16 +1481,68 @@ func MoveChunks(gsmPodName string, sparams string, instance *databasev4.Sharding
 	return nil
 }
 
-// Function to verify the chunks
-func VerifyChunks(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
-) error {
-	_, _, err := ExecCommand(gsmPodName, getNoChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
-	if err != nil {
-		msg := "Chunks are not moved completely from the shard: " + GetFmtStr(sparams) + " in GSM."
-		LogMessages("INFO", msg, nil, instance, logger)
-		return err
+func GetCheckChunksCmd(sparamStr string) []string {
+	return []string{
+		oraScriptMount + "/cmdExec",
+		"/bin/python",
+		oraScriptMount + "/main.py",
+		"--checkchunks=" + strconv.Quote(sparamStr),
+		"--optype=gsm",
 	}
-	return nil
+}
+
+// Function to verify the chunks
+func CheckChunksRemaining(
+	gsmPodName string,
+	sparams string,
+	instance *databasev4.ShardingDatabase,
+	kubeClient kubernetes.Interface,
+	kubeconfig clientcmd.ClientConfig,
+	logger logr.Logger,
+) (bool, string, error) {
+	stdout, stderr, err := ExecCommand(gsmPodName, getNoChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
+
+	LogMessages("INFO", "CheckChunksRemaining stdout: "+stdout, nil, instance, logger)
+	LogMessages("INFO", "CheckChunksRemaining stderr: "+stderr, nil, instance, logger)
+
+	if err == nil {
+		return false, "", nil
+	}
+
+	errStr := err.Error()
+	if strings.Contains(errStr, "exit code 127") {
+		summary := strings.TrimSpace(stdout)
+		if summary == "" {
+			summary = strings.TrimSpace(stderr)
+		}
+		return true, summary, nil
+	}
+
+	return false, "", err
+}
+
+func extractShardDbAndPdbFromSparams(sparams string) (string, string) {
+	var shardDB, shardPDB string
+
+	parts := strings.Split(sparams, ";")
+	for _, part := range parts {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+
+		key := strings.ToLower(strings.TrimSpace(kv[0]))
+		val := strings.TrimSpace(kv[1])
+
+		switch key {
+		case "shard_db":
+			shardDB = val
+		case "shard_pdb":
+			shardPDB = val
+		}
+	}
+
+	return shardDB, shardPDB
 }
 
 // Function to verify the chunks

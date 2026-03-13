@@ -69,6 +69,7 @@ import (
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
+	"github.com/oracle/oracle-database-operator/commons/shapes"
 	shardingv1 "github.com/oracle/oracle-database-operator/commons/sharding"
 )
 
@@ -2006,196 +2007,283 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 	var shardPod *corev1.Pod
 	gsmPod := &corev1.Pod{}
 	var msg string
-	var setLifeCycleFlag = false
+	var setLifeCycleFlag bool
+
+	const (
+		pollInterval     = 20 * time.Second
+		maxVerifyRetries = 90
+		stallLimit       = 4
+		maxMoveResubmits = 5
+	)
 
 	shardingv1.LogMessages("INFO", "Entered delGsmShard()", nil, instance, r.Log)
 	shardingv1.LogMessages("DEBUG", "Starting shard deletion operation.", nil, instance, r.Log)
 
-	if len(instance.Spec.Shard) > 0 {
-		for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
-			OraShardSpex := instance.Spec.Shard[i]
+	if len(instance.Spec.Shard) == 0 {
+		return nil
+	}
 
+	for i = 0; i < int32(len(instance.Spec.Shard)); i++ {
+		OraShardSpex := instance.Spec.Shard[i]
+
+		shardingv1.LogMessages(
+			"INFO",
+			fmt.Sprintf("delGsmShard examining shard=%s isDelete=%s deployAs=%s", OraShardSpex.Name, OraShardSpex.IsDelete, OraShardSpex.DeployAs),
+			nil,
+			instance,
+			r.Log,
+		)
+
+		if !shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
+			shardingv1.LogMessages("INFO", "delGsmShard skipping shard "+OraShardSpex.Name+" because isDelete is not enabled", nil, instance, r.Log)
+			continue
+		}
+
+		shardingv1.LogMessages("INFO", "delGsmShard picked delete candidate "+OraShardSpex.Name, nil, instance, r.Log)
+
+		if !setLifeCycleFlag {
+			setLifeCycleFlag = true
+			stateType := string(databasev4.CrdReconcileWaitingState)
+			r.setCrdLifeCycleState(instance, &result, &err, &stateType)
+		}
+
+		patchDeleteFlag := func(idx int32, val string) error {
+			oldObj := instance.DeepCopy()
+			newObj := instance.DeepCopy()
+			newObj.Spec.Shard[idx].IsDelete = val
+
+			if err := shardingv1.InstanceShardPatch(oldObj, newObj, r.Client, idx, "isDelete", val); err != nil {
+				return err
+			}
+
+			instance.Spec.Shard[idx].IsDelete = val
+			return nil
+		}
+
+		markChunkMoveFailed := func(cause error) error {
+			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
+			if perr := patchDeleteFlag(i, "failed"); perr != nil {
+				msg = "Error occurred while changing the isDelete value to failed in Spec struct"
+				shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
+				return perr
+			}
+			return cause
+		}
+
+		submitMoveChunks := func(tag string, sparams string) error {
 			shardingv1.LogMessages(
 				"INFO",
-				fmt.Sprintf("delGsmShard examining shard=%s isDelete=%s deployAs=%s", OraShardSpex.Name, OraShardSpex.IsDelete, OraShardSpex.DeployAs),
+				fmt.Sprintf("Submitting MoveChunks for %s (%s)", OraShardSpex.Name, tag),
 				nil,
 				instance,
 				r.Log,
 			)
+			return shardingv1.MoveChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		}
 
-			if !shardingv1.CheckIsDeleteFlag(OraShardSpex.IsDelete, instance, r.Log) {
-				shardingv1.LogMessages("INFO", "delGsmShard skipping shard "+OraShardSpex.Name+" because isDelete is not enabled", nil, instance, r.Log)
-				continue
+		// Step 1: validate GSM
+		_, gsmPod, err = r.validateGsm(instance)
+		if err != nil {
+			shardingv1.LogMessages("INFO", "delGsmShard validateGsm failed for "+OraShardSpex.Name+": "+err.Error(), nil, instance, r.Log)
+			return err
+		}
+		shardingv1.LogMessages("INFO", "delGsmShard validateGsm passed for "+OraShardSpex.Name+" using gsm pod "+gsmPod.Name, nil, instance, r.Log)
+
+		chkState := shardingv1.GetGsmShardStatus(instance, OraShardSpex.Name)
+		shardingv1.LogMessages("INFO", "delGsmShard current GSM shard status for "+OraShardSpex.Name+" is "+chkState, nil, instance, r.Log)
+
+		// Step 2: check physical shard existence directly
+		shardSfSet, err = shardingv1.CheckSfset(OraShardSpex.Name, instance, r.Client)
+		if err != nil {
+			shardingv1.LogMessages("INFO", "delGsmShard StatefulSet not found for "+OraShardSpex.Name+"; marking terminated", nil, instance, r.Log)
+			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
+			r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
+			continue
+		}
+		shardingv1.LogMessages("INFO", "delGsmShard found StatefulSet for "+OraShardSpex.Name, nil, instance, r.Log)
+
+		// best effort pod lookup
+		shardPod = nil
+		podList, perr := shardingv1.GetPodList(shardSfSet.Name, "SHARD", instance, r.Client)
+		if perr == nil {
+			_, pod := shardingv1.PodListValidation(podList, shardSfSet.Name, instance, r.Client)
+			if pod != nil && pod.Name != "" {
+				shardPod = pod
+				shardingv1.LogMessages("INFO", "delGsmShard found pod "+shardPod.Name+" for shard "+OraShardSpex.Name, nil, instance, r.Log)
 			}
+		} else {
+			shardingv1.LogMessages("INFO", "delGsmShard GetPodList failed for "+OraShardSpex.Name+": "+perr.Error(), nil, instance, r.Log)
+		}
 
-			shardingv1.LogMessages("INFO", "delGsmShard picked delete candidate "+OraShardSpex.Name, nil, instance, r.Log)
-
-			if setLifeCycleFlag != true {
-				setLifeCycleFlag = true
-				stateType := string(databasev4.CrdReconcileWaitingState)
-				r.setCrdLifeCycleState(instance, &result, &err, &stateType)
-			}
-
-			// Step 1: validate GSM
-			_, gsmPod, err = r.validateGsm(instance)
-			if err != nil {
-				shardingv1.LogMessages("INFO", "delGsmShard validateGsm failed for "+OraShardSpex.Name+": "+err.Error(), nil, instance, r.Log)
-				return err
-			}
-			shardingv1.LogMessages("INFO", "delGsmShard validateGsm passed for "+OraShardSpex.Name+" using gsm pod "+gsmPod.Name, nil, instance, r.Log)
-
-			chkState := shardingv1.GetGsmShardStatus(instance, OraShardSpex.Name)
-			shardingv1.LogMessages("INFO", "delGsmShard current GSM shard status for "+OraShardSpex.Name+" is "+chkState, nil, instance, r.Log)
-
-			// Step 2: check physical shard existence directly
-			shardSfSet, err = shardingv1.CheckSfset(OraShardSpex.Name, instance, r.Client)
-			if err != nil {
-				shardingv1.LogMessages("INFO", "delGsmShard StatefulSet not found for "+OraShardSpex.Name+"; marking terminated", nil, instance, r.Log)
-				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
-				r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
-				continue
-			}
-			shardingv1.LogMessages("INFO", "delGsmShard found StatefulSet for "+OraShardSpex.Name, nil, instance, r.Log)
-
-			// best effort pod lookup
-			shardPod = nil
-			podList, perr := shardingv1.GetPodList(shardSfSet.Name, "SHARD", instance, r.Client)
-			if perr == nil {
-				_, pod := shardingv1.PodListValidation(podList, shardSfSet.Name, instance, r.Client)
-				if pod != nil && pod.Name != "" {
-					shardPod = pod
-					shardingv1.LogMessages("INFO", "delGsmShard found pod "+shardPod.Name+" for shard "+OraShardSpex.Name, nil, instance, r.Log)
-				}
-			} else {
-				shardingv1.LogMessages("INFO", "delGsmShard GetPodList failed for "+OraShardSpex.Name+": "+perr.Error(), nil, instance, r.Log)
-			}
-
-			// If shard is not present in GSM status cache, still delete physical resources
-			if chkState == "NOSTATE" {
-				shardingv1.LogMessages(
-					"INFO",
-					"Shard "+OraShardSpex.Name+" not found in GSM status cache; deleting physical resources directly",
-					nil,
-					instance,
-					r.Log,
-				)
-				r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
-				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
-				r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
-				continue
-			}
-
-			// Step 3: validate shard if it exists in GSM cache
-			_, _, err = r.validateShard(instance, OraShardSpex, int(i))
-			if err != nil {
-				shardingv1.LogMessages("INFO", "delGsmShard validateShard failed for "+OraShardSpex.Name+": "+err.Error(), nil, instance, r.Log)
-				continue
-			}
-			shardingv1.LogMessages("INFO", "delGsmShard validateShard passed for "+OraShardSpex.Name, nil, instance, r.Log)
-
-			// Step 4: check if shard exists in GSM
-			sparams := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
-			shardingv1.LogMessages("INFO", "delGsmShard built shard params for "+OraShardSpex.Name+": "+sparams, nil, instance, r.Log)
-
-			err = shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-			if err != nil {
-				shardingv1.LogMessages("INFO", "delGsmShard CheckShardInGsm failed for "+OraShardSpex.Name+": "+err.Error()+" ; deleting physical resources directly", nil, instance, r.Log)
-				r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
-				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
-				r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
-				continue
-			}
-			shardingv1.LogMessages("INFO", "delGsmShard CheckShardInGsm passed for "+OraShardSpex.Name, nil, instance, r.Log)
-
-			// Step 5: ensure online in GSM
-			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeletingState))
-			shardingv1.LogMessages("INFO", "delGsmShard set GSM shard status to DeletingState for "+OraShardSpex.Name, nil, instance, r.Log)
-
-			err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-			if err != nil {
-				shardingv1.LogMessages("INFO", "delGsmShard CheckOnlineShardInGsm failed for "+OraShardSpex.Name+": "+err.Error(), nil, instance, r.Log)
-				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeleteErrorState))
-				continue
-			}
-			shardingv1.LogMessages("INFO", "delGsmShard CheckOnlineShardInGsm passed for "+OraShardSpex.Name, nil, instance, r.Log)
-
-			// Step 6: move chunks before deleting PRIMARY shard
-			if r.shouldMoveChunksBeforeDelete(instance, OraShardSpex) {
-				shardingv1.LogMessages("INFO", "delGsmShard starting MoveChunks for "+OraShardSpex.Name, nil, instance, r.Log)
-
-				err = shardingv1.MoveChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-				if err != nil {
-					shardingv1.LogMessages("INFO", "delGsmShard MoveChunks failed for "+OraShardSpex.Name+": "+err.Error(), nil, instance, r.Log)
-					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.ChunkMoveError))
-					instance.Spec.Shard[i].IsDelete = "failed"
-					err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
-					if err != nil {
-						msg = "Error occurred while changing the isDelete value to failed in Spec struct"
-						shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-						return err
-					}
-					continue
-				}
-
-				shardingv1.LogMessages("INFO", "delGsmShard MoveChunks command submitted for "+OraShardSpex.Name, nil, instance, r.Log)
-
-				maxVerifyRetries := 15
-				for retry := 1; retry <= maxVerifyRetries; retry++ {
-					msg = fmt.Sprintf(
-						"Sleeping for 120 seconds before rechecking chunk movement for shard %s (attempt %d/%d)",
-						shardingv1.GetFmtStr(OraShardSpex.Name), retry, maxVerifyRetries,
-					)
-					shardingv1.LogMessages("INFO", msg, nil, instance, r.Log)
-					time.Sleep(120 * time.Second)
-
-					shardingv1.LogMessages("INFO", "delGsmShard verifying chunk movement for "+OraShardSpex.Name, nil, instance, r.Log)
-					err = shardingv1.VerifyChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-					if err == nil {
-						shardingv1.LogMessages("INFO", "delGsmShard VerifyChunks passed for "+OraShardSpex.Name, nil, instance, r.Log)
-						break
-					}
-
-					shardingv1.LogMessages("INFO", "delGsmShard VerifyChunks still pending/failed for "+OraShardSpex.Name+": "+err.Error(), nil, instance, r.Log)
-
-					if retry == maxVerifyRetries {
-						instance.Spec.Shard[i].IsDelete = "failed"
-						err = shardingv1.InstanceShardPatch(instance, instance, r.Client, i, "isDelete", "failed")
-						if err != nil {
-							msg = "Error occurred while changing the isDelete value to failed in Spec struct"
-							shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-							return err
-						}
-						return fmt.Errorf("chunk movement verification timed out for shard %s", OraShardSpex.Name)
-					}
-				}
-			} else {
-				shardingv1.LogMessages(
-					"INFO",
-					"Skipping chunk movement for shard "+OraShardSpex.Name+" because it is standby/active_standby or NATIVE replication",
-					nil,
-					instance,
-					r.Log,
-				)
-			}
-
-			// Step 7: remove from GSM
-			shardingv1.LogMessages("INFO", "delGsmShard removing shard from GSM "+OraShardSpex.Name, nil, instance, r.Log)
-			err = shardingv1.RemoveShardFromGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
-			if err != nil {
-				msg = "Error occurred during shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " removal from Gsm"
-				shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
-				r.updateShardStatus(instance, int(i), string(databasev4.ShardRemoveError))
-				instance.Spec.Shard[i].IsDelete = "failed"
-				continue
-			}
-			shardingv1.LogMessages("INFO", "delGsmShard RemoveShardFromGsm passed for "+OraShardSpex.Name, nil, instance, r.Log)
-
-			// Step 8: delete physical resources
-			shardingv1.LogMessages("INFO", "delGsmShard deleting physical shard resources for "+OraShardSpex.Name, nil, instance, r.Log)
+		// If shard is not present in GSM cache, still delete physical resources
+		if chkState == "NOSTATE" {
+			shardingv1.LogMessages(
+				"INFO",
+				"Shard "+OraShardSpex.Name+" not found in GSM status cache; deleting physical resources directly",
+				nil,
+				instance,
+				r.Log,
+			)
 			r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
 			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
 			r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
+			continue
 		}
+
+		// Step 3: best-effort validate shard
+		_, _, err = r.validateShard(instance, OraShardSpex, int(i))
+		if err != nil {
+			shardingv1.LogMessages(
+				"INFO",
+				"delGsmShard validateShard failed for "+OraShardSpex.Name+" but continuing delete flow: "+err.Error(),
+				nil,
+				instance,
+				r.Log,
+			)
+		} else {
+			shardingv1.LogMessages("INFO", "delGsmShard validateShard passed for "+OraShardSpex.Name, nil, instance, r.Log)
+		}
+
+		// Step 4: check if shard exists in GSM
+		sparams := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
+		shardingv1.LogMessages("INFO", "delGsmShard built shard params for "+OraShardSpex.Name+": "+sparams, nil, instance, r.Log)
+
+		err = shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		if err != nil {
+			shardingv1.LogMessages("INFO", "delGsmShard CheckShardInGsm failed for "+OraShardSpex.Name+": "+err.Error()+" ; deleting physical resources directly", nil, instance, r.Log)
+			r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
+			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
+			r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
+			continue
+		}
+		shardingv1.LogMessages("INFO", "delGsmShard CheckShardInGsm passed for "+OraShardSpex.Name, nil, instance, r.Log)
+
+		// Step 5: ensure online in GSM
+		r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeletingState))
+		shardingv1.LogMessages("INFO", "delGsmShard set GSM shard status to DeletingState for "+OraShardSpex.Name, nil, instance, r.Log)
+
+		err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		if err != nil {
+			shardingv1.LogMessages("INFO", "delGsmShard CheckOnlineShardInGsm failed for "+OraShardSpex.Name+": "+err.Error(), nil, instance, r.Log)
+			r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.DeleteErrorState))
+			continue
+		}
+		shardingv1.LogMessages("INFO", "delGsmShard CheckOnlineShardInGsm passed for "+OraShardSpex.Name, nil, instance, r.Log)
+
+		// Step 6: move chunks before deleting PRIMARY shard
+		if r.shouldMoveChunksBeforeDelete(instance, OraShardSpex) {
+			if err = submitMoveChunks("initial", sparams); err != nil {
+				shardingv1.LogMessages("INFO", "delGsmShard MoveChunks failed for "+OraShardSpex.Name+": "+err.Error(), nil, instance, r.Log)
+				return markChunkMoveFailed(err)
+			}
+
+			lastSummary := ""
+			stallCount := 0
+			resubmitCount := 0
+			chunksCleared := false
+
+			for retry := 1; retry <= maxVerifyRetries; retry++ {
+				time.Sleep(pollInterval)
+
+				remaining, summary, cerr := shardingv1.CheckChunksRemaining(
+					gsmPod.Name,
+					sparams,
+					instance,
+					r.kubeClient,
+					r.kubeConfig,
+					r.Log,
+				)
+				if cerr != nil {
+					shardingv1.LogMessages(
+						"INFO",
+						"delGsmShard CheckChunksRemaining failed for "+OraShardSpex.Name+": "+cerr.Error(),
+						nil,
+						instance,
+						r.Log,
+					)
+					return markChunkMoveFailed(cerr)
+				}
+
+				if !remaining {
+					shardingv1.LogMessages("INFO", "All chunks moved successfully for "+OraShardSpex.Name, nil, instance, r.Log)
+					chunksCleared = true
+					break
+				}
+
+				shardingv1.LogMessages(
+					"INFO",
+					fmt.Sprintf("Chunks still remain on shard %s (attempt %d/%d): %s", OraShardSpex.Name, retry, maxVerifyRetries, summary),
+					nil,
+					instance,
+					r.Log,
+				)
+
+				if summary == lastSummary {
+					stallCount++
+				} else {
+					lastSummary = summary
+					stallCount = 0
+				}
+
+				if stallCount >= stallLimit {
+					if resubmitCount < maxMoveResubmits {
+						resubmitCount++
+						stallCount = 0
+						lastSummary = ""
+
+						if err = submitMoveChunks(fmt.Sprintf("resubmit-%d/%d", resubmitCount, maxMoveResubmits), sparams); err != nil {
+							shardingv1.LogMessages(
+								"INFO",
+								"delGsmShard MoveChunks resubmit failed for "+OraShardSpex.Name+": "+err.Error(),
+								nil,
+								instance,
+								r.Log,
+							)
+							return markChunkMoveFailed(err)
+						}
+						continue
+					}
+
+					return markChunkMoveFailed(fmt.Errorf("chunk movement stalled for shard %s", OraShardSpex.Name))
+				}
+
+				if retry == maxVerifyRetries {
+					return markChunkMoveFailed(fmt.Errorf("chunk movement timed out for shard %s", OraShardSpex.Name))
+				}
+			}
+
+			if !chunksCleared {
+				return markChunkMoveFailed(fmt.Errorf("chunk movement incomplete for shard %s", OraShardSpex.Name))
+			}
+		} else {
+			shardingv1.LogMessages(
+				"INFO",
+				"Skipping chunk movement for shard "+OraShardSpex.Name+" because it is standby/active_standby or NATIVE replication",
+				nil,
+				instance,
+				r.Log,
+			)
+		}
+
+		// Step 7: remove from GSM
+		shardingv1.LogMessages("INFO", "delGsmShard removing shard from GSM "+OraShardSpex.Name, nil, instance, r.Log)
+		err = shardingv1.RemoveShardFromGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		if err != nil {
+			msg = "Error occurred during shard " + shardingv1.GetFmtStr(OraShardSpex.Name) + " removal from Gsm"
+			shardingv1.LogMessages("Error", msg, nil, instance, r.Log)
+			r.updateShardStatus(instance, int(i), string(databasev4.ShardRemoveError))
+			if perr := patchDeleteFlag(i, "failed"); perr != nil {
+				return perr
+			}
+			continue
+		}
+		shardingv1.LogMessages("INFO", "delGsmShard RemoveShardFromGsm passed for "+OraShardSpex.Name, nil, instance, r.Log)
+
+		// Step 8: delete physical resources
+		shardingv1.LogMessages("INFO", "delGsmShard deleting physical shard resources for "+OraShardSpex.Name, nil, instance, r.Log)
+		r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
+		r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.Terminated))
+		r.updateShardStatus(instance, int(i), string(databasev4.Terminated))
 	}
 
 	shardingv1.LogMessages("INFO", "Completed the shard deletion operation.", nil, instance, r.Log)
@@ -2701,7 +2789,8 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleInMarks(instance *database
 
 		// preserve failed state until user/operator resolves it
 		if curr == "failed" {
-			continue
+			// allow failed extra candidates to be reconsidered for scale-in retry
+			curr = "disable"
 		}
 
 		if candidateIdx[i] {
@@ -3124,6 +3213,136 @@ func statefulSetNeedsShapeRecreate(current, desired *appsv1.StatefulSet) bool {
 
 	return false
 }
+func compareShapeSize(oldShape, newShape string) (int, bool) {
+	oldCfg, okOld := shapes.LookupShapeConfig(oldShape)
+	newCfg, okNew := shapes.LookupShapeConfig(newShape)
+	if !okOld || !okNew {
+		return 0, false
+	}
+
+	oldScore := oldCfg.CPU + oldCfg.SGAGB + oldCfg.PGAGB + oldCfg.Processes
+	newScore := newCfg.CPU + newCfg.SGAGB + newCfg.PGAGB + newCfg.Processes
+
+	switch {
+	case oldScore < newScore:
+		return -1, true
+	case oldScore > newScore:
+		return 1, true
+	default:
+		return 0, true
+	}
+}
+
+func isCatalogShapeDownscale(curr *databasev4.ShardingDatabaseSpec, old *databasev4.ShardingDatabaseSpec, name string) bool {
+	oldShape := findCatalogShape(old, name)
+	newShape := findCatalogShape(curr, name)
+
+	if oldShape == "" || newShape == "" {
+		return false
+	}
+
+	cmp, ok := compareShapeSize(oldShape, newShape)
+	return ok && cmp > 0
+}
+
+func isShardShapeDownscale(curr *databasev4.ShardingDatabaseSpec, old *databasev4.ShardingDatabaseSpec, shardName string) bool {
+	oldShape := findShardShapeForName(old, shardName)
+	newShape := findShardShapeForName(curr, shardName)
+
+	if oldShape == "" || newShape == "" {
+		return false
+	}
+
+	cmp, ok := compareShapeSize(oldShape, newShape)
+	return ok && cmp > 0
+}
+
+func desiredShapeForTarget(instance *databasev4.ShardingDatabase, t shapeRollTarget) string {
+	switch t.kind {
+	case "CATALOG":
+		return findCatalogShape(&instance.Spec, t.name)
+	case "SHARD":
+		return findShardShapeForName(&instance.Spec, t.name)
+	default:
+		return ""
+	}
+}
+
+func desiredCfgForTarget(instance *databasev4.ShardingDatabase, t shapeRollTarget) (shapes.ShapeConfig, bool) {
+	shape := desiredShapeForTarget(instance, t)
+	if shape == "" {
+		return shapes.ShapeConfig{}, false
+	}
+	return shapes.LookupShapeConfig(shape)
+}
+
+func (r *ShardingDatabaseReconciler) isDownscaleTarget(
+	instance *databasev4.ShardingDatabase,
+	lastSuccSpec *databasev4.ShardingDatabaseSpec,
+	t shapeRollTarget,
+) bool {
+	switch t.kind {
+	case "CATALOG":
+		return isCatalogShapeDownscale(&instance.Spec, lastSuccSpec, t.name)
+	case "SHARD":
+		return isShardShapeDownscale(&instance.Spec, lastSuccSpec, t.name)
+	default:
+		return false
+	}
+}
+
+func buildDownscaleSQL(cfg shapes.ShapeConfig) string {
+	return fmt.Sprintf(`
+alter system set sga_target=%dM scope=spfile sid='*';
+alter system set sga_max_size=%dM scope=spfile sid='*';
+alter system set pga_aggregate_target=%dM scope=spfile sid='*';
+alter system set processes=%d scope=spfile sid='*';
+alter system set cpu_count=%d scope=spfile sid='*';
+`,
+		cfg.SGAGB*1024,
+		cfg.SGAGB*1024,
+		cfg.PGAGB*1024,
+		cfg.Processes,
+		cfg.CPU,
+	)
+}
+
+func (r *ShardingDatabaseReconciler) applyDownscaleDbParamsBeforeRestart(
+	instance *databasev4.ShardingDatabase,
+	lastSuccSpec *databasev4.ShardingDatabaseSpec,
+	t shapeRollTarget,
+) error {
+	if !r.isDownscaleTarget(instance, lastSuccSpec, t) {
+		return nil
+	}
+
+	cfg, ok := desiredCfgForTarget(instance, t)
+	if !ok {
+		return fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
+	}
+
+	sql := buildDownscaleSQL(cfg)
+
+	switch t.kind {
+	case "CATALOG":
+		_, pod, err := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx)
+		if err != nil {
+			return fmt.Errorf("catalog %s not ready for downscale preparation: %w", t.name, err)
+		}
+		shardingv1.LogMessages("INFO", "Applying catalog downscale DB params before restart for "+t.name, nil, instance, r.Log)
+		return shardingv1.RunSQLPlusInPod(pod.Name, sql, instance, r.kubeClient, r.kubeConfig, r.Log)
+
+	case "SHARD":
+		_, pod, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
+		if err != nil {
+			return fmt.Errorf("shard %s not ready for downscale preparation: %w", t.name, err)
+		}
+		shardingv1.LogMessages("INFO", "Applying shard downscale DB params before restart for "+t.name, nil, instance, r.Log)
+		return shardingv1.RunSQLPlusInPod(pod.Name, sql, instance, r.kubeClient, r.kubeConfig, r.Log)
+	}
+
+	return nil
+}
 
 func (r *ShardingDatabaseReconciler) orderedShapeChangeTargets(instance *databasev4.ShardingDatabase) ([]shapeRollTarget, error) {
 	lastSuccSpec, err := instance.GetLastSuccessfulSpec()
@@ -3180,6 +3399,14 @@ func (r *ShardingDatabaseReconciler) orderedShapeChangeTargets(instance *databas
 }
 
 func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *databasev4.ShardingDatabase) (bool, error) {
+	lastSuccSpec, err := instance.GetLastSuccessfulSpec()
+	if err != nil {
+		return false, err
+	}
+	if lastSuccSpec == nil {
+		return false, nil
+	}
+
 	targets, err := r.orderedShapeChangeTargets(instance)
 	if err != nil {
 		return false, err
@@ -3206,6 +3433,13 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 		}
 
 		if statefulSetNeedsShapeRecreate(currSts, desiredSts) {
+			if r.isDownscaleTarget(instance, lastSuccSpec, t) {
+				if err := r.applyDownscaleDbParamsBeforeRestart(instance, lastSuccSpec, t); err != nil {
+					shardingv1.LogMessages("INFO", "Ordered shape rollout downscale preparation failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
+					return true, err
+				}
+			}
+
 			shardingv1.LogMessages("INFO", "Ordered shape rollout deleting "+t.name+" for recreate", nil, instance, r.Log)
 			if derr := r.Client.Delete(context.Background(), currSts); derr != nil && !errors.IsNotFound(derr) {
 				return true, derr
