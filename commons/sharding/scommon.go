@@ -1528,30 +1528,6 @@ func CheckChunksRemaining(
 	return false, "", err
 }
 
-func extractShardDbAndPdbFromSparams(sparams string) (string, string) {
-	var shardDB, shardPDB string
-
-	parts := strings.Split(sparams, ";")
-	for _, part := range parts {
-		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
-		if len(kv) != 2 {
-			continue
-		}
-
-		key := strings.ToLower(strings.TrimSpace(kv[0]))
-		val := strings.TrimSpace(kv[1])
-
-		switch key {
-		case "shard_db":
-			shardDB = val
-		case "shard_pdb":
-			shardPDB = val
-		}
-	}
-
-	return shardDB, shardPDB
-}
-
 // Function to verify the chunks
 func AddShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
