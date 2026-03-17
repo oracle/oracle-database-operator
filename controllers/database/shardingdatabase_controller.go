@@ -3453,6 +3453,92 @@ func (r *ShardingDatabaseReconciler) restartShapeTargetStatefulSet(
 	}
 	return true, nil
 }
+func compareShapeSize(oldCfg, newCfg shapes.ShapeConfig) int {
+	oldScore := oldCfg.CPU + oldCfg.SGAGB + oldCfg.PGAGB + oldCfg.Processes
+	newScore := newCfg.CPU + newCfg.SGAGB + newCfg.PGAGB + newCfg.Processes
+
+	switch {
+	case newScore > oldScore:
+		return 1
+	case newScore < oldScore:
+		return -1
+	default:
+		return 0
+	}
+}
+
+func (r *ShardingDatabaseReconciler) isDownscaleShapeTarget(
+	instance *databasev4.ShardingDatabase,
+	lastSuccSpec *databasev4.ShardingDatabaseSpec,
+	t shapeRollTarget,
+) bool {
+	var oldShape, newShape string
+
+	switch t.kind {
+	case "CATALOG":
+		oldShape = findCatalogShape(lastSuccSpec, t.name)
+		newShape = findCatalogShape(&instance.Spec, t.name)
+	case "SHARD":
+		oldShape = findShardShapeForName(lastSuccSpec, t.name)
+		newShape = findShardShapeForName(&instance.Spec, t.name)
+	default:
+		return false
+	}
+
+	if strings.TrimSpace(oldShape) == "" || strings.TrimSpace(newShape) == "" {
+		return false
+	}
+
+	oldCfg, okOld := shapes.LookupShapeConfig(oldShape)
+	newCfg, okNew := shapes.LookupShapeConfig(newShape)
+	if !okOld || !okNew {
+		return false
+	}
+
+	return compareShapeSize(oldCfg, newCfg) < 0
+}
+
+func (r *ShardingDatabaseReconciler) applyShapeDbParamsBeforeRestartIfNeeded(
+	instance *databasev4.ShardingDatabase,
+	lastSuccSpec *databasev4.ShardingDatabaseSpec,
+	t shapeRollTarget,
+) error {
+	if !r.isDownscaleShapeTarget(instance, lastSuccSpec, t) {
+		return nil
+	}
+
+	cfg, ok := desiredCfgForTarget(instance, t)
+	if !ok {
+		return fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
+	}
+
+	currentVals, err := r.readShapeDbValues(instance, t)
+	if err != nil {
+		return err
+	}
+
+	expectedVals := expectedShapeDbValues(cfg)
+	if shapeDbValuesEqual(currentVals, expectedVals) {
+		shardingv1.LogMessages(
+			"INFO",
+			fmt.Sprintf("Ordered shape rollout DB params already prepared before restart for %s %s", t.kind, t.name),
+			nil,
+			instance,
+			r.Log,
+		)
+		return nil
+	}
+
+	shardingv1.LogMessages(
+		"INFO",
+		fmt.Sprintf("Ordered shape rollout applying DB params before restart for downscale on %s %s", t.kind, t.name),
+		nil,
+		instance,
+		r.Log,
+	)
+
+	return r.applyShapeDbParamsAndLog(instance, t)
+}
 
 func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *databasev4.ShardingDatabase) (bool, error) {
 	lastSuccSpec, err := instance.GetLastSuccessfulSpec()
@@ -3483,18 +3569,38 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 			return true, fmt.Errorf("unable to build desired StatefulSet for %s %s", t.kind, t.name)
 		}
 
-		// Phase 1: if pod template/resources/env still old, do first restart for K8s shape change
-		if statefulSetNeedsShapeRecreate(currSts, desiredSts) {
+		needsK8sRestart := statefulSetNeedsShapeRecreate(currSts, desiredSts)
+		isDownscale := r.isDownscaleShapeTarget(instance, lastSuccSpec, t)
+
+		// DOWN-SCALE:
+		// first write smaller DB params into spfile on currently running pod,
+		// then do the K8s restart/recreate once.
+		if needsK8sRestart && isDownscale {
+			if err := r.validateShapeTargetReady(instance, t); err != nil {
+				shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for "+t.kind+" "+t.name+" to become ready before downscale", nil, instance, r.Log)
+				return true, nil
+			}
+
+			if err := r.applyShapeDbParamsBeforeRestartIfNeeded(instance, lastSuccSpec, t); err != nil {
+				shardingv1.LogMessages("INFO", "Ordered shape rollout pre-restart DB param apply failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
+				return true, err
+			}
+
+			return r.restartShapeTargetStatefulSet(instance, t, currSts, "downscale Kubernetes shape change")
+		}
+
+		// UPSCALE
+		// first restart for bigger K8s memory/cpu, then later apply DB params, then restart once more.
+		if needsK8sRestart && !isDownscale {
 			return r.restartShapeTargetStatefulSet(instance, t, currSts, "Kubernetes shape change")
 		}
 
-		// Phase 2: wait until recreated target is fully ready
+		// Wait until target is ready after recreate
 		if err := r.validateShapeTargetReady(instance, t); err != nil {
 			shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for "+t.kind+" "+t.name+" to become ready", nil, instance, r.Log)
 			return true, nil
 		}
 
-		// Phase 3: check DB parameter values
 		cfg, ok := desiredCfgForTarget(instance, t)
 		if !ok {
 			return true, fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
@@ -3508,19 +3614,26 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 
 		expectedVals := expectedShapeDbValues(cfg)
 
-		// If DB already matches desired shape, target is done
+		// If DB values already match, target is done
 		if shapeDbValuesEqual(currentVals, expectedVals) {
 			shardingv1.LogMessages("INFO", "Ordered shape rollout DB params already correct for "+t.name, nil, instance, r.Log)
 			continue
 		}
 
-		// Phase 4: write DB params to spfile
+		// For downscale, this usually means pre-restart params were applied and after restart
+		// they still did not reflect yet. Requeue and check again; do not force extra restart immediately.
+		if isDownscale {
+			shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for downscale DB params to reflect for "+t.name, nil, instance, r.Log)
+			return true, nil
+		}
+
+		// For upscale, keep existing working flow:
+		// apply DB params after bigger pod is up, then restart once more.
 		if err := r.applyShapeDbParamsAndLog(instance, t); err != nil {
 			shardingv1.LogMessages("INFO", "Ordered shape rollout DB param apply failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
 			return true, err
 		}
 
-		// Phase 5: restart once more so spfile params take effect
 		return r.restartShapeTargetStatefulSet(instance, t, currSts, "DB parameter restart")
 	}
 
