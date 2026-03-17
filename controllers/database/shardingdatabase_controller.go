@@ -3129,53 +3129,6 @@ func desiredCfgForTarget(instance *databasev4.ShardingDatabase, t shapeRollTarge
 	}
 	return shapes.LookupShapeConfig(shape)
 }
-func buildShapeChangeSQL(cfg shapes.ShapeConfig) string {
-	return fmt.Sprintf(`
-alter system set sga_target=%dM scope=spfile sid='*';
-alter system set sga_max_size=%dM scope=spfile sid='*';
-alter system set pga_aggregate_target=%dM scope=spfile sid='*';
-alter system set processes=%d scope=spfile sid='*';
-alter system set cpu_count=%d scope=spfile sid='*';
-`,
-		cfg.SGAGB*1024,
-		cfg.SGAGB*1024,
-		cfg.PGAGB*1024,
-		cfg.Processes,
-		cfg.CPU,
-	)
-}
-
-func (r *ShardingDatabaseReconciler) applyShapeDbParamsBeforeRestart(
-	instance *databasev4.ShardingDatabase,
-	t shapeRollTarget,
-) error {
-	cfg, ok := desiredCfgForTarget(instance, t)
-	if !ok {
-		return fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
-	}
-
-	sql := buildShapeChangeSQL(cfg)
-
-	switch t.kind {
-	case "CATALOG":
-		_, pod, err := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx)
-		if err != nil {
-			return fmt.Errorf("catalog %s not ready for shape preparation: %w", t.name, err)
-		}
-		shardingv1.LogMessages("INFO", "Applying catalog DB shape params before restart for "+t.name, nil, instance, r.Log)
-		return shardingv1.RunSQLPlusInPod(pod.Name, sql, instance, r.kubeClient, r.kubeConfig, r.Log)
-
-	case "SHARD":
-		_, pod, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
-		if err != nil {
-			return fmt.Errorf("shard %s not ready for shape preparation: %w", t.name, err)
-		}
-		shardingv1.LogMessages("INFO", "Applying shard DB shape params before restart for "+t.name, nil, instance, r.Log)
-		return shardingv1.RunSQLPlusInPod(pod.Name, sql, instance, r.kubeClient, r.kubeConfig, r.Log)
-	}
-
-	return fmt.Errorf("unknown shape target kind %s", t.kind)
-}
 
 func (r *ShardingDatabaseReconciler) orderedShapeChangeTargets(instance *databasev4.ShardingDatabase) ([]shapeRollTarget, error) {
 	lastSuccSpec, err := instance.GetLastSuccessfulSpec()
@@ -3230,13 +3183,15 @@ func (r *ShardingDatabaseReconciler) orderedShapeChangeTargets(instance *databas
 	targets = append(targets, shardTargets...)
 	return targets, nil
 }
-func buildShapeInitSQL(cfg shapes.ShapeConfig) string {
+func buildShapeParamApplySQL(cfg shapes.ShapeConfig) string {
 	return fmt.Sprintf(`
+whenever sqlerror exit failure
 alter system set sga_target=%dM scope=spfile sid='*';
 alter system set sga_max_size=%dM scope=spfile sid='*';
 alter system set pga_aggregate_target=%dM scope=spfile sid='*';
 alter system set processes=%d scope=spfile sid='*';
 alter system set cpu_count=%d scope=spfile sid='*';
+exit
 `,
 		cfg.SGAGB*1024,
 		cfg.SGAGB*1024,
@@ -3246,7 +3201,181 @@ alter system set cpu_count=%d scope=spfile sid='*';
 	)
 }
 
-func (r *ShardingDatabaseReconciler) applyShapeDbParams(
+func buildShapeParamReadSQL() string {
+	return `
+set heading off
+set feedback off
+set pages 0
+set verify off
+set echo off
+set termout off
+set trims on
+select 'SGA_TARGET=' || value from v$parameter where name='sga_target';
+select 'SGA_MAX_SIZE=' || value from v$parameter where name='sga_max_size';
+select 'PGA_AGGREGATE_TARGET=' || value from v$parameter where name='pga_aggregate_target';
+select 'PROCESSES=' || value from v$parameter where name='processes';
+select 'CPU_COUNT=' || value from v$parameter where name='cpu_count';
+exit
+`
+}
+
+type shapeDbValues struct {
+	SgaTargetBytes int64
+	SgaMaxBytes    int64
+	PgaTargetBytes int64
+	Processes      int64
+	CPUCount       int64
+}
+
+func expectedShapeDbValues(cfg shapes.ShapeConfig) shapeDbValues {
+	return shapeDbValues{
+		SgaTargetBytes: int64(cfg.SGAGB) * 1024 * 1024 * 1024,
+		SgaMaxBytes:    int64(cfg.SGAGB) * 1024 * 1024 * 1024,
+		PgaTargetBytes: int64(cfg.PGAGB) * 1024 * 1024 * 1024,
+		Processes:      int64(cfg.Processes),
+		CPUCount:       int64(cfg.CPU),
+	}
+}
+
+func parseShapeDbValues(out string) (shapeDbValues, error) {
+	var vals shapeDbValues
+	lines := strings.Split(out, "\n")
+
+	found := map[string]bool{}
+
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.ToUpper(strings.TrimSpace(parts[0]))
+		valStr := strings.TrimSpace(parts[1])
+
+		n, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			continue
+		}
+
+		switch key {
+		case "SGA_TARGET":
+			vals.SgaTargetBytes = n
+			found[key] = true
+		case "SGA_MAX_SIZE":
+			vals.SgaMaxBytes = n
+			found[key] = true
+		case "PGA_AGGREGATE_TARGET":
+			vals.PgaTargetBytes = n
+			found[key] = true
+		case "PROCESSES":
+			vals.Processes = n
+			found[key] = true
+		case "CPU_COUNT":
+			vals.CPUCount = n
+			found[key] = true
+		}
+	}
+
+	required := []string{
+		"SGA_TARGET",
+		"SGA_MAX_SIZE",
+		"PGA_AGGREGATE_TARGET",
+		"PROCESSES",
+		"CPU_COUNT",
+	}
+
+	for _, k := range required {
+		if !found[k] {
+			return vals, fmt.Errorf("missing %s in DB verify output: %s", k, out)
+		}
+	}
+
+	return vals, nil
+}
+
+func shapeDbValuesEqual(a, b shapeDbValues) bool {
+	return a.SgaTargetBytes == b.SgaTargetBytes &&
+		a.SgaMaxBytes == b.SgaMaxBytes &&
+		a.PgaTargetBytes == b.PgaTargetBytes &&
+		a.Processes == b.Processes &&
+		a.CPUCount == b.CPUCount
+}
+
+func (r *ShardingDatabaseReconciler) execSQLForShapeTarget(
+	instance *databasev4.ShardingDatabase,
+	t shapeRollTarget,
+	sql string,
+) (string, string, error) {
+	switch t.kind {
+	case "CATALOG":
+		_, pod, err := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx)
+		if err != nil {
+			return "", "", fmt.Errorf("catalog %s not ready: %w", t.name, err)
+		}
+
+		svc := strings.ToLower(strings.TrimSpace(instance.Spec.Catalog[t.specIdx].Name))
+		db := strings.ToUpper(strings.TrimSpace(instance.Spec.Catalog[t.specIdx].Name))
+
+		cmd := []string{
+			"bash", "-lc",
+			fmt.Sprintf(`
+SYS_PWD="$(cat /mnt/secrets/oracle_pwd | base64 -d)"
+sqlplus -s "sys/${SYS_PWD}@//%s.%s:1521/%s as sysdba" <<'EOF'
+%s
+EOF
+`, pod.Name, svc, db, sql),
+		}
+
+		return shardingv1.ExecCommand(pod.Name, cmd, r.kubeClient, r.kubeConfig, instance, r.Log)
+
+	case "SHARD":
+		_, pod, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
+		if err != nil {
+			return "", "", fmt.Errorf("shard %s not ready: %w", t.name, err)
+		}
+
+		svc := strings.ToLower(strings.TrimSpace(instance.Spec.Shard[t.specIdx].Name))
+		db := strings.ToUpper(strings.TrimSpace(instance.Spec.Shard[t.specIdx].Name))
+
+		cmd := []string{
+			"bash", "-lc",
+			fmt.Sprintf(`
+SYS_PWD="$(cat /mnt/secrets/oracle_pwd | base64 -d)"
+sqlplus -s "sys/${SYS_PWD}@//%s.%s:1521/%s as sysdba" <<'EOF'
+%s
+EOF
+`, pod.Name, svc, db, sql),
+		}
+
+		return shardingv1.ExecCommand(pod.Name, cmd, r.kubeClient, r.kubeConfig, instance, r.Log)
+	}
+
+	return "", "", fmt.Errorf("unknown target kind %s", t.kind)
+}
+
+func (r *ShardingDatabaseReconciler) readShapeDbValues(
+	instance *databasev4.ShardingDatabase,
+	t shapeRollTarget,
+) (shapeDbValues, error) {
+	stdout, stderr, err := r.execSQLForShapeTarget(instance, t, buildShapeParamReadSQL())
+	if err != nil {
+		return shapeDbValues{}, fmt.Errorf("readShapeDbValues failed stdout=%s stderr=%s err=%w", stdout, stderr, err)
+	}
+
+	vals, perr := parseShapeDbValues(stdout)
+	if perr != nil {
+		return shapeDbValues{}, fmt.Errorf("parseShapeDbValues failed stdout=%s stderr=%s err=%w", stdout, stderr, perr)
+	}
+
+	return vals, nil
+}
+
+func (r *ShardingDatabaseReconciler) applyShapeDbParamsAndLog(
 	instance *databasev4.ShardingDatabase,
 	t shapeRollTarget,
 ) error {
@@ -3255,111 +3384,74 @@ func (r *ShardingDatabaseReconciler) applyShapeDbParams(
 		return fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
 	}
 
-	sql := buildShapeInitSQL(cfg)
+	sql := buildShapeParamApplySQL(cfg)
+	stdout, stderr, err := r.execSQLForShapeTarget(instance, t, sql)
 
-	switch t.kind {
-	case "CATALOG":
-		_, pod, err := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx)
-		if err != nil {
-			return fmt.Errorf("catalog %s not ready for DB param apply: %w", t.name, err)
-		}
-		shardingv1.LogMessages("INFO", "Applying DB shape params for catalog "+t.name, nil, instance, r.Log)
-		return shardingv1.RunSQLPlusInPod(pod.Name, sql, instance, r.kubeClient, r.kubeConfig, r.Log)
+	if stdout != "" || stderr != "" {
+		shardingv1.LogMessages(
+			"INFO",
+			fmt.Sprintf("DB shape apply output for %s %s stdout=%s stderr=%s", t.kind, t.name, stdout, stderr),
+			nil,
+			instance,
+			r.Log,
+		)
+	}
 
-	case "SHARD":
-		_, pod, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
-		if err != nil {
-			return fmt.Errorf("shard %s not ready for DB param apply: %w", t.name, err)
-		}
-		shardingv1.LogMessages("INFO", "Applying DB shape params for shard "+t.name, nil, instance, r.Log)
-		return shardingv1.RunSQLPlusInPod(pod.Name, sql, instance, r.kubeClient, r.kubeConfig, r.Log)
+	if err != nil {
+		return fmt.Errorf("applyShapeDbParamsAndLog failed stdout=%s stderr=%s err=%w", stdout, stderr, err)
 	}
 
 	return nil
 }
 
-func buildShapeVerifySQL() string {
-	return `
-set pages 200 lines 200
-show parameter sga_target
-show parameter sga_max_size
-show parameter pga_aggregate_target
-show parameter processes
-show parameter cpu_count
-`
-}
-
-func shapeValuesMatchOutput(out string, cfg shapes.ShapeConfig) bool {
-	s := strings.ToLower(out)
-
-	wantSga := fmt.Sprintf("%dg", cfg.SGAGB)
-	wantPga := fmt.Sprintf("%dg", cfg.PGAGB)
-	wantProc := fmt.Sprintf("%d", cfg.Processes)
-	wantCPU := fmt.Sprintf("%d", cfg.CPU)
-
-	return strings.Contains(s, strings.ToLower(wantSga)) &&
-		strings.Contains(s, strings.ToLower(wantPga)) &&
-		strings.Contains(s, wantProc) &&
-		strings.Contains(s, wantCPU)
-}
-
-func (r *ShardingDatabaseReconciler) verifyShapeDbParams(
+func (r *ShardingDatabaseReconciler) validateShapeTargetReady(
 	instance *databasev4.ShardingDatabase,
 	t shapeRollTarget,
-) (bool, error) {
-	cfg, ok := desiredCfgForTarget(instance, t)
-	if !ok {
-		return false, fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
-	}
-
-	sql := buildShapeVerifySQL()
-
+) error {
 	switch t.kind {
 	case "CATALOG":
-		_, pod, err := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx)
-		if err != nil {
-			return false, err
-		}
-		out, _, err := shardingv1.ExecCommand(
-			pod.Name,
-			[]string{"bash", "-lc", fmt.Sprintf(`SYS_PWD="$(cat /mnt/secrets/oracle_pwd | base64 -d)"; sqlplus -s "sys/${SYS_PWD}@//%s.%s:1521/%s as sysdba" <<'EOF'
-%s
-exit
-EOF`, pod.Name, strings.ToLower(instance.Spec.Catalog[t.specIdx].Name), strings.ToUpper(instance.Spec.Catalog[t.specIdx].Name), sql)},
-			r.kubeClient,
-			r.kubeConfig,
-			instance,
-			r.Log,
-		)
-		if err != nil {
-			return false, err
-		}
-		return shapeValuesMatchOutput(out, cfg), nil
-
+		_, _, err := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx)
+		return err
 	case "SHARD":
-		_, pod, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
-		if err != nil {
-			return false, err
-		}
-		shardName := strings.ToUpper(instance.Spec.Shard[t.specIdx].Name)
-		out, _, err := shardingv1.ExecCommand(
-			pod.Name,
-			[]string{"bash", "-lc", fmt.Sprintf(`SYS_PWD="$(cat /mnt/secrets/oracle_pwd | base64 -d)"; sqlplus -s "sys/${SYS_PWD}@//%s.%s:1521/%s as sysdba" <<'EOF'
-%s
-exit
-EOF`, pod.Name, strings.ToLower(instance.Spec.Shard[t.specIdx].Name), shardName, sql)},
-			r.kubeClient,
-			r.kubeConfig,
-			instance,
-			r.Log,
-		)
-		if err != nil {
-			return false, err
-		}
-		return shapeValuesMatchOutput(out, cfg), nil
+		_, _, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
+		return err
+	default:
+		return fmt.Errorf("unknown target kind %s", t.kind)
 	}
+}
 
-	return false, nil
+func (r *ShardingDatabaseReconciler) desiredStatefulSetForShapeTarget(
+	instance *databasev4.ShardingDatabase,
+	t shapeRollTarget,
+) *appsv1.StatefulSet {
+	switch t.kind {
+	case "CATALOG":
+		return shardingv1.BuildStatefulSetForCatalog(instance, instance.Spec.Catalog[t.specIdx])
+	case "SHARD":
+		return shardingv1.BuildStatefulSetForShard(instance, instance.Spec.Shard[t.specIdx])
+	default:
+		return nil
+	}
+}
+
+func (r *ShardingDatabaseReconciler) restartShapeTargetStatefulSet(
+	instance *databasev4.ShardingDatabase,
+	t shapeRollTarget,
+	currSts *appsv1.StatefulSet,
+	reason string,
+) (bool, error) {
+	shardingv1.LogMessages(
+		"INFO",
+		fmt.Sprintf("Ordered shape rollout deleting %s %s for %s", t.kind, t.name, reason),
+		nil,
+		instance,
+		r.Log,
+	)
+
+	if err := r.Client.Delete(context.Background(), currSts); err != nil && !errors.IsNotFound(err) {
+		return true, err
+	}
+	return true, nil
 }
 
 func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *databasev4.ShardingDatabase) (bool, error) {
@@ -3386,51 +3478,50 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 			return true, nil
 		}
 
-		var desiredSts *appsv1.StatefulSet
-		switch t.kind {
-		case "CATALOG":
-			desiredSts = shardingv1.BuildStatefulSetForCatalog(instance, instance.Spec.Catalog[t.specIdx])
-		case "SHARD":
-			desiredSts = shardingv1.BuildStatefulSetForShard(instance, instance.Spec.Shard[t.specIdx])
-		default:
-			continue
+		desiredSts := r.desiredStatefulSetForShapeTarget(instance, t)
+		if desiredSts == nil {
+			return true, fmt.Errorf("unable to build desired StatefulSet for %s %s", t.kind, t.name)
 		}
 
+		// Phase 1: if pod template/resources/env still old, do first restart for K8s shape change
 		if statefulSetNeedsShapeRecreate(currSts, desiredSts) {
-			shardingv1.LogMessages("INFO", "Ordered shape rollout deleting "+t.name+" for recreate", nil, instance, r.Log)
-			if derr := r.Client.Delete(context.Background(), currSts); derr != nil && !errors.IsNotFound(derr) {
-				return true, derr
-			}
+			return r.restartShapeTargetStatefulSet(instance, t, currSts, "Kubernetes shape change")
+		}
+
+		// Phase 2: wait until recreated target is fully ready
+		if err := r.validateShapeTargetReady(instance, t); err != nil {
+			shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for "+t.kind+" "+t.name+" to become ready", nil, instance, r.Log)
 			return true, nil
 		}
 
-		switch t.kind {
-		case "CATALOG":
-			if _, _, verr := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx); verr != nil {
-				shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for catalog "+t.name+" to become ready", nil, instance, r.Log)
-				return true, nil
-			}
-		case "SHARD":
-			if _, _, verr := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx); verr != nil {
-				shardingv1.LogMessages("INFO", "Ordered shape rollout waiting for shard "+t.name+" to become ready", nil, instance, r.Log)
-				return true, nil
-			}
+		// Phase 3: check DB parameter values
+		cfg, ok := desiredCfgForTarget(instance, t)
+		if !ok {
+			return true, fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
 		}
 
-		if err := r.applyShapeDbParams(instance, t); err != nil {
+		currentVals, err := r.readShapeDbValues(instance, t)
+		if err != nil {
+			shardingv1.LogMessages("INFO", "Ordered shape rollout DB param read failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
+			return true, err
+		}
+
+		expectedVals := expectedShapeDbValues(cfg)
+
+		// If DB already matches desired shape, target is done
+		if shapeDbValuesEqual(currentVals, expectedVals) {
+			shardingv1.LogMessages("INFO", "Ordered shape rollout DB params already correct for "+t.name, nil, instance, r.Log)
+			continue
+		}
+
+		// Phase 4: write DB params to spfile
+		if err := r.applyShapeDbParamsAndLog(instance, t); err != nil {
 			shardingv1.LogMessages("INFO", "Ordered shape rollout DB param apply failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
 			return true, err
 		}
 
-		ok, err := r.verifyShapeDbParams(instance, t)
-		if err != nil {
-			shardingv1.LogMessages("INFO", "Ordered shape rollout DB param verify failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
-			return true, err
-		}
-		if !ok {
-			shardingv1.LogMessages("INFO", "Ordered shape rollout DB params not yet reflected for "+t.name, nil, instance, r.Log)
-			return true, nil
-		}
+		// Phase 5: restart once more so spfile params take effect
+		return r.restartShapeTargetStatefulSet(instance, t, currSts, "DB parameter restart")
 	}
 
 	return false, nil
