@@ -3110,49 +3110,6 @@ func statefulSetNeedsShapeRecreate(current, desired *appsv1.StatefulSet) bool {
 
 	return false
 }
-func compareShapeSize(oldShape, newShape string) (int, bool) {
-	oldCfg, okOld := shapes.LookupShapeConfig(oldShape)
-	newCfg, okNew := shapes.LookupShapeConfig(newShape)
-	if !okOld || !okNew {
-		return 0, false
-	}
-
-	oldScore := oldCfg.CPU + oldCfg.SGAGB + oldCfg.PGAGB + oldCfg.Processes
-	newScore := newCfg.CPU + newCfg.SGAGB + newCfg.PGAGB + newCfg.Processes
-
-	switch {
-	case oldScore < newScore:
-		return -1, true
-	case oldScore > newScore:
-		return 1, true
-	default:
-		return 0, true
-	}
-}
-
-func isCatalogShapeDownscale(curr *databasev4.ShardingDatabaseSpec, old *databasev4.ShardingDatabaseSpec, name string) bool {
-	oldShape := findCatalogShape(old, name)
-	newShape := findCatalogShape(curr, name)
-
-	if oldShape == "" || newShape == "" {
-		return false
-	}
-
-	cmp, ok := compareShapeSize(oldShape, newShape)
-	return ok && cmp > 0
-}
-
-func isShardShapeDownscale(curr *databasev4.ShardingDatabaseSpec, old *databasev4.ShardingDatabaseSpec, shardName string) bool {
-	oldShape := findShardShapeForName(old, shardName)
-	newShape := findShardShapeForName(curr, shardName)
-
-	if oldShape == "" || newShape == "" {
-		return false
-	}
-
-	cmp, ok := compareShapeSize(oldShape, newShape)
-	return ok && cmp > 0
-}
 
 func desiredShapeForTarget(instance *databasev4.ShardingDatabase, t shapeRollTarget) string {
 	switch t.kind {
@@ -3172,23 +3129,7 @@ func desiredCfgForTarget(instance *databasev4.ShardingDatabase, t shapeRollTarge
 	}
 	return shapes.LookupShapeConfig(shape)
 }
-
-func (r *ShardingDatabaseReconciler) isDownscaleTarget(
-	instance *databasev4.ShardingDatabase,
-	lastSuccSpec *databasev4.ShardingDatabaseSpec,
-	t shapeRollTarget,
-) bool {
-	switch t.kind {
-	case "CATALOG":
-		return isCatalogShapeDownscale(&instance.Spec, lastSuccSpec, t.name)
-	case "SHARD":
-		return isShardShapeDownscale(&instance.Spec, lastSuccSpec, t.name)
-	default:
-		return false
-	}
-}
-
-func buildDownscaleSQL(cfg shapes.ShapeConfig) string {
+func buildShapeChangeSQL(cfg shapes.ShapeConfig) string {
 	return fmt.Sprintf(`
 alter system set sga_target=%dM scope=spfile sid='*';
 alter system set sga_max_size=%dM scope=spfile sid='*';
@@ -3204,41 +3145,36 @@ alter system set cpu_count=%d scope=spfile sid='*';
 	)
 }
 
-func (r *ShardingDatabaseReconciler) applyDownscaleDbParamsBeforeRestart(
+func (r *ShardingDatabaseReconciler) applyShapeDbParamsBeforeRestart(
 	instance *databasev4.ShardingDatabase,
-	lastSuccSpec *databasev4.ShardingDatabaseSpec,
 	t shapeRollTarget,
 ) error {
-	if !r.isDownscaleTarget(instance, lastSuccSpec, t) {
-		return nil
-	}
-
 	cfg, ok := desiredCfgForTarget(instance, t)
 	if !ok {
 		return fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
 	}
 
-	sql := buildDownscaleSQL(cfg)
+	sql := buildShapeChangeSQL(cfg)
 
 	switch t.kind {
 	case "CATALOG":
 		_, pod, err := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx)
 		if err != nil {
-			return fmt.Errorf("catalog %s not ready for downscale preparation: %w", t.name, err)
+			return fmt.Errorf("catalog %s not ready for shape preparation: %w", t.name, err)
 		}
-		shardingv1.LogMessages("INFO", "Applying catalog downscale DB params before restart for "+t.name, nil, instance, r.Log)
+		shardingv1.LogMessages("INFO", "Applying catalog DB shape params before restart for "+t.name, nil, instance, r.Log)
 		return shardingv1.RunSQLPlusInPod(pod.Name, sql, instance, r.kubeClient, r.kubeConfig, r.Log)
 
 	case "SHARD":
 		_, pod, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
 		if err != nil {
-			return fmt.Errorf("shard %s not ready for downscale preparation: %w", t.name, err)
+			return fmt.Errorf("shard %s not ready for shape preparation: %w", t.name, err)
 		}
-		shardingv1.LogMessages("INFO", "Applying shard downscale DB params before restart for "+t.name, nil, instance, r.Log)
+		shardingv1.LogMessages("INFO", "Applying shard DB shape params before restart for "+t.name, nil, instance, r.Log)
 		return shardingv1.RunSQLPlusInPod(pod.Name, sql, instance, r.kubeClient, r.kubeConfig, r.Log)
 	}
 
-	return nil
+	return fmt.Errorf("unknown shape target kind %s", t.kind)
 }
 
 func (r *ShardingDatabaseReconciler) orderedShapeChangeTargets(instance *databasev4.ShardingDatabase) ([]shapeRollTarget, error) {
@@ -3330,11 +3266,9 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 		}
 
 		if statefulSetNeedsShapeRecreate(currSts, desiredSts) {
-			if r.isDownscaleTarget(instance, lastSuccSpec, t) {
-				if err := r.applyDownscaleDbParamsBeforeRestart(instance, lastSuccSpec, t); err != nil {
-					shardingv1.LogMessages("INFO", "Ordered shape rollout downscale preparation failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
-					return true, err
-				}
+			if err := r.applyShapeDbParamsBeforeRestart(instance, t); err != nil {
+				shardingv1.LogMessages("INFO", "Ordered shape rollout DB param preparation failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
+				return true, err
 			}
 
 			shardingv1.LogMessages("INFO", "Ordered shape rollout deleting "+t.name+" for recreate", nil, instance, r.Log)
@@ -3358,8 +3292,10 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 		}
 	}
 
+	_ = lastSuccSpec
 	return false, nil
 }
+
 func (r *ShardingDatabaseReconciler) applyReplicaScaleOutUnmarks(instance *databasev4.ShardingDatabase) bool {
 	desired := desiredShardNamesFromShardInfo(instance)
 	changed := false
