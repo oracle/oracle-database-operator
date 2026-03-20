@@ -8981,7 +8981,45 @@ spec:
             type: object
           spec:
             properties:
+              externalAdminPassword:
+                properties:
+                  secretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - secretKey
+                - secretName
+                type: object
+              externalDatabaseConnectStrings:
+                items:
+                  properties:
+                    hostName:
+                      type: string
+                    port:
+                      default: 1521
+                      format: int32
+                      type: integer
+                    secret:
+                      type: string
+                    secretKey:
+                      default: password
+                      type: string
+                    svcName:
+                      type: string
+                    userName:
+                      default: sys
+                      type: string
+                  required:
+                  - hostName
+                  - secret
+                  - svcName
+                  type: object
+                minItems: 2
+                type: array
               fastStartFailover:
+                type: boolean
+              isNonSingleInstanceDatabase:
                 type: boolean
               loadBalancer:
                 type: boolean
@@ -8989,6 +9027,8 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              observerImage:
+                type: string
               primaryDatabaseRef:
                 type: string
               protectionMode:
@@ -9021,6 +9061,10 @@ spec:
                 type: object
               externalConnectString:
                 type: string
+              externalDgMapping:
+                additionalProperties:
+                  type: string
+                type: object
               fastStartFailover:
                 type: string
               primaryDatabase:
@@ -13462,6 +13506,35 @@ spec:
       name: shards
       priority: 1
       type: string
+    - jsonPath: .status.dg.state
+      name: DG
+      type: string
+    - jsonPath: .status.primary.sid
+      name: PrimarySID
+      type: string
+    - jsonPath: .status.primary.role
+      name: PrimaryRole
+      type: string
+    - jsonPath: .status.primary.openMode
+      name: PrimaryMode
+      priority: 1
+      type: string
+    - jsonPath: .status.primary.serviceName
+      name: PrimarySvc
+      priority: 1
+      type: string
+    - jsonPath: .status.primary.podIP
+      name: PrimaryIP
+      priority: 1
+      type: string
+    - jsonPath: .status.standby.sid
+      name: StandbySID
+      priority: 1
+      type: string
+    - jsonPath: .status.standby.openMode
+      name: StandbyMode
+      priority: 1
+      type: string
     name: v4
     schema:
       openAPIV3Schema:
@@ -13479,6 +13552,13 @@ spec:
               catalog:
                 items:
                   properties:
+                    agentPassword:
+                      type: string
+                    agentPort:
+                      format: int32
+                      type: integer
+                    autoVncr:
+                      type: string
                     catalogConfigData:
                       properties:
                         mountPath:
@@ -13486,6 +13566,27 @@ spec:
                         name:
                           type: string
                       type: object
+                    catalogDatabaseRef:
+                      properties:
+                        cdbName:
+                          type: string
+                        host:
+                          type: string
+                        pdbName:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
+                      type: object
+                    chunks:
+                      format: int32
+                      type: integer
+                    configname:
+                      type: string
+                    createAs:
+                      type: string
+                    encryption:
+                      type: string
                     envVars:
                       items:
                         properties:
@@ -13498,18 +13599,46 @@ spec:
                         - value
                         type: object
                       type: array
+                    forFederatedDatabase:
+                      type: boolean
+                    force:
+                      type: boolean
+                    gdsPool:
+                      type: string
                     imagePullPolicy:
                       type: string
                     isDelete:
                       type: string
                     label:
                       type: string
+                    multiwriter:
+                      type: boolean
                     name:
                       type: string
                     nodeSelector:
                       additionalProperties:
                         type: string
                       type: object
+                    pdbName:
+                      type: string
+                    primaryDatabaseRef:
+                      properties:
+                        cdbName:
+                          type: string
+                        host:
+                          type: string
+                        pdbName:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
+                      type: object
+                    protectMode:
+                      enum:
+                      - MAXPROTECTION
+                      - MAXAVAILABILITY
+                      - MAXPERFORMANCE
+                      type: string
                     pvAnnotations:
                       additionalProperties:
                         type: string
@@ -13519,6 +13648,18 @@ spec:
                         type: string
                       type: object
                     pvcName:
+                      type: string
+                    region:
+                      items:
+                        type: string
+                      type: array
+                    repFactor:
+                      format: int32
+                      type: integer
+                    repUnits:
+                      format: int32
+                      type: integer
+                    repl:
                       type: string
                     resources:
                       properties:
@@ -13553,9 +13694,17 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    sdb:
+                      type: string
+                    shape:
+                      type: string
+                    sharding:
+                      type: string
                     storageSizeInGb:
                       format: int32
                       type: integer
+                    useExistingCatalog:
+                      type: boolean
                   required:
                   - name
                   type: object
@@ -13595,12 +13744,20 @@ spec:
                 - pwdFileName
                 - tdePwdFileName
                 type: object
+              enableTCPS:
+                type: boolean
               fssStorageClass:
                 type: string
               gsm:
                 items:
                   properties:
+                    catalog:
+                      type: string
                     directorName:
+                      type: string
+                    encryption:
+                      type: string
+                    endpoint:
                       type: string
                     envVars:
                       items:
@@ -13621,12 +13778,23 @@ spec:
                         name:
                           type: string
                       type: object
+                    gsmNum:
+                      format: int32
+                      type: integer
+                    gsmPrefix:
+                      type: string
                     imagePullPolicy:
                       type: string
                     isDelete:
                       type: string
                     label:
                       type: string
+                    listener:
+                      format: int32
+                      type: integer
+                    localons:
+                      format: int32
+                      type: integer
                     name:
                       type: string
                     nodeSelector:
@@ -13643,8 +13811,19 @@ spec:
                       type: object
                     pvcName:
                       type: string
+                    pwd:
+                      type: string
                     region:
                       type: string
+                    regions:
+                      items:
+                        type: string
+                      type: array
+                    remoteEndpoint:
+                      type: string
+                    remoteOns:
+                      format: int32
+                      type: integer
                     resources:
                       properties:
                         claims:
@@ -13678,9 +13857,15 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    shape:
+                      type: string
                     storageSizeInGb:
                       format: int32
                       type: integer
+                    traceLevel:
+                      type: string
+                    wpwd:
+                      type: string
                   required:
                   - name
                   type: object
@@ -13712,6 +13897,8 @@ spec:
                       type: string
                     failoverPrimary:
                       type: string
+                    failoverReadwrite:
+                      type: string
                     failoverRestore:
                       type: string
                     failoverRetry:
@@ -13734,11 +13921,17 @@ spec:
                       type: string
                     preferred:
                       type: string
-                    prferredAll:
+                    preferredAll:
                       type: string
                     regionFailover:
                       type: string
+                    replayInitTime:
+                      type: string
+                    resetState:
+                      type: string
                     retention:
+                      type: string
+                    rlbGoal:
                       type: string
                     role:
                       type: string
@@ -13752,40 +13945,16 @@ spec:
                       type: string
                     tableFamily:
                       type: string
+                    tafPolicy:
+                      type: string
                     tfaPolicy:
                       type: string
                   required:
                   - name
                   type: object
                 type: array
-              gsmShardGroup:
-                items:
-                  properties:
-                    deployAs:
-                      type: string
-                    name:
-                      type: string
-                    region:
-                      type: string
-                  required:
-                  - name
-                  type: object
-                type: array
-              gsmShardSpace:
-                items:
-                  properties:
-                    chunks:
-                      type: integer
-                    name:
-                      type: string
-                    protectionMode:
-                      type: string
-                    shardGroup:
-                      type: string
-                  required:
-                  - name
-                  type: object
-                type: array
+              imagePullPolicy:
+                type: string
               invitedNodeSubnetFlag:
                 type: string
               isClone:
@@ -13823,17 +13992,119 @@ spec:
                 type: array
               readinessCheckPeriod:
                 type: integer
+              region:
+                items:
+                  properties:
+                    buddy:
+                      type: string
+                    name:
+                      type: string
+                  type: object
+                type: array
               replicationType:
                 type: string
               scriptsLocation:
                 type: string
+              service:
+                items:
+                  properties:
+                    available:
+                      type: string
+                    clbGoal:
+                      type: string
+                    commitOutcome:
+                      type: string
+                    drainTimeout:
+                      type: string
+                    dtp:
+                      type: string
+                    edition:
+                      type: string
+                    failoverDelay:
+                      type: string
+                    failoverMethod:
+                      type: string
+                    failoverPrimary:
+                      type: string
+                    failoverReadwrite:
+                      type: string
+                    failoverRestore:
+                      type: string
+                    failoverRetry:
+                      type: string
+                    failoverType:
+                      type: string
+                    gdsPool:
+                      type: string
+                    lag:
+                      type: integer
+                    locality:
+                      type: string
+                    name:
+                      type: string
+                    notification:
+                      type: string
+                    pdbName:
+                      type: string
+                    policy:
+                      type: string
+                    preferred:
+                      type: string
+                    preferredAll:
+                      type: string
+                    regionFailover:
+                      type: string
+                    replayInitTime:
+                      type: string
+                    resetState:
+                      type: string
+                    retention:
+                      type: string
+                    rlbGoal:
+                      type: string
+                    role:
+                      type: string
+                    ruMode:
+                      type: string
+                    sessionState:
+                      type: string
+                    sqlTransactionProfile:
+                      type: string
+                    stopOption:
+                      type: string
+                    tableFamily:
+                      type: string
+                    tafPolicy:
+                      type: string
+                    tfaPolicy:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
               serviceAccountName:
                 type: string
               shard:
                 items:
                   properties:
-                    deployAs:
+                    cdbName:
                       type: string
+                    cloneSchemas:
+                      type: boolean
+                    connect:
+                      type: string
+                    cpuThreshold:
+                      format: int32
+                      type: integer
+                    deployAs:
+                      enum:
+                      - PRIMARY
+                      - STANDBY
+                      - ACTIVE_STANDBY
+                      type: string
+                    diskThreshold:
+                      format: int32
+                      type: integer
                     envVars:
                       items:
                         properties:
@@ -13846,6 +14117,10 @@ spec:
                         - value
                         type: object
                       type: array
+                    force:
+                      type: boolean
+                    ggService:
+                      type: string
                     imagePullPolicy:
                       type: string
                     isDelete:
@@ -13857,11 +14132,27 @@ spec:
                       type: string
                     label:
                       type: string
+                    livenessCheckPeriod:
+                      type: integer
                     name:
                       type: string
                     nodeSelector:
                       additionalProperties:
                         type: string
+                      type: object
+                    pdbPreFix:
+                      type: string
+                    primaryDatabaseRef:
+                      properties:
+                        cdbName:
+                          type: string
+                        host:
+                          type: string
+                        pdbName:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
                       type: object
                     pvAnnotations:
                       additionalProperties:
@@ -13872,6 +14163,14 @@ spec:
                         type: string
                       type: object
                     pvcName:
+                      type: string
+                    pwd:
+                      type: string
+                    rack:
+                      type: string
+                    readinessCheckPeriod:
+                      type: integer
+                    replace:
                       type: string
                     resources:
                       properties:
@@ -13906,6 +14205,8 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    savename:
+                      type: boolean
                     shardConfigData:
                       properties:
                         mountPath:
@@ -13922,47 +14223,154 @@ spec:
                     storageSizeInGb:
                       format: int32
                       type: integer
+                    validateNetwork:
+                      type: boolean
                   required:
                   - name
                   type: object
                 type: array
-              shardBuddyRegion:
-                type: string
               shardConfigName:
                 type: string
+              shardGroup:
+                items:
+                  properties:
+                    deployAs:
+                      enum:
+                      - PRIMARY
+                      - STANDBY
+                      - ACTIVE_STANDBY
+                      type: string
+                    isDelete:
+                      type: string
+                    name:
+                      type: string
+                    region:
+                      type: string
+                    repFactor:
+                      format: int32
+                      type: integer
+                    ru_mode:
+                      enum:
+                      - READWRITE
+                      - READONLY
+                      type: string
+                    shardSpace:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
               shardInfo:
                 items:
                   properties:
+                    envVars:
+                      items:
+                        properties:
+                          name:
+                            type: string
+                          value:
+                            type: string
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
+                    primaryDatabaseRef:
+                      properties:
+                        cdbName:
+                          type: string
+                        host:
+                          type: string
+                        pdbName:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
+                      type: object
                     replicas:
                       format: int32
                       type: integer
+                    resources:
+                      properties:
+                        claims:
+                          items:
+                            properties:
+                              name:
+                                type: string
+                              request:
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
+                        limits:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          type: object
+                        requests:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          type: object
+                      type: object
                     shape:
                       type: string
                     shardGroupDetails:
                       properties:
-                        ShardSpace:
-                          type: string
                         deployAs:
+                          enum:
+                          - PRIMARY
+                          - STANDBY
+                          - ACTIVE_STANDBY
                           type: string
                         isDelete:
+                          type: string
+                        name:
                           type: string
                         region:
                           type: string
                         repFactor:
+                          format: int32
                           type: integer
-                        shardGroupName:
+                        ru_mode:
+                          enum:
+                          - READWRITE
+                          - READONLY
                           type: string
+                        shardSpace:
+                          type: string
+                      required:
+                      - name
                       type: object
                     shardPreFixName:
                       type: string
                     shardSpaceDetails:
                       properties:
-                        Chnuks:
+                        chunks:
+                          format: int32
                           type: integer
+                        name:
+                          type: string
                         protectMode:
                           type: string
-                        shardSpaceName:
-                          type: string
+                        repFactor:
+                          format: int32
+                          type: integer
+                        repUnits:
+                          format: int32
+                          type: integer
+                      required:
+                      - name
                       type: object
                     storageSizeInGb:
                       format: int32
@@ -13971,15 +14379,35 @@ spec:
                   - shardPreFixName
                   type: object
                 type: array
-              shardRegion:
+              shardSpace:
                 items:
-                  type: string
+                  properties:
+                    chunks:
+                      format: int32
+                      type: integer
+                    name:
+                      type: string
+                    protectMode:
+                      type: string
+                    repFactor:
+                      format: int32
+                      type: integer
+                    repUnits:
+                      format: int32
+                      type: integer
+                  required:
+                  - name
+                  type: object
                 type: array
               shardingType:
                 type: string
               stagePvcName:
                 type: string
               storageClass:
+                type: string
+              tcpsCertRenewInterval:
+                type: integer
+              tcpsTlsSecret:
                 type: string
               tdeWalletPvc:
                 type: string
@@ -14038,6 +14466,19 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              dg:
+                properties:
+                  broker:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  details:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  state:
+                    type: string
+                type: object
               gsm:
                 properties:
                   details:
@@ -15752,7 +16193,7 @@ metadata:
   name: oracle-database-operator-controller-manager
   namespace: oracle-database-operator-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       control-plane: controller-manager
@@ -15769,7 +16210,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:orestart-operator-sa
+        image: dbcs-dev-docker.dockerhub-phx.oci.oraclecorp.com/oracle/database-operator:6a5454ff
         imagePullPolicy: Always
         name: manager
         ports:
