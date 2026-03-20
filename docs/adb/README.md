@@ -65,12 +65,12 @@ To provision an Autonomous Database that will map objects in your cluster, compl
 
     ![acd-id-3](/images/adb/acd-id-2.png)
 
-3. Create a Kubernetes Secret to hold the password of the ADMIN user. **The key and the name of the secret must be the same.**
+3. Create a Kubernetes Secret to hold the password of the ADMIN user.
 
     You can create this secret by using a command similar to the following example:
 
     ```sh
-    kubectl create secret generic admin-password --from-literal=admin-password='password_here'
+    kubectl create secret generic admin-password --from-literal=password='password_here'
     ```
 
 4. Add the following fields to the Autonomous Database resource definition. An example `.yaml` file is available here: [`config/samples/adb/autonomousdatabase_create.yaml`](./../../config/samples/adb/autonomousdatabase_create.yaml)
@@ -305,7 +305,7 @@ You can rename the database by changing the values of the `dbName` and `displayN
     As an example, you can create this secret with the following command: *
 
     ```sh
-    kubectl create secret generic new-adb-admin-password --from-literal=new-adb-admin-password='password_here'
+    kubectl create secret generic new-adb-admin-password --from-literal=password='password_here'
     ```
 
     \* The password must be between 12 and 30 characters long, and must contain at least 1 uppercase, 1 lowercase, and 1 numeric character. It cannot contain the double quote symbol (") or the username "admin", regardless of casing.
@@ -350,7 +350,7 @@ A client Wallet is required to connect to a shared Oracle Autonomous Database. U
     As an example, you can create this secret with the following command: *
 
     ```sh
-    kubectl create secret generic instance-wallet-password --from-literal=instance-wallet-password='password_here'
+    kubectl create secret generic instance-wallet-password --from-literal=password='password_here'
     ```
 
     \* The password must be at least 8 characters long and must include at least 1 letter and either 1 numeric character or 1 special character.

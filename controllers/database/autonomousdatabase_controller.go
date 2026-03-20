@@ -50,8 +50,10 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/database"
 
+	corev1 "k8s.io/api/core/v1"
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -696,6 +698,7 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 	}
 
 	l := logger.WithName("validateWallet")
+	const AnnotationLastRotated = "last-rotated"
 
 	// lastSucSpec may be nil if this is the first time entering the reconciliation loop
 	var walletName string
@@ -706,6 +709,11 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 		walletName = *adb.Spec.Wallet.Name
 	}
 
+	getWalletResp, err := r.dbService.GetWallet(adb)
+	if err != nil {
+		return err
+	}
+
 	secret, err := k8s.FetchSecret(r.KubeClient, adb.GetNamespace(), walletName)
 	if err == nil {
 		val, ok := secret.Labels["app"]
@@ -713,18 +721,26 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 			// Overwrite if the fetched secret has a different label
 			l.Info("wallet existed but has a different label; skip the download")
 		}
-		// No-op if Wallet is already downloaded
-		return nil
+
+		// Check if the Wallet has been rotated
+		isWalletStale, err := isLocalWalletStale(getWalletResp.TimeRotated, secret.Annotations[AnnotationLastRotated])
+		if err != nil {
+			return err
+		}
+
+		if !isWalletStale {
+			return nil // No-op if the wallet secret exists and is the latest
+		}
 	} else if !apiErrors.IsNotFound(err) {
 		return err
 	}
 
-	resp, err := r.dbService.DownloadWallet(adb)
+	downloadWalletResp, err := r.dbService.DownloadWallet(adb)
 	if err != nil {
 		return err
 	}
 
-	walletBytes, err := io.ReadAll(resp.Content)
+	walletBytes, err := io.ReadAll(downloadWalletResp.Content)
 
 	data, err := oci.ExtractWallet(io.NopCloser(bytes.NewReader(walletBytes)))
 	if err != nil {
@@ -740,13 +756,52 @@ func (r *AutonomousDatabaseReconciler) validateWallet(logger logr.Logger, adb *d
 
 	label := map[string]string{"app": adb.GetName()}
 
-	if err := k8s.CreateSecret(r.KubeClient, adb.Namespace, walletName, data, adb, label); err != nil {
+	var lastRotated string = ""
+	if getWalletResp.TimeRotated != nil {
+		lastRotated = getWalletResp.TimeRotated.Format(time.RFC3339Nano)
+	}
+
+	objMeta := metav1.ObjectMeta{
+		Namespace:       adb.Namespace,
+		Name:            walletName,
+		OwnerReferences: k8s.NewOwnerReference(adb),
+		Labels:          label,
+		Annotations:     map[string]string{AnnotationLastRotated: lastRotated},
+	}
+
+	walletSecretSpec := &corev1.Secret{
+		ObjectMeta: objMeta,
+		Data:       data,
+	}
+
+	if _, err := controllerutil.CreateOrUpdate(context.TODO(), r.KubeClient, walletSecretSpec, func() error {
+		// Update the wallet secret if it already exists
+		walletSecretSpec.ObjectMeta = objMeta
+		walletSecretSpec.Data = data
+		return nil
+	}); err != nil {
 		return err
 	}
 
 	l.Info(fmt.Sprintf("Wallet is stored in the Secret %s", walletName))
 
 	return nil
+}
+
+func isLocalWalletStale(remote *common.SDKTime, local string) (bool, error) {
+	if remote == nil && local == "" {
+		return false, nil
+	} else if remote != nil && local == "" {
+		return true, nil
+	} else if remote == nil && local != "" {
+		return false, nil
+	} else {
+		localTime, err := time.Parse(time.RFC3339Nano, local)
+		if err != nil {
+			return true, err
+		}
+		return localTime.Before(remote.Time), nil
+	}
 }
 
 // updateBackupResources get the list of AutonomousDatabasBackups and
