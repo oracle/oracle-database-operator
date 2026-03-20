@@ -255,15 +255,14 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 
 		databaseOpenMode, err := dbcommons.GetDatabaseOpenMode(readyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
-
 		if err != nil {
 			r.Log.Error(err, err.Error())
 			return requeueY, err
 		}
 		r.Log.Info("DB openMode Output")
 		r.Log.Info(databaseOpenMode)
+
 		if databaseOpenMode == "READ_ONLY" || databaseOpenMode == "MOUNTED" {
-			// Changing the open mode for sidb to "READ ONLY WITH APPLY"
 			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ModifyStdbyDBOpenMode, dbcommons.SQLPlusCLI))
 			if err != nil {
 				r.Log.Error(err, err.Error())
@@ -273,14 +272,15 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 			r.Log.Info(out)
 		}
 
-		singleInstanceDatabase.Status.PrimaryDatabase = referredPrimaryDatabase.Name
-		// Store all standbyDatabase sid:name in a map to use it during manual switchover.
-		if len(referredPrimaryDatabase.Status.StandbyDatabases) == 0 {
-			referredPrimaryDatabase.Status.StandbyDatabases = make(map[string]string)
-		}
-		referredPrimaryDatabase.Status.StandbyDatabases[strings.ToUpper(singleInstanceDatabase.Spec.Sid)] = singleInstanceDatabase.Name
-		r.Status().Update(ctx, referredPrimaryDatabase)
+		singleInstanceDatabase.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(singleInstanceDatabase, referredPrimaryDatabase)
 
+		if !IsExternalPrimaryDatabase(singleInstanceDatabase) && referredPrimaryDatabase != nil && referredPrimaryDatabase.Name != "" {
+			if len(referredPrimaryDatabase.Status.StandbyDatabases) == 0 {
+				referredPrimaryDatabase.Status.StandbyDatabases = make(map[string]string)
+			}
+			referredPrimaryDatabase.Status.StandbyDatabases[strings.ToUpper(singleInstanceDatabase.Spec.Sid)] = singleInstanceDatabase.Name
+			r.Status().Update(ctx, referredPrimaryDatabase)
+		}
 	}
 
 	// manage snapshot database creation
@@ -404,15 +404,20 @@ func (r *SingleInstanceDatabaseReconciler) updateReconcileStatus(m *dbapi.Single
 //	n = CloneFromDatabase
 //
 // #############################################################################
-func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatabase,
-	n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *SingleInstanceDatabaseReconciler) validate(
+	m *dbapi.SingleInstanceDatabase,
+	n *dbapi.SingleInstanceDatabase,
+	rp *dbapi.SingleInstanceDatabase,
+	ctx context.Context,
+	req ctrl.Request,
+) (ctrl.Result, error) {
 	var err error
 	eventReason := "Spec Error"
 	var eventMsgs []string
 
 	r.Log.Info("Entering reconcile validation")
 
-	//First check image pull secrets
+	// First check image pull secrets
 	if m.Spec.Image.PullSecrets != "" {
 		secret := &corev1.Secret{}
 		err = r.Get(ctx, types.NamespacedName{Name: m.Spec.Image.PullSecrets, Namespace: m.Namespace}, secret)
@@ -481,7 +486,6 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	m.Status.Persistence = m.Spec.Persistence
 	m.Status.PrebuiltDB = m.Spec.Image.PrebuiltDB
 	if m.Spec.CreateAs == "truecache" {
-		// Fetch the Primary database reference, required for all iterations
 		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
@@ -493,10 +497,8 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		}
 	}
 	if m.Spec.CreateAs == "clone" {
-
 		// Once a clone database has created , it has no link with its reference
-		if m.Status.DatafilesCreated == "true" ||
-			!dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+		if m.Status.DatafilesCreated == "true" || !dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
 			return requeueN, nil
 		}
 
@@ -535,8 +537,43 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 	}
 
 	if m.Spec.CreateAs == "standby" && m.Status.Role != "PRIMARY" {
+		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
 
-		// Fetch the Primary database reference, required for all iterations
+		// External primary standby support
+		if IsExternalPrimaryDatabase(m) {
+			err = ValidateExternalPrimaryDatabaseRef(m)
+			if err != nil {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
+				m.Status.Status = dbcommons.StatusError
+				return requeueN, err
+			}
+
+			if strings.EqualFold(m.Spec.Sid, GetPrimaryDatabaseSid(m, nil)) {
+				err = fmt.Errorf("standby and external primary database SID can not be same")
+				r.Log.Info(err.Error())
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
+				m.Status.Status = dbcommons.StatusError
+				return requeueN, err
+			}
+
+			if m.Status.DatafilesCreated == "true" {
+				return requeueN, nil
+			}
+
+			if m.Spec.Edition != "" {
+				m.Status.Edition = cases.Title(language.English).String(m.Spec.Edition)
+			} else {
+				m.Status.Edition = dbcommons.ValueUnavailable
+			}
+
+			m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, nil)
+
+			r.Log.Info("Validated external primary database reference for standby creation")
+			r.Log.Info("Completed reconcile validation")
+			return requeueN, nil
+		}
+
+		// Existing local primary standby flow unchanged
 		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
@@ -547,11 +584,12 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 			return requeueY, err
 		}
 
-		if m.Spec.Sid == rp.Spec.Sid {
-			r.Log.Info("Standby database SID can not be same as the Primary database SID")
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", "Standby and Primary database SID can not be same")
+		if strings.EqualFold(m.Spec.Sid, rp.Spec.Sid) {
+			err = fmt.Errorf("standby and primary database SID can not be same")
+			r.Log.Info(err.Error())
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
 			m.Status.Status = dbcommons.StatusError
-			return requeueY, err
+			return requeueN, err
 		}
 
 		if rp.Status.IsTcpsEnabled {
@@ -560,10 +598,10 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 			return requeueY, nil
 		}
 
-		if m.Status.DatafilesCreated == "true" ||
-			!dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+		if m.Status.DatafilesCreated == "true" || !dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
 			return requeueN, nil
 		}
+
 		m.Status.Edition = rp.Status.Edition
 
 		err = ValidatePrimaryDatabaseForStandbyCreation(r, m, rp, ctx, req)
@@ -576,10 +614,9 @@ func (r *SingleInstanceDatabaseReconciler) validate(m *dbapi.SingleInstanceDatab
 		if err != nil {
 			return requeueY, err
 		}
-
 	}
-	r.Log.Info("Completed reconcile validation")
 
+	r.Log.Info("Completed reconcile validation")
 	return requeueN, nil
 }
 
@@ -1034,7 +1071,6 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						}
 
 					} else if m.Spec.CreateAs == "standby" {
-						//Standby DB Usecase
 						return []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
@@ -1053,30 +1089,24 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet",
 							},
 							{
-								Name: "PRIMARY_DB_CONN_STR",
-								Value: func() string {
-									if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
-										return rp.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + rp.Spec.Sid
-									}
-									return m.Spec.PrimaryDatabaseRef
-								}(),
+								Name:  "PRIMARY_DB_CONN_STR",
+								Value: GetPrimaryDatabaseConnectString(m, rp),
 							},
 							{
 								Name:  "PRIMARY_SID",
-								Value: strings.ToUpper(rp.Spec.Sid),
+								Value: GetPrimaryDatabaseSid(m, rp),
 							},
 							{
 								Name:  "PRIMARY_IP",
-								Value: rp.Name,
+								Value: GetPrimaryDatabaseHost(m, rp),
 							},
 							{
-								Name: "CREATE_PDB",
-								Value: func() string {
-									if rp.Spec.Pdbname != "" {
-										return "true"
-									}
-									return "false"
-								}(),
+								Name:  "PRIMARY_DB_PORT",
+								Value: strconv.Itoa(GetPrimaryDatabasePort(m)),
+							},
+							{
+								Name:  "CREATE_PDB",
+								Value: ShouldCreatePDBFromPrimary(m, rp),
 							},
 							{
 								Name: "ORACLE_HOSTNAME",
@@ -1227,7 +1257,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 	}
 
 	// Adding pod anti-affinity for standby cases
-	if m.Spec.CreateAs == "standby" {
+	if m.Spec.CreateAs == "standby" && !IsExternalPrimaryDatabase(m) && rp != nil && rp.Name != "" {
 		weightedPodAffinityTerm := corev1.WeightedPodAffinityTerm{
 			Weight: 100,
 			PodAffinityTerm: corev1.PodAffinityTerm{
@@ -1251,7 +1281,6 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 			pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution =
 				append(pod.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution, weightedPodAffinityTerm)
 		}
-
 	}
 
 	// Set SingleInstanceDatabase instance as the owner and controller
@@ -3865,6 +3894,16 @@ func EnableFlashbackInDatabase(r *SingleInstanceDatabaseReconciler, dbReadyPod c
 func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
 	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
 
+	if IsExternalPrimaryDatabase(stdby) {
+		return SetupStandbyDatabaseForExternalPrimary(r, stdby, ctx, req)
+	}
+
+	return SetupStandbyDatabaseForLocalPrimary(r, stdby, primary, ctx, req)
+}
+
+func SetupStandbyDatabaseForLocalPrimary(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
+	primary *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) error {
+
 	primaryReadyPod, err := GetDatabaseReadyPod(r, primary, ctx, req)
 	if err != nil {
 		return err
@@ -3895,7 +3934,50 @@ func SetupStandbyDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 	}
 
 	r.Log.Info("Setting up listener in the standby database")
-	err = SetupListenerPrimaryForDG(r, stdby, primary, stdbyReadyPod, ctx, req)
+	err = SetupListenerForDGOnDatabase(r, stdby, stdbyReadyPod, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	flashBackStatus, _, _, result := dbcommons.CheckDBConfig(stdbyReadyPod, r, r.Config, ctx, req, stdby.Spec.Edition)
+	if result.Requeue {
+		return fmt.Errorf("error in obtaining the Database Config status")
+	}
+	if !flashBackStatus {
+		r.Log.Info("Setting up flashback mode in the standby database")
+		err = EnableFlashbackInDatabase(r, stdbyReadyPod, ctx, req)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func SetupStandbyDatabaseForExternalPrimary(r *SingleInstanceDatabaseReconciler, stdby *dbapi.SingleInstanceDatabase,
+	ctx context.Context, req ctrl.Request) error {
+
+	stdbyReadyPod, err := GetDatabaseReadyPod(r, stdby, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	r.Log.Info("Setting up tnsnames entry for external primary database in standby database")
+	err = SetupExternalPrimaryDBTnsNamesInStandby(r, stdby, stdbyReadyPod, ctx, req)
+	if err != nil {
+		return err
+	}
+
+	if pdbName := GetPrimaryDatabasePdbName(stdby, nil); pdbName != "" {
+		r.Log.Info("Setting up tnsnames entry for external primary pdb in standby database")
+		err = SetupTnsNamesForPDBListInDatabase(r, stdby, stdbyReadyPod, ctx, req, []string{pdbName})
+		if err != nil {
+			return err
+		}
+	}
+
+	r.Log.Info("Setting up listener in the standby database")
+	err = SetupListenerForDGOnDatabase(r, stdby, stdbyReadyPod, ctx, req)
 	if err != nil {
 		return err
 	}
@@ -3944,4 +4026,155 @@ func CreateOracleHostnameEnvVarObj(sidb *dbapi.SingleInstanceDatabase, referedPr
 			},
 		}
 	}
+}
+func SetupExternalPrimaryDBTnsNamesInStandby(r *SingleInstanceDatabaseReconciler, s *dbapi.SingleInstanceDatabase,
+	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+
+	tnsnamesEntry := dbcommons.PrimaryTnsnamesEntrySharding
+	tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "${PRIMARY_SID}", GetPrimaryDatabaseSid(s, nil))
+	tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "${PRIMARY_IP}", GetPrimaryDatabaseHost(s, nil))
+	tnsnamesEntry = strings.ReplaceAll(tnsnamesEntry, "${PRIMARY_DB_PORT:-1521}", strconv.Itoa(GetPrimaryDatabasePort(s)))
+
+	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | cat >> /opt/oracle/oradata/dbconfig/%s/tnsnames.ora ", tnsnamesEntry, strings.ToUpper(s.Spec.Sid)))
+	if err != nil {
+		return err
+	}
+	r.Log.Info("Modifying tnsnames.ora for external primary Output")
+	r.Log.Info(out)
+
+	return nil
+}
+
+func SetupListenerForDGOnDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.SingleInstanceDatabase,
+	dbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) error {
+
+	out, err := dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", fmt.Sprintf("cat /opt/oracle/oradata/dbconfig/%s/listener.ora ", strings.ToUpper(d.Spec.Sid)))
+	if err != nil {
+		return fmt.Errorf("unable to obtain contents of listener.ora in database %v", d.Name)
+	}
+	r.Log.Info("listener.ora Output")
+	r.Log.Info(out)
+
+	if strings.Contains(out, strings.ToUpper(d.Spec.Sid)+"_DGMGRL") {
+		r.Log.Info("LISTENER.ORA ALREADY HAS " + d.Spec.Sid + "_DGMGRL ENTRY IN SID_LIST_LISTENER ")
+	} else {
+		out, err = dbcommons.ExecCommand(r, r.Config, dbReadyPod.Name, dbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			fmt.Sprintf("echo -e  \"%s\"  | cat > /opt/oracle/oradata/dbconfig/%s/listener.ora ", dbcommons.ListenerEntry, strings.ToUpper(d.Spec.Sid)))
+		if err != nil {
+			return fmt.Errorf("unable to modify listener.ora in database %v", d.Name)
+		}
+		r.Log.Info("Modifying listener.ora Output")
+		r.Log.Info(out)
+
+		err = RestartListenerInDatabase(r, dbReadyPod, ctx, req)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func IsExternalPrimaryDatabase(m *dbapi.SingleInstanceDatabase) bool {
+	return m != nil &&
+		m.Spec.ExternalPrimaryDatabaseRef != nil &&
+		strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host) != ""
+}
+
+func ValidateExternalPrimaryDatabaseRef(m *dbapi.SingleInstanceDatabase) error {
+	if !IsExternalPrimaryDatabase(m) {
+		return nil
+	}
+
+	ref := m.Spec.ExternalPrimaryDatabaseRef
+	if strings.TrimSpace(ref.Host) == "" {
+		return fmt.Errorf("externalPrimaryDatabaseRef.host cannot be empty")
+	}
+	if strings.TrimSpace(ref.Sid) == "" {
+		return fmt.Errorf("externalPrimaryDatabaseRef.sid cannot be empty")
+	}
+	if ref.Port < 0 {
+		return fmt.Errorf("externalPrimaryDatabaseRef.port cannot be negative")
+	}
+
+	return nil
+}
+
+func GetPrimaryDatabaseHost(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
+	if IsExternalPrimaryDatabase(m) {
+		return strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host)
+	}
+	if rp != nil {
+		return rp.Name
+	}
+	return ""
+}
+
+func GetPrimaryDatabasePort(m *dbapi.SingleInstanceDatabase) int {
+	if IsExternalPrimaryDatabase(m) && m.Spec.ExternalPrimaryDatabaseRef.Port > 0 {
+		return m.Spec.ExternalPrimaryDatabaseRef.Port
+	}
+	return int(dbcommons.CONTAINER_LISTENER_PORT)
+}
+
+func GetPrimaryDatabaseSid(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
+	if IsExternalPrimaryDatabase(m) {
+		return strings.ToUpper(strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Sid))
+	}
+	if rp != nil {
+		return strings.ToUpper(strings.TrimSpace(rp.Spec.Sid))
+	}
+	return ""
+}
+
+func GetPrimaryDatabasePdbName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
+	if IsExternalPrimaryDatabase(m) {
+		return strings.ToUpper(strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Pdbname))
+	}
+	if rp != nil {
+		return strings.ToUpper(strings.TrimSpace(rp.Spec.Pdbname))
+	}
+	return ""
+}
+
+func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
+	if IsExternalPrimaryDatabase(m) {
+		host := strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host)
+		port := GetPrimaryDatabasePort(m)
+		sid := GetPrimaryDatabaseSid(m, rp)
+		if host == "" || sid == "" {
+			return ""
+		}
+		return host + ":" + strconv.Itoa(port) + "/" + sid
+	}
+
+	if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) && rp != nil {
+		return rp.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + rp.Spec.Sid
+	}
+
+	return m.Spec.PrimaryDatabaseRef
+}
+
+func GetPrimaryDatabaseDisplayName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
+	if IsExternalPrimaryDatabase(m) {
+		return strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host)
+	}
+	if rp != nil {
+		return rp.Name
+	}
+	return strings.TrimSpace(m.Spec.PrimaryDatabaseRef)
+}
+
+func ShouldCreatePDBFromPrimary(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
+	if IsExternalPrimaryDatabase(m) {
+		if strings.TrimSpace(GetPrimaryDatabasePdbName(m, rp)) != "" {
+			return "true"
+		}
+		return "false"
+	}
+	if rp != nil && rp.Spec.Pdbname != "" {
+		return "true"
+	}
+	return "false"
 }
