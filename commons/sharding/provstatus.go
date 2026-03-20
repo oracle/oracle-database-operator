@@ -40,274 +40,224 @@ package commons
 
 import (
 	"fmt"
-	"strconv"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
 	"github.com/go-logr/logr"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-// CHeck if record exist in a struct
-func CheckGsmStatusInst(instSpex []databasev4.GsmStatusDetails, name string,
-) (int, bool) {
-
-	var status bool = false
-	var idx int
-
-	for i := 0; i < len(instSpex); i++ {
-		if instSpex[i].Name == name {
-			status = true
-			idx = i
-			break
-		}
-	}
-
-	return idx, status
+// statusMapKey composes the flattened status map key format: "<name>_<field>".
+func statusMapKey(name, key string) string {
+	return name + "_" + key
 }
 
-func UpdateGsmStatusData(instance *databasev4.ShardingDatabase, Specidx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+// ensureMap initializes a status map when it is nil.
+func ensureMap(m *map[string]string) {
+	if *m == nil {
+		*m = make(map[string]string)
+	}
+}
+
+// upsertStatusKey sets a key/value pair on a flattened status map.
+func upsertStatusKey(m *map[string]string, name, key, value string) {
+	ensureMap(m)
+	(*m)[statusMapKey(name, key)] = value
+}
+
+// removeStatusKey removes a key from a flattened status map if present.
+func removeStatusKey(m map[string]string, name, key string) {
+	if m != nil {
+		delete(m, statusMapKey(name, key))
+	}
+}
+
+// dbServiceNames returns pod and service DNS names for a "<name>-0" workload.
+func dbServiceNames(name, namespace string) (podName, internalSvc, externalSvc string) {
+	base := name + "-0." + name
+	podName = name + "-0"
+	internalSvc = base + "." + namespace + ".svc.cluster.local"
+	externalSvc = base + "0-svc." + namespace + ".svc.cluster.local"
+	return podName, internalSvc, externalSvc
+}
+
+// updateDbStatusData updates flattened status entries shared by catalog and shard.
+func updateDbStatusData(
+	instance *databasev4.ShardingDatabase,
+	name string,
+	envVars []databasev4.EnvironmentVariable,
+	state string,
+	openMode string,
+	kubeClient kubernetes.Interface,
+	kubeConfig clientcmd.ClientConfig,
+	logger logr.Logger,
+	upsert func(string, string, string),
+	remove func(string, string),
 ) {
 	if state == string(databasev4.AvailableState) {
-		// Evaluate following values only if state is set to available
-		svcName := instance.Spec.Gsm[Specidx].Name + "-0." + instance.Spec.Gsm[Specidx].Name
-		k8sExternalSvcName := svcName + strconv.FormatInt(int64(0), 10) + "-svc." + getInstanceNs(instance) + ".svc.cluster.local"
-		K8sInternalSvcName := svcName + "." + getInstanceNs(instance) + ".svc.cluster.local"
-		_, K8sInternalSvcIP, _ := GetSvcIp(instance.Spec.Gsm[Specidx].Name+"-0", K8sInternalSvcName, instance, kubeClient, kubeConfig, logger)
-		_, K8sExternalSvcIP, _ := GetSvcIp(instance.Spec.Gsm[Specidx].Name+"-0", k8sExternalSvcName, instance, kubeClient, kubeConfig, logger)
-		DbPasswordSecret := instance.Spec.DbSecret.Name
-		instance.Status.Gsm.Services = GetGsmServices(instance.Spec.Gsm[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
+		ns := getInstanceNs(instance)
+		podName, internalSvc, externalSvc := dbServiceNames(name, ns)
+		_, internalIP, _ := GetSvcIp(podName, internalSvc, instance, kubeClient, kubeConfig, logger)
+		_, externalIP, _ := GetSvcIp(podName, externalSvc, instance, kubeClient, kubeConfig, logger)
+		role := GetDbRole(podName, instance, kubeClient, kubeConfig, logger)
+		oracleSid := GetSidName(envVars, name)
+		oraclePdb := GetPdbName(envVars, name)
 
-		//	externIp := strings.Replace(K8sInternalSvcIP, "/r/n", "", -1)
-		//	internIp := strings.Replace(K8sExternalSvcIP, "/r/n", "", -1)
-
-		// Populate the Maps
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Name), instance.Spec.Gsm[Specidx].Name)
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.DbPasswordSecret), DbPasswordSecret)
-		if instance.Spec.IsExternalSvc == true {
-			insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvc), k8sExternalSvcName)
-			insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvcIP), K8sExternalSvcIP)
+		upsert(name, string(databasev4.Name), name)
+		upsert(name, string(databasev4.DbPasswordSecret), instance.Spec.DbSecret.Name)
+		if instance.Spec.IsExternalSvc {
+			upsert(name, string(databasev4.K8sExternalSvc), externalSvc)
+			upsert(name, string(databasev4.K8sExternalSvcIP), externalIP)
 		}
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvc), K8sInternalSvcName)
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvcIP), K8sInternalSvcIP)
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.State), state)
-	} else if state == string(databasev4.Terminated) {
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Name))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvc))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvc))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvcIP))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvcIP))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Role))
+		upsert(name, string(databasev4.K8sInternalSvc), internalSvc)
+		upsert(name, string(databasev4.K8sInternalSvcIP), internalIP)
+		upsert(name, string(databasev4.State), state)
+		upsert(name, string(databasev4.OracleSid), oracleSid)
+		upsert(name, string(databasev4.OraclePdb), oraclePdb)
+		upsert(name, string(databasev4.Role), role)
+		upsert(name, string(databasev4.OpenMode), openMode)
+		return
+	}
+
+	if state == string(databasev4.Terminated) {
+		remove(name, string(databasev4.State))
+		remove(name, string(databasev4.Name))
+		remove(name, string(databasev4.K8sInternalSvc))
+		remove(name, string(databasev4.K8sExternalSvc))
+		remove(name, string(databasev4.K8sExternalSvcIP))
+		remove(name, string(databasev4.K8sInternalSvcIP))
+		remove(name, string(databasev4.Role))
+		remove(name, string(databasev4.OraclePdb))
+		remove(name, string(databasev4.OracleSid))
+		remove(name, string(databasev4.OpenMode))
+		return
+	}
+
+	upsert(name, string(databasev4.State), state)
+	upsert(name, string(databasev4.Name), name)
+	upsert(name, string(databasev4.OpenMode), openMode)
+	remove(name, string(databasev4.K8sInternalSvc))
+	remove(name, string(databasev4.K8sExternalSvc))
+	remove(name, string(databasev4.K8sExternalSvcIP))
+	remove(name, string(databasev4.K8sInternalSvcIP))
+	remove(name, string(databasev4.Role))
+	remove(name, string(databasev4.OraclePdb))
+	remove(name, string(databasev4.OracleSid))
+}
+
+// UpdateGsmStatusData refreshes GSM status details for the given spec index/state.
+func UpdateGsmStatusData(instance *databasev4.ShardingDatabase, specIdx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+) {
+	name := instance.Spec.Gsm[specIdx].Name
+	if state == string(databasev4.AvailableState) {
+		ns := getInstanceNs(instance)
+		podName, internalSvc, externalSvc := dbServiceNames(name, ns)
+		_, internalIP, _ := GetSvcIp(podName, internalSvc, instance, kubeClient, kubeConfig, logger)
+		_, externalIP, _ := GetSvcIp(podName, externalSvc, instance, kubeClient, kubeConfig, logger)
+		instance.Status.Gsm.Services = GetGsmServices(podName, instance, kubeClient, kubeConfig, logger)
+
+		insertOrUpdateGsmKeys(instance, name, string(databasev4.Name), name)
+		insertOrUpdateGsmKeys(instance, name, string(databasev4.DbPasswordSecret), instance.Spec.DbSecret.Name)
+		if instance.Spec.IsExternalSvc {
+			insertOrUpdateGsmKeys(instance, name, string(databasev4.K8sExternalSvc), externalSvc)
+			insertOrUpdateGsmKeys(instance, name, string(databasev4.K8sExternalSvcIP), externalIP)
+		}
+		insertOrUpdateGsmKeys(instance, name, string(databasev4.K8sInternalSvc), internalSvc)
+		insertOrUpdateGsmKeys(instance, name, string(databasev4.K8sInternalSvcIP), internalIP)
+		insertOrUpdateGsmKeys(instance, name, string(databasev4.State), state)
+		return
+	}
+
+	if state == string(databasev4.Terminated) {
+		removeGsmKeys(instance, name, string(databasev4.Name))
+		removeGsmKeys(instance, name, string(databasev4.K8sInternalSvc))
+		removeGsmKeys(instance, name, string(databasev4.K8sExternalSvc))
+		removeGsmKeys(instance, name, string(databasev4.K8sExternalSvcIP))
+		removeGsmKeys(instance, name, string(databasev4.K8sInternalSvcIP))
+		removeGsmKeys(instance, name, string(databasev4.Role))
 		instance.Status.Gsm.Services = ""
-
-	} else {
-		insertOrUpdateGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Name), instance.Spec.Gsm[Specidx].Name)
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvc))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvc))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sExternalSvcIP))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.K8sInternalSvcIP))
-		removeGsmKeys(instance, instance.Spec.Gsm[Specidx].Name, string(databasev4.Role))
-		instance.Status.Gsm.Services = ""
+		return
 	}
 
+	insertOrUpdateGsmKeys(instance, name, string(databasev4.Name), name)
+	removeGsmKeys(instance, name, string(databasev4.K8sInternalSvc))
+	removeGsmKeys(instance, name, string(databasev4.K8sExternalSvc))
+	removeGsmKeys(instance, name, string(databasev4.K8sExternalSvcIP))
+	removeGsmKeys(instance, name, string(databasev4.K8sInternalSvcIP))
+	removeGsmKeys(instance, name, string(databasev4.Role))
+	instance.Status.Gsm.Services = ""
 }
 
-func UpdateCatalogStatusData(instance *databasev4.ShardingDatabase, Specidx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+// UpdateCatalogStatusData refreshes catalog status details for the given spec index/state.
+func UpdateCatalogStatusData(instance *databasev4.ShardingDatabase, specIdx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) {
-	mode := GetDbOpenMode(instance.Spec.Catalog[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
-	if state == string(databasev4.AvailableState) {
-		// Evaluate following values only if state is set to available
-		svcName := instance.Spec.Catalog[Specidx].Name + "-0." + instance.Spec.Catalog[Specidx].Name
-		k8sExternalSvcName := svcName + strconv.FormatInt(int64(0), 10) + "-svc." + getInstanceNs(instance) + ".svc.cluster.local"
-		K8sInternalSvcName := svcName + "." + getInstanceNs(instance) + ".svc.cluster.local"
-		_, K8sInternalSvcIP, _ := GetSvcIp(instance.Spec.Catalog[Specidx].Name+"-0", K8sInternalSvcName, instance, kubeClient, kubeConfig, logger)
-		_, K8sExternalSvcIP, _ := GetSvcIp(instance.Spec.Catalog[Specidx].Name+"-0", k8sExternalSvcName, instance, kubeClient, kubeConfig, logger)
-		DbPasswordSecret := instance.Spec.DbSecret.Name
-		oracleSid := GetSidName(instance.Spec.Catalog[Specidx].EnvVars, instance.Spec.Catalog[Specidx].Name)
-		oraclePdb := GetPdbName(instance.Spec.Catalog[Specidx].EnvVars, instance.Spec.Catalog[Specidx].Name)
-		role := GetDbRole(instance.Spec.Catalog[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
-		//	externIp := strings.Replace(K8sInternalSvcIP, "/r/n", "", -1)
-		//	internIp := strings.Replace(K8sExternalSvcIP, "/r/n", "", -1)
-
-		// Populate the Maps
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Name), instance.Spec.Catalog[Specidx].Name)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.DbPasswordSecret), DbPasswordSecret)
-		if instance.Spec.IsExternalSvc == true {
-			insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvc), k8sExternalSvcName)
-			insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvcIP), K8sExternalSvcIP)
-		}
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvc), K8sInternalSvcName)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvcIP), K8sInternalSvcIP)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.State), state)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OracleSid), oracleSid)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OraclePdb), oraclePdb)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role), role)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OpenMode), mode)
-	} else if state == string(databasev4.Terminated) {
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.State))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Name))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvc))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvc))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvcIP))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvcIP))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OraclePdb))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OracleSid))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OpenMode))
-
-	} else {
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.State), state)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Name), instance.Spec.Catalog[Specidx].Name)
-		insertOrUpdateCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OpenMode), mode)
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvc))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvc))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sExternalSvcIP))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.K8sInternalSvcIP))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OraclePdb))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.OracleSid))
-		removeCatalogKeys(instance, instance.Spec.Catalog[Specidx].Name, string(databasev4.Role))
-	}
-
+	name := instance.Spec.Catalog[specIdx].Name
+	mode := GetDbOpenMode(name+"-0", instance, kubeClient, kubeConfig, logger)
+	updateDbStatusData(
+		instance,
+		name,
+		instance.Spec.Catalog[specIdx].EnvVars,
+		state,
+		mode,
+		kubeClient,
+		kubeConfig,
+		logger,
+		func(n, k, v string) { insertOrUpdateCatalogKeys(instance, n, k, v) },
+		func(n, k string) { removeCatalogKeys(instance, n, k) },
+	)
 }
 
-func UpdateShardStatusData(instance *databasev4.ShardingDatabase, Specidx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+// UpdateShardStatusData refreshes shard status details for the given spec index/state.
+func UpdateShardStatusData(instance *databasev4.ShardingDatabase, specIdx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) {
-	mode := GetDbOpenMode(instance.Spec.Shard[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
-	if state == string(databasev4.AvailableState) {
-		// Evaluate following values only if state is set to available
-		svcName := instance.Spec.Shard[Specidx].Name + "-0." + instance.Spec.Shard[Specidx].Name
-		k8sExternalSvcName := svcName + strconv.FormatInt(int64(0), 10) + "-svc." + getInstanceNs(instance) + ".svc.cluster.local"
-		K8sInternalSvcName := svcName + "." + getInstanceNs(instance) + ".svc.cluster.local"
-		_, K8sInternalSvcIP, _ := GetSvcIp(instance.Spec.Shard[Specidx].Name+"-0", K8sInternalSvcName, instance, kubeClient, kubeConfig, logger)
-		_, K8sExternalSvcIP, _ := GetSvcIp(instance.Spec.Shard[Specidx].Name+"-0", k8sExternalSvcName, instance, kubeClient, kubeConfig, logger)
-		DbPasswordSecret := instance.Spec.DbSecret.Name
-		oracleSid := GetSidName(instance.Spec.Shard[Specidx].EnvVars, instance.Spec.Shard[Specidx].Name)
-		oraclePdb := GetPdbName(instance.Spec.Shard[Specidx].EnvVars, instance.Spec.Shard[Specidx].Name)
-		role := GetDbRole(instance.Spec.Shard[Specidx].Name+"-0", instance, kubeClient, kubeConfig, logger)
-
-		// Populate the Maps
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Name), instance.Spec.Shard[Specidx].Name)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.DbPasswordSecret), DbPasswordSecret)
-		if instance.Spec.IsExternalSvc == true {
-			insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvc), k8sExternalSvcName)
-			insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvcIP), K8sExternalSvcIP)
-		}
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvc), K8sInternalSvcName)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvcIP), K8sInternalSvcIP)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.State), state)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OracleSid), oracleSid)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OraclePdb), oraclePdb)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role), role)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OpenMode), mode)
-	} else if state == string(databasev4.Terminated) {
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.State))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Name))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvc))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvc))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvcIP))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvcIP))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OraclePdb))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OracleSid))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OpenMode))
-
-	} else {
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.State), state)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Name), instance.Spec.Shard[Specidx].Name)
-		insertOrUpdateShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OpenMode), mode)
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvc))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvc))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sExternalSvcIP))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.K8sInternalSvcIP))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OraclePdb))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.OracleSid))
-		removeShardKeys(instance, instance.Spec.Shard[Specidx].Name, string(databasev4.Role))
-	}
-
+	name := instance.Spec.Shard[specIdx].Name
+	mode := GetDbOpenMode(name+"-0", instance, kubeClient, kubeConfig, logger)
+	updateDbStatusData(
+		instance,
+		name,
+		instance.Spec.Shard[specIdx].EnvVars,
+		state,
+		mode,
+		kubeClient,
+		kubeConfig,
+		logger,
+		func(n, k, v string) { insertOrUpdateShardKeys(instance, n, k, v) },
+		func(n, k string) { removeShardKeys(instance, n, k) },
+	)
 }
 
+// insertOrUpdateShardKeys updates one flattened shard status entry.
 func insertOrUpdateShardKeys(instance *databasev4.ShardingDatabase, name string, key string, value string) {
-	newKey := name + "_" + key
-	if len(instance.Status.Shard) > 0 {
-		if _, ok := instance.Status.Shard[newKey]; ok {
-			instance.Status.Shard[newKey] = value
-		} else {
-			instance.Status.Shard[newKey] = value
-		}
-	} else {
-		instance.Status.Shard = make(map[string]string)
-		instance.Status.Shard[newKey] = value
-	}
-
+	upsertStatusKey(&instance.Status.Shard, name, key, value)
 }
 
+// removeShardKeys removes one flattened shard status entry.
 func removeShardKeys(instance *databasev4.ShardingDatabase, name string, key string) {
-	newKey := name + "_" + key
-	if len(instance.Status.Shard) > 0 {
-		if _, ok := instance.Status.Shard[newKey]; ok {
-			delete(instance.Status.Shard, newKey)
-		}
-
-	}
+	removeStatusKey(instance.Status.Shard, name, key)
 }
 
+// insertOrUpdateCatalogKeys updates one flattened catalog status entry.
 func insertOrUpdateCatalogKeys(instance *databasev4.ShardingDatabase, name string, key string, value string) {
-	newKey := name + "_" + key
-	if len(instance.Status.Catalog) > 0 {
-		if _, ok := instance.Status.Catalog[newKey]; ok {
-			instance.Status.Catalog[newKey] = value
-		} else {
-			instance.Status.Catalog[newKey] = value
-		}
-	} else {
-		instance.Status.Catalog = make(map[string]string)
-		instance.Status.Catalog[newKey] = value
-	}
-
+	upsertStatusKey(&instance.Status.Catalog, name, key, value)
 }
 
+// removeCatalogKeys removes one flattened catalog status entry.
 func removeCatalogKeys(instance *databasev4.ShardingDatabase, name string, key string) {
-	newKey := name + "_" + key
-	if len(instance.Status.Catalog) > 0 {
-		if _, ok := instance.Status.Catalog[newKey]; ok {
-			delete(instance.Status.Catalog, newKey)
-		}
-
-	}
+	removeStatusKey(instance.Status.Catalog, name, key)
 }
 
+// insertOrUpdateGsmKeys updates one flattened GSM details entry.
 func insertOrUpdateGsmKeys(instance *databasev4.ShardingDatabase, name string, key string, value string) {
-	newKey := name + "_" + key
-	if len(instance.Status.Gsm.Details) > 0 {
-		if _, ok := instance.Status.Gsm.Details[newKey]; ok {
-			instance.Status.Gsm.Details[newKey] = value
-		} else {
-			instance.Status.Gsm.Details[newKey] = value
-		}
-	} else {
-		instance.Status.Gsm.Details = make(map[string]string)
-		instance.Status.Gsm.Details[newKey] = value
-	}
-
+	upsertStatusKey(&instance.Status.Gsm.Details, name, key, value)
 }
 
+// removeGsmKeys removes one flattened GSM details entry.
 func removeGsmKeys(instance *databasev4.ShardingDatabase, name string, key string) {
-	newKey := name + "_" + key
-	if len(instance.Status.Gsm.Details) > 0 {
-		if _, ok := instance.Status.Gsm.Details[newKey]; ok {
-			delete(instance.Status.Gsm.Details, newKey)
-		}
-
-	}
+	removeStatusKey(instance.Status.Gsm.Details, name, key)
 }
 
+// getInstanceNs returns the instance namespace or "default" when empty.
 func getInstanceNs(instance *databasev4.ShardingDatabase) string {
 	var namespace string
 	if instance.Namespace == "" {
@@ -318,20 +268,7 @@ func getInstanceNs(instance *databasev4.ShardingDatabase) string {
 	return namespace
 }
 
-// File the meta condition and return the meta view
-func GetMetaCondition(instance *databasev4.ShardingDatabase, result *ctrl.Result, err *error, stateType string, stateMsg string) metav1.Condition {
-
-	return metav1.Condition{
-		Type:               stateType,
-		LastTransitionTime: metav1.Now(),
-		ObservedGeneration: instance.GetGeneration(),
-		Reason:             stateMsg,
-		Message:            fmt.Sprint(*err),
-		Status:             metav1.ConditionTrue,
-	}
-}
-
-// ======================= CHeck GSM Director Status ==============
+// CheckGsmStatus validates GSM director readiness in the given pod.
 func CheckGsmStatus(gname string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 	var err error
@@ -347,43 +284,29 @@ func CheckGsmStatus(gname string, instance *databasev4.ShardingDatabase, kubeCli
 	return nil
 }
 
-// ============ Functiont o check the status of the Shard and catalog =========
-// ================================ Validate shard ===========================
+// ValidateDbSetup validates DB setup scripts from the target pod.
 func ValidateDbSetup(podName string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
 	_, _, err := ExecCommand(podName, shardValidationCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
-
-		return fmt.Errorf("error ocurred while validating the DB Setup")
+		return fmt.Errorf("error occurred while validating the DB setup")
 	}
 	return nil
 }
 
+// UpdateGsmShardStatus updates per-shard GSM membership status.
 func UpdateGsmShardStatus(instance *databasev4.ShardingDatabase, name string, state string) {
-	//smap := make(map[string]string)
-	if _, ok := instance.Status.Gsm.Shards[name]; ok {
-		instance.Status.Gsm.Shards[name] = state
-
-	} else {
-		if len(instance.Status.Gsm.Shards) > 0 {
-			instance.Status.Gsm.Shards[name] = state
-		} else {
-			instance.Status.Gsm.Shards = make(map[string]string)
-			instance.Status.Gsm.Shards[name] = state
-
-		}
+	if instance.Status.Gsm.Shards == nil {
+		instance.Status.Gsm.Shards = make(map[string]string)
 	}
-
-	if state == "TERMINATED" {
-
-		if _, ok := instance.Status.Gsm.Shards[name]; ok {
-			delete(instance.Status.Gsm.Shards, name)
-		}
+	instance.Status.Gsm.Shards[name] = state
+	if state == string(databasev4.Terminated) {
+		delete(instance.Status.Gsm.Shards, name)
 	}
-
 }
 
+// GetGsmShardStatus returns the shard state from GSM shard status map.
 func GetGsmShardStatus(instance *databasev4.ShardingDatabase, name string) string {
 	if _, ok := instance.Status.Gsm.Shards[name]; ok {
 		return instance.Status.Gsm.Shards[name]
@@ -393,6 +316,7 @@ func GetGsmShardStatus(instance *databasev4.ShardingDatabase, name string) strin
 
 }
 
+// GetGsmShardStatusKey returns a value from flattened shard status map.
 func GetGsmShardStatusKey(instance *databasev4.ShardingDatabase, key string) string {
 	if _, ok := instance.Status.Shard[key]; ok {
 		return instance.Status.Shard[key]
@@ -402,18 +326,10 @@ func GetGsmShardStatusKey(instance *databasev4.ShardingDatabase, key string) str
 
 }
 
+// GetGsmCatalogStatusKey returns a value from flattened catalog status map.
 func GetGsmCatalogStatusKey(instance *databasev4.ShardingDatabase, key string) string {
 	if _, ok := instance.Status.Catalog[key]; ok {
 		return instance.Status.Catalog[key]
-
-	}
-	return "NOSTATE"
-
-}
-
-func GetGsmDetailsSttausKey(instance *databasev4.ShardingDatabase, key string) string {
-	if _, ok := instance.Status.Gsm.Details[key]; ok {
-		return instance.Status.Gsm.Details[key]
 
 	}
 	return "NOSTATE"

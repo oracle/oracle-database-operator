@@ -160,6 +160,12 @@ type GsmStatusDetails struct {
 	DbPasswordSecret string `json:"dbPasswordSecret"`
 }
 
+type OperationStatus struct {
+	TDEExported bool              `json:"tdeExported,omitempty"`
+	TDEImported map[string]bool   `json:"tdeImported,omitempty"` // shard -> done
+	DGPhase     map[string]string `json:"dgPhase,omitempty"`     // shard -> pending/enabled/error
+}
+
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:JSONPath=".status.gsm.state",name="Gsm State",type=string

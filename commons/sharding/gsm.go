@@ -41,7 +41,6 @@ package commons
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strconv"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
@@ -57,11 +56,33 @@ import (
 
 // Constants for hello-stateful StatefulSet & Volumes
 func buildLabelsForGsm(instance *databasev4.ShardingDatabase, label string, gsmName string) map[string]string {
+	// Keep selector labels stable to avoid StatefulSet selector immutability issues.
 	return map[string]string{
 		"app":        "OracleGsming",
 		"shard_name": "Gsm",
 		"oralabel":   getLabelForGsm(instance),
 	}
+}
+
+func buildOwnerRefForGsm(instance *databasev4.ShardingDatabase) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		*metav1.NewControllerRef(instance, databasev4.GroupVersion.WithKind("ShardingDatabase")),
+	}
+}
+
+func buildResourceLabelsForGsm(instance *databasev4.ShardingDatabase, label string, gsmName string) map[string]string {
+	labels := buildLabelsForGsm(instance, label, gsmName)
+	labels["app.kubernetes.io/name"] = "oracle-sharding"
+	labels["app.kubernetes.io/instance"] = instance.Name
+	labels["app.kubernetes.io/component"] = "gsm"
+	labels["app.kubernetes.io/managed-by"] = "oracle-database-operator"
+	labels["app.kubernetes.io/part-of"] = "oracle-database"
+	labels["sharding.oracle.com/database"] = instance.Name
+	labels["sharding.oracle.com/gsm"] = gsmName
+	if label != "" {
+		labels["sharding.oracle.com/kind"] = label
+	}
+	return labels
 }
 
 func getLabelForGsm(instance *databasev4.ShardingDatabase) string {
@@ -76,7 +97,7 @@ func getLabelForGsm(instance *databasev4.ShardingDatabase) string {
 func BuildStatefulSetForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) *appsv1.StatefulSet {
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForGsm(),
-		ObjectMeta: builObjectMetaForGsm(instance, OraGsmSpex),
+		ObjectMeta: buildObjectMetaForGsm(instance, OraGsmSpex),
 		Spec:       *buildStatefulSpecForGsm(instance, OraGsmSpex),
 	}
 	return sfset
@@ -93,13 +114,12 @@ func buildTypeMetaForGsm() metav1.TypeMeta {
 }
 
 // Function to build ObjectMeta
-func builObjectMetaForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) metav1.ObjectMeta {
-	// building objectMeta
+func buildObjectMetaForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) metav1.ObjectMeta {
 	objmeta := metav1.ObjectMeta{
 		Name:            OraGsmSpex.Name,
 		Namespace:       instance.Namespace,
-		Labels:          buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
-		OwnerReferences: getOwnerRef(instance),
+		Labels:          buildResourceLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
+		OwnerReferences: buildOwnerRefForGsm(instance),
 	}
 	return objmeta
 }
@@ -107,6 +127,7 @@ func builObjectMetaForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex data
 // Function to build Stateful Specs
 func buildStatefulSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) *appsv1.StatefulSetSpec {
 	// building Stateful set Specs
+	replicas := shardReplicaCount
 
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraGsmSpex.Name,
@@ -115,12 +136,13 @@ func buildStatefulSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex d
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
+				Labels: buildResourceLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
 			},
 			Spec: *buildPodSpecForGsm(instance, OraGsmSpex),
 		},
 		VolumeClaimTemplates: volumeClaimTemplatesForGsm(instance, OraGsmSpex),
 	}
+	sfsetspec.Replicas = &replicas
 	/**
 	if OraGsmSpex.Replicas == 0 {
 		OraGsmSpex.Replicas = 1
@@ -245,23 +267,18 @@ func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex 
 			Requests: make(map[corev1.ResourceName]resource.Quantity),
 		},
 		VolumeMounts: buildVolumeMountSpecForGsm(instance, OraGsmSpex),
-		LivenessProbe: &corev1.Probe{
-			// TODO: Investigate if it's ok to call status every 10 seconds
-			FailureThreshold:    int32(3),
-			InitialDelaySeconds: int32(30),
-			PeriodSeconds: func() int32 {
+		LivenessProbe: buildExecProbe(
+			getLivenessCmd("GSM"),
+			30,
+			func() int32 {
 				if instance.Spec.LivenessCheckPeriod > 0 {
 					return int32(instance.Spec.LivenessCheckPeriod)
 				}
 				return 60
 			}(),
-			TimeoutSeconds: int32(20),
-			ProbeHandler: corev1.ProbeHandler{
-				Exec: &corev1.ExecAction{
-					Command: getLivenessCmd("GSM"),
-				},
-			},
-		},
+			20,
+			3,
+		),
 		/**
 		StartupProbe: &corev1.Probe{
 			FailureThreshold: int32(30),
@@ -330,7 +347,7 @@ func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmS
 }
 
 func buildVolumeMountSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.VolumeMount {
-	var result []corev1.VolumeMount
+	result := make([]corev1.VolumeMount, 0, 5)
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "-oradata-vol4", MountPath: oraGsmDataMount})
 	if instance.Spec.IsDownloadScripts {
@@ -350,69 +367,59 @@ func buildVolumeMountSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpe
 }
 
 func volumeClaimTemplatesForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.PersistentVolumeClaim {
-
-	var claims []corev1.PersistentVolumeClaim
-
 	if len(OraGsmSpex.PvcName) != 0 {
-		return claims
+		return nil
 	}
 
-	claims = []corev1.PersistentVolumeClaim{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            OraGsmSpex.Name + "-oradata-vol4",
-				Namespace:       instance.Namespace,
-				Labels:          buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
-				OwnerReferences: getOwnerRef(instance),
+	claim := corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            OraGsmSpex.Name + "-oradata-vol4",
+			Namespace:       instance.Namespace,
+			Labels:          buildResourceLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
+			OwnerReferences: buildOwnerRefForGsm(instance),
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				corev1.ReadWriteOnce,
 			},
-			Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes: []corev1.PersistentVolumeAccessMode{
-					corev1.ReadWriteOnce,
-				},
-				StorageClassName: &instance.Spec.StorageClass,
-				Resources: corev1.VolumeResourceRequirements{
-					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraGsmSpex.StorageSizeInGb), 10) + "Gi"),
-					},
+			StorageClassName: &instance.Spec.StorageClass,
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraGsmSpex.StorageSizeInGb), 10) + "Gi"),
 				},
 			},
 		},
 	}
 
 	if len(OraGsmSpex.PvAnnotations) > 0 {
-		claims[0].ObjectMeta.Annotations = make(map[string]string)
+		claim.ObjectMeta.Annotations = make(map[string]string, len(OraGsmSpex.PvAnnotations))
 		for key, value := range OraGsmSpex.PvAnnotations {
-			claims[0].ObjectMeta.Annotations[key] = value
+			claim.ObjectMeta.Annotations[key] = value
 		}
 	}
 
 	if len(OraGsmSpex.PvMatchLabels) > 0 {
-		claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraGsmSpex.PvMatchLabels}
+		claim.Spec.Selector = &metav1.LabelSelector{MatchLabels: OraGsmSpex.PvMatchLabels}
 	}
 
-	return claims
+	return []corev1.PersistentVolumeClaim{claim}
 }
 
 func BuildServiceDefForGsm(instance *databasev4.ShardingDatabase, replicaCount int32, OraGsmSpex databasev4.GsmSpec, svctype string) *corev1.Service {
-	//service := &corev1.Service{}
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForGsm(instance, replicaCount, OraGsmSpex, svctype),
-		Spec:       corev1.ServiceSpec{},
+		Spec: corev1.ServiceSpec{
+			Selector: getSvcLabelsForGsm(replicaCount, OraGsmSpex),
+			Ports:    buildSvcPortsDef(instance, "GSM"),
+		},
 	}
 
-	// Check if user want External Svc on each replica pod
-	if svctype == "external" {
+	switch svctype {
+	case shardServiceTypeExternal:
 		service.Spec.Type = corev1.ServiceTypeLoadBalancer
-		service.Spec.Selector = getSvcLabelsForGsm(replicaCount, OraGsmSpex)
-	}
-
-	if svctype == "local" {
+	case shardServiceTypeLocal:
 		service.Spec.ClusterIP = corev1.ClusterIPNone
-		service.Spec.Selector = getSvcLabelsForGsm(replicaCount, OraGsmSpex)
 	}
-
-	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
-	service.Spec.Ports = buildSvcPortsDef(instance, "GSM")
 	return service
 }
 
@@ -420,19 +427,21 @@ func BuildServiceDefForGsm(instance *databasev4.ShardingDatabase, replicaCount i
 func buildSvcObjectMetaForGsm(instance *databasev4.ShardingDatabase, replicaCount int32, OraGsmSpex databasev4.GsmSpec, svctype string) metav1.ObjectMeta {
 	// building objectMeta
 	var svcName string
-	if svctype == "local" {
+	if svctype == shardServiceTypeLocal {
 		svcName = OraGsmSpex.Name
 	}
 
-	if svctype == "external" {
+	if svctype == shardServiceTypeExternal {
 		svcName = OraGsmSpex.Name + strconv.FormatInt(int64(replicaCount), 10) + "-svc"
 	}
+	labels := buildResourceLabelsForGsm(instance, "sharding", OraGsmSpex.Name)
+	labels["sharding.oracle.com/service-type"] = svctype
 
 	objmeta := metav1.ObjectMeta{
 		Name:            svcName,
 		Namespace:       instance.Namespace,
-		Labels:          buildLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
-		OwnerReferences: getOwnerRef(instance),
+		Labels:          labels,
+		OwnerReferences: buildOwnerRefForGsm(instance),
 	}
 	return objmeta
 }
@@ -470,12 +479,10 @@ func OraCleanupForGsm(instance *databasev4.ShardingDatabase,
 func UpdateProvForGsm(instance *databasev4.ShardingDatabase,
 	OraGsmSpex databasev4.GsmSpec, kClient client.Client, sfSet *appsv1.StatefulSet, gsmPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
+	_ = gsmPod
 
 	var msg string
-	var size int32 = 1
-	var isUpdate bool = false
-	var err error
-	var i int
+	requiresUpdate := false
 
 	msg = "Inside the updateProvForGsm"
 	LogMessages("DEBUG", msg, nil, instance, logger)
@@ -483,23 +490,25 @@ func UpdateProvForGsm(instance *databasev4.ShardingDatabase,
 	// Ensure deployment replicas match the desired state
 
 	// Ensure deployment replicas match the desired state
-	if sfSet.Spec.Replicas != nil {
-		if *sfSet.Spec.Replicas != size {
-			msg = "Current StatefulSet replicas do not match configured GSM Replicas. Gsm is configured with only 1 but current replicas is set with " + strconv.FormatInt(int64(*sfSet.Spec.Replicas), 10)
-			LogMessages("DEBUG", msg, nil, instance, logger)
-			isUpdate = true
+	if sfSet.Spec.Replicas == nil || *sfSet.Spec.Replicas != shardReplicaCount {
+		currentReplica := "nil"
+		if sfSet.Spec.Replicas != nil {
+			currentReplica = strconv.FormatInt(int64(*sfSet.Spec.Replicas), 10)
 		}
+		msg = "Current StatefulSet replicas do not match configured GSM Replicas. Gsm is configured with only 1 but current replicas is set with " + currentReplica
+		LogMessages("DEBUG", msg, nil, instance, logger)
+		requiresUpdate = true
 	}
-	// Memory Check
-	//resources := corev1.Pod.Spec.Containers
-	for i = 0; i < len(gsmPod.Spec.Containers); i++ {
-		if gsmPod.Spec.Containers[i].Name == sfSet.Name {
-			shardContaineRes := gsmPod.Spec.Containers[i].Resources
-			oraSpexRes := OraGsmSpex.Resources
 
-			if !reflect.DeepEqual(shardContaineRes, oraSpexRes) {
-				isUpdate = false
+	if OraGsmSpex.Resources != nil {
+		for i := range sfSet.Spec.Template.Spec.Containers {
+			if sfSet.Spec.Template.Spec.Containers[i].Name != OraGsmSpex.Name {
+				continue
 			}
+			if sfSet.Spec.Template.Spec.Containers[i].Resources.String() != OraGsmSpex.Resources.String() {
+				requiresUpdate = true
+			}
+			break
 		}
 	}
 
@@ -517,8 +526,8 @@ func UpdateProvForGsm(instance *databasev4.ShardingDatabase,
 
 	**/
 
-	if isUpdate {
-		err = kClient.Update(context.Background(), BuildStatefulSetForGsm(instance, OraGsmSpex))
+	if requiresUpdate {
+		err := kClient.Update(context.Background(), BuildStatefulSetForGsm(instance, OraGsmSpex))
 		if err != nil {
 			msg = "Failed to update Shard StatefulSet " + "StatefulSet.Name : " + sfSet.Name
 			LogMessages("Error", msg, err, instance, logger)

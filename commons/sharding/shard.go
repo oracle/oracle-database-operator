@@ -41,7 +41,6 @@ package commons
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strconv"
 	"strings"
 
@@ -61,23 +60,14 @@ import (
 
 const standbySqlnetOra = `NAMES.DIRECTORY_PATH=(TNSNAMES,EZCONNECT,HOSTNAME)`
 const pmonCheckCmd = `pgrep -fa "ora_pmon_${ORACLE_SID}" >/dev/null`
+const shardReplicaCount int32 = 1
+const shardServiceTypeLocal = "local"
+const shardServiceTypeExternal = "external"
 
-func execProbe(cmd string, initialDelay, period, timeout, failure int32) *corev1.Probe {
-	return &corev1.Probe{
-		FailureThreshold:    failure,
-		InitialDelaySeconds: initialDelay,
-		PeriodSeconds:       period,
-		TimeoutSeconds:      timeout,
-		SuccessThreshold:    1,
-		ProbeHandler: corev1.ProbeHandler{
-			Exec: &corev1.ExecAction{
-				Command: []string{"/bin/sh", "-c", cmd},
-			},
-		},
-	}
-}
-
+// buildLabelsForShard returns common labels applied to shard resources.
 func buildLabelsForShard(instance *databasev4.ShardingDatabase, label string, shardName string) map[string]string {
+	// Keep this selector label set stable for backwards compatibility.
+	// It is used in StatefulSet selectors, which are immutable after creation.
 	return map[string]string{
 		"app":      "OracleSharding",
 		"type":     "Shard",
@@ -85,6 +75,29 @@ func buildLabelsForShard(instance *databasev4.ShardingDatabase, label string, sh
 	}
 }
 
+func buildOwnerRefForShard(instance *databasev4.ShardingDatabase) []metav1.OwnerReference {
+	return []metav1.OwnerReference{
+		*metav1.NewControllerRef(instance, databasev4.GroupVersion.WithKind("ShardingDatabase")),
+	}
+}
+
+// buildResourceLabelsForShard adds Kubernetes recommended labels on top of selector labels.
+func buildResourceLabelsForShard(instance *databasev4.ShardingDatabase, label string, shardName string) map[string]string {
+	labels := buildLabelsForShard(instance, label, shardName)
+	labels["app.kubernetes.io/name"] = "oracle-sharding"
+	labels["app.kubernetes.io/instance"] = instance.Name
+	labels["app.kubernetes.io/component"] = "shard"
+	labels["app.kubernetes.io/managed-by"] = "oracle-database-operator"
+	labels["app.kubernetes.io/part-of"] = "oracle-database"
+	labels["sharding.oracle.com/database"] = instance.Name
+	labels["sharding.oracle.com/shard"] = shardName
+	if strings.TrimSpace(label) != "" {
+		labels["sharding.oracle.com/kind"] = strings.TrimSpace(label)
+	}
+	return labels
+}
+
+// getLabelForShard returns the label value used for grouping shard resources.
 func getLabelForShard(instance *databasev4.ShardingDatabase) string {
 
 	//  if len(OraShardSpex.Label) !=0 {
@@ -94,42 +107,38 @@ func getLabelForShard(instance *databasev4.ShardingDatabase) string {
 	return instance.Name
 }
 
+// BuildStatefulSetForShard builds the desired StatefulSet for a shard.
 func BuildStatefulSetForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *appsv1.StatefulSet {
 	sfset := &appsv1.StatefulSet{
 		TypeMeta:   buildTypeMetaForShard(),
-		ObjectMeta: builObjectMetaForShard(instance, OraShardSpex),
+		ObjectMeta: buildObjectMetaForShard(instance, OraShardSpex),
 		Spec:       *buildStatefulSpecForShard(instance, OraShardSpex),
 	}
 
 	return sfset
 }
 
-// Function to build TypeMeta
+// buildTypeMetaForShard returns static TypeMeta for StatefulSet.
 func buildTypeMetaForShard() metav1.TypeMeta {
-	// building TypeMeta
-	typeMeta := metav1.TypeMeta{
+	return metav1.TypeMeta{
 		Kind:       "StatefulSet",
 		APIVersion: "apps/v1",
 	}
-	return typeMeta
 }
 
-// Function to build ObjectMeta
-func builObjectMetaForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) metav1.ObjectMeta {
-	// building objectMeta
-	objmeta := metav1.ObjectMeta{
+// buildObjectMetaForShard returns metadata for shard StatefulSet resources.
+func buildObjectMetaForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) metav1.ObjectMeta {
+	return metav1.ObjectMeta{
 		Name:            OraShardSpex.Name,
 		Namespace:       instance.Namespace,
-		OwnerReferences: getOwnerRef(instance),
-		Labels:          buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
+		OwnerReferences: buildOwnerRefForShard(instance),
+		Labels:          buildResourceLabelsForShard(instance, "sharding", OraShardSpex.Name),
 	}
-	return objmeta
 }
 
-// Function to build Stateful Specs
+// buildStatefulSpecForShard constructs the StatefulSet spec for one shard.
 func buildStatefulSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *appsv1.StatefulSetSpec {
-	// building Stateful set Specs
-	var size int32 = 1
+	replicas := shardReplicaCount
 	sfsetspec := &appsv1.StatefulSetSpec{
 		ServiceName: OraShardSpex.Name,
 		Selector: &metav1.LabelSelector{
@@ -137,21 +146,35 @@ func buildStatefulSpecForShard(instance *databasev4.ShardingDatabase, OraShardSp
 		},
 		Template: corev1.PodTemplateSpec{
 			ObjectMeta: metav1.ObjectMeta{
-				Labels: buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
+				Labels: buildResourceLabelsForShard(instance, "sharding", OraShardSpex.Name),
 			},
 			Spec: *buildPodSpecForShard(instance, OraShardSpex),
 		},
 		VolumeClaimTemplates: volumeClaimTemplatesForShard(instance, OraShardSpex),
 	}
 
-	sfsetspec.Replicas = &size
+	sfsetspec.Replicas = &replicas
 	return sfsetspec
 }
 
-// Standby Net initContainer (listener.ora + tnsnames.ora + sqlnet.ora) BEFORE DBCA/RMAN runs.
+// isStandbyShard reports whether the shard role requires standby bootstrap flow.
+func isStandbyShard(role string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(role))
+	return normalized == "STANDBY" || normalized == "ACTIVE_STANDBY"
+}
+
+// livenessPeriod resolves the configured liveness interval with a safe default.
+func livenessPeriod(instance *databasev4.ShardingDatabase) int32 {
+	if instance.Spec.LivenessCheckPeriod > 0 {
+		return int32(instance.Spec.LivenessCheckPeriod)
+	}
+	return 60
+}
+
+// buildStandbyNetInitContainerForShard builds the standby-only init container that
+// prepares Oracle Net files before DB bootstrap.
 func buildStandbyNetInitContainerForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) (corev1.Container, bool) {
-	role := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
-	if role != "STANDBY" && role != "ACTIVE_STANDBY" {
+	if !isStandbyShard(OraShardSpex.DeployAs) {
 		return corev1.Container{}, false
 	}
 
@@ -285,7 +308,7 @@ ls -l "${CFG_DIR}" || true
 	return c, true
 }
 
-// Function to build PodSpec
+// buildPodSpecForShard builds the PodSpec for shard StatefulSet pods.
 func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) *corev1.PodSpec {
 
 	user := oraRunAsUser
@@ -302,7 +325,7 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 		ServiceAccountName: instance.Spec.SrvAccountName,
 	}
 
-	//  NEW: compose initContainers (standby net-init + optional download-scripts)
+	// Compose init containers in execution order.
 	var initList []corev1.Container
 
 	if c, ok := buildStandbyNetInitContainerForShard(instance, OraShardSpex); ok {
@@ -335,7 +358,7 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 	return spec
 }
 
-// Function to build Volume Spec
+// buildVolumeSpecForShard returns all volumes mounted by shard containers.
 func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Volume {
 	var result []corev1.Volume
 	result = []corev1.Volume{
@@ -359,7 +382,7 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 		result = append(result, corev1.Volume{Name: OraShardSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraShardSpex.ShardConfigData.Name}}}})
 	}
 
-	//  FIX: Volume name must match VolumeMount ("-oradata-vol4")
+	// Volume name must match the mount entry ("-oradata-vol4").
 	if len(OraShardSpex.PvcName) != 0 {
 		result = append(result, corev1.Volume{
 			Name: OraShardSpex.Name + "-oradata-vol4",
@@ -385,11 +408,13 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 	return result
 }
 
-// Function to build the container Specification
+// buildContainerSpecForShard builds the main shard container spec.
 func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Container {
-	var result []corev1.Container
 	user := oraRunAsUser
 	group := oraFsGroup
+	capsAdd := []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")}
+	capsDrop := []corev1.Capability{"ALL"}
+
 	containerSpec := corev1.Container{
 		Name:  OraShardSpex.Name,
 		Image: instance.Spec.DbImage,
@@ -399,8 +424,8 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 			RunAsGroup:               &group,
 			AllowPrivilegeEscalation: BoolPointer(false),
 			Capabilities: &corev1.Capabilities{
-				Add:  []corev1.Capability{corev1.Capability("NET_ADMIN"), corev1.Capability("SYS_NICE")},
-				Drop: []corev1.Capability{"ALL"},
+				Add:  capsAdd,
+				Drop: capsDrop,
 			},
 		},
 		Resources: corev1.ResourceRequirements{
@@ -408,23 +433,18 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 		},
 		VolumeMounts: buildVolumeMountSpecForShard(instance, OraShardSpex),
 
-		//Liveness: simple + reliable (PMON exists)
-		LivenessProbe: execProbe(
+		// Liveness: simple + reliable (PMON exists).
+		LivenessProbe: buildShellExecProbe(
 			pmonCheckCmd,
 			30,
-			func() int32 {
-				if instance.Spec.LivenessCheckPeriod > 0 {
-					return int32(instance.Spec.LivenessCheckPeriod)
-				}
-				return 60
-			}(),
+			livenessPeriod(instance),
 			10,
 			3,
 		),
 
-		StartupProbe: execProbe(pmonCheckCmd, 30, 20, 10, 60),
+		StartupProbe: buildShellExecProbe(pmonCheckCmd, 30, 20, 10, 60),
 
-		ReadinessProbe: execProbe(pmonCheckCmd, 60, 20, 10, 6),
+		ReadinessProbe: buildShellExecProbe(pmonCheckCmd, 60, 20, 10, 6),
 
 		Env: buildEnvVarsSpec(
 			instance,
@@ -438,9 +458,13 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 		),
 	}
 
+	// Preserve shard-level image pull policy override when provided.
+	if OraShardSpex.ImagePulllPolicy != nil {
+		containerSpec.ImagePullPolicy = *OraShardSpex.ImagePulllPolicy
+	}
+
 	// DBCA/RMAN to use our dbconfig tnsnames (standby only)
-	role := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
-	if role == "STANDBY" || role == "ACTIVE_STANDBY" {
+	if isStandbyShard(OraShardSpex.DeployAs) {
 
 		// Use per-DB dbconfig path
 		containerSpec.Env = append(containerSpec.Env,
@@ -503,11 +527,10 @@ exec /opt/oracle/runOracle.sh`,
 		containerSpec.Resources = *OraShardSpex.Resources
 	}
 
-	result = []corev1.Container{containerSpec}
-	return result
+	return []corev1.Container{containerSpec}
 }
 
-// Function to build the init Container Spec
+// buildInitContainerSpecForShard builds the optional script-download init container.
 func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Container {
 	var result []corev1.Container
 	privFlag := true
@@ -552,8 +575,9 @@ func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraSh
 	return result
 }
 
+// buildVolumeMountSpecForShard returns volume mounts for shard containers.
 func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.VolumeMount {
-	var result []corev1.VolumeMount
+	result := make([]corev1.VolumeMount, 0, 6)
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
 	if instance.Spec.IsDownloadScripts {
@@ -571,193 +595,166 @@ func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShar
 
 	if checkTdeWalletFlag(instance) {
 		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
-			result = append(result, corev1.VolumeMount{Name: instance.Name + "shared-storage" + instance.Spec.Catalog[0].Name + "-0", MountPath: getTdeWalletMountLoc(instance)})
-		} else {
-			if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
-				result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "shared-storage-vol8", MountPath: getTdeWalletMountLoc(instance)})
+			if len(instance.Spec.Catalog) > 0 {
+				result = append(result, corev1.VolumeMount{
+					Name:      instance.Name + "shared-storage" + instance.Spec.Catalog[0].Name + "-0",
+					MountPath: getTdeWalletMountLoc(instance),
+				})
 			}
+		} else if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
+			result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "shared-storage-vol8", MountPath: getTdeWalletMountLoc(instance)})
 		}
 	}
 
 	return result
 }
 
+// volumeClaimTemplatesForShard returns PVC templates when an existing PVC is not provided.
 func volumeClaimTemplatesForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.PersistentVolumeClaim {
-
-	var claims []corev1.PersistentVolumeClaim
-
 	if len(OraShardSpex.PvcName) != 0 {
-		return claims
+		return nil
 	}
 
-	claims = []corev1.PersistentVolumeClaim{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:            OraShardSpex.Name + "-oradata-vol4",
-				Namespace:       instance.Namespace,
-				OwnerReferences: getOwnerRef(instance),
-				Labels:          buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
+	claim := corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            OraShardSpex.Name + "-oradata-vol4",
+			Namespace:       instance.Namespace,
+			OwnerReferences: buildOwnerRefForShard(instance),
+			Labels:          buildResourceLabelsForShard(instance, "sharding", OraShardSpex.Name),
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{
+				corev1.ReadWriteOnce,
 			},
-			Spec: corev1.PersistentVolumeClaimSpec{
-				AccessModes: []corev1.PersistentVolumeAccessMode{
-					corev1.ReadWriteOnce,
-				},
-				StorageClassName: &instance.Spec.StorageClass,
-				Resources: corev1.VolumeResourceRequirements{
-					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraShardSpex.StorageSizeInGb), 10) + "Gi"),
-					},
+			StorageClassName: &instance.Spec.StorageClass,
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraShardSpex.StorageSizeInGb), 10) + "Gi"),
 				},
 			},
 		},
 	}
 
 	if len(OraShardSpex.PvAnnotations) > 0 {
-		claims[0].ObjectMeta.Annotations = make(map[string]string)
+		claim.ObjectMeta.Annotations = make(map[string]string, len(OraShardSpex.PvAnnotations))
 		for key, value := range OraShardSpex.PvAnnotations {
-			claims[0].ObjectMeta.Annotations[key] = value
+			claim.ObjectMeta.Annotations[key] = value
 		}
 	}
 
 	if len(OraShardSpex.PvMatchLabels) > 0 {
-		claims[0].Spec.Selector = &metav1.LabelSelector{MatchLabels: OraShardSpex.PvMatchLabels}
+		claim.Spec.Selector = &metav1.LabelSelector{MatchLabels: OraShardSpex.PvMatchLabels}
 	}
 
-	return claims
+	return []corev1.PersistentVolumeClaim{claim}
 }
 
+// BuildServiceDefForShard builds either the local headless service or per-pod external service.
 func BuildServiceDefForShard(instance *databasev4.ShardingDatabase, replicaCount int32, OraShardSpex databasev4.ShardSpec, svctype string) *corev1.Service {
-	//service := &corev1.Service{}
 	service := &corev1.Service{
 		ObjectMeta: buildSvcObjectMetaForShard(instance, replicaCount, OraShardSpex, svctype),
-		Spec:       corev1.ServiceSpec{},
+		Spec: corev1.ServiceSpec{
+			Selector: getSvcLabelsForShard(replicaCount, OraShardSpex),
+			Ports:    buildSvcPortsDef(instance, "SHARD"),
+		},
 	}
 
-	// Check if user want External Svc on each replica pod
-	if svctype == "external" {
+	switch svctype {
+	case shardServiceTypeExternal:
 		service.Spec.Type = corev1.ServiceTypeLoadBalancer
-		service.Spec.Selector = getSvcLabelsForShard(replicaCount, OraShardSpex)
-	}
-
-	if svctype == "local" {
+	case shardServiceTypeLocal:
 		service.Spec.ClusterIP = corev1.ClusterIPNone
-		service.Spec.Selector = getSvcLabelsForShard(replicaCount, OraShardSpex)
 		// publish DNS for NotReady endpoints (needed for DBCA/RMAN duplicate bootstrap)
 		service.Spec.PublishNotReadyAddresses = true
 	}
 
-	// build Service Ports Specs to be exposed. If the PortMappings is not set then default ports will be exposed.
-	service.Spec.Ports = buildSvcPortsDef(instance, "SHARD")
 	return service
 }
 
-// Function to build Service ObjectMeta
+// buildSvcObjectMetaForShard returns metadata for shard Services.
 func buildSvcObjectMetaForShard(instance *databasev4.ShardingDatabase, replicaCount int32, OraShardSpex databasev4.ShardSpec, svctype string) metav1.ObjectMeta {
-	// building objectMeta
-
-	var svcName string
-
-	if svctype == "local" {
-		svcName = OraShardSpex.Name
-	}
-
-	if svctype == "external" {
-		svcName = OraShardSpex.Name + strconv.FormatInt(int64(replicaCount), 10) + "-svc"
-	}
-
-	objmeta := metav1.ObjectMeta{
-		Name:            svcName,
+	labels := buildResourceLabelsForShard(instance, "sharding", OraShardSpex.Name)
+	labels["sharding.oracle.com/service-type"] = svctype
+	return metav1.ObjectMeta{
+		Name:            shardServiceName(replicaCount, OraShardSpex, svctype),
 		Namespace:       instance.Namespace,
-		Labels:          buildLabelsForShard(instance, "sharding", OraShardSpex.Name),
-		OwnerReferences: getOwnerRef(instance),
+		Labels:          labels,
+		OwnerReferences: buildOwnerRefForShard(instance),
 	}
-	return objmeta
 }
 
-func getSvcLabelsForShard(replicaCount int32, OraShardSpex databasev4.ShardSpec) map[string]string {
+func shardServiceName(replicaCount int32, OraShardSpex databasev4.ShardSpec, svctype string) string {
+	if svctype == shardServiceTypeExternal {
+		return OraShardSpex.Name + strconv.FormatInt(int64(replicaCount), 10) + "-svc"
+	}
+	return OraShardSpex.Name
+}
 
-	var labelStr map[string]string = make(map[string]string)
+// getSvcLabelsForShard returns the selector targeting a specific StatefulSet pod.
+func getSvcLabelsForShard(replicaCount int32, OraShardSpex databasev4.ShardSpec) map[string]string {
+	labelStr := make(map[string]string)
 	if replicaCount == -1 {
 		labelStr["statefulset.kubernetes.io/pod-name"] = OraShardSpex.Name + "-0"
 	} else {
 		labelStr["statefulset.kubernetes.io/pod-name"] = OraShardSpex.Name + "-" + strconv.FormatInt(int64(replicaCount), 10)
 	}
-
-	//  fmt.Println("Service Selector String Specification", labelStr)
 	return labelStr
 }
 
-// ======================== Update Section ========================
+// UpdateProvForShard reconciles mutable shard StatefulSet fields and updates if drift is detected.
 func UpdateProvForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec, kClient client.Client, sfSet *appsv1.StatefulSet, shardPod *corev1.Pod, logger logr.Logger,
 ) (ctrl.Result, error) {
-	var msg string
-	var size int32 = 1
-	//size = 1
-	var isUpdate bool = false
-	var err error
-	var i int
+	_ = shardPod
+	requiresUpdate := false
 
-	// Ensure deployment replicas match the desired state
-	if sfSet.Spec.Replicas != nil {
-		if *sfSet.Spec.Replicas != size {
-			msg = "Current StatefulSet replicas do not match configured Shard Replicas. Shard is configured with only 1 but current replicas is set with " + strconv.FormatInt(int64(*sfSet.Spec.Replicas), 10)
-			LogMessages("DEBUG", msg, nil, instance, logger)
-			isUpdate = true
-		}
+	// Ensure replicas match the shard topology contract.
+	if sfSet.Spec.Replicas == nil || *sfSet.Spec.Replicas != shardReplicaCount {
+		msg := "Current StatefulSet replicas do not match configured shard replicas. expected=1 current=" +
+			func() string {
+				if sfSet.Spec.Replicas == nil {
+					return "nil"
+				}
+				return strconv.FormatInt(int64(*sfSet.Spec.Replicas), 10)
+			}()
+		LogMessages("DEBUG", msg, nil, instance, logger)
+		requiresUpdate = true
 	}
-	// Memory Check
-	//resources := corev1.Pod.Spec.Containers
-	for i = 0; i < len(shardPod.Spec.Containers); i++ {
-		if shardPod.Spec.Containers[i].Name == sfSet.Name {
-			shardContaineRes := shardPod.Spec.Containers[i].Resources
-			oraSpexRes := OraShardSpex.Resources
 
-			if !reflect.DeepEqual(shardContaineRes, oraSpexRes) {
-				isUpdate = false
+	// If explicit resources are provided in spec, compare with StatefulSet template.
+	if OraShardSpex.Resources != nil {
+		for i := range sfSet.Spec.Template.Spec.Containers {
+			if sfSet.Spec.Template.Spec.Containers[i].Name != OraShardSpex.Name {
+				continue
 			}
-		}
-	}
-
-	/**
-	for i = 0; i < len(sfSet.Spec.VolumeClaimTemplates); i++ {
-		if sfSet.Spec.VolumeClaimTemplates[i].Name == OraShardSpex.Name+"-oradata-vol4" {
-			volResource := sfSet.Spec.VolumeClaimTemplates[i].Spec.Resources
-			volumeSize := volResource.Requests.Storage()
-			sSize := volumeSize.
-			if sSize != int(OraShardSpex.StorageSizeInGb) {
-				isUpdate = true
+			if sfSet.Spec.Template.Spec.Containers[i].Resources.String() != OraShardSpex.Resources.String() {
+				requiresUpdate = true
 			}
-
+			break
 		}
 	}
-	**/
 
-	if isUpdate {
-		err = kClient.Update(context.Background(), BuildStatefulSetForShard(instance, OraShardSpex))
-		if err != nil {
-			msg = "Failed to update Shard StatefulSet " + "StatefulSet.Name : " + sfSet.Name
+	if requiresUpdate {
+		if err := kClient.Update(context.Background(), BuildStatefulSetForShard(instance, OraShardSpex)); err != nil {
+			msg := "Failed to update Shard StatefulSet StatefulSet.Name : " + sfSet.Name
 			LogMessages("Error", msg, nil, instance, logger)
 			return ctrl.Result{}, err
 		}
-
 	}
 	return ctrl.Result{}, nil
 }
 
+// ImportTDEKey runs the TDE key import command on the target shard pod.
 func ImportTDEKey(podName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) error {
-	var msg string
-
-	msg = ""
 	_, _, err := ExecCommand(podName, getImportTDEKeyCmd(sparams), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
-		msg = "Error executing getImportTDEKeyCmd : podName=[" + podName + "]. errMsg=" + err.Error()
+		msg := "Error executing getImportTDEKeyCmd : podName=[" + podName + "]. errMsg=" + err.Error()
 		LogMessages("INFO", msg, nil, instance, logger)
 		return err
 	}
 
 	importArr := getImportTDEKeyCmd(sparams)
 	importCmd := strings.Join(importArr, " ")
-	msg = "Executed getImportTDEKeyCmd[" + importCmd + "] on pod " + podName
+	msg := "Executed getImportTDEKeyCmd[" + importCmd + "] on pod " + podName
 	LogMessages("INFO", msg, nil, instance, logger)
 	return nil
 }
