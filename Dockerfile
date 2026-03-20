@@ -36,10 +36,58 @@ COPY commons/ commons/
 COPY controllers/ controllers/
 
 # Build
-RUN --mount=type=cache,target=/go-cache --mount=type=cache,target=/gomod-cache CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on go build -o manager main.go
+#RUN --mount=type=cache,target=/go-cache --mount=type=cache,target=/gomod-cache CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on go build -o manager main.go
+ARG DEBUG=false
+RUN --mount=type=cache,target=/go-cache --mount=type=cache,target=/gomod-cache \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on \
+    sh -c 'if [ "$DEBUG" = "true" ]; then \
+              go build -gcflags="all=-N -l" -o manager main.go && \
+              go install github.com/go-delve/delve/cmd/dlv@v1.25.2 ; \
+           else \
+              go build -o manager main.go ; \
+           fi'
 
+###########################################
+###### DEBUG Image enabled with delv ######
+###########################################
 # Use oraclelinux:9-slim as default base image to package the manager binary
-FROM ${RUNNER_IMG}
+FROM ${RUNNER_IMG} AS debug
+# Labels
+# ------
+LABEL "provider"="Oracle"                                                                                                        \
+      "issues"="https://github.com/oracle/oracle-database-operator/issues"                                                       \
+      "maintainer"="paramdeep.saini@oracle.com, sanjay.singh@oracle.com, kuassi.mensah@oracle.com"                               \
+      "version"="2.0"                                                                                                            \
+      "description"="DB Operator Image V2.0"                                                                                     \
+      "vendor"="Oracle Coporation"                                                                                               \
+      "release"="2.0"                                                                                                            \
+      "summary"="Oracle Database Operator 2.0"                                                                                  \
+      "name"="oracle-database-operator.v2.0"
+ARG DEBUG=false
+ARG CI_COMMIT_SHA
+ARG CI_COMMIT_BRANCH
+ENV COMMIT_SHA=${CI_COMMIT_SHA} \
+    COMMIT_BRANCH=${CI_COMMIT_BRANCH}
+WORKDIR /
+COPY --from=builder /workspace/manager .
+# Only present if DEBUG=true in builder; copy will fail if not built.
+# Easiest is to always build DEBUG=true for the debug tag.
+COPY --from=builder /go/bin/dlv /dlv
+COPY ords/ords_init.sh .
+COPY ords/ords_start.sh .
+COPY LICENSE.txt /licenses/
+COPY THIRD_PARTY_LICENSES_DOCKER.txt /licenses/
+COPY THIRD_PARTY_LICENSES.txt /licenses/
+RUN useradd -u 1002 nonroot
+USER nonroot
+
+ENTRYPOINT ["/manager"]
+
+###########################################
+###### PROD Image  .                 ######
+###########################################
+
+FROM ${RUNNER_IMG} AS prod
 # Labels
 # ------
 LABEL "provider"="Oracle"                                                                                                        \
@@ -57,6 +105,8 @@ ENV COMMIT_SHA=${CI_COMMIT_SHA} \
     COMMIT_BRANCH=${CI_COMMIT_BRANCH}
 WORKDIR /
 COPY --from=builder /workspace/manager .
+# Only present if DEBUG=true in builder; copy will fail if not built.
+# Easiest is to always build DEBUG=true for the debug tag.
 COPY ords/ords_init.sh .
 COPY ords/ords_start.sh .
 COPY LICENSE.txt /licenses/

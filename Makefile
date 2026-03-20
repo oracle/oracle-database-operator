@@ -91,7 +91,7 @@ endif
 image-build: #manifests generate fmt vet #test ## Build docker image with the manager. Disable the test but keep the validations to fail fast
 	$(DOCKER) build --build-arg http_proxy=$(HTTP_PROXY) --build-arg https_proxy=$(HTTPS_PROXY) \
                      --build-arg CI_COMMIT_SHA=$(CI_COMMIT_SHA) --build-arg CI_COMMIT_BRANCH=$(CI_COMMIT_BRANCH) \
-                     $(BUILD_ARGS) $(IMG) .
+                     --target debug $(BUILD_ARGS) $(IMG) .
 
 image-push: ## Push docker image with the manager.
 	$(DOCKER) $(PUSH_ARGS) push $(IMG)

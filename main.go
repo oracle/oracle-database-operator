@@ -107,6 +107,11 @@ func main() {
 		o.TimeEncoder = zapcore.RFC3339TimeEncoder
 	}))
 
+	setupLog.Info("env check",
+		"KUBECONFIG", os.Getenv("KUBECONFIG"),
+		"WATCH_NAMESPACE", os.Getenv("WATCH_NAMESPACE"),
+	)
+
 	watchNamespaces, err := getWatchNamespace()
 	if err != nil {
 		setupLog.Error(err, "failed to get watch namespaces")
