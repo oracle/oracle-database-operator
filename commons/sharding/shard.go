@@ -52,8 +52,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -744,8 +743,8 @@ func UpdateProvForShard(instance *databasev4.ShardingDatabase, OraShardSpex data
 }
 
 // ImportTDEKey runs the TDE key import command on the target shard pod.
-func ImportTDEKey(podName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) error {
-	_, _, err := ExecCommand(podName, getImportTDEKeyCmd(sparams), kubeClient, kubeconfig, instance, logger)
+func ImportTDEKey(podName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger) error {
+	_, _, err := ExecCommand(podName, getImportTDEKeyCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error executing getImportTDEKeyCmd : podName=[" + podName + "]. errMsg=" + err.Error()
 		LogMessages("INFO", msg, nil, instance, logger)

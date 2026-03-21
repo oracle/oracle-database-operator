@@ -7,8 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
 )
 
 // -----------------------------------------------------------------------------
@@ -61,8 +60,7 @@ func EnsureDgBrokerFilesAndStart(
 	podName string,
 	dbUnique string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 	dbUnique = strings.ToUpper(strings.TrimSpace(dbUnique))
@@ -106,7 +104,7 @@ exit
 EOF
 `, dbUnique)}
 
-	stdout, stderr, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, log)
+	stdout, stderr, err := ExecCommand(podName, cmd, kubeConfig, instance, log)
 	if err != nil {
 		LogMessages("ERROR",
 			"EnsureDgBrokerFilesAndStart failed on "+podName+" stdout="+stdout+" stderr="+stderr,
@@ -128,8 +126,7 @@ func CreateDgBrokerConfigTryConnects(
 	primaryDbUniqueName string,
 	primaryConnects []string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 	for _, c := range primaryConnects {
@@ -146,7 +143,7 @@ exit
 EOF
 `, safeIdent(cfgName), safeIdent(primaryDbUniqueName), c)}
 
-		stdout, stderr, err := ExecCommand(primaryPod, cmd, kubeClient, kubeConfig, instance, log)
+		stdout, stderr, err := ExecCommand(primaryPod, cmd, kubeConfig, instance, log)
 		if err == nil {
 			LogMessages("INFO", "Created/verified DG broker config "+cfgName+" using connect "+c, nil, instance, log)
 			return nil
@@ -168,8 +165,7 @@ func AddStandbyToDgBrokerConfigTryConnects(
 	standbyDbUniqueName string,
 	standbyConnects []string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 	for _, c := range standbyConnects {
@@ -186,7 +182,7 @@ exit
 EOF
 `, safeIdent(standbyDbUniqueName), c)}
 
-		stdout, stderr, err := ExecCommand(primaryPod, cmd, kubeClient, kubeConfig, instance, log)
+		stdout, stderr, err := ExecCommand(primaryPod, cmd, kubeConfig, instance, log)
 		if err == nil {
 			LogMessages("INFO", "Added/verified standby "+standbyDbUniqueName+" using connect "+c, nil, instance, log)
 			return nil
@@ -207,8 +203,7 @@ func EnableAndValidateDgBroker(
 	primaryPod string,
 	cfgName string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 
@@ -219,7 +214,7 @@ show configuration;
 exit
 EOF
 `}
-	stdout, stderr, err := ExecCommand(primaryPod, cmd, kubeClient, kubeConfig, instance, log)
+	stdout, stderr, err := ExecCommand(primaryPod, cmd, kubeConfig, instance, log)
 	if err != nil {
 		LogMessages("ERROR", "EnableAndValidateDgBroker failed stdout="+stdout+" stderr="+stderr, err, instance, log)
 		return err
@@ -251,8 +246,7 @@ func looksLikeAlreadyExists(stdout, stderr string) bool {
 func RunStandbyDatabasePrerequisitesSQL(
 	podName string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 
@@ -269,7 +263,7 @@ exit
 EOF
 `, dbcommons.SQLPlusCLI, sql)}
 
-	stdout, stderr, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, log)
+	stdout, stderr, err := ExecCommand(podName, cmd, kubeConfig, instance, log)
 	if err != nil {
 		LogMessages("ERROR", "RunStandbyDatabasePrerequisitesSQL failed on "+podName+
 			" stdout="+stdout+" stderr="+stderr, err, instance, log)
@@ -284,8 +278,7 @@ func RunSQLPlusInPod(
 	podName string,
 	sql string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 	sql = strings.TrimSpace(sql)
@@ -301,7 +294,7 @@ exit
 EOF
 `, dbcommons.SQLPlusCLI, sql)}
 
-	stdout, stderr, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, log)
+	stdout, stderr, err := ExecCommand(podName, cmd, kubeConfig, instance, log)
 	if err != nil {
 		LogMessages("ERROR", "RunSQLPlusInPod failed on "+podName+
 			" stdout="+stdout+" stderr="+stderr, err, instance, log)
@@ -314,14 +307,13 @@ EOF
 func EnableArchiveLogInPod(
 	podName string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 	cmdStr := fmt.Sprintf(dbcommons.ArchiveLogTrueCMD, dbcommons.SQLPlusCLI)
 
 	cmd := []string{"bash", "-lc", cmdStr}
-	stdout, stderr, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, log)
+	stdout, stderr, err := ExecCommand(podName, cmd, kubeConfig, instance, log)
 	if err != nil {
 		LogMessages("ERROR", "EnableArchiveLogInPod failed on "+podName+
 			" stdout="+stdout+" stderr="+stderr, err, instance, log)
@@ -335,12 +327,11 @@ func ExecShellInPod(
 	podName string,
 	shellCmd string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 	cmd := []string{"bash", "-lc", shellCmd}
-	stdout, stderr, err := ExecCommand(podName, cmd, kubeClient, kubeConfig, instance, log)
+	stdout, stderr, err := ExecCommand(podName, cmd, kubeConfig, instance, log)
 	if err != nil {
 		LogMessages("ERROR", "ExecShellInPod failed on "+podName+" stdout="+stdout+" stderr="+stderr, err, instance, log)
 		return err
@@ -361,8 +352,7 @@ func SetDgBrokerConnectIdentifiers(
 	standbyDbUnique string,
 	standbyConnects []string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 
@@ -402,7 +392,7 @@ EOF
 		safeIdent(standbyDbUnique),
 	)}
 
-	stdout, stderr, err := ExecCommand(primaryPod, cmd, kubeClient, kubeConfig, instance, log)
+	stdout, stderr, err := ExecCommand(primaryPod, cmd, kubeConfig, instance, log)
 	if err != nil {
 		LogMessages("ERROR",
 			"SetDgBrokerConnectIdentifiers failed stdout="+stdout+" stderr="+stderr,
@@ -422,8 +412,7 @@ func EnsureStandbyRedoLogsForShards(
 	primaryPod string,
 	standbyPod string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 
@@ -444,7 +433,7 @@ select group#, thread#, round(bytes/1024/1024) mb, status
 from v$standby_log order by group#;
 `
 
-	if err := RunSQLPlusInPod(primaryPod, primarySQL, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(primaryPod, primarySQL, instance, kubeConfig, log); err != nil {
 		return err
 	}
 
@@ -465,7 +454,7 @@ select group#, thread#, round(bytes/1024/1024) mb, status
 from v$standby_log order by group#;
 `
 
-	if err := RunSQLPlusInPod(standbyPod, standbySQL, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(standbyPod, standbySQL, instance, kubeConfig, log); err != nil {
 		return err
 	}
 
@@ -475,7 +464,7 @@ alter database add standby logfile thread 1 size 200M;
 alter database add standby logfile thread 1 size 200M;
 alter database add standby logfile thread 1 size 200M;
 `
-	if err := RunSQLPlusInPod(primaryPod, addPrimarySRLs, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(primaryPod, addPrimarySRLs, instance, kubeConfig, log); err != nil {
 		return err
 	}
 
@@ -486,7 +475,7 @@ alter database add standby logfile thread 1 size 200M;
 alter database add standby logfile thread 1 size 200M;
 alter database add standby logfile thread 1 size 200M;
 `
-	if err := RunSQLPlusInPod(standbyPod, addStandbySRLs, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(standbyPod, addStandbySRLs, instance, kubeConfig, log); err != nil {
 		return err
 	}
 
@@ -498,15 +487,14 @@ func RestartStandbyApplyAndForceRedo(
 	primaryPod string,
 	standbyPod string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 
 	startApplySQL := `
 alter database recover managed standby database using current logfile disconnect from session;
 `
-	if err := RunSQLPlusInPod(standbyPod, startApplySQL, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(standbyPod, startApplySQL, instance, kubeConfig, log); err != nil {
 		return err
 	}
 
@@ -514,7 +502,7 @@ alter database recover managed standby database using current logfile disconnect
 alter system archive log current;
 alter system archive log current;
 `
-	if err := RunSQLPlusInPod(primaryPod, forceRedoSQL, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(primaryPod, forceRedoSQL, instance, kubeConfig, log); err != nil {
 		return err
 	}
 
@@ -522,7 +510,7 @@ alter system archive log current;
 set pages 200 lines 200
 select process, status, thread#, sequence# from v$managed_standby order by process;
 `
-	if err := RunSQLPlusInPod(standbyPod, verifyApplySQL, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(standbyPod, verifyApplySQL, instance, kubeConfig, log); err != nil {
 		return err
 	}
 
@@ -539,8 +527,7 @@ func ConfigurePrimaryRedoTransport(
 	standbyShardName string,
 	standbyDbUniqueName string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	log logr.Logger,
 ) error {
 
@@ -559,15 +546,15 @@ alter system archive log current;
 alter system archive log current;
 `
 
-	if err := RunSQLPlusInPod(primaryPod, logArchiveDest2SQL, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(primaryPod, logArchiveDest2SQL, instance, kubeConfig, log); err != nil {
 		return err
 	}
 
-	if err := RunSQLPlusInPod(primaryPod, enableDest2SQL, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(primaryPod, enableDest2SQL, instance, kubeConfig, log); err != nil {
 		return err
 	}
 
-	if err := RunSQLPlusInPod(primaryPod, switchLogSQL, instance, kubeClient, kubeConfig, log); err != nil {
+	if err := RunSQLPlusInPod(primaryPod, switchLogSQL, instance, kubeConfig, log); err != nil {
 		return err
 	}
 

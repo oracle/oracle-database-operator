@@ -41,6 +41,7 @@ package main
 import (
 	"context"
 	"flag"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -109,7 +110,7 @@ func main() {
 
 	setupLog.Info("env check",
 		"KUBECONFIG", os.Getenv("KUBECONFIG"),
-		"WATCH_NAMESPACE", os.Getenv("WATCH_NAMESPACE"),
+		"WATCH_NAMESPACE", os.Getenv(watchNamespaceEnvVar),
 	)
 
 	watchNamespaces, err := getWatchNamespace()
@@ -117,8 +118,11 @@ func main() {
 		setupLog.Error(err, "failed to get watch namespaces")
 		os.Exit(1)
 	}
-
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	if len(watchNamespaces) > 0 {
+		setupLog.Info("namespace-scoped watch enabled; ensure RoleBinding exists in every watched namespace for service account oracle-database-operator-system/default", "watchNamespaces", keys(watchNamespaces))
+	}
+	cfg := ctrl.GetConfigOrDie()
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: metricsAddr,
@@ -137,6 +141,14 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
+	}
+
+	// --- Add HTTP/2 disable here if needed ---
+	cfg.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+		if tr, ok := rt.(*http.Transport); ok {
+			tr.ForceAttemptHTTP2 = false
+		}
+		return rt
 	}
 
 	if err := setupControllers(mgr, parseReconcileInterval()); err != nil {
@@ -160,6 +172,8 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
+	// Manager start sequence includes cache startup and sync.
+	// Waiting for cache sync before Start deadlocks because informers are not running yet.
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
@@ -167,7 +181,7 @@ func main() {
 }
 
 func parseFlags() (metricsAddr string, enableLeaderElection bool) {
-	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&metricsAddr, "metrics-addr", ":18080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
 	flag.Parse()

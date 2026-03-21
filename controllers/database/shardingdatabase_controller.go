@@ -58,8 +58,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -80,8 +79,7 @@ type ShardingDatabaseReconciler struct {
 	client.Client
 	Log        logr.Logger
 	Scheme     *runtime.Scheme
-	kubeClient kubernetes.Interface
-	kubeConfig clientcmd.ClientConfig
+	kubeConfig *rest.Config
 	Recorder   record.EventRecorder
 	APIReader  client.Reader
 }
@@ -548,6 +546,15 @@ func (r *ShardingDatabaseReconciler) phasePostSync(
 // Check https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/controller#Options to under MaxConcurrentReconciles
 // SetupWithManager handles setup with manager for the sharding database controller.
 func (r *ShardingDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	cfg := mgr.GetConfig()
+	if cfg == nil {
+		return fmt.Errorf("manager config is nil")
+	}
+
+	if r.kubeConfig == nil {
+		r.kubeConfig = rest.CopyConfig(cfg)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&databasev4.ShardingDatabase{}).
 		Owns(&appsv1.StatefulSet{}).
@@ -1354,7 +1361,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualGsm(instance *databasev4.Sh
 		r.updateGsmStatus(instance, specId, string(databasev4.PodNotReadyState))
 		return gsmSfSet, gsmPod, fmt.Errorf("pod doesn't exist")
 	}
-	err = shardingv1.CheckGsmStatus(gsmPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
+	err = shardingv1.CheckGsmStatus(gsmPod.Name, instance, r.kubeConfig, r.Log)
 	if err != nil {
 		msg = "Unable to validate GSM director. GSM director doesn't seems to be ready to accept the commands."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
@@ -1433,10 +1440,22 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 		r.updateCatalogStatus(instance, specId, string(databasev4.PodNotReadyState))
 		return catalogSfSet, catalogPod, fmt.Errorf("pod doesn't exist")
 	}
-	err = shardingv1.ValidateDbSetup(catalogPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
+	err = shardingv1.ValidateDbSetup(catalogPod.Name, instance, r.kubeConfig, r.Log)
 	if err != nil {
 		msg := "Unable to validate Catalog. Catalog doesn't seems to be ready to accept the commands."
-		r.logLegacy("Error", msg, nil, instance, r.Log)
+		lerr := strings.ToLower(err.Error())
+		isTransientCatalogNotReady := strings.Contains(lerr, "ora-01034") ||
+			strings.Contains(lerr, "ora-27101") ||
+			strings.Contains(lerr, "sp2-0640") ||
+			strings.Contains(lerr, "not open") ||
+			strings.Contains(lerr, "connection refused") ||
+			strings.Contains(lerr, "i/o timeout") ||
+			strings.Contains(lerr, "context deadline exceeded")
+		if isTransientCatalogNotReady {
+			r.logLegacy("INFO", msg+" cause: "+err.Error(), nil, instance, r.Log)
+		} else {
+			r.logLegacy("Error", msg+" cause: "+err.Error(), nil, instance, r.Log)
+		}
 		r.updateCatalogStatus(instance, specId, string(databasev4.ProvisionState))
 		return catalogSfSet, catalogPod, err
 	}
@@ -1475,7 +1494,7 @@ func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.Sharding
 		r.updateShardStatus(instance, specId, string(databasev4.PodNotReadyState))
 		return shardSfSet, shardPod, fmt.Errorf("pod doesn't exist")
 	}
-	err = shardingv1.ValidateDbSetup(shardPod.Name, instance, r.kubeClient, r.kubeConfig, r.Log)
+	err = shardingv1.ValidateDbSetup(shardPod.Name, instance, r.kubeConfig, r.Log)
 	if err != nil {
 		msg := "Unable to validate shard. Shard doesn't seem to be ready to accept commands."
 		r.logLegacy("Error", msg, nil, instance, r.Log)
@@ -1551,7 +1570,7 @@ func (r *ShardingDatabaseReconciler) updateGsmStatus(instance *databasev4.Shardi
 	}
 
 	instance.Status.Gsm.State = state
-	shardingv1.UpdateGsmStatusData(instance, specIdx, state, r.kubeClient, r.kubeConfig, r.Log)
+	shardingv1.UpdateGsmStatusData(instance, specIdx, state, r.kubeConfig, r.Log)
 
 	if eventChanged {
 		r.publishEvents(instance, eventMsg, state)
@@ -1574,7 +1593,7 @@ func (r *ShardingDatabaseReconciler) updateCatalogStatus(instance *databasev4.Sh
 		eventMsg = "The catalog " + shardingv1.GetFmtStr(name) + " state changed from " + currState + " to " + state
 	}
 
-	shardingv1.UpdateCatalogStatusData(instance, specIdx, state, r.kubeClient, r.kubeConfig, r.Log)
+	shardingv1.UpdateCatalogStatusData(instance, specIdx, state, r.kubeConfig, r.Log)
 	if err := r.Status().Update(context.Background(), instance); err != nil {
 		r.logLegacy("DEBUG", "updateCatalogStatus: status update failed", err, instance, r.Log)
 	}
@@ -1600,7 +1619,7 @@ func (r *ShardingDatabaseReconciler) updateShardStatus(instance *databasev4.Shar
 		eventMsg = "The shard " + shardingv1.GetFmtStr(name) + " state changed from " + currState + " to " + state
 	}
 
-	shardingv1.UpdateShardStatusData(instance, specIdx, state, r.kubeClient, r.kubeConfig, r.Log)
+	shardingv1.UpdateShardStatusData(instance, specIdx, state, r.kubeConfig, r.Log)
 	if err := r.Status().Update(context.Background(), instance); err != nil {
 		r.logLegacy("DEBUG", "updateShardStatus: status update failed", err, instance, r.Log)
 	}
@@ -1766,24 +1785,22 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 			continue
 		}
 
-		// 2) If shard already exists in GSM, nothing to add/deploy for this shard.
+		// 2) Ensure shard exists in GSM. Add only when missing.
 		sparamsCheck := shardingv1.BuildShardParams(instance, shardSfSet, oraShardSpec)
-		if err = shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeClient, r.kubeConfig, r.Log); err == nil {
-			continue
+		if err = shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeConfig, r.Log); err != nil {
+			sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, oraShardSpec)
+			r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.AddingShardState))
+			if err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeConfig, r.Log); err != nil {
+				r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.AddingShardErrorState))
+				r.logLegacy("Error", instance.Namespace+":Shard Addition Failure:"+err.Error(), nil, instance, r.Log)
+				addFailedCount++
+				continue
+			}
 		}
-
-		// 3) Add shard in GSM.
-		sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, oraShardSpec)
-		r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.AddingShardState))
-		if err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
-			r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.AddingShardErrorState))
-			r.logLegacy("Error", instance.Namespace+":Shard Addition Failure:"+err.Error(), nil, instance, r.Log)
-			addFailedCount++
-			continue
+		// 3) Deploy whenever shard exists but is not yet deployed.
+		if err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeConfig, r.Log); err != nil {
+			deployParams = append(deployParams, sparamsCheck)
 		}
-
-		// Deploy only for newly added shards.
-		deployParams = append(deployParams, sparamsCheck)
 	}
 
 	if notReadyCount > 0 {
@@ -1796,9 +1813,9 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 		return fmt.Errorf("shards addition are pending: %d shard add operation(s) failed", addFailedCount)
 	}
 
-	// Deploy shard changes for each newly added shard.
+	// Deploy shard changes for each shard that is not yet deployed in GSM.
 	for _, params := range deployParams {
-		if derr := shardingv1.DeployShardInGsm(gsmPod.Name, params, instance, r.kubeClient, r.kubeConfig, r.Log); derr != nil {
+		if derr := shardingv1.DeployShardInGsm(gsmPod.Name, params, instance, r.kubeConfig, r.Log); derr != nil {
 			r.logLegacy("INFO", "DeployShardInGsm pending; requeue: "+derr.Error(), nil, instance, r.Log)
 			return fmt.Errorf("deploy shard in GSM pending: %w", derr)
 		}
@@ -1834,7 +1851,7 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev4.ShardingD
 
 	// Verify shard online state in GSM.
 	sparams := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
-	if err := shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeConfig, r.Log); err != nil {
 		// Treat as transient; don't flip status to ERROR in GSM status
 		r.logLegacy("INFO", "CheckOnlineShardInGsm failed; will retry: "+err.Error(), nil, instance, r.Log)
 		return nil
@@ -1919,17 +1936,20 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 		if !instance.Spec.IsDataGuard {
 			sparamsCheck := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
 
-			inGsmErr := shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeClient, r.kubeConfig, r.Log)
-			if inGsmErr != nil {
+			if inGsmErr := shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeConfig, r.Log); inGsmErr != nil {
 				sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, OraShardSpex)
 
 				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardState))
-				err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeClient, r.kubeConfig, r.Log)
+				err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeConfig, r.Log)
 				if err != nil {
 					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
 					addFailedCount++
 					continue
 				}
+			}
+
+			// Deploy whenever standby shard exists but is not yet deployed.
+			if derr := shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeConfig, r.Log); derr != nil {
 				deployParams = append(deployParams, sparamsCheck)
 			}
 		} else {
@@ -1973,46 +1993,46 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			}
 
 			// 4A) Fix broker files + start broker on both sides
-			if e := shardingv1.EnsureDgBrokerFilesAndStart(primaryPod, primaryDbUnique, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.EnsureDgBrokerFilesAndStart(primaryPod, primaryDbUnique, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:broker_files_primary:"+e.Error())
 				return e
 			}
-			if e := shardingv1.EnsureDgBrokerFilesAndStart(standbyPod, standbyDbUnique, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.EnsureDgBrokerFilesAndStart(standbyPod, standbyDbUnique, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:broker_files_standby:"+e.Error())
 				return e
 			}
 
 			// 4B) Primary prerequisite SQL
-			if e := shardingv1.RunStandbyDatabasePrerequisitesSQL(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.RunStandbyDatabasePrerequisitesSQL(primaryPod, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:prereqs-primary:"+e.Error())
 				return e
 			}
 
 			// 4C) Enable archive log on primary
-			if e := shardingv1.EnableArchiveLogInPod(primaryPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.EnableArchiveLogInPod(primaryPod, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:archivelog-primary:"+e.Error())
 				return e
 			}
 
 			// 4D) Force logging on primary
-			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.ForceLoggingTrueSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.ForceLoggingTrueSQL, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:forcelogging-primary:"+e.Error())
 				return e
 			}
 
 			// 4E) Flashback on primary
-			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.FlashBackTrueSQL, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.FlashBackTrueSQL, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:flashback-primary:"+e.Error())
 				return e
 			}
 			// 4F) Ensure standby redo logs on both primary and standby
-			if e := shardingv1.EnsureStandbyRedoLogsForShards(primaryPod, standbyPod, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.EnsureStandbyRedoLogsForShards(primaryPod, standbyPod, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:standby-redo-logs:"+e.Error())
 				return e
@@ -2040,14 +2060,14 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			}
 
 			// 4J) Create broker config
-			if e := shardingv1.CreateDgBrokerConfigTryConnects(primaryPod, cfgName, primaryDbUnique, primaryConnects, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.CreateDgBrokerConfigTryConnects(primaryPod, cfgName, primaryDbUnique, primaryConnects, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:create-config:"+e.Error())
 				return e
 			}
 
 			// 4K) Add standby to broker config
-			if e := shardingv1.AddStandbyToDgBrokerConfigTryConnects(primaryPod, standbyDbUnique, standbyConnects, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.AddStandbyToDgBrokerConfigTryConnects(primaryPod, standbyDbUnique, standbyConnects, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:add-standby:"+e.Error())
 				return e
@@ -2061,7 +2081,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			}
 
 			// 4M) Enable and validate broker
-			if e := shardingv1.EnableAndValidateDgBroker(primaryPod, cfgName, instance, r.kubeClient, r.kubeConfig, r.Log); e != nil {
+			if e := shardingv1.EnableAndValidateDgBroker(primaryPod, cfgName, instance, r.kubeConfig, r.Log); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:enable-validate:"+e.Error())
 				return e
@@ -2085,7 +2105,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 
 	if !instance.Spec.IsDataGuard {
 		for _, params := range deployParams {
-			if derr := shardingv1.DeployShardInGsm(gsmPod.Name, params, instance, r.kubeClient, r.kubeConfig, r.Log); derr != nil {
+			if derr := shardingv1.DeployShardInGsm(gsmPod.Name, params, instance, r.kubeConfig, r.Log); derr != nil {
 				r.logLegacy("INFO", "DeployShardInGsm pending for standby shard; requeue: "+derr.Error(), nil, instance, r.Log)
 				return fmt.Errorf("standby deploy in GSM pending: %w", derr)
 			}
@@ -2176,7 +2196,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 			} else {
 				r.logLegacy("INFO", "Retrying chunk movement for shard "+oraShardSpec.Name, nil, instance, r.Log)
 			}
-			return shardingv1.MoveChunks(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+			return shardingv1.MoveChunks(gsmPod.Name, sparams, instance, r.kubeConfig, r.Log)
 		}
 
 		chkState := shardingv1.GetGsmShardStatus(instance, oraShardSpec.Name)
@@ -2217,7 +2237,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 		// Step 4: check if shard exists in GSM
 		sparams := shardingv1.BuildShardParams(instance, shardSfSet, oraShardSpec)
 
-		err = shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		err = shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeConfig, r.Log)
 		if err != nil {
 			r.logLegacy("INFO", "Shard "+oraShardSpec.Name+" not found in GSM; deleting physical resources", nil, instance, r.Log)
 			r.delShard(instance, shardSfSet.Name, shardSfSet, shardPod, int(i))
@@ -2229,7 +2249,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 		// Step 5: ensure online in GSM
 		r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.DeletingState))
 
-		err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeConfig, r.Log)
 		if err != nil {
 			r.logLegacy("INFO", "Shard "+oraShardSpec.Name+" is not online in GSM; retrying later", nil, instance, r.Log)
 			r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.DeleteErrorState))
@@ -2254,7 +2274,6 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 					gsmPod.Name,
 					sparams,
 					instance,
-					r.kubeClient,
 					r.kubeConfig,
 					r.Log,
 				)
@@ -2312,7 +2331,7 @@ func (r *ShardingDatabaseReconciler) delGsmShard(instance *databasev4.ShardingDa
 
 		// Step 7: remove from GSM
 		r.logLegacy("INFO", "Removing shard "+oraShardSpec.Name+" from GSM", nil, instance, r.Log)
-		err = shardingv1.RemoveShardFromGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log)
+		err = shardingv1.RemoveShardFromGsm(gsmPod.Name, sparams, instance, r.kubeConfig, r.Log)
 		if err != nil {
 			r.logLegacy("Error", "Error occurred during shard removal from GSM for "+oraShardSpec.Name, err, instance, r.Log)
 			r.updateShardStatus(instance, int(i), string(databasev4.ShardRemoveError))
@@ -2410,7 +2429,7 @@ func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev4.Shard
 			continue
 		}
 
-		if err := shardingv1.ValidateDbSetup(objName, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+		if err := shardingv1.ValidateDbSetup(objName, instance, r.kubeConfig, r.Log); err != nil {
 			r.logLegacy("DEBUG",
 				fmt.Sprintf("Target pod %s not ready for invited-node op (attempt %d/%d), retrying", shardingv1.GetFmtStr(objName), attempt, maxRetries),
 				err, instance, r.Log)
@@ -2418,7 +2437,7 @@ func (r *ShardingDatabaseReconciler) gsmInvitedNodeOp(instance *databasev4.Shard
 			continue
 		}
 
-		_, _, err = shardingv1.ExecCommand(gsmPod.Name, shardingv1.GetShardInviteNodeCmd(objName), r.kubeClient, r.kubeConfig, instance, r.Log)
+		_, _, err = shardingv1.ExecCommand(gsmPod.Name, shardingv1.GetShardInviteNodeCmd(objName), r.kubeConfig, instance, r.Log)
 		if err != nil {
 			r.logLegacy("DEBUG",
 				fmt.Sprintf("Invite node operation failed for %s (attempt %d/%d)", shardingv1.GetFmtStr(objName), attempt, maxRetries),
@@ -2631,19 +2650,19 @@ func (r *ShardingDatabaseReconciler) setupPrimaryRedoTransport(
 		primarySvc,
 	)
 
-	if err := shardingv1.RunSQLPlusInPod(primaryPod, logArchiveConfigSQL, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.RunSQLPlusInPod(primaryPod, logArchiveConfigSQL, instance, r.kubeConfig, r.Log); err != nil {
 		return err
 	}
-	if err := shardingv1.RunSQLPlusInPod(primaryPod, logArchiveDest2SQL, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.RunSQLPlusInPod(primaryPod, logArchiveDest2SQL, instance, r.kubeConfig, r.Log); err != nil {
 		return err
 	}
-	if err := shardingv1.RunSQLPlusInPod(primaryPod, logArchiveDestState2SQL, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.RunSQLPlusInPod(primaryPod, logArchiveDestState2SQL, instance, r.kubeConfig, r.Log); err != nil {
 		return err
 	}
-	if err := shardingv1.RunSQLPlusInPod(primaryPod, falServerSQL, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.RunSQLPlusInPod(primaryPod, falServerSQL, instance, r.kubeConfig, r.Log); err != nil {
 		return err
 	}
-	if err := shardingv1.RunSQLPlusInPod(primaryPod, falClientSQL, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.RunSQLPlusInPod(primaryPod, falClientSQL, instance, r.kubeConfig, r.Log); err != nil {
 		return err
 	}
 
@@ -2675,13 +2694,13 @@ from v$archive_dest_status
 where dest_id = 2;
 `
 
-	if err := shardingv1.RunSQLPlusInPod(primaryPod, forceArchiveSQL, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.RunSQLPlusInPod(primaryPod, forceArchiveSQL, instance, r.kubeConfig, r.Log); err != nil {
 		return err
 	}
 
 	time.Sleep(5 * time.Second)
 
-	if err := shardingv1.RunSQLPlusInPod(primaryPod, checkDestSQL, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.RunSQLPlusInPod(primaryPod, checkDestSQL, instance, r.kubeConfig, r.Log); err != nil {
 		return err
 	}
 
@@ -2707,13 +2726,13 @@ from v$managed_standby
 order by process;
 `
 
-	if err := shardingv1.RunSQLPlusInPod(standbyPod, startApplySQL, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.RunSQLPlusInPod(standbyPod, startApplySQL, instance, r.kubeConfig, r.Log); err != nil {
 		return err
 	}
 
 	time.Sleep(5 * time.Second)
 
-	if err := shardingv1.RunSQLPlusInPod(standbyPod, verifyApplySQL, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.RunSQLPlusInPod(standbyPod, verifyApplySQL, instance, r.kubeConfig, r.Log); err != nil {
 		return err
 	}
 
@@ -2757,7 +2776,7 @@ EOF
 		standbyDbUnique,
 	)}
 
-	stdout, stderr, err := shardingv1.ExecCommand(primaryPod, cmd, r.kubeClient, r.kubeConfig, instance, r.Log)
+	stdout, stderr, err := shardingv1.ExecCommand(primaryPod, cmd, r.kubeConfig, instance, r.Log)
 	if err != nil {
 		r.logLegacy("ERROR", "SetDgConnectIdentifiers failed stdout="+stdout+" stderr="+stderr, err, instance, r.Log)
 		return err
@@ -2973,12 +2992,12 @@ func (r *ShardingDatabaseReconciler) isShardReadyForScaleInDelete(
 	}
 
 	sparams := shardingv1.BuildShardParams(instance, shardSfSet, shard)
-	if err := shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.CheckShardInGsm(gsmPod.Name, sparams, instance, r.kubeConfig, r.Log); err != nil {
 		r.logLegacy("DEBUG", "Scale-in readiness: shard not present in GSM for "+shard.Name+": "+err.Error(), nil, instance, r.Log)
 		return false
 	}
 
-	if err := shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeClient, r.kubeConfig, r.Log); err != nil {
+	if err := shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparams, instance, r.kubeConfig, r.Log); err != nil {
 		r.logLegacy("DEBUG", "Scale-in readiness: shard not online in GSM for "+shard.Name+": "+err.Error(), nil, instance, r.Log)
 		return false
 	}
@@ -3456,7 +3475,7 @@ EOF
 `, pod.Name, svc, db, sql),
 		}
 
-		return shardingv1.ExecCommand(pod.Name, cmd, r.kubeClient, r.kubeConfig, instance, r.Log)
+		return shardingv1.ExecCommand(pod.Name, cmd, r.kubeConfig, instance, r.Log)
 
 	case "SHARD":
 		_, pod, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
@@ -3477,7 +3496,7 @@ EOF
 `, pod.Name, svc, db, sql),
 		}
 
-		return shardingv1.ExecCommand(pod.Name, cmd, r.kubeClient, r.kubeConfig, instance, r.Log)
+		return shardingv1.ExecCommand(pod.Name, cmd, r.kubeConfig, instance, r.Log)
 	}
 
 	return "", "", fmt.Errorf("unknown target kind %s", t.kind)

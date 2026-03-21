@@ -16210,7 +16210,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: dbcs-dev-docker.dockerhub-phx.oci.oraclecorp.com/oracle/database-operator:6a5454ff
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:dboper-2.2
         imagePullPolicy: Always
         name: manager
         ports:

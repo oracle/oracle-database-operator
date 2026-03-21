@@ -60,8 +60,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -1245,10 +1244,10 @@ func Contains(list []string, s string) bool {
 }
 
 // Function to check shadrd in GSM
-func CheckShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func CheckShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
 
-	_, _, err := ExecCommand(gsmPodName, getShardCheckCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getShardCheckCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Did not find the shard " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1258,10 +1257,10 @@ func CheckShardInGsm(gsmPodName string, sparams string, instance *databasev4.Sha
 }
 
 // Function to check the online Shard
-func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
 
-	_, _, err := ExecCommand(gsmPodName, getOnlineShardCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getOnlineShardCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Shard: " + GetFmtStr(sparams) + " is not online in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1271,10 +1270,10 @@ func CheckOnlineShardInGsm(gsmPodName string, sparams string, instance *database
 }
 
 // Function to move the chunks
-func MoveChunks(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func MoveChunks(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
 
-	_, _, err := ExecCommand(gsmPodName, getMoveChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getMoveChunksCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred in during Chunk movement command submission for shard: " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1288,11 +1287,10 @@ func CheckChunksRemaining(
 	gsmPodName string,
 	sparams string,
 	instance *databasev4.ShardingDatabase,
-	kubeClient kubernetes.Interface,
-	kubeconfig clientcmd.ClientConfig,
+	kubeconfig *rest.Config,
 	logger logr.Logger,
 ) (bool, string, error) {
-	stdout, stderr, err := ExecCommand(gsmPodName, getNoChunksCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	stdout, stderr, err := ExecCommand(gsmPodName, getNoChunksCmd(sparams), kubeconfig, instance, logger)
 
 	if strings.TrimSpace(stdout) != "" {
 		LogMessages("DEBUG", "CheckChunksRemaining stdout: "+strings.TrimSpace(stdout), nil, instance, logger)
@@ -1321,9 +1319,9 @@ func CheckChunksRemaining(
 }
 
 // Function to verify the chunks
-func AddShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func AddShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
-	_, _, err := ExecCommand(gsmPodName, getShardAddCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getShardAddCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while adding a shard " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1333,9 +1331,9 @@ func AddShardInGsm(gsmPodName string, sparams string, instance *databasev4.Shard
 }
 
 // Function to deploy the Shards
-func DeployShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func DeployShardInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
-	_, _, err := ExecCommand(gsmPodName, getdeployShardCmd(), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getdeployShardCmd(), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while deploying the shard in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1345,9 +1343,9 @@ func DeployShardInGsm(gsmPodName string, sparams string, instance *databasev4.Sh
 }
 
 // Function to delete the shard
-func RemoveShardFromGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func RemoveShardFromGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
-	_, _, err := ExecCommand(gsmPodName, getShardDelCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	_, _, err := ExecCommand(gsmPodName, getShardDelCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while cancelling the chunks: " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1356,9 +1354,9 @@ func RemoveShardFromGsm(gsmPodName string, sparams string, instance *databasev4.
 	return nil
 }
 
-func GetSvcIp(PodName string, sparams string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func GetSvcIp(PodName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) (string, string, error) {
-	stdoutput, stderror, err := ExecCommand(PodName, GetIpCmd(sparams), kubeClient, kubeconfig, instance, logger)
+	stdoutput, stderror, err := ExecCommand(PodName, GetIpCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while getting the IP for k8s service " + GetFmtStr(sparams)
 		LogMessages("INFO", msg, nil, instance, logger)
@@ -1367,9 +1365,9 @@ func GetSvcIp(PodName string, sparams string, instance *databasev4.ShardingDatab
 	return strings.Replace(stdoutput, "\r\n", "", -1), strings.Replace(stderror, "/r/n", "", -1), nil
 }
 
-func GetGsmServices(PodName string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func GetGsmServices(PodName string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(PodName, getGsmSvcCmd(), kubeClient, kubeconfig, instance, logger)
+	stdoutput, _, err := ExecCommand(PodName, getGsmSvcCmd(), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while getting the services from the GSM "
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1378,9 +1376,9 @@ func GetGsmServices(PodName string, instance *databasev4.ShardingDatabase, kubeC
 	return stdoutput
 }
 
-func GetDbRole(PodName string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func GetDbRole(PodName string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(PodName, getDbRoleCmd(), kubeClient, kubeconfig, instance, logger)
+	stdoutput, _, err := ExecCommand(PodName, getDbRoleCmd(), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while getting the DB role from the database"
 		LogMessages("DEBUG", msg, err, instance, logger)
@@ -1389,9 +1387,9 @@ func GetDbRole(PodName string, instance *databasev4.ShardingDatabase, kubeClient
 	return strings.TrimSpace(stdoutput)
 }
 
-func GetDbOpenMode(PodName string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func GetDbOpenMode(PodName string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) string {
-	stdoutput, _, err := ExecCommand(PodName, getDbModeCmd(), kubeClient, kubeconfig, instance, logger)
+	stdoutput, _, err := ExecCommand(PodName, getDbModeCmd(), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while getting the DB mode from the database"
 		LogMessages("DEBUG", msg, err, instance, logger)

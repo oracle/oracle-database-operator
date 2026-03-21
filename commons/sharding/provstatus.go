@@ -40,12 +40,12 @@ package commons
 
 import (
 	"fmt"
+	"strings"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
 	"github.com/go-logr/logr"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/rest"
 )
 
 // statusMapKey composes the flattened status map key format: "<name>_<field>".
@@ -89,8 +89,7 @@ func updateDbStatusData(
 	envVars []databasev4.EnvironmentVariable,
 	state string,
 	openMode string,
-	kubeClient kubernetes.Interface,
-	kubeConfig clientcmd.ClientConfig,
+	kubeConfig *rest.Config,
 	logger logr.Logger,
 	upsert func(string, string, string),
 	remove func(string, string),
@@ -98,9 +97,9 @@ func updateDbStatusData(
 	if state == string(databasev4.AvailableState) {
 		ns := getInstanceNs(instance)
 		podName, internalSvc, externalSvc := dbServiceNames(name, ns)
-		_, internalIP, _ := GetSvcIp(podName, internalSvc, instance, kubeClient, kubeConfig, logger)
-		_, externalIP, _ := GetSvcIp(podName, externalSvc, instance, kubeClient, kubeConfig, logger)
-		role := GetDbRole(podName, instance, kubeClient, kubeConfig, logger)
+		_, internalIP, _ := GetSvcIp(podName, internalSvc, instance, kubeConfig, logger)
+		_, externalIP, _ := GetSvcIp(podName, externalSvc, instance, kubeConfig, logger)
+		role := GetDbRole(podName, instance, kubeConfig, logger)
 		oracleSid := GetSidName(envVars, name)
 		oraclePdb := GetPdbName(envVars, name)
 
@@ -147,15 +146,15 @@ func updateDbStatusData(
 }
 
 // UpdateGsmStatusData refreshes GSM status details for the given spec index/state.
-func UpdateGsmStatusData(instance *databasev4.ShardingDatabase, specIdx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+func UpdateGsmStatusData(instance *databasev4.ShardingDatabase, specIdx int, state string, kubeConfig *rest.Config, logger logr.Logger,
 ) {
 	name := instance.Spec.Gsm[specIdx].Name
 	if state == string(databasev4.AvailableState) {
 		ns := getInstanceNs(instance)
 		podName, internalSvc, externalSvc := dbServiceNames(name, ns)
-		_, internalIP, _ := GetSvcIp(podName, internalSvc, instance, kubeClient, kubeConfig, logger)
-		_, externalIP, _ := GetSvcIp(podName, externalSvc, instance, kubeClient, kubeConfig, logger)
-		instance.Status.Gsm.Services = GetGsmServices(podName, instance, kubeClient, kubeConfig, logger)
+		_, internalIP, _ := GetSvcIp(podName, internalSvc, instance, kubeConfig, logger)
+		_, externalIP, _ := GetSvcIp(podName, externalSvc, instance, kubeConfig, logger)
+		instance.Status.Gsm.Services = GetGsmServices(podName, instance, kubeConfig, logger)
 
 		insertOrUpdateGsmKeys(instance, name, string(databasev4.Name), name)
 		insertOrUpdateGsmKeys(instance, name, string(databasev4.DbPasswordSecret), instance.Spec.DbSecret.Name)
@@ -190,18 +189,16 @@ func UpdateGsmStatusData(instance *databasev4.ShardingDatabase, specIdx int, sta
 }
 
 // UpdateCatalogStatusData refreshes catalog status details for the given spec index/state.
-func UpdateCatalogStatusData(instance *databasev4.ShardingDatabase, specIdx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+func UpdateCatalogStatusData(instance *databasev4.ShardingDatabase, specIdx int, state string, kubeConfig *rest.Config, logger logr.Logger,
 ) {
 	name := instance.Spec.Catalog[specIdx].Name
-	mode := GetDbOpenMode(name+"-0", instance, kubeClient, kubeConfig, logger)
+	mode := GetDbOpenMode(name+"-0", instance, kubeConfig, logger)
 	updateDbStatusData(
 		instance,
 		name,
 		instance.Spec.Catalog[specIdx].EnvVars,
 		state,
-		mode,
-		kubeClient,
-		kubeConfig,
+		mode, kubeConfig,
 		logger,
 		func(n, k, v string) { insertOrUpdateCatalogKeys(instance, n, k, v) },
 		func(n, k string) { removeCatalogKeys(instance, n, k) },
@@ -209,18 +206,16 @@ func UpdateCatalogStatusData(instance *databasev4.ShardingDatabase, specIdx int,
 }
 
 // UpdateShardStatusData refreshes shard status details for the given spec index/state.
-func UpdateShardStatusData(instance *databasev4.ShardingDatabase, specIdx int, state string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+func UpdateShardStatusData(instance *databasev4.ShardingDatabase, specIdx int, state string, kubeConfig *rest.Config, logger logr.Logger,
 ) {
 	name := instance.Spec.Shard[specIdx].Name
-	mode := GetDbOpenMode(name+"-0", instance, kubeClient, kubeConfig, logger)
+	mode := GetDbOpenMode(name+"-0", instance, kubeConfig, logger)
 	updateDbStatusData(
 		instance,
 		name,
 		instance.Spec.Shard[specIdx].EnvVars,
 		state,
-		mode,
-		kubeClient,
-		kubeConfig,
+		mode, kubeConfig,
 		logger,
 		func(n, k, v string) { insertOrUpdateShardKeys(instance, n, k, v) },
 		func(n, k string) { removeShardKeys(instance, n, k) },
@@ -269,14 +264,14 @@ func getInstanceNs(instance *databasev4.ShardingDatabase) string {
 }
 
 // CheckGsmStatus validates GSM director readiness in the given pod.
-func CheckGsmStatus(gname string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func CheckGsmStatus(gname string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
 	var err error
 	var msg string = "Inside the checkGsmStatus. Checking GSM director in " + GetFmtStr(gname) + " pod."
 
 	LogMessages("DEBUG", msg, nil, instance, logger)
 
-	_, _, err = ExecCommand(gname, getGsmvalidateCmd(), kubeClient, kubeconfig, instance, logger)
+	_, _, err = ExecCommand(gname, getGsmvalidateCmd(), kubeconfig, instance, logger)
 	if err != nil {
 		return err
 	}
@@ -284,13 +279,19 @@ func CheckGsmStatus(gname string, instance *databasev4.ShardingDatabase, kubeCli
 	return nil
 }
 
-// ValidateDbSetup validates DB setup scripts from the target pod.
-func ValidateDbSetup(podName string, instance *databasev4.ShardingDatabase, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
+func ValidateDbSetup(podName string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
 ) error {
 
-	_, _, err := ExecCommand(podName, shardValidationCmd(), kubeClient, kubeconfig, instance, logger)
+	stdout, stderr, err := ExecCommand(podName, shardValidationCmd(), kubeconfig, instance, logger)
 	if err != nil {
-		return fmt.Errorf("error occurred while validating the DB setup")
+		detail := strings.TrimSpace(stderr)
+		if detail == "" {
+			detail = strings.TrimSpace(stdout)
+		}
+		if detail == "" {
+			detail = err.Error()
+		}
+		return fmt.Errorf("error occurred while validating the DB setup: %s", detail)
 	}
 	return nil
 }
