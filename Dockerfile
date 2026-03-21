@@ -3,118 +3,119 @@
 #
 
 # Build the manager binary
+# syntax=docker/dockerfile:1.7
+#
+# Copyright (c) 2022, Oracle and/or its affiliates.
+# Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl.
+#
+
 ARG BUILDER_IMG="oraclelinux:9"
 ARG RUNNER_IMG="oraclelinux:9-slim"
+
+# ----------------------------
+# Builder stage
+# ----------------------------
 FROM ${BUILDER_IMG} AS builder
 
 ARG TARGETARCH
-# Download golang if INSTALL_GO is set to true
-ARG INSTALL_GO
+ARG INSTALL_GO="false"
 ARG GOLANG_VERSION
-RUN if [ "$INSTALL_GO" = "true" ]; then \
-        echo -e "\nCurrent Arch: $(arch), Downloading Go for linux/${TARGETARCH}" &&\
-        curl -LJO https://go.dev/dl/go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz &&\
-        rm -rf /usr/local/go && tar -C /usr/local -xzf go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz &&\
-        rm go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz; \
-        echo "Go Arch: $(/usr/local/go/bin/go env GOARCH)"; \
-    fi
-ENV PATH=${GOLANG_VERSION:+"${PATH}:/usr/local/go/bin"}
-ENV GOCACHE=/go-cache
-ENV GOMODCACHE=/gomod-cache
+ARG DEBUG="false"
+
+# Go build/cache locations (keeps layers smaller and build faster with BuildKit cache mounts)
+ENV GOCACHE=/go-cache \
+    GOMODCACHE=/gomod-cache \
+    GOBIN=/workspace/bin
 
 WORKDIR /workspace
-# Copy the Go Modules manifests
-COPY go.mod go.mod
-COPY go.sum go.sum
 
-# Copy the go source
-COPY LICENSE.txt LICENSE.txt
-COPY THIRD_PARTY_LICENSES_DOCKER.txt THIRD_PARTY_LICENSES_DOCKER.txt
-COPY main.go main.go
-COPY apis/ apis/
-COPY commons/ commons/
-COPY controllers/ controllers/
+# Install Go only when requested (for oraclelinux base); if BUILDER_IMG is golang:*, Go is already present.
+RUN if [ "${INSTALL_GO}" = "true" ]; then \
+      echo "Installing Go ${GOLANG_VERSION} for linux/${TARGETARCH}"; \
+      curl -fsSL -o /tmp/go.tgz "https://go.dev/dl/go${GOLANG_VERSION}.linux-${TARGETARCH}.tar.gz"; \
+      rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz; \
+      rm -f /tmp/go.tgz; \
+    fi
 
-# Build
-#RUN --mount=type=cache,target=/go-cache --mount=type=cache,target=/gomod-cache CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on go build -o manager main.go
-ARG DEBUG=false
-RUN --mount=type=cache,target=/go-cache --mount=type=cache,target=/gomod-cache \
-    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on \
-    sh -c 'if [ "$DEBUG" = "true" ]; then \
-              go build -gcflags="all=-N -l" -o manager main.go && \
-              go install github.com/go-delve/delve/cmd/dlv@v1.25.2 && \
-              cp "$(go env GOPATH)/bin/dlv" /workspace/dlv;
-           else \
-              go build -o manager main.go ; \
-           fi'
+# Ensure Go is on PATH when installed above
+ENV PATH="/usr/local/go/bin:${PATH}"
 
-###########################################
-###### DEBUG Image enabled with delv ######
-###########################################
-# Use oraclelinux:9-slim as default base image to package the manager binary
-FROM ${RUNNER_IMG} AS debug
-# Labels
-# ------
-LABEL "provider"="Oracle"                                                                                                        \
-      "issues"="https://github.com/oracle/oracle-database-operator/issues"                                                       \
-      "maintainer"="paramdeep.saini@oracle.com, sanjay.singh@oracle.com, kuassi.mensah@oracle.com"                               \
-      "version"="2.0"                                                                                                            \
-      "description"="DB Operator Image V2.0"                                                                                     \
-      "vendor"="Oracle Coporation"                                                                                               \
-      "release"="2.0"                                                                                                            \
-      "summary"="Oracle Database Operator 2.0"                                                                                  \
-      "name"="oracle-database-operator.v2.0"
-ARG DEBUG=false
+# Copy module manifests first for better caching
+COPY --link go.mod go.mod
+COPY --link go.sum go.sum
+
+# Copy source
+COPY --link LICENSE.txt LICENSE.txt
+COPY --link THIRD_PARTY_LICENSES_DOCKER.txt THIRD_PARTY_LICENSES_DOCKER.txt
+COPY --link main.go main.go
+COPY --link apis/ apis/
+COPY --link commons/ commons/
+COPY --link controllers/ controllers/
+
+# Build manager (debug flags when DEBUG=true) and optionally install dlv
+RUN --mount=type=cache,target=/go-cache \
+    --mount=type=cache,target=/gomod-cache \
+    set -e; \
+    if [ "${DEBUG}" = "true" ]; then \
+      CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" GO111MODULE=on \
+        go build -gcflags="all=-N -l" -o /workspace/manager main.go; \
+      go install github.com/go-delve/delve/cmd/dlv@v1.25.2; \
+    else \
+      CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" GO111MODULE=on \
+        go build -o /workspace/manager main.go; \
+    fi
+
+
+# ----------------------------
+# Runtime base (shared by prod/debug)
+# ----------------------------
+FROM ${RUNNER_IMG} AS runtime-base
+
+LABEL provider="Oracle" \
+      issues="https://github.com/oracle/oracle-database-operator/issues" \
+      maintainer="paramdeep.saini@oracle.com, sanjay.singh@oracle.com, kuassi.mensah@oracle.com" \
+      version="2.0" \
+      description="DB Operator Image V2.0" \
+      vendor="Oracle Corporation" \
+      release="2.0" \
+      summary="Oracle Database Operator 2.0" \
+      name="oracle-database-operator.v2.0"
+
 ARG CI_COMMIT_SHA
 ARG CI_COMMIT_BRANCH
-ENV COMMIT_SHA=${CI_COMMIT_SHA} \
-    COMMIT_BRANCH=${CI_COMMIT_BRANCH}
+ENV COMMIT_SHA="${CI_COMMIT_SHA}" \
+    COMMIT_BRANCH="${CI_COMMIT_BRANCH}"
+
 WORKDIR /
-COPY --from=builder /workspace/manager .
-# Only present if DEBUG=true in builder; copy will fail if not built.
-# Easiest is to always build DEBUG=true for the debug tag.
-RUN ls -l /workspace/bin || true; which dlv || true
-COPY --from=builder /workspace/dlv /dlv
-COPY ords/ords_init.sh .
-COPY ords/ords_start.sh .
-COPY LICENSE.txt /licenses/
-COPY THIRD_PARTY_LICENSES_DOCKER.txt /licenses/
-COPY THIRD_PARTY_LICENSES.txt /licenses/
+
+# Create non-root user
 RUN useradd -u 1002 nonroot
 USER nonroot
 
-ENTRYPOINT ["/manager"]
-
-###########################################
-###### PROD Image  .                 ######
-###########################################
-
-FROM ${RUNNER_IMG} AS prod
-# Labels
-# ------
-LABEL "provider"="Oracle"                                                                                                        \
-      "issues"="https://github.com/oracle/oracle-database-operator/issues"                                                       \
-      "maintainer"="paramdeep.saini@oracle.com, sanjay.singh@oracle.com, kuassi.mensah@oracle.com"                               \
-      "version"="2.0"                                                                                                            \
-      "description"="DB Operator Image V2.0"                                                                                     \
-      "vendor"="Oracle Coporation"                                                                                               \
-      "release"="2.0"                                                                                                            \
-      "summary"="Oracle Database Operator 2.0"                                                                                  \
-      "name"="oracle-database-operator.v2.0"
-ARG CI_COMMIT_SHA 
-ARG CI_COMMIT_BRANCH
-ENV COMMIT_SHA=${CI_COMMIT_SHA} \
-    COMMIT_BRANCH=${CI_COMMIT_BRANCH}
-WORKDIR /
-COPY --from=builder /workspace/manager .
-# Only present if DEBUG=true in builder; copy will fail if not built.
-# Easiest is to always build DEBUG=true for the debug tag.
-COPY ords/ords_init.sh .
-COPY ords/ords_start.sh .
-COPY LICENSE.txt /licenses/
-COPY THIRD_PARTY_LICENSES_DOCKER.txt /licenses/
-COPY THIRD_PARTY_LICENSES.txt /licenses/
-RUN useradd -u 1002 nonroot
-USER nonroot
+# Common runtime files
+COPY --link ords/ords_init.sh /ords_init.sh
+COPY --link ords/ords_start.sh /ords_start.sh
+COPY --link LICENSE.txt /licenses/LICENSE.txt
+COPY --link THIRD_PARTY_LICENSES_DOCKER.txt /licenses/THIRD_PARTY_LICENSES_DOCKER.txt
+COPY --link THIRD_PARTY_LICENSES.txt /licenses/THIRD_PARTY_LICENSES.txt
 
 ENTRYPOINT ["/manager"]
+
+
+# ----------------------------
+# Debug image (includes dlv)
+# ----------------------------
+FROM runtime-base AS debug
+
+# manager binary
+COPY --from=builder /workspace/manager /manager
+# dlv is installed only when DEBUG=true in builder; therefore build debug target with --build-arg DEBUG=true
+COPY --from=builder /workspace/bin/dlv /dlv
+
+
+# ----------------------------
+# Prod image (no dlv)
+# ----------------------------
+FROM runtime-base AS prod
+
+COPY --from=builder /workspace/manager /manager

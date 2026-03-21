@@ -2,38 +2,89 @@
 # Copyright (c) 2025, Oracle and/or its affiliates.
 # Licensed under the Universal Permissive License v 1.0 as shown at http://oss.oracle.com/licenses/upl.
 #
+# ==============================================================================
+#  Makefile layout (reference)
+#
+#  1) Initialization / User-configurable variables (top)
+#  2) Derived variables (computed from init vars)
+#  3) Phony targets list
+#  4) Development targets (manifests/generate/fmt/vet/test)
+#  5) Build targets (build/run/image-build/image-push)
+#  6) Deployment targets (install/deploy/operator-yaml/undeploy)
+#  7) Tooling targets (kustomize/controller-gen/envtest)
+#  8) Bundle/Catalog targets (bundle/opm/catalog-*)
+#
+#  Note: Make recipes MUST be indented with a TAB, not spaces.
+# ==============================================================================
 
-# --------------------------
-# Global / Defaults
-# --------------------------
+
+# ==============================================================================
+# 1) Initialization / User-configurable variables
+# ==============================================================================
+
+# Operator version
 VERSION ?= 2.0
 
+# Primary controller image reference used by deploy/image-build/image-push
 IMG ?= controller:latest
+
+# Bundle image reference
 BUNDLE_IMG ?= controller-bundle:$(VERSION)
 
-# Operator YAML file
+# Build container tool (podman or docker)
+DOCKER ?= podman
+
+# Go toolchain version used for image builds
+GOLANG_VERSION ?= 1.25.1
+
+# Toggle: BUILD_INTERNAL=true downloads Go in Dockerfile and uses oraclelinux builder
+BUILD_INTERNAL ?= false
+
+# Toggle: BUILD_MANIFEST=true does multi-arch build with manifest
+BUILD_MANIFEST ?= false
+
+# Debug image support:
+#   DEBUG=false -> builds Dockerfile target "prod"
+#   DEBUG=true  -> builds Dockerfile target "debug" (expected to include dlv, debug flags, etc.)
+DEBUG ?= false
+
+# Explicit Dockerfile target override (optional):
+#   TARGET=prod|debug
+# If empty, derived from DEBUG.
+TARGET ?=
+
+# CRD generation options
+CRD_OPTIONS ?= "crd:maxDescLen=0,allowDangerousTypes=true"
+
+# envtest Kubernetes assets version
+ENVTEST_K8S_VERSION ?= 1.31.0
+
+# Unit test packages
+TEST ?= ./apis/database/v1alpha1 ./commons/... ./controllers/...
+
+# E2E tests path
+E2ETEST ?= ./test/e2e/
+
+# Operator YAML file name produced by operator-yaml target
 OPERATOR_YAML = $$(basename $$(pwd)).yaml
+
+
+# ==============================================================================
+# 2) Derived variables (do not usually need overrides)
+# ==============================================================================
 
 # Use bash with pipefail for scripts like setup-envtest
 SHELL := /usr/bin/env bash -o pipefail
 .SHELLFLAGS := -ec
 
-# Enable allowDangerousTypes to use float type in CRD
-CRD_OPTIONS ?= "crd:maxDescLen=0,allowDangerousTypes=true"
-
-# ENVTEST_K8S_VERSION refers to the version of kubebuilder assets used by envtest
-ENVTEST_K8S_VERSION ?= 1.31.0
-
-# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
+# GOBIN discovery
 ifeq (,$(shell go env GOBIN))
 GOBIN := $(shell go env GOPATH)/bin
 else
 GOBIN := $(shell go env GOBIN)
 endif
 
-# --------------------------
-# Bundle metadata options
-# --------------------------
+# Bundle channels/default channel options
 BUNDLE_CHANNELS :=
 BUNDLE_DEFAULT_CHANNEL :=
 ifneq ($(origin CHANNELS), undefined)
@@ -44,9 +95,7 @@ BUNDLE_DEFAULT_CHANNEL := --default-channel=$(DEFAULT_CHANNEL)
 endif
 BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
-# --------------------------
-# Tools (local install)
-# --------------------------
+# Tooling (local install dir)
 LOCALBIN ?= $(shell pwd)/bin
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
@@ -56,30 +105,7 @@ KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.17
 KUSTOMIZE_INSTALL_SCRIPT ?= https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh
 
-# --------------------------
-# Container build configuration
-# --------------------------
-GOLANG_VERSION ?= 1.25.1
-DOCKER ?= podman
-
-# ------------------------------------------------------------------------------
-# Debug image support
-#
-# DEBUG controls whether we build a debug image (includes dlv, built with debug flags)
-# or a production image.
-#
-# Defaults:
-#   DEBUG=false  -> builds --target prod and passes --build-arg DEBUG=false
-#
-# Usage:
-#   make image-build                 # prod image
-#   make image-build DEBUG=true      # debug image (includes dlv)
-#   make image-build TARGET=debug    # explicit target override
-# ------------------------------------------------------------------------------
-DEBUG ?= true
-
-# TARGET controls the Dockerfile target. If not provided, derive from DEBUG.
-TARGET ?=
+# Derive Dockerfile target from DEBUG, unless TARGET explicitly provided
 ifeq ($(TARGET),)
   ifeq ($(DEBUG),true)
     TARGET := debug
@@ -88,7 +114,7 @@ ifeq ($(TARGET),)
   endif
 endif
 
-# Download golang in the Dockerfile if BUILD_INTERNAL is true, else use golang:<ver>
+# Builder image and args
 ifeq ($(BUILD_INTERNAL),true)
 BUILDER_IMG := oraclelinux:9
 BUILD_ARGS_BASE := --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg GOLANG_VERSION=$(GOLANG_VERSION) --build-arg INSTALL_GO=true
@@ -108,12 +134,24 @@ endif
 
 BUILD_ARGS := $(BUILD_ARGS_BASE) $(BUILD_ARGS_PLATFORM)
 
-# --------------------------
-# Phony Targets
-# --------------------------
-.PHONY: all manifests generate fmt vet test e2e build run image-build image-push minikube-push \
-        install uninstall deploy minikube-deploy operator-yaml minikube-operator-yaml undeploy \
-        kustomize controller-gen envtest bundle bundle-build bundle-push opm catalog-build catalog-push
+
+# ==============================================================================
+# 3) Phony targets
+# ==============================================================================
+
+.PHONY: all \
+    manifests generate fmt vet test e2e \
+    build run \
+    image-build image-push minikube-push \
+    install uninstall deploy minikube-deploy operator-yaml minikube-operator-yaml undeploy \
+    kustomize controller-gen envtest \
+    bundle bundle-build bundle-push \
+    opm catalog-build catalog-push
+
+
+# ==============================================================================
+# 4) Development targets
+# ==============================================================================
 
 all: build
 
@@ -121,7 +159,7 @@ all: build
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
     $(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: controller-gen ## Generate DeepCopy implementations.
     $(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 fmt: ## Run go fmt against code.
@@ -130,22 +168,28 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
     go vet ./...
 
-TEST ?= ./apis/database/v1alpha1 ./commons/... ./controllers/...
 test: manifests generate fmt vet envtest ## Run unit tests.
     KUBEBUILDER_ASSETS="$$( $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path )" go test $(TEST) -coverprofile cover.out
 
-E2ETEST ?= ./test/e2e/
 e2e: manifests generate fmt vet envtest ## Run e2e tests.
     KUBEBUILDER_ASSETS="$$( $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path )" go test $(E2ETEST) -test.timeout 0 -test.v --ginkgo.fail-fast
+
+
+# ==============================================================================
+# 5) Build targets
+# ==============================================================================
 
 ##@ Build
 build: generate fmt vet ## Build manager binary.
     go build -o bin/manager main.go
 
-run: manifests generate fmt vet ## Run a controller from your host.
+run: manifests generate fmt vet ## Run controller from host.
     go run ./main.go
 
-image-build: ## Build container image with the manager. Set DEBUG=true for debug image.
+# Documentation note:
+# - Dockerfile must define targets "prod" and "debug".
+# - DEBUG=true should produce a debug-friendly image (e.g., includes dlv, built with -N -l).
+image-build: ## Build container image with the manager. Use DEBUG=true for debug image.
     $(DOCKER) build \
         --build-arg http_proxy=$(HTTP_PROXY) \
         --build-arg https_proxy=$(HTTPS_PROXY) \
@@ -158,10 +202,14 @@ image-build: ## Build container image with the manager. Set DEBUG=true for debug
 image-push: ## Push container image with the manager.
     $(DOCKER) $(PUSH_ARGS) push $(IMG)
 
-# Push to minikube's local registry enabled by registry add-on
-minikube-push:
+minikube-push: ## Push to minikube local registry (registry add-on)
     $(DOCKER) tag $(IMG) $$(minikube ip):5000/$(IMG)
     $(DOCKER) push --tls-verify=false $$(minikube ip):5000/$(IMG)
+
+
+# ==============================================================================
+# 6) Deployment targets
+# ==============================================================================
 
 ##@ Deployment
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
@@ -193,6 +241,11 @@ minikube-operator-yaml: operator-yaml
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
     $(KUSTOMIZE) build config/default | kubectl delete -f -
 
+
+# ==============================================================================
+# 7) Tooling targets
+# ==============================================================================
+
 ##@ Build Dependencies
 $(LOCALBIN):
     mkdir -p $(LOCALBIN)
@@ -205,11 +258,17 @@ controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessar
 $(CONTROLLER_GEN): $(LOCALBIN)
     GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
-envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
+envtest: $(ENVTEST) ## Download envtest locally if necessary.
 $(ENVTEST): $(LOCALBIN)
     GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
-bundle: manifests kustomize ## Generate bundle manifests and metadata, then validate generated files.
+
+# ==============================================================================
+# 8) Bundle/Catalog targets
+# ==============================================================================
+
+##@ Bundle
+bundle: manifests kustomize ## Generate bundle manifests/metadata, then validate.
     operator-sdk generate kustomize manifests -q
     cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
     $(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
@@ -239,13 +298,9 @@ OPM := $(shell which opm)
 endif
 endif
 
-# A comma-separated list of bundle images.
 BUNDLE_IMGS ?= $(BUNDLE_IMG)
-
-# The image tag given to the resulting catalog image.
 CATALOG_IMG ?= $(IMAGE_TAG_BASE)-catalog:v$(VERSION)
 
-# Set CATALOG_BASE_IMG to an existing catalog image tag to add $BUNDLE_IMGS to that image.
 FROM_INDEX_OPT :=
 ifneq ($(origin CATALOG_BASE_IMG), undefined)
 FROM_INDEX_OPT := --from-index $(CATALOG_BASE_IMG)
