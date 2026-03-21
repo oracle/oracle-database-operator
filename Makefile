@@ -108,9 +108,9 @@ KUSTOMIZE_INSTALL_SCRIPT ?= https://raw.githubusercontent.com/kubernetes-sigs/ku
 # Derive Dockerfile target from DEBUG, unless TARGET explicitly provided
 ifeq ($(TARGET),)
   ifeq ($(DEBUG),true)
-    TARGET := debug
+	TARGET := debug
   else
-    TARGET := prod
+	TARGET := prod
   endif
 endif
 
@@ -139,13 +139,13 @@ BUILD_ARGS := $(BUILD_ARGS_BASE) $(BUILD_ARGS_PLATFORM)
 # ==============================================================================
 
 .PHONY: all \
-    manifests generate fmt vet test e2e \
-    build run \
-    image-build image-push minikube-push \
-    install uninstall deploy minikube-deploy operator-yaml minikube-operator-yaml undeploy \
-    kustomize controller-gen envtest \
-    bundle bundle-build bundle-push \
-    opm catalog-build catalog-push
+	manifests generate fmt vet test e2e \
+	build run \
+	image-build image-push minikube-push \
+	install uninstall deploy minikube-deploy operator-yaml minikube-operator-yaml undeploy \
+	kustomize controller-gen envtest \
+	bundle bundle-build bundle-push \
+	opm catalog-build catalog-push
 
 
 # ==============================================================================
@@ -156,22 +156,22 @@ all: build
 
 ##@ Development
 manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
-    $(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 generate: controller-gen ## Generate DeepCopy implementations.
-    $(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 fmt: ## Run go fmt against code.
-    go fmt ./...
+	go fmt ./...
 
 vet: ## Run go vet against code.
-    go vet ./...
+	go vet ./...
 
 test: manifests generate fmt vet envtest ## Run unit tests.
-    KUBEBUILDER_ASSETS="$$( $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path )" go test $(TEST) -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$$( $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path )" go test $(TEST) -coverprofile cover.out
 
 e2e: manifests generate fmt vet envtest ## Run e2e tests.
-    KUBEBUILDER_ASSETS="$$( $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path )" go test $(E2ETEST) -test.timeout 0 -test.v --ginkgo.fail-fast
+	KUBEBUILDER_ASSETS="$$( $(ENVTEST) use $(ENVTEST_K8S_VERSION) -p path )" go test $(E2ETEST) -test.timeout 0 -test.v --ginkgo.fail-fast
 
 
 # ==============================================================================
@@ -180,30 +180,30 @@ e2e: manifests generate fmt vet envtest ## Run e2e tests.
 
 ##@ Build
 build: generate fmt vet ## Build manager binary.
-    go build -o bin/manager main.go
+	go build -o bin/manager main.go
 
 run: manifests generate fmt vet ## Run controller from host.
-    go run ./main.go
+	go run ./main.go
 
 # Documentation note:
 # - Dockerfile must define targets "prod" and "debug".
 # - DEBUG=true should produce a debug-friendly image (e.g., includes dlv, built with -N -l).
 image-build: ## Build container image with the manager. Use DEBUG=true for debug image.
-    $(DOCKER) build \
-        --build-arg http_proxy=$(HTTP_PROXY) \
-        --build-arg https_proxy=$(HTTPS_PROXY) \
-        --build-arg CI_COMMIT_SHA=$(CI_COMMIT_SHA) \
-        --build-arg CI_COMMIT_BRANCH=$(CI_COMMIT_BRANCH) \
-        --build-arg DEBUG=$(DEBUG) \
-        --target $(TARGET) \
-        $(BUILD_ARGS) $(IMG) .
+	$(DOCKER) build \
+	--build-arg http_proxy=$(HTTP_PROXY) \
+	--build-arg https_proxy=$(HTTPS_PROXY) \
+	--build-arg CI_COMMIT_SHA=$(CI_COMMIT_SHA) \
+	--build-arg CI_COMMIT_BRANCH=$(CI_COMMIT_BRANCH) \
+	--build-arg DEBUG=$(DEBUG) \
+	--target $(TARGET) \
+	$(BUILD_ARGS) $(IMG) .
 
 image-push: ## Push container image with the manager.
-    $(DOCKER) $(PUSH_ARGS) push $(IMG)
+	$(DOCKER) $(PUSH_ARGS) push $(IMG)
 
 minikube-push: ## Push to minikube local registry (registry add-on)
-    $(DOCKER) tag $(IMG) $$(minikube ip):5000/$(IMG)
-    $(DOCKER) push --tls-verify=false $$(minikube ip):5000/$(IMG)
+	$(DOCKER) tag $(IMG) $$(minikube ip):5000/$(IMG)
+	$(DOCKER) push --tls-verify=false $$(minikube ip):5000/$(IMG)
 
 
 # ==============================================================================
@@ -212,33 +212,33 @@ minikube-push: ## Push to minikube local registry (registry add-on)
 
 ##@ Deployment
 install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-    $(KUSTOMIZE) build config/crd | kubectl apply -f -
+	$(KUSTOMIZE) build config/crd | kubectl apply -f -
 
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config.
-    $(KUSTOMIZE) build config/crd | kubectl delete -f -
+	$(KUSTOMIZE) build config/crd | kubectl delete -f -
 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-    cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-    $(KUSTOMIZE) build config/default | kubectl apply -f -
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	$(KUSTOMIZE) build config/default | kubectl apply -f -
 
 minikube-deploy: minikube-operator-yaml minikube-push
-    kubectl apply -f $(OPERATOR_YAML)
+	kubectl apply -f $(OPERATOR_YAML)
 
 # Bug:34265574
 # Used sed to reposition the controller-manager Deployment after the certificate creation in the OPERATOR_YAML
 operator-yaml: manifests kustomize
-    cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-    $(KUSTOMIZE) build config/default > "$(OPERATOR_YAML)"
-    sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "$(OPERATOR_YAML)"
-    (echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_YAML).bak") >> "$(OPERATOR_YAML)"
-    rm "$(OPERATOR_YAML).bak"
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	$(KUSTOMIZE) build config/default > "$(OPERATOR_YAML)"
+	sed -i.bak -e '/^apiVersion: apps\/v1/,/---/d' "$(OPERATOR_YAML)"
+	(echo --- && sed '/^apiVersion: apps\/v1/,/---/!d' "$(OPERATOR_YAML).bak") >> "$(OPERATOR_YAML)"
+	rm "$(OPERATOR_YAML).bak"
 
 minikube-operator-yaml: operator-yaml
-    sed -i.bak 's/\(replicas.\) 3/\1 1/g' "$(OPERATOR_YAML)"
-    rm "$(OPERATOR_YAML).bak"
+	sed -i.bak 's/\(replicas.\) 3/\1 1/g' "$(OPERATOR_YAML)"
+	rm "$(OPERATOR_YAML).bak"
 
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
-    $(KUSTOMIZE) build config/default | kubectl delete -f -
+	$(KUSTOMIZE) build config/default | kubectl delete -f -
 
 
 # ==============================================================================
@@ -247,19 +247,19 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 
 ##@ Build Dependencies
 $(LOCALBIN):
-    mkdir -p $(LOCALBIN)
+	mkdir -p $(LOCALBIN)
 
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
-    curl -s $(KUSTOMIZE_INSTALL_SCRIPT) | bash -s -- $(subst v,,$(KUSTOMIZE_VERSION)) $(LOCALBIN)
+	curl -s $(KUSTOMIZE_INSTALL_SCRIPT) | bash -s -- $(subst v,,$(KUSTOMIZE_VERSION)) $(LOCALBIN)
 
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
-    GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 envtest: $(ENVTEST) ## Download envtest locally if necessary.
 $(ENVTEST): $(LOCALBIN)
-    GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 
 # ==============================================================================
@@ -268,16 +268,16 @@ $(ENVTEST): $(LOCALBIN)
 
 ##@ Bundle
 bundle: manifests kustomize ## Generate bundle manifests/metadata, then validate.
-    operator-sdk generate kustomize manifests -q
-    cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
-    $(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
-    operator-sdk bundle validate ./bundle
+	operator-sdk generate kustomize manifests -q
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
+	operator-sdk bundle validate ./bundle
 
 bundle-build: ## Build the bundle image.
-    $(DOCKER) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+	$(DOCKER) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
 
 bundle-push: ## Push the bundle image.
-    $(MAKE) image-push IMG=$(BUNDLE_IMG)
+	$(MAKE) image-push IMG=$(BUNDLE_IMG)
 
 ##@ opm / catalog
 OPM := ./bin/opm
@@ -285,13 +285,13 @@ OPM := ./bin/opm
 opm: ## Download opm locally if necessary.
 ifeq (,$(wildcard $(OPM)))
 ifeq (,$(shell which opm 2>/dev/null))
-    @{ \
-        set -e ;\
-        mkdir -p $(dir $(OPM)) ;\
-        OS=$$(go env GOOS) && ARCH=$$(go env GOARCH) && \
-        curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.15.1/$${OS}-$${ARCH}-opm ;\
-        chmod +x $(OPM) ;\
-    }
+	@{ \
+	set -e ;\
+	mkdir -p $(dir $(OPM)) ;\
+	OS=$$(go env GOOS) && ARCH=$$(go env GOARCH) && \
+	curl -sSLo $(OPM) https://github.com/operator-framework/operator-registry/releases/download/v1.15.1/$${OS}-$${ARCH}-opm ;\
+	chmod +x $(OPM) ;\
+	}
 else
 OPM := $(shell which opm)
 endif
@@ -306,7 +306,7 @@ FROM_INDEX_OPT := --from-index $(CATALOG_BASE_IMG)
 endif
 
 catalog-build: opm ## Build a catalog image.
-    $(OPM) index add --container-tool docker --mode semver --tag $(CATALOG_IMG) --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT)
+	$(OPM) index add --container-tool docker --mode semver --tag $(CATALOG_IMG) --bundles $(BUNDLE_IMGS) $(FROM_INDEX_OPT)
 
 catalog-push: ## Push a catalog image.
-    $(MAKE) image-push IMG=$(CATALOG_IMG)
+	$(MAKE) image-push IMG=$(CATALOG_IMG)
