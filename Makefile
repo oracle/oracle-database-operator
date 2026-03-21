@@ -124,14 +124,13 @@ BUILD_ARGS_BASE := --build-arg BUILDER_IMG=$(BUILDER_IMG) --build-arg INSTALL_GO
 endif
 
 # Multi-arch manifest build toggle
-PUSH_ARGS :=
+PUSH_ARGS =
 ifeq ($(BUILD_MANIFEST),true)
 BUILD_ARGS_PLATFORM := --platform=linux/arm64,linux/amd64 --jobs=2 --manifest
 PUSH_ARGS := manifest
 else
 BUILD_ARGS_PLATFORM := --platform=linux/amd64 --tag
 endif
-
 BUILD_ARGS := $(BUILD_ARGS_BASE) $(BUILD_ARGS_PLATFORM)
 
 
