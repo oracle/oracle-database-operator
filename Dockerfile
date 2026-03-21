@@ -41,16 +41,16 @@ RUN if [ "${INSTALL_GO}" = "true" ]; then \
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # Copy module manifests first for better caching
-COPY --link go.mod go.mod
-COPY --link go.sum go.sum
+COPY  go.mod go.mod
+COPY  go.sum go.sum
 
 # Copy source
-COPY --link LICENSE.txt LICENSE.txt
-COPY --link THIRD_PARTY_LICENSES_DOCKER.txt THIRD_PARTY_LICENSES_DOCKER.txt
-COPY --link main.go main.go
-COPY --link apis/ apis/
-COPY --link commons/ commons/
-COPY --link controllers/ controllers/
+COPY  LICENSE.txt LICENSE.txt
+COPY  THIRD_PARTY_LICENSES_DOCKER.txt THIRD_PARTY_LICENSES_DOCKER.txt
+COPY  main.go main.go
+COPY  apis/ apis/
+COPY  commons/ commons/
+COPY  controllers/ controllers/
 
 # Build manager (debug flags when DEBUG=true) and optionally install dlv
 RUN --mount=type=cache,target=/go-cache \
@@ -93,11 +93,11 @@ RUN useradd -u 1002 nonroot
 USER nonroot
 
 # Common runtime files
-COPY --link ords/ords_init.sh /ords_init.sh
-COPY --link ords/ords_start.sh /ords_start.sh
-COPY --link LICENSE.txt /licenses/LICENSE.txt
-COPY --link THIRD_PARTY_LICENSES_DOCKER.txt /licenses/THIRD_PARTY_LICENSES_DOCKER.txt
-COPY --link THIRD_PARTY_LICENSES.txt /licenses/THIRD_PARTY_LICENSES.txt
+COPY  ords/ords_init.sh /ords_init.sh
+COPY  ords/ords_start.sh /ords_start.sh
+COPY  LICENSE.txt /licenses/LICENSE.txt
+COPY  THIRD_PARTY_LICENSES_DOCKER.txt /licenses/THIRD_PARTY_LICENSES_DOCKER.txt
+COPY  THIRD_PARTY_LICENSES.txt /licenses/THIRD_PARTY_LICENSES.txt
 
 ENTRYPOINT ["/manager"]
 
