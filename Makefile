@@ -46,7 +46,7 @@ BUILD_MANIFEST ?= false
 # Debug image support:
 #   DEBUG=false -> builds Dockerfile target "prod"
 #   DEBUG=true  -> builds Dockerfile target "debug" (expected to include dlv, debug flags, etc.)
-DEBUG ?= false
+DEBUG ?= true
 
 # Explicit Dockerfile target override (optional):
 #   TARGET=prod|debug
