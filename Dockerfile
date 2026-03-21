@@ -42,7 +42,8 @@ RUN --mount=type=cache,target=/go-cache --mount=type=cache,target=/gomod-cache \
     CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} GO111MODULE=on \
     sh -c 'if [ "$DEBUG" = "true" ]; then \
               go build -gcflags="all=-N -l" -o manager main.go && \
-              go install github.com/go-delve/delve/cmd/dlv@v1.25.2 ; \
+              go install github.com/go-delve/delve/cmd/dlv@v1.25.2 && \
+              cp "$(go env GOPATH)/bin/dlv" /workspace/dlv;
            else \
               go build -o manager main.go ; \
            fi'
@@ -72,7 +73,8 @@ WORKDIR /
 COPY --from=builder /workspace/manager .
 # Only present if DEBUG=true in builder; copy will fail if not built.
 # Easiest is to always build DEBUG=true for the debug tag.
-COPY --from=builder /go/bin/dlv /dlv
+RUN ls -l /workspace/bin || true; which dlv || true
+COPY --from=builder /workspace/dlv /dlv
 COPY ords/ords_init.sh .
 COPY ords/ords_start.sh .
 COPY LICENSE.txt /licenses/
