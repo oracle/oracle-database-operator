@@ -1737,7 +1737,8 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 	hasPrimary := false
 	notReadyCount := 0
 	addFailedCount := 0
-	deployParams := make([]string, 0)
+	deployFlag := "none"
+	var deployParams string
 
 	r.logLegacy("DEBUG", "Starting the shard adding operation.", nil, instance, r.Log)
 
@@ -1794,12 +1795,12 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 				r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.AddingShardErrorState))
 				r.logLegacy("Error", instance.Namespace+":Shard Addition Failure:"+err.Error(), nil, instance, r.Log)
 				addFailedCount++
+				deployFlag = "false"
 				continue
+			} else {
+				deployFlag = "true"
+				deployParams = sparamsAdd
 			}
-		}
-		// 3) Deploy whenever shard exists but is not yet deployed.
-		if err = shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeConfig, r.Log); err != nil {
-			deployParams = append(deployParams, sparamsCheck)
 		}
 	}
 
@@ -1814,8 +1815,8 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 	}
 
 	// Deploy shard changes for each shard that is not yet deployed in GSM.
-	for _, params := range deployParams {
-		if derr := shardingv1.DeployShardInGsm(gsmPod.Name, params, instance, r.kubeConfig, r.Log); derr != nil {
+	if deployFlag == "true" {
+		if derr := shardingv1.DeployShardInGsm(gsmPod.Name, deployParams, instance, r.kubeConfig, r.Log); derr != nil {
 			r.logLegacy("INFO", "DeployShardInGsm pending; requeue: "+derr.Error(), nil, instance, r.Log)
 			return fmt.Errorf("deploy shard in GSM pending: %w", derr)
 		}
@@ -1877,10 +1878,11 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 	shardSfSet := &appsv1.StatefulSet{}
 	gsmPod := &corev1.Pod{}
 
-	deployParams := make([]string, 0)
 	addFailedCount := 0
 	notReadyCount := 0
 	hasStandby := false
+	deployFlag := "none"
+	var deployParams string
 
 	r.logLegacy("DEBUG", "Starting standby shard adding operation.", nil, instance, r.Log)
 
@@ -1944,14 +1946,15 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				if err != nil {
 					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
 					addFailedCount++
+					deployFlag = "false"
 					continue
+				} else {
+					deployFlag = "true"
+					deployParams = sparamsAdd
 				}
 			}
 
 			// Deploy whenever standby shard exists but is not yet deployed.
-			if derr := shardingv1.CheckOnlineShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeConfig, r.Log); derr != nil {
-				deployParams = append(deployParams, sparamsCheck)
-			}
 		} else {
 			// DG flow: skip standby shard add in GSM
 			if instance.Status.Dg.Broker == nil {
@@ -2104,8 +2107,8 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 	}
 
 	if !instance.Spec.IsDataGuard {
-		for _, params := range deployParams {
-			if derr := shardingv1.DeployShardInGsm(gsmPod.Name, params, instance, r.kubeConfig, r.Log); derr != nil {
+		if deployFlag == "true" {
+			if derr := shardingv1.DeployShardInGsm(gsmPod.Name, deployParams, instance, r.kubeConfig, r.Log); derr != nil {
 				r.logLegacy("INFO", "DeployShardInGsm pending for standby shard; requeue: "+derr.Error(), nil, instance, r.Log)
 				return fmt.Errorf("standby deploy in GSM pending: %w", derr)
 			}
