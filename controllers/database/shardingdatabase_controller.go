@@ -3530,56 +3530,97 @@ func (r *ShardingDatabaseReconciler) isDownscaleShapeTarget(
 }
 
 type shapeDbValues struct {
-	SGABytes  int64
-	PGABytes  int64
-	Processes int64
-	CPUCount  int64
+	SGABytes    int64
+	SGAMaxBytes int64
+	PGABytes    int64
+	Processes   int64
+	CPUCount    int64
 }
 
 func expectedShapeDbValues(cfg shapes.ShapeConfig) shapeDbValues {
 	return shapeDbValues{
-		SGABytes:  int64(cfg.SGAGB * 1024 * 1024 * 1024),
-		PGABytes:  int64(cfg.PGAGB * 1024 * 1024 * 1024),
-		Processes: int64(cfg.Processes),
-		CPUCount:  int64(cfg.CPU),
+		SGABytes:    int64(cfg.SGAGB) * 1024 * 1024 * 1024,
+		SGAMaxBytes: int64(cfg.SGAGB) * 1024 * 1024 * 1024,
+		PGABytes:    int64(cfg.PGAGB) * 1024 * 1024 * 1024,
+		Processes:   int64(cfg.Processes),
+		CPUCount:    int64(cfg.CPU),
 	}
 }
 
 func shapeDbValuesEqual(a, b shapeDbValues) bool {
 	return a.SGABytes == b.SGABytes &&
+		a.SGAMaxBytes == b.SGAMaxBytes &&
 		a.PGABytes == b.PGABytes &&
 		a.Processes == b.Processes &&
 		a.CPUCount == b.CPUCount
 }
 
+func normalizeShapeReadLine(raw string) string {
+	line := strings.TrimSpace(raw)
+	for {
+		upper := strings.ToUpper(line)
+		if strings.HasPrefix(upper, "SQL>") {
+			line = strings.TrimSpace(line[4:])
+			continue
+		}
+		break
+	}
+	return line
+}
+
 func parseShapeDbValues(out string) (shapeDbValues, error) {
 	var vals shapeDbValues
-	lines := strings.Split(out, "\n")
+	found := map[string]bool{}
 
+	lines := strings.Split(out, "\n")
 	for _, raw := range lines {
-		line := strings.TrimSpace(raw)
+		line := normalizeShapeReadLine(raw)
 		if line == "" || !strings.Contains(line, "=") {
 			continue
 		}
 
 		parts := strings.SplitN(line, "=", 2)
-		key := strings.TrimSpace(parts[0])
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.ToUpper(strings.TrimSpace(parts[0]))
 		valStr := strings.TrimSpace(parts[1])
 
 		n, err := strconv.ParseInt(valStr, 10, 64)
 		if err != nil {
-			return vals, fmt.Errorf("unable to parse %s value %q: %w", key, valStr, err)
+			continue
 		}
 
 		switch key {
 		case "INIT_SGA_SIZE":
 			vals.SGABytes = n
+			found[key] = true
+		case "INIT_SGA_MAX_SIZE":
+			vals.SGAMaxBytes = n
+			found[key] = true
 		case "INIT_PGA_SIZE":
 			vals.PGABytes = n
+			found[key] = true
 		case "INIT_PROCESS":
 			vals.Processes = n
+			found[key] = true
 		case "INIT_CPU_COUNT":
 			vals.CPUCount = n
+			found[key] = true
+		}
+	}
+
+	required := []string{
+		"INIT_SGA_SIZE",
+		"INIT_SGA_MAX_SIZE",
+		"INIT_PGA_SIZE",
+		"INIT_PROCESS",
+		"INIT_CPU_COUNT",
+	}
+	for _, k := range required {
+		if !found[k] {
+			return vals, fmt.Errorf("missing %s in DB verify output: %s", k, out)
 		}
 	}
 
