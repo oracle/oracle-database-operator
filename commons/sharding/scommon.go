@@ -1414,6 +1414,45 @@ func getShardDelCmd(sparams string) []string {
 	return delShardCmd
 }
 
+func getApplyDbShapeParamsCmd(sparams string, resType string) []string {
+	sparamStr := "--applydbshapeparams=" + strconv.Quote(sparams)
+
+	if strings.EqualFold(strings.TrimSpace(resType), "CATALOG") {
+		return []string{
+			oraDbScriptMount + "/cmdExec",
+			"/bin/python",
+			oraDbScriptMount + "/main.py ",
+			sparamStr,
+			"--optype=catalog",
+		}
+	}
+
+	return []string{
+		oraDbScriptMount + "/cmdExec",
+		"/bin/python",
+		oraDbScriptMount + "/main.py ",
+		sparamStr,
+		"--optype=primaryshard",
+	}
+}
+
+func ApplyDbShapeParams(
+	podName string,
+	sparams string,
+	resType string,
+	instance *databasev4.ShardingDatabase,
+	kubeconfig *rest.Config,
+	logger logr.Logger,
+) error {
+	_, _, err := ExecCommand(podName, getApplyDbShapeParamsCmd(sparams, resType), kubeconfig, instance, logger)
+	if err != nil {
+		msg := "Error occurred while applying DB shape params " + GetFmtStr(sparams) + " on " + GetFmtStr(podName) + "."
+		LogMessages("INFO", msg, nil, instance, logger)
+		return err
+	}
+	return nil
+}
+
 func getLivenessCmd(resType string) []string {
 	var livenessCmd []string
 	if resType == "SHARD" {
