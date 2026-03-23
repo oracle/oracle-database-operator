@@ -1436,6 +1436,26 @@ func getApplyDbShapeParamsCmd(sparams string, resType string) []string {
 	}
 }
 
+func getReadDbShapeParamsCmd(resType string) []string {
+	if strings.EqualFold(strings.TrimSpace(resType), "CATALOG") {
+		return []string{
+			oraDbScriptMount + "/cmdExec",
+			"/bin/python",
+			oraDbScriptMount + "/main.py ",
+			"--readdbshapeparams=true",
+			"--optype=catalog",
+		}
+	}
+
+	return []string{
+		oraDbScriptMount + "/cmdExec",
+		"/bin/python",
+		oraDbScriptMount + "/main.py ",
+		"--readdbshapeparams=true",
+		"--optype=primaryshard",
+	}
+}
+
 func ApplyDbShapeParams(
 	podName string,
 	sparams string,
@@ -1451,6 +1471,15 @@ func ApplyDbShapeParams(
 		return err
 	}
 	return nil
+}
+func ReadDbShapeParams(
+	podName string,
+	resType string,
+	instance *databasev4.ShardingDatabase,
+	kubeconfig *rest.Config,
+	logger logr.Logger,
+) (string, string, error) {
+	return ExecCommand(podName, getReadDbShapeParamsCmd(resType), kubeconfig, instance, logger)
 }
 
 func getLivenessCmd(resType string) []string {

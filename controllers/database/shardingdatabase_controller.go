@@ -3529,6 +3529,96 @@ func (r *ShardingDatabaseReconciler) isDownscaleShapeTarget(
 	return compareShapeSize(oldCfg, newCfg) < 0
 }
 
+type shapeDbValues struct {
+	SGABytes  int64
+	PGABytes  int64
+	Processes int64
+	CPUCount  int64
+}
+
+func expectedShapeDbValues(cfg shapes.ShapeConfig) shapeDbValues {
+	return shapeDbValues{
+		SGABytes:  int64(cfg.SGAGB * 1024 * 1024 * 1024),
+		PGABytes:  int64(cfg.PGAGB * 1024 * 1024 * 1024),
+		Processes: int64(cfg.Processes),
+		CPUCount:  int64(cfg.CPU),
+	}
+}
+
+func shapeDbValuesEqual(a, b shapeDbValues) bool {
+	return a.SGABytes == b.SGABytes &&
+		a.PGABytes == b.PGABytes &&
+		a.Processes == b.Processes &&
+		a.CPUCount == b.CPUCount
+}
+
+func parseShapeDbValues(out string) (shapeDbValues, error) {
+	var vals shapeDbValues
+	lines := strings.Split(out, "\n")
+
+	for _, raw := range lines {
+		line := strings.TrimSpace(raw)
+		if line == "" || !strings.Contains(line, "=") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		key := strings.TrimSpace(parts[0])
+		valStr := strings.TrimSpace(parts[1])
+
+		n, err := strconv.ParseInt(valStr, 10, 64)
+		if err != nil {
+			return vals, fmt.Errorf("unable to parse %s value %q: %w", key, valStr, err)
+		}
+
+		switch key {
+		case "INIT_SGA_SIZE":
+			vals.SGABytes = n
+		case "INIT_PGA_SIZE":
+			vals.PGABytes = n
+		case "INIT_PROCESS":
+			vals.Processes = n
+		case "INIT_CPU_COUNT":
+			vals.CPUCount = n
+		}
+	}
+
+	return vals, nil
+}
+
+func (r *ShardingDatabaseReconciler) readShapeDbValues(
+	instance *databasev4.ShardingDatabase,
+	t shapeRollTarget,
+) (shapeDbValues, error) {
+	switch t.kind {
+	case "CATALOG":
+		_, pod, err := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx)
+		if err != nil {
+			return shapeDbValues{}, fmt.Errorf("catalog %s not ready: %w", t.name, err)
+		}
+
+		stdout, stderr, err := shardingv1.ReadDbShapeParams(pod.Name, "CATALOG", instance, r.kubeConfig, r.Log)
+		if err != nil {
+			return shapeDbValues{}, fmt.Errorf("readShapeDbValues failed stdout=%s stderr=%s err=%w", stdout, stderr, err)
+		}
+		return parseShapeDbValues(stdout)
+
+	case "SHARD":
+		_, pod, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
+		if err != nil {
+			return shapeDbValues{}, fmt.Errorf("shard %s not ready: %w", t.name, err)
+		}
+
+		stdout, stderr, err := shardingv1.ReadDbShapeParams(pod.Name, "SHARD", instance, r.kubeConfig, r.Log)
+		if err != nil {
+			return shapeDbValues{}, fmt.Errorf("readShapeDbValues failed stdout=%s stderr=%s err=%w", stdout, stderr, err)
+		}
+		return parseShapeDbValues(stdout)
+	}
+
+	return shapeDbValues{}, fmt.Errorf("unknown target kind %s", t.kind)
+}
+
 func shapeParamStringFromCfg(cfg shapes.ShapeConfig) string {
 	return fmt.Sprintf(
 		"INIT_SGA_SIZE=%d;INIT_PGA_SIZE=%d;INIT_PROCESS=%d;INIT_CPU_COUNT=%d;INIT_TOTAL_SIZE=%d",
@@ -3625,9 +3715,23 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 				return true, nil
 			}
 
-			if err := r.applyShapeDbParamsIfNeeded(instance, t); err != nil {
-				r.logLegacy("INFO", "Ordered shape rollout pre-restart DB param apply failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
+			currentVals, err := r.readShapeDbValues(instance, t)
+			if err != nil {
+				r.logLegacy("INFO", "Ordered shape rollout DB param read failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
 				return true, err
+			}
+
+			cfg, ok := desiredCfgForTarget(instance, t)
+			if !ok {
+				return true, fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
+			}
+			expectedVals := expectedShapeDbValues(cfg)
+
+			if !shapeDbValuesEqual(currentVals, expectedVals) {
+				if err := r.applyShapeDbParamsIfNeeded(instance, t); err != nil {
+					r.logLegacy("INFO", "Ordered shape rollout pre-restart DB param apply failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
+					return true, err
+				}
 			}
 
 			return r.restartShapeTargetStatefulSet(instance, t, currSts, "downscale Kubernetes shape change")
@@ -3642,9 +3746,27 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 			return true, nil
 		}
 
-		if isDownscale {
-			r.logLegacy("INFO", "Ordered shape rollout downscale completed for "+t.name, nil, instance, r.Log)
+		cfg, ok := desiredCfgForTarget(instance, t)
+		if !ok {
+			return true, fmt.Errorf("unable to resolve desired shape config for %s %s", t.kind, t.name)
+		}
+
+		currentVals, err := r.readShapeDbValues(instance, t)
+		if err != nil {
+			r.logLegacy("INFO", "Ordered shape rollout DB param read failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
+			return true, err
+		}
+
+		expectedVals := expectedShapeDbValues(cfg)
+
+		if shapeDbValuesEqual(currentVals, expectedVals) {
+			r.logLegacy("INFO", "Ordered shape rollout DB params already correct for "+t.name, nil, instance, r.Log)
 			continue
+		}
+
+		if isDownscale {
+			r.logLegacy("INFO", "Ordered shape rollout waiting for downscale DB params to reflect for "+t.name, nil, instance, r.Log)
+			return true, nil
 		}
 
 		if err := r.applyShapeDbParamsIfNeeded(instance, t); err != nil {
