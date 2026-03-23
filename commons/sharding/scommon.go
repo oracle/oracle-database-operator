@@ -1415,7 +1415,7 @@ func getShardDelCmd(sparams string) []string {
 }
 
 func getApplyDbShapeParamsCmd(sparams string, resType string) []string {
-	sparamStr := "--applydbshapeparams=" + strconv.Quote(sparams)
+	sparamStr := "--applydbshapeparams=" + sparams
 
 	if strings.EqualFold(strings.TrimSpace(resType), "CATALOG") {
 		return []string{
