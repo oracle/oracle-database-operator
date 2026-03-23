@@ -41,13 +41,16 @@ package v4
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	shapes "github.com/oracle/oracle-database-operator/commons/shapes"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -69,10 +72,93 @@ const (
 	deleteStateEnable  = "enable"
 	deleteStateDisable = "disable"
 	deleteStateFailed  = "failed"
+
+	reconcilingConditionType = "Reconciling"
+	updateLockReason         = "UpdateInProgress"
+
+	lockOverrideAnnotation       = "database.oracle.com/lock-override"
+	lockOverrideReasonAnnotation = "database.oracle.com/lock-override-reason"
+	lockOverrideByAnnotation     = "database.oracle.com/lock-override-by"
+	lockOverrideUntilAnnotation  = "database.oracle.com/lock-override-until"
+	lockOverrideMaxTTL           = 30 * time.Minute
 )
 
 // log is for logging in this package.
 var shardingdatabaselog = logf.Log.WithName("shardingdatabase-resource")
+
+func findStatusCondition(conds []metav1.Condition, condType string) *metav1.Condition {
+	for i := range conds {
+		if conds[i].Type == condType {
+			return &conds[i]
+		}
+	}
+	return nil
+}
+
+func isControllerUpdateLocked(cr *ShardingDatabase) (bool, int64, string) {
+	if cr == nil {
+		return false, 0, ""
+	}
+
+	cond := findStatusCondition(cr.Status.CrdStatus, reconcilingConditionType)
+	if cond == nil {
+		return false, 0, ""
+	}
+	if cond.Status != metav1.ConditionTrue {
+		return false, 0, ""
+	}
+	if strings.TrimSpace(cond.Reason) != updateLockReason {
+		return false, 0, ""
+	}
+
+	return true, cond.ObservedGeneration, cond.Message
+}
+
+func isUpdateLockOverrideEnabled(cr *ShardingDatabase, now time.Time) (bool, string) {
+	if cr == nil {
+		return false, "resource is nil"
+	}
+
+	annotations := cr.GetAnnotations()
+	if len(annotations) == 0 {
+		return false, ""
+	}
+
+	if !strings.EqualFold(strings.TrimSpace(annotations[lockOverrideAnnotation]), "true") {
+		return false, ""
+	}
+
+	reason := strings.TrimSpace(annotations[lockOverrideReasonAnnotation])
+	if reason == "" {
+		return false, "missing override reason annotation"
+	}
+
+	by := strings.TrimSpace(annotations[lockOverrideByAnnotation])
+	if by == "" {
+		return false, "missing override by annotation"
+	}
+
+	untilRaw := strings.TrimSpace(annotations[lockOverrideUntilAnnotation])
+	if untilRaw == "" {
+		return false, "missing override until annotation"
+	}
+
+	until, err := time.Parse(time.RFC3339, untilRaw)
+	if err != nil {
+		return false, "invalid override until timestamp (must be RFC3339)"
+	}
+
+	now = now.UTC()
+	if !until.After(now) {
+		return false, "override has expired"
+	}
+	if until.After(now.Add(lockOverrideMaxTTL)) {
+		return false, fmt.Sprintf("override exceeds max ttl of %s", lockOverrideMaxTTL)
+	}
+
+	msg := fmt.Sprintf("override accepted by=%s until=%s reason=%s", by, until.Format(time.RFC3339), reason)
+	return true, msg
+}
 
 func (r *ShardingDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
@@ -302,6 +388,24 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj ru
 		validationErr = append(validationErr,
 			field.Forbidden(field.NewPath("spec").Child("shardInfo"),
 				"Cannot switch from System Sharding to User-Defined/Composite after creation"))
+	}
+
+	specChanged := !reflect.DeepEqual(oldCR.Spec, newCR.Spec)
+	if specChanged {
+		if locked, lockGen, lockMsg := isControllerUpdateLocked(oldCR); locked {
+			if overrideEnabled, overrideMsg := isUpdateLockOverrideEnabled(newCR, time.Now().UTC()); overrideEnabled {
+				logger.Info("allowing spec update due to break-glass override", "observedGeneration", lockGen, "override", overrideMsg)
+			} else {
+				msg := fmt.Sprintf("spec updates are blocked while controller operation is in progress (reason=%s, observedGeneration=%d). %s",
+					updateLockReason, lockGen, lockMsg)
+				if strings.TrimSpace(overrideMsg) != "" {
+					msg = msg + " Break-glass override rejected: " + overrideMsg
+				}
+				validationErr = append(validationErr,
+					field.Forbidden(field.NewPath("spec"), msg),
+				)
+			}
+		}
 	}
 
 	if len(validationErr) == 0 {

@@ -108,6 +108,18 @@ type conditionSet struct {
 	degraded    metav1.Condition
 }
 
+const (
+	reconcilingType   = "Reconciling"
+	updateLockReason  = "UpdateInProgress"
+	updateLockRequeue = 15 * time.Second
+
+	lockOverrideAnnotation      = "database.oracle.com/lock-override"
+	lockOverrideReasonAnnotation = "database.oracle.com/lock-override-reason"
+	lockOverrideByAnnotation    = "database.oracle.com/lock-override-by"
+	lockOverrideUntilAnnotation = "database.oracle.com/lock-override-until"
+	lockOverrideMaxTTL          = 30 * time.Minute
+)
+
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases/finalizers,verbs=get;create;update;patch;delete
@@ -135,6 +147,25 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	if inst.DeletionTimestamp == nil {
+		if locked, lockGen, lockMsg := isUpdateLockActive(inst); locked && inst.Generation > lockGen {
+			overrideEnabled, overrideMsg := isUpdateLockOverrideEnabled(inst, time.Now().UTC())
+			if overrideEnabled {
+				r.logLegacy("WARNING", "Bypassing update lock due to break-glass override. "+overrideMsg, nil, inst, r.Log)
+			} else {
+				status := inst.Status.DeepCopy()
+				finalCond := newConditionSet(inst.Generation)
+				msg := fmt.Sprintf("Previous update is still in progress (lockedGeneration=%d). %s", lockGen, lockMsg)
+				if strings.TrimSpace(overrideMsg) != "" {
+					msg = msg + " Break-glass override rejected: " + overrideMsg
+				}
+				r.markReconciling(finalCond, updateLockReason, msg)
+				_ = r.flushStatus(ctx, req.NamespacedName, status, finalCond)
+				return ctrl.Result{RequeueAfter: updateLockRequeue}, nil
+			}
+		}
 	}
 
 	status := inst.Status.DeepCopy()
@@ -173,7 +204,13 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return ctrl.Result{}, pr.err
 		}
 		if pr.wait {
-			r.markReconciling(finalCond, pr.reason, pr.message)
+			reason := pr.reason
+			message := pr.message
+			if isMutatingProgressReason(pr.reason) {
+				reason = updateLockReason
+				message = fmt.Sprintf("%s: %s", pr.reason, pr.message)
+			}
+			r.markReconciling(finalCond, reason, message)
 			_ = r.flushStatus(ctx, req.NamespacedName, status, finalCond)
 			return ctrl.Result{RequeueAfter: pr.requeueAfter}, nil
 		}
@@ -602,6 +639,23 @@ func (r *ShardingDatabaseReconciler) logLegacy(msgType, msg string, err error, i
 			log.Info(msg)
 		}
 	}
+}
+
+func isTransientDbSetupNotReady(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	lerr := strings.ToLower(err.Error())
+	return strings.Contains(lerr, "ora-01034") ||
+		strings.Contains(lerr, "ora-27101") ||
+		strings.Contains(lerr, "sp2-0640") ||
+		strings.Contains(lerr, "not open") ||
+		strings.Contains(lerr, "connection refused") ||
+		strings.Contains(lerr, "i/o timeout") ||
+		strings.Contains(lerr, "context deadline exceeded") ||
+		strings.Contains(lerr, "exit code 127") ||
+		strings.Contains(lerr, "command terminated with exit code 127")
 }
 
 // Function for markDegraded
@@ -1443,15 +1497,7 @@ func (r *ShardingDatabaseReconciler) validateInvidualCatalog(instance *databasev
 	err = shardingv1.ValidateDbSetup(catalogPod.Name, instance, r.kubeConfig, r.Log)
 	if err != nil {
 		msg := "Unable to validate Catalog. Catalog doesn't seems to be ready to accept the commands."
-		lerr := strings.ToLower(err.Error())
-		isTransientCatalogNotReady := strings.Contains(lerr, "ora-01034") ||
-			strings.Contains(lerr, "ora-27101") ||
-			strings.Contains(lerr, "sp2-0640") ||
-			strings.Contains(lerr, "not open") ||
-			strings.Contains(lerr, "connection refused") ||
-			strings.Contains(lerr, "i/o timeout") ||
-			strings.Contains(lerr, "context deadline exceeded")
-		if isTransientCatalogNotReady {
+		if isTransientDbSetupNotReady(err) {
 			r.logLegacy("INFO", msg+" cause: "+err.Error(), nil, instance, r.Log)
 		} else {
 			r.logLegacy("Error", msg+" cause: "+err.Error(), nil, instance, r.Log)
@@ -1497,7 +1543,11 @@ func (r *ShardingDatabaseReconciler) validateShard(instance *databasev4.Sharding
 	err = shardingv1.ValidateDbSetup(shardPod.Name, instance, r.kubeConfig, r.Log)
 	if err != nil {
 		msg := "Unable to validate shard. Shard doesn't seem to be ready to accept commands."
-		r.logLegacy("Error", msg, nil, instance, r.Log)
+		if isTransientDbSetupNotReady(err) {
+			r.logLegacy("INFO", msg+" cause: "+err.Error(), nil, instance, r.Log)
+		} else {
+			r.logLegacy("Error", msg+" cause: "+err.Error(), nil, instance, r.Log)
+		}
 		r.updateShardStatus(instance, specId, string(databasev4.ProvisionState))
 		return shardSfSet, shardPod, err
 	}
@@ -3829,4 +3879,92 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleOutUnmarks(instance *datab
 	}
 
 	return changed
+}
+
+func isMutatingProgressReason(reason string) bool {
+	switch strings.TrimSpace(reason) {
+	case "PrimaryShardProgress",
+		"StandbyShardProgress",
+		"ScaleInProgress",
+		"ShardStatePending",
+		"OrderedShapeReconcileRetry",
+		"OrderedShapeReconcileBlocked":
+		return true
+	default:
+		return false
+	}
+}
+
+func getCondition(conds []metav1.Condition, condType string) *metav1.Condition {
+	for i := range conds {
+		if conds[i].Type == condType {
+			return &conds[i]
+		}
+	}
+	return nil
+}
+
+func isUpdateLockActive(inst *databasev4.ShardingDatabase) (bool, int64, string) {
+	if inst == nil {
+		return false, 0, ""
+	}
+
+	cond := getCondition(inst.Status.CrdStatus, reconcilingType)
+	if cond == nil {
+		return false, 0, ""
+	}
+	if cond.Status != metav1.ConditionTrue {
+		return false, 0, ""
+	}
+	if strings.TrimSpace(cond.Reason) != updateLockReason {
+		return false, 0, ""
+	}
+
+	return true, cond.ObservedGeneration, cond.Message
+}
+
+func isUpdateLockOverrideEnabled(inst *databasev4.ShardingDatabase, now time.Time) (bool, string) {
+	if inst == nil {
+		return false, "resource is nil"
+	}
+
+	annotations := inst.GetAnnotations()
+	if len(annotations) == 0 {
+		return false, ""
+	}
+
+	if !strings.EqualFold(strings.TrimSpace(annotations[lockOverrideAnnotation]), "true") {
+		return false, ""
+	}
+
+	reason := strings.TrimSpace(annotations[lockOverrideReasonAnnotation])
+	if reason == "" {
+		return false, "missing override reason annotation"
+	}
+
+	by := strings.TrimSpace(annotations[lockOverrideByAnnotation])
+	if by == "" {
+		return false, "missing override by annotation"
+	}
+
+	untilRaw := strings.TrimSpace(annotations[lockOverrideUntilAnnotation])
+	if untilRaw == "" {
+		return false, "missing override until annotation"
+	}
+
+	until, err := time.Parse(time.RFC3339, untilRaw)
+	if err != nil {
+		return false, "invalid override until timestamp (must be RFC3339)"
+	}
+
+	now = now.UTC()
+	if !until.After(now) {
+		return false, "override has expired"
+	}
+	if until.After(now.Add(lockOverrideMaxTTL)) {
+		return false, fmt.Sprintf("override exceeds max ttl of %s", lockOverrideMaxTTL)
+	}
+
+	msg := fmt.Sprintf("override accepted by=%s until=%s reason=%s", by, until.Format(time.RFC3339), reason)
+	return true, msg
 }
