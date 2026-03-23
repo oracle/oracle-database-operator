@@ -3330,6 +3330,29 @@ func extractShapeEnvCore(envs []corev1.EnvVar) map[string]string {
 	return out
 }
 
+// statefulSetNeedsShapeRecreate handles stateful set needs shape recreate for the sharding database controller.
+func statefulSetNeedsShapeRecreate(current, desired *appsv1.StatefulSet) bool {
+	if current == nil || desired == nil {
+		return false
+	}
+	if len(current.Spec.Template.Spec.Containers) == 0 || len(desired.Spec.Template.Spec.Containers) == 0 {
+		return false
+	}
+
+	currC := current.Spec.Template.Spec.Containers[0]
+	wantC := desired.Spec.Template.Spec.Containers[0]
+
+	if !reflect.DeepEqual(currC.Resources, wantC.Resources) {
+		return true
+	}
+
+	if !reflect.DeepEqual(extractShapeEnvCore(currC.Env), extractShapeEnvCore(wantC.Env)) {
+		return true
+	}
+
+	return false
+}
+
 // desiredShapeForTarget handles desired shape for target for the sharding database controller.
 func desiredShapeForTarget(instance *databasev4.ShardingDatabase, t shapeRollTarget) string {
 	switch t.kind {
@@ -3588,85 +3611,48 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 			return true, nil
 		}
 
-		if currSts.Status.ReadyReplicas == 0 || currSts.Status.CurrentReplicas == 0 {
-			r.logLegacy("INFO", "Ordered shape rollout waiting for StatefulSet "+t.name+" to become ready", nil, instance, r.Log)
-			return true, nil
+		desiredSts := r.desiredStatefulSetForShapeTarget(instance, t)
+		if desiredSts == nil {
+			return true, fmt.Errorf("unable to build desired StatefulSet for %s %s", t.kind, t.name)
 		}
 
+		needsK8sRestart := statefulSetNeedsShapeRecreate(currSts, desiredSts)
 		isDownscale := r.isDownscaleShapeTarget(instance, lastSuccSpec, t)
 
-		if isDownscale {
-			// Downscale: apply DB params first, then one restart
+		if needsK8sRestart && isDownscale {
+			if err := r.validateShapeTargetReady(instance, t); err != nil {
+				r.logLegacy("INFO", "Ordered shape rollout waiting for "+t.kind+" "+t.name+" to become ready before downscale", nil, instance, r.Log)
+				return true, nil
+			}
+
 			if err := r.applyShapeDbParamsIfNeeded(instance, t); err != nil {
+				r.logLegacy("INFO", "Ordered shape rollout pre-restart DB param apply failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
 				return true, err
 			}
 
-			restarted, err := r.restartShapeTargetStatefulSet(instance, t, currSts, "downscale DB parameter restart")
-			if err != nil {
-				return restarted, err
-			}
-
-			r.logLegacy(
-				"INFO",
-				fmt.Sprintf("Ordered shape rollout triggered restart after DB param apply for downscale on %s %s", t.kind, t.name),
-				nil,
-				instance,
-				r.Log,
-			)
-			return restarted, nil
+			return r.restartShapeTargetStatefulSet(instance, t, currSts, "downscale Kubernetes shape change")
 		}
 
-		// Upscale: first restart for bigger K8s resources
-		restarted, err := r.restartShapeTargetStatefulSet(instance, t, currSts, "upscale K8s resource restart")
-		if err != nil {
-			return restarted, err
+		if needsK8sRestart && !isDownscale {
+			return r.restartShapeTargetStatefulSet(instance, t, currSts, "Kubernetes shape change")
 		}
 
-		r.logLegacy(
-			"INFO",
-			fmt.Sprintf("Ordered shape rollout triggered first restart for upscale on %s %s", t.kind, t.name),
-			nil,
-			instance,
-			r.Log,
-		)
-		return restarted, nil
-	}
+		if err := r.validateShapeTargetReady(instance, t); err != nil {
+			r.logLegacy("INFO", "Ordered shape rollout waiting for "+t.kind+" "+t.name+" to become ready", nil, instance, r.Log)
+			return true, nil
+		}
 
-	// Second phase for upscale targets:
-	// once pod is back and ready with bigger K8s shape, apply DB params and restart again
-	for _, t := range targets {
-		if r.isDownscaleShapeTarget(instance, lastSuccSpec, t) {
+		if isDownscale {
+			r.logLegacy("INFO", "Ordered shape rollout downscale completed for "+t.name, nil, instance, r.Log)
 			continue
 		}
 
-		currSts, err := shardingv1.CheckSfset(t.name, instance, r.Client)
-		if err != nil {
-			r.logLegacy("INFO", "Ordered shape rollout waiting for StatefulSet "+t.name+" to be recreated", nil, instance, r.Log)
-			return true, nil
-		}
-
-		if currSts.Status.ReadyReplicas == 0 || currSts.Status.CurrentReplicas == 0 {
-			r.logLegacy("INFO", "Ordered shape rollout waiting for StatefulSet "+t.name+" to become ready", nil, instance, r.Log)
-			return true, nil
-		}
-
 		if err := r.applyShapeDbParamsIfNeeded(instance, t); err != nil {
+			r.logLegacy("INFO", "Ordered shape rollout DB param apply failed for "+t.name+": "+err.Error(), nil, instance, r.Log)
 			return true, err
 		}
 
-		restarted, err := r.restartShapeTargetStatefulSet(instance, t, currSts, "upscale DB parameter restart")
-		if err != nil {
-			return restarted, err
-		}
-
-		r.logLegacy(
-			"INFO",
-			fmt.Sprintf("Ordered shape rollout triggered second restart after DB param apply for upscale on %s %s", t.kind, t.name),
-			nil,
-			instance,
-			r.Log,
-		)
-		return restarted, nil
+		return r.restartShapeTargetStatefulSet(instance, t, currSts, "DB parameter restart")
 	}
 
 	return false, nil
