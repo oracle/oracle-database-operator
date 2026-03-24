@@ -1,0 +1,24 @@
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: inv-user-nospace
+  namespace: default
+spec:
+  dbImage: container-registry.oracle.com/database/enterprise:21.3.0.0
+  gsmImage: container-registry.oracle.com/database/gsm:21.3.0.0
+  dbSecret:
+    name: db-secret
+    pwdFileName: dbpwd
+    encryptionType: base64
+  catalog:
+  - name: cati2
+    sharding: USER
+    repl: DG
+    autoVncr: OFF
+    agentPort: 8080
+  gsm:
+  - name: gsm1
+  shardingType: USER
+  replicationType: DG
+  shard:
+  - name: shd1

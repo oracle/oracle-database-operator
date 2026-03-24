@@ -1,0 +1,52 @@
+apiVersion: database.oracle.com/v4
+kind: ShardingDatabase
+metadata:
+  name: shdb-system-dg
+  namespace: shns
+spec:
+  storageClass: oci
+  dbImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:19.28.0.0
+  gsmImage: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:19.28.0.0-gsm
+  shardingType: SYSTEM
+  replicationType: DG
+  isExternalSvc: false
+  isDeleteOraPvc: true
+  dbSecret:
+    name: db-user-pass-rsa
+    pwdFileName: pwdfile.enc
+    tdePwdFileName: tdepwdfile.enc
+    keyFileName: key.pem
+  catalog:
+    - name: catalog
+      storageSizeInGb: 50
+      imagePullPolicy: Always
+      sharding: SYSTEM
+      repl: DG
+      autoVncr: OFF
+      agentPort: 8080
+  gsm:
+    - name: gsm1
+      storageSizeInGb: 50
+      imagePullPolicy: Always
+      region: primary
+    - name: gsm2
+      storageSizeInGb: 50
+      imagePullPolicy: Always
+      region: standby
+  shardInfo:
+    - shardPreFixName: pshard
+      shardNum: 1
+      shape: kodb4
+      storageSizeInGb: 50
+      shardGroupDetails:
+        name: pshg1
+        region: primary
+        deployAs: PRIMARY
+        shardSpace: pspace1
+        repFactor: 3
+        ru_mode: READWRITE
+  gsmService:
+    - name: oltp_rw_svc
+      role: primary
+    - name: oltp_ro_svc
+      role: primary
