@@ -496,8 +496,8 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 # Expect secret mounted at ${SECRET_VOLUME}/oracle_pwd (or ${SECRET_VOLUME}/${PASSWORD_FILE})
 # Your CR should set:
 #   dbSecret.name: db-admin-password
-#   dbSecret.pwdFileName: oracle_pwd
-#   dbSecret.encryptionType: base64
+#   dbSecret.dbAdmin.mode: secret-value
+#   dbSecret.dbAdmin.passwordKey: oracle_pwd
 # so buildEnvVarsSpec sets:
 #   SECRET_VOLUME=/mnt/secrets
 #   PASSWORD_FILE=oracle_pwd
@@ -577,7 +577,7 @@ func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraSh
 // buildVolumeMountSpecForShard returns volume mounts for shard containers.
 func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.VolumeMount {
 	result := make([]corev1.VolumeMount, 0, 6)
-	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
+	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: getDbSecretMountPath(instance), ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
 	if instance.Spec.IsDownloadScripts {
 		result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})

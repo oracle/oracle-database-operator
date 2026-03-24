@@ -40,6 +40,8 @@ package controllers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"reflect"
 	"sort"
@@ -113,11 +115,19 @@ const (
 	updateLockReason  = "UpdateInProgress"
 	updateLockRequeue = 15 * time.Second
 
-	lockOverrideAnnotation      = "database.oracle.com/lock-override"
+	lockOverrideAnnotation       = "database.oracle.com/lock-override"
 	lockOverrideReasonAnnotation = "database.oracle.com/lock-override-reason"
-	lockOverrideByAnnotation    = "database.oracle.com/lock-override-by"
-	lockOverrideUntilAnnotation = "database.oracle.com/lock-override-until"
-	lockOverrideMaxTTL          = 30 * time.Minute
+	lockOverrideByAnnotation     = "database.oracle.com/lock-override-by"
+	lockOverrideUntilAnnotation  = "database.oracle.com/lock-override-until"
+	lockOverrideMaxTTL           = 30 * time.Minute
+
+	credentialSyncConditionType         = "CredentialSync"
+	credentialSyncHashAnnotation        = "database.oracle.com/credential-sync-hash"
+	credentialSyncRetryCountAnnotation  = "database.oracle.com/credential-sync-retry-count"
+	credentialSyncNextRetryAtAnnotation = "database.oracle.com/credential-sync-next-retry-at"
+	credentialSyncLastErrorAnnotation   = "database.oracle.com/credential-sync-last-error"
+	credentialRetryInitialBackoff       = 30 * time.Second
+	credentialRetryMaxBackoff           = 10 * time.Minute
 )
 
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases,verbs=get;list;watch;create;update;patch;delete
@@ -151,19 +161,30 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	if inst.DeletionTimestamp == nil {
 		if locked, lockGen, lockMsg := isUpdateLockActive(inst); locked && inst.Generation > lockGen {
-			overrideEnabled, overrideMsg := isUpdateLockOverrideEnabled(inst, time.Now().UTC())
-			if overrideEnabled {
-				r.logLegacy("WARNING", "Bypassing update lock due to break-glass override. "+overrideMsg, nil, inst, r.Log)
-			} else {
-				status := inst.Status.DeepCopy()
-				finalCond := newConditionSet(inst.Generation)
-				msg := fmt.Sprintf("Previous update is still in progress (lockedGeneration=%d). %s", lockGen, lockMsg)
-				if strings.TrimSpace(overrideMsg) != "" {
-					msg = msg + " Break-glass override rejected: " + overrideMsg
+			enforceLock := true
+			if lastSuccSpec, err := inst.GetLastSuccessfulSpec(); err != nil {
+				r.logLegacy("WARNING", "Unable to evaluate conditional update lock; enforcing lock. err="+err.Error(), err, inst, r.Log)
+			} else if lastSuccSpec != nil {
+				enforceLock = shouldEnforceUpdateLock(lastSuccSpec, &inst.Spec)
+			}
+
+			if enforceLock {
+				overrideEnabled, overrideMsg := isUpdateLockOverrideEnabled(inst, time.Now().UTC())
+				if overrideEnabled {
+					r.logLegacy("WARNING", "Bypassing update lock due to break-glass override. "+overrideMsg, nil, inst, r.Log)
+				} else {
+					status := inst.Status.DeepCopy()
+					finalCond := newConditionSet(inst.Generation)
+					msg := fmt.Sprintf("Previous update is still in progress (lockedGeneration=%d). %s", lockGen, lockMsg)
+					if strings.TrimSpace(overrideMsg) != "" {
+						msg = msg + " Break-glass override rejected: " + overrideMsg
+					}
+					r.markReconciling(finalCond, updateLockReason, msg)
+					_ = r.flushStatus(ctx, req.NamespacedName, status, finalCond)
+					return ctrl.Result{RequeueAfter: updateLockRequeue}, nil
 				}
-				r.markReconciling(finalCond, updateLockReason, msg)
-				_ = r.flushStatus(ctx, req.NamespacedName, status, finalCond)
-				return ctrl.Result{RequeueAfter: updateLockRequeue}, nil
+			} else {
+				r.logLegacy("INFO", "Update lock not enforced for non-topology spec change", nil, inst, r.Log)
 			}
 		}
 	}
@@ -216,9 +237,14 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
+	credentialRetryAfter := r.syncCredentialRotationNonBlocking(ctx, inst, status)
+
 	r.markReady(finalCond)
 	if err := r.flushStatus(ctx, req.NamespacedName, status, finalCond); err != nil {
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+	if credentialRetryAfter > 0 {
+		return ctrl.Result{RequeueAfter: credentialRetryAfter}, nil
 	}
 	return ctrl.Result{}, nil
 }
@@ -1126,19 +1152,42 @@ func (r *ShardingDatabaseReconciler) checkShardingType(instance *databasev4.Shar
 // Check the ShardGroups/ Shard Space and Shard group Name
 // checkShrdGSR is Shardgroup/ShardSpace/ShardRegion
 
+func resolveShardMode(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) string {
+	typeHint := strings.ToUpper(strings.TrimSpace(instance.Spec.ShardingType))
+	if typeHint == "SYSTEM" || typeHint == "USER" || typeHint == "COMPOSITE" {
+		return typeHint
+	}
+
+	hasGroup := strings.TrimSpace(shard.ShardGroup) != ""
+	hasSpace := strings.TrimSpace(shard.ShardSpace) != ""
+
+	switch {
+	case hasGroup && hasSpace:
+		return "COMPOSITE"
+	case hasGroup:
+		return "SYSTEM"
+	case hasSpace:
+		return "USER"
+	default:
+		return "SYSTEM"
+	}
+}
+
+// Check the ShardGroups/ Shard Space and Shard group Name
+// checkShrdGSR is Shardgroup/ShardSpace/ShardRegion
+
 // checkShardSpace validates shard-space requirements for the selected sharding mode.
 func (r *ShardingDatabaseReconciler) checkShardSpace(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) error {
+	mode := resolveShardMode(instance, OraShardSpex)
+	if mode != "USER" && mode != "COMPOSITE" {
+		return nil
+	}
 
-	if instance.Spec.ShardingType != "" {
-		// Check for the Sharding Type and if it is USER do following
-		if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) == "USER" {
-			if len(OraShardSpex.ShardRegion) == 0 {
-				return fmt.Errorf("Shard region cannot be empty! ")
-			}
-			if len(OraShardSpex.ShardSpace) == 0 {
-				return fmt.Errorf("Shard Space in %s cannot be empty", OraShardSpex.Name)
-			}
-		}
+	if len(OraShardSpex.ShardRegion) == 0 {
+		return fmt.Errorf("Shard region cannot be empty in %s", OraShardSpex.Name)
+	}
+	if len(OraShardSpex.ShardSpace) == 0 {
+		return fmt.Errorf("Shard space in %s cannot be empty", OraShardSpex.Name)
 	}
 	return nil
 }
@@ -1148,23 +1197,19 @@ func (r *ShardingDatabaseReconciler) checkShardSpace(instance *databasev4.Shardi
 
 // checkShardGroup validates shard-group and region constraints.
 func (r *ShardingDatabaseReconciler) checkShardGroup(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) error {
+	mode := resolveShardMode(instance, OraShardSpex)
+	if mode != "SYSTEM" && mode != "COMPOSITE" {
+		return nil
+	}
 
-	// We need to check Shard Region and Shard Group for ShardingType='SYSTEM' and 'NATIVE'
-	if strings.TrimSpace(strings.ToUpper(instance.Spec.ShardingType)) != "USER" {
-		if len(OraShardSpex.ShardRegion) == 0 {
-			return fmt.Errorf("Shard region cannot be empty in %s", OraShardSpex.Name)
-		}
-		if len(OraShardSpex.ShardGroup) == 0 {
-			return fmt.Errorf("Shard group in %s cannot be empty", OraShardSpex.Name)
-		}
-
-		//
-
+	if len(OraShardSpex.ShardRegion) == 0 {
+		return fmt.Errorf("Shard region cannot be empty in %s", OraShardSpex.Name)
+	}
+	if len(OraShardSpex.ShardGroup) == 0 {
+		return fmt.Errorf("Shard group in %s cannot be empty", OraShardSpex.Name)
 	}
 	return nil
 }
-
-// Compare GSM Env Variables
 
 // comapreGsmEnvVariables handles comapre gsm env variables for the sharding database controller.
 func (r *ShardingDatabaseReconciler) comapreGsmEnvVariables(instance *databasev4.ShardingDatabase, lastSuccSpec *databasev4.ShardingDatabaseSpec) bool {
@@ -2968,7 +3013,7 @@ func (r *ShardingDatabaseReconciler) getScaleInCandidates(
 		if prefix == "" {
 			continue
 		}
-		desiredByPrefix[prefix] = info.Replicas
+		desiredByPrefix[prefix] = shardInfoDesiredCount(info)
 	}
 
 	currentByPrefix := map[string][]shardRef{}
@@ -3069,7 +3114,7 @@ func (r *ShardingDatabaseReconciler) shouldMoveChunksBeforeDelete(
 		return false
 	}
 
-	if strings.ToUpper(strings.TrimSpace(instance.Spec.ReplicationType)) == "NATIVE" {
+	if shardingv1.IsNativeReplication(instance.Spec.ReplicationType) {
 		return false
 	}
 
@@ -3154,6 +3199,16 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 	return nil
 }
 
+func shardInfoDesiredCount(info databasev4.ShardingDetails) int32 {
+	if info.ShardNum > 0 {
+		return info.ShardNum
+	}
+	if info.Replicas > 0 {
+		return info.Replicas
+	}
+	return 0
+}
+
 // desiredShardNamesFromShardInfo handles desired shard names from shard info for the sharding database controller.
 func desiredShardNamesFromShardInfo(instance *databasev4.ShardingDatabase) map[string]bool {
 	desired := map[string]bool{}
@@ -3164,7 +3219,7 @@ func desiredShardNamesFromShardInfo(instance *databasev4.ShardingDatabase) map[s
 			continue
 		}
 
-		replicas := instance.Spec.ShardInfo[i].Replicas
+		replicas := shardInfoDesiredCount(instance.Spec.ShardInfo[i])
 		if replicas == 0 {
 			replicas = 2
 		}
@@ -3881,6 +3936,300 @@ func (r *ShardingDatabaseReconciler) applyReplicaScaleOutUnmarks(instance *datab
 	return changed
 }
 
+func (r *ShardingDatabaseReconciler) syncCredentialRotationNonBlocking(
+	ctx context.Context,
+	inst *databasev4.ShardingDatabase,
+	status *databasev4.ShardingDatabaseStatus,
+) time.Duration {
+	if inst == nil || status == nil {
+		return 0
+	}
+
+	nn := types.NamespacedName{Name: inst.Name, Namespace: inst.Namespace}
+	secretName := ""
+	if inst.Spec.DbSecret != nil {
+		secretName = strings.TrimSpace(inst.Spec.DbSecret.Name)
+	}
+	if secretName == "" {
+		r.setCredentialSyncCondition(status, metav1.ConditionFalse, "ConfigError", "dbSecret.name is empty")
+		return 0
+	}
+
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: inst.Namespace}, secret); err != nil {
+		msg := "failed to read db secret: " + err.Error()
+		r.setCredentialSyncCondition(status, metav1.ConditionFalse, "SecretReadFailed", msg)
+		r.Recorder.Eventf(inst, corev1.EventTypeWarning, "CredentialSync", msg)
+		return r.recordCredentialSyncFailure(ctx, nn, msg)
+	}
+
+	fingerprint, err := buildCredentialFingerprint(inst, secret)
+	if err != nil {
+		msg := "failed to build credential fingerprint: " + err.Error()
+		r.setCredentialSyncCondition(status, metav1.ConditionFalse, "FingerprintFailed", msg)
+		r.Recorder.Eventf(inst, corev1.EventTypeWarning, "CredentialSync", msg)
+		return r.recordCredentialSyncFailure(ctx, nn, msg)
+	}
+
+	anns := inst.GetAnnotations()
+	if anns == nil {
+		anns = map[string]string{}
+	}
+
+	if fingerprint == strings.TrimSpace(anns[credentialSyncHashAnnotation]) {
+		r.setCredentialSyncCondition(status, metav1.ConditionTrue, "InSync", "credentials are in sync")
+		_ = r.clearCredentialSyncRetryState(ctx, nn)
+		return 0
+	}
+
+	if nextRetryAt, ok := parseCredentialRetryTime(anns[credentialSyncNextRetryAtAnnotation]); ok {
+		now := time.Now().UTC()
+		if now.Before(nextRetryAt) {
+			delay := nextRetryAt.Sub(now)
+			msg := fmt.Sprintf("credential sync retry scheduled at %s", nextRetryAt.Format(time.RFC3339))
+			r.setCredentialSyncCondition(status, metav1.ConditionFalse, "RetryScheduled", msg)
+			return delay
+		}
+	}
+
+	if err := validateCredentialSecretMaterial(inst, secret); err != nil {
+		msg := "credential reset pre-check failed: " + err.Error()
+		r.setCredentialSyncCondition(status, metav1.ConditionFalse, "PasswordResetFailed", msg)
+		r.Recorder.Eventf(inst, corev1.EventTypeWarning, "CredentialSync", msg)
+		return r.recordCredentialSyncFailure(ctx, nn, msg)
+	}
+
+	if err := shardingv1.ChangePassword(inst, r.kubeConfig, r.Log); err != nil {
+		msg := "password change failed: " + err.Error()
+		r.setCredentialSyncCondition(status, metav1.ConditionFalse, "PasswordResetFailed", msg)
+		r.Recorder.Eventf(inst, corev1.EventTypeWarning, "CredentialSync", msg)
+		return r.recordCredentialSyncFailure(ctx, nn, msg)
+	}
+
+	if err := r.recordCredentialSyncSuccess(ctx, nn, fingerprint); err != nil {
+		msg := "credential sync metadata update failed: " + err.Error()
+		r.setCredentialSyncCondition(status, metav1.ConditionFalse, "MetadataUpdateFailed", msg)
+		r.Recorder.Eventf(inst, corev1.EventTypeWarning, "CredentialSync", msg)
+		return credentialRetryInitialBackoff
+	}
+
+	r.setCredentialSyncCondition(status, metav1.ConditionTrue, "Synced", "credential update applied")
+	r.Recorder.Eventf(inst, corev1.EventTypeNormal, "CredentialSync", "Credential sync completed successfully")
+	return 0
+}
+
+func buildCredentialFingerprint(instance *databasev4.ShardingDatabase, secret *corev1.Secret) (string, error) {
+	if instance == nil || instance.Spec.DbSecret == nil || secret == nil {
+		return "", fmt.Errorf("missing credential inputs")
+	}
+
+	h := sha256.New()
+
+	appendEntry := func(label string, cfg databasev4.PasswordSecretConfig) error {
+		pwdKey := strings.TrimSpace(cfg.PasswordKey)
+		if pwdKey == "" {
+			return fmt.Errorf("%s passwordKey is empty", label)
+		}
+		pwdVal, ok := secret.Data[pwdKey]
+		if !ok {
+			return fmt.Errorf("%s passwordKey %q not found in secret %s", label, pwdKey, secret.Name)
+		}
+		_, _ = h.Write([]byte(label + ":pwdkey:" + pwdKey + "\n"))
+		_, _ = h.Write(pwdVal)
+		_, _ = h.Write([]byte("\n"))
+
+		if v := strings.TrimSpace(cfg.PrivateKeyKey); v != "" {
+			_, _ = h.Write([]byte(label + ":pkkey:" + v + "\n"))
+		}
+		if v := strings.TrimSpace(cfg.Pkeyopt); v != "" {
+			_, _ = h.Write([]byte(label + ":pkeyopt:" + v + "\n"))
+		}
+		return nil
+	}
+
+	if err := appendEntry("dbAdmin", instance.Spec.DbSecret.DbAdmin); err != nil {
+		return "", err
+	}
+	if instance.Spec.DbSecret.TDE != nil {
+		if err := appendEntry("tde", *instance.Spec.DbSecret.TDE); err != nil {
+			return "", err
+		}
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func validateCredentialSecretMaterial(instance *databasev4.ShardingDatabase, secret *corev1.Secret) error {
+	if instance == nil || instance.Spec.DbSecret == nil || secret == nil {
+		return fmt.Errorf("missing credential inputs")
+	}
+
+	validateOne := func(label string, cfg databasev4.PasswordSecretConfig) error {
+		pwdKey := strings.TrimSpace(cfg.PasswordKey)
+		if pwdKey == "" {
+			return fmt.Errorf("%s passwordKey is empty", label)
+		}
+		if _, ok := secret.Data[pwdKey]; !ok {
+			return fmt.Errorf("%s passwordKey %q not found", label, pwdKey)
+		}
+		if pk := strings.TrimSpace(cfg.PrivateKeyKey); pk != "" {
+			if _, ok := secret.Data[pk]; !ok {
+				return fmt.Errorf("%s privateKeyKey %q not found", label, pk)
+			}
+		}
+		return nil
+	}
+
+	if err := validateOne("dbAdmin", instance.Spec.DbSecret.DbAdmin); err != nil {
+		return err
+	}
+	if strings.EqualFold(strings.TrimSpace(instance.Spec.IsTdeWallet), "enable") {
+		if instance.Spec.DbSecret.TDE == nil {
+			return fmt.Errorf("tde credential config is required when isTdeWallet=enable")
+		}
+		if err := validateOne("tde", *instance.Spec.DbSecret.TDE); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) setCredentialSyncCondition(
+	status *databasev4.ShardingDatabaseStatus,
+	condStatus metav1.ConditionStatus,
+	reason string,
+	message string,
+) {
+	if status == nil {
+		return
+	}
+	now := metav1.Now()
+	meta.SetStatusCondition(&status.CrdStatus, metav1.Condition{
+		Type:               credentialSyncConditionType,
+		Status:             condStatus,
+		Reason:             reason,
+		Message:            message,
+		LastTransitionTime: now,
+	})
+}
+
+func parseCredentialRetryTime(raw string) (time.Time, bool) {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, v)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t.UTC(), true
+}
+
+func credentialRetryBackoff(attempt int) time.Duration {
+	if attempt <= 1 {
+		return credentialRetryInitialBackoff
+	}
+	d := credentialRetryInitialBackoff
+	for i := 1; i < attempt; i++ {
+		d *= 2
+		if d >= credentialRetryMaxBackoff {
+			return credentialRetryMaxBackoff
+		}
+	}
+	return d
+}
+
+func (r *ShardingDatabaseReconciler) recordCredentialSyncFailure(
+	ctx context.Context,
+	key types.NamespacedName,
+	errMsg string,
+) time.Duration {
+	attempt := 1
+	nextDelay := credentialRetryInitialBackoff
+	now := time.Now().UTC()
+
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		curr := &databasev4.ShardingDatabase{}
+		if err := r.Get(ctx, key, curr); err != nil {
+			return err
+		}
+		anns := curr.GetAnnotations()
+		if anns == nil {
+			anns = map[string]string{}
+		}
+		prevAttempt, convErr := strconv.Atoi(strings.TrimSpace(anns[credentialSyncRetryCountAnnotation]))
+		if convErr == nil && prevAttempt > 0 {
+			attempt = prevAttempt + 1
+		}
+		nextDelay = credentialRetryBackoff(attempt)
+		nextAt := now.Add(nextDelay).Format(time.RFC3339)
+
+		anns[credentialSyncRetryCountAnnotation] = strconv.Itoa(attempt)
+		anns[credentialSyncNextRetryAtAnnotation] = nextAt
+		anns[credentialSyncLastErrorAnnotation] = errMsg
+		curr.SetAnnotations(anns)
+		return r.Update(ctx, curr)
+	})
+	if err != nil {
+		return credentialRetryInitialBackoff
+	}
+	return nextDelay
+}
+
+func (r *ShardingDatabaseReconciler) clearCredentialSyncRetryState(
+	ctx context.Context,
+	key types.NamespacedName,
+) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		curr := &databasev4.ShardingDatabase{}
+		if err := r.Get(ctx, key, curr); err != nil {
+			return err
+		}
+		anns := curr.GetAnnotations()
+		if anns == nil {
+			return nil
+		}
+		changed := false
+		for _, k := range []string{
+			credentialSyncRetryCountAnnotation,
+			credentialSyncNextRetryAtAnnotation,
+			credentialSyncLastErrorAnnotation,
+		} {
+			if _, ok := anns[k]; ok {
+				delete(anns, k)
+				changed = true
+			}
+		}
+		if !changed {
+			return nil
+		}
+		curr.SetAnnotations(anns)
+		return r.Update(ctx, curr)
+	})
+}
+
+func (r *ShardingDatabaseReconciler) recordCredentialSyncSuccess(
+	ctx context.Context,
+	key types.NamespacedName,
+	hash string,
+) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		curr := &databasev4.ShardingDatabase{}
+		if err := r.Get(ctx, key, curr); err != nil {
+			return err
+		}
+		anns := curr.GetAnnotations()
+		if anns == nil {
+			anns = map[string]string{}
+		}
+		anns[credentialSyncHashAnnotation] = hash
+		delete(anns, credentialSyncRetryCountAnnotation)
+		delete(anns, credentialSyncNextRetryAtAnnotation)
+		delete(anns, credentialSyncLastErrorAnnotation)
+		curr.SetAnnotations(anns)
+		return r.Update(ctx, curr)
+	})
+}
 func isMutatingProgressReason(reason string) bool {
 	switch strings.TrimSpace(reason) {
 	case "PrimaryShardProgress",
@@ -3902,6 +4251,26 @@ func getCondition(conds []metav1.Condition, condType string) *metav1.Condition {
 		}
 	}
 	return nil
+}
+
+func shouldEnforceUpdateLock(oldSpec, newSpec *databasev4.ShardingDatabaseSpec) bool {
+	if oldSpec == nil || newSpec == nil {
+		return true
+	}
+
+	oldCopy := oldSpec.DeepCopy()
+	newCopy := newSpec.DeepCopy()
+	if oldCopy == nil || newCopy == nil {
+		return true
+	}
+
+	// Allow non-blocking spec updates for credential/event metadata only.
+	oldCopy.DbSecret = nil
+	newCopy.DbSecret = nil
+	oldCopy.TopicId = ""
+	newCopy.TopicId = ""
+
+	return !reflect.DeepEqual(*oldCopy, *newCopy)
 }
 
 func isUpdateLockActive(inst *databasev4.ShardingDatabase) (bool, int64, string) {

@@ -348,7 +348,7 @@ func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmS
 
 func buildVolumeMountSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.VolumeMount {
 	result := make([]corev1.VolumeMount, 0, 5)
-	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
+	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "secretmap-vol3", MountPath: getDbSecretMountPath(instance), ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "-oradata-vol4", MountPath: oraGsmDataMount})
 	if instance.Spec.IsDownloadScripts {
 		result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "orascript-vol5", MountPath: oraScriptMount})

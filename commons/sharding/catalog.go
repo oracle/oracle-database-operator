@@ -352,7 +352,7 @@ func buildInitContainerSpecForCatalog(instance *databasev4.ShardingDatabase, Ora
 
 func buildVolumeMountSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpex databasev4.CatalogSpec) []corev1.VolumeMount {
 	result := make([]corev1.VolumeMount, 0, 6)
-	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "secretmap-vol3", MountPath: oraSecretMount, ReadOnly: true})
+	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "secretmap-vol3", MountPath: getDbSecretMountPath(instance), ReadOnly: true})
 	result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
 	if instance.Spec.IsDownloadScripts {
 		result = append(result, corev1.VolumeMount{Name: OraCatalogSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})

@@ -125,27 +125,35 @@ spec:
                 type: string
               dbSecret:
                 properties:
-                  encryptionType:
-                    type: string
-                  keyFileMountLocation:
-                    type: string
-                  keyFileName:
-                    type: string
-                  keySecretName:
-                    type: string
+                  dbAdmin:
+                    properties:
+                      passwordKey:
+                        type: string
+                      pkeyopt:
+                        type: string
+                      privateKeyKey:
+                        type: string
+                    required:
+                    - passwordKey
+                    type: object
                   name:
                     type: string
-                  nsConfigMap:
+                  mountPath:
                     type: string
-                  nsSecret:
-                    type: string
-                  pwdFileMountLocation:
-                    type: string
-                  pwdFileName:
-                    type: string
+                  tde:
+                    properties:
+                      passwordKey:
+                        type: string
+                      pkeyopt:
+                        type: string
+                      privateKeyKey:
+                        type: string
+                    required:
+                    - passwordKey
+                    type: object
                 required:
+                - dbAdmin
                 - name
-                - pwdFileName
                 type: object
               fssStorageClass:
                 type: string
@@ -671,27 +679,35 @@ spec:
                 type: string
               dbSecret:
                 properties:
-                  encryptionType:
-                    type: string
-                  keyFileMountLocation:
-                    type: string
-                  keyFileName:
-                    type: string
-                  keySecretName:
-                    type: string
+                  dbAdmin:
+                    properties:
+                      passwordKey:
+                        type: string
+                      pkeyopt:
+                        type: string
+                      privateKeyKey:
+                        type: string
+                    required:
+                    - passwordKey
+                    type: object
                   name:
                     type: string
-                  nsConfigMap:
+                  mountPath:
                     type: string
-                  nsSecret:
-                    type: string
-                  pwdFileMountLocation:
-                    type: string
-                  pwdFileName:
-                    type: string
+                  tde:
+                    properties:
+                      passwordKey:
+                        type: string
+                      pkeyopt:
+                        type: string
+                      privateKeyKey:
+                        type: string
+                    required:
+                    - passwordKey
+                    type: object
                 required:
+                - dbAdmin
                 - name
-                - pwdFileName
                 type: object
               fssStorageClass:
                 type: string

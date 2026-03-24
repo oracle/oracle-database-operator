@@ -676,7 +676,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 
 	if *completed {
 		condition = metav1.Condition{
-			Type:               string(oraclerestartdb.CrdReconcileCompeleteState),
+			Type:               string(oraclerestartdb.OracleRestartCrdReconcileCompeleteState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
 			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileCompleteReason),
@@ -685,7 +685,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 		}
 	} else if *blocked {
 		condition = metav1.Condition{
-			Type:               string(oraclerestartdb.CrdReconcileWaitingState),
+			Type:               string(oraclerestartdb.OracleRestartCrdReconcileWaitingState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
 			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileWaitingReason),
@@ -694,19 +694,19 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 		}
 	} else if result.Requeue {
 		condition = metav1.Condition{
-			Type:               string(oraclerestartdb.CrdReconcileQueuedState),
+			Type:               string(oraclerestartdb.OracleRestartCrdReconcileQueuedState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
-			Reason:             string(oraclerestartdb.CrdReconcileQueuedReason),
+			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileQueuedReason),
 			Message:            "reconcile has been queued", // neutral message
 			Status:             metav1.ConditionTrue,
 		}
 	} else if err != nil && *err != nil {
 		condition = metav1.Condition{
-			Type:               string(oraclerestartdb.CrdReconcileErrorState),
+			Type:               string(oraclerestartdb.OracleRestartCrdReconcileErrorState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: oracleRestart.GetGeneration(),
-			Reason:             string(oraclerestartdb.CrdReconcileErrorReason),
+			Reason:             string(oraclerestartdb.OracleRestartCrdReconcileErrorReason),
 			Message:            (*err).Error(), // show actual error only here
 			Status:             metav1.ConditionTrue,
 		}
@@ -720,7 +720,7 @@ func (r *OracleRestartReconciler) updateReconcileStatus(oracleRestart *oracleres
 	meta.SetStatusCondition(&oracleRestart.Status.Conditions, condition)
 
 	if oracleRestart.Status.State == string(oraclerestartdb.OracleRestartPodAvailableState) &&
-		condition.Type == string(oraclerestartdb.CrdReconcileCompeleteState) {
+		condition.Type == string(oraclerestartdb.OracleRestartCrdReconcileCompeleteState) {
 		r.Log.Info("All validations and updation are completed. Changing State to AVAILABLE")
 		oracleRestart.Status.State = string(oraclerestartdb.OracleRestartAvailableState)
 	}

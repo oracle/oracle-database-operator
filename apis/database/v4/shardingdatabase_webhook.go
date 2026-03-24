@@ -50,8 +50,8 @@ import (
 
 	shapes "github.com/oracle/oracle-database-operator/commons/shapes"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -68,6 +68,9 @@ const (
 	modeUser      shardingMode = "user"
 	modeComposite shardingMode = "composite"
 	modeUnknown   shardingMode = "unknown"
+
+	replDG     = "DG"
+	replNative = "NATIVE"
 
 	deleteStateEnable  = "enable"
 	deleteStateDisable = "disable"
@@ -191,6 +194,8 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) erro
 		cr.Spec.IsTdeWallet = "disable"
 	}
 
+	applyGlobalShardingReplicationDefaults(&cr.Spec)
+
 	for i := range cr.Spec.Shard {
 		if strings.TrimSpace(strings.ToLower(cr.Spec.Shard[i].IsDelete)) == "" {
 			cr.Spec.Shard[i].IsDelete = "disable"
@@ -206,10 +211,12 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) erro
 
 	var totalShard int32
 	for i := range cr.Spec.ShardInfo {
-		if cr.Spec.ShardInfo[i].Replicas == 0 {
-			cr.Spec.ShardInfo[i].Replicas = 2
+		count := getShardInfoCount(&cr.Spec.ShardInfo[i])
+		if count == 0 {
+			count = 2
+			cr.Spec.ShardInfo[i].ShardNum = count
 		}
-		totalShard += cr.Spec.ShardInfo[i].Replicas
+		totalShard += count
 	}
 
 	if totalShard > 0 {
@@ -217,6 +224,8 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) erro
 		desired := cr.buildDesiredShardSpec()
 		cr.Spec.Shard = mergeDesiredAndExistingShards(cr.Spec.Shard, desired)
 	}
+
+	defaultPasswordSecretConfig(cr.Spec.DbSecret)
 
 	// apply shape on catalog
 	for i := range cr.Spec.Catalog {
@@ -231,6 +240,65 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) erro
 	}
 
 	return nil
+}
+
+func defaultPasswordSecretConfig(secret *SecretDetails) {
+	if secret == nil {
+		return
+	}
+	if strings.TrimSpace(secret.MountPath) == "" {
+		secret.MountPath = DefaultSecretMountPath
+	}
+	defaultPasswordEntry(&secret.DbAdmin)
+	if secret.TDE != nil {
+		defaultPasswordEntry(secret.TDE)
+	}
+}
+
+func defaultPasswordEntry(entry *PasswordSecretConfig) {
+	if entry == nil {
+		return
+	}
+	if strings.TrimSpace(entry.PrivateKeyKey) != "" && strings.TrimSpace(entry.Pkeyopt) == "" {
+		entry.Pkeyopt = DefaultPkeyopt
+	}
+}
+
+func (r *ShardingDatabase) validateDbSecretConfig() field.ErrorList {
+	var errs field.ErrorList
+	dbSecretPath := field.NewPath("spec").Child("dbSecret")
+	if r.Spec.DbSecret == nil {
+		return append(errs, field.Required(dbSecretPath, "dbSecret must be set"))
+	}
+
+	if strings.TrimSpace(r.Spec.DbSecret.Name) == "" {
+		errs = append(errs, field.Required(dbSecretPath.Child("name"), "secret name must not be empty"))
+	}
+
+	if mountPath := strings.TrimSpace(r.Spec.DbSecret.MountPath); mountPath != "" && !strings.HasPrefix(mountPath, "/") {
+		errs = append(errs, field.Invalid(dbSecretPath.Child("mountPath"), r.Spec.DbSecret.MountPath, "mountPath must be an absolute path"))
+	}
+
+	errs = append(errs, validatePasswordSecretConfig(r.Spec.DbSecret.DbAdmin, dbSecretPath.Child("dbAdmin"))...)
+	if r.Spec.DbSecret.TDE != nil {
+		errs = append(errs, validatePasswordSecretConfig(*r.Spec.DbSecret.TDE, dbSecretPath.Child("tde"))...)
+	}
+
+	return errs
+}
+
+func validatePasswordSecretConfig(cfg PasswordSecretConfig, p *field.Path) field.ErrorList {
+	var errs field.ErrorList
+
+	if strings.TrimSpace(cfg.PasswordKey) == "" {
+		errs = append(errs, field.Required(p.Child("passwordKey"), "passwordKey must be set"))
+	}
+
+	if strings.TrimSpace(cfg.Pkeyopt) != "" && strings.TrimSpace(cfg.PrivateKeyKey) == "" {
+		errs = append(errs, field.Forbidden(p.Child("pkeyopt"), "pkeyopt requires privateKeyKey"))
+	}
+
+	return errs
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
@@ -266,45 +334,14 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj runtime.Objec
 	//			"Oracle database operator doesn't watch over this namespace"))
 	//}
 
-	if cr.Spec.DbSecret == nil {
-		validationErr = append(validationErr,
-			field.Invalid(field.NewPath("spec").Child("dbSecret"), cr.Spec.DbSecret,
-				"dbSecret must be set"))
-	} else {
-		if len(cr.Spec.DbSecret.Name) == 0 {
-			validationErr = append(validationErr,
-				field.Invalid(field.NewPath("spec").Child("dbSecret").Child("name"), cr.Spec.DbSecret.Name,
-					"secret name must not be empty"))
-		}
-		if len(cr.Spec.DbSecret.PwdFileName) == 0 {
-			validationErr = append(validationErr,
-				field.Invalid(field.NewPath("spec").Child("dbSecret").Child("pwdFileName"), cr.Spec.DbSecret.PwdFileName,
-					"password file name must not be empty"))
-		}
-		if strings.ToLower(cr.Spec.DbSecret.EncryptionType) != "base64" {
-			if strings.ToLower(cr.Spec.DbSecret.KeyFileName) == "" {
-				validationErr = append(validationErr,
-					field.Invalid(field.NewPath("spec").Child("dbSecret").Child("keyFileName"), cr.Spec.DbSecret.KeyFileName,
-						"key file name must not be empty when encryptionType is not base64"))
-			}
-		}
-
-		/**
-		if len(r.Spec.DbSecret.PwdFileMountLocation) == 0 {
-			validationErr = append(validationErr,
-				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("PwdFileMountLocation"), r.Spec.DbSecret.PwdFileMountLocation,
-					"Password file mount location cannot be empty"))
-		}
-
-		if len(r.Spec.DbSecret.KeyFileMountLocation) == 0 {
-			validationErr = append(validationErr,
-				field.Invalid(field.NewPath("spec").Child("DbSecret").Child("KeyFileMountLocation"), r.Spec.DbSecret.KeyFileMountLocation,
-					"KeyFileMountLocation file mount location cannot be empty"))
-		}
-		**/
-	}
+	validationErr = append(validationErr, cr.validateDbSecretConfig()...)
 
 	if cr.Spec.IsTdeWallet == "enable" {
+		if cr.Spec.DbSecret == nil || cr.Spec.DbSecret.TDE == nil {
+			validationErr = append(validationErr,
+				field.Required(field.NewPath("spec").Child("dbSecret").Child("tde"),
+					"tde credentials must be set when isTdeWallet is enable"))
+		}
 		if (len(cr.Spec.FssStorageClass) == 0) && (len(cr.Spec.TdeWalletPvc) == 0) {
 			validationErr = append(validationErr,
 				field.Invalid(field.NewPath("spec").Child("fssStorageClass"), cr.Spec.FssStorageClass,
@@ -345,6 +382,26 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj runtime.Objec
 	//	}
 
 	validationErrs1 = cr.validateShardInfo()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
+	validationErrs1 = cr.validateShardOperationRules()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
+	validationErrs1 = cr.validateCatalogTopologyConsistency()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
+	validationErrs1 = cr.validateShardAdvancedParams()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
+	validationErrs1 = cr.validateCatalogAdvancedParams()
 	if validationErrs1 != nil {
 		validationErr = append(validationErr, validationErrs1...)
 	}
@@ -406,6 +463,31 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj ru
 				)
 			}
 		}
+	}
+
+	validationErrs1 := newCR.validateShardInfo()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
+	validationErrs1 = newCR.validateShardOperationRules()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
+	validationErrs1 = newCR.validateCatalogTopologyConsistency()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
+	validationErrs1 = newCR.validateShardAdvancedParams()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
+	validationErrs1 = newCR.validateCatalogAdvancedParams()
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
 	}
 
 	if len(validationErr) == 0 {
@@ -532,6 +614,8 @@ func (r *ShardingDatabase) validateCatalogName() field.ErrorList {
 func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	var validationErrs field.ErrorList
 	var replicas int32
+	replType := normalizeReplicationType(&r.Spec)
+	modeHint := normalizeShardingType(&r.Spec)
 
 	typeCounts := struct {
 		groupOnly int
@@ -543,10 +627,10 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	spacePrimaryGroupCount := map[string]int{}
 
 	for pindex := range r.Spec.ShardInfo {
-		replicas = r.Spec.ShardInfo[pindex].Replicas
+		replicas = getShardInfoCount(&r.Spec.ShardInfo[pindex])
 		if replicas == 0 {
 			replicas = 1
-			r.Spec.ShardInfo[pindex].Replicas = replicas
+			r.Spec.ShardInfo[pindex].ShardNum = replicas
 		}
 
 		sg := r.Spec.ShardInfo[pindex].ShardGroupDetails
@@ -555,13 +639,62 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 		hasGroup := sg != nil && strings.TrimSpace(sg.Name) != ""
 		hasSpace := ss != nil && strings.TrimSpace(ss.Name) != ""
 
+		switch modeHint {
+		case modeUser:
+			if hasGroup {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails"),
+						"user sharding shardInfo must not include shardGroupDetails"))
+			}
+			if !hasSpace {
+				validationErrs = append(validationErrs,
+					field.Required(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardSpaceDetails"),
+						"user sharding shardInfo requires shardSpaceDetails"))
+			}
+		case modeSystem:
+			if !hasGroup {
+				validationErrs = append(validationErrs,
+					field.Required(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails"),
+						"system sharding shardInfo requires shardGroupDetails"))
+			}
+			if hasSpace {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardSpaceDetails"),
+						"system sharding shardInfo must not include shardSpaceDetails"))
+			}
+		case modeComposite:
+			if !hasGroup {
+				validationErrs = append(validationErrs,
+					field.Required(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails"),
+						"composite sharding shardInfo requires shardGroupDetails"))
+			}
+			if !hasSpace {
+				validationErrs = append(validationErrs,
+					field.Required(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardSpaceDetails"),
+						"composite sharding shardInfo requires shardSpaceDetails"))
+			}
+		}
+
 		switch {
 		case hasGroup && !hasSpace:
 			typeCounts.groupOnly++
-			if strings.TrimSpace(sg.DeployAs) == "" {
-				sg.DeployAs = "PRIMARY"
+			deployAs := strings.ToUpper(strings.TrimSpace(sg.DeployAs))
+			if deployAs != "" && !isValidDeployAs(deployAs) {
+				validationErrs = append(validationErrs,
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("deployAs"),
+						sg.DeployAs,
+						"deployAs must be one of PRIMARY, STANDBY, ACTIVE_STANDBY"))
 			}
-			if strings.EqualFold(strings.TrimSpace(sg.DeployAs), "PRIMARY") {
+			if replType == replNative && deployAs != "" {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("deployAs"),
+						"deployAs is not supported for NATIVE replication"))
+			}
+			if replType == replDG && deployAs == "" {
+				sg.DeployAs = "STANDBY"
+				deployAs = "STANDBY"
+			}
+			if strings.EqualFold(deployAs, "PRIMARY") {
 				sysPrimaryGroups++
 			}
 
@@ -576,10 +709,23 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 
 		case hasGroup && hasSpace:
 			typeCounts.both++
-			if strings.TrimSpace(sg.DeployAs) == "" {
-				sg.DeployAs = "PRIMARY"
+			deployAs := strings.ToUpper(strings.TrimSpace(sg.DeployAs))
+			if deployAs != "" && !isValidDeployAs(deployAs) {
+				validationErrs = append(validationErrs,
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("deployAs"),
+						sg.DeployAs,
+						"deployAs must be one of PRIMARY, STANDBY, ACTIVE_STANDBY"))
 			}
-			if strings.EqualFold(strings.TrimSpace(sg.DeployAs), "PRIMARY") {
+			if replType == replNative && deployAs != "" {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("deployAs"),
+						"deployAs is not supported for NATIVE replication"))
+			}
+			if replType == replDG && deployAs == "" {
+				sg.DeployAs = "STANDBY"
+				deployAs = "STANDBY"
+			}
+			if strings.EqualFold(deployAs, "PRIMARY") {
 				spacePrimaryGroupCount[strings.TrimSpace(ss.Name)]++
 			}
 
@@ -591,7 +737,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 		}
 	}
 
-	if typeCounts.groupOnly > 0 && typeCounts.spaceOnly == 0 && typeCounts.both == 0 {
+	if replType == replDG && typeCounts.groupOnly > 0 && typeCounts.spaceOnly == 0 && typeCounts.both == 0 {
 		if sysPrimaryGroups != 1 {
 			validationErrs = append(validationErrs,
 				field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardGroupDetails").Child("deployAs"),
@@ -600,7 +746,7 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 		}
 	}
 
-	if typeCounts.both > 0 || (typeCounts.groupOnly > 0 && typeCounts.spaceOnly > 0) {
+	if replType == replDG && (typeCounts.both > 0 || (typeCounts.groupOnly > 0 && typeCounts.spaceOnly > 0)) {
 		for sp, cnt := range spacePrimaryGroupCount {
 			if cnt > 1 {
 				validationErrs = append(validationErrs,
@@ -617,11 +763,355 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	return nil
 }
 
+func isValidDeployAs(v string) bool {
+	switch strings.ToUpper(strings.TrimSpace(v)) {
+	case "PRIMARY", "STANDBY", "ACTIVE_STANDBY":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeReplicationValue(v string) string {
+	rep := strings.ToUpper(strings.TrimSpace(v))
+	switch rep {
+	case replNative, "RAFT", "RAFTREPLICATION", "RAFTREPLICATIN":
+		return replNative
+	case replDG:
+		return replDG
+	default:
+		return ""
+	}
+}
+
+func normalizeShardingValue(v string) string {
+	s := strings.ToUpper(strings.TrimSpace(v))
+	switch s {
+	case "SYSTEM", "USER", "COMPOSITE":
+		return s
+	default:
+		return ""
+	}
+}
+
+func shardingModeToSpecValue(mode shardingMode) string {
+	switch mode {
+	case modeSystem:
+		return "SYSTEM"
+	case modeUser:
+		return "USER"
+	case modeComposite:
+		return "COMPOSITE"
+	default:
+		return ""
+	}
+}
+
+func applyGlobalShardingReplicationDefaults(spec *ShardingDatabaseSpec) {
+	if spec == nil {
+		return
+	}
+
+	topSharding := normalizeShardingValue(spec.ShardingType)
+	if topSharding == "" {
+		for i := range spec.Catalog {
+			if v := normalizeShardingValue(spec.Catalog[i].Sharding); v != "" {
+				topSharding = v
+				break
+			}
+		}
+	}
+	if topSharding == "" {
+		topSharding = shardingModeToSpecValue(detectShardingMode(spec))
+	}
+	if topSharding != "" {
+		spec.ShardingType = topSharding
+	}
+
+	topRepl := normalizeReplicationValue(spec.ReplicationType)
+	if topRepl == "" {
+		for i := range spec.Catalog {
+			if v := normalizeReplicationValue(spec.Catalog[i].Repl); v != "" {
+				topRepl = v
+				break
+			}
+		}
+	}
+	if topRepl == "" {
+		topRepl = replDG
+	}
+	spec.ReplicationType = topRepl
+
+	for i := range spec.Catalog {
+		if topSharding != "" {
+			if v := normalizeShardingValue(spec.Catalog[i].Sharding); v == "" {
+				spec.Catalog[i].Sharding = topSharding
+			} else {
+				spec.Catalog[i].Sharding = v
+			}
+		}
+		if v := normalizeReplicationValue(spec.Catalog[i].Repl); v == "" {
+			spec.Catalog[i].Repl = topRepl
+		} else {
+			spec.Catalog[i].Repl = v
+		}
+	}
+}
+
+func (r *ShardingDatabase) validateCatalogTopologyConsistency() field.ErrorList {
+	var validationErrs field.ErrorList
+
+	topSharding := normalizeShardingValue(r.Spec.ShardingType)
+	topRepl := normalizeReplicationValue(r.Spec.ReplicationType)
+	if topRepl == "" {
+		topRepl = replDG
+	}
+
+	for i := range r.Spec.Catalog {
+		cat := r.Spec.Catalog[i]
+		if csh := normalizeShardingValue(cat.Sharding); topSharding != "" && csh != "" && topSharding != csh {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("catalog").Index(i).Child("sharding"),
+					cat.Sharding,
+					"catalog.sharding must match spec.shardingType when both are set"))
+		}
+
+		if crepl := normalizeReplicationValue(cat.Repl); crepl != "" && topRepl != crepl {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("catalog").Index(i).Child("repl"),
+					cat.Repl,
+					"catalog.repl must match spec.replicationType when both are set"))
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return validationErrs
+	}
+	return nil
+}
+
+func normalizeReplicationType(spec *ShardingDatabaseSpec) string {
+	if spec == nil {
+		return replDG
+	}
+	if rep := normalizeReplicationValue(spec.ReplicationType); rep != "" {
+		return rep
+	}
+	if spec.IsDataGuard {
+		return replDG
+	}
+	return replDG
+}
+
+func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
+	var validationErrs field.ErrorList
+	replType := normalizeReplicationType(&r.Spec)
+	modeHint := normalizeShardingType(&r.Spec)
+
+	for i := range r.Spec.Shard {
+		sh := r.Spec.Shard[i]
+		hasGroup := strings.TrimSpace(sh.ShardGroup) != ""
+		hasSpace := strings.TrimSpace(sh.ShardSpace) != ""
+		mode := inferShardMode(modeHint, hasGroup, hasSpace)
+
+		deployAsRaw := strings.TrimSpace(sh.DeployAs)
+		deployAs := strings.ToUpper(deployAsRaw)
+		if deployAs != "" && !isValidDeployAs(deployAs) {
+			validationErrs = append(validationErrs,
+				field.Invalid(field.NewPath("spec").Child("shard").Index(i).Child("deployAs"),
+					sh.DeployAs,
+					"deployAs must be one of PRIMARY, STANDBY, ACTIVE_STANDBY"))
+		}
+		if replType == replNative && deployAs != "" {
+			validationErrs = append(validationErrs,
+				field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("deployAs"),
+					"deployAs is not supported for NATIVE replication"))
+		}
+
+		switch mode {
+		case modeUser:
+			if hasGroup {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
+						"user sharding add shard does not allow shardGroup"))
+			}
+			if !hasSpace {
+				validationErrs = append(validationErrs,
+					field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardSpace"),
+						"user sharding add shard requires shardSpace"))
+			}
+			if replType == replDG && deployAs == "" {
+				r.Spec.Shard[i].DeployAs = "PRIMARY"
+			}
+
+		case modeSystem:
+			if !hasGroup {
+				validationErrs = append(validationErrs,
+					field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
+						"system sharding add shard requires shardGroup"))
+			}
+			if hasSpace {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("shardSpace"),
+						"system sharding add shard cannot use shardSpace directly"))
+			}
+			if hasGroup && deployAs != "" {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("deployAs"),
+						"deployAs cannot be combined with shardGroup in system sharding"))
+			}
+
+		case modeComposite:
+			if !hasGroup {
+				validationErrs = append(validationErrs,
+					field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
+						"composite sharding add shard requires shardGroup"))
+			}
+			if !hasSpace {
+				validationErrs = append(validationErrs,
+					field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardSpace"),
+						"composite sharding add shard requires shardSpace"))
+			}
+			if hasGroup && deployAs != "" {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("deployAs"),
+						"deployAs cannot be combined with shardGroup in composite sharding"))
+			}
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return validationErrs
+	}
+	return nil
+}
+
+func (r *ShardingDatabase) validateShardAdvancedParams() field.ErrorList {
+	var validationErrs field.ErrorList
+	replType := normalizeReplicationType(&r.Spec)
+
+	for i := range r.Spec.Shard {
+		sh := r.Spec.Shard[i]
+		if strings.TrimSpace(sh.GgService) != "" && replType != replNative {
+			validationErrs = append(validationErrs,
+				field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("ggService"),
+					"ggService is only supported for NATIVE replication"))
+		}
+		if strings.TrimSpace(sh.Replace) != "" && replType != replNative {
+			validationErrs = append(validationErrs,
+				field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("replace"),
+					"replace is only supported for NATIVE replication"))
+		}
+		if sh.CloneSchemas && replType != replNative {
+			validationErrs = append(validationErrs,
+				field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("cloneSchemas"),
+					"cloneSchemas is only supported for NATIVE replication"))
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return validationErrs
+	}
+	return nil
+}
+
+func (r *ShardingDatabase) validateCatalogAdvancedParams() field.ErrorList {
+	var validationErrs field.ErrorList
+	topRepl := normalizeReplicationType(&r.Spec)
+	topMode := normalizeShardingType(&r.Spec)
+
+	for i := range r.Spec.Catalog {
+		cat := r.Spec.Catalog[i]
+		replType := topRepl
+		if v := normalizeReplicationValue(cat.Repl); v != "" {
+			replType = v
+		}
+		mode := topMode
+		if v := normalizeShardingValue(cat.Sharding); v != "" {
+			mode = shardingMode(strings.ToLower(v))
+		}
+
+		if replType != replNative {
+			if cat.MultiWriter {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("catalog").Index(i).Child("multiwriter"),
+						"multiwriter is only supported for NATIVE replication"))
+			}
+			if cat.RepFactor > 0 {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("catalog").Index(i).Child("repFactor"),
+						"repFactor is only supported for NATIVE replication"))
+			}
+			if cat.RepUnits > 0 {
+				validationErrs = append(validationErrs,
+					field.Forbidden(field.NewPath("spec").Child("catalog").Index(i).Child("repUnits"),
+						"repUnits is only supported for NATIVE replication"))
+			}
+		}
+
+		if replType == replNative && strings.TrimSpace(cat.ProtectMode) != "" {
+			validationErrs = append(validationErrs,
+				field.Forbidden(field.NewPath("spec").Child("catalog").Index(i).Child("protectMode"),
+					"protectMode is only supported for DG replication"))
+		}
+
+		if mode == modeUser && cat.Chunks > 0 {
+			validationErrs = append(validationErrs,
+				field.Forbidden(field.NewPath("spec").Child("catalog").Index(i).Child("chunks"),
+					"chunks is not applicable for USER sharding catalog"))
+		}
+
+		if cat.UseExistingCatalog && cat.CatalogDatabaseRef == nil {
+			validationErrs = append(validationErrs,
+				field.Required(field.NewPath("spec").Child("catalog").Index(i).Child("catalogDatabaseRef"),
+					"catalogDatabaseRef is required when useExistingCatalog is true"))
+		}
+	}
+
+	if len(validationErrs) > 0 {
+		return validationErrs
+	}
+	return nil
+}
+
+func normalizeShardingType(spec *ShardingDatabaseSpec) shardingMode {
+	if spec == nil {
+		return modeUnknown
+	}
+	mode := strings.ToLower(strings.TrimSpace(spec.ShardingType))
+	switch mode {
+	case string(modeSystem):
+		return modeSystem
+	case string(modeUser):
+		return modeUser
+	case string(modeComposite):
+		return modeComposite
+	default:
+		return detectShardingMode(spec)
+	}
+}
+
+func inferShardMode(hint shardingMode, hasGroup, hasSpace bool) shardingMode {
+	if hint != modeUnknown {
+		return hint
+	}
+	switch {
+	case hasGroup && hasSpace:
+		return modeComposite
+	case hasGroup:
+		return modeSystem
+	case hasSpace:
+		return modeUser
+	default:
+		return modeUnknown
+	}
+}
+
 func (r *ShardingDatabase) initShardsSpec() error {
 	shardIndex := 0
 
 	for pindex := range r.Spec.ShardInfo {
-		replicas := r.Spec.ShardInfo[pindex].Replicas
+		replicas := getShardInfoCount(&r.Spec.ShardInfo[pindex])
 		if replicas == 0 {
 			replicas = 2
 		}
@@ -850,11 +1340,24 @@ func envVarsFromPairs(pairs [][2]string) []EnvironmentVariable {
 func countTotalReplicas(shardInfo []ShardingDetails) int32 {
 	var total int32
 	for i := range shardInfo {
-		replicas := shardInfo[i].Replicas
+		replicas := getShardInfoCount(&shardInfo[i])
 		if replicas == 0 {
 			replicas = 2
 		}
 		total += replicas
 	}
 	return total
+}
+
+func getShardInfoCount(info *ShardingDetails) int32 {
+	if info == nil {
+		return 0
+	}
+	if info.ShardNum > 0 {
+		return info.ShardNum
+	}
+	if info.Replicas > 0 {
+		return info.Replicas
+	}
+	return 0
 }

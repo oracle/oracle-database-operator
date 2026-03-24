@@ -348,24 +348,8 @@ const (
 	ShardRemoveError      ShardLifecycleState = "SHARD_DELETE_ERROR_FROM_GSM"
 )
 
-type CrdReconcileState string
-
-const (
-	CrdReconcileErrorState     CrdReconcileState = "ReconcileError"
-	CrdReconcileErrorReason    CrdReconcileState = "LastReconcileCycleFailed"
-	CrdReconcileQueuedState    CrdReconcileState = "ReconcileQueued"
-	CrdReconcileQueuedReason   CrdReconcileState = "LastReconcileCycleQueued"
-	CrdReconcileCompeleteState CrdReconcileState = "ReconcileComplete"
-	CrdReconcileCompleteReason CrdReconcileState = "LastReconcileCycleCompleted"
-	CrdReconcileWaitingState   CrdReconcileState = "ReconcileWaiting"
-	CrdReconcileWaitingReason  CrdReconcileState = "LastReconcileCycleWaiting"
-)
-
 // var
 var KubeConfigOnce sync.Once
-
-// #const lastSuccessfulSpec = "lastSuccessfulSpec"
-const lastSuccessfulSpecOnsInfo = "lastSuccessfulSpeOnsInfo"
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.
 // Returns nil, nil if there is no lastSuccessfulSpec.
@@ -395,27 +379,6 @@ func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpec(kubeClient client.C
 
 	anns := map[string]string{
 		lastSuccessfulSpec: string(specBytes),
-	}
-
-	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)
-}
-
-// GetLastSuccessfulOnsInfo returns spec from the lass successful reconciliation.
-// Returns nil, nil if there is no lastSuccessfulSpec.
-func (shardingv1 *ShardingDatabase) GetLastSuccessfulOnsInfo() ([]byte, error) {
-	val, ok := shardingv1.GetAnnotations()[lastSuccessfulSpecOnsInfo]
-	if !ok {
-		return nil, nil
-	}
-	specBytes := []byte(val)
-	return specBytes, nil
-}
-
-// UpdateLastSuccessfulSpec updates lastSuccessfulSpec with the current spec.
-func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpecOnsInfo(kubeClient client.Client, specBytes []byte) error {
-
-	anns := map[string]string{
-		lastSuccessfulSpecOnsInfo: string(specBytes),
 	}
 
 	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)

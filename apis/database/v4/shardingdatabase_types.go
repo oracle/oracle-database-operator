@@ -223,9 +223,11 @@ type ShardSpec struct {
 	ShardConfigData *ConfigMapData `json:"shardConfigData,omitempty"` // Extra config via ConfigMap
 
 	// GDD / ADD SHARD specific fields (GDSCTL help)
-	CdbName         string `json:"cdbName,omitempty"`         // CDB name (cdb)
-	CloneSchemas    bool   `json:"cloneSchemas,omitempty"`    // Clone schemas to shard (clone_schemas)
-	CpuThreshold    int32  `json:"cpuThreshold,omitempty"`    // CPU utilization threshold
+	CdbName      string `json:"cdbName,omitempty"`      // CDB name (cdb)
+	CloneSchemas bool   `json:"cloneSchemas,omitempty"` // Clone schemas to shard (clone_schemas)
+	// +kubebuilder:validation:Minimum=1
+	CpuThreshold int32 `json:"cpuThreshold,omitempty"` // CPU utilization threshold
+	// +kubebuilder:validation:Minimum=1
 	DiskThreshold   int32  `json:"diskThreshold,omitempty"`   // Disk latency threshold (ms)
 	Force           bool   `json:"force,omitempty"`           // Force replace existing GDS config
 	Rack            string `json:"rack,omitempty"`            // Rack / availability group
@@ -263,22 +265,30 @@ type CatalogSpec struct {
 	// GDSCTL CREATE SHARDCATALOG-related fields
 	Region     []string `json:"region,omitempty"`     // List of region names
 	ConfigName string   `json:"configname,omitempty"` // GDS configuration name (configname)
-	AutoVncr   string   `json:"autoVncr,omitempty"`   // AUTOVNCR ON/OFF
-	Force      bool     `json:"force,omitempty"`      // Force overwrite existing GDS config
-	GdsPool    string   `json:"gdsPool,omitempty"`    // Optional GDS pool name (for docs / usage)
+	// +kubebuilder:validation:Enum=ON;OFF;on;off
+	AutoVncr string `json:"autoVncr,omitempty"` // AUTOVNCR ON/OFF
+	Force    bool   `json:"force,omitempty"`    // Force overwrite existing GDS config
+	GdsPool  string `json:"gdsPool,omitempty"`  // Optional GDS pool name (for docs / usage)
 	// Sharding / replication behavior
-	Repl      string `json:"repl,omitempty"`      // Replication technology: DG | NATIVE
-	Sharding  string `json:"sharding,omitempty"`  // Sharding type: SYSTEM | USER | COMPOSITE
-	RepFactor int32  `json:"repFactor,omitempty"` // Default replication factor
-	Chunks    int32  `json:"chunks,omitempty"`    // Default number of chunks
+	// +kubebuilder:validation:Enum=DG;NATIVE;dg;native
+	Repl string `json:"repl,omitempty"` // Replication technology: DG | NATIVE
+	// +kubebuilder:validation:Enum=SYSTEM;USER;COMPOSITE;system;user;composite
+	Sharding string `json:"sharding,omitempty"` // Sharding type: SYSTEM | USER | COMPOSITE
+	// +kubebuilder:validation:Minimum=1
+	RepFactor int32 `json:"repFactor,omitempty"` // Default replication factor
+	// +kubebuilder:validation:Minimum=1
+	Chunks int32 `json:"chunks,omitempty"` // Default number of chunks
 	// +kubebuilder:validation:Enum=MAXPROTECTION;MAXAVAILABILITY;MAXPERFORMANCE
-	ProtectMode   string `json:"protectMode,omitempty"`          // Default Data Guard protection mode
-	RepUnits      int32  `json:"repUnits,omitempty"`             // Total replication units (SNR)
-	AgentPassword string `json:"agentPassword,omitempty"`        // Remote agent registration password
-	AgentPort     int32  `json:"agentPort,omitempty"`            // XDB/agent port
-	MultiWriter   bool   `json:"multiwriter,omitempty"`          // Enable multi-writer native replication
-	ForFederated  bool   `json:"forFederatedDatabase,omitempty"` // Federated database catalog
-	Encryption    string `json:"encryption,omitempty"`           // ANO encryption: AES256 | AES192 | OFF
+	ProtectMode string `json:"protectMode,omitempty"` // Default Data Guard protection mode
+	// +kubebuilder:validation:Minimum=1
+	RepUnits      int32  `json:"repUnits,omitempty"`      // Total replication units (SNR)
+	AgentPassword string `json:"agentPassword,omitempty"` // Remote agent registration password
+	// +kubebuilder:validation:Minimum=1
+	AgentPort       int32  `json:"agentPort,omitempty"`            // XDB/agent port
+	ValidateNetwork bool   `json:"validateNetwork,omitempty"`      // Enable network validation for catalog operations
+	MultiWriter     bool   `json:"multiwriter,omitempty"`          // Enable multi-writer native replication
+	ForFederated    bool   `json:"forFederatedDatabase,omitempty"` // Federated database catalog
+	Encryption      string `json:"encryption,omitempty"`           // ANO encryption: AES256 | AES192 | OFF
 
 	// Source SDB (if applicable)
 	Sdb string `json:"sdb,omitempty"` // Source sharded database name
@@ -338,8 +348,9 @@ type ShardGroupSpec struct {
 	Region     string `json:"region,omitempty"`     // Region for this shardgroup
 	ShardSpace string `json:"shardSpace,omitempty"` // Associated shardspace name
 	// +kubebuilder:validation:Enum=PRIMARY;STANDBY;ACTIVE_STANDBY
-	DeployAs  string `json:"deployAs,omitempty"`  // Deployment role (DG)
-	RepFactor int32  `json:"repFactor,omitempty"` // Replication factor (NATIVE replication)
+	DeployAs string `json:"deployAs,omitempty"` // Deployment role (DG)
+	// +kubebuilder:validation:Minimum=1
+	RepFactor int32 `json:"repFactor,omitempty"` // Replication factor (NATIVE replication)
 	// +kubebuilder:validation:Enum=READWRITE;READONLY
 	RuMode   string `json:"ru_mode,omitempty"`  // SNR shardgroup mode
 	IsDelete string `json:"isDelete,omitempty"` // Optional delete flag for managed replicas
@@ -347,11 +358,15 @@ type ShardGroupSpec struct {
 
 // ShardSpaceSpec is used both for top-level shardSpace[] and inside shardInfo.shardSpaceDetails.
 type ShardSpaceSpec struct {
-	Name        string `json:"name"`                  // Name of the shardspace
-	Chunks      int32  `json:"chunks,omitempty"`      // Number of chunks in the shardspace
+	Name string `json:"name"` // Name of the shardspace
+	// +kubebuilder:validation:Minimum=1
+	Chunks int32 `json:"chunks,omitempty"` // Number of chunks in the shardspace
+	// +kubebuilder:validation:Enum=MAXPROTECTION;MAXAVAILABILITY;MAXPERFORMANCE
 	ProtectMode string `json:"protectMode,omitempty"` // Data Guard protection mode
-	RepFactor   int32  `json:"repFactor,omitempty"`   // Replication factor (NATIVE replication)
-	RepUnits    int32  `json:"repUnits,omitempty"`    // Replication units (SNR only)
+	// +kubebuilder:validation:Minimum=1
+	RepFactor int32 `json:"repFactor,omitempty"` // Replication factor (NATIVE replication)
+	// +kubebuilder:validation:Minimum=1
+	RepUnits int32 `json:"repUnits,omitempty"` // Replication units (SNR only)
 }
 
 // RegionSpec (new, for top-level region[])
@@ -409,18 +424,22 @@ type GsmServiceSpec struct {
 
 // Secret Details
 type SecretDetails struct {
-	Name                 string `json:"name"`                  // Name of the secret.
-	KeyFileName          string `json:"keyFileName,omitempty"` // Name of the key.
-	NsConfigMap          string `json:"nsConfigMap,omitempty"`
-	NsSecret             string `json:"nsSecret,omitempty"`
-	PwdFileName          string `json:"pwdFileName"`
-	PwdFileMountLocation string `json:"pwdFileMountLocation,omitempty"`
-	KeyFileMountLocation string `json:"keyFileMountLocation,omitempty"`
-	KeySecretName        string `json:"keySecretName,omitempty"`
-	EncryptionType       string `json:"encryptionType,omitempty"`
-	TdeKeyFileName       string `json:"tdeKeyFileName,omitempty"` // Name of the key.
-	TdePwdFileName       string `json:"tdePwdFileName"`
+	Name      string                `json:"name"`                // Name of the secret mounted into sharding pods.
+	MountPath string                `json:"mountPath,omitempty"` // Optional mount path for the secret volume.
+	DbAdmin   PasswordSecretConfig  `json:"dbAdmin"`
+	TDE       *PasswordSecretConfig `json:"tde,omitempty"`
 }
+
+type PasswordSecretConfig struct {
+	PasswordKey   string `json:"passwordKey"`             // Secret key containing password/ciphertext payload
+	PrivateKeyKey string `json:"privateKeyKey,omitempty"` // Secret key containing private key, required for openssl-rsa-oaep
+	Pkeyopt       string `json:"pkeyopt,omitempty"`       // OpenSSL pkeyutl options, semicolon-separated
+}
+
+const (
+	DefaultPkeyopt         = "rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256"
+	DefaultSecretMountPath = "/mnt/secrets"
+)
 
 // DatabaseRef is used in catalog/shard primaryDatabaseRef, catalogDatabaseRef
 type DatabaseRef struct {
@@ -458,9 +477,13 @@ type ConfigMapData struct {
 
 // Shard structures based on managed Replicas
 type ShardingDetails struct {
-	ShardPreFixName    string                       `json:"shardPreFixName"`
-	Shape              string                       `json:"shape,omitempty"`
-	Replicas           int32                        `json:"replicas,omitempty"`
+	ShardPreFixName string `json:"shardPreFixName"`
+	Shape           string `json:"shape,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	ShardNum int32 `json:"shardNum,omitempty"`
+	// Deprecated: use shardNum. Kept for backward compatibility.
+	Replicas int32 `json:"replicas,omitempty"`
+
 	StorageSizeInGb    int32                        `json:"storageSizeInGb,omitempty"`
 	ShardGroupDetails  *ShardGroupSpec              `json:"shardGroupDetails,omitempty"`
 	ShardSpaceDetails  *ShardSpaceSpec              `json:"shardSpaceDetails,omitempty"`
@@ -510,24 +533,8 @@ const (
 	ShardRemoveError      ShardLifecycleState = "SHARD_DELETE_ERROR_FROM_GSM"
 )
 
-type CrdReconcileState string
-
-const (
-	CrdReconcileErrorState     CrdReconcileState = "ReconcileError"
-	CrdReconcileErrorReason    CrdReconcileState = "LastReconcileCycleFailed"
-	CrdReconcileQueuedState    CrdReconcileState = "ReconcileQueued"
-	CrdReconcileQueuedReason   CrdReconcileState = "LastReconcileCycleQueued"
-	CrdReconcileCompeleteState CrdReconcileState = "ReconcileComplete"
-	CrdReconcileCompleteReason CrdReconcileState = "LastReconcileCycleCompleted"
-	CrdReconcileWaitingState   CrdReconcileState = "ReconcileWaiting"
-	CrdReconcileWaitingReason  CrdReconcileState = "LastReconcileCycleWaiting"
-)
-
 // var
 var KubeConfigOnce sync.Once
-
-// #const lastSuccessfulSpec = "lastSuccessfulSpec"
-const lastSuccessfulSpecOnsInfo = "lastSuccessfulSpeOnsInfo"
 
 // GetLastSuccessfulSpec returns spec from the lass successful reconciliation.
 // Returns nil, nil if there is no lastSuccessfulSpec.
@@ -561,28 +568,6 @@ func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpec(kubeClient client.C
 
 	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)
 }
-
-// GetLastSuccessfulOnsInfo returns spec from the lass successful reconciliation.
-// Returns nil, nil if there is no lastSuccessfulSpec.
-func (shardingv1 *ShardingDatabase) GetLastSuccessfulOnsInfo() ([]byte, error) {
-	val, ok := shardingv1.GetAnnotations()[lastSuccessfulSpecOnsInfo]
-	if !ok {
-		return nil, nil
-	}
-	specBytes := []byte(val)
-	return specBytes, nil
-}
-
-// UpdateLastSuccessfulSpec updates lastSuccessfulSpec with the current spec.
-func (shardingv1 *ShardingDatabase) UpdateLastSuccessfulSpecOnsInfo(kubeClient client.Client, specBytes []byte) error {
-
-	anns := map[string]string{
-		lastSuccessfulSpecOnsInfo: string(specBytes),
-	}
-
-	return annsv1.PatchAnnotations(kubeClient, shardingv1, anns)
-}
-
 func init() {
 	SchemeBuilder.Register(&ShardingDatabase{}, &ShardingDatabaseList{})
 }
