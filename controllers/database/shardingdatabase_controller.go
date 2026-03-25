@@ -1937,7 +1937,7 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev4.ShardingD
 		return nil
 	}
 
-	if instance.Spec.IsDataGuard {
+	if shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" {
 		deployAs := strings.ToUpper(strings.TrimSpace(OraShardSpex.DeployAs))
 		if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
 			r.logLegacy("INFO", "DG mode: skipping CheckOnlineShardInGsm for standby shard "+OraShardSpex.Name, nil, instance, r.Log)
@@ -1969,6 +1969,7 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev4.ShardingD
 // addStandbyShards adds standby shards and performs DG broker provisioning when configured.
 func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.ShardingDatabase) error {
 	var err error
+	isDGReplication := shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG"
 
 	shardSfSet := &appsv1.StatefulSet{}
 	gsmPod := &corev1.Pod{}
@@ -2030,7 +2031,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 		}
 
 		// 3) Non-DG flow: standby shard add in GSM
-		if !instance.Spec.IsDataGuard {
+		if !isDGReplication {
 			sparamsCheck := shardingv1.BuildShardParams(instance, shardSfSet, OraShardSpex)
 
 			if inGsmErr := shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeConfig, r.Log); inGsmErr != nil {
@@ -2062,7 +2063,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 		}
 
 		// 4) DG flow
-		if instance.Spec.IsDataGuard && !r.dgBrokerDone(instance, OraShardSpex.Name) {
+		if isDGReplication && !r.dgBrokerDone(instance, OraShardSpex.Name) {
 			if instance.Status.Dg.Broker == nil {
 				instance.Status.Dg.Broker = map[string]string{}
 			}
@@ -2201,7 +2202,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 		return fmt.Errorf("standby shard flow pending: %d shard add operation(s) failed", addFailedCount)
 	}
 
-	if !instance.Spec.IsDataGuard {
+	if !isDGReplication {
 		if deployFlag == "true" {
 			if derr := shardingv1.DeployShardInGsm(gsmPod.Name, deployParams, instance, r.kubeConfig, r.Log); derr != nil {
 				r.logLegacy("INFO", "DeployShardInGsm pending for standby shard; requeue: "+derr.Error(), nil, instance, r.Log)

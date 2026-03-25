@@ -1,6 +1,7 @@
 package v4
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -86,7 +87,7 @@ func TestValidateShardOperationRules(t *testing.T) {
 			wantErr: "cannot be combined with shardGroup",
 		},
 		{
-			name: "user DG defaults deployAs to PRIMARY",
+			name: "user DG defaults deployAs to STANDBY",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "USER",
 				ReplicationType: "DG",
@@ -95,7 +96,7 @@ func TestValidateShardOperationRules(t *testing.T) {
 					ShardSpace: "ss1",
 				}},
 			},
-			wantDeployAs: "PRIMARY",
+			wantDeployAs: "STANDBY",
 		},
 	}
 
@@ -135,5 +136,79 @@ func TestNormalizeReplicationType(t *testing.T) {
 	cr := &ShardingDatabase{Spec: ShardingDatabaseSpec{ReplicationType: "raftreplicatin"}}
 	if got := normalizeReplicationType(&cr.Spec); got != replNative {
 		t.Fatalf("expected %q, got %q", replNative, got)
+	}
+}
+
+func TestValidateUpdateRejectsReplicationTypeChange(t *testing.T) {
+	oldCR := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			ReplicationType: "DG",
+			ShardingType:    "SYSTEM",
+			ShardInfo: []ShardingDetails{{
+				ShardGroupDetails: &ShardGroupSpec{Name: "sg1"},
+			}},
+		},
+	}
+	newCR := oldCR.DeepCopy()
+	newCR.Spec.ReplicationType = "NATIVE"
+
+	_, err := (&ShardingDatabase{}).ValidateUpdate(context.Background(), oldCR, newCR)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "replicationtype is immutable") {
+		t.Fatalf("expected replicationType immutability error, got: %v", err)
+	}
+}
+
+func TestValidateUpdateRejectsShardingTypeChange(t *testing.T) {
+	oldCR := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			ReplicationType: "DG",
+			ShardingType:    "USER",
+			ShardInfo: []ShardingDetails{{
+				ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+			}},
+		},
+	}
+	newCR := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			ReplicationType: "DG",
+			ShardingType:    "COMPOSITE",
+			ShardInfo: []ShardingDetails{{
+				ShardGroupDetails: &ShardGroupSpec{Name: "sg1"},
+				ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+			}},
+		},
+	}
+
+	_, err := (&ShardingDatabase{}).ValidateUpdate(context.Background(), oldCR, newCR)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "shardingtype is immutable") {
+		t.Fatalf("expected shardingType immutability error, got: %v", err)
+	}
+}
+
+func TestValidateCatalogAdvancedParamsUserNativeRepFactorRejected(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			ReplicationType: "NATIVE",
+			ShardingType:    "USER",
+			Catalog: []CatalogSpec{{
+				Name:      "cat1",
+				Repl:      "NATIVE",
+				Sharding:  "USER",
+				RepFactor: 2,
+			}},
+		},
+	}
+
+	errList := cr.validateCatalogAdvancedParams()
+	if errList == nil || len(errList) == 0 {
+		t.Fatalf("expected validation error for USER+NATIVE repFactor, got none")
+	}
+
+	errs := make([]error, 0, len(errList))
+	for _, e := range errList {
+		errs = append(errs, e)
+	}
+	if !hasErrContaining(errs, "repFactor is not applicable for USER sharding catalog") {
+		t.Fatalf("expected USER repFactor error, got: %v", errs)
 	}
 }

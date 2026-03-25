@@ -133,12 +133,9 @@ func IsNativeReplication(replicationType string) bool {
 	return normalizeReplicationType(replicationType) == "NATIVE"
 }
 
-func EffectiveReplicationType(replicationType string, isDataGuard bool) string {
+func EffectiveReplicationType(replicationType string) string {
 	if repl := normalizeReplicationType(replicationType); repl != "" {
 		return repl
-	}
-	if isDataGuard {
-		return "DG"
 	}
 	return "DG"
 }
@@ -302,7 +299,7 @@ func buildEnvVarsSpec(
 			result = append(result, corev1.EnvVar{Name: "SHARD_DIRECTOR_PARAMS", Value: directorParams})
 		}
 
-		replType := EffectiveReplicationType(instance.Spec.ReplicationType, instance.Spec.IsDataGuard)
+		replType := EffectiveReplicationType(instance.Spec.ReplicationType)
 		isDGRepl := replType == "DG"
 		shardingType := strings.ToUpper(strings.TrimSpace(instance.Spec.ShardingType))
 
@@ -883,7 +880,7 @@ func buildCatalogParams(instance *databasev4.ShardingDatabase) string {
 	if replSource == "" {
 		replSource = instance.Spec.ReplicationType
 	}
-	replType := EffectiveReplicationType(replSource, instance.Spec.IsDataGuard)
+	replType := EffectiveReplicationType(replSource)
 	if replType == "NATIVE" {
 		result = append(result, "repl_type=native")
 	}

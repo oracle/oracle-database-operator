@@ -440,6 +440,21 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj ru
 
 	oldMode := detectShardingMode(&oldCR.Spec)
 	newMode := detectShardingMode(&newCR.Spec)
+	oldRepl := normalizeReplicationType(&oldCR.Spec)
+	newRepl := normalizeReplicationType(&newCR.Spec)
+	oldSharding := normalizeShardingType(&oldCR.Spec)
+	newSharding := normalizeShardingType(&newCR.Spec)
+
+	if oldRepl != "" && newRepl != "" && oldRepl != newRepl {
+		validationErr = append(validationErr,
+			field.Forbidden(field.NewPath("spec").Child("replicationType"),
+				fmt.Sprintf("replicationType is immutable after creation (old=%s, new=%s)", oldRepl, newRepl)))
+	}
+	if oldSharding != modeUnknown && newSharding != modeUnknown && oldSharding != newSharding {
+		validationErr = append(validationErr,
+			field.Forbidden(field.NewPath("spec").Child("shardingType"),
+				fmt.Sprintf("shardingType is immutable after creation (old=%s, new=%s)", oldSharding, newSharding)))
+	}
 
 	if oldMode == modeSystem && (newMode == modeUser || newMode == modeComposite) {
 		validationErr = append(validationErr,
@@ -897,9 +912,6 @@ func normalizeReplicationType(spec *ShardingDatabaseSpec) string {
 	if rep := normalizeReplicationValue(spec.ReplicationType); rep != "" {
 		return rep
 	}
-	if spec.IsDataGuard {
-		return replDG
-	}
 	return replDG
 }
 
@@ -941,7 +953,7 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 						"user sharding add shard requires shardSpace"))
 			}
 			if replType == replDG && deployAs == "" {
-				r.Spec.Shard[i].DeployAs = "PRIMARY"
+				r.Spec.Shard[i].DeployAs = "STANDBY"
 			}
 
 		case modeSystem:
@@ -1047,6 +1059,11 @@ func (r *ShardingDatabase) validateCatalogAdvancedParams() field.ErrorList {
 					field.Forbidden(field.NewPath("spec").Child("catalog").Index(i).Child("repUnits"),
 						"repUnits is only supported for NATIVE replication"))
 			}
+		}
+		if replType == replNative && mode == modeUser && cat.RepFactor > 0 {
+			validationErrs = append(validationErrs,
+				field.Forbidden(field.NewPath("spec").Child("catalog").Index(i).Child("repFactor"),
+					"repFactor is not applicable for USER sharding catalog"))
 		}
 
 		if replType == replNative && strings.TrimSpace(cat.ProtectMode) != "" {

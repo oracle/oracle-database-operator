@@ -71,7 +71,6 @@ type ShardingDatabaseSpec struct {
 	IsDebug                   bool                `json:"isDebug,omitempty"`            // Optional parameter to enable logining
 	IsExternalSvc             bool                `json:"isExternalSvc,omitempty"`
 	IsClone                   bool                `json:"isClone,omitempty"`
-	IsDataGuard               bool                `json:"isDataGuard,omitempty"`
 	ScriptsLocation           string              `json:"scriptsLocation,omitempty"`
 	IsDeleteOraPvc            bool                `json:"isDeleteOraPvc,omitempty"`
 	ReadinessCheckPeriod      int                 `json:"readinessCheckPeriod,omitempty"`

@@ -13267,8 +13267,6 @@ spec:
                 type: string
               isClone:
                 type: boolean
-              isDataGuard:
-                type: boolean
               isDebug:
                 type: boolean
               isDeleteOraPvc:
@@ -13958,8 +13956,6 @@ spec:
               invitedNodeSubnetFlag:
                 type: string
               isClone:
-                type: boolean
-              isDataGuard:
                 type: boolean
               isDebug:
                 type: boolean
