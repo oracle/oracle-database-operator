@@ -371,32 +371,42 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	_ = c
 
 	var i int32
+	externalCatalogMode := r.isExternalCatalogMode(inst)
+	if externalCatalogMode {
+		if err := r.validateExternalCatalogRef(inst); err != nil {
+			return phaseResult{err: err, reason: "ExternalCatalogConfigInvalid", message: err.Error()}
+		}
+	}
 
 	// Service setup for Catalog
-	for i = 0; i < int32(len(inst.Spec.Catalog)); i++ {
-		oraCatalogSpec := inst.Spec.Catalog[i]
-		if _, err := r.createService(inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "local")); err != nil {
-			return phaseResult{err: err, reason: "CatalogServiceCreateFailed", message: err.Error()}
-		}
-		if inst.Spec.IsExternalSvc {
-			if _, err := r.createService(inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "external")); err != nil {
-				return phaseResult{err: err, reason: "CatalogExternalServiceCreateFailed", message: err.Error()}
+	if !externalCatalogMode {
+		for i = 0; i < int32(len(inst.Spec.Catalog)); i++ {
+			oraCatalogSpec := inst.Spec.Catalog[i]
+			if _, err := r.createService(inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "local")); err != nil {
+				return phaseResult{err: err, reason: "CatalogServiceCreateFailed", message: err.Error()}
+			}
+			if inst.Spec.IsExternalSvc {
+				if _, err := r.createService(inst, shardingv1.BuildServiceDefForCatalog(inst, 0, oraCatalogSpec, "external")); err != nil {
+					return phaseResult{err: err, reason: "CatalogExternalServiceCreateFailed", message: err.Error()}
+				}
 			}
 		}
 	}
 
 	// Catalog StatefulSet setup
-	for i = 0; i < int32(len(inst.Spec.Catalog)); i++ {
-		oraCatalogSpec := inst.Spec.Catalog[i]
-		if len(oraCatalogSpec.Name) > 9 {
-			return phaseResult{
-				err:     fmt.Errorf("Catalog Name cannot be greater than 9 characters."),
-				reason:  "CatalogNameTooLong",
-				message: "Catalog Name cannot be greater than 9 characters.",
+	if !externalCatalogMode {
+		for i = 0; i < int32(len(inst.Spec.Catalog)); i++ {
+			oraCatalogSpec := inst.Spec.Catalog[i]
+			if len(oraCatalogSpec.Name) > 9 {
+				return phaseResult{
+					err:     fmt.Errorf("Catalog Name cannot be greater than 9 characters."),
+					reason:  "CatalogNameTooLong",
+					message: "Catalog Name cannot be greater than 9 characters.",
+				}
 			}
-		}
-		if _, err := r.deployStatefulSet(inst, shardingv1.BuildStatefulSetForCatalog(inst, oraCatalogSpec), "CATALOG"); err != nil {
-			return phaseResult{err: err, reason: "CatalogStatefulSetFailed", message: err.Error()}
+			if _, err := r.deployStatefulSet(inst, shardingv1.BuildStatefulSetForCatalog(inst, oraCatalogSpec), "CATALOG"); err != nil {
+				return phaseResult{err: err, reason: "CatalogStatefulSetFailed", message: err.Error()}
+			}
 		}
 	}
 
@@ -1383,11 +1393,56 @@ func (r *ShardingDatabaseReconciler) comapreShardEnvVariables(instance *database
 
 // validateGsmnCatalog validates both catalog and GSM availability gates.
 func (r *ShardingDatabaseReconciler) validateGsmnCatalog(instance *databasev4.ShardingDatabase) error {
-	if _, _, err := r.validateCatalog(instance); err != nil {
-		return fmt.Errorf("catalog validation failed: %w", err)
+	if r.isExternalCatalogMode(instance) {
+		if err := r.validateExternalCatalogRef(instance); err != nil {
+			return fmt.Errorf("external catalog reference validation failed: %w", err)
+		}
+		r.logLegacy("INFO", "External catalog mode enabled; skipping local catalog pod validation", nil, instance, r.Log)
+	} else {
+		if _, _, err := r.validateCatalog(instance); err != nil {
+			return fmt.Errorf("catalog validation failed: %w", err)
+		}
 	}
 	if _, _, err := r.validateGsm(instance); err != nil {
 		return fmt.Errorf("gsm validation failed: %w", err)
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) isExternalCatalogMode(instance *databasev4.ShardingDatabase) bool {
+	if instance == nil || len(instance.Spec.Catalog) == 0 {
+		return false
+	}
+
+	cat := instance.Spec.Catalog[0]
+	if cat.UseExistingCatalog {
+		return true
+	}
+	return cat.CatalogDatabaseRef != nil && strings.TrimSpace(cat.CatalogDatabaseRef.Host) != ""
+}
+
+func (r *ShardingDatabaseReconciler) validateExternalCatalogRef(instance *databasev4.ShardingDatabase) error {
+	if instance == nil || len(instance.Spec.Catalog) == 0 {
+		return fmt.Errorf("catalog spec is required when using external catalog mode")
+	}
+
+	cat := instance.Spec.Catalog[0]
+	if cat.CatalogDatabaseRef == nil {
+		return fmt.Errorf("catalogDatabaseRef is required when useExistingCatalog is enabled")
+	}
+
+	ref := cat.CatalogDatabaseRef
+	if strings.TrimSpace(ref.Host) == "" {
+		return fmt.Errorf("catalogDatabaseRef.host is required in external catalog mode")
+	}
+	if ref.Port <= 0 {
+		return fmt.Errorf("catalogDatabaseRef.port must be > 0 in external catalog mode")
+	}
+	if strings.TrimSpace(ref.CdbName) == "" {
+		return fmt.Errorf("catalogDatabaseRef.cdbName is required in external catalog mode")
+	}
+	if strings.TrimSpace(ref.PdbName) == "" {
+		return fmt.Errorf("catalogDatabaseRef.pdbName is required in external catalog mode")
 	}
 	return nil
 }
@@ -1760,7 +1815,7 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 			if firstPrim == nil {
 				firstPrim = s
 			}
-			g := strings.TrimSpace(s.ShardGroup)
+			g := normalizeShardGroupKey(s.ShardGroup)
 			if g != "" {
 				if _, ok := primByGroup[g]; !ok {
 					primByGroup[g] = s
@@ -1789,11 +1844,16 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 			continue
 		}
 
-		key := strings.TrimSpace(info.ShardGroupDetails.Name)
+		key := normalizeShardGroupKey(info.ShardGroupDetails.Name)
+		if shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" && key == "" {
+			return false, fmt.Errorf("standby shardInfo prefix %s must define shardGroupDetails.name in DG replication mode", strings.TrimSpace(info.ShardPreFixName))
+		}
 		prim := firstPrim
 		if key != "" {
 			if p, ok := primByGroup[key]; ok {
 				prim = p
+			} else {
+				return false, fmt.Errorf("no PRIMARY shard found in shardGroup %s for standby shardInfo prefix %s", key, strings.TrimSpace(info.ShardPreFixName))
 			}
 		}
 
@@ -1977,8 +2037,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 	addFailedCount := 0
 	notReadyCount := 0
 	hasStandby := false
-	deployFlag := "none"
-	var deployParams string
+	deployParamsList := []string{}
 
 	r.logLegacy("DEBUG", "Starting standby shard adding operation.", nil, instance, r.Log)
 
@@ -2042,11 +2101,9 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				if err != nil {
 					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
 					addFailedCount++
-					deployFlag = "false"
 					continue
 				} else {
-					deployFlag = "true"
-					deployParams = sparamsAdd
+					deployParamsList = append(deployParamsList, sparamsAdd)
 				}
 			}
 
@@ -2057,8 +2114,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				instance.Status.Dg.Broker = map[string]string{}
 			}
 			if strings.TrimSpace(instance.Status.Dg.Broker[OraShardSpex.Name]) == "" {
-				instance.Status.Dg.Broker[OraShardSpex.Name] = "SKIPPED_GSM"
-				_ = r.Status().Update(context.Background(), instance)
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "SKIPPED_GSM")
 			}
 		}
 
@@ -2082,13 +2138,13 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 
 			primaryDbUnique := strings.ToUpper(strings.TrimSpace(primary.Name))
 			standbyDbUnique := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name))
-			cfgName := strings.ToUpper(strings.TrimSpace(instance.Name)) + "_DGCFG"
+			cfgName := r.buildDgConfigName(instance, *primary, OraShardSpex)
 
 			primaryConnects := []string{
-				shardingv1.BuildDgmgrlConnectIdentifier(instance, primary.Name, primaryDbUnique),
+				r.buildShardConnectIdentifier(instance, *primary, primaryDbUnique),
 			}
 			standbyConnects := []string{
-				shardingv1.BuildDgmgrlConnectIdentifier(instance, OraShardSpex.Name, standbyDbUnique),
+				r.buildShardConnectIdentifier(instance, OraShardSpex, standbyDbUnique),
 			}
 
 			// 4A) Fix broker files + start broker on both sides
@@ -2138,7 +2194,8 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			}
 
 			// 4G) Primary redo transport setup
-			if e := r.setupPrimaryRedoTransport(instance, *primary, OraShardSpex); e != nil {
+			allStandbysForPrimary := r.collectStandbysForPrimary(instance, *primary)
+			if e := r.setupPrimaryRedoTransport(instance, *primary, OraShardSpex, allStandbysForPrimary); e != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:redo-transport:"+e.Error())
 				return e
@@ -2188,7 +2245,9 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 
 			r.setDgBrokerStatus(instance, OraShardSpex.Name, "true")
 			instance.Status.Dg.State = "ENABLED"
-			_ = r.Status().Update(context.Background(), instance)
+			_ = r.updateStatusWithRetry(instance, func(latest *databasev4.ShardingDatabase) {
+				latest.Status.Dg.State = "ENABLED"
+			})
 		}
 	}
 
@@ -2203,13 +2262,13 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 	}
 
 	if !isDGReplication {
-		if deployFlag == "true" {
+		for _, deployParams := range deployParamsList {
 			if derr := shardingv1.DeployShardInGsm(gsmPod.Name, deployParams, instance, r.kubeConfig, r.Log); derr != nil {
 				r.logLegacy("INFO", "DeployShardInGsm pending for standby shard; requeue: "+derr.Error(), nil, instance, r.Log)
 				return fmt.Errorf("standby deploy in GSM pending: %w", derr)
 			}
 		}
-		if len(deployParams) > 0 {
+		if len(deployParamsList) > 0 {
 			r.updateShardTopologyShardsInGsm(instance, gsmPod)
 		}
 	} else {
@@ -2716,17 +2775,31 @@ func (r *ShardingDatabaseReconciler) setupPrimaryRedoTransport(
 	instance *databasev4.ShardingDatabase,
 	primary databasev4.ShardSpec,
 	standby databasev4.ShardSpec,
+	allStandbys []databasev4.ShardSpec,
 ) error {
 
 	primaryPod := primary.Name + "-0"
 	standbyDbUnique := strings.ToUpper(strings.TrimSpace(standby.Name))
 	primaryDbUnique := strings.ToUpper(strings.TrimSpace(primary.Name))
 
-	standbyConnect := shardingv1.BuildDgmgrlConnectIdentifier(instance, standby.Name, standbyDbUnique)
+	standbyConnect := r.buildShardConnectIdentifier(instance, standby, standbyDbUnique)
+
+	dgNames := []string{primaryDbUnique}
+	seen := map[string]bool{primaryDbUnique: true}
+	for _, s := range allStandbys {
+		dbu := strings.ToUpper(strings.TrimSpace(s.Name))
+		if dbu == "" {
+			continue
+		}
+		if !seen[dbu] {
+			seen[dbu] = true
+			dgNames = append(dgNames, dbu)
+		}
+	}
 
 	logArchiveConfigSQL := fmt.Sprintf(
-		"alter system set log_archive_config='dg_config=(%s,%s)' scope=both sid='*';",
-		primaryDbUnique, standbyDbUnique,
+		"alter system set log_archive_config='dg_config=(%s)' scope=both sid='*';",
+		strings.Join(dgNames, ","),
 	)
 
 	logArchiveDest2SQL := fmt.Sprintf(
@@ -2850,11 +2923,11 @@ func (r *ShardingDatabaseReconciler) SetDgConnectIdentifiers(
 	primaryDbUnique := strings.ToUpper(strings.TrimSpace(primary.Name))
 	standbyDbUnique := strings.ToUpper(strings.TrimSpace(standby.Name))
 
-	primaryConnect := shardingv1.BuildDgmgrlConnectIdentifier(instance, primary.Name, primaryDbUnique)
-	standbyConnect := shardingv1.BuildDgmgrlConnectIdentifier(instance, standby.Name, standbyDbUnique)
+	primaryConnect := r.buildShardConnectIdentifier(instance, primary, primaryDbUnique)
+	standbyConnect := r.buildShardConnectIdentifier(instance, standby, standbyDbUnique)
 
-	primaryStatic := shardingv1.BuildDgmgrlStaticConnectIdentifier(instance, primary.Name, primaryDbUnique)
-	standbyStatic := shardingv1.BuildDgmgrlStaticConnectIdentifier(instance, standby.Name, standbyDbUnique)
+	primaryStatic := r.buildShardStaticConnectIdentifier(instance, primary, primaryDbUnique)
+	standbyStatic := r.buildShardStaticConnectIdentifier(instance, standby, standbyDbUnique)
 
 	cmd := []string{"bash", "-lc", fmt.Sprintf(`
 dgmgrl -silent / <<'EOF'
@@ -2887,25 +2960,36 @@ EOF
 
 // setDgBrokerStatus handles set dg broker status for the sharding database controller.
 func (r *ShardingDatabaseReconciler) setDgBrokerStatus(instance *databasev4.ShardingDatabase, shardName string, val string) {
-	if instance.Status.Dg.Broker == nil {
-		instance.Status.Dg.Broker = map[string]string{}
+	err := r.updateStatusWithRetry(instance, func(latest *databasev4.ShardingDatabase) {
+		if latest.Status.Dg.Broker == nil {
+			latest.Status.Dg.Broker = map[string]string{}
+		}
+		latest.Status.Dg.State = instance.Status.Dg.State
+		latest.Status.Dg.Broker[shardName] = val
+	})
+	if err != nil {
+		r.logLegacy("WARNING", "setDgBrokerStatus update failed for "+shardName+": "+err.Error(), err, instance, r.Log)
 	}
-	instance.Status.Dg.Broker[shardName] = val
-	_ = r.Status().Update(context.Background(), instance)
 }
 
 // findPrimaryForStandby handles find primary for standby for the sharding database controller.
 func (r *ShardingDatabaseReconciler) findPrimaryForStandby(instance *databasev4.ShardingDatabase, standby databasev4.ShardSpec) (*databasev4.ShardSpec, error) {
-	sg := strings.TrimSpace(standby.ShardGroup)
+	sg := normalizeShardGroupKey(standby.ShardGroup)
+	if shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" && sg == "" {
+		return nil, fmt.Errorf("standby %s must set shardGroup in DG replication mode", standby.Name)
+	}
 
 	// prefer same shardGroup primary
 	for i := range instance.Spec.Shard {
 		s := &instance.Spec.Shard[i]
 		if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
-			if sg != "" && strings.EqualFold(strings.TrimSpace(s.ShardGroup), sg) {
+			if sg != "" && normalizeShardGroupKey(s.ShardGroup) == sg {
 				return s, nil
 			}
 		}
+	}
+	if sg != "" {
+		return nil, fmt.Errorf("no PRIMARY shard found in shardGroup %s for standby %s", sg, standby.Name)
 	}
 
 	// fallback: first primary
@@ -2917,6 +3001,120 @@ func (r *ShardingDatabaseReconciler) findPrimaryForStandby(instance *databasev4.
 	}
 
 	return nil, fmt.Errorf("no PRIMARY shard found for standby %s", standby.Name)
+}
+
+func normalizeShardGroupKey(v string) string {
+	return strings.ToUpper(strings.TrimSpace(v))
+}
+
+func (r *ShardingDatabaseReconciler) buildDgConfigName(
+	instance *databasev4.ShardingDatabase,
+	primary databasev4.ShardSpec,
+	standby databasev4.ShardSpec,
+) string {
+	parts := []string{
+		strings.ToUpper(strings.TrimSpace(instance.Name)),
+		strings.ToUpper(strings.TrimSpace(primary.Name)),
+	}
+	if sg := normalizeShardGroupKey(standby.ShardGroup); sg != "" {
+		parts = append(parts, sg)
+	}
+	parts = append(parts, "DGCFG")
+	return strings.Join(parts, "_")
+}
+
+func (r *ShardingDatabaseReconciler) collectStandbysForPrimary(instance *databasev4.ShardingDatabase, primary databasev4.ShardSpec) []databasev4.ShardSpec {
+	out := []databasev4.ShardSpec{}
+	primaryName := strings.TrimSpace(primary.Name)
+	for i := range instance.Spec.Shard {
+		s := instance.Spec.Shard[i]
+		deployAs := strings.ToUpper(strings.TrimSpace(s.DeployAs))
+		if deployAs != "STANDBY" && deployAs != "ACTIVE_STANDBY" {
+			continue
+		}
+		p, err := r.findPrimaryForStandby(instance, s)
+		if err != nil || p == nil {
+			continue
+		}
+		if strings.TrimSpace(p.Name) == primaryName {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func (r *ShardingDatabaseReconciler) buildShardConnectIdentifier(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec, dbUniqueName string) string {
+	host, port := r.resolveShardHostPort(instance, shard)
+	return fmt.Sprintf("//%s:%d/%s", host, port, shardingv1.BuildDgmgrlServiceName(dbUniqueName))
+}
+
+func (r *ShardingDatabaseReconciler) buildShardStaticConnectIdentifier(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec, dbUniqueName string) string {
+	host, port := r.resolveShardHostPort(instance, shard)
+	svc := shardingv1.BuildDgmgrlServiceName(dbUniqueName)
+	inst := strings.ToUpper(strings.TrimSpace(dbUniqueName))
+	return fmt.Sprintf(
+		"(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=%s)(PORT=%d))(CONNECT_DATA=(SERVICE_NAME=%s)(INSTANCE_NAME=%s)(SERVER=DEDICATED)))",
+		host, port, svc, inst,
+	)
+}
+
+func (r *ShardingDatabaseReconciler) resolveShardHostPort(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) (string, int32) {
+	if host, port, ok := parseConnectHostPort(shard.Connect); ok {
+		return host, port
+	}
+	host := fmt.Sprintf("%s-0.%s.%s.svc.cluster.local", shard.Name, shard.Name, instance.Namespace)
+	return host, 1521
+}
+
+func parseConnectHostPort(connect string) (string, int32, bool) {
+	raw := strings.TrimSpace(connect)
+	if raw == "" {
+		return "", 0, false
+	}
+
+	s := strings.TrimPrefix(raw, "//")
+	slash := strings.Index(s, "/")
+	if slash <= 0 {
+		return "", 0, false
+	}
+	hostPort := s[:slash]
+
+	host := hostPort
+	port := int32(1521)
+	if strings.Contains(hostPort, ":") {
+		idx := strings.LastIndex(hostPort, ":")
+		h := strings.TrimSpace(hostPort[:idx])
+		p := strings.TrimSpace(hostPort[idx+1:])
+		if h == "" || p == "" {
+			return "", 0, false
+		}
+		pi, err := strconv.Atoi(p)
+		if err != nil || pi <= 0 {
+			return "", 0, false
+		}
+		host = h
+		port = int32(pi)
+	}
+	if strings.TrimSpace(host) == "" {
+		return "", 0, false
+	}
+	return host, port, true
+}
+
+func (r *ShardingDatabaseReconciler) updateStatusWithRetry(instance *databasev4.ShardingDatabase, mutate func(*databasev4.ShardingDatabase)) error {
+	key := types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &databasev4.ShardingDatabase{}
+		if err := r.Get(context.Background(), key, latest); err != nil {
+			return err
+		}
+		mutate(latest)
+		if err := r.Status().Update(context.Background(), latest); err != nil {
+			return err
+		}
+		instance.Status = latest.Status
+		return nil
+	})
 }
 
 // shardOrdinal handles shard ordinal for the sharding database controller.
