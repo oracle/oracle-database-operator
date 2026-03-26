@@ -132,6 +132,19 @@ type DgStatus struct {
 
 	// Optional extra details
 	Details map[string]string `json:"details,omitempty"`
+
+	// Optional standby mapping details: primary -> standby pair status.
+	Pairs []DgPairStatus `json:"pairs,omitempty"`
+}
+
+type DgPairStatus struct {
+	PrimaryKey           string `json:"primaryKey,omitempty"`
+	PrimarySource        string `json:"primarySource,omitempty"` // PrimaryDatabaseRef|ConnectString|Endpoint
+	PrimaryConnectString string `json:"primaryConnectString,omitempty"`
+	StandbyShardName     string `json:"standbyShardName,omitempty"`
+	StandbyShardNum      int32  `json:"standbyShardNum,omitempty"`
+	State                string `json:"state,omitempty"`
+	Message              string `json:"message,omitempty"`
 }
 
 type GsmStatus struct {
@@ -237,10 +250,11 @@ type ShardSpec struct {
 	SaveName        bool   `json:"savename,omitempty"`        // Store net service name instead of descriptor
 	Connect         string `json:"connect,omitempty"`         // Connect identifier / net service name
 	// Extra shard fields for GDD-style sharding
-	PdbPreFix            string       `json:"pdbPreFix,omitempty"`
-	ReadinessCheckPeriod int          `json:"readinessCheckPeriod,omitempty"`
-	LivenessCheckPeriod  int          `json:"livenessCheckPeriod,omitempty"`
-	PrimaryDatabaseRef   *DatabaseRef `json:"primaryDatabaseRef,omitempty"`
+	PdbPreFix            string         `json:"pdbPreFix,omitempty"`
+	ReadinessCheckPeriod int            `json:"readinessCheckPeriod,omitempty"`
+	LivenessCheckPeriod  int            `json:"livenessCheckPeriod,omitempty"`
+	PrimaryDatabaseRef   *DatabaseRef   `json:"primaryDatabaseRef,omitempty"`
+	StandbyConfig        *StandbyConfig `json:"standbyConfig,omitempty"`
 }
 
 // CatalogSpec defines the desired state of CatalogSpec
@@ -448,6 +462,36 @@ type DatabaseRef struct {
 	Port    int32  `json:"port,omitempty"`    // Listener port
 }
 
+// PrimaryDatabaseCRRef identifies a primary shard/database object in Kubernetes.
+type PrimaryDatabaseCRRef struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// PrimaryEndpointRef identifies a primary by external endpoint metadata.
+type PrimaryEndpointRef struct {
+	ConnectString string `json:"connectString,omitempty"`
+	Host          string `json:"host,omitempty"`
+	Port          int32  `json:"port,omitempty"`
+	CdbName       string `json:"cdbName,omitempty"`
+	PdbName       string `json:"pdbName,omitempty"`
+}
+
+// StandbyConfig defines how standby shards should be mapped from primary inputs.
+type StandbyConfig struct {
+	SourceType string `json:"sourceType,omitempty"` // PrimaryDatabaseRef|ConnectString|Endpoint
+	// +kubebuilder:validation:Minimum=1
+	StandbyPerPrimary int32 `json:"standbyPerPrimary,omitempty"`
+	// +kubebuilder:validation:Enum=MAXPROTECTION;MAXAVAILABILITY;MAXPERFORMANCE
+	ProtectionMode string `json:"protectionMode,omitempty"`
+	// +kubebuilder:validation:Enum=SYNC;ASYNC
+	TransportMode string `json:"transportMode,omitempty"`
+
+	PrimaryDatabaseRefs   []PrimaryDatabaseCRRef `json:"primaryDatabaseRefs,omitempty"`
+	PrimaryConnectStrings []string               `json:"primaryConnectStrings,omitempty"`
+	PrimaryEndpoints      []PrimaryEndpointRef   `json:"primaryEndpoints,omitempty"`
+}
+
 // EnvironmentVariable represents a named variable accessible for containers.
 type EnvironmentVariable struct {
 	Name  string `json:"name"`  // Name of the variable. Must be a C_IDENTIFIER.
@@ -487,6 +531,7 @@ type ShardingDetails struct {
 	ShardGroupDetails  *ShardGroupSpec              `json:"shardGroupDetails,omitempty"`
 	ShardSpaceDetails  *ShardSpaceSpec              `json:"shardSpaceDetails,omitempty"`
 	PrimaryDatabaseRef *DatabaseRef                 `json:"primaryDatabaseRef,omitempty"`
+	StandbyConfig      *StandbyConfig               `json:"standbyConfig,omitempty"`
 	EnvVars            []EnvironmentVariable        `json:"envVars,omitempty"`
 	Resources          *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
 }

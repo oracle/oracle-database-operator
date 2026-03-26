@@ -87,7 +87,7 @@ func TestValidateShardOperationRules(t *testing.T) {
 			wantErr: "cannot be combined with shardGroup",
 		},
 		{
-			name: "user DG defaults deployAs to STANDBY",
+			name: "user DG without explicit primary is rejected",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "USER",
 				ReplicationType: "DG",
@@ -96,7 +96,7 @@ func TestValidateShardOperationRules(t *testing.T) {
 					ShardSpace: "ss1",
 				}},
 			},
-			wantDeployAs: "STANDBY",
+			wantErr: "requires exactly one PRIMARY shard per shardSpace",
 		},
 	}
 
@@ -127,6 +127,501 @@ func TestValidateShardOperationRules(t *testing.T) {
 				if got := cr.Spec.Shard[0].DeployAs; got != tt.wantDeployAs {
 					t.Fatalf("expected deployAs default %q, got %q", tt.wantDeployAs, got)
 				}
+			}
+		})
+	}
+}
+
+func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
+	tests := []struct {
+		name    string
+		spec    ShardingDatabaseSpec
+		wantErr string
+	}{
+		{
+			name: "user DG rejects multiple primaries in same shardSpace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{
+					{Name: "shard1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+					{Name: "shard2", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+				},
+			},
+			wantErr: "at most one PRIMARY shard per shardSpace",
+		},
+		{
+			name: "user DG rejects shardSpace without primary",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{
+					{Name: "shard1", ShardSpace: "ss1", DeployAs: "STANDBY"},
+					{Name: "shard2", ShardSpace: "ss1", DeployAs: "ACTIVE_STANDBY"},
+				},
+			},
+			wantErr: "requires exactly one PRIMARY shard per shardSpace",
+		},
+		{
+			name: "user DG allows multiple standbys with one primary in shardSpace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{
+					{Name: "shard1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+					{Name: "shard2", ShardSpace: "ss1", DeployAs: "STANDBY"},
+					{Name: "shard3", ShardSpace: "ss1", DeployAs: "ACTIVE_STANDBY"},
+				},
+			},
+		},
+		{
+			name: "user DG allows standby-only when standbyConfig provides external primary",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{
+					{Name: "asb1", ShardSpace: "ss1", DeployAs: "STANDBY"},
+					{Name: "asb2", ShardSpace: "ss1", DeployAs: "ACTIVE_STANDBY"},
+				},
+				ShardInfo: []ShardingDetails{{
+					ShardPreFixName: "asb",
+					ShardSpaceDetails: &ShardSpaceSpec{
+						Name: "ss1",
+					},
+					StandbyConfig: &StandbyConfig{
+						SourceType:            "ConnectString",
+						StandbyPerPrimary:     2,
+						PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+					},
+				}},
+			},
+		},
+		{
+			name: "user DG rejects local primary when standbyConfig external primary is set",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{
+					{Name: "asb1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+					{Name: "asb2", ShardSpace: "ss1", DeployAs: "STANDBY"},
+				},
+				ShardInfo: []ShardingDetails{{
+					ShardPreFixName: "asb",
+					ShardSpaceDetails: &ShardSpaceSpec{
+						Name: "ss1",
+					},
+					StandbyConfig: &StandbyConfig{
+						SourceType:            "ConnectString",
+						StandbyPerPrimary:     2,
+						PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+					},
+				}},
+			},
+			wantErr: "uses standbyConfig primary source; do not set local deployAs=PRIMARY",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cr := &ShardingDatabase{Spec: tt.spec}
+			errList := cr.validateShardOperationRules()
+
+			if tt.wantErr != "" {
+				if errList == nil || len(errList) == 0 {
+					t.Fatalf("expected validation error containing %q, got none", tt.wantErr)
+				}
+				errs := make([]error, 0, len(errList))
+				for _, e := range errList {
+					errs = append(errs, e)
+				}
+				if !hasErrContaining(errs, tt.wantErr) {
+					t.Fatalf("expected error containing %q, got: %v", tt.wantErr, errs)
+				}
+				return
+			}
+
+			if errList != nil && len(errList) > 0 {
+				t.Fatalf("expected no validation errors, got: %v", errList)
+			}
+		})
+	}
+}
+
+func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
+	tests := []struct {
+		name    string
+		spec    ShardingDatabaseSpec
+		wantErr string
+	}{
+		{
+			name: "system DG allows one primary group and multiple standby groups within primary cardinality",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        3,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "sba",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-ashburn",
+							Region:   "ashburn",
+							DeployAs: "STANDBY",
+						},
+					},
+					{
+						ShardPreFixName: "sbc",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-chicago",
+							Region:   "chicago",
+							DeployAs: "ACTIVE_STANDBY",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "system DG rejects multiple primary shardgroups",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm1",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary-a",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "prm2",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary-b",
+							Region:   "ashburn",
+							DeployAs: "PRIMARY",
+						},
+					},
+				},
+			},
+			wantErr: "exactly one shardGroup must be PRIMARY",
+		},
+		{
+			name: "system DG rejects standby cardinality greater than primary cardinality",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "sba",
+						ShardNum:        3,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-ashburn",
+							Region:   "ashburn",
+							DeployAs: "STANDBY",
+						},
+					},
+				},
+			},
+			wantErr: "has 3 standby databases but primary shardGroup SG-PRIMARY has only 2 primary databases",
+		},
+		{
+			name: "system DG rejects standby databases in primary shardgroup",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "std",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "STANDBY",
+						},
+					},
+				},
+			},
+			wantErr: "PRIMARY shardGroup must not contain standby databases",
+		},
+		{
+			name: "system DG rejects duplicate region across shardgroups",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "std",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-standby",
+							Region:   "phoenix",
+							DeployAs: "STANDBY",
+						},
+					},
+				},
+			},
+			wantErr: "region PHOENIX is already used by shardGroup SG-PRIMARY",
+		},
+		{
+			name: "system DG rejects duplicate primary connect strings in standbyConfig",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "std",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-ashburn",
+							Region:   "ashburn",
+							DeployAs: "STANDBY",
+						},
+						StandbyConfig: &StandbyConfig{
+							SourceType:            "ConnectString",
+							StandbyPerPrimary:     1,
+							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL", " //phx-primary:1521/PHX_DGMGRL "},
+						},
+					},
+				},
+			},
+			wantErr: "Duplicate value",
+		},
+		{
+			name: "system DG rejects duplicate primary database refs in standbyConfig",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "std",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-ashburn",
+							Region:   "ashburn",
+							DeployAs: "STANDBY",
+						},
+						StandbyConfig: &StandbyConfig{
+							SourceType:        "PrimaryDatabaseRef",
+							StandbyPerPrimary: 1,
+							PrimaryDatabaseRefs: []PrimaryDatabaseCRRef{
+								{Name: "primary-db", Namespace: "shns"},
+								{Name: "primary-db", Namespace: "shns"},
+							},
+						},
+					},
+				},
+			},
+			wantErr: "Duplicate value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cr := &ShardingDatabase{Spec: tt.spec}
+			errList := cr.validateShardInfo()
+
+			if tt.wantErr != "" {
+				if errList == nil || len(errList) == 0 {
+					t.Fatalf("expected validation error containing %q, got none", tt.wantErr)
+				}
+				errs := make([]error, 0, len(errList))
+				for _, e := range errList {
+					errs = append(errs, e)
+				}
+				if !hasErrContaining(errs, tt.wantErr) {
+					t.Fatalf("expected error containing %q, got: %v", tt.wantErr, errs)
+				}
+				return
+			}
+
+			if errList != nil && len(errList) > 0 {
+				t.Fatalf("expected no validation errors, got: %v", errList)
+			}
+		})
+	}
+}
+
+func TestValidateShardInfoCompositeMappingConstraints(t *testing.T) {
+	tests := []struct {
+		name    string
+		spec    ShardingDatabaseSpec
+		wantErr string
+	}{
+		{
+			name: "composite allows one primary group per shardspace and multiple standby groups",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "COMPOSITE",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "a1p",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "shardgroup_a1",
+							Region:   "dc1",
+							DeployAs: "PRIMARY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "shardspace_a"},
+					},
+					{
+						ShardPreFixName: "a2s",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "shardgroup_a2",
+							Region:   "dc1",
+							DeployAs: "ACTIVE_STANDBY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "shardspace_a"},
+					},
+					{
+						ShardPreFixName: "a3s",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "shardgroup_a3",
+							Region:   "dc3",
+							DeployAs: "ACTIVE_STANDBY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "shardspace_a"},
+					},
+				},
+			},
+		},
+		{
+			name: "composite rejects shardspace with two primary groups",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "COMPOSITE",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "a1p",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "shardgroup_a1",
+							DeployAs: "PRIMARY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "shardspace_a"},
+					},
+					{
+						ShardPreFixName: "a2p",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "shardgroup_a2",
+							DeployAs: "PRIMARY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "shardspace_a"},
+					},
+				},
+			},
+			wantErr: "exactly one PRIMARY shardGroup",
+		},
+		{
+			name: "composite rejects standby cardinality greater than primary cardinality in shardspace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "COMPOSITE",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "a1p",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "shardgroup_a1",
+							DeployAs: "PRIMARY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "shardspace_a"},
+					},
+					{
+						ShardPreFixName: "a2s",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "shardgroup_a2",
+							DeployAs: "ACTIVE_STANDBY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "shardspace_a"},
+					},
+				},
+			},
+			wantErr: "has 2 standby databases but primary shardGroup has only 1 primary databases",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cr := &ShardingDatabase{Spec: tt.spec}
+			errList := cr.validateShardInfo()
+
+			if tt.wantErr != "" {
+				if errList == nil || len(errList) == 0 {
+					t.Fatalf("expected validation error containing %q, got none", tt.wantErr)
+				}
+				errs := make([]error, 0, len(errList))
+				for _, e := range errList {
+					errs = append(errs, e)
+				}
+				if !hasErrContaining(errs, tt.wantErr) {
+					t.Fatalf("expected error containing %q, got: %v", tt.wantErr, errs)
+				}
+				return
+			}
+
+			if errList != nil && len(errList) > 0 {
+				t.Fatalf("expected no validation errors, got: %v", errList)
 			}
 		})
 	}

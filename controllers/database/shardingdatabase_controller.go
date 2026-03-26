@@ -44,6 +44,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -318,6 +319,17 @@ func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
 		return phaseResult{err: err, reason: "SpecInvalid", message: err.Error()}
 	}
 
+	origStandbyPlan := inst.DeepCopy()
+	standbyPlanChanged := r.ensureStandbyShardNumFromConfig(inst)
+	if standbyPlanChanged {
+		if perr := r.Patch(ctx, inst, client.MergeFrom(origStandbyPlan)); perr != nil {
+			plog.Error(perr, "failed to patch shardNum from standbyConfig", "reason", "StandbyPlanPatchRetry")
+			return phaseResult{wait: true, requeueAfter: 30 * time.Second, reason: "StandbyPlanPatchRetry", message: perr.Error()}
+		}
+		plog.Info("patched shardNum values derived from standbyConfig", "reason", "StandbyPlanPatched")
+		return phaseResult{wait: true, requeueAfter: 2 * time.Second, reason: "StandbyPlanPatched", message: "Standby plan patched from standbyConfig"}
+	}
+
 	orig := inst.DeepCopy()
 	changed, err := r.ensurePrimaryRefForStandby(ctx, inst)
 	if err != nil {
@@ -330,6 +342,11 @@ func (r *ShardingDatabaseReconciler) phaseValidateAndPlan(
 		}
 		plog.Info("patched primaryDatabaseRef for standby shards", "reason", "SpecPatched")
 		return phaseResult{wait: true, requeueAfter: 2 * time.Second, reason: "SpecPatched", message: "Standby primary refs patched"}
+	}
+
+	if err := r.syncDgPairsFromStandbyConfig(inst); err != nil {
+		plog.Error(err, "failed to sync dg pair status from standbyConfig", "reason", "DgPairStatusSyncRetry")
+		return phaseResult{wait: true, requeueAfter: 30 * time.Second, reason: "DgPairStatusSyncRetry", message: err.Error()}
 	}
 
 	origScaleOut := inst.DeepCopy()
@@ -1069,6 +1086,10 @@ func (r *ShardingDatabaseReconciler) validateSpex(instance *databasev4.ShardingD
 		return nil
 	}
 
+	if err := r.validatePrimaryTopologyConstraint(instance); err != nil {
+		return err
+	}
+
 	// Check if last Successful update nil or not
 	if lastSuccSpec == nil {
 		// Logic to check if inital Spec is good or not
@@ -1245,6 +1266,173 @@ func (r *ShardingDatabaseReconciler) comapreGsmEnvVariables(instance *databasev4
 	}
 
 	return true
+}
+
+func (r *ShardingDatabaseReconciler) ensureStandbyShardNumFromConfig(instance *databasev4.ShardingDatabase) bool {
+	changed := false
+	for i := range instance.Spec.ShardInfo {
+		info := &instance.Spec.ShardInfo[i]
+		derived := standbyConfigDerivedShardCountController(info.StandbyConfig)
+		if derived <= 0 {
+			continue
+		}
+		if info.ShardNum != derived {
+			info.ShardNum = derived
+			changed = true
+		}
+	}
+	return changed
+}
+
+func (r *ShardingDatabaseReconciler) syncDgPairsFromStandbyConfig(instance *databasev4.ShardingDatabase) error {
+	desired := r.buildDgPairsFromStandbyConfig(instance)
+	if reflect.DeepEqual(instance.Status.Dg.Pairs, desired) {
+		return nil
+	}
+	return r.updateStatusWithRetry(instance, func(latest *databasev4.ShardingDatabase) {
+		latest.Status.Dg.Pairs = desired
+	})
+}
+
+type primaryIdentity struct {
+	Key     string
+	Connect string
+	Source  string
+}
+
+func (r *ShardingDatabaseReconciler) buildDgPairsFromStandbyConfig(instance *databasev4.ShardingDatabase) []databasev4.DgPairStatus {
+	pairs := []databasev4.DgPairStatus{}
+
+	for i := range instance.Spec.ShardInfo {
+		info := instance.Spec.ShardInfo[i]
+		prefix := strings.TrimSpace(info.ShardPreFixName)
+		if prefix == "" || info.StandbyConfig == nil {
+			continue
+		}
+
+		identities := buildPrimaryIdentities(instance, info.StandbyConfig)
+		if len(identities) == 0 {
+			continue
+		}
+
+		perPrimary := info.StandbyConfig.StandbyPerPrimary
+		if perPrimary <= 0 {
+			perPrimary = 1
+		}
+
+		shardIdx := 1
+		for _, pid := range identities {
+			for n := int32(0); n < perPrimary; n++ {
+				shardName := prefix + strconv.Itoa(shardIdx)
+				pairs = append(pairs, databasev4.DgPairStatus{
+					PrimaryKey:           pid.Key,
+					PrimarySource:        pid.Source,
+					PrimaryConnectString: pid.Connect,
+					StandbyShardName:     shardName,
+					StandbyShardNum:      int32(shardIdx),
+					State:                "MAPPED",
+					Message:              "mapped from standbyConfig",
+				})
+				shardIdx++
+			}
+		}
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].StandbyShardName == pairs[j].StandbyShardName {
+			return pairs[i].PrimaryKey < pairs[j].PrimaryKey
+		}
+		return pairs[i].StandbyShardName < pairs[j].StandbyShardName
+	})
+
+	return pairs
+}
+
+func buildPrimaryIdentities(instance *databasev4.ShardingDatabase, cfg *databasev4.StandbyConfig) []primaryIdentity {
+	if cfg == nil {
+		return nil
+	}
+
+	source := strings.TrimSpace(cfg.SourceType)
+	sourceKey := strings.ToLower(source)
+	ids := []primaryIdentity{}
+	seen := map[string]bool{}
+	appendID := func(pid primaryIdentity) {
+		key := strings.ToLower(strings.TrimSpace(pid.Key))
+		if key == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		ids = append(ids, pid)
+	}
+
+	appendRefs := func() {
+		for i := range cfg.PrimaryDatabaseRefs {
+			ref := cfg.PrimaryDatabaseRefs[i]
+			name := strings.TrimSpace(ref.Name)
+			if name == "" {
+				continue
+			}
+			ns := strings.TrimSpace(ref.Namespace)
+			if ns == "" {
+				ns = instance.Namespace
+			}
+			appendID(primaryIdentity{
+				Key:    ns + "/" + name,
+				Source: "PrimaryDatabaseRef",
+			})
+		}
+	}
+	appendConnects := func() {
+		for i := range cfg.PrimaryConnectStrings {
+			c := strings.TrimSpace(cfg.PrimaryConnectStrings[i])
+			if c == "" {
+				continue
+			}
+			appendID(primaryIdentity{
+				Key:     c,
+				Connect: c,
+				Source:  "ConnectString",
+			})
+		}
+	}
+	appendEndpoints := func() {
+		for i := range cfg.PrimaryEndpoints {
+			e := cfg.PrimaryEndpoints[i]
+			connect := strings.TrimSpace(e.ConnectString)
+			key := connect
+			if key == "" {
+				host := strings.TrimSpace(e.Host)
+				cdb := strings.TrimSpace(e.CdbName)
+				pdb := strings.TrimSpace(e.PdbName)
+				if host == "" && cdb == "" && pdb == "" {
+					continue
+				}
+				key = strings.ToLower(host) + ":" + strconv.Itoa(int(e.Port)) + "/" + strings.ToUpper(cdb) + "/" + strings.ToUpper(pdb)
+			}
+			appendID(primaryIdentity{
+				Key:     key,
+				Connect: connect,
+				Source:  "Endpoint",
+			})
+		}
+	}
+
+	switch sourceKey {
+	case "primarydatabaseref":
+		appendRefs()
+	case "connectstring":
+		appendConnects()
+	case "endpoint":
+		appendEndpoints()
+	default:
+		appendRefs()
+		appendConnects()
+		appendEndpoints()
+	}
+
+	sort.Slice(ids, func(i, j int) bool { return ids[i].Key < ids[j].Key })
+	return ids
 }
 
 // isShapeManagedEnv handles is shape managed env for the sharding database controller.
@@ -1805,9 +1993,12 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 	ctx context.Context,
 	instance *databasev4.ShardingDatabase,
 ) (bool, error) {
+	_ = ctx
 
 	primByGroup := map[string]*databasev4.ShardSpec{}
 	var firstPrim *databasev4.ShardSpec
+	shardingType := effectiveShardingTypeForConstraints(instance)
+	requireShardGroup := shardingType == "SYSTEM" || shardingType == "COMPOSITE"
 
 	for i := range instance.Spec.Shard {
 		s := &instance.Spec.Shard[i]
@@ -1824,15 +2015,19 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 		}
 	}
 
-	if firstPrim == nil {
-		return false, fmt.Errorf("primary shard not found yet")
-	}
-
 	changed := false
 
 	for si := range instance.Spec.ShardInfo {
 		info := &instance.Spec.ShardInfo[si]
 		if info.ShardGroupDetails == nil {
+			continue
+		}
+		if shardingType == "SYSTEM" || shardingType == "COMPOSITE" {
+			// SYSTEM standby mapping is resolved per-standby at runtime from the
+			// single PRIMARY shardGroup.
+			// COMPOSITE standby mapping is resolved per-standby from PRIMARY shards
+			// in the same shardSpace.
+			// Do not force one shardInfo-level primary ref in these modes.
 			continue
 		}
 
@@ -1844,12 +2039,21 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 			continue
 		}
 
+		if standbyConfigPrimaryCountController(info.StandbyConfig) > 0 {
+			// standbyConfig explicitly provides primary source(s); no local primary-ref autofill required.
+			continue
+		}
+
+		if firstPrim == nil {
+			return false, fmt.Errorf("primary shard not found yet")
+		}
+
 		key := normalizeShardGroupKey(info.ShardGroupDetails.Name)
-		if shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" && key == "" {
+		if requireShardGroup && shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" && key == "" {
 			return false, fmt.Errorf("standby shardInfo prefix %s must define shardGroupDetails.name in DG replication mode", strings.TrimSpace(info.ShardPreFixName))
 		}
 		prim := firstPrim
-		if key != "" {
+		if requireShardGroup && key != "" {
 			if p, ok := primByGroup[key]; ok {
 				prim = p
 			} else {
@@ -2126,11 +2330,27 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			instance.Status.Dg.State = "PENDING"
 			r.setDgBrokerStatus(instance, OraShardSpex.Name, "pending")
 
-			primary, perr := r.findPrimaryForStandby(instance, OraShardSpex)
+			primary, primaryConnects, primarySource, perr := r.resolvePrimaryForStandbyDG(instance, OraShardSpex)
 			if perr != nil {
 				instance.Status.Dg.State = "ERROR"
 				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:"+perr.Error())
 				return perr
+			}
+			if len(primaryConnects) == 0 {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:primary connect identifier is empty")
+				return fmt.Errorf("primary connect identifier is empty for standby %s", OraShardSpex.Name)
+			}
+			if primary == nil {
+				// In connect-string/endpoint-only modes we may not have a local primary pod to run SQL*Plus steps.
+				// Keep pair mapping/status, but defer broker role operations to the DG broker controller.
+				r.logLegacy(
+					"INFO",
+					"Skipping local DG pod orchestration for standby "+OraShardSpex.Name+"; resolved primary source="+primarySource+" has no local PRIMARY pod",
+					nil, instance, r.Log,
+				)
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "SKIPPED_NO_LOCAL_PRIMARY")
+				continue
 			}
 
 			primaryPod := primary.Name + "-0"
@@ -2139,10 +2359,6 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			primaryDbUnique := strings.ToUpper(strings.TrimSpace(primary.Name))
 			standbyDbUnique := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name))
 			cfgName := r.buildDgConfigName(instance, *primary, OraShardSpex)
-
-			primaryConnects := []string{
-				r.buildShardConnectIdentifier(instance, *primary, primaryDbUnique),
-			}
 			standbyConnects := []string{
 				r.buildShardConnectIdentifier(instance, OraShardSpex, standbyDbUnique),
 			}
@@ -2974,22 +3190,101 @@ func (r *ShardingDatabaseReconciler) setDgBrokerStatus(instance *databasev4.Shar
 
 // findPrimaryForStandby handles find primary for standby for the sharding database controller.
 func (r *ShardingDatabaseReconciler) findPrimaryForStandby(instance *databasev4.ShardingDatabase, standby databasev4.ShardSpec) (*databasev4.ShardSpec, error) {
+	shardingType := effectiveShardingTypeForConstraints(instance)
+	if shardingType == "SYSTEM" && shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" {
+		standbyGroup := normalizeShardGroupKey(standby.ShardGroup)
+		if standbyGroup == "" {
+			return nil, fmt.Errorf("standby %s must set shardGroup in DG replication mode", standby.Name)
+		}
+
+		primaryGroup, primaries, err := systemPrimaryShardsSorted(instance, r)
+		if err != nil {
+			return nil, err
+		}
+		if standbyGroup == primaryGroup {
+			return nil, fmt.Errorf("standby %s cannot belong to PRIMARY shardGroup %s", standby.Name, primaryGroup)
+		}
+
+		standbys := systemStandbysInGroupSorted(instance, standbyGroup, r)
+		pos := -1
+		for i := range standbys {
+			if strings.EqualFold(strings.TrimSpace(standbys[i].Name), strings.TrimSpace(standby.Name)) {
+				pos = i
+				break
+			}
+		}
+		if pos < 0 {
+			return nil, fmt.Errorf("standby %s not found in shardGroup %s", standby.Name, standbyGroup)
+		}
+		if pos >= len(primaries) {
+			return nil, fmt.Errorf("no PRIMARY database mapping available for standby %s in shardGroup %s", standby.Name, standbyGroup)
+		}
+		return primaries[pos], nil
+	}
+
+	if shardingType == "USER" && shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" {
+		ss := normalizeShardSpaceKey(standby.ShardSpace)
+		if ss == "" {
+			return nil, fmt.Errorf("standby %s must set shardSpace in USER sharding DG mode", standby.Name)
+		}
+		for i := range instance.Spec.Shard {
+			s := &instance.Spec.Shard[i]
+			if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") && normalizeShardSpaceKey(s.ShardSpace) == ss {
+				return s, nil
+			}
+		}
+		return nil, fmt.Errorf("no PRIMARY shard found in shardSpace %s for standby %s", ss, standby.Name)
+	}
+	if shardingType == "COMPOSITE" && shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" {
+		spaceKey := normalizeShardSpaceKey(standby.ShardSpace)
+		groupKey := normalizeShardGroupKey(standby.ShardGroup)
+		if spaceKey == "" {
+			return nil, fmt.Errorf("standby %s must set shardSpace in COMPOSITE sharding DG mode", standby.Name)
+		}
+		if groupKey == "" {
+			return nil, fmt.Errorf("standby %s must set shardGroup in COMPOSITE sharding DG mode", standby.Name)
+		}
+
+		primaries := compositePrimariesInShardSpaceSorted(instance, spaceKey, r)
+		if len(primaries) == 0 {
+			return nil, fmt.Errorf("no PRIMARY shard found in shardSpace %s for standby %s", spaceKey, standby.Name)
+		}
+		standbys := compositeStandbysInSpaceGroupSorted(instance, spaceKey, groupKey, r)
+		pos := -1
+		for i := range standbys {
+			if strings.EqualFold(strings.TrimSpace(standbys[i].Name), strings.TrimSpace(standby.Name)) {
+				pos = i
+				break
+			}
+		}
+		if pos < 0 {
+			return nil, fmt.Errorf("standby %s not found in shardSpace %s and shardGroup %s", standby.Name, spaceKey, groupKey)
+		}
+		if pos >= len(primaries) {
+			return nil, fmt.Errorf("no PRIMARY database mapping available for standby %s in shardGroup %s and shardSpace %s", standby.Name, groupKey, spaceKey)
+		}
+		return primaries[pos], nil
+	}
+
+	requireShardGroup := shardingType == "SYSTEM" || shardingType == "COMPOSITE"
 	sg := normalizeShardGroupKey(standby.ShardGroup)
-	if shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" && sg == "" {
+	if requireShardGroup && shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" && sg == "" {
 		return nil, fmt.Errorf("standby %s must set shardGroup in DG replication mode", standby.Name)
 	}
 
 	// prefer same shardGroup primary
-	for i := range instance.Spec.Shard {
-		s := &instance.Spec.Shard[i]
-		if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
-			if sg != "" && normalizeShardGroupKey(s.ShardGroup) == sg {
-				return s, nil
+	if requireShardGroup {
+		for i := range instance.Spec.Shard {
+			s := &instance.Spec.Shard[i]
+			if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
+				if sg != "" && normalizeShardGroupKey(s.ShardGroup) == sg {
+					return s, nil
+				}
 			}
 		}
-	}
-	if sg != "" {
-		return nil, fmt.Errorf("no PRIMARY shard found in shardGroup %s for standby %s", sg, standby.Name)
+		if sg != "" {
+			return nil, fmt.Errorf("no PRIMARY shard found in shardGroup %s for standby %s", sg, standby.Name)
+		}
 	}
 
 	// fallback: first primary
@@ -3003,8 +3298,432 @@ func (r *ShardingDatabaseReconciler) findPrimaryForStandby(instance *databasev4.
 	return nil, fmt.Errorf("no PRIMARY shard found for standby %s", standby.Name)
 }
 
+func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance *databasev4.ShardingDatabase) error {
+	shardingType := effectiveShardingTypeForConstraints(instance)
+	if shardingType != "SYSTEM" && (shardingType != "USER" || shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) != "DG") {
+		return nil
+	}
+
+	if shardingType == "SYSTEM" {
+		primaryGroups := map[string]int{}
+		standbyGroups := map[string]int{}
+		regionByGroup := map[string]string{}
+		groupByRegion := map[string]string{}
+		for i := range instance.Spec.Shard {
+			s := instance.Spec.Shard[i]
+			if shardingv1.CheckIsDeleteFlag(s.IsDelete, instance, r.Log) {
+				continue
+			}
+			g := normalizeShardGroupKey(s.ShardGroup)
+			if g == "" {
+				continue
+			}
+			region := strings.ToUpper(strings.TrimSpace(s.ShardRegion))
+			if region != "" {
+				if old, ok := regionByGroup[g]; ok && old != region {
+					return fmt.Errorf("system sharding: shardGroup %s cannot span multiple regions (%s, %s)", g, old, region)
+				}
+				regionByGroup[g] = region
+				if oldGroup, ok := groupByRegion[region]; ok && oldGroup != g {
+					return fmt.Errorf("system sharding: region %s is already used by shardGroup %s", region, oldGroup)
+				}
+				groupByRegion[region] = g
+			}
+
+			deployAs := strings.ToUpper(strings.TrimSpace(s.DeployAs))
+			switch deployAs {
+			case "PRIMARY":
+				primaryGroups[g]++
+			case "STANDBY", "ACTIVE_STANDBY":
+				standbyGroups[g]++
+			}
+		}
+
+		if len(primaryGroups) != 1 {
+			groups := make([]string, 0, len(primaryGroups))
+			for g := range primaryGroups {
+				groups = append(groups, g)
+			}
+			slices.Sort(groups)
+			return fmt.Errorf("system sharding requires exactly one PRIMARY shardgroup; found %d groups: %s", len(groups), strings.Join(groups, ","))
+		}
+
+		var primaryGroup string
+		var primaryCount int
+		for g, c := range primaryGroups {
+			primaryGroup = g
+			primaryCount = c
+		}
+		if standbyGroups[primaryGroup] > 0 {
+			return fmt.Errorf("system sharding: PRIMARY shardGroup %s must not contain standby databases", primaryGroup)
+		}
+		for standbyGroup, standbyCount := range standbyGroups {
+			if standbyGroup == primaryGroup {
+				continue
+			}
+			if standbyCount > primaryCount {
+				return fmt.Errorf("system sharding: standby shardGroup %s has %d standby databases but primary shardGroup %s has only %d primary databases", standbyGroup, standbyCount, primaryGroup, primaryCount)
+			}
+		}
+
+		return nil
+	}
+	if shardingType == "COMPOSITE" && shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" {
+		primaryGroupsBySpace := map[string]map[string]bool{}
+		primaryReplicaCountBySpace := map[string]int{}
+		standbyReplicaCountBySpaceGroup := map[string]map[string]int{}
+		for i := range instance.Spec.Shard {
+			s := instance.Spec.Shard[i]
+			if shardingv1.CheckIsDeleteFlag(s.IsDelete, instance, r.Log) {
+				continue
+			}
+			spaceKey := normalizeShardSpaceKey(s.ShardSpace)
+			groupKey := normalizeShardGroupKey(s.ShardGroup)
+			if spaceKey == "" || groupKey == "" {
+				continue
+			}
+			if _, ok := primaryGroupsBySpace[spaceKey]; !ok {
+				primaryGroupsBySpace[spaceKey] = map[string]bool{}
+			}
+			if _, ok := standbyReplicaCountBySpaceGroup[spaceKey]; !ok {
+				standbyReplicaCountBySpaceGroup[spaceKey] = map[string]int{}
+			}
+			deployAs := strings.ToUpper(strings.TrimSpace(s.DeployAs))
+			switch deployAs {
+			case "PRIMARY":
+				primaryGroupsBySpace[spaceKey][groupKey] = true
+				primaryReplicaCountBySpace[spaceKey]++
+			case "STANDBY", "ACTIVE_STANDBY":
+				standbyReplicaCountBySpaceGroup[spaceKey][groupKey]++
+			}
+		}
+
+		for spaceKey, groups := range primaryGroupsBySpace {
+			if len(groups) != 1 {
+				groupNames := make([]string, 0, len(groups))
+				for g := range groups {
+					groupNames = append(groupNames, g)
+				}
+				slices.Sort(groupNames)
+				return fmt.Errorf("composite sharding requires exactly one PRIMARY shardGroup per shardSpace; shardSpace %s has %d groups: %s", spaceKey, len(groups), strings.Join(groupNames, ","))
+			}
+			primaryCount := primaryReplicaCountBySpace[spaceKey]
+			for standbyGroup, standbyCount := range standbyReplicaCountBySpaceGroup[spaceKey] {
+				if standbyCount > primaryCount {
+					return fmt.Errorf("composite sharding: standby shardGroup %s in shardSpace %s has %d standby databases but primary shardGroup has only %d primary databases", standbyGroup, spaceKey, standbyCount, primaryCount)
+				}
+			}
+		}
+		return nil
+	}
+
+	spacePrimaryCount := map[string]int{}
+	spaceSeen := map[string]bool{}
+	spaceExternalPrimary := map[string]bool{}
+	for i := range instance.Spec.ShardInfo {
+		info := instance.Spec.ShardInfo[i]
+		if info.ShardSpaceDetails == nil {
+			continue
+		}
+		ss := normalizeShardSpaceKey(info.ShardSpaceDetails.Name)
+		if ss == "" {
+			continue
+		}
+		if standbyConfigPrimaryCountController(info.StandbyConfig) > 0 {
+			spaceExternalPrimary[ss] = true
+		}
+	}
+	for i := range instance.Spec.Shard {
+		s := instance.Spec.Shard[i]
+		if shardingv1.CheckIsDeleteFlag(s.IsDelete, instance, r.Log) {
+			continue
+		}
+		ss := normalizeShardSpaceKey(s.ShardSpace)
+		if ss == "" {
+			continue
+		}
+		spaceSeen[ss] = true
+		if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
+			spacePrimaryCount[ss]++
+		}
+	}
+
+	for ss := range spaceSeen {
+		cnt := spacePrimaryCount[ss]
+		if cnt > 1 {
+			return fmt.Errorf("user sharding DG allows at most one PRIMARY shard per shardSpace; shardSpace %s has %d", ss, cnt)
+		}
+		if spaceExternalPrimary[ss] {
+			if cnt > 0 {
+				return fmt.Errorf("user sharding shardSpace %s uses standbyConfig primary source; do not set local deployAs=PRIMARY", ss)
+			}
+			continue
+		}
+		if cnt == 0 {
+			return fmt.Errorf("user sharding DG requires exactly one PRIMARY shard per shardSpace; shardSpace %s has none", ss)
+		}
+	}
+	return nil
+}
+
+func effectiveShardingTypeForConstraints(instance *databasev4.ShardingDatabase) string {
+	if instance == nil {
+		return "SYSTEM"
+	}
+	if v := strings.ToUpper(strings.TrimSpace(instance.Spec.ShardingType)); v == "SYSTEM" || v == "USER" || v == "COMPOSITE" {
+		return v
+	}
+
+	hasGroup := false
+	hasSpace := false
+	for i := range instance.Spec.Shard {
+		if strings.TrimSpace(instance.Spec.Shard[i].ShardGroup) != "" {
+			hasGroup = true
+		}
+		if strings.TrimSpace(instance.Spec.Shard[i].ShardSpace) != "" {
+			hasSpace = true
+		}
+	}
+	for i := range instance.Spec.ShardInfo {
+		info := instance.Spec.ShardInfo[i]
+		if info.ShardGroupDetails != nil && strings.TrimSpace(info.ShardGroupDetails.Name) != "" {
+			hasGroup = true
+		}
+		if info.ShardSpaceDetails != nil && strings.TrimSpace(info.ShardSpaceDetails.Name) != "" {
+			hasSpace = true
+		}
+	}
+
+	switch {
+	case hasGroup && hasSpace:
+		return "COMPOSITE"
+	case hasSpace:
+		return "USER"
+	default:
+		return "SYSTEM"
+	}
+}
+
+func (r *ShardingDatabaseReconciler) resolvePrimaryForStandbyDG(
+	instance *databasev4.ShardingDatabase,
+	standby databasev4.ShardSpec,
+) (*databasev4.ShardSpec, []string, string, error) {
+	if pair := r.findDgPairForStandby(instance, standby.Name); pair != nil {
+		source := strings.TrimSpace(pair.PrimarySource)
+		connect := strings.TrimSpace(pair.PrimaryConnectString)
+
+		if p := r.findPrimaryByPair(instance, *pair); p != nil {
+			connects := []string{}
+			if connect != "" {
+				connects = append(connects, connect)
+			}
+			connects = append(connects, r.buildShardConnectIdentifier(instance, *p, strings.ToUpper(strings.TrimSpace(p.Name))))
+			return p, uniqueNonEmpty(connects), source, nil
+		}
+
+		if connect != "" {
+			return nil, []string{connect}, source, nil
+		}
+
+		return nil, nil, source, fmt.Errorf("dg pair for standby %s has no usable primary mapping", standby.Name)
+	}
+
+	p, err := r.findPrimaryForStandby(instance, standby)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	if p == nil {
+		return nil, nil, "", fmt.Errorf("primary is nil for standby %s", standby.Name)
+	}
+	connect := r.buildShardConnectIdentifier(instance, *p, strings.ToUpper(strings.TrimSpace(p.Name)))
+	return p, []string{connect}, "SpecFallback", nil
+}
+
+func (r *ShardingDatabaseReconciler) findDgPairForStandby(instance *databasev4.ShardingDatabase, standbyName string) *databasev4.DgPairStatus {
+	target := strings.TrimSpace(standbyName)
+	if target == "" {
+		return nil
+	}
+	for i := range instance.Status.Dg.Pairs {
+		p := &instance.Status.Dg.Pairs[i]
+		if strings.TrimSpace(p.StandbyShardName) == target {
+			return p
+		}
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) findPrimaryByPair(instance *databasev4.ShardingDatabase, pair databasev4.DgPairStatus) *databasev4.ShardSpec {
+	if p := r.findPrimaryByPairKey(instance, pair.PrimaryKey); p != nil {
+		return p
+	}
+	if p := r.findPrimaryByConnectString(instance, pair.PrimaryConnectString); p != nil {
+		return p
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) findPrimaryByPairKey(instance *databasev4.ShardingDatabase, key string) *databasev4.ShardSpec {
+	raw := strings.TrimSpace(key)
+	if raw == "" {
+		return nil
+	}
+	if strings.Contains(raw, "/") {
+		parts := strings.Split(raw, "/")
+		raw = strings.TrimSpace(parts[len(parts)-1])
+	}
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
+		if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") && strings.EqualFold(strings.TrimSpace(s.Name), raw) {
+			return s
+		}
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) findPrimaryByConnectString(instance *databasev4.ShardingDatabase, connect string) *databasev4.ShardSpec {
+	target := strings.TrimSpace(connect)
+	if target == "" {
+		return nil
+	}
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
+		if !strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(s.Connect), target) {
+			return s
+		}
+		dbu := strings.ToUpper(strings.TrimSpace(s.Name))
+		if strings.EqualFold(r.buildShardConnectIdentifier(instance, *s, dbu), target) {
+			return s
+		}
+	}
+	return nil
+}
+
+func uniqueNonEmpty(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := map[string]bool{}
+	for i := range in {
+		v := strings.TrimSpace(in[i])
+		if v == "" {
+			continue
+		}
+		k := strings.ToLower(v)
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, v)
+	}
+	return out
+}
+
 func normalizeShardGroupKey(v string) string {
 	return strings.ToUpper(strings.TrimSpace(v))
+}
+
+func normalizeShardSpaceKey(v string) string {
+	return strings.ToUpper(strings.TrimSpace(v))
+}
+
+func systemPrimaryShardsSorted(instance *databasev4.ShardingDatabase, r *ShardingDatabaseReconciler) (string, []*databasev4.ShardSpec, error) {
+	primaryGroups := map[string][]*databasev4.ShardSpec{}
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
+		if shardingv1.CheckIsDeleteFlag(s.IsDelete, instance, r.Log) {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
+			continue
+		}
+		g := normalizeShardGroupKey(s.ShardGroup)
+		if g == "" {
+			continue
+		}
+		primaryGroups[g] = append(primaryGroups[g], s)
+	}
+	if len(primaryGroups) != 1 {
+		groups := make([]string, 0, len(primaryGroups))
+		for g := range primaryGroups {
+			groups = append(groups, g)
+		}
+		slices.Sort(groups)
+		return "", nil, fmt.Errorf("system sharding requires exactly one PRIMARY shardgroup; found %d groups: %s", len(groups), strings.Join(groups, ","))
+	}
+	for group, primaries := range primaryGroups {
+		sort.Slice(primaries, func(i, j int) bool {
+			return strings.ToUpper(strings.TrimSpace(primaries[i].Name)) < strings.ToUpper(strings.TrimSpace(primaries[j].Name))
+		})
+		return group, primaries, nil
+	}
+	return "", nil, fmt.Errorf("system sharding requires exactly one PRIMARY shardgroup")
+}
+
+func systemStandbysInGroupSorted(instance *databasev4.ShardingDatabase, standbyGroup string, r *ShardingDatabaseReconciler) []*databasev4.ShardSpec {
+	out := make([]*databasev4.ShardSpec, 0)
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
+		if shardingv1.CheckIsDeleteFlag(s.IsDelete, instance, r.Log) {
+			continue
+		}
+		if normalizeShardGroupKey(s.ShardGroup) != standbyGroup {
+			continue
+		}
+		deployAs := strings.ToUpper(strings.TrimSpace(s.DeployAs))
+		if deployAs != "STANDBY" && deployAs != "ACTIVE_STANDBY" {
+			continue
+		}
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToUpper(strings.TrimSpace(out[i].Name)) < strings.ToUpper(strings.TrimSpace(out[j].Name))
+	})
+	return out
+}
+
+func compositePrimariesInShardSpaceSorted(instance *databasev4.ShardingDatabase, spaceKey string, r *ShardingDatabaseReconciler) []*databasev4.ShardSpec {
+	out := make([]*databasev4.ShardSpec, 0)
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
+		if shardingv1.CheckIsDeleteFlag(s.IsDelete, instance, r.Log) {
+			continue
+		}
+		if normalizeShardSpaceKey(s.ShardSpace) != spaceKey {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
+			continue
+		}
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToUpper(strings.TrimSpace(out[i].Name)) < strings.ToUpper(strings.TrimSpace(out[j].Name))
+	})
+	return out
+}
+
+func compositeStandbysInSpaceGroupSorted(instance *databasev4.ShardingDatabase, spaceKey, groupKey string, r *ShardingDatabaseReconciler) []*databasev4.ShardSpec {
+	out := make([]*databasev4.ShardSpec, 0)
+	for i := range instance.Spec.Shard {
+		s := &instance.Spec.Shard[i]
+		if shardingv1.CheckIsDeleteFlag(s.IsDelete, instance, r.Log) {
+			continue
+		}
+		if normalizeShardSpaceKey(s.ShardSpace) != spaceKey || normalizeShardGroupKey(s.ShardGroup) != groupKey {
+			continue
+		}
+		deployAs := strings.ToUpper(strings.TrimSpace(s.DeployAs))
+		if deployAs != "STANDBY" && deployAs != "ACTIVE_STANDBY" {
+			continue
+		}
+		out = append(out, s)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToUpper(strings.TrimSpace(out[i].Name)) < strings.ToUpper(strings.TrimSpace(out[j].Name))
+	})
+	return out
 }
 
 func (r *ShardingDatabaseReconciler) buildDgConfigName(
@@ -3399,6 +4118,9 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 }
 
 func shardInfoDesiredCount(info databasev4.ShardingDetails) int32 {
+	if c := standbyConfigDerivedShardCountController(info.StandbyConfig); c > 0 {
+		return c
+	}
 	if info.ShardNum > 0 {
 		return info.ShardNum
 	}
@@ -3406,6 +4128,86 @@ func shardInfoDesiredCount(info databasev4.ShardingDetails) int32 {
 		return info.Replicas
 	}
 	return 0
+}
+
+func standbyConfigDerivedShardCountController(cfg *databasev4.StandbyConfig) int32 {
+	if cfg == nil {
+		return 0
+	}
+
+	primaryCount := standbyConfigPrimaryCountController(cfg)
+	if primaryCount == 0 {
+		return 0
+	}
+
+	perPrimary := cfg.StandbyPerPrimary
+	if perPrimary <= 0 {
+		perPrimary = 1
+	}
+
+	return primaryCount * perPrimary
+}
+
+func standbyConfigPrimaryCountController(cfg *databasev4.StandbyConfig) int32 {
+	if cfg == nil {
+		return 0
+	}
+
+	switch strings.ToLower(strings.TrimSpace(cfg.SourceType)) {
+	case "primarydatabaseref":
+		return int32(len(cfg.PrimaryDatabaseRefs))
+	case "connectstring":
+		return countUniqueStringsController(cfg.PrimaryConnectStrings)
+	case "endpoint":
+		return countUniquePrimaryEndpointsController(cfg.PrimaryEndpoints)
+	}
+
+	// Backward-compatible fallback when sourceType is omitted.
+	if c := int32(len(cfg.PrimaryDatabaseRefs)); c > 0 {
+		return c
+	}
+	if c := countUniqueStringsController(cfg.PrimaryConnectStrings); c > 0 {
+		return c
+	}
+	return countUniquePrimaryEndpointsController(cfg.PrimaryEndpoints)
+}
+
+func countUniqueStringsController(in []string) int32 {
+	seen := map[string]bool{}
+	var count int32
+	for i := range in {
+		v := strings.ToLower(strings.TrimSpace(in[i]))
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		count++
+	}
+	return count
+}
+
+func countUniquePrimaryEndpointsController(in []databasev4.PrimaryEndpointRef) int32 {
+	seen := map[string]bool{}
+	var count int32
+	for i := range in {
+		e := in[i]
+		key := strings.ToLower(strings.TrimSpace(e.ConnectString))
+		if key == "" {
+			host := strings.ToLower(strings.TrimSpace(e.Host))
+			cdb := strings.ToLower(strings.TrimSpace(e.CdbName))
+			pdb := strings.ToLower(strings.TrimSpace(e.PdbName))
+			if host == "" && cdb == "" && pdb == "" {
+				continue
+			}
+			key = host + ":" + strconv.Itoa(int(e.Port)) + "/" + cdb + "/" + pdb
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		count++
+	}
+	return count
 }
 
 // desiredShardNamesFromShardInfo handles desired shard names from shard info for the sharding database controller.

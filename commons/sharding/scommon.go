@@ -1015,14 +1015,11 @@ func buildCatalogParams(instance *databasev4.ShardingDatabase) string {
 	}
 
 	autoVncr := strings.ToLower(strings.TrimSpace(catalog.AutoVncr))
-	if autoVncr == "" {
-		autoVncr = "off"
-	}
-	switch autoVncr {
-	case "on", "off":
-		result = append(result, "autovncr="+autoVncr)
-	default:
-		result = append(result, "autovncr=off")
+	if autoVncr != "" {
+		switch autoVncr {
+		case "on", "off":
+			result = append(result, "autovncr="+autoVncr)
+		}
 	}
 
 	agentPort := int32(8080)
