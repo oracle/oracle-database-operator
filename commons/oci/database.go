@@ -84,8 +84,9 @@ func NewDatabaseService(
 /********************************
  * Autonomous Database
  *******************************/
+const passwordKey = "password"
 
-// ReadPassword reads the password from passwordSpec, and returns the pointer to the read password string.
+// ReadPassword reads the password either from a K8s Secret, or an OCI Secret, and returns the pointer to the read password string.
 // The function returns a nil if nothing is read
 func (d *DatabaseService) readPassword(namespace string, passwordSpec dbv4.PasswordSpec) (*string, error) {
 	logger := d.logger.WithName("readPassword")
@@ -93,8 +94,7 @@ func (d *DatabaseService) readPassword(namespace string, passwordSpec dbv4.Passw
 	if passwordSpec.K8sSecret.Name != nil {
 		logger.Info(fmt.Sprintf("Getting password from Secret %s", *passwordSpec.K8sSecret.Name))
 
-		key := *passwordSpec.K8sSecret.Name
-		password, err := k8s.GetSecretValue(d.kubeClient, namespace, *passwordSpec.K8sSecret.Name, key)
+		password, err := k8s.GetSecretValue(d.kubeClient, namespace, *passwordSpec.K8sSecret.Name, passwordKey)
 		if err != nil {
 			return nil, err
 		}
@@ -278,6 +278,26 @@ func (d *DatabaseService) DeleteAutonomousDatabase(adbOCID string) (database.Del
 	}
 
 	return d.dbClient.DeleteAutonomousDatabase(context.TODO(), deleteRequest)
+}
+
+func (d *DatabaseService) GetWallet(adb *dbv4.AutonomousDatabase) (resp database.GetAutonomousDatabaseWalletResponse, err error) {
+	retryPolicy := common.DefaultRetryPolicy()
+
+	// Download a Wallet
+	req := database.GetAutonomousDatabaseWalletRequest{
+		AutonomousDatabaseId: adb.Spec.Details.Id,
+		RequestMetadata: common.RequestMetadata{
+			RetryPolicy: &retryPolicy,
+		},
+	}
+
+	// Send the request using the service client
+	resp, err = d.dbClient.GetAutonomousDatabaseWallet(context.TODO(), req)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, nil
 }
 
 func (d *DatabaseService) DownloadWallet(adb *dbv4.AutonomousDatabase) (resp database.GenerateAutonomousDatabaseWalletResponse, err error) {
