@@ -48,6 +48,8 @@ import (
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
+	dataguardcommon "github.com/oracle/oracle-database-operator/commons/dataguard"
+	dgsidb "github.com/oracle/oracle-database-operator/commons/dataguard/sidb"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
@@ -78,17 +80,19 @@ type SingleInstanceDatabaseReconciler struct {
 	Recorder record.EventRecorder
 }
 
+type sidbPhaseContext struct {
+	singleInstanceDatabase  *dbapi.SingleInstanceDatabase
+	cloneFromDatabase       *dbapi.SingleInstanceDatabase
+	referredPrimaryDatabase *dbapi.SingleInstanceDatabase
+	readyPod                corev1.Pod
+	futureRequeue           ctrl.Result
+}
+
 // To requeue after 15 secs allowing graceful state changes
 var requeueY ctrl.Result = ctrl.Result{Requeue: true, RequeueAfter: 15 * time.Second}
 var requeueN ctrl.Result = ctrl.Result{}
 
-// For scheduling reconcile to renew certs if TCPS is enabled
-// Default value is requeueN (No reconcile)
-var futureRequeue ctrl.Result = requeueN
-
 const singleInstanceDatabaseFinalizer = "database.oracle.com/singleinstancedatabasefinalizer"
-
-var oemExpressUrl string
 
 var ErrNotPhysicalStandby error = errors.New("database not in PHYSICAL_STANDBY role")
 var ErrDBNotConfiguredWithDG error = errors.New("database is not configured with a dataguard configuration")
@@ -120,14 +124,17 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 	completed := false
 	blocked := false
 
-	singleInstanceDatabase := &dbapi.SingleInstanceDatabase{}
-	cloneFromDatabase := &dbapi.SingleInstanceDatabase{}
-	referredPrimaryDatabase := &dbapi.SingleInstanceDatabase{}
+	phaseCtx := &sidbPhaseContext{
+		singleInstanceDatabase:  &dbapi.SingleInstanceDatabase{},
+		cloneFromDatabase:       &dbapi.SingleInstanceDatabase{},
+		referredPrimaryDatabase: &dbapi.SingleInstanceDatabase{},
+		futureRequeue:           requeueN,
+	}
 
 	// Execute for every reconcile
-	defer r.updateReconcileStatus(singleInstanceDatabase, ctx, &result, &err, &blocked, &completed)
+	defer r.updateReconcileStatus(phaseCtx.singleInstanceDatabase, ctx, &result, &err, &blocked, &completed)
 
-	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, singleInstanceDatabase)
+	err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: req.Name}, phaseCtx.singleInstanceDatabase)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			r.Log.Info("Resource not found")
@@ -137,25 +144,16 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return requeueY, err
 	}
 
-	/* Initialize Status */
-	if singleInstanceDatabase.Status.Status == "" {
-		singleInstanceDatabase.Status.Status = dbcommons.StatusPending
-		if singleInstanceDatabase.Spec.Edition != "" {
-			singleInstanceDatabase.Status.Edition = cases.Title(language.English).String(singleInstanceDatabase.Spec.Edition)
-		} else {
-			singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
-		}
-		singleInstanceDatabase.Status.Role = dbcommons.ValueUnavailable
-		singleInstanceDatabase.Status.ConnectString = dbcommons.ValueUnavailable
-		singleInstanceDatabase.Status.PdbConnectString = dbcommons.ValueUnavailable
-		singleInstanceDatabase.Status.TcpsConnectString = dbcommons.ValueUnavailable
-		singleInstanceDatabase.Status.OemExpressUrl = dbcommons.ValueUnavailable
-		singleInstanceDatabase.Status.ReleaseUpdate = dbcommons.ValueUnavailable
-		r.Status().Update(ctx, singleInstanceDatabase)
+	result, err = r.runSIDBPhase(req, "initialize_status", func() (ctrl.Result, error) {
+		return requeueN, r.phaseInitializeStatus(ctx, phaseCtx.singleInstanceDatabase)
+	})
+	if err != nil {
+		return result, err
 	}
 
-	// Manage SingleInstanceDatabase Deletion
-	result, err = r.manageSingleInstanceDatabaseDeletion(req, ctx, singleInstanceDatabase)
+	result, err = r.runSIDBPhase(req, "manage_deletion", func() (ctrl.Result, error) {
+		return r.manageSingleInstanceDatabaseDeletion(req, ctx, phaseCtx.singleInstanceDatabase)
+	})
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -165,172 +163,326 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
-	// First validate
-	result, err = r.validate(singleInstanceDatabase, cloneFromDatabase, referredPrimaryDatabase, ctx, req)
+	result, err = r.runSIDBPhase(req, "validate", func() (ctrl.Result, error) {
+		res, e := r.validate(phaseCtx.singleInstanceDatabase, phaseCtx.cloneFromDatabase, phaseCtx.referredPrimaryDatabase, ctx, req)
+		if res.Requeue {
+			r.Log.Info("Spec validation failed, Reconcile queued")
+			return res, nil
+		}
+		if e != nil {
+			r.Log.Info("Spec validation failed")
+			return res, nil
+		}
+		return res, nil
+	})
 	if result.Requeue {
-		r.Log.Info("Spec validation failed, Reconcile queued")
 		return result, nil
 	}
 	if err != nil {
-		r.Log.Info("Spec validation failed")
-		return result, nil
+		return result, err
 	}
 
-	// PVC Creation for Datafiles Volume
-	result, err = r.createOrReplacePVCforDatafilesVol(ctx, req, singleInstanceDatabase)
+	result, err = r.runSIDBPhase(req, "mode_pre_ready", func() (ctrl.Result, error) {
+		return r.phaseModePreReady(ctx, req, phaseCtx)
+	})
+	if result.Requeue {
+		return result, nil
+	}
+	if err != nil {
+		return result, err
+	}
+
+	result, err = r.runSIDBPhase(req, "ensure_datafiles_pvc", func() (ctrl.Result, error) {
+		return r.createOrReplacePVCforDatafilesVol(ctx, req, phaseCtx.singleInstanceDatabase)
+	})
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
+	if err != nil {
+		return result, err
+	}
 
-	// PVC Creation for customScripts Volume
-	result, err = r.createOrReplacePVCforCustomScriptsVol(ctx, req, singleInstanceDatabase)
+	result, err = r.runSIDBPhase(req, "ensure_customscripts_pvc", func() (ctrl.Result, error) {
+		return r.createOrReplacePVCforCustomScriptsVol(ctx, req, phaseCtx.singleInstanceDatabase)
+	})
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
+	if err != nil {
+		return result, err
+	}
 
-	// POD creation
-	result, err = r.createOrReplacePods(singleInstanceDatabase, cloneFromDatabase, referredPrimaryDatabase, ctx, req)
+	result, err = r.runSIDBPhase(req, "ensure_pods", func() (ctrl.Result, error) {
+		return r.createOrReplacePods(phaseCtx.singleInstanceDatabase, phaseCtx.cloneFromDatabase, phaseCtx.referredPrimaryDatabase, ctx, req)
+	})
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
+	if err != nil {
+		return result, err
+	}
 
-	// Service creation
-	result, err = r.createOrReplaceSVC(ctx, req, singleInstanceDatabase)
+	result, err = r.runSIDBPhase(req, "ensure_service", func() (ctrl.Result, error) {
+		return r.createOrReplaceSVC(ctx, req, phaseCtx.singleInstanceDatabase)
+	})
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
+	if err != nil {
+		return result, err
+	}
 
-	// Validate readiness
-	result, readyPod, err := r.validateDBReadiness(singleInstanceDatabase, ctx, req)
+	result, err = r.runSIDBPhase(req, "validate_readiness", func() (ctrl.Result, error) {
+		res, readyPod, e := r.validateDBReadiness(phaseCtx.singleInstanceDatabase, ctx, req)
+		if e != nil {
+			return res, e
+		}
+		phaseCtx.readyPod = readyPod
+		return res, nil
+	})
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
-
-	// Post DB ready operations
-
-	// Deleting the oracle wallet
-	if singleInstanceDatabase.Status.DatafilesCreated == "true" {
-		result, err = r.deleteWallet(singleInstanceDatabase, ctx, req)
-		if result.Requeue {
-			r.Log.Info("Reconcile queued")
-			return result, nil
-		}
+	if err != nil {
+		return result, err
 	}
 
-	sidbRole, err := dbcommons.GetDatabaseRole(readyPod, r, r.Config, ctx, req)
-
-	if sidbRole == "PRIMARY" {
-		// Update DB config
-		result, err = r.updateDBConfig(singleInstanceDatabase, readyPod, ctx, req)
-		if result.Requeue {
-			r.Log.Info("Reconcile queued")
-			return result, nil
-		}
-
-		// Update Init Parameters
-		result, err = r.updateInitParameters(singleInstanceDatabase, readyPod, ctx, req)
-		if result.Requeue {
-			r.Log.Info("Reconcile queued")
-			return result, nil
-		}
-
-		// Configure TCPS
-		result, err = r.configTcps(singleInstanceDatabase, readyPod, ctx, req)
-		if result.Requeue {
-			r.Log.Info("Reconcile queued")
-			return result, nil
-		}
-
-	} else {
-		if singleInstanceDatabase.Status.DgBroker == nil {
-			err = SetupStandbyDatabase(r, singleInstanceDatabase, referredPrimaryDatabase, ctx, req)
-			if err != nil {
-				return requeueY, err
-			}
-		}
-
-		databaseOpenMode, err := dbcommons.GetDatabaseOpenMode(readyPod, r, r.Config, ctx, req, singleInstanceDatabase.Spec.Edition)
-		if err != nil {
-			r.Log.Error(err, err.Error())
-			return requeueY, err
-		}
-		r.Log.Info("DB openMode Output")
-		r.Log.Info(databaseOpenMode)
-
-		if databaseOpenMode == "READ_ONLY" || databaseOpenMode == "MOUNTED" {
-			out, err := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ModifyStdbyDBOpenMode, dbcommons.SQLPlusCLI))
-			if err != nil {
-				r.Log.Error(err, err.Error())
-				return requeueY, err
-			}
-			r.Log.Info("Standby DB open mode modified")
-			r.Log.Info(out)
-		}
-
-		singleInstanceDatabase.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(singleInstanceDatabase, referredPrimaryDatabase)
-
-		if !IsExternalPrimaryDatabase(singleInstanceDatabase) && referredPrimaryDatabase != nil && referredPrimaryDatabase.Name != "" {
-			if len(referredPrimaryDatabase.Status.StandbyDatabases) == 0 {
-				referredPrimaryDatabase.Status.StandbyDatabases = make(map[string]string)
-			}
-			referredPrimaryDatabase.Status.StandbyDatabases[strings.ToUpper(singleInstanceDatabase.Spec.Sid)] = singleInstanceDatabase.Name
-			r.Status().Update(ctx, referredPrimaryDatabase)
-		}
+	result, err = r.runSIDBPhase(req, "mode_post_ready", func() (ctrl.Result, error) {
+		return r.phaseModePostReady(ctx, req, phaseCtx)
+	})
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+	if err != nil {
+		return result, err
 	}
 
 	// manage snapshot database creation
-	if singleInstanceDatabase.Spec.ConvertToSnapshotStandby != singleInstanceDatabase.Status.ConvertToSnapshotStandby {
-		result, err := r.manageConvPhysicalToSnapshot(ctx, req)
-		if err != nil {
-			return requeueN, err
+	result, err = r.runSIDBPhase(req, "snapshot_conversion", func() (ctrl.Result, error) {
+		if phaseCtx.singleInstanceDatabase.Spec.ConvertToSnapshotStandby != phaseCtx.singleInstanceDatabase.Status.ConvertToSnapshotStandby {
+			res, e := r.manageConvPhysicalToSnapshot(ctx, req)
+			if e != nil {
+				return requeueN, e
+			}
+			if res.Requeue {
+				return requeueY, nil
+			}
 		}
-		if result.Requeue {
-			return requeueY, nil
-		}
+		return requeueN, nil
+	})
+	if result.Requeue {
+		return result, nil
+	}
+	if err != nil {
+		return result, err
 	}
 
 	// Run Datapatch
-	if strings.ToUpper(singleInstanceDatabase.Status.Role) == "PRIMARY" && singleInstanceDatabase.Status.DatafilesPatched != "true" {
-		// add a blocking reconcile condition
-		err = errors.New("processing datapatch execution")
-		blocked = true
-		r.updateReconcileStatus(singleInstanceDatabase, ctx, &result, &err, &blocked, &completed)
-		result, err = r.runDatapatch(singleInstanceDatabase, readyPod, ctx, req)
-		if result.Requeue {
-			r.Log.Info("Reconcile queued")
-			return result, nil
+	result, err = r.runSIDBPhase(req, "run_datapatch", func() (ctrl.Result, error) {
+		if strings.ToUpper(phaseCtx.singleInstanceDatabase.Status.Role) == "PRIMARY" && phaseCtx.singleInstanceDatabase.Status.DatafilesPatched != "true" {
+			// add a blocking reconcile condition
+			e := errors.New("processing datapatch execution")
+			blocked = true
+			r.updateReconcileStatus(phaseCtx.singleInstanceDatabase, ctx, &result, &e, &blocked, &completed)
+			return r.runDatapatch(phaseCtx.singleInstanceDatabase, phaseCtx.readyPod, ctx, req)
 		}
+		return requeueN, nil
+	})
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
 	}
-
-	// This is to ensure that in case of LoadBalancer services the, the Load Balancer is ready to serve the requests
-	if singleInstanceDatabase.Status.ConnectString == dbcommons.ValueUnavailable {
-		r.Log.Info("Connect string not available for the database " + singleInstanceDatabase.Name)
-		return requeueY, nil
-	}
-
-	// updating singleinstancedatabase Status
-	err = r.updateSidbStatus(singleInstanceDatabase, readyPod, ctx, req)
 	if err != nil {
-		return requeueY, err
+		return result, err
 	}
-	r.updateORDSStatus(singleInstanceDatabase, ctx, req)
+
+	result, err = r.runSIDBPhase(req, "mode_status_sync", func() (ctrl.Result, error) {
+		return r.phaseModeStatusSync(ctx, req, phaseCtx)
+	})
+	if result.Requeue {
+		return result, nil
+	}
+	if err != nil {
+		return result, err
+	}
 
 	completed = true
 	r.Log.Info("Reconcile completed")
 
-	// Scheduling a reconcile for certificate renewal, if TCPS is enabled
-	if futureRequeue != requeueN {
-		r.Log.Info("Scheduling Reconcile for cert renewal", "Duration(Hours)", futureRequeue.RequeueAfter.Hours())
-		copyFutureRequeue := futureRequeue
-		futureRequeue = requeueN
-		return copyFutureRequeue, nil
+	return r.runSIDBPhase(req, "schedule_future_requeue", func() (ctrl.Result, error) {
+		return r.phaseScheduleFutureRequeue(phaseCtx)
+	})
+}
+
+func (r *SingleInstanceDatabaseReconciler) phaseLogger(req ctrl.Request, phase string) logr.Logger {
+	return r.Log.WithValues("phase", phase, "singleinstancedatabase", req.NamespacedName)
+}
+
+func (r *SingleInstanceDatabaseReconciler) runSIDBPhase(req ctrl.Request, phase string, fn func() (ctrl.Result, error)) (ctrl.Result, error) {
+	log := r.phaseLogger(req, phase)
+	log.Info("Phase started")
+	result, err := fn()
+	if err != nil {
+		log.Error(err, "Phase failed")
+		return result, err
+	}
+	if result.Requeue {
+		log.Info("Phase requested requeue", "requeueAfter", result.RequeueAfter)
+		return result, nil
+	}
+	log.Info("Phase completed")
+	return result, nil
+}
+
+func (r *SingleInstanceDatabaseReconciler) phaseInitializeStatus(ctx context.Context, singleInstanceDatabase *dbapi.SingleInstanceDatabase) error {
+	if singleInstanceDatabase.Status.Status != "" {
+		return nil
 	}
 
+	singleInstanceDatabase.Status.Status = dbcommons.StatusPending
+	if singleInstanceDatabase.Spec.Edition != "" {
+		singleInstanceDatabase.Status.Edition = cases.Title(language.English).String(singleInstanceDatabase.Spec.Edition)
+	} else {
+		singleInstanceDatabase.Status.Edition = dbcommons.ValueUnavailable
+	}
+	singleInstanceDatabase.Status.Role = dbcommons.ValueUnavailable
+	singleInstanceDatabase.Status.ConnectString = dbcommons.ValueUnavailable
+	singleInstanceDatabase.Status.PdbConnectString = dbcommons.ValueUnavailable
+	singleInstanceDatabase.Status.TcpsConnectString = dbcommons.ValueUnavailable
+	singleInstanceDatabase.Status.OemExpressUrl = dbcommons.ValueUnavailable
+	singleInstanceDatabase.Status.ReleaseUpdate = dbcommons.ValueUnavailable
+	return r.Status().Update(ctx, singleInstanceDatabase)
+}
+
+func (r *SingleInstanceDatabaseReconciler) phasePostDBReadyOperations(ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
+	sidb := phaseCtx.singleInstanceDatabase
+	readyPod := phaseCtx.readyPod
+	referredPrimaryDatabase := phaseCtx.referredPrimaryDatabase
+
+	if sidb.Status.DatafilesCreated == "true" {
+		result, err := r.deleteWallet(sidb, ctx, req)
+		if result.Requeue || err != nil {
+			return result, err
+		}
+	}
+
+	sidbRole, err := dbcommons.GetDatabaseRole(readyPod, r, r.Config, ctx, req)
+	if err != nil {
+		return requeueY, err
+	}
+
+	if sidbRole == "PRIMARY" {
+		result, err := r.updateDBConfig(sidb, readyPod, ctx, req)
+		if result.Requeue || err != nil {
+			return result, err
+		}
+		result, err = r.updateInitParameters(sidb, readyPod, ctx, req)
+		if result.Requeue || err != nil {
+			return result, err
+		}
+		result, err = r.configTcps(sidb, readyPod, ctx, req, phaseCtx)
+		if result.Requeue || err != nil {
+			return result, err
+		}
+		return requeueN, nil
+	}
+
+	if sidb.Status.DgBroker == nil {
+		err = SetupStandbyDatabase(r, sidb, referredPrimaryDatabase, ctx, req)
+		if err != nil {
+			return requeueY, err
+		}
+	}
+
+	databaseOpenMode, err := dbcommons.GetDatabaseOpenMode(readyPod, r, r.Config, ctx, req, sidb.Spec.Edition)
+	if err != nil {
+		r.Log.Error(err, err.Error())
+		return requeueY, err
+	}
+	r.Log.Info("DB openMode Output")
+	r.Log.Info(databaseOpenMode)
+
+	if databaseOpenMode == "READ_ONLY" || databaseOpenMode == "MOUNTED" {
+		out, cmdErr := dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "", ctx, req, false, "bash", "-c", fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.ModifyStdbyDBOpenMode, dbcommons.SQLPlusCLI))
+		if cmdErr != nil {
+			r.Log.Error(cmdErr, cmdErr.Error())
+			return requeueY, cmdErr
+		}
+		r.Log.Info("Standby DB open mode modified")
+		r.Log.Info(out)
+	}
+
+	sidb.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(sidb, referredPrimaryDatabase)
+	if !IsExternalPrimaryDatabase(sidb) && referredPrimaryDatabase != nil && referredPrimaryDatabase.Name != "" {
+		if len(referredPrimaryDatabase.Status.StandbyDatabases) == 0 {
+			referredPrimaryDatabase.Status.StandbyDatabases = make(map[string]string)
+		}
+		referredPrimaryDatabase.Status.StandbyDatabases[strings.ToUpper(sidb.Spec.Sid)] = sidb.Name
+		if err := r.Status().Update(ctx, referredPrimaryDatabase); err != nil {
+			return requeueY, err
+		}
+	}
+
+	return requeueN, nil
+}
+
+func (r *SingleInstanceDatabaseReconciler) phaseModePreReady(ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
+	_ = ctx
+	mode := strings.ToLower(strings.TrimSpace(phaseCtx.singleInstanceDatabase.Spec.CreateAs))
+	switch mode {
+	case "", "primary", "clone", "truecache", "standby":
+		r.phaseLogger(req, "mode_pre_ready").Info("Mode pre-ready hooks complete", "mode", mode)
+		return requeueN, nil
+	default:
+		// Keep existing behavior unchanged for unknown mode values validated elsewhere.
+		r.phaseLogger(req, "mode_pre_ready").Info("Mode pre-ready skipped for unknown mode", "mode", mode)
+		return requeueN, nil
+	}
+}
+
+func (r *SingleInstanceDatabaseReconciler) phaseModePostReady(ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
+	return r.phasePostDBReadyOperations(ctx, req, phaseCtx)
+}
+
+func (r *SingleInstanceDatabaseReconciler) phaseModeStatusSync(ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
+	result, err := r.phaseConnectStringGate(phaseCtx.singleInstanceDatabase)
+	if result.Requeue || err != nil {
+		return result, err
+	}
+	return r.phaseUpdateFinalStatus(ctx, req, phaseCtx)
+}
+
+func (r *SingleInstanceDatabaseReconciler) phaseConnectStringGate(sidb *dbapi.SingleInstanceDatabase) (ctrl.Result, error) {
+	// Ensure LB-backed services expose a usable connect string before declaring reconcile success.
+	if sidb.Status.ConnectString == dbcommons.ValueUnavailable {
+		r.Log.Info("Connect string not available for the database " + sidb.Name)
+		return requeueY, nil
+	}
+	return requeueN, nil
+}
+
+func (r *SingleInstanceDatabaseReconciler) phaseUpdateFinalStatus(ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
+	if err := r.updateSidbStatus(phaseCtx.singleInstanceDatabase, phaseCtx.readyPod, ctx, req); err != nil {
+		return requeueY, err
+	}
+	r.updateORDSStatus(phaseCtx.singleInstanceDatabase, ctx, req)
+	return requeueN, nil
+}
+
+func (r *SingleInstanceDatabaseReconciler) phaseScheduleFutureRequeue(phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
+	// Scheduling a reconcile for certificate renewal, if TCPS is enabled.
+	if phaseCtx.futureRequeue != requeueN {
+		r.Log.Info("Scheduling Reconcile for cert renewal", "Duration(Hours)", phaseCtx.futureRequeue.RequeueAfter.Hours())
+		copyFutureRequeue := phaseCtx.futureRequeue
+		phaseCtx.futureRequeue = requeueN
+		return copyFutureRequeue, nil
+	}
 	return requeueN, nil
 }
 
@@ -537,7 +689,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	}
 
 	if m.Spec.CreateAs == "standby" && m.Status.Role != "PRIMARY" {
-		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
+		primaryRefName := getPrimaryDatabaseRefName(m)
 
 		// External primary standby support
 		if IsExternalPrimaryDatabase(m) {
@@ -557,6 +709,11 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 			}
 
 			if m.Status.DatafilesCreated == "true" {
+				if err = ValidateStandbyWalletSecretRef(r, m, ctx); err != nil {
+					r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
+					m.Status.Status = dbcommons.StatusError
+					return requeueN, err
+				}
 				return requeueN, nil
 			}
 
@@ -567,6 +724,11 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 			}
 
 			m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, nil)
+			if err = ValidateStandbyWalletSecretRef(r, m, ctx); err != nil {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
+				m.Status.Status = dbcommons.StatusError
+				return requeueN, err
+			}
 
 			r.Log.Info("Validated external primary database reference for standby creation")
 			r.Log.Info("Completed reconcile validation")
@@ -574,7 +736,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 		}
 
 		// Existing local primary standby flow unchanged
-		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
+		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: primaryRefName}, rp)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
@@ -593,12 +755,18 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 		}
 
 		if rp.Status.IsTcpsEnabled {
-			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Cannot Create", "Standby for TCPS enabled Primary Database is not supported ")
+			tcpsErr := errors.New("standby for TCPS enabled primary database is not supported")
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "Cannot Create", tcpsErr.Error())
 			m.Status.Status = dbcommons.StatusError
-			return requeueY, nil
+			return requeueY, tcpsErr
 		}
 
-		if m.Status.DatafilesCreated == "true" || !dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+		if m.Status.DatafilesCreated == "true" || !dbcommons.IsSourceDatabaseOnCluster(primaryRefName) {
+			if err = ValidateStandbyWalletSecretRef(r, m, ctx); err != nil {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
+				m.Status.Status = dbcommons.StatusError
+				return requeueN, err
+			}
 			return requeueN, nil
 		}
 
@@ -606,6 +774,9 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 
 		err = ValidatePrimaryDatabaseForStandbyCreation(r, m, rp, ctx, req)
 		if err != nil {
+			return requeueY, err
+		}
+		if err = ValidateStandbyWalletSecretRef(r, m, ctx); err != nil {
 			return requeueY, err
 		}
 
@@ -698,71 +869,93 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					},
 				}
 			}(),
-			Volumes: []corev1.Volume{{
-				Name: "datafiles-vol",
-				VolumeSource: func() corev1.VolumeSource {
-					if m.Spec.Persistence.Size == "" {
-						return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
-					}
-					/* Persistence is specified */
-					return corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: m.Name,
-							ReadOnly:  false,
-						},
-					}
-				}(),
-			}, {
-				Name: "oracle-pwd-vol",
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: m.Spec.AdminPassword.SecretName,
-						Optional:   func() *bool { i := (m.Spec.Edition != "express" && m.Spec.Edition != "free"); return &i }(),
-						Items: []corev1.KeyToPath{{
-							Key:  m.Spec.AdminPassword.SecretKey,
-							Path: "oracle_pwd",
-						}},
-					},
-				},
-			}, {
-				Name: "tls-secret-vol",
-				VolumeSource: func() corev1.VolumeSource {
-					if m.Spec.TcpsTlsSecret == "" {
-						return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
-					}
-					/* tls-secret is specified */
-					return corev1.VolumeSource{
+			Volumes: func() []corev1.Volume {
+				volumes := []corev1.Volume{{
+					Name: "datafiles-vol",
+					VolumeSource: func() corev1.VolumeSource {
+						if m.Spec.Persistence.Size == "" {
+							return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+						}
+						/* Persistence is specified */
+						return corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: m.Name,
+								ReadOnly:  false,
+							},
+						}
+					}(),
+				}, {
+					Name: "oracle-pwd-vol",
+					VolumeSource: corev1.VolumeSource{
 						Secret: &corev1.SecretVolumeSource{
-							SecretName: m.Spec.TcpsTlsSecret,
-							Optional:   func() *bool { i := true; return &i }(),
-							Items: []corev1.KeyToPath{
-								{
-									Key:  "tls.crt",  // Mount the certificate
-									Path: "cert.crt", // Mount path inside the container
-								},
-								{
-									Key:  "tls.key",    // Mount the private key
-									Path: "client.key", // Mount path inside the container
+							SecretName: m.Spec.AdminPassword.SecretName,
+							Optional:   func() *bool { i := (m.Spec.Edition != "express" && m.Spec.Edition != "free"); return &i }(),
+							Items: []corev1.KeyToPath{{
+								Key:  m.Spec.AdminPassword.SecretKey,
+								Path: "oracle_pwd",
+							}},
+						},
+					},
+				}, {
+					Name: "tls-secret-vol",
+					VolumeSource: func() corev1.VolumeSource {
+						if m.Spec.TcpsTlsSecret == "" {
+							return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+						}
+						/* tls-secret is specified */
+						return corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName: m.Spec.TcpsTlsSecret,
+								Optional:   func() *bool { i := true; return &i }(),
+								Items: []corev1.KeyToPath{
+									{
+										Key:  "tls.crt",  // Mount the certificate
+										Path: "cert.crt", // Mount path inside the container
+									},
+									{
+										Key:  "tls.key",    // Mount the private key
+										Path: "client.key", // Mount path inside the container
+									},
 								},
 							},
+						}
+					}(),
+				}, {
+					Name: "custom-scripts-vol",
+					VolumeSource: func() corev1.VolumeSource {
+						if m.Spec.Persistence.ScriptsVolumeName == "" || m.Spec.Persistence.ScriptsVolumeName == m.Spec.Persistence.DatafilesVolumeName {
+							return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
+						}
+						/* Persistence.ScriptsVolumeName is specified */
+						return corev1.VolumeSource{
+							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+								ClaimName: m.Name + "-" + m.Spec.Persistence.ScriptsVolumeName,
+								ReadOnly:  false,
+							},
+						}
+					}(),
+				}}
+
+				if walletSecretName := GetStandbyWalletSecretRef(m); strings.TrimSpace(walletSecretName) != "" && m.Spec.CreateAs == "standby" {
+					secretSrc := corev1.SecretVolumeSource{SecretName: walletSecretName}
+					if walletZipKey := GetStandbyWalletZipFileKey(m); walletZipKey != "" {
+						secretSrc.Items = []corev1.KeyToPath{
+							{
+								Key:  walletZipKey,
+								Path: "standby-wallet.zip",
+							},
+						}
+					}
+					volumes = append(volumes, corev1.Volume{
+						Name: "standby-wallet-secret-vol",
+						VolumeSource: corev1.VolumeSource{
+							Secret: &secretSrc,
 						},
-					}
-				}(),
-			}, {
-				Name: "custom-scripts-vol",
-				VolumeSource: func() corev1.VolumeSource {
-					if m.Spec.Persistence.ScriptsVolumeName == "" || m.Spec.Persistence.ScriptsVolumeName == m.Spec.Persistence.DatafilesVolumeName {
-						return corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}
-					}
-					/* Persistence.ScriptsVolumeName is specified */
-					return corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: m.Name + "-" + m.Spec.Persistence.ScriptsVolumeName,
-							ReadOnly:  false,
-						},
-					}
-				}(),
-			}},
+					})
+				}
+
+				return volumes
+			}(),
 			InitContainers: func() []corev1.Container {
 				initContainers := []corev1.Container{}
 				if m.Spec.Persistence.Size != "" && m.Spec.Persistence.SetWritePermissions != nil && *m.Spec.Persistence.SetWritePermissions {
@@ -801,8 +994,9 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					})
 				}
+				useStandbyWalletSecret := strings.TrimSpace(GetStandbyWalletSecretRef(m)) != "" && m.Spec.CreateAs == "standby"
 				/* Wallet only for edition barring express and free editions, non-prebuiltDB */
-				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB {
+				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB && !useStandbyWalletSecret {
 					initContainers = append(initContainers, corev1.Container{
 						Name:  "init-wallet",
 						Image: m.Spec.Image.PullFrom,
@@ -964,6 +1158,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							SubPath: "setup",
 						})
 					}
+					if walletSecretName := GetStandbyWalletSecretRef(m); strings.TrimSpace(walletSecretName) != "" && m.Spec.CreateAs == "standby" {
+						mounts = append(mounts, corev1.VolumeMount{
+							MountPath: GetStandbyWalletMountPath(m),
+							ReadOnly:  true,
+							Name:      "standby-wallet-secret-vol",
+						})
+					}
 					return mounts
 				}(),
 				Env: func() []corev1.EnvVar {
@@ -1071,7 +1272,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						}
 
 					} else if m.Spec.CreateAs == "standby" {
-						return []corev1.EnvVar{
+						standbyEnv := []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
 								Value: m.Name,
@@ -1125,6 +1326,20 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: "true",
 							},
 						}
+						if walletSecretName := GetStandbyWalletSecretRef(m); walletSecretName != "" {
+							standbyEnv = append(standbyEnv,
+								corev1.EnvVar{Name: "STANDBY_TDE_WALLET_SECRET", Value: walletSecretName},
+								corev1.EnvVar{Name: "STANDBY_TDE_WALLET_MOUNT_PATH", Value: GetStandbyWalletMountPath(m)},
+								corev1.EnvVar{Name: "STANDBY_TDE_WALLET_ROOT", Value: GetStandbyTDEWalletRoot(m)},
+							)
+							if zipKey := GetStandbyWalletZipFileKey(m); zipKey != "" {
+								standbyEnv = append(standbyEnv, corev1.EnvVar{
+									Name:  "STANDBY_TDE_WALLET_ZIP_PATH",
+									Value: strings.TrimRight(GetStandbyWalletMountPath(m), "/") + "/standby-wallet.zip",
+								})
+							}
+						}
+						return standbyEnv
 					}
 
 					return []corev1.EnvVar{
@@ -1183,7 +1398,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name: "INIT_PGA_SIZE",
 							Value: func() string {
 								if m.Spec.InitParams != nil && m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
-									return strconv.Itoa(m.Spec.InitParams.SgaTarget)
+									return strconv.Itoa(m.Spec.InitParams.PgaAggregateTarget)
 								}
 								return ""
 							}(),
@@ -1345,9 +1560,13 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 			},
 			Annotations: func() map[string]string {
 				if m.Spec.Persistence.VolumeClaimAnnotation != "" {
-					strParts := strings.Split(m.Spec.Persistence.VolumeClaimAnnotation, ":")
+					strParts := strings.SplitN(m.Spec.Persistence.VolumeClaimAnnotation, ":", 2)
+					if len(strParts) != 2 || strings.TrimSpace(strParts[0]) == "" || strings.TrimSpace(strParts[1]) == "" {
+						r.Log.Info("Ignoring malformed persistence.volumeClaimAnnotation; expected <key>:<value>", "value", m.Spec.Persistence.VolumeClaimAnnotation, "sidb", m.Name)
+						return nil
+					}
 					annotationMap := make(map[string]string)
-					annotationMap[strParts[0]] = strParts[1]
+					annotationMap[strings.TrimSpace(strParts[0])] = strings.TrimSpace(strParts[1])
 					return annotationMap
 				}
 				return nil
@@ -1523,7 +1742,11 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 	err := r.Get(ctx, types.NamespacedName{Name: m.Name, Namespace: m.Namespace}, pvc)
 
 	if err == nil {
-		if *pvc.Spec.StorageClassName != m.Spec.Persistence.StorageClass ||
+		currentStorageClassName := ""
+		if pvc.Spec.StorageClassName != nil {
+			currentStorageClassName = *pvc.Spec.StorageClassName
+		}
+		if currentStorageClassName != m.Spec.Persistence.StorageClass ||
 			(m.Spec.Persistence.DatafilesVolumeName != "" && pvc.Spec.VolumeName != m.Spec.Persistence.DatafilesVolumeName) ||
 			pvc.Spec.AccessModes[0] != corev1.PersistentVolumeAccessMode(m.Spec.Persistence.AccessMode) {
 			// PV change use cases which would trigger recreation of SIDB pods are :-
@@ -1901,7 +2124,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 			}
 			m.Status.ConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(sid)
 			m.Status.PdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[1].Port) + "/" + strings.ToUpper(pdbName)
-			oemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[0].Port) + "/em"
+			m.Status.OemExpressUrl = "https://" + lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[0].Port) + "/em"
 			if m.Spec.EnableTCPS {
 				m.Status.TcpsConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(sid)
 				m.Status.TcpsPdbConnectString = lbAddress + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].Port) + "/" + strings.ToUpper(pdbName)
@@ -1913,7 +2136,7 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplaceSVC(ctx context.Contex
 		if nodeip != "" {
 			m.Status.ConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(sid)
 			m.Status.PdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[1].NodePort) + "/" + strings.ToUpper(pdbName)
-			oemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[0].NodePort) + "/em"
+			m.Status.OemExpressUrl = "https://" + nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[0].NodePort) + "/em"
 			if m.Spec.EnableTCPS {
 				m.Status.TcpsConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(sid)
 				m.Status.TcpsPdbConnectString = nodeip + ":" + fmt.Sprint(extSvc.Spec.Ports[len(extSvc.Spec.Ports)-1].NodePort) + "/" + strings.ToUpper(pdbName)
@@ -2556,7 +2779,7 @@ func (r *SingleInstanceDatabaseReconciler) updateClientWallet(m *dbapi.SingleIns
 //
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDatabase,
-	readyPod corev1.Pod, ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	readyPod corev1.Pod, ctx context.Context, req ctrl.Request, phaseCtx *sidbPhaseContext) (ctrl.Result, error) {
 	eventReason := "Configuring TCPS"
 
 	if (m.Spec.EnableTCPS) &&
@@ -2630,7 +2853,7 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 
 		requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
 		requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
-		futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
+		phaseCtx.futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 
 		// update clientWallet
 		err = r.updateClientWallet(m, readyPod, ctx, req)
@@ -2689,12 +2912,12 @@ func (r *SingleInstanceDatabaseReconciler) configTcps(m *dbapi.SingleInstanceDat
 
 			requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
 			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
-			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
+			phaseCtx.futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 		}
 		if m.Status.CertRenewInterval != m.Spec.TcpsCertRenewInterval {
 			requeueDuration, _ := time.ParseDuration(m.Spec.TcpsCertRenewInterval)
 			requeueDuration += func() time.Duration { requeueDuration, _ := time.ParseDuration("1s"); return requeueDuration }()
-			futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
+			phaseCtx.futureRequeue = ctrl.Result{Requeue: true, RequeueAfter: requeueDuration}
 
 			m.Status.CertRenewInterval = m.Spec.TcpsCertRenewInterval
 		}
@@ -3109,7 +3332,9 @@ func (r *SingleInstanceDatabaseReconciler) updateSidbStatus(sidb *dbapi.SingleIn
 	if dbMajorVersion >= 23 {
 		sidb.Status.OemExpressUrl = dbcommons.ValueUnavailable
 	} else {
-		sidb.Status.OemExpressUrl = oemExpressUrl
+		if strings.TrimSpace(sidb.Status.OemExpressUrl) == "" {
+			sidb.Status.OemExpressUrl = dbcommons.ValueUnavailable
+		}
 	}
 
 	if sidb.Status.Role == "PRIMARY" && sidb.Status.DatafilesPatched != "true" {
@@ -3768,25 +3993,42 @@ func SetupPrimaryDatabase(r *SingleInstanceDatabaseReconciler, stdby *dbapi.Sing
 	}
 
 	log.Info("Setting up tnsnames.ora in primary database", "primaryDatabase", primary.Name)
-	err = SetupTnsNamesPrimaryForDG(r, primary, stdby, primaryDbReadyPod, ctx, req)
-	if err != nil {
-		return err
-	}
-
-	log.Info("Setting up listener.ora in primary database", "primaryDatabase", primary.Name)
-	err = SetupListenerPrimaryForDG(r, primary, stdby, primaryDbReadyPod, ctx, req)
-	if err != nil {
-		return err
-	}
-
-	log.Info("Setting up some InitParams for DG in primary database", "primaryDatabase", primary.Name)
-	err = SetupInitParamsPrimaryForDG(r, primaryDbReadyPod, ctx, req)
-	if err != nil {
-		return err
+	workflow := dgsidb.NewStandbyWorkflow(dgsidb.StandbyWorkflowOptions{
+		EnsureBrokerFilesAndStart: func() error {
+			log.Info("Setting up tnsnames.ora in primary database", "primaryDatabase", primary.Name)
+			return SetupTnsNamesPrimaryForDG(r, primary, stdby, primaryDbReadyPod, ctx, req)
+		},
+		RunPrimaryPrerequisites: func() error {
+			log.Info("Setting up listener.ora in primary database", "primaryDatabase", primary.Name)
+			return SetupListenerPrimaryForDG(r, primary, stdby, primaryDbReadyPod, ctx, req)
+		},
+		EnsureStandbyRedoLogs: func() error {
+			log.Info("Setting up some InitParams for DG in primary database", "primaryDatabase", primary.Name)
+			return SetupInitParamsPrimaryForDG(r, primaryDbReadyPod, ctx, req)
+		},
+	})
+	if e := dataguardcommon.RunStandbyDGBrokerWorkflow(workflow); e != nil {
+		if stepErr, ok := e.(*dataguardcommon.StepError); ok {
+			return fmt.Errorf("%s: %w", sidbStandbySetupStepMessage(stepErr.Step), stepErr.Err)
+		}
+		return e
 	}
 
 	return nil
 
+}
+
+func sidbStandbySetupStepMessage(step dataguardcommon.WorkflowStep) string {
+	switch step {
+	case dataguardcommon.StepEnsureBrokerFilesAndStart:
+		return "failed to setup tnsnames for standby configuration"
+	case dataguardcommon.StepRunPrimaryPrerequisites:
+		return "failed to setup listener for standby configuration"
+	case dataguardcommon.StepEnsureStandbyRedoLogs:
+		return "failed to setup primary init parameters for standby configuration"
+	default:
+		return "failed to setup standby workflow"
+	}
 }
 
 // #############################################################################
@@ -4077,6 +4319,10 @@ func SetupListenerForDGOnDatabase(r *SingleInstanceDatabaseReconciler, d *dbapi.
 }
 
 func IsExternalPrimaryDatabase(m *dbapi.SingleInstanceDatabase) bool {
+	if m != nil && m.Spec.StandbyConfig != nil && m.Spec.StandbyConfig.PrimaryDetails != nil &&
+		strings.TrimSpace(m.Spec.StandbyConfig.PrimaryDetails.Host) != "" {
+		return true
+	}
 	return m != nil &&
 		m.Spec.ExternalPrimaryDatabaseRef != nil &&
 		strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host) != ""
@@ -4087,23 +4333,26 @@ func ValidateExternalPrimaryDatabaseRef(m *dbapi.SingleInstanceDatabase) error {
 		return nil
 	}
 
-	ref := m.Spec.ExternalPrimaryDatabaseRef
+	ref := GetPrimaryDatabaseDetails(m)
+	if ref == nil {
+		return fmt.Errorf("primaryDetails cannot be empty when external primary is configured")
+	}
 	if strings.TrimSpace(ref.Host) == "" {
-		return fmt.Errorf("externalPrimaryDatabaseRef.host cannot be empty")
+		return fmt.Errorf("primaryDetails.host cannot be empty")
 	}
 	if strings.TrimSpace(ref.Sid) == "" {
-		return fmt.Errorf("externalPrimaryDatabaseRef.sid cannot be empty")
+		return fmt.Errorf("primaryDetails.sid cannot be empty")
 	}
 	if ref.Port < 0 {
-		return fmt.Errorf("externalPrimaryDatabaseRef.port cannot be negative")
+		return fmt.Errorf("primaryDetails.port cannot be negative")
 	}
 
 	return nil
 }
 
 func GetPrimaryDatabaseHost(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if IsExternalPrimaryDatabase(m) {
-		return strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host)
+	if ref := GetPrimaryDatabaseDetails(m); ref != nil && strings.TrimSpace(ref.Host) != "" {
+		return strings.TrimSpace(ref.Host)
 	}
 	if rp != nil {
 		return rp.Name
@@ -4112,15 +4361,15 @@ func GetPrimaryDatabaseHost(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleIns
 }
 
 func GetPrimaryDatabasePort(m *dbapi.SingleInstanceDatabase) int {
-	if IsExternalPrimaryDatabase(m) && m.Spec.ExternalPrimaryDatabaseRef.Port > 0 {
-		return m.Spec.ExternalPrimaryDatabaseRef.Port
+	if ref := GetPrimaryDatabaseDetails(m); ref != nil && ref.Port > 0 {
+		return ref.Port
 	}
 	return int(dbcommons.CONTAINER_LISTENER_PORT)
 }
 
 func GetPrimaryDatabaseSid(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if IsExternalPrimaryDatabase(m) {
-		return strings.ToUpper(strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Sid))
+	if ref := GetPrimaryDatabaseDetails(m); ref != nil && strings.TrimSpace(ref.Sid) != "" {
+		return strings.ToUpper(strings.TrimSpace(ref.Sid))
 	}
 	if rp != nil {
 		return strings.ToUpper(strings.TrimSpace(rp.Spec.Sid))
@@ -4129,8 +4378,8 @@ func GetPrimaryDatabaseSid(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInst
 }
 
 func GetPrimaryDatabasePdbName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
-	if IsExternalPrimaryDatabase(m) {
-		return strings.ToUpper(strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Pdbname))
+	if ref := GetPrimaryDatabaseDetails(m); ref != nil && strings.TrimSpace(ref.Pdbname) != "" {
+		return strings.ToUpper(strings.TrimSpace(ref.Pdbname))
 	}
 	if rp != nil {
 		return strings.ToUpper(strings.TrimSpace(rp.Spec.Pdbname))
@@ -4139,8 +4388,14 @@ func GetPrimaryDatabasePdbName(m *dbapi.SingleInstanceDatabase, rp *dbapi.Single
 }
 
 func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
+	if m != nil && m.Spec.StandbyConfig != nil {
+		if c := strings.TrimSpace(m.Spec.StandbyConfig.PrimaryConnectString); c != "" {
+			return c
+		}
+	}
+
 	if IsExternalPrimaryDatabase(m) {
-		host := strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host)
+		host := GetPrimaryDatabaseHost(m, rp)
 		port := GetPrimaryDatabasePort(m)
 		sid := GetPrimaryDatabaseSid(m, rp)
 		if host == "" || sid == "" {
@@ -4149,21 +4404,22 @@ func GetPrimaryDatabaseConnectString(m *dbapi.SingleInstanceDatabase, rp *dbapi.
 		return host + ":" + strconv.Itoa(port) + "/" + sid
 	}
 
-	if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) && rp != nil {
+	primaryRef := getPrimaryDatabaseRefName(m)
+	if dbcommons.IsSourceDatabaseOnCluster(primaryRef) && rp != nil {
 		return rp.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + rp.Spec.Sid
 	}
 
-	return m.Spec.PrimaryDatabaseRef
+	return primaryRef
 }
 
 func GetPrimaryDatabaseDisplayName(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
 	if IsExternalPrimaryDatabase(m) {
-		return strings.TrimSpace(m.Spec.ExternalPrimaryDatabaseRef.Host)
+		return GetPrimaryDatabaseHost(m, rp)
 	}
 	if rp != nil {
 		return rp.Name
 	}
-	return strings.TrimSpace(m.Spec.PrimaryDatabaseRef)
+	return strings.TrimSpace(getPrimaryDatabaseRefName(m))
 }
 
 func ShouldCreatePDBFromPrimary(m *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase) string {
@@ -4177,4 +4433,87 @@ func ShouldCreatePDBFromPrimary(m *dbapi.SingleInstanceDatabase, rp *dbapi.Singl
 		return "true"
 	}
 	return "false"
+}
+
+func getPrimaryDatabaseRefName(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return ""
+	}
+	if m.Spec.StandbyConfig != nil {
+		if name := strings.TrimSpace(m.Spec.StandbyConfig.PrimaryDatabaseRef); name != "" {
+			return name
+		}
+	}
+	return strings.TrimSpace(m.Spec.PrimaryDatabaseRef)
+}
+
+func GetPrimaryDatabaseDetails(m *dbapi.SingleInstanceDatabase) *dbapi.SingleInstanceDatabaseExternalPrimaryRef {
+	if m == nil {
+		return nil
+	}
+	if m.Spec.StandbyConfig != nil && m.Spec.StandbyConfig.PrimaryDetails != nil {
+		d := m.Spec.StandbyConfig.PrimaryDetails
+		return &dbapi.SingleInstanceDatabaseExternalPrimaryRef{
+			Host:    d.Host,
+			Port:    d.Port,
+			Sid:     d.Sid,
+			Pdbname: d.Pdbname,
+		}
+	}
+	return m.Spec.ExternalPrimaryDatabaseRef
+}
+
+func GetStandbyWalletSecretRef(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil || m.Spec.StandbyConfig == nil {
+		return ""
+	}
+	return strings.TrimSpace(m.Spec.StandbyConfig.WalletSecretRef)
+}
+
+func GetStandbyWalletMountPath(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil || m.Spec.StandbyConfig == nil {
+		return "/mnt/standby-wallet"
+	}
+	if p := strings.TrimSpace(m.Spec.StandbyConfig.WalletMountPath); p != "" {
+		return p
+	}
+	return "/mnt/standby-wallet"
+}
+
+func GetStandbyWalletZipFileKey(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil || m.Spec.StandbyConfig == nil {
+		return ""
+	}
+	return strings.TrimSpace(m.Spec.StandbyConfig.WalletZipFileKey)
+}
+
+func GetStandbyTDEWalletRoot(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil || m.Spec.StandbyConfig == nil {
+		return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
+	}
+	if p := strings.TrimSpace(m.Spec.StandbyConfig.StandbyTDEWalletRoot); p != "" {
+		return p
+	}
+	return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
+}
+
+func ValidateStandbyWalletSecretRef(r *SingleInstanceDatabaseReconciler, m *dbapi.SingleInstanceDatabase, ctx context.Context) error {
+	secretName := GetStandbyWalletSecretRef(m)
+	if secretName == "" {
+		return nil
+	}
+
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: secretName}, secret); err != nil {
+		return fmt.Errorf("standbyConfig.walletSecretRef %q not found: %w", secretName, err)
+	}
+	if len(secret.Data) == 0 {
+		return fmt.Errorf("standbyConfig.walletSecretRef %q has no data", secretName)
+	}
+	if zipKey := GetStandbyWalletZipFileKey(m); zipKey != "" {
+		if _, ok := secret.Data[zipKey]; !ok {
+			return fmt.Errorf("standbyConfig.walletZipFileKey %q not found in secret %q", zipKey, secretName)
+		}
+	}
+	return nil
 }

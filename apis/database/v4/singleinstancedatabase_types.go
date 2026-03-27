@@ -71,7 +71,8 @@ type SingleInstanceDatabaseSpec struct {
 	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
 	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
 
-	PrimaryDatabaseRef string `json:"primaryDatabaseRef,omitempty"`
+	PrimaryDatabaseRef string                               `json:"primaryDatabaseRef,omitempty"`
+	StandbyConfig      *SingleInstanceDatabaseStandbyConfig `json:"standbyConfig,omitempty"`
 
 	// New optional field for external / different-cluster primary
 	ExternalPrimaryDatabaseRef *SingleInstanceDatabaseExternalPrimaryRef `json:"externalPrimaryDatabaseRef,omitempty"`
@@ -109,6 +110,24 @@ type SingleInstanceDatabaseExternalPrimaryRef struct {
 	Port    int    `json:"port,omitempty"`
 	Sid     string `json:"sid,omitempty"`
 	Pdbname string `json:"pdbName,omitempty"`
+}
+
+type SingleInstanceDatabasePrimaryDetails struct {
+	Host    string `json:"host,omitempty"`
+	Port    int    `json:"port,omitempty"`
+	Sid     string `json:"sid,omitempty"`
+	Cdbname string `json:"cdbName,omitempty"`
+	Pdbname string `json:"pdbName,omitempty"`
+}
+
+type SingleInstanceDatabaseStandbyConfig struct {
+	PrimaryDatabaseRef   string                                `json:"primaryDatabaseRef,omitempty"`
+	PrimaryConnectString string                                `json:"primaryConnectString,omitempty"`
+	PrimaryDetails       *SingleInstanceDatabasePrimaryDetails `json:"primaryDetails,omitempty"`
+	WalletSecretRef      string                                `json:"walletSecretRef,omitempty"`
+	WalletMountPath      string                                `json:"walletMountPath,omitempty"`
+	WalletZipFileKey     string                                `json:"walletZipFileKey,omitempty"`
+	StandbyTDEWalletRoot string                                `json:"standbyTDEWalletRoot,omitempty"`
 }
 
 // SingleInstanceDatabasePersistence defines the storage size and class for PVC

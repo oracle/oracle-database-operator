@@ -490,6 +490,10 @@ type StandbyConfig struct {
 	PrimaryDatabaseRefs   []PrimaryDatabaseCRRef `json:"primaryDatabaseRefs,omitempty"`
 	PrimaryConnectStrings []string               `json:"primaryConnectStrings,omitempty"`
 	PrimaryEndpoints      []PrimaryEndpointRef   `json:"primaryEndpoints,omitempty"`
+	WalletSecretRef       string                 `json:"walletSecretRef,omitempty"`
+	WalletMountPath       string                 `json:"walletMountPath,omitempty"`
+	WalletZipFileKey      string                 `json:"walletZipFileKey,omitempty"`
+	StandbyTDEWalletRoot  string                 `json:"standbyTDEWalletRoot,omitempty"`
 }
 
 // EnvironmentVariable represents a named variable accessible for containers.

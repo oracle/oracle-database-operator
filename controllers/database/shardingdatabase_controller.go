@@ -72,7 +72,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
-	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
+	dataguardcommon "github.com/oracle/oracle-database-operator/commons/dataguard"
+	dgsharding "github.com/oracle/oracle-database-operator/commons/dataguard/sharding"
 	"github.com/oracle/oracle-database-operator/commons/shapes"
 	shardingv1 "github.com/oracle/oracle-database-operator/commons/sharding"
 )
@@ -2329,6 +2330,11 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			}
 			instance.Status.Dg.State = "PENDING"
 			r.setDgBrokerStatus(instance, OraShardSpex.Name, "pending")
+			if err := r.validateStandbyWalletSecretRef(instance, OraShardSpex); err != nil {
+				instance.Status.Dg.State = "ERROR"
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:wallet-secret:"+err.Error())
+				return err
+			}
 
 			primary, primaryConnects, primarySource, perr := r.resolvePrimaryForStandbyDG(instance, OraShardSpex)
 			if perr != nil {
@@ -2353,109 +2359,39 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 				continue
 			}
 
-			primaryPod := primary.Name + "-0"
-			standbyPod := OraShardSpex.Name + "-0"
-
-			primaryDbUnique := strings.ToUpper(strings.TrimSpace(primary.Name))
-			standbyDbUnique := strings.ToUpper(strings.TrimSpace(OraShardSpex.Name))
 			cfgName := r.buildDgConfigName(instance, *primary, OraShardSpex)
-			standbyConnects := []string{
-				r.buildShardConnectIdentifier(instance, OraShardSpex, standbyDbUnique),
-			}
+			standbyConnects := []string{r.buildShardConnectIdentifier(instance, OraShardSpex, strings.ToUpper(strings.TrimSpace(OraShardSpex.Name)))}
 
-			// 4A) Fix broker files + start broker on both sides
-			if e := shardingv1.EnsureDgBrokerFilesAndStart(primaryPod, primaryDbUnique, instance, r.kubeConfig, r.Log); e != nil {
+			workflow := dgsharding.NewStandbyWorkflow(dgsharding.StandbyWorkflowOptions{
+				Instance:        instance,
+				Primary:         *primary,
+				Standby:         OraShardSpex,
+				CfgName:         cfgName,
+				PrimaryConnects: primaryConnects,
+				StandbyConnects: standbyConnects,
+				KubeConfig:      r.kubeConfig,
+				Log:             r.Log,
+				ConfigurePrimaryRedoTransport: func(instance *databasev4.ShardingDatabase, primary, standby databasev4.ShardSpec) error {
+					allStandbysForPrimary := r.collectStandbysForPrimary(instance, primary)
+					return r.setupPrimaryRedoTransport(instance, primary, standby, allStandbysForPrimary)
+				},
+				EnsureStandbyApplyRunning: func(instance *databasev4.ShardingDatabase, standby databasev4.ShardSpec) error {
+					return r.EnsureStandbyApplyRunning(instance, standby)
+				},
+				ForceArchiveAndCheckTransport: func(instance *databasev4.ShardingDatabase, primary databasev4.ShardSpec) error {
+					return r.ForceArchiveAndCheckRedoTransport(instance, primary)
+				},
+				SetDgConnectIdentifiers: func(instance *databasev4.ShardingDatabase, primary, standby databasev4.ShardSpec) error {
+					return r.SetDgConnectIdentifiers(instance, primary, standby)
+				},
+			})
+			if e := dataguardcommon.RunStandbyDGBrokerWorkflow(workflow); e != nil {
 				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:broker_files_primary:"+e.Error())
-				return e
-			}
-			if e := shardingv1.EnsureDgBrokerFilesAndStart(standbyPod, standbyDbUnique, instance, r.kubeConfig, r.Log); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:broker_files_standby:"+e.Error())
-				return e
-			}
-
-			// 4B) Primary prerequisite SQL
-			if e := shardingv1.RunStandbyDatabasePrerequisitesSQL(primaryPod, instance, r.kubeConfig, r.Log); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:prereqs-primary:"+e.Error())
-				return e
-			}
-
-			// 4C) Enable archive log on primary
-			if e := shardingv1.EnableArchiveLogInPod(primaryPod, instance, r.kubeConfig, r.Log); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:archivelog-primary:"+e.Error())
-				return e
-			}
-
-			// 4D) Force logging on primary
-			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.ForceLoggingTrueSQL, instance, r.kubeConfig, r.Log); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:forcelogging-primary:"+e.Error())
-				return e
-			}
-
-			// 4E) Flashback on primary
-			if e := shardingv1.RunSQLPlusInPod(primaryPod, dbcommons.FlashBackTrueSQL, instance, r.kubeConfig, r.Log); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:flashback-primary:"+e.Error())
-				return e
-			}
-			// 4F) Ensure standby redo logs on both primary and standby
-			if e := shardingv1.EnsureStandbyRedoLogsForShards(primaryPod, standbyPod, instance, r.kubeConfig, r.Log); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:standby-redo-logs:"+e.Error())
-				return e
-			}
-
-			// 4G) Primary redo transport setup
-			allStandbysForPrimary := r.collectStandbysForPrimary(instance, *primary)
-			if e := r.setupPrimaryRedoTransport(instance, *primary, OraShardSpex, allStandbysForPrimary); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:redo-transport:"+e.Error())
-				return e
-			}
-
-			// 4H) Start standby apply
-			if e := r.EnsureStandbyApplyRunning(instance, OraShardSpex); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:start-apply:"+e.Error())
-				return e
-			}
-
-			// 4I) Force archive and verify transport
-			if e := r.ForceArchiveAndCheckRedoTransport(instance, *primary); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:force-archive-check:"+e.Error())
-				return e
-			}
-
-			// 4J) Create broker config
-			if e := shardingv1.CreateDgBrokerConfigTryConnects(primaryPod, cfgName, primaryDbUnique, primaryConnects, instance, r.kubeConfig, r.Log); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:create-config:"+e.Error())
-				return e
-			}
-
-			// 4K) Add standby to broker config
-			if e := shardingv1.AddStandbyToDgBrokerConfigTryConnects(primaryPod, standbyDbUnique, standbyConnects, instance, r.kubeConfig, r.Log); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:add-standby:"+e.Error())
-				return e
-			}
-
-			// 4L) Set DGConnectIdentifier and StaticConnectIdentifier
-			if e := r.SetDgConnectIdentifiers(instance, *primary, OraShardSpex); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:set-connect-identifiers:"+e.Error())
-				return e
-			}
-
-			// 4M) Enable and validate broker
-			if e := shardingv1.EnableAndValidateDgBroker(primaryPod, cfgName, instance, r.kubeConfig, r.Log); e != nil {
-				instance.Status.Dg.State = "ERROR"
-				r.setDgBrokerStatus(instance, OraShardSpex.Name, "error:enable-validate:"+e.Error())
+				status := "error:workflow:" + e.Error()
+				if stepErr, ok := e.(*dataguardcommon.StepError); ok {
+					status = dgsharding.StatusForWorkflowStep(stepErr.Step) + ":" + stepErr.Err.Error()
+				}
+				r.setDgBrokerStatus(instance, OraShardSpex.Name, status)
 				return e
 			}
 
@@ -4208,6 +4144,76 @@ func countUniquePrimaryEndpointsController(in []databasev4.PrimaryEndpointRef) i
 		count++
 	}
 	return count
+}
+
+func (r *ShardingDatabaseReconciler) resolveStandbyWalletSecretRef(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) string {
+	if shard.StandbyConfig != nil {
+		if ref := strings.TrimSpace(shard.StandbyConfig.WalletSecretRef); ref != "" {
+			return ref
+		}
+	}
+
+	shardName := strings.ToLower(strings.TrimSpace(shard.Name))
+	for i := range instance.Spec.ShardInfo {
+		info := instance.Spec.ShardInfo[i]
+		if info.StandbyConfig == nil {
+			continue
+		}
+		ref := strings.TrimSpace(info.StandbyConfig.WalletSecretRef)
+		if ref == "" {
+			continue
+		}
+		prefix := strings.ToLower(strings.TrimSpace(info.ShardPreFixName))
+		if prefix != "" && strings.HasPrefix(shardName, prefix) {
+			return ref
+		}
+	}
+	return ""
+}
+
+func (r *ShardingDatabaseReconciler) resolveStandbyWalletZipFileKey(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) string {
+	if shard.StandbyConfig != nil {
+		if ref := strings.TrimSpace(shard.StandbyConfig.WalletZipFileKey); ref != "" {
+			return ref
+		}
+	}
+
+	shardName := strings.ToLower(strings.TrimSpace(shard.Name))
+	for i := range instance.Spec.ShardInfo {
+		info := instance.Spec.ShardInfo[i]
+		if info.StandbyConfig == nil {
+			continue
+		}
+		ref := strings.TrimSpace(info.StandbyConfig.WalletZipFileKey)
+		if ref == "" {
+			continue
+		}
+		prefix := strings.ToLower(strings.TrimSpace(info.ShardPreFixName))
+		if prefix != "" && strings.HasPrefix(shardName, prefix) {
+			return ref
+		}
+	}
+	return ""
+}
+
+func (r *ShardingDatabaseReconciler) validateStandbyWalletSecretRef(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) error {
+	ref := r.resolveStandbyWalletSecretRef(instance, shard)
+	if ref == "" {
+		return nil
+	}
+	secret := &corev1.Secret{}
+	if err := r.Get(context.Background(), types.NamespacedName{Namespace: instance.Namespace, Name: ref}, secret); err != nil {
+		return fmt.Errorf("standbyConfig.walletSecretRef %q not found for shard %s: %w", ref, shard.Name, err)
+	}
+	if len(secret.Data) == 0 {
+		return fmt.Errorf("standbyConfig.walletSecretRef %q for shard %s has no data", ref, shard.Name)
+	}
+	if zipKey := r.resolveStandbyWalletZipFileKey(instance, shard); zipKey != "" {
+		if _, ok := secret.Data[zipKey]; !ok {
+			return fmt.Errorf("standbyConfig.walletZipFileKey %q not found in secret %q for shard %s", zipKey, ref, shard.Name)
+		}
+	}
+	return nil
 }
 
 // desiredShardNamesFromShardInfo handles desired shard names from shard info for the sharding database controller.
