@@ -65,18 +65,18 @@ func readScript(ctx context.Context, filePath string) string {
 	return string(scriptData)
 }
 
-func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, configMapName string, poolIndex int) *corev1.ConfigMap {
+func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbapi.OrdsSrvs, rState *OrdsSrvsReconcileState, configMapName string, poolIndex int) (*corev1.ConfigMap, error) {
 
 	//log := ctrllog.FromContext(ctx).WithName("ConfigMapDefine")
 
 	var defData map[string]string
 	switch configMapName {
-	case r.ordssrvsScriptsConfigMapName:
+	case rState.ordssrvsScriptsConfigMapName:
 		defData = make(map[string]string)
 		defData["ords_init.sh"] = readScript(ctx, "/ordssrvs/ords_init.sh")
 		defData["ords_start.sh"] = readScript(ctx, "/ordssrvs/ords_start.sh")
 		defData["RSADecryptOAEP.java"] = readScript(ctx, "/ordssrvs/RSADecryptOAEP.java")
-	case r.ordssrvsGlobalSettingsConfigMapName:
+	case rState.ordssrvsGlobalSettingsConfigMapName:
 		// GlobalConfigMap
 		var defStandaloneAccessLog string
 		if ordssrvs.Spec.GlobalSettings.EnableStandaloneAccessLog {
@@ -91,6 +91,16 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 			defCert = `  <entry key="standalone.https.cert">` + ordsSABase + `/config/certficate/` + ordssrvs.Spec.GlobalSettings.CertSecret.Certificate + `</entry>` + "\n" +
 				`  <entry key="standalone.https.cert.key">` + ordsSABase + `/config/certficate/` + ordssrvs.Spec.GlobalSettings.CertSecret.CertificateKey + `</entry>` + "\n"
 		}
+
+		// Graphq deprecation
+		featureGraphqlMaxNestingDepth:=ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth;
+		if ordssrvs.Spec.GlobalSettings.FeatureGrahpQLMaxNestingDepth != nil {
+			rState.specInfo.Info("feature.grahpql.max.nesting.depth is DEPRECATED, use feature.graphql.max.nesting.depth")
+			if ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth == nil {
+				featureGraphqlMaxNestingDepth=ordssrvs.Spec.GlobalSettings.FeatureGrahpQLMaxNestingDepth
+			}
+		}
+
 		defData = map[string]string{
 			"settings.xml": fmt.Sprint(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
 				`<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">` + "\n" +
@@ -103,7 +113,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("cache.metadata.jwks.expireAfterWrite", ordssrvs.Spec.GlobalSettings.CacheMetadataJWKSExpireAfterWrite) +
 				conditionalEntry("database.api.management.services.disabled", ordssrvs.Spec.GlobalSettings.DatabaseAPIManagementServicesDisabled) +
 				conditionalEntry("db.invalidPoolTimeout", ordssrvs.Spec.GlobalSettings.DBInvalidPoolTimeout) +
-				conditionalEntry("feature.graphql.max.nesting.depth", ordssrvs.Spec.GlobalSettings.FeatureGraphQLMaxNestingDepth) +
+				conditionalEntry("feature.graphql.max.nesting.depth", featureGraphqlMaxNestingDepth) +
 				conditionalEntry("request.traceHeaderName", ordssrvs.Spec.GlobalSettings.RequestTraceHeaderName) +
 				conditionalEntry("security.credentials.attempts", ordssrvs.Spec.GlobalSettings.SecurityCredentialsAttempts) +
 				conditionalEntry("security.credentials.lock.time", ordssrvs.Spec.GlobalSettings.SecurityCredentialsLockTime) +
@@ -133,7 +143,7 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 				conditionalEntry("security.verifySSL", ordssrvs.Spec.GlobalSettings.SecurityVerifySSL) +
 				conditionalEntry("security.httpsHeaderCheck", ordssrvs.Spec.GlobalSettings.SecurityHTTPSHeaderCheck) +
 				conditionalEntry("security.forceHTTPS", ordssrvs.Spec.GlobalSettings.SecurityForceHTTPS) +
-				conditionalEntry("externalSessionTrustedOrigins", ordssrvs.Spec.GlobalSettings.SecuirtyExternalSessionTrustedOrigins) +
+				conditionalEntry("externalSessionTrustedOrigins", ordssrvs.Spec.GlobalSettings.SecurityExternalSessionTrustedOrigins) +
 				`  <entry key="standalone.doc.root">` + ordsSABase + `/config/global/doc_root/</entry>` + "\n" +
 				// Dynamic
 				defStandaloneAccessLog +
@@ -245,7 +255,10 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 		}
 	}
 
-	objectMeta := objectMetaDefine(ordssrvs, configMapName)
+	// ConfigMap do not have specific additionalLabels/additionalAnnotations
+	labels:=getSystemCommonLabels(ordssrvs, rState)
+	annotations:=getSystemCommonAnnotations(ordssrvs, rState)
+	objectMeta := objectMetaDefine(ordssrvs, configMapName, labels, annotations)
 	def := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
@@ -255,11 +268,11 @@ func (r *OrdsSrvsReconciler) ConfigMapDefine(ctx context.Context, ordssrvs *dbap
 		Data:       defData,
 	}
 
-	// Set the ownerRef
 	if err := ctrl.SetControllerReference(ordssrvs, def, r.Scheme); err != nil {
-		return nil
+		return nil, fmt.Errorf("set owner reference for configmap %s/%s: %w", ordssrvs.Namespace, def.Name, err)
 	}
-	return def
+	return def, nil
+	
 }
 
 func conditionalEntry(key string, value interface{}) string {

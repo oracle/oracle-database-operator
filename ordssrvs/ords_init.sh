@@ -35,8 +35,6 @@
 ## OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ## SOFTWARE.
 
-# not used, unset to avoid warning message
-unset JAVA_TOOL_OPTIONS
 
 dump_stack(){
 _log_date=$(date "+%y:%m:%d %H:%M:%S")
@@ -61,7 +59,11 @@ sub(){
 }
 
 #------------------------------------------------------------------------------
-function global_parameters(){
+function apex_parameters(){
+
+	sub "APEX parameters"
+	echo "external_apex          : ${external_apex:?}"
+	echo "download_apex          : ${download_apex:?}"
 
 	APEX_INSTALL=/opt/oracle/apex
 	# backward compatibility for ORDS images prior to 24.1.x (included)
@@ -74,25 +76,49 @@ function global_parameters(){
 	APEX_IMAGES=${APEX_INSTALL}/images
     APEX_VERSION_TXT=${APEX_IMAGES}/apex_version.txt 
 
-	sub "global parameters"
-	echo "external_apex          : ${external_apex:?}"
-	echo "download_apex          : ${download_apex:?}"
-	
 	if [[ ${download_apex} == "true" ]] 
 	then
 	  echo "download_url_apex      : ${download_url_apex:?}"
 	fi
 
-	if [[ ( ${external_apex} == "true" ) || ( ${download_apex} == "true" ) ]]
+    echo "APEX_INSTALL           : $APEX_INSTALL"
+    echo "APEX_IMAGES            : $APEX_IMAGES"
+
+}
+
+function setup_instance_api_user(){
+  sub "Instance API User"
+
+  if [[ -z "${instance_api_admin_password}" ]]; then
+    echo "ERROR: instance_api_admin_password not set; cannot create Instance API admin user"
+    return 1
+  fi
+  
+  echo "Configuring ORDS instance API admin user: ${instance_api_admin_user}"
+  local IAPIUSR="${instance_api_admin_user}"
+  local IAPIPWD="${instance_api_admin_password}"
+  
+  printf '%s\n%s\n' "${IAPIPWD}" "${IAPIPWD}" | ords --config "${ORDS_CONFIG}" config user add "${IAPIUSR}" "System Administrator" 
+  echo "User list"
+  ords --config "${ORDS_CONFIG}" config user list		
+
+}
+
+function global_parameters(){
+
+	# not used, unset to avoid warning message
+    unset JAVA_TOOL_OPTIONS
+	if [[ -n "${JDK_JAVA_OPTIONS}" ]]
 	then
-	  echo "APEX_INSTALL           : $APEX_INSTALL"
-	  echo "APEX_IMAGES            : $APEX_IMAGES"
+		echo "JDK_JAVA_OPTIONS: ${JDK_JAVA_OPTIONS}"
 	fi
-	
-	if [[ -n ${central_config_url} ]] 
-	then
-	  echo "central_config_url     : ${central_config_url}"
-    fi
+
+	sub "Creating config/global subfolders"
+	echo "ORDS_CONFIG: ${ORDS_CONFIG}"
+	mkdir -pv "${ORDS_CONFIG}/global/doc_root"
+
+	sub "Cloning setup from staging to global"
+	cp -rLv "${ORDS_CONFIG}/stage/"* "${ORDS_CONFIG}/global/"
 
 	# check for password encryption
 	if [[ -n "${ENC_PRV_KEY}" ]]; then
@@ -385,7 +411,7 @@ setup_credentials(){
 
 		# reading users from env
 		for key in dbusername dbadminuser dbcdbadminuser dbconnectiontype; do
-                var_key="${pool_name_underscore}_${key}"
+                var_key="${pool_prefix}_${key}"
 				var_val="${!var_key}"
 				if [[ (-n "${var_val}") ]]; then  
                   config[${key}]="${var_val}"
@@ -394,7 +420,7 @@ setup_credentials(){
 
 		# reading passwords from env and eventually decrypting
         for key in dbpassword dbadminuserpassword dbcdbadminuserpassword; do
-                var_key="${pool_name_underscore}_${key}"
+                var_key="${pool_prefix}_${key}"
                 echo "Obtaining value from initContainer variable: ${var_key}"
                 var_val="${!var_key}"
 				if [[ (-n "${var_val}") && (-n "${ENC_PRV_KEY}") && (-f "${ENC_PRV_KEY_FILE}") ]]; then 
@@ -580,14 +606,16 @@ function apex_download(){
 		return 0
 	fi
 
-	mkdir -p "${APEX_INSTALL}"
-	rm -rf "${APEX_INSTALL:?}/*"
+	mkdir -pv "${APEX_INSTALL}"
+	[ -n "${APEX_INSTALL:-}" ] && [ "${APEX_INSTALL}" != "/" ] || exit 1
+	rm -rf -- "${APEX_INSTALL:?}/"*
 	cd /tmp || return
 	echo "Downloading ${download_url_apex}"
 	curl -o apex.zip "${download_url_apex}"
+	ls -l "/tmp/apex.zip"
 	echo "Extracting apex.zip"
 	jar xf apex.zip
-       	mv "/tmp/apex/*" "${APEX_INSTALL}"
+    mv "/tmp/apex/"* "${APEX_INSTALL}"
 
 	if [[ ! (-f ${APEXINS}) ]]; then
 		echo "ERROR: ${APEXINS} not found, APEX download failed"
@@ -661,7 +689,7 @@ function apex_housekeeping(){
         echo "APEX version : \"${db_apex_version}\""
         echo "APEX suggested action : $db_apex_action"
         if [[ ${db_apex_action} != "none" ]]; then
-                apex_upgrade "${pool_name_underscore}_autoupgrade_apex"
+                apex_upgrade "${pool_prefix}_autoupgrade_apex"
 				rc=$?
                 if (( rc > 0 )); then
                         echo "FATAL: Unable to ${db_apex_action} APEX for pool \"${pool_name}\""
@@ -678,12 +706,12 @@ function apex_housekeeping(){
 function pool_parameters(){
 
 	sub "pool parameters"
-    apex_upgrade_var=${pool_name_underscore}_autoupgrade_apex
+    apex_upgrade_var=${pool_prefix}_autoupgrade_apex
     apex_upgrade=${!apex_upgrade_var}
 	[[ -z "$apex_upgrade" ]] && apex_upgrade=false
     echo "${pool_name} - autoupgrade_apex  : ${apex_upgrade}"
 
-    ords_upgrade_var=${pool_name_underscore}_autoupgrade_ords
+    ords_upgrade_var=${pool_prefix}_autoupgrade_ords
     ords_upgrade=${!ords_upgrade_var}
 	[[ -z "$ords_upgrade" ]] && ords_upgrade=false
     echo "${pool_name} - autoupgrade_ords  : ${ords_upgrade}"
@@ -784,7 +812,7 @@ pool_check(){
 	config[connect]=${_connect}
 	if [[ -z ${config[connect]} ]]; then
 		echo "Unable to get database connect string for pool \"${pool_name}\""
-		echo "Possible wallet/tnsnames for a pool defined in a Central Configuration Manager, ignoring"	
+		echo "Possible wallet/tnsnames for a pool defined in a Central Configuration Server, ignoring"	
 		return 0
 	fi
 
@@ -821,22 +849,53 @@ pool_check(){
 	echo "SQL check SUCCESS"
 }
 
+pool_prefix_from_pool_name() {
+  local pool_name="$1"
+  local s="$pool_name"
+
+  s="${s//-/_}"
+  s="${s//./_}"
+
+  # Replace anything not [A-Za-z0-9_] with underscore (defensive)
+  s="$(printf '%s' "$s" | sed -E 's/[^A-Za-z0-9_]/_/g')"
+
+  # (Optional) trim leading/trailing underscores – keep or drop, but match Go
+  # s="$(printf '%s' "$s" | sed -E 's/^_+//; s/_+$//')"
+
+  [[ -z "$s" ]] && s="pool"
+  [[ "$s" =~ ^[0-9] ]] && s="p_${s}"
+
+  printf '%s' "$s"
+}
+
 #------------------------------------------------------------------------------
 # INIT
 #------------------------------------------------------------------------------
 declare -A pool_exit
 sep
-sub "ORDSSRVS init"
+sub "OrdsSrvs init"
 sep
 
 global_parameters
 ords_client_version
 
-apex_download
-apex_external
+[[ -n ${instance_api_admin_user} ]] && setup_instance_api_user
+
+[[ ${download_apex} == "true" || ${external_apex} == "true" ]] && apex_parameters
+[[ ${download_apex} == "true" ]] && apex_download
+[[ ${external_apex} == "true" ]] && apex_external
 
 # check APEX installation files version, downloaded or mounted by PVC
 check_apex_installation_version
+
+if [[ -n ${central_config_url} ]] 
+then
+	sub "Central Configuration Server"	
+	echo "central_config_url     : ${central_config_url}"
+fi
+
+sub "Pools"
+echo "Looking for pools.."
 
 if [[ ! ( -d "${ORDS_CONFIG}/databases/" ) ]]
 then
@@ -846,10 +905,15 @@ then
   exit 0
 fi
 
+ls -l "${ORDS_CONFIG}/databases/"
+
 for pool in "${ORDS_CONFIG}/databases/"*; do
 	rc=0
 	pool_name=$(basename "$pool")
-	pool_name_underscore=${pool_name//-/_}
+	
+	# pool prefix for env variables
+	pool_prefix="$(pool_prefix_from_pool_name "$pool_name")"
+
 	pool_exit[${pool_name}]=0
 	ords_cfg_cmd="ords --config $ORDS_CONFIG config --db-pool ${pool_name}"
     declare -A config=()
@@ -859,6 +923,11 @@ for pool in "${ORDS_CONFIG}/databases/"*; do
 	echo "poolName: ${pool_name}"
 
 	pool_parameters
+	rc=$?
+	if (( rc > 0 )); then
+      pool_exit[${pool_name}]=1
+      continue
+    fi
 
 	setup_credentials
 	rc=$?
@@ -926,5 +995,5 @@ for key in "${!pool_exit[@]}"; do
 done
 
 echo POOLERRORS $poolerrors POOLS $pools
-echo "init end"
+echo "init end ($rc)"
 exit $rc

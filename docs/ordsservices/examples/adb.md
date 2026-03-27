@@ -1,11 +1,11 @@
 # OrdsSrvs Example: Autonomous Database without the OraOperator
 
-This example walks through using the **ORDSSRVS controller** with an Oracle Autonomous Database.  
+This example walks through using the **OrdsSrvs controller** with an Oracle Autonomous Database.  
 
 This assumes that an ADB has already been provisioned and is configured as "Secure Access from Anywhere".  
 Note that if behind a Proxy, this example will not work as the Wallet will need to be modified to support the proxy configuration.
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 ### ADB Wallet Secret
 
@@ -31,7 +31,7 @@ rm e_db-auth ca.key public.pem
 unset ADMIN_PASSWORD
 ```
 
-### Create RestDataServices Resource
+### Create OrdsSrvs Resource
 
 1. Create a manifest for ORDS.
 
@@ -69,7 +69,7 @@ unset ADMIN_PASSWORD
     ```
     <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
     
-1. Watch the restdataservices resource until the status is **Healthy**:
+1. Watch the OrdsSrvs resource until the status is **Healthy**:
     ```bash
     kubectl get -n ordsnamespace ordssrvs ords-adb -w
     ```

@@ -1,8 +1,8 @@
 # OrdsSrvs Controller: Pre-existing Database
 
-This example walks through configuring the ORDS Controller to use either a database deployed within Kubernetes, or an existing database external to your cluster.
+This example walks through configuring the OrdsSrvs controller to use any reachable Oracle Database, whether it is deployed inside Kubernetes or external to the cluster.
 
-Before testing this example, please verify the prerequisites : [ORDSSRVS prerequisites](../README.md#prerequisites)
+Before testing this example, please verify the prerequisites : [OrdsSrvs prerequisites](../README.md#prerequisites)
 
 ### Database Access
 
@@ -13,7 +13,7 @@ export CONN_STRING=<database host ip or scan>:<port>/<service_name>
 ```
 
 ### Database credential secrets
-In this example, we use a native Kubernetes.  
+In this example, we use native Kubernetes Secrets.
 For production, store credentials in external vaults or use Oracle Wallets to store database credentials. Ensure any external-vault integration aligns with Oracle security and compliance guidelines.
 
 **⚠️WARNING⚠️** When using Kubernetes Secrets ensure secrets are protected at the Kubernetes level by following the [Good practices for Kubernetes Secrets](https://kubernetes.io/docs/concepts/security/secrets-good-practices/) in the official Kubernetes documentation.
@@ -78,7 +78,7 @@ unset DBADMINPWD
 
     <sup>latest container-registry.oracle.com/database/ords version, **25.1.0**, valid as of **26-May-2025**</sup>
     
-1. Watch the restdataservices resource until the status is **Healthy**:
+1. Watch the OrdsSrvs resource until the status is **Healthy**:
     ```bash
     kubectl get ordssrvs ords-db -w
     ```
@@ -111,4 +111,4 @@ This example has a single database pool, named `default`.  It is set to:
 * Automatically restart when the configuration changes: `forceRestart: true`
 * Automatically install/update ORDS on startup, if required: `autoUpgradeORDS: true`
 * Use a basic connection string to connect to the database: `db.customURL: jdbc:oracle:thin:@//${CONN_STRING}`
-* The `passwordKey` has been ommitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
+* The `passwordKey` has been omitted from both `db.secret` and `db.adminUser.secret` as the password was stored in the default key (`password`)
