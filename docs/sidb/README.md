@@ -2,6 +2,8 @@
 
 Oracle Database Operator for Kubernetes (`OraOperator`) includes the Single Instance Database Controller, which enables provisioning, cloning, and patching of Oracle Single Instance Databases on Kubernetes. It also enables configuring the database for Oracle REST Data Services with Oracle APEX development platform. The following sections explain the setup and functionality of the operator
 
+For API migration guidance, see [SingleInstanceDatabase v4 Migration and Support FAQ](./SIDB_V4_MIGRATION_FAQ.md).
+
   * [Prerequisites](#prerequisites)
     * [Mandatory Resource Privileges](#mandatory-resource-privileges)
     * [Optional Resource Privileges](#optional-resource-privileges)

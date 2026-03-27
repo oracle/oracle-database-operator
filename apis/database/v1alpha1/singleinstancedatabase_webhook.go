@@ -70,7 +70,7 @@ func (r *SingleInstanceDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
-//+kubebuilder:webhook:path=/mutate-database-oracle-com-v1alpha1-singleinstancedatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=singleinstancedatabases,verbs=create;update,versions=v1alpha1,name=msingleinstancedatabase.kb.io,admissionReviewVersions={v1,v1beta1}
+// V1alpha1 SIDB webhook markers intentionally disabled to keep SIDB admission v4-only.
 
 var _ webhook.CustomDefaulter = &SingleInstanceDatabase{}
 
@@ -153,7 +153,7 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj runtime.Object
 }
 
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v1alpha1-singleinstancedatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=singleinstancedatabases,versions=v1alpha1,name=vsingleinstancedatabase.kb.io,admissionReviewVersions={v1,v1beta1}
+// V1alpha1 SIDB webhook markers intentionally disabled to keep SIDB admission v4-only.
 
 var _ webhook.CustomValidator = &SingleInstanceDatabase{}
 

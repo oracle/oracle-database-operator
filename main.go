@@ -363,7 +363,6 @@ func setupControllers(mgr ctrl.Manager, interval time.Duration) error {
 
 func setupWebhooks(mgr ctrl.Manager) error {
 	webhooks := []managedComponent{
-		{name: "SingleInstanceDatabase(v1alpha1)", setup: func() error { return (&databasev1alpha1.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr) }},
 		{name: "OracleRestDataService(v1alpha1)", setup: func() error { return (&databasev1alpha1.OracleRestDataService{}).SetupWebhookWithManager(mgr) }},
 		{name: "LRPDB(v4)", setup: func() error { return (&databasev4.LRPDB{}).SetupWebhookWithManager(mgr) }},
 		{name: "LREST(v4)", setup: func() error { return (&databasev4.LREST{}).SetupWebhookWithManager(mgr) }},
@@ -376,7 +375,6 @@ func setupWebhooks(mgr ctrl.Manager) error {
 		{name: "AutonomousDatabaseRestore(v4)", setup: func() error { return (&databasev4.AutonomousDatabaseRestore{}).SetupWebhookWithManager(mgr) }},
 		{name: "AutonomousContainerDatabase(v4)", setup: func() error { return (&databasev4.AutonomousContainerDatabase{}).SetupWebhookWithManager(mgr) }},
 		{name: "DataguardBroker(v1alpha1)", setup: func() error { return (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr) }},
-		{name: "ShardingDatabase(v1alpha1)", setup: func() error { return (&databasev1alpha1.ShardingDatabase{}).SetupWebhookWithManager(mgr) }},
 		{name: "DbcsSystem(v1alpha1)", setup: func() error { return (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr) }},
 		{name: "ShardingDatabase(v4)", setup: func() error { return (&databasev4.ShardingDatabase{}).SetupWebhookWithManager(mgr) }},
 		{name: "DatabaseObserver(v1alpha1)", setup: func() error { return (&observabilityv1alpha1.DatabaseObserver{}).SetupWebhookWithManager(mgr) }},

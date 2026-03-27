@@ -175,14 +175,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-database-oracle-com-v1alpha1-singleinstancedatabase
+      path: /mutate-database-oracle-com-v4-singleinstancedatabase
   failurePolicy: Fail
-  name: msingleinstancedatabase.kb.io
+  name: msingleinstancedatabasev4.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v1alpha1
+    - v4
     operations:
     - CREATE
     - UPDATE
@@ -569,14 +569,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-database-oracle-com-v1alpha1-singleinstancedatabase
+      path: /validate-database-oracle-com-v4-singleinstancedatabase
   failurePolicy: Fail
-  name: vsingleinstancedatabase.kb.io
+  name: vsingleinstancedatabasev4.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v1alpha1
+    - v4
     operations:
     - CREATE
     - UPDATE
