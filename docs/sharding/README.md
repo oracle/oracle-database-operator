@@ -22,6 +22,8 @@ The Sharding Database controller in Oracle Database Operator deploys Oracle Glob
 
 The Oracle Sharding database controller provides end-to-end automation of Oracle Globally Distributed Database topology deployment in Kubernetes clusters.
 
+For API migration guidance, see [ShardingDatabase v4 Migration Strategy and FAQ](./SHARDINGDATABASE_V4_MIGRATION_FAQ.md).
+
 ## Using Oracle Database Operator Sharding Controller
 
 Following sections provide the details for deploying Oracle Globally Distributed Database (Oracle Sharded Database) using Oracle Database Operator Sharding Controller with different use cases:
