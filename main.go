@@ -257,10 +257,6 @@ func main() {
 
 	// Set ENABLE_WEBHOOKS=false when we run locally to skip webhook part when testing just the controller. Not to be used in production.
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err = (&databasev1alpha1.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
-			os.Exit(1)
-		}
 		if err = (&databasev1alpha1.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "OracleRestDataService")
 			os.Exit(1)
@@ -307,10 +303,6 @@ func main() {
 		}
 		if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
-			os.Exit(1)
-		}
-		if err = (&databasev1alpha1.ShardingDatabase{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "ShardingDatabase")
 			os.Exit(1)
 		}
 		if err = (&databasev1alpha1.DbcsSystem{}).SetupWebhookWithManager(mgr); err != nil {
