@@ -47,7 +47,6 @@ import (
 var shardingdatabaselog = logf.Log.WithName("shardingdatabase-resource")
 
 func (r *ShardingDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		Complete()
 }

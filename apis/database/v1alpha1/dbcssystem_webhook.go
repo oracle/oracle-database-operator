@@ -52,10 +52,9 @@ import (
 var dbcssystemlog = logf.Log.WithName("dbcssystem-resource")
 
 func (r *DbcsSystem) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
-		WithDefaulter(r).
-		WithValidator(r).
+	return ctrl.NewWebhookManagedBy(mgr, r).
+		WithCustomDefaulter(r).
+		WithCustomValidator(r).
 		Complete()
 }
 
