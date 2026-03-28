@@ -47,8 +47,7 @@ import (
 var oraclerestdataservicelog = logf.Log.WithName("oraclerestdataservice-resource")
 
 func (r *OracleRestDataService) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		Complete()
 }
 

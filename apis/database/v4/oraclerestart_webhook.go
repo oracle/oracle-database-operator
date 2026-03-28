@@ -48,12 +48,10 @@ import (
 
 	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	corev1 "k8s.io/api/core/v1"
@@ -65,8 +63,7 @@ var OracleRestartlog = logf.Log.WithName("OracleRestart-resource")
 // SetupWebhookWithManager registers the OracleRestart webhook with the
 // controller manager.
 func (r *OracleRestart) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&OracleRestart{}).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
@@ -74,15 +71,12 @@ func (r *OracleRestart) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-oraclerestart,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestarts,verbs=create;update,versions=v4,name=moraclerestart.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.CustomDefaulter = &OracleRestart{}
+var _ admission.Defaulter[*OracleRestart] = &OracleRestart{}
 
 // Default mutates an OracleRestart resource to apply default values before
 // admission.
-func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
-	cr, ok := obj.(*OracleRestart)
-	if !ok {
-		return fmt.Errorf("expected *OracleRestart but got %T", obj)
-	}
+func (r *OracleRestart) Default(ctx context.Context, obj *OracleRestart) error {
+	cr := obj
 
 	OracleRestartlog.Info("default", "name", cr.Name)
 
@@ -128,14 +122,11 @@ func (r *OracleRestart) Default(ctx context.Context, obj runtime.Object) error {
 
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-oraclerestart,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=oraclerestarts,versions=v4,name=voraclerestart.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.CustomValidator = &OracleRestart{}
+var _ admission.Validator[*OracleRestart] = &OracleRestart{}
 
 // ValidateCreate verifies OracleRestart resources on creation.
-func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cr, ok := obj.(*OracleRestart)
-	if !ok {
-		return nil, fmt.Errorf("expected *OracleRestart but got %T", obj)
-	}
+func (r *OracleRestart) ValidateCreate(ctx context.Context, obj *OracleRestart) (admission.Warnings, error) {
+	cr := obj
 
 	OracleRestartlog.Info("validate create", "name", cr.Name)
 	var validationErrs field.ErrorList
@@ -325,12 +316,8 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj runtime.Object) 
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	old, okOld := oldObj.(*OracleRestart)
-	newCr, okNew := newObj.(*OracleRestart)
-	if !okOld || !okNew {
-		return nil, fmt.Errorf("expected *OracleRestart for both old and new objects")
-	}
+func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj *OracleRestart) (admission.Warnings, error) {
+	old, newCr := oldObj, newObj
 
 	OracleRestartlog.Info("validate update", "name", newCr.Name)
 
@@ -561,11 +548,8 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj runti
 }
 
 // ValidateDelete enforces constraints when OracleRestart resources are deleted.
-func (r *OracleRestart) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cr, ok := obj.(*OracleRestart)
-	if !ok {
-		return nil, fmt.Errorf("expected *OracleRestart but got %T", obj)
-	}
+func (r *OracleRestart) ValidateDelete(ctx context.Context, obj *OracleRestart) (admission.Warnings, error) {
+	cr := obj
 
 	OracleRestartlog.Info("validate delete", "name", cr.Name)
 

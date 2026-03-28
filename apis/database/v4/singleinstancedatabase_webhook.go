@@ -40,7 +40,6 @@ package v4
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -48,12 +47,10 @@ import (
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -61,8 +58,7 @@ import (
 var singleinstancedatabaselog = logf.Log.WithName("singleinstancedatabase-resource")
 
 func (r *SingleInstanceDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
@@ -70,13 +66,10 @@ func (r *SingleInstanceDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-singleinstancedatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=singleinstancedatabases,verbs=create;update,versions=v4,name=msingleinstancedatabasev4.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.CustomDefaulter = &SingleInstanceDatabase{}
+var _ admission.Defaulter[*SingleInstanceDatabase] = &SingleInstanceDatabase{}
 
-func (r *SingleInstanceDatabase) Default(ctx context.Context, obj runtime.Object) error {
-	sidb, ok := obj.(*SingleInstanceDatabase)
-	if !ok {
-		return apierrors.NewInternalError(fmt.Errorf("failed to cast obj to SingleInstanceDatabase"))
-	}
+func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanceDatabase) error {
+	sidb := obj
 
 	singleinstancedatabaselog.Info("default", "name", sidb.Name)
 
@@ -135,13 +128,10 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj runtime.Object
 
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-singleinstancedatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=singleinstancedatabases,versions=v4,name=vsingleinstancedatabasev4.kb.io,admissionReviewVersions={v1,v1beta1}
 
-var _ webhook.CustomValidator = &SingleInstanceDatabase{}
+var _ admission.Validator[*SingleInstanceDatabase] = &SingleInstanceDatabase{}
 
-func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	sidb, ok := obj.(*SingleInstanceDatabase)
-	if !ok {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast obj to SingleInstanceDatabase"))
-	}
+func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj *SingleInstanceDatabase) (admission.Warnings, error) {
+	sidb := obj
 	singleinstancedatabaselog.Info("validate create", "name", sidb.Name)
 
 	allErrs := validateSingleInstanceDatabaseSpec(sidb)
@@ -153,15 +143,8 @@ func (r *SingleInstanceDatabase) ValidateCreate(ctx context.Context, obj runtime
 		sidb.Name, allErrs)
 }
 
-func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
-	oldSidb, ok := oldObj.(*SingleInstanceDatabase)
-	if !ok {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast old object to SingleInstanceDatabase"))
-	}
-	newSidb, ok := newObj.(*SingleInstanceDatabase)
-	if !ok {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast new object to SingleInstanceDatabase"))
-	}
+func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *SingleInstanceDatabase) (admission.Warnings, error) {
+	oldSidb, newSidb := oldObj, newObj
 	singleinstancedatabaselog.Info("validate update", "name", newSidb.Name)
 
 	allErrs := validateSingleInstanceDatabaseSpec(newSidb)
@@ -206,11 +189,7 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 		newSidb.Name, allErrs)
 }
 
-func (r *SingleInstanceDatabase) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	_, ok := obj.(*SingleInstanceDatabase)
-	if !ok {
-		return nil, apierrors.NewInternalError(fmt.Errorf("failed to cast obj to SingleInstanceDatabase"))
-	}
+func (r *SingleInstanceDatabase) ValidateDelete(ctx context.Context, obj *SingleInstanceDatabase) (admission.Warnings, error) {
 	return nil, nil
 }
 

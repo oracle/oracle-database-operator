@@ -133,6 +133,27 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /mutate-database-oracle-com-v4-singleinstancedatabase
+  failurePolicy: Fail
+  name: msingleinstancedatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - singleinstancedatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /mutate-database-oracle-com-v1alpha1-dataguardbroker
   failurePolicy: Fail
   name: mdataguardbroker.kb.io
@@ -187,27 +208,6 @@ webhooks:
     - UPDATE
     resources:
     - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /mutate-database-oracle-com-v4-singleinstancedatabase
-  failurePolicy: Fail
-  name: msingleinstancedatabasev4.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - singleinstancedatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -503,6 +503,28 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-database-oracle-com-v4-singleinstancedatabase
+  failurePolicy: Fail
+  name: vsingleinstancedatabasev4.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - singleinstancedatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   clientConfig:
     service:
       name: webhook-service
@@ -622,28 +644,6 @@ webhooks:
     - UPDATE
     resources:
     - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-database-oracle-com-v4-singleinstancedatabase
-  failurePolicy: Fail
-  name: vsingleinstancedatabasev4.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    - DELETE
-    resources:
-    - singleinstancedatabases
   sideEffects: None
 - admissionReviewVersions:
   - v1

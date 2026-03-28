@@ -35,7 +35,7 @@ BUNDLE_IMG ?= controller-bundle:$(VERSION)
 DOCKER ?= podman
 
 # Go toolchain version used for image builds
-GOLANG_VERSION ?= 1.25.1
+GOLANG_VERSION ?= 1.26.1
 
 # Toggle: BUILD_INTERNAL=true downloads Go in Dockerfile and uses oraclelinux builder
 BUILD_INTERNAL ?= false
@@ -57,7 +57,12 @@ TARGET ?=
 CRD_OPTIONS ?= "crd:maxDescLen=0,allowDangerousTypes=true"
 
 # envtest Kubernetes assets version
-ENVTEST_K8S_VERSION ?= 1.31.0
+ENVTEST_K8S_VERSION ?= 1.33.0
+#kustomize veriosn
+KUSTOMIZE_VERSION ?= v5.8.1
+
+#controller_version
+CONTROLLER_TOOLS_VERSION ?= v0.23.3
 
 # Unit test packages
 TEST ?= ./apis/database/v1alpha1 ./commons/... ./controllers/...
@@ -101,8 +106,6 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 
-KUSTOMIZE_VERSION ?= v5.7.1
-CONTROLLER_TOOLS_VERSION ?= v0.17
 KUSTOMIZE_INSTALL_SCRIPT ?= https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh
 
 # Derive Dockerfile target from DEBUG, unless TARGET explicitly provided

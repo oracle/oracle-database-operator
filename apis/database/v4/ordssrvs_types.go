@@ -46,46 +46,45 @@ import (
 // OrdsSrvsSpec defines the desired state of OrdsSrvs
 // +kubebuilder:resource:shortName="ords"
 type OrdsSrvsSpec struct {
-	
+
 	// Specifies the desired Kubernetes Workload
 	//+kubebuilder:validation:Enum=Deployment;StatefulSet;DaemonSet
 	//+kubebuilder:default=Deployment
 	WorkloadType string `json:"workloadType,omitempty"`
-	
+
 	// Defines the number of desired Replicas when workloadType is Deployment or StatefulSet
 	//+kubebuilder:validation:Minimum=1
 	//+kubebuilder:default=1
 	Replicas int32 `json:"replicas,omitempty"`
-	
+
 	// Specifies whether to restart pods when Global or Pool configurations change
 	ForceRestart bool `json:"forceRestart,omitempty"`
-	
+
 	// Specifies the ORDS container image
 	//+kubecbuilder:default=container-registry.oracle.com/database/ords:latest
 	Image string `json:"image"`
-	
+
 	// Specifies the ORDS container image pull policy
 	//+kubebuilder:validation:Enum=IfNotPresent;Always;Never
 	//+kubebuilder:default=IfNotPresent
 	ImagePullPolicy corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
-	
+
 	// Specifies the Secret Name for pulling the ORDS container image
 	ImagePullSecrets string `json:"imagePullSecrets,omitempty"`
-	
+
 	// Contains settings that are configured across the entire ORDS instance.
 	//+kubebuilder:default:={}
 	GlobalSettings GlobalSettings `json:"globalSettings,omitempty"`
-	
+
 	// Private key
-	EncPrivKey   PasswordSecret  `json:"encPrivKey,omitempty"`
-	
+	EncPrivKey PasswordSecret `json:"encPrivKey,omitempty"`
+
 	// Contains settings for individual pools/databases
 	PoolSettings []*PoolSettings `json:"poolSettings,omitempty"`
 
 	// ServiceAccount of the OrdsSrvs Pod
 	// +k8s:openapi-gen=true
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
-
 }
 
 type GlobalSettings struct {
@@ -236,7 +235,7 @@ type GlobalSettings struct {
 
 	// Central Configuration URL
 	CentralConfigUrl string `json:"central.config.url,omitempty"`
-	
+
 	// Central Configuration Wallet
 	//CentralConfigWallet string `json:"central.config.wallet,omitempty"`
 
@@ -714,7 +713,6 @@ type OrdsSrvsStatus struct {
 
 	// +operator-sdk:csv:customresourcedefinitions:type=status
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-
 }
 
 //+kubebuilder:object:root=true
@@ -737,7 +735,6 @@ type OrdsSrvs struct {
 
 	Spec   OrdsSrvsSpec   `json:"spec,omitempty"`
 	Status OrdsSrvsStatus `json:"status,omitempty"`
-	
 }
 
 //+kubebuilder:object:root=true
@@ -748,7 +745,6 @@ type OrdsSrvsList struct {
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []OrdsSrvs `json:"items"`
 }
-
 
 func init() {
 	SchemeBuilder.Register(&OrdsSrvs{}, &OrdsSrvsList{})

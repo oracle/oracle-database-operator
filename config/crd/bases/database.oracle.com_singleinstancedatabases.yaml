@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.17.3
   name: singleinstancedatabases.database.oracle.com
 spec:
   group: database.oracle.com
@@ -52,8 +52,6 @@ spec:
       name: Oem Express Url
       type: string
     name: v1alpha1
-    deprecated: true
-    deprecationWarning: database.oracle.com/v1alpha1 SingleInstanceDatabase is deprecated; use database.oracle.com/v4.
     schema:
       openAPIV3Schema:
         properties:
@@ -99,6 +97,17 @@ spec:
                 type: string
               enableTCPS:
                 type: boolean
+              externalPrimaryDatabaseRef:
+                properties:
+                  host:
+                    type: string
+                  pdbName:
+                    type: string
+                  port:
+                    type: integer
+                  sid:
+                    type: string
+                type: object
               flashBack:
                 type: boolean
               forceLog:
@@ -359,7 +368,7 @@ spec:
             - tcpsTlsSecret
             type: object
         type: object
-    served: false
+    served: true
     storage: false
     subresources:
       scale:
@@ -437,6 +446,8 @@ spec:
                 - clone
                 - truecache
                 type: string
+              dbFilesPvc:
+                type: string
               edition:
                 enum:
                 - standard
@@ -446,6 +457,17 @@ spec:
                 type: string
               enableTCPS:
                 type: boolean
+              externalPrimaryDatabaseRef:
+                properties:
+                  host:
+                    type: string
+                  pdbName:
+                    type: string
+                  port:
+                    type: integer
+                  sid:
+                    type: string
+                type: object
               flashBack:
                 type: boolean
               forceLog:
@@ -493,11 +515,15 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
+                  dbFilesPvc:
+                    type: string
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
+                    type: string
+                  stagePvc:
                     type: string
                   storageClass:
                     type: string
@@ -537,6 +563,36 @@ spec:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
+              stagePvc:
+                type: string
+              standbyConfig:
+                properties:
+                  primaryConnectString:
+                    type: string
+                  primaryDatabaseRef:
+                    type: string
+                  primaryDetails:
+                    properties:
+                      cdbName:
+                        type: string
+                      host:
+                        type: string
+                      pdbName:
+                        type: string
+                      port:
+                        type: integer
+                      sid:
+                        type: string
+                    type: object
+                  standbyTDEWalletRoot:
+                    type: string
+                  walletMountPath:
+                    type: string
+                  walletSecretRef:
+                    type: string
+                  walletZipFileKey:
+                    type: string
+                type: object
               tcpsCertRenewInterval:
                 type: string
               tcpsListenerPort:
@@ -664,11 +720,15 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
+                  dbFilesPvc:
+                    type: string
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
+                    type: string
+                  stagePvc:
                     type: string
                   storageClass:
                     type: string

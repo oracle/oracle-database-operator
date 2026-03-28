@@ -45,12 +45,10 @@ import (
 
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -58,8 +56,7 @@ import (
 var lrestlog = logf.Log.WithName("lrest-webhook")
 
 func (r *LREST) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
@@ -67,11 +64,11 @@ func (r *LREST) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrest,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=mlrest.kb.io,admissionReviewVersions={v4,v1beta1}
 
-var _ webhook.CustomDefaulter = &LREST{}
+var _ admission.Defaulter[*LREST] = &LREST{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *LREST) Default(ctx context.Context, obj runtime.Object) error {
-	lrest := obj.(*LREST)
+func (r *LREST) Default(ctx context.Context, obj *LREST) error {
+	lrest := obj
 	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
 		lrestlog.Info("Setting default values in LREST spec for : " + r.Name)
 	}
@@ -90,11 +87,11 @@ func (r *LREST) Default(ctx context.Context, obj runtime.Object) error {
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrest,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrests,verbs=create;update,versions=v4,name=vlrest.kb.io,admissionReviewVersions={v4,v1beta1}
 
-var _ webhook.CustomValidator = &LREST{}
+var _ admission.Validator[*LREST] = &LREST{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	lrest := obj.(*LREST)
+func (r *LREST) ValidateCreate(ctx context.Context, obj *LREST) (admission.Warnings, error) {
+	lrest := obj
 	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
 		lrestlog.Info("ValidateCreate", "name", r.Name)
 	}
@@ -180,7 +177,7 @@ func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admissi
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
+func (r *LREST) ValidateUpdate(ctx context.Context, old *LREST, newObj *LREST) (admission.Warnings, error) {
 
 	isLRESTMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
 	if isLRESTMarkedToBeDeleted {
@@ -190,10 +187,7 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) 
 	var allErrs field.ErrorList
 
 	// Check for updation errors
-	oldLREST, ok := old.(*LREST)
-	if !ok {
-		return nil, nil
-	}
+	oldLREST := old
 	if Bit(oldLREST.Spec.Trclvl, TRCWEB) == true {
 		lrestlog.Info("validate update", "name", r.Name)
 	}
@@ -225,8 +219,8 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) 
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *LREST) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	lrest := obj.(*LREST)
+func (r *LREST) ValidateDelete(ctx context.Context, obj *LREST) (admission.Warnings, error) {
+	lrest := obj
 	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
 		lrestlog.Info("validate delete", "name", r.Name)
 	}

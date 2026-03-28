@@ -44,19 +44,16 @@ package v4
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -64,23 +61,19 @@ import (
 var lrpdblog = logf.Log.WithName("lrpdb-webhook")
 
 func (r *LRPDB) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		WithValidator(&LRPDB{}).
 		WithDefaulter(&LRPDB{}).
-		For(r).
 		Complete()
 }
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-lrpdb,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=mlrpdb.kb.io,admissionReviewVersions={v4,v1beta1}
 
-var _ webhook.CustomDefaulter = &LRPDB{}
+var _ admission.Defaulter[*LRPDB] = &LRPDB{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *LRPDB) Default(ctx context.Context, obj runtime.Object) error {
-	pdb, ok := obj.(*LRPDB)
-	if !ok {
-		return fmt.Errorf("expected an LRPDB object but got %T", obj)
-	}
+func (r *LRPDB) Default(ctx context.Context, obj *LRPDB) error {
+	pdb := obj
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("Setting default values in LRPDB spec for : " + pdb.Name)
 	}
@@ -143,11 +136,11 @@ func (r *LRPDB) Default(ctx context.Context, obj runtime.Object) error {
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:path=/validate-database-oracle-com-v4-lrpdb,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=lrpdbs,verbs=create;update,versions=v4,name=vlrpdb.kb.io,admissionReviewVersions={v4,v1beta1}
 
-var _ webhook.CustomValidator = &LRPDB{}
+var _ admission.Validator[*LRPDB] = &LRPDB{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *LRPDB) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	pdb := obj.(*LRPDB)
+func (r *LRPDB) ValidateCreate(ctx context.Context, obj *LRPDB) (admission.Warnings, error) {
+	pdb := obj
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("ValidateCreate-Validating LRPDB spec for : " + r.Name)
 	}
@@ -337,13 +330,13 @@ func (r *LRPDB) CheckObjExistence(action string, allErrs *field.ErrorList, ctx c
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *LRPDB) ValidateUpdate(ctx context.Context, obj runtime.Object, old runtime.Object) (admission.Warnings, error) {
-	pdbold := old.(*LRPDB)
+func (r *LRPDB) ValidateUpdate(ctx context.Context, obj *LRPDB, old *LRPDB) (admission.Warnings, error) {
+	pdbold := old
 	if Bit(pdbold.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("ValidateUpdate-Validating LRPDB spec for : " + r.Name)
 	}
 
-	pdb := obj.(*LRPDB)
+	pdb := obj
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("ValidateUpdate-Validating LRPDB spec for : " + r.Name)
 	}
@@ -383,8 +376,8 @@ func (r *LRPDB) ValidateUpdate(ctx context.Context, obj runtime.Object, old runt
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *LRPDB) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	pdb := obj.(*LRPDB)
+func (r *LRPDB) ValidateDelete(ctx context.Context, obj *LRPDB) (admission.Warnings, error) {
+	pdb := obj
 	if Bit(pdb.Spec.Trclvl, TRCWEB) == true {
 		lrpdblog.Info("ValidateDelete-Validating LRPDB spec for : " + r.Name)
 	}

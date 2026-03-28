@@ -52,12 +52,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -164,25 +162,22 @@ func isUpdateLockOverrideEnabled(cr *ShardingDatabase, now time.Time) (bool, str
 }
 
 func (r *ShardingDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&ShardingDatabase{}).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
 }
 
-var _ webhook.CustomDefaulter = &ShardingDatabase{}
+var _ admission.Defaulter[*ShardingDatabase] = &ShardingDatabase{}
+var _ admission.Validator[*ShardingDatabase] = &ShardingDatabase{}
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-shardingdatabase,mutating=true,failurePolicy=fail,sideEffects=none,groups=database.oracle.com,resources=shardingdatabases,verbs=create;update,versions=v4,name=mshardingdatabasev4.kb.io,admissionReviewVersions=v1
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *ShardingDatabase) Default(ctx context.Context, obj runtime.Object) error {
-	cr, ok := obj.(*ShardingDatabase)
-	if !ok {
-		return fmt.Errorf("expected obj *ShardingDatabase but got %T", obj)
-	}
+func (r *ShardingDatabase) Default(ctx context.Context, obj *ShardingDatabase) error {
+	cr := obj
 
 	logger := shardingdatabaselog.WithValues("name", cr.Name, "namespace", cr.Namespace)
 	logger.Info("applying shardingdatabase defaults")
@@ -304,24 +299,17 @@ func validatePasswordSecretConfig(cfg PasswordSecretConfig, p *field.Path) field
 // TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-shardingdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=shardingdatabases,versions=v4,name=vshardingdatabasev4.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.CustomValidator = &ShardingDatabase{}
+var _ admission.Validator[*ShardingDatabase] = &ShardingDatabase{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj *ShardingDatabase) (admission.Warnings, error) {
 	logger := shardingdatabaselog.WithValues("webhook", "validateCreate")
 
 	// TODO(user): fill in your validation logic upon object creation.
 	// Check Secret configuration
 	var validationErr field.ErrorList
 	var validationErrs1 field.ErrorList
-	cr, ok := obj.(*ShardingDatabase)
-
-	if !ok {
-		validationErr = append(validationErr, field.Invalid(field.NewPath("obj"), "obj", "expected *ShardingDatabase"))
-		return nil, apierrors.NewInvalid(
-			schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
-			r.Name, validationErr)
-	}
+	cr := obj
 	logger = logger.WithValues("name", cr.Name, "namespace", cr.Namespace)
 	logger.Info("running create validation")
 
@@ -419,24 +407,14 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj runtime.Objec
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *ShardingDatabase) (admission.Warnings, error) {
 	logger := shardingdatabaselog.WithValues("webhook", "validateUpdate", "name", r.Name, "namespace", r.Namespace)
 	logger.Info("running update validation")
 
 	var validationErr field.ErrorList
 
-	oldCR, ok1 := oldObj.(*ShardingDatabase)
-	newCR, ok2 := newObj.(*ShardingDatabase)
-	if !ok1 || !ok2 {
-		validationErr = append(validationErr,
-			field.Invalid(field.NewPath("objectType"),
-				fmt.Sprintf("%T -> %T", oldObj, newObj),
-				"expected *ShardingDatabase for both old and new objects"))
-		logger.Info("update validation failed due to invalid object type")
-		return nil, apierrors.NewInvalid(
-			schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
-			r.Name, validationErr)
-	}
+	oldCR := oldObj
+	newCR := newObj
 
 	oldMode := detectShardingMode(&oldCR.Spec)
 	newMode := detectShardingMode(&newCR.Spec)
@@ -517,7 +495,7 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj ru
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *ShardingDatabase) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (r *ShardingDatabase) ValidateDelete(ctx context.Context, obj *ShardingDatabase) (admission.Warnings, error) {
 	shardingdatabaselog.WithValues("webhook", "validateDelete", "name", r.Name, "namespace", r.Namespace).
 		Info("running delete validation")
 

@@ -66,12 +66,10 @@ import (
 	utils "github.com/oracle/oracle-database-operator/commons/rac/utils"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
@@ -80,8 +78,7 @@ var racdatabaselog = logf.Log.WithName("racdatabase-resource")
 
 // SetupWebhookWithManager registers the RAC database webhook with the manager.
 func (r *RacDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&RacDatabase{}).
+	return ctrl.NewWebhookManagedBy(mgr, r).
 		WithDefaulter(r).
 		WithValidator(r).
 		Complete()
@@ -89,14 +86,11 @@ func (r *RacDatabase) SetupWebhookWithManager(mgr ctrl.Manager) error {
 
 //+kubebuilder:webhook:path=/mutate-database-oracle-com-v4-racdatabase,mutating=true,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=racdatabases,verbs=create;update,versions=v4,name=mracdatabase.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.CustomDefaulter = &RacDatabase{}
+var _ admission.Defaulter[*RacDatabase] = &RacDatabase{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *RacDatabase) Default(ctx context.Context, obj runtime.Object) error {
-	cr, ok := obj.(*RacDatabase)
-	if !ok {
-		return fmt.Errorf("expected *RacDatabase but got %T", obj)
-	}
+func (r *RacDatabase) Default(ctx context.Context, obj *RacDatabase) error {
+	cr := obj
 
 	racdatabaselog.Info("default", "name", cr.Name)
 
@@ -141,14 +135,11 @@ func (r *RacDatabase) Default(ctx context.Context, obj runtime.Object) error {
 
 //+kubebuilder:webhook:verbs=create;update;delete,path=/validate-database-oracle-com-v4-racdatabase,mutating=false,failurePolicy=fail,sideEffects=None,groups=database.oracle.com,resources=racdatabases,versions=v4,name=vracdatabase.kb.io,admissionReviewVersions={v1}
 
-var _ webhook.CustomValidator = &RacDatabase{}
+var _ admission.Validator[*RacDatabase] = &RacDatabase{}
 
 // ValidateCreate implements webhook.CustomValidator
-func (r *RacDatabase) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	cr, ok := obj.(*RacDatabase)
-	if !ok {
-		return nil, fmt.Errorf("expected *RacDatabase but got %T", obj)
-	}
+func (r *RacDatabase) ValidateCreate(ctx context.Context, obj *RacDatabase) (admission.Warnings, error) {
+	cr := obj
 	racdatabaselog.Info("validate create", "name", cr.Name)
 
 	var validationErrs field.ErrorList
@@ -491,7 +482,7 @@ func (cr *RacDatabase) validateAsmStorage() field.ErrorList {
 }
 
 // ValidateDelete implements webhook.CustomValidator
-func (r *RacDatabase) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (r *RacDatabase) ValidateDelete(ctx context.Context, obj *RacDatabase) (admission.Warnings, error) {
 	racdatabaselog.Info("validate delete", "name", r.Name)
 	// Add delete validation logic if needed
 	return nil, nil
@@ -517,18 +508,11 @@ func (r *RacDatabase) validateUniqueIPAddresses() field.ErrorList {
 }
 
 // ValidateUpdate implements webhook.CustomValidator
-func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj runtime.Object, newObj runtime.Object) (admission.Warnings, error) {
+func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj *RacDatabase, newObj *RacDatabase) (admission.Warnings, error) {
 	racdatabaselog.Info("validate update", "name", r.Name)
 
-	oldCr, ok := oldObj.(*RacDatabase)
-	if !ok {
-		return nil, fmt.Errorf("expected *RacDatabase for oldObj but got %T", oldObj)
-	}
-
-	newCr, ok := newObj.(*RacDatabase)
-	if !ok {
-		return nil, fmt.Errorf("expected *RacDatabase for newObj but got %T", newObj)
-	}
+	oldCr := oldObj
+	newCr := newObj
 
 	racdatabaselog.Info("validate update", "name", newCr.Name)
 
