@@ -59,7 +59,7 @@ RUN --mount=type=cache,target=/go-cache \
     if [ "${DEBUG}" = "true" ]; then \
       CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" GO111MODULE=on \
         go build -gcflags="all=-N -l" -o /workspace/manager main.go; \
-      go install github.com/go-delve/delve/cmd/dlv@v1.25.2; \
+      go install github.com/go-delve/delve/cmd/dlv@v1.26.1; \
     else \
       CGO_ENABLED=0 GOOS=linux GOARCH="${TARGETARCH}" GO111MODULE=on \
         go build -o /workspace/manager main.go; \
@@ -93,8 +93,8 @@ RUN useradd -u 1002 nonroot
 USER nonroot
 
 # Common runtime files
-COPY  ords/ords_init.sh /ords_init.sh
-COPY  ords/ords_start.sh /ords_start.sh
+COPY  ordssrvs/ords_init.sh /ords_init.sh
+COPY  ordssrvs/ords_start.sh /ords_start.sh
 COPY  LICENSE.txt /licenses/LICENSE.txt
 COPY  THIRD_PARTY_LICENSES_DOCKER.txt /licenses/THIRD_PARTY_LICENSES_DOCKER.txt
 COPY  THIRD_PARTY_LICENSES.txt /licenses/THIRD_PARTY_LICENSES.txt

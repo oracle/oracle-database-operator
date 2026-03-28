@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: databaseobservers.observability.oracle.com
 spec:
   group: observability.oracle.com
@@ -2253,6 +2253,10 @@ spec:
                                         type: integer
                                       signerName:
                                         type: string
+                                      userAnnotations:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
                                     required:
                                     - keyType
                                     - signerName
@@ -4756,6 +4760,10 @@ spec:
                                         type: integer
                                       signerName:
                                         type: string
+                                      userAnnotations:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
                                     required:
                                     - keyType
                                     - signerName
@@ -7259,6 +7267,10 @@ spec:
                                         type: integer
                                       signerName:
                                         type: string
+                                      userAnnotations:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
                                     required:
                                     - keyType
                                     - signerName

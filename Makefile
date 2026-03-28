@@ -62,7 +62,7 @@ ENVTEST_K8S_VERSION ?= 1.33.0
 KUSTOMIZE_VERSION ?= v5.8.1
 
 #controller_version
-CONTROLLER_TOOLS_VERSION ?= v0.23.3
+CONTROLLER_TOOLS_VERSION ?= v0.20.1
 
 # Unit test packages
 TEST ?= ./apis/database/v1alpha1 ./commons/... ./controllers/...
@@ -253,15 +253,15 @@ $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
 
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
-$(KUSTOMIZE): $(LOCALBIN)
+$(KUSTOMIZE): | $(LOCALBIN)
 	curl -s $(KUSTOMIZE_INSTALL_SCRIPT) | bash -s -- $(subst v,,$(KUSTOMIZE_VERSION)) $(LOCALBIN)
 
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
-$(CONTROLLER_GEN): $(LOCALBIN)
+$(CONTROLLER_GEN): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
 envtest: $(ENVTEST) ## Download envtest locally if necessary.
-$(ENVTEST): $(LOCALBIN)
+$(ENVTEST): | $(LOCALBIN)
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
 
 

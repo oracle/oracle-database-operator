@@ -619,9 +619,9 @@ func (r *RacDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			racDatabase.Status.State = string(racdb.RACFailedState)
 
 			meta.SetStatusCondition(&racDatabase.Status.Conditions, metav1.Condition{
-				Type:               string(racdb.CrdReconcileErrorState),
+				Type:               string(racdb.RacCrdReconcileErrorState),
 				Status:             metav1.ConditionTrue,
-				Reason:             string(racdb.CrdReconcileErrorReason),
+				Reason:             string(racdb.RacCrdReconcileErrorReason),
 				Message:            err.Error(),
 				ObservedGeneration: racDatabase.Generation,
 				LastTransitionTime: metav1.Now(),
@@ -1590,10 +1590,10 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 	// CLEAN OLD RECONCILE CONDITIONS
 	// ---------------------------------------------
 	for _, t := range []string{
-		string(racdb.CrdReconcileCompeleteState),
-		string(racdb.CrdReconcileQueuedState),
-		string(racdb.CrdReconcileWaitingState),
-		string(racdb.CrdReconcileErrorState), // ← ADD THIS
+		string(racdb.RacCrdReconcileCompeleteState),
+		string(racdb.RacCrdReconcileQueuedState),
+		string(racdb.RacCrdReconcileWaitingState),
+		string(racdb.RacCrdReconcileErrorState), // ← ADD THIS
 	} {
 		meta.RemoveStatusCondition(&racDatabase.Status.Conditions, t)
 	}
@@ -1612,7 +1612,7 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 	switch {
 	case *completed:
 		condition = metav1.Condition{
-			Type:               string(racdb.CrdReconcileCompeleteState),
+			Type:               string(racdb.RacCrdReconcileCompeleteState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: racDatabase.GetGeneration(),
 			Reason:             string(racdb.RacCrdReconcileCompleteReason),
@@ -1622,7 +1622,7 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 
 	case *blocked:
 		condition = metav1.Condition{
-			Type:               string(racdb.CrdReconcileWaitingState),
+			Type:               string(racdb.RacCrdReconcileWaitingState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: racDatabase.GetGeneration(),
 			Reason:             string(racdb.RacCrdReconcileWaitingReason),
@@ -1632,20 +1632,20 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 
 	case result.Requeue:
 		condition = metav1.Condition{
-			Type:               string(racdb.CrdReconcileQueuedState),
+			Type:               string(racdb.RacCrdReconcileQueuedState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: racDatabase.GetGeneration(),
-			Reason:             string(racdb.CrdReconcileQueuedReason),
+			Reason:             string(racdb.RacCrdReconcileQueuedReason),
 			Message:            errMsg,
 			Status:             metav1.ConditionTrue,
 		}
 
 	case err != nil && *err != nil:
 		condition = metav1.Condition{
-			Type:               string(racdb.CrdReconcileErrorState),
+			Type:               string(racdb.RacCrdReconcileErrorState),
 			LastTransitionTime: metav1.Now(),
 			ObservedGeneration: racDatabase.GetGeneration(),
-			Reason:             string(racdb.CrdReconcileErrorReason),
+			Reason:             string(racdb.RacCrdReconcileErrorReason),
 			Message:            errMsg,
 			Status:             metav1.ConditionTrue,
 		}
@@ -1659,7 +1659,7 @@ func (r *RacDatabaseReconciler) updateReconcileStatus(racDatabase *racdb.RacData
 	// ---------------------------------------------
 	meta.SetStatusCondition(&racDatabase.Status.Conditions, condition)
 
-	if racDatabase.Status.State == string(racdb.RACPodAvailableState) && condition.Type == string(racdb.CrdReconcileCompeleteState) {
+	if racDatabase.Status.State == string(racdb.RACPodAvailableState) && condition.Type == string(racdb.RacCrdReconcileCompeleteState) {
 		r.Log.Info("All validations and updation are completed. Changing State to AVAILABLE")
 		racDatabase.Status.State = string(racdb.RACAvailableState)
 	}
