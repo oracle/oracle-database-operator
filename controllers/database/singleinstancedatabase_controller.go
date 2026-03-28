@@ -798,6 +798,7 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 // #############################################################################
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase,
 	requiredAffinity bool) *corev1.Pod {
+	walletDir := GetWalletDirFromSid(m.Spec.Sid)
 
 	// POD spec
 	pod := &corev1.Pod{
@@ -1011,7 +1012,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "WALLET_DIR",
-								Value: "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet",
+								Value: walletDir,
 							},
 						},
 						Command: []string{"/bin/sh"},
@@ -1249,7 +1250,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "WALLET_DIR",
-								Value: "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet",
+								Value: walletDir,
 							},
 							{
 								Name: "PRIMARY_DB_CONN_STR",
@@ -1287,7 +1288,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 							{
 								Name:  "WALLET_DIR",
-								Value: "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet",
+								Value: walletDir,
 							},
 							{
 								Name:  "PRIMARY_DB_CONN_STR",
@@ -1370,7 +1371,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								if m.Spec.Image.PrebuiltDB {
 									return "" // No wallets for prebuilt DB
 								}
-								return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
+								return walletDir
 							}(),
 						},
 						{
@@ -2209,7 +2210,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePods(m *dbapi.SingleIn
 				if m.Status.DatafilesCreated != "true" {
 					log.Info("No datafiles created, single replica found, creating wallet")
 					// Creation of Oracle Wallet for Single Instance Database credentials
-					r.createWallet(m, ctx, req)
+					walletRes, walletErr := r.createWallet(m, ctx, req)
+					if walletErr != nil || walletRes.Requeue {
+						return walletRes, walletErr
+					}
 				}
 			}
 			if ok, _ := dbcommons.IsAnyPodWithStatus(allAvailable, corev1.PodRunning); !ok {
@@ -2388,17 +2392,23 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	}
 
 	lastInitContIndex := len(pod.Status.InitContainerStatuses) - 1
+	walletContainer := "init-wallet"
 
 	// If InitContainerStatuses[<index_of_init_container>].Ready is true, it means that the init container is successful
 	if pod.Status.InitContainerStatuses[lastInitContIndex].Ready {
-		// Init container named "init-wallet" has completed it's execution, hence return and don't requeue
-		return requeueN, nil
+		// init-wallet has completed. Continue wallet credential creation in the main container.
+		walletContainer = m.Name
 	}
 
 	if pod.Status.InitContainerStatuses[lastInitContIndex].State.Running == nil {
-		// Init container named "init-wallet" is not running, so waiting for it to come in running state requeueing the reconcile request
-		r.Log.Info("Waiting for init-wallet to come in running state...")
-		return requeueY, nil
+		if pod.Status.InitContainerStatuses[lastInitContIndex].State.Terminated != nil {
+			// init-wallet has terminated, continue in main container
+			walletContainer = m.Name
+		} else {
+			// Init container named "init-wallet" is not running, so waiting for it to come in running state requeueing the reconcile request
+			r.Log.Info("Waiting for init-wallet to come in running state...")
+			return requeueY, nil
+		}
 	}
 
 	if m.Spec.CreateAs != "clone" && m.Spec.Edition != "express" {
@@ -2409,7 +2419,7 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 			getEditionFile = dbcommons.GetStandardEditionFileCMD
 			eventReason = m.Spec.Sid + " is a standard edition"
 		}
-		out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "init-wallet",
+		out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, walletContainer,
 			ctx, req, false, "bash", "-c", getEditionFile)
 		r.Log.Info("getEditionFile Output : \n" + out)
 
@@ -2441,7 +2451,7 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 	// Execing into the pods and creating the wallet
 	adminPassword := string(secret.Data[m.Spec.AdminPassword.SecretKey])
 
-	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "init-wallet",
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, walletContainer,
 		ctx, req, true, "bash", "-c", fmt.Sprintf("%s && %s && %s",
 			dbcommons.WalletPwdCMD,
 			dbcommons.WalletCreateCMD,
@@ -4489,12 +4499,23 @@ func GetStandbyWalletZipFileKey(m *dbapi.SingleInstanceDatabase) string {
 
 func GetStandbyTDEWalletRoot(m *dbapi.SingleInstanceDatabase) string {
 	if m == nil || m.Spec.StandbyConfig == nil {
+		if m != nil {
+			return GetWalletDirFromSid(m.Spec.Sid)
+		}
 		return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
 	}
 	if p := strings.TrimSpace(m.Spec.StandbyConfig.StandbyTDEWalletRoot); p != "" {
 		return p
 	}
-	return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
+	return GetWalletDirFromSid(m.Spec.Sid)
+}
+
+func GetWalletDirFromSid(sid string) string {
+	trimmedSid := strings.ToUpper(strings.TrimSpace(sid))
+	if trimmedSid == "" {
+		return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
+	}
+	return fmt.Sprintf("/opt/oracle/oradata/dbconfig/%s/.wallet", trimmedSid)
 }
 
 func ValidateStandbyWalletSecretRef(r *SingleInstanceDatabaseReconciler, m *dbapi.SingleInstanceDatabase, ctx context.Context) error {
