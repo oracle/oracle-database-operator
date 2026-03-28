@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022-2024 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -35,6 +35,7 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
+
 package v4
 
 import "encoding/json"

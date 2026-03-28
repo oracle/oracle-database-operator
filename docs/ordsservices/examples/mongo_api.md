@@ -1,4 +1,4 @@
-# Example: Oracle API for MongoDB Support
+# OrdsSrvs Controller: Oracle API for MongoDB Support
 
 This example walks through using the **ORDSSRVS Controller** with a Containerised Oracle Database to enable MongoDB API Support.
 
@@ -24,11 +24,11 @@ In the database, create an ORDS-enabled user.  As this example uses the [Contain
     
 1. Create the User:
     ```sql
-    create user MONGO identified by "My_Password1!";
+    create user MONGO identified by "<password>";
     grant soda_app, create session, create table, create view, create sequence, create procedure, create job, 
     unlimited tablespace to MONGO;
     -- Connect as new user
-    conn MONGO/My_Password1!@FREEPDB1;
+    conn MONGO/<password>@FREEPDB1;
     exec ords.enable_schema;
     ```
 
@@ -40,10 +40,10 @@ openssl  genpkey -algorithm RSA  -pkeyopt rsa_keygen_bits:2048 -pkeyopt rsa_keyg
 openssl rsa -in ca.key -outform PEM  -pubout -out public.pem
 kubectl create secret generic prvkey --from-file=privateKey=ca.key  -n ordsnamespace
 
-echo "${DB_PWD}" > db-auth
-openssl pkeyutl -encrypt -pubin -inkey public.pem -in db-auth -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
+echo -n "Enter password: " && read -s DBPWD
+echo -n "${DBPWD}" | openssl pkeyutl -encrypt -pubin -inkey public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 |base64 > e_db-auth
 kubectl create secret generic sidb-db-auth-enc --from-file=password=e_db-auth -n  ordsnamespace
-rm db-auth e_db-auth
+rm e_db-auth
 ```
 
 ### Create ordssrvs Resource
@@ -78,7 +78,6 @@ rm db-auth e_db-auth
       forceRestart: true
       encPrivKey:
         secretName: prvkey
-        passwordKey: privateKey
       globalSettings:
         database.api.enabled: true
         mongo.enabled: true
@@ -130,7 +129,7 @@ rm db-auth e_db-auth
 
 1. Connect to ORDS using the MongoDB shell:
     ```bash
-    mongosh  --tlsAllowInvalidCertificates 'mongodb://MONGO:My_Password1!@localhost:27017/MONGO?authMechanism=PLAIN&authSource=$external&tls=true&retryWrites=false&loadBalanced=true' 
+    mongosh  --tlsAllowInvalidCertificates 'mongodb://MONGO:<password>!@localhost:27017/MONGO?authMechanism=PLAIN&authSource=$external&tls=true&retryWrites=false&loadBalanced=true' 
     ```
 
 1. Insert some data:

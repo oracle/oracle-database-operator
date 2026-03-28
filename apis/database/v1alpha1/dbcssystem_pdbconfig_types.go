@@ -35,6 +35,7 @@
 ** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ** SOFTWARE.
  */
+
 package v1alpha1
 
 // PDBConfig defines details of PDB struct for DBCS systems

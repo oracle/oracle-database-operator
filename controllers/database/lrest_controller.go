@@ -39,19 +39,21 @@
 package controllers
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
-	"net/http"
 	"slices"
 
 	//"fmt"
+	//"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -63,6 +65,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -82,7 +85,6 @@ import (
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	"github.com/oracle/oracle-database-operator/commons/k8s"
 	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
-	lrcommons "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	//lrcommons "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 )
 
@@ -182,6 +184,12 @@ func (r *LRESTReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if lrest.Spec.PdbAutoDiscover == true && lrest.Status.Status == true {
 		log.Info("PDB auto discover turned on")
 		r.PdbAutoDiscover(ctx, req, lrest)
+	}
+
+	// Reset database pwd
+	if lrest.Spec.ResetDbPassword == true && lrest.Status.Status == true {
+		log.Info("ResetDbPassword")
+		r.ResetCredential(ctx, req, lrest)
 	}
 
 	if !lrest.Status.Status {
@@ -308,7 +316,8 @@ func (r *LRESTReconciler) validateLRESTPods2(ctx context.Context, req ctrl.Reque
 	Ip := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
 
 	url := "https://" + Ip + "/database/pdbs/PDB$SEED/status/"
-	_, err := NewCallAPIAllPdbs(r, ctx, req, lrest, url, nil, "GET")
+	//_, err := NewCallAPIAllPdbs(r, ctx, req, lrest, url, nil, "GET")
+	_, err := NewCallAPISQL(r, ctx, req, lrest, url, nil, "GET")
 	if err != nil {
 		log.Info("LREST is not ready ", "Namespace", req.Namespace)
 		lrest.Status.Msg = "Waiting for LREST Pod(s) to be read"
@@ -388,16 +397,34 @@ func (r *LRESTReconciler) validateLRESTPods(ctx context.Context, req ctrl.Reques
 func (r *LRESTReconciler) createPodSpec(lrest *dbapi.LREST) corev1.PodSpec {
 
 	podSpec := corev1.PodSpec{
-		Volumes: PodVolumes(lrest), /* Volumes */
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: k8s.BoolPointer(true),
 			RunAsUser:    k8s.Int64Pointer(dbcommons.ORACLE_UID),
 			RunAsGroup:   k8s.Int64Pointer(dbcommons.ORACLE_GUID),
-			FSGroup:      k8s.Int64Pointer(dbcommons.ORACLE_GUID),
+			FSGroup:      k8s.Int64Pointer(dbcommons.DBA_GUID),
 			//SeccompProfile: &corev1.SeccompProfile{
 			//	Type: corev1.SeccompProfileTypeRuntimeDefault,
 			//},
 		},
+		InitContainers: []corev1.Container{{
+			Image:           lrest.Spec.LRESTImage,
+			Name:            lrest.Name + "-init",
+			SecurityContext: securityContextDefineLrest(),
+			Command:         []string{"/bin/bash", "-c", "/opt/oracle/lrest/runLREST.sh"},
+			Env:             ContainerEnv(lrest, true),
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					MountPath: "/opt/oracle/lrest/certificates",
+					Name:      "secrets",
+					ReadOnly:  false,
+				},
+				{
+					MountPath: "/opt/oracle/lrest/wlt",
+					Name:      "wlt",
+					ReadOnly:  false,
+				},
+			},
+		}},
 		Containers: []corev1.Container{{
 			Image:           lrest.Spec.LRESTImage,
 			Name:            lrest.Name + "-lrest",
@@ -407,12 +434,17 @@ func (r *LRESTReconciler) createPodSpec(lrest *dbapi.LREST) corev1.PodSpec {
 				{
 					MountPath: "/opt/oracle/lrest/certificates",
 					Name:      "secrets",
-					ReadOnly:  true,
+					ReadOnly:  false,
+				},
+				{
+					MountPath: "/opt/oracle/lrest/wlt",
+					Name:      "wlt",
+					ReadOnly:  false,
 				},
 			},
-			Env: ContainerEnv(lrest), /* Environment Variables */
+			Env: ContainerEnv(lrest, false), /* Environment Variables */
 		}},
-
+		Volumes: PodVolumes(lrest), /* Volumes */
 		NodeSelector: func() map[string]string {
 			ns := make(map[string]string)
 			if len(lrest.Spec.NodeSelector) != 0 {
@@ -516,9 +548,10 @@ func (r *LRESTReconciler) deleteReplicaSet(req ctrl.Request, lrest *dbapi.LREST)
 }
 
 /*
-*********************************************************
+***********************************************************
   - Evaluate change in Spec post creation and instantiation
-    /*******************************************************
+
+***********************************************************
 */
 func (r *LRESTReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
 	log := r.Log.WithValues("evaluateSpecChange", req.NamespacedName)
@@ -597,7 +630,8 @@ func (r *LRESTReconciler) evaluateSpecChange(ctx context.Context, req ctrl.Reque
 /*
 ************************************************
   - Create a Cluster Service for LREST LREST Pod
-    /***********************************************
+
+***********************************************
 */
 func (r *LRESTReconciler) createLRESTSVC(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
 
@@ -624,11 +658,9 @@ func (r *LRESTReconciler) createLRESTSVC(ctx context.Context, req ctrl.Request, 
 	return nil
 }
 
-/*
-***********************
+/************************
   - Create Service spec
-    /***********************
-*/
+************************/
 
 func (r *LRESTReconciler) createCoreService(lrest *dbapi.LREST) *corev1.Service {
 	var portLrest int32
@@ -774,15 +806,14 @@ func (r *LRESTReconciler) deleteLRESTInstance(req ctrl.Request, lrest *dbapi.LRE
 func (r *LRESTReconciler) verifySecrets(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
 
 	log := r.Log.WithValues("verifySecrets", req.NamespacedName)
-	/*
-		if err := r.checkSecret(ctx, req, lrest, lrest.Spec.SysAdminPwd.Secret.SecretName); err != nil {
+
+	if lrest.Spec.PwdProtection != "ORAPKI" {
+		if err := r.checkSecret(ctx, req, lrest, lrest.Spec.LRESTAdminUser.Secret.SecretName); err != nil {
 			return err
-		}*/
-	if err := r.checkSecret(ctx, req, lrest, lrest.Spec.LRESTAdminUser.Secret.SecretName); err != nil {
-		return err
-	}
-	if err := r.checkSecret(ctx, req, lrest, lrest.Spec.LRESTAdminPwd.Secret.SecretName); err != nil {
-		return err
+		}
+		if err := r.checkSecret(ctx, req, lrest, lrest.Spec.LRESTAdminPwd.Secret.SecretName); err != nil {
+			return err
+		}
 	}
 	/*
 		if err := r.checkSecret(ctx, req, lrest, lrest.Spec.LRESTPwd.Secret.SecretName); err != nil {
@@ -909,7 +940,7 @@ func securityContextDefineLrest() *corev1.SecurityContext {
 	}
 }
 
-func ContainerEnv(lrest *dbapi.LREST) []corev1.EnvVar {
+func ContainerEnv(lrest *dbapi.LREST, initcnt bool) []corev1.EnvVar {
 	EnvVar := []corev1.EnvVar{
 		{
 			Name:  "ORACLE_HOST",
@@ -928,13 +959,20 @@ func ContainerEnv(lrest *dbapi.LREST) []corev1.EnvVar {
 			Value: lrest.Spec.LRESTTlsKey.Secret.Key,
 		},
 		{
-			Name:  "PUBKEY",
-			Value: lrest.Spec.LRESTPubKey.Secret.Key,
+			Name:  "ORAPKITAG",
+			Value: lrest.Spec.LRESTorapkitag,
 		},
-		{
-			Name:  "PRVKEY",
-			Value: lrest.Spec.LRESTPriKey.Secret.Key,
-		},
+		// No longer required in the race condition
+		/*
+			{
+				Name:  "PUBKEY",
+				Value: lrest.Spec.LRESTPubKey.Secret.Key,
+			},
+			{
+				Name:  "PRVKEY",
+				Value: lrest.Spec.LRESTPriKey.Secret.Key,
+			},
+		*/
 		{
 			Name:  "ORACLE_PORT",
 			Value: strconv.Itoa(lrest.Spec.DBPort),
@@ -952,28 +990,50 @@ func ContainerEnv(lrest *dbapi.LREST) []corev1.EnvVar {
 			Value: strconv.Itoa(lrest.Spec.SqlNetTrace),
 		},
 		{
-			Name: "R1",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: lrest.Spec.LRESTAdminUser.Secret.SecretName,
-					},
-					Key: lrest.Spec.LRESTAdminUser.Secret.Key,
-				},
-			},
+			Name:  "PASSPROTECTION",
+			Value: lrest.Spec.PwdProtection,
 		},
-		{
-			Name: "R2",
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: lrest.Spec.LRESTAdminPwd.Secret.SecretName,
+	}
+
+	if initcnt == true {
+		EnvVar = appendEnvVar(EnvVar, "ARG", "INIT")
+		EnvVar = appendEnvVar(EnvVar, "PUBKEY", lrest.Spec.LRESTPubKey.Secret.Key)
+		EnvVar = appendEnvVar(EnvVar, "PRVKEY", lrest.Spec.LRESTPriKey.Secret.Key)
+		var R1 corev1.EnvVar
+		var R2 corev1.EnvVar
+		if lrest.Spec.PwdProtection != "ORAPKI" {
+			R1 = corev1.EnvVar{
+				Name: "R1",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: lrest.Spec.LRESTAdminUser.Secret.SecretName,
+						},
+						Key: lrest.Spec.LRESTAdminUser.Secret.Key,
 					},
-					Key: lrest.Spec.LRESTAdminPwd.Secret.Key,
 				},
-			},
-		},
-		{
+			}
+			R2 = corev1.EnvVar{
+				Name: "R2",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: lrest.Spec.LRESTAdminPwd.Secret.SecretName,
+						},
+						Key: lrest.Spec.LRESTAdminPwd.Secret.Key,
+					},
+				},
+			}
+		} else {
+			R1 = corev1.EnvVar{
+				Name:  "R1",
+				Value: "nullval"}
+			R2 = corev1.EnvVar{
+				Name:  "R2",
+				Value: "nullval"}
+		}
+
+		R3 := corev1.EnvVar{
 			Name: "R3",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
@@ -983,8 +1043,8 @@ func ContainerEnv(lrest *dbapi.LREST) []corev1.EnvVar {
 					Key: lrest.Spec.WebLrestServerUser.Secret.Key,
 				},
 			},
-		},
-		{
+		}
+		R4 := corev1.EnvVar{
 			Name: "R4",
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
@@ -994,79 +1054,246 @@ func ContainerEnv(lrest *dbapi.LREST) []corev1.EnvVar {
 					Key: lrest.Spec.WebLrestServerPwd.Secret.Key,
 				},
 			},
-		},
+		}
+
+		EnvVar = append(EnvVar, R1)
+		EnvVar = append(EnvVar, R2)
+		EnvVar = append(EnvVar, R3)
+		EnvVar = append(EnvVar, R4)
+	}
+
+	if initcnt == false {
+		EnvVar = appendEnvVar(EnvVar, "ARG", "STARTUP")
 	}
 
 	return EnvVar
 }
 
+func appendEnvVar(envVars []corev1.EnvVar, name string, value string) []corev1.EnvVar {
+	newEnvVar := corev1.EnvVar{
+		Name:  name,
+		Value: value,
+	}
+	return append(envVars, newEnvVar)
+}
+
 func PodVolumes(lrest *dbapi.LREST) []corev1.Volume {
 
-	Volumes := []corev1.Volume{{
-		Name: "secrets",
-		VolumeSource: corev1.VolumeSource{
-			Projected: &corev1.ProjectedVolumeSource{
-				DefaultMode: func() *int32 { i := int32(0666); return &i }(),
-				Sources: []corev1.VolumeProjection{
-					{
-						Secret: &corev1.SecretProjection{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: lrest.Spec.LRESTPubKey.Secret.SecretName,
-							},
-							Items: []corev1.KeyToPath{
-								{
-									Key:  lrest.Spec.LRESTPubKey.Secret.Key,
-									Path: lrest.Spec.LRESTPubKey.Secret.Key,
-								},
-							},
-						},
-					},
-					{
-						Secret: &corev1.SecretProjection{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: lrest.Spec.LRESTPriKey.Secret.SecretName,
-							},
-							Items: []corev1.KeyToPath{
-								{
-									Key:  lrest.Spec.LRESTPriKey.Secret.Key,
-									Path: lrest.Spec.LRESTPriKey.Secret.Key,
-								},
-							},
-						},
-					},
+	var Volumes []corev1.Volume
 
-					{
-						Secret: &corev1.SecretProjection{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: lrest.Spec.LRESTTlsKey.Secret.SecretName,
-							},
-							Items: []corev1.KeyToPath{
-								{
-									Key:  lrest.Spec.LRESTTlsKey.Secret.Key,
-									Path: lrest.Spec.LRESTTlsKey.Secret.Key,
+	if lrest.Spec.PwdProtection == "OPENSSL3" {
+		Volumes = []corev1.Volume{{
+			Name: "secrets",
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					DefaultMode: func() *int32 { i := int32(0666); return &i }(),
+					Sources: []corev1.VolumeProjection{
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: lrest.Spec.LRESTPubKey.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  lrest.Spec.LRESTPubKey.Secret.Key,
+										Path: lrest.Spec.LRESTPubKey.Secret.Key,
+									},
 								},
 							},
 						},
-					},
-					{
-						Secret: &corev1.SecretProjection{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: lrest.Spec.LRESTTlsCrt.Secret.SecretName,
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: lrest.Spec.LRESTPriKey.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  lrest.Spec.LRESTPriKey.Secret.Key,
+										Path: lrest.Spec.LRESTPriKey.Secret.Key,
+									},
+								},
 							},
-							Items: []corev1.KeyToPath{
-								{
-									Key:  lrest.Spec.LRESTTlsCrt.Secret.Key,
-									Path: lrest.Spec.LRESTTlsCrt.Secret.Key,
+						},
+
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: lrest.Spec.LRESTTlsKey.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  lrest.Spec.LRESTTlsKey.Secret.Key,
+										Path: lrest.Spec.LRESTTlsKey.Secret.Key,
+									},
+								},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: lrest.Spec.LRESTTlsCrt.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  lrest.Spec.LRESTTlsCrt.Secret.Key,
+										Path: lrest.Spec.LRESTTlsCrt.Secret.Key,
+									},
 								},
 							},
 						},
 					},
 				},
 			},
-		},
-	}}
+		}}
+	}
 
+	if lrest.Spec.PwdProtection == "NATIVE" {
+		Volumes = []corev1.Volume{{
+			Name: "secrets",
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					DefaultMode: func() *int32 { i := int32(0666); return &i }(),
+					Sources: []corev1.VolumeProjection{
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: lrest.Spec.LRESTTlsKey.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  lrest.Spec.LRESTTlsKey.Secret.Key,
+										Path: lrest.Spec.LRESTTlsKey.Secret.Key,
+									},
+								},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: lrest.Spec.LRESTTlsCrt.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  lrest.Spec.LRESTTlsCrt.Secret.Key,
+										Path: lrest.Spec.LRESTTlsCrt.Secret.Key,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}}
+	}
+
+	if lrest.Spec.PwdProtection == "ORAPKI" {
+		Volumes = []corev1.Volume{{
+			Name: "secrets",
+			VolumeSource: corev1.VolumeSource{
+				Projected: &corev1.ProjectedVolumeSource{
+					DefaultMode: func() *int32 { i := int32(0666); return &i }(),
+					Sources: []corev1.VolumeProjection{
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: lrest.Spec.LRESTTlsKey.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  lrest.Spec.LRESTTlsKey.Secret.Key,
+										Path: lrest.Spec.LRESTTlsKey.Secret.Key,
+									},
+								},
+							},
+						},
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: lrest.Spec.LRESTTlsCrt.Secret.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  lrest.Spec.LRESTTlsCrt.Secret.Key,
+										Path: lrest.Spec.LRESTTlsCrt.Secret.Key,
+									},
+								},
+							},
+						},
+
+						{
+							Secret: &corev1.SecretProjection{
+								LocalObjectReference: corev1.LocalObjectReference{
+									Name: lrest.Spec.LRESTorapki.SecretName,
+								},
+								Items: []corev1.KeyToPath{
+									{
+										Key:  "cwallet.sso",
+										Path: "orapki/cwallet.sso",
+									},
+									{
+										Key:  "cwallet.sso.lck",
+										Path: "orapki/cwallet.sso.lck",
+									},
+									{
+										Key:  "ewallet.p12",
+										Path: "orapki/ewallet.p12",
+									},
+									{
+										Key:  "ewallet.p12.lck",
+										Path: "orapki/ewallet.p12.lck",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}}
+
+		/*
+			orapkivol := corev1.Volume{
+				Name: "secret",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: lrest.Spec.LRESTorapki.SecretName,
+					},
+				},
+			}
+
+			Volumes = append(Volumes, orapkivol)
+		*/
+	}
+
+	wltvol := corev1.Volume{
+		Name: "wlt",
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	}
+	Volumes = append(Volumes, wltvol)
 	return Volumes
+}
+
+func (r *LRESTReconciler) DeleteCRDPdb(ctx context.Context, req ctrl.Request, lrpdb *dbapi.LRPDB, lrest *dbapi.LREST) error {
+	log := r.Log.WithValues("DeleteCRDPdb", req.NamespacedName)
+	if controllerutil.ContainsFinalizer(lrpdb, LRPDBFinalizer) {
+		log.Info("Removing finalizer")
+		controllerutil.RemoveFinalizer(lrpdb, LRPDBFinalizer)
+		err := r.Update(ctx, lrpdb)
+		if err != nil {
+			log.Info("Could not remove finalizer", "err", err.Error())
+			return err
+		}
+	}
+
+	err := r.Delete(context.Background(), lrpdb, client.GracePeriodSeconds(1))
+	if err != nil {
+		log.Info("Could not delete LRPDB resource", "err", err.Error())
+		return err
+	}
+	r.Recorder.Eventf(lrest, corev1.EventTypeNormal, "delete crd(pdb)", "pdbname=%s", lrpdb.Spec.LRPDBName)
+
+	return nil
 }
 
 func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
@@ -1103,7 +1330,7 @@ func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lres
 					if pdbitem.Status.OpenMode != "MOUNTED" {
 
 						log.Info("Force pdb closure")
-						respData, errapi := NewCallLAPI(r, ctx, req, &pdbitem, url, values, "POST")
+						respData, errapi := NewCallAPISQL(r, ctx, req, &pdbitem, url, values, "POST")
 
 						if err := json.Unmarshal([]byte(respData), &objmap); err != nil {
 							log.Error(err, "failed to get respData from callAPI", "err", err.Error())
@@ -1141,21 +1368,9 @@ func (r *LRESTReconciler) DeletePDBS(ctx context.Context, req ctrl.Request, lres
 						return err
 					}
 					r.Recorder.Eventf(lrest, corev1.EventTypeNormal, "drop pdb", "pdbname=%s", pdbitem.Spec.LRPDBName)
-					/* remove finalizer */
-
-					if controllerutil.ContainsFinalizer(&pdbitem, LRPDBFinalizer) {
-						log.Info("Removing finalizer")
-						controllerutil.RemoveFinalizer(&pdbitem, LRPDBFinalizer)
-						err = r.Update(ctx, &pdbitem)
-						if err != nil {
-							log.Info("Could not remove finalizer", "err", err.Error())
-							return err
-						}
-					}
-
-					err = r.Delete(context.Background(), &pdbitem, client.GracePeriodSeconds(1))
+					err := r.DeleteCRDPdb(ctx, req, &pdbitem, lrest)
 					if err != nil {
-						log.Info("Could not delete LRPDB resource", "err", err.Error())
+						log.Info("Cannot drop crd")
 						return err
 					}
 
@@ -1179,13 +1394,26 @@ func SearchElementInDbList(element string, TheList []string) bool {
 	return inthelist
 }
 
+func SearchElementInDbList2(element string, TheList []interface{}) bool {
+	var inthelist bool
+	inthelist = false
+	for idx := range TheList {
+		if strings.ToLower(element) == strings.ToLower(TheList[idx].(map[string]interface{})["name"].(string)) {
+			inthelist = true
+			return inthelist
+		}
+	}
+	return inthelist
+}
+
 func (r *LRESTReconciler) SelectFromVpdbs(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) ([]interface{}, error) {
 	log := r.Log.WithValues("SelectFromVpdbs", req.NamespacedName)
 	url := "https://" + lrest.Name + "-lrest." + lrest.Namespace + ":" + strconv.Itoa(lrest.Spec.LRESTPort) + "/database/pdbs/"
 
-	output, err := NewCallAPIAllPdbs(r, ctx, req, lrest, url, nil, "GET")
+	//output, err := NewCallAPIAllPdbs(r, ctx, req, lrest, url, nil, "GET")
+	output, err := NewCallAPISQL(r, ctx, req, lrest, url, nil, "GET")
 	if err != nil {
-		log.Info("NewCallAPIAllPdbs Error")
+		log.Info("NewCallAPISQL Error")
 	}
 
 	data := []byte(` {"PDBS":` + output + `}`)
@@ -1206,6 +1434,7 @@ func (r *LRESTReconciler) SelectFromVpdbs(ctx context.Context, req ctrl.Request,
 func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST, dbinfo []interface{}, idx int) error {
 	log := r.Log.WithValues("LrpdbCreation", req.NamespacedName)
 	log.Info("Creating LRPDB for :" + dbinfo[idx].(map[string]interface{})["name"].(string))
+	var PwdProtection string
 
 	cln, err := dynamic.NewForConfig(r.Config)
 	if err != nil {
@@ -1284,6 +1513,15 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 	Resname := "atd-" + strings.ToLower(dbinfo[idx].(map[string]interface{})["name"].(string))
 	Resname = strings.ReplaceAll(Resname, "_", "-")
 
+	/* lrpdb does not need  orapki wallet if
+	   passprtection is orapki based then
+	   webpassword secret is base64 encoded */
+	if lrest.Spec.PwdProtection == "ORAPKI" {
+		PwdProtection = "NATIVE"
+	} else {
+		PwdProtection = lrest.Spec.PwdProtection
+	}
+
 	obj := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "database.oracle.com/v4",
@@ -1304,6 +1542,7 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 				"cdbPrvKey":               CdbPrvKeyObj,
 				"webServerUser":           WebUseObj,
 				"webServerPwd":            WebPasObj,
+				"passwordProtection":      PwdProtection,
 				"adminName":               WebUseObj, /* Place holder */
 				"adminPwd":                WebUseObj, /* Place holder */
 				"adminpdbUser":            WebUseObj, /* Place holder */
@@ -1353,19 +1592,33 @@ func (r *LRESTReconciler) LrpdbCreation(ctx context.Context, req ctrl.Request, l
 
 func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
 	log := r.Log.WithValues("PdbAutoDiscover", req.NamespacedName)
+	/* LIST OF CRD */
+	lrpdbList := &dbapi.LRPDBList{}
+	var pdbNameList []string /* the list of pdb name */
 
 	// SELECT * FROM V$PDBS
 	ndata, err := r.SelectFromVpdbs(ctx, req, lrest)
 
 	// LIST OF ALL LRPDB
 	log.Info("Get list of lrpdb resources\n")
-	var pdbNameList []string /* the list of pdb name */
-	lrpdbList := &dbapi.LRPDBList{}
 	listOpts := []client.ListOption{}
 	err = r.List(ctx, lrpdbList, listOpts...)
 	if err != nil {
 		log.Info("Failed to get the list of pdbs")
 		return err
+	}
+
+	/* Get the number of PDBS from v$pdbs and update the status */
+	NumPdbs := len(ndata) - 1
+	NumCrds := len(lrpdbList.Items)
+	if NumPdbs != lrest.Status.Npdbs || NumCrds != lrest.Status.Ncrds || NumCrds == 0 || NumPdbs == 0 {
+		lrest.Status.Npdbs = NumPdbs
+		lrest.Status.Ncrds = NumCrds
+		lrest.Status.Npdbscrd = fmt.Sprintf("%d:%d", NumPdbs, NumCrds)
+		if err := r.Status().Update(ctx, lrest); err != nil {
+			log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
+		}
+
 	}
 
 	for _, pdbitem := range lrpdbList.Items {
@@ -1404,237 +1657,21 @@ func (r *LRESTReconciler) PdbAutoDiscover(ctx context.Context, req ctrl.Request,
 		}
 	}
 
+	/* Check PDB existence */
+
+	for _, pdbitem := range lrpdbList.Items {
+		if (pdbitem.Spec.CDBName == lrest.Spec.LRESTName) && Bit(pdbitem.Status.PDBBitMask, PDBCRT) == true {
+			InTheList := SearchElementInDbList2(pdbitem.Spec.LRPDBName, ndata)
+			log.Info("PDB " + pdbitem.Spec.LRPDBName + " has been dropped manually dropping the CRD")
+			if InTheList == false {
+				err := r.DeleteCRDPdb(ctx, req, &pdbitem, lrest)
+				log.Error(err, "Cannot delete crd ")
+			}
+		}
+	}
+
 	return nil
 
-}
-
-func NewCallAPIAllPdbs(intr interface{}, ctx context.Context, req ctrl.Request, lrest *dbapi.LREST, url string, payload map[string]string, action string) (string, error) {
-	var c client.Client
-	var r logr.Logger
-	var e record.EventRecorder
-	var err error
-
-	recpdb, ok1 := intr.(*LRPDBReconciler)
-	if ok1 {
-		fmt.Printf("func NewCallLApi ((*PDBReconciler),......)\n")
-		c = recpdb.Client
-		e = recpdb.Recorder
-		r = recpdb.Log
-	}
-
-	reccdb, ok2 := intr.(*LRESTReconciler)
-	if ok2 {
-		fmt.Printf("func NewCallLApi ((*CDBReconciler),......)\n")
-		c = reccdb.Client
-		e = reccdb.Recorder
-		r = reccdb.Log
-	}
-
-	log := r.WithValues("NewCallAPIAllPdbs", req.NamespacedName)
-
-	secret := &corev1.Secret{}
-
-	err = c.Get(ctx, types.NamespacedName{Name: lrest.Spec.LRESTTlsKey.Secret.SecretName, Namespace: lrest.Namespace}, secret)
-
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Secret not found:" + lrest.Spec.LRESTTlsKey.Secret.SecretName)
-			return "", err
-		}
-		log.Error(err, "Unable to get the secret.")
-		return "", err
-	}
-	rsaKeyPEM := secret.Data[lrest.Spec.LRESTTlsKey.Secret.Key]
-
-	err = c.Get(ctx, types.NamespacedName{Name: lrest.Spec.LRESTTlsCrt.Secret.SecretName, Namespace: lrest.Namespace}, secret)
-
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Secret not found:" + lrest.Spec.LRESTTlsCrt.Secret.SecretName)
-			return "", err
-		}
-		log.Error(err, "Unable to get the secret.")
-		return "", err
-	}
-
-	rsaCertPEM := secret.Data[lrest.Spec.LRESTTlsCrt.Secret.Key]
-
-	err = c.Get(ctx, types.NamespacedName{Name: lrest.Spec.LRESTTlsCat.Secret.SecretName, Namespace: lrest.Namespace}, secret)
-
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Secret not found:" + lrest.Spec.LRESTTlsCat.Secret.SecretName)
-			return "", err
-		}
-		log.Error(err, "Unable to get the secret.")
-		return "", err
-	}
-
-	caCert := secret.Data[lrest.Spec.LRESTTlsCat.Secret.Key]
-
-	certificate, err := tls.X509KeyPair([]byte(rsaCertPEM), []byte(rsaKeyPEM))
-	if err != nil {
-		lrest.Status.Msg = "Error tls.X509KeyPair"
-		return "", err
-	}
-
-	caCertPool := x509.NewCertPool()
-	caCertPool.AppendCertsFromPEM(caCert)
-	/*
-			tlsConf := &tls.Config{Certificates: []tls.Certificate{certificate},
-		                               RootCAs: caCertPool}
-	*/
-	tlsConf := &tls.Config{Certificates: []tls.Certificate{certificate},
-		RootCAs: caCertPool,
-		//MinVersion:               tls.VersionTLS12,
-		CurvePreferences:         []tls.CurveID{tls.CurveP521, tls.CurveP384, tls.CurveP256},
-		PreferServerCipherSuites: true,
-		CipherSuites: []uint16{
-			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
-			tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
-			tls.TLS_RSA_WITH_AES_256_CBC_SHA,
-		},
-	}
-
-	tr := &http.Transport{TLSClientConfig: tlsConf}
-
-	httpclient := &http.Client{Transport: tr}
-
-	log.Info("Issuing REST call", "URL", url, "Action", action)
-
-	// Get Web Server User
-	//secret := &corev1.Secret{}
-	err = c.Get(ctx, types.NamespacedName{Name: lrest.Spec.WebLrestServerUser.Secret.SecretName, Namespace: lrest.Namespace}, secret)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Secret not found:" + lrest.Spec.WebLrestServerUser.Secret.SecretName)
-			return "", err
-		}
-		log.Error(err, "Unable to get the secret.")
-		return "", err
-	}
-	webUserEnc := string(secret.Data[lrest.Spec.WebLrestServerUser.Secret.Key])
-	webUserEnc = strings.TrimSpace(webUserEnc)
-
-	err = c.Get(ctx, types.NamespacedName{Name: lrest.Spec.LRESTPriKey.Secret.SecretName, Namespace: lrest.Namespace}, secret)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Secret not found:" + lrest.Spec.LRESTPriKey.Secret.SecretName)
-			return "", err
-		}
-		log.Error(err, "Unable to get the secret.")
-		return "", err
-	}
-	privKey := string(secret.Data[lrest.Spec.LRESTPriKey.Secret.Key])
-	webUser, err := lrcommons.CommonDecryptWithPrivKey2(privKey, webUserEnc, req)
-
-	// Get Web Server User Password
-	secret = &corev1.Secret{}
-	err = c.Get(ctx, types.NamespacedName{Name: lrest.Spec.WebLrestServerPwd.Secret.SecretName, Namespace: lrest.Namespace}, secret)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			log.Info("Secret not found:" + lrest.Spec.WebLrestServerPwd.Secret.SecretName)
-			return "", err
-		}
-		log.Error(err, "Unable to get the secret.")
-		return "", err
-	}
-	webUserPwdEnc := string(secret.Data[lrest.Spec.WebLrestServerPwd.Secret.Key])
-	webUserPwdEnc = strings.TrimSpace(webUserPwdEnc)
-	webUserPwd, err := lrcommons.CommonDecryptWithPrivKey2(privKey, webUserPwdEnc, req)
-
-	var httpreq *http.Request
-	if action == "GET" {
-		httpreq, err = http.NewRequest(action, url, nil)
-	} else {
-		jsonValue, _ := json.Marshal(payload)
-		httpreq, err = http.NewRequest(action, url, bytes.NewBuffer(jsonValue))
-	}
-
-	if err != nil {
-		log.Info("Unable to create HTTP Request for LRPDB : "+lrest.Name, "err", err.Error())
-		return "", err
-	}
-
-	httpreq.Header.Add("Accept", "application/json")
-	httpreq.Header.Add("Content-Type", "application/json")
-	httpreq.SetBasicAuth(webUser, webUserPwd)
-
-	resp, err := httpclient.Do(httpreq)
-	if err != nil {
-		log.Info("Rest server temporary unavailable")
-		errmsg := err.Error()
-		log.Error(err, "Failed - Could not connect to LREST Pod", "err", err.Error())
-		lrest.Status.Msg = "Error: Could not connect to LREST Pod"
-		e.Eventf(lrest, corev1.EventTypeWarning, "LRESTError", errmsg)
-		return "", err
-	}
-
-	e.Eventf(lrest, corev1.EventTypeWarning, "Done", lrest.Spec.LRESTName)
-	if resp.StatusCode != http.StatusOK {
-		bb, _ := ioutil.ReadAll(resp.Body)
-
-		if resp.StatusCode == 404 {
-			log.Info("error 404")
-
-		} else {
-			if flood_control == false {
-				lrest.Status.Msg = "LREST Error - HTTP Status Code:" + strconv.Itoa(resp.StatusCode)
-			}
-		}
-
-		if flood_control == false {
-			log.Info("LREST Error - HTTP Status Code :"+strconv.Itoa(resp.StatusCode), "Err", string(bb))
-		}
-
-		var apiErr LRESTError
-		json.Unmarshal([]byte(bb), &apiErr)
-		if flood_control == false {
-			e.Eventf(lrest, corev1.EventTypeWarning, "LRESTError", "Failed: %s", apiErr.Message)
-		}
-		fmt.Printf("\n================== APIERR ======================\n")
-		fmt.Printf("%+v \n", apiErr)
-		fmt.Printf("URL=%s\n", url)
-		fmt.Printf("resp.StatusCode=%s\n", strconv.Itoa(resp.StatusCode))
-		fmt.Printf("\n================== APIERR ======================\n")
-		flood_control = true
-		return "", errors.New("LREST Error")
-	}
-	flood_control = false
-
-	defer resp.Body.Close()
-
-	bodyBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Print(err.Error())
-	}
-	respData := string(bodyBytes)
-	fmt.Print("CALL API return msg.....:")
-	fmt.Println(string(bodyBytes))
-
-	var apiResponse restSQLCollection
-	json.Unmarshal([]byte(bodyBytes), &apiResponse)
-	fmt.Printf("===> %#v\n", apiResponse)
-	fmt.Printf("===> %+v\n", apiResponse)
-
-	errFound := false
-	for _, sqlItem := range apiResponse.Items {
-		if sqlItem.ErrorDetails != "" {
-			log.Info("LREST Error - Oracle Error Code :" + strconv.Itoa(sqlItem.ErrorCode))
-			if !errFound {
-				lrest.Status.Msg = sqlItem.ErrorDetails
-			}
-			e.Eventf(lrest, corev1.EventTypeWarning, "OraError", "%s", sqlItem.ErrorDetails)
-			errFound = true
-		}
-	}
-
-	if errFound {
-		return "", errors.New("Oracle Error")
-	}
-
-	return respData, nil
 }
 
 func (r *LRESTReconciler) lrestHealthCheck(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) {
@@ -1669,9 +1706,10 @@ func (r *LRESTReconciler) lrestHealthCheck(ctx context.Context, req ctrl.Request
 	//  in the future we can expose a rest call for OCIPing
 
 	url := "https://" + Ip + "/database/pdbs/PDB$SEED/status/"
-	_, err = NewCallAPIAllPdbs(r, ctx, req, lrest, url, nil, "GET")
+	//_, err = NewCallAPIAllPdbs(r, ctx, req, lrest, url, nil, "GET")
+	_, err = NewCallAPISQL(r, ctx, req, lrest, url, nil, "GET")
 	if err != nil {
-		log.Info("NewCallAPIAllPdbs Error")
+		log.Info("NewCallAPISQL Error")
 		if lrest.Status.Msg == lrestHealthy {
 			// Sent event only if we go from Healthy to unHealthy
 			r.Recorder.Eventf(lrest, corev1.EventTypeWarning, "RDBMS issue ", "lrest=%s", lrest.Name+"."+lrest.Namespace)
@@ -1684,4 +1722,277 @@ func (r *LRESTReconciler) lrestHealthCheck(ctx context.Context, req ctrl.Request
 		log.Error(err, "Failed to update status for :"+lrest.Name, "err", err.Error())
 	}
 
+}
+
+func (r *LRESTReconciler) ResetCredential(ctx context.Context, req ctrl.Request, lrest *dbapi.LREST) error {
+	log := r.Log.WithValues("ResetCredential", req.NamespacedName)
+
+	var Dbuser string
+	var Passwd string
+	podName := lrest.Name + "-lrest"
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{client.InNamespace(req.Namespace), client.MatchingLabels{"name": podName}}
+
+	// List retrieves list of objects for a given namespace and list options.
+	err := r.List(ctx, podList, listOpts...)
+	if err != nil {
+		log.Info("Failed to list pods of: "+podName, "Namespace", req.Namespace)
+		return err
+	}
+
+	if len(podList.Items) == 0 {
+		log.Info("No pods found for: "+podName, "Namespace", req.Namespace)
+		lrest.Status.Msg = "Waiting for LREST Pod(s) to start"
+		return errors.New("Waiting for LREST pods to start")
+	}
+
+	/* retriev passwd and send to the  rest server */
+
+	readyPods := 0
+	RestCommand := "unset INITFILE ;/opt/oracle/lrest/main --initfile=/opt/oracle/lrest/initdev.rst "
+
+	// resetcdbusr
+	if lrest.Spec.LRESTAdminUser.Secret.SecretName != "" {
+		Dbuser, _ = getGenericSecret3(r, ctx, req, lrest,
+			lrest.Spec.LRESTAdminUser.Secret.SecretName, lrest.Spec.LRESTAdminUser.Secret.Key,
+			lrest.Spec.LRESTPriKey.Secret.SecretName, lrest.Spec.LRESTPriKey.Secret.Key,
+			NULL, NULL, true)
+		RestCommand = RestCommand + " --resetcdbusr=" + Dbuser
+	}
+	// resetcdbpwd
+	if lrest.Spec.LRESTAdminPwd.Secret.SecretName != "" {
+		Passwd, _ = getGenericSecret3(r, ctx, req, lrest,
+			lrest.Spec.LRESTAdminPwd.Secret.SecretName, lrest.Spec.LRESTAdminPwd.Secret.Key,
+			lrest.Spec.LRESTPriKey.Secret.SecretName, lrest.Spec.LRESTPriKey.Secret.Key,
+			NULL, NULL, true)
+		RestCommand = RestCommand + " --resetcdbpwd=" + Passwd
+	}
+
+	for _, pod := range podList.Items {
+		if pod.Status.Phase == corev1.PodRunning {
+			readyPods++
+			out, _ := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "", ctx, req, true, "bash", "-c", RestCommand)
+			log.Info(out)
+		}
+	}
+
+	/* Reset parameter before restart the server */
+	lrest.Spec.ResetDbPassword = false
+	err = r.Update(ctx, lrest)
+	if CheckErr(err, r, ctx, req, lrest, nil) == true {
+		return err
+	}
+
+	/* Restart lrest */
+	log.Info("=== RESTARTING REST SERVET ===")
+	RestPort := lrest.Spec.LRESTPort
+	RestName := lrest.Name + "-lrest"
+	RestNmsp := lrest.Namespace
+	Ip := RestName + "." + RestNmsp + ":" + strconv.Itoa(RestPort)
+	url := "https://" + Ip + "/database/lrest/StopRestServer/"
+	values := map[string]string{
+		"action": "SHUTDOWN",
+	}
+
+	_, err = NewCallAPISQL(r, ctx, req, lrest, url, values, "POST")
+	if CheckErr(err, r, ctx, req, lrest, nil) == true {
+		return err
+	}
+
+	return nil
+}
+
+func getGenericSecret3(intr interface{},
+	ctx context.Context,
+	req ctrl.Request,
+	lrcrd interface{},
+	Secnm string,
+	Secky string,
+	DecPKSecnm string,
+	DecPKSecky string,
+	Cernm string,
+	Cerky string,
+	IsKeyPriv bool) (string, error) {
+	var c client.Client
+	var r logr.Logger
+	var Trclvl int
+	var err error
+	var PassProtection string
+	var OpenSSLkey string
+	var RerturnSecValue string
+	var Nms string
+	var pkcs8 interface{}
+
+	recpdb, ok1 := intr.(*LRPDBReconciler)
+	if ok1 {
+		c = recpdb.Client
+		r = recpdb.Log
+
+	}
+
+	reccdb, ok2 := intr.(*LRESTReconciler)
+	if ok2 {
+		c = reccdb.Client
+		r = reccdb.Log
+	}
+
+	log := r.WithValues("Begin call", req.NamespacedName)
+
+	/* get secret */
+
+	/* Secret variable */
+	secret01 := &corev1.Secret{}
+	secret02 := &corev1.Secret{}
+	secret03 := &corev1.Secret{}
+
+	/* Get passwd protection */
+	lrpdb, ok3 := lrcrd.(*dbapi.LRPDB)
+	lrest, ok4 := lrcrd.(*dbapi.LREST)
+	if ok3 {
+		PassProtection = lrpdb.Spec.PwdProtection
+		Nms = lrpdb.Namespace
+		Trclvl = lrpdb.Spec.Trclvl
+	}
+
+	if ok4 {
+		PassProtection = lrest.Spec.PwdProtection
+		Nms = lrest.Namespace
+		Trclvl = lrest.Spec.Trclvl
+	}
+
+	if Bit(Trclvl, TRCSEC&TRCSTK) == true {
+		Backtrace()
+	}
+
+	if Secnm != "" {
+		if Bit(Trclvl, TRCSEC) == true {
+			fmt.Printf("TRCSEC: getGenericSecret3  [Secretname=%s][namespace=%s]\n", Secnm, Nms)
+		}
+
+		err = c.Get(ctx, types.NamespacedName{Name: Secnm, Namespace: Nms}, secret01)
+		if err != nil {
+			log.Info("Error: cannot get secret " + Secnm)
+			return "", err
+		}
+
+		/* Get base64 secrets */
+		if PassProtection == "NATIVE" || PassProtection == "ORAPKI" {
+			if Bit(Trclvl, TRCSEC) == true {
+				fmt.Printf("TRCSEC: PassProtection=NATIVE\n")
+			}
+			RerturnSecValue = string(secret01.Data[Secky])
+			return RerturnSecValue, nil
+		}
+
+		/* Get Encrypted secrets */
+		if PassProtection == "OPENSSL3" {
+			if Bit(Trclvl, TRCSEC) == true {
+				fmt.Printf("TRCSEC: PassProtection=OPENSSL3\n")
+			}
+			err = c.Get(ctx, types.NamespacedName{Name: DecPKSecnm, Namespace: Nms}, secret02)
+			if err != nil {
+				log.Info("Error: cannot get secret key " + DecPKSecnm)
+				return "", err
+			}
+
+			OpenSSLkey = strings.TrimSpace(string(secret02.Data[DecPKSecky]))
+
+			block, _ := pem.Decode([]byte(OpenSSLkey))
+
+			if IsKeyPriv == true {
+				pkcs8, err = x509.ParsePKCS8PrivateKey(block.Bytes)
+			} else {
+				pkcs8, err = x509.ParsePKIXPublicKey(block.Bytes)
+			}
+			if err != nil {
+				log.Error(err, "Failed to parse key - "+err.Error())
+				return "", err
+			}
+
+			encString := string(secret01.Data[Secky])
+			encString = strings.TrimSpace(encString)
+
+			encString64, err := base64.StdEncoding.DecodeString(string(encString))
+			if err != nil {
+				log.Error(err, "Failed to decode encrypted string to base64 - "+err.Error())
+				return "", err
+			}
+
+			BinDecryptVal, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, pkcs8.(*rsa.PrivateKey), encString64, nil)
+			if err != nil {
+				log.Error(err, "Failed to decrypt string - "+err.Error())
+				return "", err
+			}
+
+			RerturnSecValue = strings.TrimSpace(string(BinDecryptVal))
+		}
+
+	}
+
+	/* Get a generic certificate from secret */
+	if Cernm != "" {
+		if Bit(Trclvl, TRCSEC) == true {
+			fmt.Printf("TRCSEC: Get Cert/Key %s\n", Cernm)
+		}
+		err = c.Get(ctx, types.NamespacedName{Name: Cernm, Namespace: Nms}, secret03)
+		if err != nil {
+			log.Info("Error: cannot get secret key " + Cernm)
+			return "", err
+		}
+		RerturnSecValue = string(secret03.Data[Cerky])
+	}
+
+	return RerturnSecValue, nil
+}
+
+/* CheckErr(err, r, ctx , req , lrcrd , debug, nil)*/
+
+func CheckErr(err error, intr interface{}, ctx context.Context, req ctrl.Request, lrcrd interface{}, spare interface{}) bool {
+
+	var r logr.Logger
+	var e record.EventRecorder
+	var Trclvl int
+	recpdb, ok1 := intr.(*LRPDBReconciler)
+	if ok1 {
+		e = recpdb.Recorder
+		r = recpdb.Log
+	}
+	reccdb, ok2 := intr.(*LRESTReconciler)
+	if ok2 {
+		e = reccdb.Recorder
+		r = reccdb.Log
+	}
+
+	log := r.WithValues("CheckErr", req.NamespacedName)
+
+	lrpdb, ok3 := lrcrd.(*dbapi.LRPDB)
+	lrest, ok4 := lrcrd.(*dbapi.LREST)
+
+	if ok3 {
+		Trclvl = lrpdb.Spec.Trclvl
+	}
+
+	if ok4 {
+		Trclvl = lrest.Spec.Trclvl
+	}
+
+	if err != nil {
+		log.Info("ERROR:" + err.Error())
+		ErrorMsg := err.Error()
+		if ok3 {
+			e.Event(lrpdb, corev1.EventTypeWarning, "CheckErr", err.Error())
+		}
+		if ok4 {
+			e.Event(lrest, corev1.EventTypeWarning, "CheckErr", err.Error())
+		}
+
+		if Bit(Trclvl, TRCSTK) == true {
+			log.Error(err, ErrorMsg)
+			Backtrace()
+		}
+
+		return true
+	}
+
+	return false
 }

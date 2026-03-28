@@ -1,0 +1,6 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: racdatabases.database.oracle.com
+  annotations:
+    cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert

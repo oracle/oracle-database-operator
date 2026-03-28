@@ -43,6 +43,7 @@ import (
 	"reflect"
 	"strings"
 
+	. "github.com/oracle/oracle-database-operator/commons/multitenant/lrest"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -70,7 +71,10 @@ var _ webhook.CustomDefaulter = &LREST{}
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *LREST) Default(ctx context.Context, obj runtime.Object) error {
-	lrestlog.Info("Setting default values in LREST spec for : " + r.Name)
+	lrest := obj.(*LREST)
+	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
+		lrestlog.Info("Setting default values in LREST spec for : " + r.Name)
+	}
 
 	if r.Spec.LRESTPort == 0 {
 		r.Spec.LRESTPort = 8888
@@ -90,8 +94,10 @@ var _ webhook.CustomValidator = &LREST{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	lrestlog.Info("ValidateCreate", "name", r.Name)
 	lrest := obj.(*LREST)
+	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
+		lrestlog.Info("ValidateCreate", "name", r.Name)
+	}
 
 	var allErrs field.ErrorList
 
@@ -145,11 +151,11 @@ func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admissi
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("lrestImage"), "Please specify name of LREST Image to be used"))
 	}
-	if reflect.ValueOf(lrest.Spec.LRESTAdminUser).IsZero() {
+	if lrest.Spec.PwdProtection != "ORAPKI" && reflect.ValueOf(lrest.Spec.LRESTAdminUser).IsZero() {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("cdbAdminUser"), "Please specify user in the root container with sysdba priviledges to manage PDB lifecycle"))
 	}
-	if reflect.ValueOf(lrest.Spec.LRESTAdminPwd).IsZero() {
+	if lrest.Spec.PwdProtection != "ORAPKI" && reflect.ValueOf(lrest.Spec.LRESTAdminPwd).IsZero() {
 		allErrs = append(allErrs,
 			field.Required(field.NewPath("spec").Child("lrestAdminPwd"), "Please specify password for the LREST Administrator to manage PDB lifecycle"))
 	}
@@ -175,7 +181,6 @@ func (r *LREST) ValidateCreate(ctx context.Context, obj runtime.Object) (admissi
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) (admission.Warnings, error) {
-	lrestlog.Info("validate update", "name", r.Name)
 
 	isLRESTMarkedToBeDeleted := r.GetDeletionTimestamp() != nil
 	if isLRESTMarkedToBeDeleted {
@@ -188,6 +193,9 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) 
 	oldLREST, ok := old.(*LREST)
 	if !ok {
 		return nil, nil
+	}
+	if Bit(oldLREST.Spec.Trclvl, TRCWEB) == true {
+		lrestlog.Info("validate update", "name", r.Name)
 	}
 
 	if r.Spec.DBPort < 0 {
@@ -218,7 +226,10 @@ func (r *LREST) ValidateUpdate(ctx context.Context, old, newObj runtime.Object) 
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *LREST) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	lrestlog.Info("validate delete", "name", r.Name)
+	lrest := obj.(*LREST)
+	if Bit(lrest.Spec.Trclvl, TRCWEB) == true {
+		lrestlog.Info("validate delete", "name", r.Name)
+	}
 
 	// TODO(user): fill in your validation logic upon object deletion.
 	return nil, nil

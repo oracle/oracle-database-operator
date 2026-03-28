@@ -52,6 +52,8 @@ import (
 	"github.com/oracle/oracle-database-operator/commons/finalizer"
 	"github.com/oracle/oracle-database-operator/commons/oci"
 
+	"errors"
+
 	"github.com/go-logr/logr"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/core"
@@ -59,11 +61,10 @@ import (
 	"github.com/oracle/oci-go-sdk/v65/keymanagement"
 	"github.com/oracle/oci-go-sdk/v65/workrequests"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -109,7 +110,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	dbcsInst := &databasev4.DbcsSystem{}
 	r.Logger.Info("Reconciling DbSystemDetails", "name", req.NamespacedName)
 	if err := r.KubeClient.Get(ctx, req.NamespacedName, dbcsInst); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			// CR was deleted → stop reconciling
 			r.Logger.Info("DbcsSystem resource not found.", "name", req.NamespacedName)
 			return ctrl.Result{}, nil
@@ -177,7 +178,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	} else {
 		// The object is being deleted
-		r.Logger.Info("Terminate DbcsSystem Database: " + dbcsInst.Spec.DbSystem.DisplayName)
+		r.Logger.Info("Terminate DbcsSystem Database: " + *dbcsInst.Spec.Id)
 		if err := dbcsv4.DeleteDbcsSystemSystem(r.dbClient, *dbcsInst.Spec.Id); err != nil {
 			r.Logger.Error(err, "Fail to terminate DbcsSystem Instance")
 			dbcsInst.Status.Message = err.Error()
@@ -870,9 +871,9 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Change the phase to "Available"
 	assignDBCSID(dbcsInst, dbSystemId)
-	if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
-		return ctrl.Result{}, statusErr
-	}
+	// if statusErr := dbcsv4.SetLifecycleState(compartmentId, r.KubeClient, r.dbClient, dbcsInst, databasev4.Available, r.nwClient, r.wrClient); statusErr != nil {
+	// 	return ctrl.Result{}, statusErr
+	// }
 
 	// r.Logger.Info("DBInst after assignment", "dbcsInst:->", dbcsInst)
 
@@ -1034,6 +1035,7 @@ func (r *DbcsSystemReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 }
 
+// -----------------Data Guard Deletion Flow---------------------------------//
 func (r *DbcsSystemReconciler) DeleteDataGuard(
 	ctx context.Context,
 	compartmentId string,
@@ -1193,7 +1195,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 	if association == nil {
 		msg := fmt.Sprintf(
 			"Skipping Data Guard deletion — peer DB %s is not associated with primary DB %s",
-			*peerDbSystemId, primaryDatabaseId,
+			strVal(peerDbSystemId), strVal(primaryDatabaseId),
 		)
 		log.Info(msg)
 		dbcsInst.Status.Message = msg
@@ -1204,7 +1206,7 @@ func (r *DbcsSystemReconciler) DeleteDataGuard(
 
 		_ = r.KubeClient.Status().Update(ctx, dbcsInst)
 
-		return fmt.Errorf(msg)
+		return errors.New(msg)
 	}
 
 	// At this point, we know the primary and peer DB are actually in Data Guard
@@ -1413,57 +1415,69 @@ func (r *DbcsSystemReconciler) waitForWorkRequest(
 	}
 }
 
-func (r *DbcsSystemReconciler) updateSpecsAndStatus(ctx context.Context, dbcsInst *databasev4.DbcsSystem, dbSystemId string) (reconcile.Result, error) {
+func (r *DbcsSystemReconciler) updateSpecsAndStatus(
+	ctx context.Context,
+	dbcsInst *databasev4.DbcsSystem,
+	dbSystemId string,
+) (reconcile.Result, error) {
 
-	// Retry mechanism for handling resource version conflicts
-	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// Fetch the latest version of the resource
-		latestDbcsInst := &databasev4.DbcsSystem{}
-		err := r.KubeClient.Get(ctx, types.NamespacedName{
-			Name:      dbcsInst.Name,
-			Namespace: dbcsInst.Namespace,
-		}, latestDbcsInst)
+	const (
+		maxAttempts = 15
+		retryDelay  = 15 * time.Second
+	)
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		latest := &databasev4.DbcsSystem{}
+		if err := r.KubeClient.Get(ctx,
+			types.NamespacedName{
+				Name:      dbcsInst.Name,
+				Namespace: dbcsInst.Namespace,
+			},
+			latest,
+		); err != nil {
+			return reconcile.Result{}, err
+		}
+
+		// Fetch OCI state
+		ociResp, err := r.dbClient.GetDbSystem(ctx, database.GetDbSystemRequest{
+			DbSystemId: common.String(dbSystemId),
+		})
 		if err != nil {
-			r.Logger.Error(err, "Failed to fetch the latest DB resource")
-			return err
+			return reconcile.Result{}, err
 		}
 
-		// Update the Spec subresource
-		latestDbcsInst.Spec.Id = &dbSystemId
-		err = r.KubeClient.Update(ctx, latestDbcsInst)
-		if err != nil {
-			r.Logger.Error(err, "Failed to update DB Spec")
-			return err
+		ociState := string(ociResp.DbSystem.LifecycleState)
+
+		// If already synced → exit cleanly
+		if string(latest.Status.State) == ociState &&
+			latest.Status.Id != nil &&
+			*latest.Status.Id == dbSystemId {
+
+			r.Logger.Info("Status already in sync",
+				"state", ociState)
+			return reconcile.Result{}, nil
 		}
 
-		// Update the Status subresource
+		updated := latest.DeepCopy()
+		updated.Status.Id = &dbSystemId
+		updated.Status.State = databasev4.LifecycleState(ociState)
 
-		// Update the Status subresource
-		originalStatus := reflect.ValueOf(&dbcsInst.Status).Elem()
-		latestStatus := reflect.ValueOf(&latestDbcsInst.Status).Elem()
+		if err := r.KubeClient.Status().Update(ctx, updated); err != nil {
 
-		// Iterate over all fields in the Status struct and update them
-		for i := 0; i < originalStatus.NumField(); i++ {
-			fieldName := originalStatus.Type().Field(i).Name
-			latestStatus.FieldByName(fieldName).Set(originalStatus.Field(i))
+			// Retry using requeue (not sleep)
+			if attempt == maxAttempts {
+				return reconcile.Result{}, err
+			}
+
+			return reconcile.Result{RequeueAfter: retryDelay}, nil
 		}
 
-		err = r.KubeClient.Status().Update(ctx, latestDbcsInst)
-		if err != nil {
-			r.Logger.Error(err, "Failed to update DB status")
-			return err
-		}
+		r.Logger.Info("Successfully updated status",
+			"state", ociState)
 
-		return nil
-	})
-
-	if retryErr != nil {
-		r.Logger.Error(retryErr, "Failed to update DB Spec and Status after retries")
-		return reconcile.Result{}, retryErr
+		return reconcile.Result{}, nil
 	}
 
-	r.Logger.Info("Successfully updated Spec and Status")
-	return reconcile.Result{}, nil
+	return reconcile.Result{}, fmt.Errorf("failed after %d attempts", maxAttempts)
 }
 
 // getDbHomeIdByDbSystemID retrieves the DB Home ID associated with the given DB System ID
@@ -1595,8 +1609,8 @@ func (r *DbcsSystemReconciler) createPluggableDatabase(ctx context.Context, dbcs
 
 	if !exists {
 		errMsg := fmt.Sprintf("Database does not exist: %s", dbSystemId)
-		r.Logger.Error(fmt.Errorf(errMsg), "Database not found")
-		return "", fmt.Errorf(errMsg)
+		r.Logger.Error(errors.New(errMsg), "Database not found")
+		return "", errors.New(errMsg)
 	}
 
 	// Fetch secrets for TdeWalletPassword and PdbAdminPassword

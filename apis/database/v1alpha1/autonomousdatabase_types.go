@@ -76,7 +76,7 @@ type AutonomousDatabaseBase struct {
 	AutonomousContainerDatabase AcdSpec `json:"autonomousContainerDatabase,omitempty"`
 	DisplayName                 *string `json:"displayName,omitempty"`
 	DbName                      *string `json:"dbName,omitempty"`
-	// +kubebuilder:validation:Enum:="OLTP";"DW";"AJD";"APEX"
+	// +kubebuilder:validation:Enum:="OLTP";"DW";"AJD";"APEX";"LH"
 	DbWorkload database.AutonomousDatabaseDbWorkloadEnum `json:"dbWorkload,omitempty"`
 	// +kubebuilder:validation:Enum:="LICENSE_INCLUDED";"BRING_YOUR_OWN_LICENSE"
 	LicenseModel         database.AutonomousDatabaseLicenseModelEnum `json:"licenseModel,omitempty"`

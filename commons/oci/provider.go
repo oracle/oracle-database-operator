@@ -118,17 +118,18 @@ func getProviderWithAPIKey(kubeClient client.Client, authData ApiKeyAuth) (commo
 	}
 
 	for key, val := range ociConfigMap.Data {
-		if key == regionKey {
+		switch key {
+		case regionKey:
 			region = val
-		} else if key == fingerprintKey {
+		case fingerprintKey:
 			fingerprint = val
-		} else if key == userKey {
+		case userKey:
 			user = val
-		} else if key == tenancyKey {
+		case tenancyKey:
 			tenancy = val
-		} else if key == passphraseKey {
+		case passphraseKey:
 			passphrase = val
-		} else {
+		default:
 			return nil, errors.New("Unable to identify the key: " + key)
 		}
 	}

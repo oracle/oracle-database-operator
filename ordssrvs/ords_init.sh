@@ -35,11 +35,11 @@
 ## OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ## SOFTWARE.
 
-# not used, avoid messages
+# not used, unset to avoid warning message
 unset JAVA_TOOL_OPTIONS
 
 dump_stack(){
-_log_date=`date "+%y:%m:%d %H:%M:%S"`
+_log_date=$(date "+%y:%m:%d %H:%M:%S")
     local frame=0
     local line_no
     local function_name
@@ -48,19 +48,77 @@ _log_date=`date "+%y:%m:%d %H:%M:%S"`
     echo -e "filename:line\tfunction "
     echo -e "-------------   --------"
     while caller $frame ;do ((frame++)) ;done | \
-    while read line_no function_name file_name;\
+    while read -r line_no function_name file_name;\
     do echo -e "$file_name:$line_no\t$function_name" ;done >&2
 }
 
+sep(){
+	echo "### ====================================================================================="
+}
 
+sub(){
+  echo "### $(date +'%Y-%m-%d %H:%M:%S') ### $1"
+}
 
-get_conn_string() {
-	local -n _conn_string="${1}"
+#------------------------------------------------------------------------------
+function global_parameters(){
 
-	echo "== Prepare connect string"
+	APEX_INSTALL=/opt/oracle/apex
+	# backward compatibility for ORDS images prior to 24.1.x (included)
+	# APEX_HOME is used only here and it is set on images <= 24.1.x
+	if [[ -n ${APEX_HOME} ]]; then
+		APEX_INSTALL=${APEX_HOME}/${APEX_VER}
+		echo "WARNING: APEX_HOME detected, APEX_HOME:${APEX_HOME}; ORDS image may be older than 24.2"
+	fi	
+	APEXINS=${APEX_INSTALL}/apexins.sql
+	APEX_IMAGES=${APEX_INSTALL}/images
+    APEX_VERSION_TXT=${APEX_IMAGES}/apex_version.txt 
 
-	local -r _admin_user=$($ords_cfg_cmd get --secret db.adminUser | tail -1)
-	local _conn_type=$($ords_cfg_cmd get db.connectionType |tail -1)
+	sub "global parameters"
+	echo "external_apex          : ${external_apex:?}"
+	echo "download_apex          : ${download_apex:?}"
+	
+	if [[ ${download_apex} == "true" ]] 
+	then
+	  echo "download_url_apex      : ${download_url_apex:?}"
+	fi
+
+	if [[ ( ${external_apex} == "true" ) || ( ${download_apex} == "true" ) ]]
+	then
+	  echo "APEX_INSTALL           : $APEX_INSTALL"
+	  echo "APEX_IMAGES            : $APEX_IMAGES"
+	fi
+	
+	if [[ -n ${central_config_url} ]] 
+	then
+	  echo "central_config_url     : ${central_config_url}"
+    fi
+
+	# check for password encryption
+	if [[ -n "${ENC_PRV_KEY}" ]]; then
+		ENC_PRV_KEY_PATH="/opt/oracle/sa/encryptionPrivateKey"
+		ENC_PRV_KEY_FILE="${ENC_PRV_KEY_PATH}/${ENC_PRV_KEY}"
+		echo "encryption key name    : ${ENC_PRV_KEY}"
+		[[ -f "${ENC_PRV_KEY_FILE}" ]] || echo "ERROR: encryption key not found"
+		javac /opt/oracle/sa/scripts/RSADecryptOAEP.java -d /opt/oracle/ords/scripts/
+	fi	
+}
+
+#------------------------------------------------------------------------------
+prepare_pool_connect_string() {
+	local -n _x_conn_string="${1}"
+	local -r _conn_type="${2}"
+	local -r _user="${3%%/ *}"
+	local -r _pwd="${4}"
+
+	sub "connect string"
+    if [[ -n "${_user}" ]]
+	then
+	  echo "username       : ${_user}"
+    else
+	  echo "username       : / (SEPS)" 
+	fi 
+
 	if [[ $_conn_type == "customurl" ]]; then
 		local -r _conn=$($ords_cfg_cmd get db.customURL | tail -1)
 	elif [[ $_conn_type == "tns" ]]; then
@@ -77,43 +135,42 @@ get_conn_string() {
 				local -r _conn=${_host}:${_port}/${_service:-$_sid}
 			fi
 		fi
-	else 
-		# wallet
-		_conn_type="wallet"
-		local -r _wallet_service=$($ords_cfg_cmd get db.wallet.zip.service | tail -1)
-		local -r _conn=${_wallet_service}
+	elif [[ $_conn_type == "zipWallet" ]]; then 
+		local -r _zip_wallet_service=$($ords_cfg_cmd get db.wallet.zip.service | tail -1)
+		local -r _conn="${_zip_wallet_service}"
+	else
+	   echo "Empty or unknown connectionType, ignoring"
+	   return 0
 	fi
 
-	if [[ -n ${_conn} ]]; then
-		echo "Connection String (${_conn_type}): ${_conn}"
-		_conn_string="${_admin_user%%/ *}/${config["dbadminuserpassword"]}@${_conn}"
-		if [[ ${_admin_user%%/ *} == "SYS" ]]; then
-			_conn_string="${_conn_string=} AS SYSDBA"
-		fi
+    if [[ ( -n ${_conn} ) ]]; then
+      echo "connect string : ${_conn}"
+	  _x_conn_string="${_user}/${_pwd}@${_conn}"
+	  if [[ ${_user} == "SYS" ]]; then
+	    _x_conn_string="${_x_conn_string=} AS SYSDBA"
+	  fi
 	fi
 }
 
 #------------------------------------------------------------------------------
-function setup_sql(){
-	local -r _conn_string="${1}"
+function setup_sql_environment(){
 
-	echo "== Configuring sql environment"
+	sub "Configuring sql environment"
 
         ## Get TNS_ADMIN location
         local -r _tns_admin=$($ords_cfg_cmd get db.tnsDirectory 2>&1| tail -1)
         if [[ ! $_tns_admin =~ "Cannot get setting" ]]; then
                 echo "Setting: TNS_ADMIN=${_tns_admin}"
                 export TNS_ADMIN=${_tns_admin}
+				[[ -d ${TNS_ADMIN} ]] && ls -l "${TNS_ADMIN}"
         fi
 
         ## Get ADB Wallet
-        #echo "Checking db.wallet.zip.path"
-        #echo "$ords_cfg_cmd get db.wallet.zip.path"
+        # echo "Checking db.wallet.zip.path"
         local -r _wallet_zip_path=$($ords_cfg_cmd get db.wallet.zip.path 2>&1| tail -1)
-        #echo "wallet_zip_path : \"${_wallet_zip_path}\""
         if [[ ! $_wallet_zip_path =~ "Cannot get setting" ]]; then
-                echo "Using: set cloudconfig ${_wallet_zip_path}"
-                local -r _cloudconfig="set cloudconfig ${_wallet_zip_path}"
+                config[cloudconfig]="${_wallet_zip_path}"
+                echo "db.wallet.zip.path is set, using : set cloudconfig ${config[cloudconfig]}"
         fi
 
 	return 0
@@ -121,26 +178,24 @@ function setup_sql(){
 }
 
 function run_sql {
-	local -r _conn_string="${1}"
-	local -r _sql="${2}"
-	local -n _output="${3}"
+	local -r _sql="${1}"
+	local -n _output="${2}"
+	local -r _heading="${3-off}"
 	local -i _rc=0
 	
 	if [[ -z ${_sql} ]]; then
 		dump_stack
-		echo "FATAL: missing SQL calling run_sql" && exit 1
+		echo "FATAL: missing SQL calling run\_sql" && exit 1
 	fi
-
-	echo "Running SQL"
 
 	# NOTE to maintainer; the heredoc must be TAB indented
 	_output=$(sql -S -nohistory -noupdates /nolog <<-EOSQL
 		WHENEVER SQLERROR EXIT 1
 		WHENEVER OSERROR EXIT 1
-		${_cloudconfig}
-		connect $_conn_string
+		set cloudconfig ${config[cloudconfig]}
+		connect ${config[connect]}
 		set serveroutput on echo off pause off feedback off
-		set heading off wrap off linesize 1000 pagesize 0
+		set heading ${_heading} wrap off linesize 1000 pagesize 0
 		SET TERMOUT OFF VERIFY OFF
 		${_sql}
 		exit;
@@ -148,7 +203,7 @@ function run_sql {
 	)
 	_rc=$?
 
-	if (( ${_rc} > 0 )); then
+	if (( _rc > 0 )); then
 		dump_stack
 		echo "SQLERROR: ${_output}"
 	fi
@@ -158,10 +213,9 @@ function run_sql {
 
 #------------------------------------------------------------------------------
 function check_adb() {
-	local -r _conn_string=$1
-	local -n _is_adb=$2
+	local -n _is_adb=$1
 
-	echo "== ADB check"
+	sub "ADB check"
 
 	local -r _adb_chk_sql="
 		DECLARE
@@ -179,12 +233,12 @@ function check_adb() {
 		END;
 		/"
 	echo "Checking if Database is an ADB"
-	run_sql "${_conn_string}" "${_adb_chk_sql}" "_adb_check"
+	run_sql "${_adb_chk_sql}" "_adb_check"
 	_rc=$?
 
-	if (( ${_rc} == 0 )); then
+	if (( _rc == 0 )); then
 		_adb_check=${_adb_check//[[:space:]]/}
-		if (( ${_adb_check} == 1 )); then
+		if (( _adb_check == 1 )); then
 			_is_adb=${_adb_check//[[:space:]]/}
 			echo "ADB : yes"
 		else
@@ -198,12 +252,12 @@ function check_adb() {
 }
 
 function create_adb_user() {
-	local -r _conn_string="${1}"
-	local -r _pool_name="${2}"
+	local -r _pool_name="${1}"
                         
-	local _config_user=$($ords_cfg_cmd get db.username | tail -1)
+	local _config_user
+	_config_user=$($ords_cfg_cmd get db.username | tail -1)
 
-	if [[ -z ${_config_user} ]] || [[ ${_config_user} == "ORDS_PUBLIC_USER" ]]; then
+	if [[ -z "${_config_user}" ]] || [[ "${_config_user}" == "ORDS_PUBLIC_USER" ]]; then
 		echo "FATAL: You must specify a db.username <> ORDS_PUBLIC_USER in pool \"${_pool_name}\""
 		dump_stack
 		return 1
@@ -217,11 +271,11 @@ function create_adb_user() {
       BEGIN
         SELECT USERNAME INTO l_user FROM DBA_USERS WHERE USERNAME='${_config_user}';
         EXECUTE IMMEDIATE 'ALTER USER \"${_config_user}\" PROFILE ORA_APP_PROFILE';
-        EXECUTE IMMEDIATE 'ALTER USER \"${_config_user}\" IDENTIFIED BY \"${config["dbpassword"]}\"';
+        EXECUTE IMMEDIATE 'ALTER USER \"${_config_user}\" IDENTIFIED BY \"${config[dbpassword]}\"';
 		DBMS_OUTPUT.PUT_LINE('${_config_user} Exists - Password reset');
       EXCEPTION
         WHEN NO_DATA_FOUND THEN
-          EXECUTE IMMEDIATE 'CREATE USER \"${_config_user}\" IDENTIFIED BY \"${config["dbpassword"]}\" PROFILE ORA_APP_PROFILE';
+          EXECUTE IMMEDIATE 'CREATE USER \"${_config_user}\" IDENTIFIED BY \"${config[dbpassword]}\" PROFILE ORA_APP_PROFILE';
 		  DBMS_OUTPUT.PUT_LINE('${_config_user} Created');
       END;
       EXECUTE IMMEDIATE 'GRANT CONNECT TO \"${_config_user}\"';
@@ -263,7 +317,8 @@ function create_adb_user() {
     END;
 	/"
 
-	run_sql "${_conn_string}" "${_adb_user_sql}" "_adb_user_sql_output"
+	local _adb_user_sql_output
+	run_sql "${_adb_user_sql}" "_adb_user_sql_output"
 	_rc=$?
 
 	echo "Installation Output: ${_adb_user_sql_output}"
@@ -298,8 +353,9 @@ function apex_compare_versions() {
 
 #------------------------------------------------------------------------------
 ords_client_version(){
-	echo "== ORDS client version" 
-	echo "ords_client_version : \"$(ords --config $ORDS_CONFIG --version 2>&1 | tail -1)\""
+	sub "ORDS client version" 
+	ORDSVERSION=$(ords --config "${ORDS_CONFIG}" --version 2>&1 | tail -1)
+	echo "ords_client_version : \"$ORDSVERSION\""
 }
 
 #------------------------------------------------------------------------------
@@ -322,32 +378,51 @@ set_ords_secret() {
 }
 
 #------------------------------------------------------------------------------
-read_passwords(){
-        echo "== Reading passwords"
+setup_credentials(){
+		
+
+		sub "Setup Credentials"
+
+		# reading users from env
+		for key in dbusername dbadminuser dbcdbadminuser dbconnectiontype; do
+                var_key="${pool_name_underscore}_${key}"
+				var_val="${!var_key}"
+				if [[ (-n "${var_val}") ]]; then  
+                  config[${key}]="${var_val}"
+				fi
+        done
+
+		# reading passwords from env and eventually decrypting
         for key in dbpassword dbadminuserpassword dbcdbadminuserpassword; do
-                var_key="${pool_name//-/_}_${key}"
+                var_key="${pool_name_underscore}_${key}"
                 echo "Obtaining value from initContainer variable: ${var_key}"
                 var_val="${!var_key}"
-                config[${key}]="${var_val}"
+				if [[ (-n "${var_val}") && (-n "${ENC_PRV_KEY}") && (-f "${ENC_PRV_KEY_FILE}") ]]; then 
+				  echo "Decrypting ${var_key}"
+				  cd /opt/oracle/ords/scripts || return
+				  var_val_enc=${var_val}
+				  var_val=$(java RSADecryptOAEP "${ENC_PRV_KEY}" "${var_val_enc}")  
+				fi
+
+				if [[ (-n "${var_val}") ]]; then  
+                  config[${key}]="${var_val}"
+				fi
         done
 
         # Set ORDS Secrets
-        set_ords_secret "${pool_name}" "db.password" "${config["dbpassword"]}"
+		echo "Saving ORDS credentials"
+		local -i rc=0
+        set_ords_secret "${pool_name}" "db.password" "${config[dbpassword]}"
         rc=$((rc + $?))
-        set_ords_secret "${pool_name}" "db.adminUser.password" "${config["dbadminuserpassword"]}"
+        set_ords_secret "${pool_name}" "db.adminUser.password" "${config[dbadminuserpassword]}"
         rc=$((rc + $?))
-        set_ords_secret "${pool_name}" "db.cdb.adminUser.password" "${config["dbcdbadminuserpassword"]}"
+        set_ords_secret "${pool_name}" "db.cdb.adminUser.password" "${config[dbcdbadminuserpassword]}"
         rc=$((rc + $?))
 
-        if (( ${rc} > 0 )); then
-                echo "FATAL: Unable to set configuration for pool \"${pool_name}\""
-		return 1
-        elif [[ -z ${config["dbpassword"]} ]]; then
-                echo "FATAL: db.password must be specified for pool \"${pool_name}\""
-		return 1
-        elif [[ -z ${config["dbadminuserpassword"]} ]]; then
-                echo "INFO: No additional configuration for pool \"${pool_name}\""
-        fi
+        if (( rc > 0 )); then
+            echo "FATAL: Unable to set configuration for pool \"${pool_name}\""
+			return 1
+		fi
 
 	return 0
 }
@@ -355,74 +430,48 @@ read_passwords(){
 #------------------------------------------------------------------------------
 ords_upgrade() {
         local -r _pool_name="${1}"
-        local -r _upgrade_key="${2}"
         local -i _rc=0
 
-	echo "== ORDS install/upgrade"
+	sub "ORDS install/upgrade"
 
-        if [[ -n "${config["dbadminuserpassword"]}" ]]; then
-                # Get usernames
-                local -r ords_user=$($ords_cfg_cmd get db.username | tail -1)
-                local -r ords_admin=$($ords_cfg_cmd get db.adminUser | tail -1)
+        if [[ -n "${config[dbadminuser]}" ]]; then
 
-                echo "Performing ORDS install/upgrade as $ords_admin into $ords_user on pool \"${_pool_name}\""
+                echo "Performing ORDS install/upgrade as ${config[dbadminuser]} into ${config[dbusername]} on pool ${_pool_name}"
                 if [[ ${_pool_name} == "default" ]]; then
                         ords --config "$ORDS_CONFIG" install --db-only \
-                                --admin-user "$ords_admin" --password-stdin <<< "${config["dbadminuserpassword"]}"
+                                --admin-user "${config[dbadminuser]}" --password-stdin <<< "${config["dbadminuserpassword"]}"
                         _rc=$?
                 else
                         ords --config "$ORDS_CONFIG" install --db-pool "${_pool_name}" --db-only \
-                                --admin-user "$ords_admin" --password-stdin <<< "${config["dbadminuserpassword"]}"
+                                --admin-user "${config[dbadminuser]}" --password-stdin <<< "${config["dbadminuserpassword"]}"
                         _rc=$?
                 fi
 
                 # Dar be bugs below deck with --db-user so using the above
                 # ords --config "$ORDS_CONFIG" install --db-pool "$1" --db-only \
                 #       --admin-user "$ords_admin" --db-user "$ords_user" --password-stdin <<< "${!2}"
+		else
+			echo "WARNING: Admin user not set, skipping ORDS install/upgare"
         fi
 
         return $_rc
 }
 
 
-#------------------------------------------------------------------------------
-function global_parameters(){
-
-	APEX_INSTALL=/opt/oracle/apex
-	# backward compatibility for ORDS images prior to 24.1.x (included)
-	# APEX_HOME is used only here and it is set on images <= 24.1.x
-	if [[ -n ${APEX_HOME} ]]; then
-		APEX_INSTALL=${APEX_HOME}/${APEX_VER}
-		echo "WARNING: APEX installation ${APEX_INSTALL}, ORDS image probably older than 24.2"
-	fi	
-	APEXINS=${APEX_INSTALL}/apexins.sql
-	APEX_IMAGES=${APEX_INSTALL}/images
-    APEX_VERSION_TXT=${APEX_IMAGES}/apex_version.txt 
-
-	echo "== global parameters"
-	echo "external_apex          : ${external_apex}"
-	echo "download_apex          : ${download_apex}"
-	echo "download_url_apex      : ${download_url_apex}"
-	echo "APEX_INSTALL           : $APEX_INSTALL"
-	echo "APEX_IMAGES            : $APEX_IMAGES"
-
-}
-
 
 #------------------------------------------------------------------------------
 function get_apex_version() {
-	local -r _conn_string="${1}"
-	local -n _db_apex_version="${2}"
+	local -n _db_apex_version="${1}"
 	local -i _rc=0
 
-	echo "== APEX version check"
+	sub "APEX version check"
 
 	local -r _ver_sql="SELECT VERSION FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
 	#local -r _ver_sql="SELECT SCHEMA FROM DBA_REGISTRY WHERE COMP_ID='APEX';"
-	run_sql "${_conn_string}" "${_ver_sql}" "_db_apex_version"
+	run_sql "${_ver_sql}" "_db_apex_version"
 	_rc=$?
 
-	if (( $_rc > 0 )); then
+	if (( _rc > 0 )); then
 		echo "FATAL: Unable to get APEX version"
 		dump_stack
 		return $_rc
@@ -445,13 +494,13 @@ function get_apex_action(){
         local -n _action="${3}"
         local -i _rc=0
 
-	echo "== APEX installation check"
+	sub "APEX installation check"
 
 	_action="error"
 	if [[ ( -z "${_db_apex_version}" ) || ( "${_db_apex_version}" == "NotInstalled" ) ]]; then
                 echo "Installing APEX ${APEX_VER}"
                 _action="install"
-        elif apex_compare_versions ${_db_apex_version} ${APEX_VER}; then
+        elif apex_compare_versions "${_db_apex_version}" "${APEX_VER}"; then
                 echo "Upgrading from ${_db_apex_version} to ${APEX_VER}"
                 _action="upgrade"
         else
@@ -465,20 +514,20 @@ function get_apex_action(){
 #------------------------------------------------------------------------------
 function check_apex_installation_version(){
 
-    echo "== APEX installation files"
+    sub "APEX installation files"
 
-   	if [[ !(-f ${APEX_VERSION_TXT}) ]]; then
-		echo "ERROR: ${APEX_VERSION_TXT} not found, APEX installation not found"
+   	if [[ ! (-f ${APEX_VERSION_TXT}) ]]; then
+		echo "APEX installation not found, missing ${APEX_VERSION_TXT}"
 		return 1
 	fi
 
-	APEX_VER=$(cat ${APEX_VERSION_TXT}|grep Version|cut -f2 -d\:|tr -d '[:space:]')
+	APEX_VER=$(cat "${APEX_VERSION_TXT}"|grep Version|cut -f2 -d:|tr -d '[:space:]')
 	echo "APEX_VER: ${APEX_VER}"
 }
 
 #------------------------------------------------------------------------------
 function apex_external(){
-	echo "== APEX external"
+	sub "APEX external"
 
 	if [[ ${external_apex} != "true" ]]; then
 		echo "APEX external disabled"
@@ -486,12 +535,12 @@ function apex_external(){
 	fi
 
     id
-	df -h $APEX_INSTALL
-	ls -ld $APEX_INSTALL
-	ls -l $APEX_INSTALL
-	ls -l ${APEX_VERSION_TXT}
-    echo test >> $APEX_INSTALL/test.txt
-	ls -l $APEX_INSTALL/test.txt
+	df -h "$APEX_INSTALL"
+	ls -ld "$APEX_INSTALL"
+	ls -l "$APEX_INSTALL"
+	ls -l "${APEX_VERSION_TXT}"
+    echo test >> "$APEX_INSTALL/test.txt"
+	ls -l "$APEX_INSTALL/test.txt"
 
     while true
     do
@@ -504,10 +553,10 @@ function apex_external(){
               if [[ -f ${APEX_INSTALL}/apex.zip ]]
               then
 			    date
-                echo Found ${APEX_INSTALL}/apex.zip, extracting ...
-                cd ${APEX_INSTALL}
+                echo "Found ${APEX_INSTALL}/apex.zip, extracting ..."
+                cd "${APEX_INSTALL}" || return
                 jar xf apex.zip
-                mv ${APEX_INSTALL}/apex/* ${APEX_INSTALL}
+                mv "${APEX_INSTALL}/apex/"* "${APEX_INSTALL}"
 				date
 				echo completed
               else
@@ -524,50 +573,49 @@ function apex_external(){
 #------------------------------------------------------------------------------
 function apex_download(){
 
-	echo "== APEX download"
+	sub "APEX download"
 
 	if [[ ${download_apex} != "true" ]]; then
 		echo "APEX download disabled"
 		return 0
 	fi
 
-	mkdir -p ${APEX_INSTALL}
-	rm -rf ${APEX_INSTALL}/*
-	cd /tmp
+	mkdir -p "${APEX_INSTALL}"
+	rm -rf "${APEX_INSTALL:?}/*"
+	cd /tmp || return
 	echo "Downloading ${download_url_apex}"
-	curl -o apex.zip ${download_url_apex}
+	curl -o apex.zip "${download_url_apex}"
 	echo "Extracting apex.zip"
 	jar xf apex.zip
-       	mv /tmp/apex/* ${APEX_INSTALL}
+       	mv "/tmp/apex/*" "${APEX_INSTALL}"
 
-	if [[ !(-f $APEXINS) ]]; then
+	if [[ ! (-f ${APEXINS}) ]]; then
 		echo "ERROR: ${APEXINS} not found, APEX download failed"
 		return 1
 	fi
 	echo "APEX_INSTALL: ${APEX_INSTALL}"
 
 	# config can be read-only, it will be set again at command-line ords start
-	echo "== Configuring ORDS images"
+	sub "Configuring ORDS images"
 	echo "APEX_IMAGES: ${APEX_IMAGES}"
-	ords config set standalone.static.path ${APEX_IMAGES}
+	ords config set standalone.static.path "${APEX_IMAGES}"
 
 	return 0
 }
 
 #------------------------------------------------------------------------------
 function apex_upgrade() {
-	local -r _conn_string="${1}"
-	local -r _upgrade_key="${2}"
+	local -r _upgrade_key="${1}"
 	local -i _rc=0
 
-	echo "== APEX Installation/Upgrade"
+	sub "APEX Installation/Upgrade"
 
-	if [[ -z ${APEX_INSTALL} ]]; then
+	if [[ -z "${APEX_INSTALL}" ]]; then
 		echo "ERROR: APEX_INSTALL not set"
 		return 1
 	fi	
 
-	if [[ !( -f ${APEX_INSTALL}/apexins.sql ) ]]; then
+	if [[ ! ( -f ${APEX_INSTALL}/apexins.sql ) ]]; then
 		echo "ERROR: ${APEX_INSTALL}/apexins.sql not found"
 		return 1
 	fi
@@ -575,12 +623,12 @@ function apex_upgrade() {
 
 	if [[ "${!_upgrade_key}" = "true" ]]; then
 		echo "Starting Installation of APEX"
-		cd ${APEX_INSTALL}
+		cd "${APEX_INSTALL}" || return 1
 		SEC=${config["dbpassword"]}
 		local -r _install_sql="@apxsilentins.sql SYSAUX SYSAUX TEMP /i/ $SEC $SEC $SEC $SEC"
-		run_sql "${_conn_string}" "${_install_sql}" "_install_output"
+		run_sql "${_install_sql}" "_install_output"
 		_rc=$?
-		echo "Installation Output: ${_install_output}"
+		echo "Installation Output: ${_install_output:?}"
 	fi
 
 	return $_rc
@@ -589,24 +637,22 @@ function apex_upgrade() {
 #------------------------------------------------------------------------------
 function apex_housekeeping(){
 
-	echo "== APEX "
-
 	# check database APEX version regardless of APEX parameters
-	get_apex_version "${conn_string}" "db_apex_version"
-        if [[ -z ${db_apex_version} ]]; then
+	get_apex_version "db_apex_version"
+        if [[ -z "${db_apex_version}" ]]; then
                 echo "FATAL: Unable to get APEX Version for pool \"${pool_name}\""
                 return 1
         fi
 
 	# check if apex upgrade is enabled
-        if [[ ${apex_upgrade} != "true" ]]; then
+        if [[ "${apex_upgrade}" != "true" ]]; then
                 echo "APEX Install/Upgrade not requested for pool \"${pool_name}\""
                 return 0
         fi
 
 	# get suggested action
-        get_apex_action "${conn_string}" "${db_apex_version}" "db_apex_action"
-        if [[ -z ${db_apex_action} ]]; then
+        get_apex_action "${config[adminconnect]}" "${db_apex_version}" "db_apex_action"
+        if [[ -z "${db_apex_action}" ]]; then
                 echo "FATAL: Unable to get APEX suggested action for pool \"${pool_name}\""
                 return 1
         fi
@@ -615,8 +661,9 @@ function apex_housekeeping(){
         echo "APEX version : \"${db_apex_version}\""
         echo "APEX suggested action : $db_apex_action"
         if [[ ${db_apex_action} != "none" ]]; then
-                apex_upgrade "${conn_string}" "${pool_name}_autoupgrade_apex"
-                if (( $? > 0 )); then
+                apex_upgrade "${pool_name_underscore}_autoupgrade_apex"
+				rc=$?
+                if (( rc > 0 )); then
                         echo "FATAL: Unable to ${db_apex_action} APEX for pool \"${pool_name}\""
 			return 1
                 fi
@@ -630,78 +677,59 @@ function apex_housekeeping(){
 #------------------------------------------------------------------------------
 function pool_parameters(){
 
-	echo "== pool parameters"
-        apex_upgrade_var=${pool_name}_autoupgrade_apex
-        apex_upgrade=${!apex_upgrade_var}
-	[[ -z $apex_upgrade ]] && apex_upgrade=false
-        echo "${pool_name} - autoupgrade_apex  : ${apex_upgrade}"
+	sub "pool parameters"
+    apex_upgrade_var=${pool_name_underscore}_autoupgrade_apex
+    apex_upgrade=${!apex_upgrade_var}
+	[[ -z "$apex_upgrade" ]] && apex_upgrade=false
+    echo "${pool_name} - autoupgrade_apex  : ${apex_upgrade}"
 
-        ords_upgrade_var=${pool_name}_autoupgrade_ords
-        ords_upgrade=${!ords_upgrade_var}
-	[[ -z $ords_upgrade ]] && ords_upgrade=false
-        echo "${pool_name} - autoupgrade_ords  : ${ords_upgrade}"
+    ords_upgrade_var=${pool_name_underscore}_autoupgrade_ords
+    ords_upgrade=${!ords_upgrade_var}
+	[[ -z "$ords_upgrade" ]] && ords_upgrade=false
+    echo "${pool_name} - autoupgrade_ords  : ${ords_upgrade}"
+
+	pool_ords_wallet_path="${ORDS_CONFIG}/databases/${pool_name}/wallet"
+	pool_ords_wallet="${pool_ords_wallet_path}/cwallet.sso"
 
 }
 
+pool_admin_setup(){
 
-#------------------------------------------------------------------------------
-# INIT
-#------------------------------------------------------------------------------
-declare -A pool_exit
-echo "=== ORDSSRVS init ==="
-global_parameters
-ords_client_version
-apex_download
-apex_external
-
-# check APEX installation files version, downloaded or mounted by PVC
-check_apex_installation_version
-
-for pool in "$ORDS_CONFIG"/databases/*; do
-	rc=0
-	pool_name=$(basename "$pool")
-	pool_exit[${pool_name}]=0
-	ords_cfg_cmd="ords --config $ORDS_CONFIG config --db-pool ${pool_name}"
-	echo "=========================================================================="
-	echo "Pool: $pool_name"
-        declare -A config
-
-	pool_parameters
-
-	read_passwords
-	rc=$?
-	if (( ${rc} > 0 )); then
-                pool_exit[${pool_name}]=1
-                continue
-        fi
-
-	get_conn_string "conn_string"
-	if [[ -z ${conn_string} ]]; then
-		echo "FATAL: Unable to get database connect string for pool \"${pool_name}\""
-                dump_stack
-		pool_exit[${pool_name}]=1
-		continue
+	sub "Admin Setup"
+	# dbadminuserpassword
+	if [[ (-z "${config[dbadminuserpassword]}") && (-f "${pool_ords_wallet}") ]]
+	then
+	    ls -l "${pool_ords_wallet}"
+		echo "Admin password not set and wallet exists, reading admin password from wallet"
+		PKILIB="/opt/oracle/sqlcl/lib/oraclepki.jar"
+		PKICLASS="oracle.security.pki.OracleSecretStoreTextUI"
+		PKIENTRY="db.adminUser.password"
+		config[dbadminuserpassword]=$(java -cp ${PKILIB} ${PKICLASS} -wrl "${pool_ords_wallet_path}" -viewEntry ${PKIENTRY}|grep ${PKIENTRY}|cut -f2 -d=|cut -f2 -d\ )
 	fi
 
-	setup_sql "${conn_string}"
-        rc=$?
-        if (( ${rc} > 0 )); then
-                pool_exit[${pool_name}]=1
-                continue
-        fi
-
-	check_adb "${conn_string}" "is_adb"
-	rc=$?
-	if (( ${rc} > 0 )); then
+	_connect=""
+	prepare_pool_connect_string _connect "${config[dbconnectiontype]}" "${config[dbadminuser]}" "${config[dbadminuserpassword]}"
+    config[connect]=${_connect}
+	if [[ -z "${config[connect]}" ]]; then
+		echo "Unable to get admin database connect string for pool \"${pool_name}\""
+        dump_stack
 		pool_exit[${pool_name}]=1
-		continue
+		return 1
+	fi
+
+	is_adb=false
+	check_adb "is_adb"
+	rc=$?
+	if (( rc > 0 )); then
+		pool_exit[${pool_name}]=1
+		return 1
 	fi
 
 	if (( is_adb )); then
 		# Create ORDS User
 		echo "Processing ADB in Pool: ${pool_name}"
-		create_adb_user "${conn_string}" "${pool_name}"
-		continue
+		create_adb_user "${pool_name}"
+		return 0
 	fi	
 
 	# not ADB
@@ -709,36 +737,194 @@ for pool in "$ORDS_CONFIG"/databases/*; do
 	# APEX 
 	apex_housekeeping
 	rc=$?
-	if (( ${rc} > 0 )); then
+	if (( rc > 0 )); then
 		echo "FATAL: unable to manage APEX configuration for pool \"${pool_name}\""
 		dump_stack
 		pool_exit[${pool_name}]=1
-		continue
+		return 1
 	fi
 
 	# database ORDS 
-	echo "== ORDS"
 	if [[ ${ords_upgrade} == "true" ]]; then
-		ords_upgrade "${pool_name}" "${pool_name}_autoupgrade_ords"
+		ords_upgrade "${pool_name}"
 		rc=$?
-		if (( $rc > 0 )); then
+		if (( rc > 0 )); then
 			echo "FATAL: Unable to perform requested ORDS install/upgrade on pool \"${pool_name}\""
 			pool_exit[${pool_name}]=1
 			dump_stack
+			return 1
 		fi	
 	else
 		echo "ORDS Install/Upgrade not requested for pool \"${pool_name}\""
+	fi	
+}
+
+pool_check(){
+
+	sub "SQL Test"
+	
+	# dbpassword from wallet
+	if [[ (-z "${config[dbpassword]}" ) && (-f "${pool_ords_wallet}") ]]
+	then
+	    ls -l "${pool_ords_wallet}"
+		echo "Password not set and wallet exists, reading password from wallet"
+		PKILIB="/opt/oracle/sqlcl/lib/oraclepki.jar"
+		PKICLASS="oracle.security.pki.OracleSecretStoreTextUI"
+		PKIENTRY="db.password"
+		config["dbpassword"]=$(java -cp ${PKILIB} ${PKICLASS} -wrl "${pool_ords_wallet_path}" -viewEntry ${PKIENTRY}|grep ${PKIENTRY}|cut -f2 -d=|cut -f2 -d\ )
 	fi
+
+	if [[ (-z ${config[dbpassword]} ) ]]
+	then
+	    echo "WARNING: dbpassword not set"
+	fi
+
+	_connect=""
+	prepare_pool_connect_string _connect "${config[dbconnectiontype]}" "${config[dbusername]}" "${config[dbpassword]}"
+	config[connect]=${_connect}
+	if [[ -z ${config[connect]} ]]; then
+		echo "Unable to get database connect string for pool \"${pool_name}\""
+		echo "Possible wallet/tnsnames for a pool defined in a Central Configuration Manager, ignoring"	
+		return 0
+	fi
+
+	local -r _sqlcheck="
+			set lines 1000 pages 100 feed off 
+			WHENEVER SQLERROR EXIT SQL.ERROR
+			WHENEVER OSERROR EXIT 1
+			alter session set nls_date_format='dd/mm/yyyy hh24:mi:ss';
+			SELECT
+				SYSDATE,
+				SYS_CONTEXT('USERENV','SERVER_HOST') AS server_host,
+				USER,
+				SYS_CONTEXT('USERENV','INSTANCE_NAME') AS instance_name,
+				SYS_CONTEXT('USERENV','CON_NAME') AS current_pdb
+			  FROM dual;
+			prompt  
+			select banner from v\$version;
+	"
+	echo "Checking sql connection for pool ${pool_name}"
+	_checkoutput=""
+	run_sql "${_sqlcheck}" _checkoutput on
+	_rc=$?
+
+	echo "--------------------------------------------------------------------------------------------------"
+	echo "${_checkoutput}"
+	echo
+	echo "--------------------------------------------------------------------------------------------------"
+
+	if (( _rc > 0 )); then
+		echo "SQL check FAILED"
+		return $_rc
+	fi
+
+	echo "SQL check SUCCESS"
+}
+
+#------------------------------------------------------------------------------
+# INIT
+#------------------------------------------------------------------------------
+declare -A pool_exit
+sep
+sub "ORDSSRVS init"
+sep
+
+global_parameters
+ords_client_version
+
+apex_download
+apex_external
+
+# check APEX installation files version, downloaded or mounted by PVC
+check_apex_installation_version
+
+if [[ ! ( -d "${ORDS_CONFIG}/databases/" ) ]]
+then
+  echo "No database pools found under ${ORDS_CONFIG}/databases"
+  echo "POOLERRORS 0 POOLS 0"
+  echo "init end"
+  exit 0
+fi
+
+for pool in "${ORDS_CONFIG}/databases/"*; do
+	rc=0
+	pool_name=$(basename "$pool")
+	pool_name_underscore=${pool_name//-/_}
+	pool_exit[${pool_name}]=0
+	ords_cfg_cmd="ords --config $ORDS_CONFIG config --db-pool ${pool_name}"
+    declare -A config=()
+
+	sep
+	sub "Pool ${pool_name}"
+	echo "poolName: ${pool_name}"
+
+	pool_parameters
+
+	setup_credentials
+	rc=$?
+	if (( rc > 0 )); then
+      pool_exit[${pool_name}]=1
+      continue
+    fi
+
+	setup_sql_environment
+    rc=$?
+    if (( rc > 0 )); then
+       pool_exit[${pool_name}]=1
+       continue
+    fi
+
+	sub "Pool Admin setup"
+	echo "pool             : ${pool_name}"
+	echo "dbadminuser      : ${config[dbadminuser]}"
+	echo "dbconnectiontype : ${config[dbconnectiontype]}"
+	if [[ (-n "${config[dbadminuser]}") ]]
+	then
+	  pool_admin_setup
+      rc=$?
+	  if (( rc > 0 )); then
+	    pool_exit[${pool_name}]=1
+		continue
+	  fi
+	else
+	  echo "Admin user not set, skipping admin setup"  
+	fi
+
+	# reset conncetion string after admin operations
+	config[connect]=""
+
+	sub "Pool Connection check"
+	echo "pool             : ${pool_name}"
+	echo "dbusername       : ${config[dbusername]}"
+	echo "dbconnectiontype : ${config[dbconnectiontype]}"
+	echo "cloudconfig      : ${config[cloudconfig]}"
+    pool_check
+    rc=$?
+    if (( rc > 0 )); then
+      pool_exit[${pool_name}]=1
+  	  continue
+	fi
+
 done
 
-echo "=========================================================================="
-echo "Exit codes"
+sep
+sub "Exit codes"
+rc=1
+pools=0
+poolerrors=0
 for key in "${!pool_exit[@]}"; do
-    echo "Pool: $key, Exit Code: ${pool_exit[$key]}"
-	if (( ${pool_exit[$key]} > 0 )); then
-		rc=1
+    printf "Pool: %-16s Exit Code: %s\n" "${key}" "${pool_exit[${key}]}"
+
+	pools=$(( pools + 1 ))
+
+	# if at least one pool is ok, the return code is 0
+	if (( ${pool_exit[$key]} == 0 )); then
+		rc=0
+	else
+	  	poolerrors=$(( poolerrors + 1 ))
 	fi
 done
 
+echo POOLERRORS $poolerrors POOLS $pools
+echo "init end"
 exit $rc
-#exit 0

@@ -566,3 +566,46 @@ const TcpsPort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"p
 
 // Payload section for TCPS node port
 const TcpsNodePort string = "\"name\": \"listener-tcps\", \"protocol\": \"TCP\", \"port\": 2484, \"nodePort\": %d"
+
+const PfilePath string = "/opt/oracle/oradata/pfile_1"
+const CreatePfileFromSpfileCMD string = "echo -e \"create pfile='%s' from spfile='%s';\" | " + SQLPlusCLI
+
+// const PatchSgaInPfileCMD string = `sed -i "/^sga_target=/c sga_target=%dM" %s`
+
+const PatchSgaInPfileCMD = `
+if grep -Eq "^[[:space:]]*(\\*\\.)?sga_target[[:space:]]*=" %s; then
+  sed -i -E "s|^[[:space:]]*(\\*\\.)?sga_target[[:space:]]*=.*|*.sga_target=%dM|I" %s;
+else
+  echo "*.sga_target=%dM" >> %s;
+	echo "*.pga_agger=%dM" >> %s;
+fi`
+
+const PatchInitParamsInPfileCMD = `
+set -e
+PFILE="%s"
+SGA="%d"
+PGA="%d"
+CPU="%d"
+PROC="%d"
+
+# remove any SID prefixed lines like "ORCL1.<param>=..." 
+SID_ESC="${ORACLE_SID//./\\.}"
+sed -i -E "/^[[:space:]]*(${SID_ESC})\\./Id" "$PFILE"
+
+upsert() {
+  key="$1"; val="$2"; file="$3"
+  if grep -Eq "^[[:space:]]*(\\*\\.)?${key}[[:space:]]*=" "$file"; then
+    sed -i -E "s|^[[:space:]]*(\\*\\.)?${key}[[:space:]]*=.*|*.${key}=${val}|I" "$file"
+  else
+    echo "*.${key}=${val}" >> "$file"
+  fi
+}
+
+upsert "sga_target"           "${SGA}M" "$PFILE"
+upsert "sga_max_size"         "${SGA}M" "$PFILE"   # sga_max = sga_target
+upsert "pga_aggregate_target" "${PGA}M" "$PFILE"
+if [ "$CPU"  -gt 0 ]; then upsert "cpu_count"  "$CPU"  "$PFILE"; fi
+if [ "$PROC" -gt 0 ]; then upsert "processes" "$PROC" "$PFILE"; fi
+`
+
+const CreateSpfileFromPfileCMD string = "echo -e \"create spfile='%s' from pfile='%s';\" | " + SQLPlusCLI

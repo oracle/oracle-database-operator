@@ -1,0 +1,9 @@
+apiVersion: privateai.oracle.com/v4
+kind: PrivateAi
+metadata:
+  labels:
+    app.kubernetes.io/name: oracle-database-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: privateai-sample
+spec:
+  # TODO(user): Add fields here

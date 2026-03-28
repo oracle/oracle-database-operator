@@ -1,0 +1,461 @@
+$ kubectl get all -n rac -o wide
+NAME             READY   STATUS    RESTARTS   AGE   IP           NODE            NOMINATED NODE   READINESS GATES
+pod/racnode1-0   1/1     Running   0          73m   10.244.1.6   qck-ocne19-w1   <none>           <none>
+pod/racnode2-0   1/1     Running   0          73m   10.244.2.8   qck-ocne19-w2   <none>           <none>
+
+NAME                        TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)           AGE   SELECTOR
+service/racnode-scan        ClusterIP   None             <none>        <none>            73m   cluster=racnode-scan
+service/racnode-scan-lsnr   NodePort    10.108.57.36     <none>        1521:31521/TCP    73m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0          ClusterIP   None             <none>        <none>            73m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-lsnr     NodePort    10.105.245.133   <none>        31522:31522/TCP   73m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-ons      NodePort    10.99.80.95      <none>        6200:30200/TCP    73m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode1-0-vip      ClusterIP   None             <none>        <none>            73m   statefulset.kubernetes.io/pod-name=racnode1-0
+service/racnode2-0          ClusterIP   None             <none>        <none>            73m   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-lsnr     NodePort    10.96.101.241    <none>        31523:31523/TCP   73m   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-ons      NodePort    10.97.46.7       <none>        6200:30201/TCP    73m   statefulset.kubernetes.io/pod-name=racnode2-0
+service/racnode2-0-vip      ClusterIP   None             <none>        <none>            73m   statefulset.kubernetes.io/pod-name=racnode2-0
+
+NAME                        READY   AGE   CONTAINERS   IMAGES
+statefulset.apps/racnode1   1/1     73m   racnode1-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+statefulset.apps/racnode2   1/1     73m   racnode2-0   phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+
+
+
+
+$ kubectl describe racdatabases.database.oracle.com/racdbprov-sample -n rac
+Name:         racdbprov-sample
+Namespace:    rac
+Labels:       <none>
+Annotations:  racdatabases.database.oracle.com/old-spec:
+                {"instanceDetails":{"nodeCount":2,"racHostSwLocation":"/scratch/rac/cluster01","racNodeName":"racnode","baseOnsTargetPort":30200,"baseLsnr...
+API Version:  database.oracle.com/v4
+Kind:         RacDatabase
+Metadata:
+  Creation Timestamp:  2026-01-05T14:24:43Z
+  Finalizers:
+    database.oracle.com/racdatabasefinalizer
+  Generation:        1
+  Resource Version:  3922848
+  UID:               8615e73d-dd0e-45f1-b3f2-c769cc03aa21
+Spec:
+  Asm Disk Group Details:
+    Disks:
+      /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+      /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+    Name:        DATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
+  Config Params:
+    Cpu Count:               8
+    Db Base:                 /u01/app/oracle
+    Db Home:                 /u01/app/oracle/product/19c/dbhome_1
+    Db Name:                 PORCLCDB
+    Db Sw Zip File:          db_home.zip
+    Grid Base:               /u01/app/grid
+    Grid Home:               /u01/app/19c/grid
+    Grid Sw Zip File:        grid_home.zip
+    Host Sw Stage Location:  /scratch/software/stage/19c/19.28GoldImageSoftware
+    Inventory:               /u01/app/oraInventory
+    Pga Size:                12G
+    Processes:               2000
+    Sga Size:                32G
+    Sw Mount Location:       /u01
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Env Vars:
+    Name:             IGNORE_CRS_PREREQS
+    Value:            true
+    Name:             IGNORE_DB_PREREQS
+    Value:            true
+    Name:             TOTAL_MEMORY
+    Value:            53248
+  Image:              phx.ocir.io/intsanjaysingh/db-repo/oracle/database-rac:19.3.0-slim
+  Image Pull Policy:  Always
+  Instance Details:
+    Base Lsnr Target Port:  31522
+    Base Ons Target Port:   30200
+    Node Count:             2
+    Private IP Details:
+      Interface:           ens1
+      Name:                macvlan-conf1
+      Interface:           ens2
+      Name:                macvlan-conf2
+    Rac Host Sw Location:  /scratch/rac/cluster01
+    Rac Node Name:         racnode
+    Worker Node Selector:
+      Raccluster:  raccluster01
+  Resources:
+    Limits:
+      Cpu:            12
+      hugepages-2Mi:  36Gi
+      Memory:         30Gi
+    Requests:
+      Cpu:               12
+      hugepages-2Mi:     36Gi
+      Memory:            30Gi
+  Scan Svc Name:         racnode-scan
+  Scan Svc Target Port:  31521
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmall
+      Value:  9437184
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmax
+      Value:  38654705664
+      Name:   kernel.shmmni
+      Value:  4096
+      Name:   net.ipv4.conf.all.rp_filter
+      Value:  2
+  Service Details:
+    Name:  soepdb
+  Ssh Key Secret:
+    Key Mount Location:    /mnt/.ssh
+    Name:                  ssh-key-secret
+    Priv Key Secret Name:  ssh-privkey
+    Pub Key Secret Name:   ssh-pubkey
+  Tde Wallet Secret:
+    Key File Mount Location:  /mnt/.tdesecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.tdesecrets
+    Pwd File Name:            pwdfile.enc
+Status:
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+      Size In Gb:  49
+      Valid:       true
+      Name:        /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+      Size In Gb:  49
+      Valid:       true
+    Name:          DATA
+    Redundancy:    EXTERN
+    Type:          CRSDG
+  Client Etc Host:
+    10.0.1.34    racnode1-0.rac.svc.cluster.local racnode1-0-vip.rac.svc.cluster.local    racnode-scan.rac.svc.cluster.local
+    10.0.1.214    racnode2-0.rac.svc.cluster.local racnode2-0-vip.rac.svc.cluster.local    racnode-scan.rac.svc.cluster.local
+  Conditions:
+    Last Transition Time:  2026-01-05T15:38:32Z
+    Message:               no reconcile errors
+    Observed Generation:   1
+    Reason:                LastReconcileCycleCompleted
+    Status:                True
+    Type:                  ReconcileComplete
+  Config Params:
+    Db Base:       /u01/app/oracle
+    Db Home:       /u01/app/oracle/product/19c/dbhome_1
+    Db Name:       PORCLCDB
+    Grid Base:     /u01/app/grid
+    Grid Home:     /u01/app/19c/grid
+    Inventory:     /u01/app/oraInventory
+  Connect String:  racnode-scan:1521/PORCLCDB
+  Db Secret:
+    Key File Mount Location:  /mnt/.dbsecrets
+    Key File Name:            key.pem
+    Name:                     db-user-pass
+    Pwd File Mount Location:  /mnt/.dbsecrets
+    Pwd File Name:            pwdfile.enc
+  Db State:                   OPEN
+  External Connect String:    racnode-scan.rac.svc.cluster.local:31521/soepdb
+  Observed Generation:        1
+  Pdb Connect String:         racnode-scan:1521/soepdb
+  Rac Nodes:
+    Name:  racnode1-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+      State:  AVAILABLE
+      Vip Details:
+        Name:  racnode1-0-vip
+    Name:      racnode2-0
+    Node Details:
+      Instance State:  OPEN
+      Pod State:       AVAILABLE
+      Cluster State:   HEALTHY
+      Mounted Devices:
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk1
+        /dev/disk/by-partlabel/qck-ocne19-asmdisk2
+      State:  AVAILABLE
+      Vip Details:
+        Name:      racnode2-0-vip
+  Release Update:  19.28.0.0.0
+  Role:            PRIMARY
+  Scan Svc Name:   racnode-scan
+  Service Details:
+    Name:       soepdb
+    Svc State:  service soepdb is running on instance(s) porclcdb1,porclcdb2
+  State:        AVAILABLE
+Events:         <none>
+
+
+
+-- Memory allocation at Pod level:
+
+[root@racnode1-0 rac-work-dir]# cat /sys/fs/cgroup/memory.current
+31396249600
+[root@racnode1-0 rac-work-dir]# cat /sys/fs/cgroup/memory.max
+32212254720
+[root@racnode1-0 rac-work-dir]#
+[root@racnode1-0 rac-work-dir]# sysctl -a | grep shm
+kernel.shm_next_id = -1
+kernel.shm_rmid_forced = 0
+kernel.shmall = 9437184
+kernel.shmmax = 38654705664
+kernel.shmmni = 4096
+vm.hugetlb_shm_group = 0
+[root@racnode1-0 rac-work-dir]#
+[root@racnode1-0 rac-work-dir]# cat /proc/meminfo | grep -i huge
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:   21504
+HugePages_Free:     5140
+HugePages_Rsvd:       21
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:        44040192 kB
+
+
+[root@racnode2-0 rac-work-dir]# cat /sys/fs/cgroup/memory.current
+31764692992
+[root@racnode2-0 rac-work-dir]# cat /sys/fs/cgroup/memory.max
+32212254720
+[root@racnode2-0 rac-work-dir]# sysctl -a | grep shm
+kernel.shm_next_id = -1
+kernel.shm_rmid_forced = 0
+kernel.shmall = 9437184
+kernel.shmmax = 38654705664
+kernel.shmmni = 4096
+vm.hugetlb_shm_group = 0
+[root@racnode2-0 rac-work-dir]# cat /proc/meminfo | grep -i huge
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:   21504
+HugePages_Free:     5140
+HugePages_Rsvd:       21
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:        44040192 kB
+
+
+
+[grid@racnode1-0 ~]$ /u01/app/19c/grid/bin/crsctl stat res -t
+--------------------------------------------------------------------------------
+Name           Target  State        Server                   State details
+--------------------------------------------------------------------------------
+Local Resources
+--------------------------------------------------------------------------------
+ora.DBLSNR.lsnr
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+ora.LISTENER.lsnr
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+ora.chad
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+ora.net1.network
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+ora.ons
+               ONLINE  ONLINE       racnode1-0               STABLE
+               ONLINE  ONLINE       racnode2-0               STABLE
+--------------------------------------------------------------------------------
+Cluster Resources
+--------------------------------------------------------------------------------
+ora.ASMNET1LSNR_ASM.lsnr(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.ASMNET2LSNR_ASM.lsnr(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.DATA.dg(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.LISTENER_SCAN1.lsnr
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.LISTENER_SCAN2.lsnr
+      1        ONLINE  ONLINE       racnode2-0               STABLE
+ora.asm(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               Started,STABLE
+      2        ONLINE  ONLINE       racnode2-0               Started,STABLE
+ora.asmnet1.asmnetwork(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.asmnet2.asmnetwork(ora.asmgroup)
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.cvu
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.porclcdb.db
+      1        ONLINE  ONLINE       racnode1-0               Open,HOME=/u01/app/o
+                                                             racle/product/19c/db
+                                                             home_1,STABLE
+      2        ONLINE  ONLINE       racnode2-0               Open,HOME=/u01/app/o
+                                                             racle/product/19c/db
+                                                             home_1,STABLE
+ora.porclcdb.soepdb.svc
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+      2        ONLINE  ONLINE       racnode2-0               STABLE
+ora.qosmserver
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.racnode1-0.vip
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.racnode2-0.vip
+      1        ONLINE  ONLINE       racnode2-0               STABLE
+ora.scan1.vip
+      1        ONLINE  ONLINE       racnode1-0               STABLE
+ora.scan2.vip
+      1        ONLINE  ONLINE       racnode2-0               STABLE
+--------------------------------------------------------------------------------
+
+
+
+
+[oracle@racnode1-0 ~]$ srvctl status database -d PORCLCDB -v
+Instance PORCLCDB1 is running on node racnode1-0 with online services soepdb. Instance status: Open.
+Instance PORCLCDB2 is running on node racnode2-0 with online services soepdb. Instance status: Open.
+[oracle@racnode1-0 ~]$
+[oracle@racnode1-0 ~]$ srvctl config database -d PORCLCDB -v
+Database unique name: PORCLCDB
+Database name: PORCLCDB
+Oracle home: /u01/app/oracle/product/19c/dbhome_1
+Oracle user: oracle
+Spfile: +DATA/PORCLCDB/PARAMETERFILE/spfile.274.1221750489
+Password file: +DATA/PORCLCDB/PASSWORD/pwdporclcdb.258.1221748931
+Domain:
+Start options: open
+Stop options: immediate
+Database role: PRIMARY
+Management policy: AUTOMATIC
+Server pools:
+Disk Groups: DATA
+Mount point paths:
+Services: soepdb
+Type: RAC
+Start concurrency:
+Stop concurrency:
+OSDBA group: dba
+OSOPER group:
+Database instances: PORCLCDB1,PORCLCDB2
+Configured nodes: racnode1-0,racnode2-0
+CSS critical: no
+CPU count: 0
+Memory target: 0
+Maximum memory: 0
+Default network number for database services:
+Database is administrator managed
+
+
+
+
+[oracle@racnode1-0 ~]$ export ORACLE_SID=PORCLCDB1
+[oracle@racnode1-0 ~]$ sqlplus "/ as sysdba"
+
+SQL*Plus: Release 19.0.0.0.0 - Production on Thu Dec 18 02:18:20 2025
+Version 19.28.0.0.0
+
+Copyright (c) 1982, 2025, Oracle.  All rights reserved.
+
+
+Connected to:
+Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production
+Version 19.28.0.0.0
+
+SQL> show parameter sga
+
+NAME				     TYPE	 VALUE
+------------------------------------ ----------- ------------------------------
+allow_group_access_to_sga	     boolean	 FALSE
+lock_sga			     boolean	 FALSE
+pre_page_sga			     boolean	 TRUE
+sga_max_size			     big integer 20G
+sga_min_size			     big integer 0
+sga_target			     big integer 20G
+unified_audit_sga_queue_size	     integer	 1048576
+SQL> show parameter pga
+
+NAME				     TYPE	 VALUE
+------------------------------------ ----------- ------------------------------
+pga_aggregate_limit		     big integer 33254M
+pga_aggregate_target		     big integer 16627M
+SQL> show parameter processes
+
+NAME				     TYPE	 VALUE
+------------------------------------ ----------- ------------------------------
+aq_tm_processes 		     integer	 1
+db_writer_processes		     integer	 1
+gcs_server_processes		     integer	 2
+global_txn_processes		     integer	 1
+job_queue_processes		     integer	 160
+log_archive_max_processes	     integer	 4
+processes			     integer	 2000
+SQL> show parameter cpu_count
+
+NAME				     TYPE	 VALUE
+------------------------------------ ----------- ------------------------------
+cpu_count			     integer	 8
+SQL>
+
+
+
+
+/u01/app/oracle/cfgtoollogs/dbca/PORCLCDB/trace.log_2026-01-05_02-41-21PM
+-----
+INFO: Jan 05, 2026 2:41:24 PM oracle.install.commons.base.util.cli.CommandLineArguments logCommandLineArguments
+INFO: *********** Commmand line arguments passed to this session ***********
+Argument Name: silent value: true
+Argument Name: ignorePreReqs value: true
+Argument Name: skipPrereq value: true
+Argument Name: skipPrereqs value: true
+Argument Name: createDatabase value: true
+Argument Name: templateName value: General_Purpose.dbc
+Argument Name: gdbName value: PORCLCDB
+Argument Name: createAsContainerDatabase value: true
+Argument Name: enableDBConsolidation value: true
+Argument Name: sysPassword value: *******************
+Argument Name: systemPassword value: *******************
+Argument Name: datafileDestination value: +DATA
+Argument Name: storageType value: ASM
+Argument Name: characterSet value: AL32UTF8
+Argument Name: redoLogFileSize value: 1024
+Argument Name: databaseType value: OLTP
+Argument Name: databaseConfigType value: RAC
+Argument Name: databaseConfType value: RAC
+Argument Name: nodelist value: racnode1-0,racnode2-0
+Argument Name: nodeInfo value: racnode1-0,racnode2-0
+Argument Name: useOMF value: true
+Argument Name: numberOfPDBs value: 1
+Argument Name: pdbAdminPassword value: *******************
+Argument Name: pdbName value: ORCLPDB
+Argument Name: initParams value: db_recovery_file_dest=+DATA,db_create_file_dest=+DATA,REMOTE_LOGIN_PASSWORDFILE=EXCLUSIVE,LOG_ARCHIVE_FORMAT=%t_%s_%r.arc,db_unique_name=PORCLCDB,db_files=1024,LOG_BUFFER=256M,DB_FLASHBACK_RETENTION_TARGET=120,DB_BLOCK_CHECKSUM=TYPICAL,DB_LOST_WRITE_PROTECT=TYPICAL,PARALLEL_THREADS_PER_CPU=1,DG_BROKER_CONFIG_FILE1=+DATA,DG_BROKER_CONFIG_FILE2=+DATA,DB_CREATE_ONLINE_LOG_DEST_1=+DATA,sga_target=32G,sga_max_size=32G,pga_aggregate_size=12G,processes=2000,cpu_count=8
+Argument Name: enableArchive value: true
+Argument Name: totalMemory value: 53248
+.
+.
+[main] [ 2026-01-05 14:41:52.500 UTC ] [OsUtilsBase.getTotalPhysicalMemory:416]  Total Physical Memory in MB: 93344
+INFO: Jan 05, 2026 2:41:52 PM oracle.assistants.common.base.util.InitParamCollectionUtil getInitParam
+INFO: Could not find the init param (memory_target) from init params.
+
+INFO: Jan 05, 2026 2:41:52 PM oracle.assistants.dbca.action.ConfigurationParamsAction updateMemorySettings
+INFO: total memory is specified:53248 MB
+
+INFO: Jan 05, 2026 2:41:52 PM oracle.assistants.common.base.util.InitParamCollectionUtil getInitParam
+INFO: Could not find the init param (pga_aggregate_target) from init params.
+
+INFO: Jan 05, 2026 2:41:52 PM oracle.assistants.dbca.action.ConfigurationParamsAction updateMemoryParamsValues
+INFO: pga_aggregate_target is not specified. So calculating value for pga.
+
+
+INFO: Jan 05, 2026 2:41:52 PM oracle.assistants.dbca.action.ConfigurationParamsAction updateMemoryParamsValues
+INFO: sga_target value:32768 MB pga_aggreegate_target value:20480 MB

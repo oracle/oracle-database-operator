@@ -38,6 +38,7 @@
 
 package v4
 
+// Package v4 provides RAC webhook and type definitions aligned with docs/rac and Kubernetes guidance.
 import (
 	"sync"
 
@@ -45,27 +46,28 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// OracleRestartSpec defines the desired state of OracleRestart
+// OracleRestartSpec defines the desired state of an Oracle Restart deployment.
+// It contains configuration for Oracle instance details, storage, security, and service settings.
+// +kubebuilder:object:generate=true
+// +kubebuilder:validation:XValidation:rule="self.instDetails != null",message="instDetails is required"
 type OracleRestartSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	InstDetails       OracleRestartInstDetailSpec    `json:"instDetails"`
-	ConfigParams      *InitParams                    `json:"configParams,omitempty"`
-	AsmStorageDetails *AsmDiskDetails                `json:"asmStorageDetails,omitempty"`
-	Image             string                         `json:"image,omitempty"`
-	ImagePullSecret   string                         `json:"imagePullSecret,omitempty"`
-	ScriptsLocation   string                         `json:"scriptsLocation,omitempty"`
-	SshKeySecret      *OracleRestartSshSecretDetails `json:"sshKeySecret,omitempty"`
+	InstDetails          OracleRestartInstDetailSpec    `json:"instDetails"`
+	ConfigParams         *InitParams                    `json:"configParams,omitempty"`
+	AsmStorageDetails    []AsmDiskGroupDetails          `json:"asmDiskGroupDetails,omitempty"`
+	AsmStorageDetailsOld *AsmDiskDetails                `json:"asmStorageDetails,omitempty"`
+	Image                string                         `json:"image,omitempty"`
+	ImagePullSecret      string                         `json:"imagePullSecret,omitempty"`
+	ScriptsLocation      string                         `json:"scriptsLocation,omitempty"`
+	SshKeySecret         *OracleRestartSshSecretDetails `json:"sshKeySecret,omitempty"`
 	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
 	// +kubebuilder:validation:default="Always"
 	ImagePullPolicy    *corev1.PullPolicy               `json:"imagePullPolicy,omitempty"`
 	ReadinessProbe     *corev1.Probe                    `json:"readinessProbe,omitempty"`
 	ScriptsGetCmd      string                           `json:"scriptsGetCmd,omitempty"`
 	IsDebug            string                           `json:"isDebug,omitempty"`
-	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext"`
+	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext,omitempty"`
 	IsDeleteTopolgy    string                           `json:"isDeleteTopology,omitempty"`
 	DbSecret           *OracleRestartDbPwdSecretDetails `json:"dbSecret,omitempty"`
 	TdeWalletSecret    *OracleRestartDbPwdSecretDetails `json:"tdeWalletSecret,omitempty"`
@@ -79,6 +81,7 @@ type OracleRestartSpec struct {
 	RecoDgStorageClass string                           `json:"recoDgStorageClass,omitempty"`
 	SwStorageClass     string                           `json:"swDgStorageClass,omitempty"`
 	CrsDgStorageClass  string                           `json:"crsDgStorageClass,omitempty"`
+	AsmStorageSizeInGb int                              `json:"asmStorageSizeInGb,omitempty"`
 	LbService          OracleRestartNodePortSvc         `json:"lbService,omitempty"`
 	NodePortSvc        OracleRestartNodePortSvc         `json:"nodePortSvc,omitempty"` // Port mappings for the service that is created. The service is created if
 	// +kubebuilder:validation:Enum=enable;disable
@@ -97,7 +100,60 @@ type DiskBySize struct {
 	DiskNames       []string `json:"diskNames,omitempty"`
 }
 
+// InitParams contains the initialization parameters for Oracle database and Grid Infrastructure setup.
+// It specifies CPU, memory allocation, installation paths, response files, software locations,
+// database configuration, and patch management settings.
+//
+// CPU and Memory Configuration:
+// - CpuCount: Number of CPUs to allocate
+// - SgaSize: System Global Area size
+// - PgaSize: Program Global Area size
+// - Processes: Maximum number of processes
+// - HugePages: Number of huge pages to allocate
+//
+// Installation Directories:
+// - GridHome: Oracle Grid Infrastructure home directory
+// - DbHome: Oracle Database home directory
+// - GridBase: Grid Infrastructure base directory
+// - DbBase: Database base directory
+// - Inventory: Oracle inventory directory location
+//
+// Installation Files and Response Configuration:
+// - GridResponseFile: Response file for Grid Infrastructure installation
+// - DbResponseFile: Response file for Database installation
+// - GridSwZipFile: Grid software zip file path
+// - DbSwZipFile: Database software zip file path
+// - OPatchSwZipFile: OPatch software zip file path
+// - StagingSoftwareLocation: Location where software is staged
+//
+// Operation and Database Configuration:
+// - OpType: Type of operation to perform
+// - DbUniqueName: Unique name of the database
+// - DbName: Database name
+// - PdbName: Pluggable database name
+// - DbStorageType: Storage type for database
+// - DbCharSet: Database character set
+// - DbType: Type of database
+// - DbConfigType: Database configuration type
+// - EnableArchiveLog: Enable archive logging
+//
+// Software and Patch Locations:
+// - SwMountLocation: Software mount location
+// - HostSwStageLocation: Host-level software staging location
+// - RuPatchLocation: RU patch location
+// - RuFolderName: RU folder name
+// - OPatchLocation: OPatch utility location
+// - SwStagePvc: Persistent volume claim for software staging
+// - SwStagePvcMountLocation: Mount location for software staging PVC
+// - OneOffLocation: One-off patch location
+// - DbOneOffIds: One-off patch IDs for database
+// - GridOneOffIds: One-off patch IDs for Grid Infrastructure
 type InitParams struct {
+	CpuCount                int          `json:"cpuCount,omitempty"`
+	SgaSize                 string       `json:"sgaSize,omitempty"`
+	PgaSize                 string       `json:"pgaSize,omitempty"`
+	Processes               int          `json:"processes,omitempty"`
+	HugePages               int          `json:"hugePages,omitempty"`
 	GridHome                string       `json:"gridHome,omitempty"`
 	DbHome                  string       `json:"dbHome,omitempty"`
 	GridBase                string       `json:"gridBase,omitempty"`
@@ -110,44 +166,32 @@ type InitParams struct {
 	OPatchSwZipFile         string       `json:"oPatchSwZipFile,omitempty"`
 	StagingSoftwareLocation string       `json:"stagingSoftwareLocation,omitempty"`
 	OpType                  string       `json:"opType,omitempty"`
-	CpuCount                int          `json:"cpuCount,omitempty"`
-	SgaSize                 string       `json:"sgaSize,omitempty"`
-	PgaSize                 string       `json:"pgaSize,omitempty"`
-	Processes               int          `json:"processes,omitempty"`
 	DbUniqueName            string       `json:"dbUniqueName,omitempty"`
-	CrsAsmDiskDg            string       `json:"crsAsmDiskDg,omitempty"`
-	CrsAsmDeviceList        string       `json:"crsAsmDeviceList,omitempty"`
-	DbRecoveryFileDest      string       `json:"dbRecoveryFileDest,omitempty"`
-	DbRecoveryFileDestSize  string       `json:"dbRecoveryFileDestSize,omitempty"`
-	DbDataFileDestDg        string       `json:"dbDataFileDestDg,omitempty"`
-	CrsAsmDiskDgRedundancy  string       `json:"crsAsmDiskDgRedundancy,omitempty"`
-	DBAsmDiskDgRedundancy   string       `json:"dbAsmDiskDgRedundancy,omitempty"`
-	RecoAsmDiskDgRedundancy string       `json:"recoAsmDiskDgRedundancy,omitempty"`
-	RedoAsmDiskDgRedundancy string       `json:"redoAsmDiskDgRedundancy,omitempty"`
-	DbName                  string       `json:"dbName,omitempty"`
-	PdbName                 string       `json:"pdbName,omitempty"`
-	DbStorageType           string       `json:"dbStorageType,omitempty"`
-	DbAsmDeviceList         string       `json:"dbAsmDeviceList,omitempty"`
-	RecoAsmDeviceList       string       `json:"recoAsmDeviceList,omitempty"`
-	RedoAsmDeviceList       string       `json:"redoAsmDeviceList,omitempty"`
-	RedoAsmDiskDg           string       `json:"redoAsmDiskDg,omitempty"`
-	DbCharSet               string       `json:"dbCharSet,omitempty"`
-	DbRedoFileSize          string       `json:"dbRedoFileSize,omitempty"`
-	DbType                  string       `json:"dbType,omitempty"`
-	DbConfigType            string       `json:"dbConfigType,omitempty"`
-	EnableArchiveLog        string       `json:"enableArchiveLog,omitempty"`
-	SwMountLocation         string       `json:"swMountLocation,omitempty"`
-	HostSwStageLocation     string       `json:"hostSwStageLocation,omitempty"`
-	RuPatchLocation         string       `json:"ruPatchLocation,omitempty"`
-	RuFolderName            string       `json:"ruFolderName,omitempty"`
-	OPatchLocation          string       `json:"oPatchLocation,omitempty"`
-	SwStagePvc              string       `json:"swStagePvc,omitempty"`
-	SwStagePvcMountLocation string       `json:"swStagePvcMountLocation,omitempty"`
-	OneOffLocation          string       `json:"oneOffLocation,omitempty"`
-	DbOneOffIds             string       `json:"dbOneOffIds,omitempty"`
-	GridOneOffIds           string       `json:"gridOneOffIds,omitempty"`
+
+	DbName        string `json:"dbName,omitempty"`
+	PdbName       string `json:"pdbName,omitempty"`
+	DbStorageType string `json:"dbStorageType,omitempty"`
+
+	DbCharSet string `json:"dbCharSet,omitempty"`
+
+	DbType                  string `json:"dbType,omitempty"`
+	DbConfigType            string `json:"dbConfigType,omitempty"`
+	EnableArchiveLog        string `json:"enableArchiveLog,omitempty"`
+	SwMountLocation         string `json:"swMountLocation,omitempty"`
+	HostSwStageLocation     string `json:"hostSwStageLocation,omitempty"`
+	RuPatchLocation         string `json:"ruPatchLocation,omitempty"`
+	RuFolderName            string `json:"ruFolderName,omitempty"`
+	OPatchLocation          string `json:"oPatchLocation,omitempty"`
+	SwStagePvc              string `json:"swStagePvc,omitempty"`
+	SwStagePvcMountLocation string `json:"swStagePvcMountLocation,omitempty"`
+	OneOffLocation          string `json:"oneOffLocation,omitempty"`
+	DbOneOffIds             string `json:"dbOneOffIds,omitempty"`
+	GridOneOffIds           string `json:"gridOneOffIds,omitempty"`
 }
 
+// OracleRestartInstDetailSpec defines the specification for an Oracle Restart instance detail.
+// It contains configuration parameters for managing Oracle Restart instances including
+// storage locations, worker nodes, environment variables, and persistent volume claim settings.
 type OracleRestartInstDetailSpec struct {
 	Name                 string          `json:"name,omitempty"` // Name of the Oracle Restart Instance
 	HostSwLocation       string          `json:"hostSwLocation,omitempty"`
@@ -238,7 +282,7 @@ type OracleRestartStatus struct {
 	Conditions         []metav1.Condition               `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 	InstDetails        *OracleRestartInstDetailSpec     `json:"instDetails,omitempty"`
 	ConfigParams       *InitParams                      `json:"configParams,omitempty"`
-	AsmDetails         *AsmInstanceStatus               `json:"asmDetails,omitempty"`
+	AsmDiskGroups      []AsmDiskGroupStatus             `json:"asmDiskGroups,omitempty"`
 	NfsStorageDetails  *corev1.NFSVolumeSource          `json:"nfsStorageDetails,omitempty"`
 	UseNfsforSwStorage string                           `json:"useNfsforSwStorage,omitempty"`
 	StorageClass       string                           `json:"storageClass,omitempty"`
@@ -252,16 +296,22 @@ type OracleRestartStatus struct {
 	ReadinessProbe     *corev1.Probe                    `json:"readinessProbe,omitempty"`
 	ScriptsGetCmd      string                           `json:"scriptsGetCmd,omitempty"`
 	IsDebug            string                           `json:"isDebug,omitempty"`
-	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext,omitempty"`
 	IsDeleteTopolgy    string                           `json:"isDeleteTopology,omitempty"`
 	ExternalSvcType    *string                          `json:"externalSvcType,omitempty"`
 	DbSecret           *OracleRestartDbPwdSecretDetails `json:"dbSecret,omitempty"`
 	TdeWalletSecret    *OracleRestartDbPwdSecretDetails `json:"tdeWalletSecret,omitempty"`
 	ServiceDetails     ServiceSpec                      `json:"serviceDetails,omitempty"`
-	Resources          *corev1.ResourceRequirements     `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
 	OldSpec            string                           `json:"oldSpec,omitempty"`
+	CpuCount           int                              `json:"cpuCount,omitempty"`
+	SgaSize            string                           `json:"sgaSize,omitempty"`
+	PgaSize            string                           `json:"pgaSize,omitempty"`
+	Processes          int                              `json:"processes,omitempty"`
+	HugePages          int                              `json:"hugePages,omitempty"`
+	Resources          *corev1.ResourceRequirements     `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	SecurityContext    *corev1.PodSecurityContext       `json:"securityContext,omitempty"`
 }
 
+// OracleRestartNodePortSvc defines the structure for node port service configuration in Oracle Restart. It includes details about port mappings, service name, type, load balancer IP, annotations, and ONS port configurations. This struct is used to specify how the Oracle Restart instance should be exposed via Kubernetes services, allowing for external access and communication with the database instances.
 type OracleRestartNodePortSvc struct {
 	PortMappings  []OracleRestartPortMapping `json:"portMappings,omitempty"`
 	SvcName       string                     `json:"name,omitempty"`
@@ -272,6 +322,7 @@ type OracleRestartNodePortSvc struct {
 	OnsLocalPort  *int32                     `json:"onsLocalPort,omitempty"`  // Port that will be exposed on the service.
 }
 
+// OracleRestartPortMapping defines the structure for port mapping configuration in Oracle Restart. It includes details about the port number, target port, protocol, and node port. This struct is used to specify how the ports should be mapped for the services created for Oracle Restart instances, allowing for proper routing of network traffic to the database instances.
 type OracleRestartPortMapping struct {
 	Port       int32 `json:"port,omitempty"`
 	TargetPort int32 `json:"targetPort,omitempty"`
@@ -281,11 +332,13 @@ type OracleRestartPortMapping struct {
 	NodePort int32           `json:"nodePort,omitempty"`
 }
 
+// OracleRestartNodestatus defines the status of an individual node in the Oracle Restart cluster. It includes the name of the node and detailed status information such as worker node, persistent volume claim names, node port service configurations, port mappings, cluster state, instance state, pod state, deletion status, overall state, and mounted devices. This struct is used to represent the real-time status of each node in the Oracle Restart cluster, which is essential for monitoring and managing the health and performance of the database instances.
 type OracleRestartNodestatus struct {
 	Name        string                           `json:"name,omitempty"`
 	NodeDetails *OracleRestartNodeDetailedStatus `json:"nodeDetails,omitempty"`
 }
 
+// OracleRestartNodeDetailedStatus provides detailed status information for a node in the Oracle Restart cluster. It includes the worker node name, persistent volume claim names, node port service configurations, port mappings, cluster state, instance state, pod state, deletion status, overall state, and mounted devices. This struct is used to capture the comprehensive status of each node in the Oracle Restart cluster, which is crucial for effective monitoring and troubleshooting of the database instances.
 type OracleRestartNodeDetailedStatus struct {
 	WorkerNode     string                     `json:"workerNode,omitempty"` //Optional Env variables for Shards
 	PvcName        map[string]string          `json:"pvcName,omitempty"`
@@ -299,16 +352,7 @@ type OracleRestartNodeDetailedStatus struct {
 	MountedDevices []string                   `json:"mountedDevices,omitempty"`
 }
 
-type AsmInstanceStatus struct {
-	Diskgroup []AsmDiskgroupStatus `json:"diskgroup,omitempty"`
-}
-
-type AsmDiskgroupStatus struct {
-	Name       string   `json:"name,omitempty"`
-	Disks      []string `json:"disks,omitempty"`
-	Redundancy string   `json:"redundancy,omitempty"`
-}
-
+// OracleRestartLifecycleState defines the various lifecycle states that an Oracle Restart instance can be in. These states include available, failed, updating, provisioning, pending, and various error states related to pods and stateful sets. This enum is used to represent the current lifecycle state of the Oracle Restart instance, which is essential for monitoring and managing the health and performance of the database instances.
 type OracleRestartLifecycleState string
 
 const (
@@ -333,6 +377,7 @@ const (
 	OracleRestartManualState         OracleRestartLifecycleState = "MANUAL"
 )
 
+// OracleRestartCrdReconcileState defines the various reconcile states that an Oracle Restart CRD can be in. These states include reconcile error, reconcile queued, reconcile complete, and reconcile waiting, along with their corresponding reasons. This enum is used to represent the current reconcile state of the Oracle Restart CRD, which is essential for monitoring the reconciliation process and troubleshooting any issues that may arise during the lifecycle of the CRD.
 type OracleRestartCrdReconcileState string
 
 const (
@@ -346,7 +391,7 @@ const (
 	OracleRestartCrdReconcileWaitingReason  OracleRestartCrdReconcileState = "LastReconcileCycleWaiting"
 )
 
-// var
+// OracleRestartKubeConfigOnce is a sync.Once variable used to ensure that the Kubernetes client configuration for Oracle Restart is initialized only once during the lifecycle of the application. This helps to optimize performance and resource usage by preventing redundant initialization of the Kubernetes client configuration, which can be an expensive operation. By using sync.Once, we can guarantee that the configuration is set up in a thread-safe manner, even in concurrent environments.
 var OracleRestartKubeConfigOnce sync.Once
 
 // +kubebuilder:object:root=true
@@ -376,6 +421,7 @@ type OracleRestartList struct {
 	Items           []OracleRestart `json:"items"`
 }
 
+// Repository type metadata.
 func init() {
 	SchemeBuilder.Register(&OracleRestart{}, &OracleRestartList{})
 }

@@ -57,6 +57,12 @@ type LRESTSpec struct {
 	LRESTAdminUser LRESTAdminUser `json:"cdbAdminUser,omitempty"`
 	// Password for the LREST Administrator to manage PDB lifecycle
 	LRESTAdminPwd LRESTAdminPassword `json:"cdbAdminPwd,omitempty"`
+	// Orapki wallet
+	LRESTorapki *LRESTSecret2 `json:"orapki,omitempty"`
+	// tag to be used adding wallet credential
+	// mkstore [..]  -createCredential lrestpki username password
+	// +kubebuilder:default=orapkitag
+	LRESTorapkitag string `json:"orapkitag,omitempty"`
 	// Secret: tls.key
 	LRESTTlsKey LRESTTLSKEY `json:"cdbTlsKey,omitempty"`
 	// Secret: tls.crt
@@ -111,15 +117,27 @@ type LRESTSpec struct {
 	// to run the operator local
 	// +kubebuilder:default=false
 	LoadBalancer bool `json:"loadBalancer,omitempty"`
+	// Password protection , it can be a thirdparty software or openssl encryption
+	// +kubebuilder:validation:Enum=NATIVE;OPENSSL3;ORAPKI
+	// +kubebuilder:default=NATIVE
+	PwdProtection string `json:"passwordProtection"`
 	// Turn on the  sqlnet.trace_level_client
 	// +kubebuilder:default=0
 	SqlNetTrace int `json:"trace_level_client,omitempty"`
+	// Reset database password
+	ResetDbPassword bool `json:"resetDbpassword,omitempty"`
+	// Debug option , not yet implemented
+	Trclvl int `json:"tracelevel,omitempty"`
 }
 
 // LRESTSecret defines the secretName
 type LRESTSecret struct {
 	SecretName string `json:"secretName"`
 	Key        string `json:"key"`
+}
+
+type LRESTSecret2 struct {
+	SecretName string `json:"secretName"`
 }
 
 // LRESTSysAdminPassword defines the secret containing SysAdmin Password mapped to key 'sysAdminPwd' for LREST
@@ -179,16 +197,21 @@ type LRESTStatus struct {
 	Status bool `json:"status"`
 	// Message
 	Msg string `json:"msg,omitempty"`
+	// Number of pdbs and crd detected
+	Npdbs int `json:"npdbs,omitempty"`
+	// Number of crd associated to pdb
+	Ncrds int `json:"ncrds,omitempty"`
+	// Number of pdbs and crd detected
+	Npdbscrd string `json:"npdbscrd,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".spec.cdbName",name="CDB NAME",type="string",description="Name of the LREST"
-// +kubebuilder:printcolumn:JSONPath=".spec.dbServer",name="DB Server",type="string",description=" Name of the DB Server"
-// +kubebuilder:printcolumn:JSONPath=".spec.dbPort",name="DB Port",type="integer",description="DB server port"
-// +kubebuilder:printcolumn:JSONPath=".spec.replicas",name="Replicas",type="integer",description="Replicas"
-// +kubebuilder:printcolumn:JSONPath=".status.phase",name="Status",type="string",description="Status of the LREST Resource"
-// +kubebuilder:printcolumn:JSONPath=".status.msg",name="Message",type="string",description="Error message if any"
+// +kubebuilder:printcolumn:JSONPath=".status.phase",name="STATUS",type="string",description="Status of the LREST Resource"
+// +kubebuilder:printcolumn:JSONPath=".status.msg",name="MESSAGE",type="string",description="Error message if any"
+// +kubebuilder:printcolumn:JSONPath=".spec.autodiscover",name="AUTODISCOVER",type="boolean",description="Autodiscover"
+// +kubebuilder:printcolumn:JSONPath=".status.npdbscrd",name="PDB:CRD",type="string",description="Number of PDBS"
 // +kubebuilder:printcolumn:JSONPath=".spec.dbTnsurl",name="TNS STRING",type="string",description="string of the tnsalias"
 // +kubebuilder:resource:path=lrests,scope=Namespaced
 // +kubebuilder:storageversion

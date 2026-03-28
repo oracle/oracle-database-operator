@@ -8,7 +8,6 @@ spec:
   forceRestart: true
   encPrivKey:
     secretName: prvkey
-    passwordKey: privateKey
   globalSettings:
     database.api.enabled: true
     mongo.enabled: true

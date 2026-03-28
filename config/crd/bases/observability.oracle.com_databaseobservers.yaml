@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.17.3
+    controller-gen.kubebuilder.io/version: v0.18.0
   name: databaseobservers.observability.oracle.com
 spec:
   group: observability.oracle.com
@@ -525,7 +525,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -784,7 +783,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -795,6 +793,8 @@ spec:
                           enum:
                           - http
                           - https
+                          - HTTP
+                          - HTTPS
                           type: string
                         scrapeTimeout:
                           pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$
@@ -3028,7 +3028,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -3287,7 +3286,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -3298,6 +3296,8 @@ spec:
                           enum:
                           - http
                           - https
+                          - HTTP
+                          - HTTPS
                           type: string
                         scrapeTimeout:
                           pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$
@@ -5531,7 +5531,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -5790,7 +5789,6 @@ spec:
                                 type: string
                               sourceLabels:
                                 items:
-                                  pattern: ^[a-zA-Z_][a-zA-Z0-9_]*$
                                   type: string
                                 type: array
                               targetLabel:
@@ -5801,6 +5799,8 @@ spec:
                           enum:
                           - http
                           - https
+                          - HTTP
+                          - HTTPS
                           type: string
                         scrapeTimeout:
                           pattern: ^(0|(([0-9]+)y)?(([0-9]+)w)?(([0-9]+)d)?(([0-9]+)h)?(([0-9]+)m)?(([0-9]+)s)?(([0-9]+)ms)?)$

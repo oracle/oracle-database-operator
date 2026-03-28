@@ -1,25 +1,25 @@
-# Provisioning Oracle Sharded Database with System-Managed Sharding without Database Gold Image
+# Provisioning Oracle Globally Distributed Database with System-Managed Sharding without Database Gold Image
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
+**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
 
-In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database when the Oracle Sharding topology with System-Managed Sharding is deployed using Oracle Sharding controller.
+In this use case, the database is created automatically using DBCA during the provisioning of the shard databases and the catalog database.
 
 **NOTE:** In this use case, because DBCA creates the database automatically during the deployment, the time required to create the database is greater than the time it takes when the database is created by cloning from a Database Gold Image.
 
 This example uses `ssharding_shard_prov.yaml` to provision an Oracle Database sharding topology using Oracle Sharding controller with:
 
 * Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
-* One Catalog Pod: `catalog`
+* Three Shard Database Pods: `shard1`, `shard2` and `shard3`
+* One Catalog Database Pod: `catalog`
 * Namespace: `shns`
 
 
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on [Oracle Container Registry](https://container-registry.oracle.com/)
-  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, then you must change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov.yaml`.
-  * To understand Database and Global Data Services Docker images prerequsites, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
-  * If you want to use the [Oracle Database 23ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you must add the additional parameter `dbEdition: "free"` to the `.yaml` file with this document. 
-  * Ensure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
+  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the namespace `shns`. Please refer to [this page](./../container_reg_secret.md) for the details. 
+  * If you plan to build and use the images, you need to change `dbImage` and `gsmImage` tag with the images you have built in your enviornment in file `ssharding_shard_prov.yaml`.
+  * To understand Database and Global Data Services Docker images prerequsites, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images)
+  * If you want to use the [Oracle AI Database 26ai Free](https://www.oracle.com/database/free/get-started/) Image for Database and GSM, then you must add the additional parameter `dbEdition: "free"` to the `.yaml` file.  
+  * The version of `openssl` in the Oracle Database and Oracle GSM images must be compatible with the `openssl` version on the machine where you will run the openssl commands to generate the encrypted password file during the deployment. 
 
 Use the file: [ssharding_shard_prov.yaml](./ssharding_shard_prov.yaml) for this use case:
 

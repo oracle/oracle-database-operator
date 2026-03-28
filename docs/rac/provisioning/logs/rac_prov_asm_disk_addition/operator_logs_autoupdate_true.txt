@@ -1,0 +1,203 @@
+2025-12-22T02:31:23Z	INFO	racdatabase-resource	validate update	{"name": ""}
+2025-12-22T02:31:23Z	INFO	racdatabase-resource	validate update	{"name": "racdbprov-sample"}
+2025-12-22T02:31:23Z	INFO	racdatabase-resource	validate create	{"name": "racdbprov-sample"}
+%s -> %s
+ 0 0
+2025-12-22T02:31:28Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:31:28Z	INFO	controllers.controllers.RacDatabase	Completed Update of RAC cluster node status	{"NodeName": "racnode1"}
+2025-12-22T02:31:41Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:31:41Z	INFO	controllers.controllers.RacDatabase	Completed Update of RAC cluster node status	{"NodeName": "racnode2"}
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Updating RAC instance status with validateRacDb	{"Instance": "racdbprov-sample"}
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status with validateRacDb	{"Instance": "racdbprov-sample"}
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Entering reconcile validation
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Completed Validation of Spex
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Detected addition of ASM disks	{"addedAsmDisks": ["/dev/disk/by-partlabel/qck-ocne19-asmdisk3", "/dev/disk/by-partlabel/qck-ocne19-asmdisk4"]}
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Validate New ASM Disks
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	Creating DaemonSet	{"name": "disk-check-daemonset"}
+2025-12-22T02:32:03Z	INFO	controllers.controllers.RacDatabase	DaemonSet created successfully	{"DaemonSet.Name": "disk-check-daemonset"}
+2025-12-22T02:32:13Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-b8ff8be9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:32:13Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-b8ff8be9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:32:13Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-d6a10c56-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:32:13Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-d6a10c56-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:32:13Z	INFO	controllers.controllers.RacDatabase	Creating a new PV	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-e482f1a9-racdbprov-sample"}
+2025-12-22T02:32:13Z	INFO	controllers.controllers.RacDatabase	Creating a PVC	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample"}
+2025-12-22T02:32:13Z	INFO	controllers.controllers.RacDatabase	Creating a new PV	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-3d52e356-racdbprov-sample"}
+2025-12-22T02:32:13Z	INFO	controllers.controllers.RacDatabase	Creating a PVC	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample"}
+2025-12-22T02:32:18Z	INFO	controllers.controllers.RacDatabase	Updating existing configmap (cluster-style ASM update)	{"ConfigMap": "racnode1racdbprov-sample-cmap"}
+2025-12-22T02:32:18Z	INFO	controllers.controllers.RacDatabase	ConfigMap updated successfully with new ASM disk details (new-style cluster mode)
+2025-12-22T02:32:18Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:32:18Z	INFO	controllers.controllers.RacDatabase	Change State to UPDATING
+2025-12-22T02:32:18Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:32:18Z	INFO	controllers.controllers.RacDatabase	Conflict detected in updateRacNodeStatusForCluster, retrying...	{"attempt": 1}
+2025-12-22T02:32:20Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:32:20Z	INFO	controllers.controllers.RacDatabase	StatefulSet spec differs for volume devices, updating StatefulSet (pods may be recreated)	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode1"}
+2025-12-22T02:32:20Z	INFO	controllers.controllers.RacDatabase	StatefulSet update applied, waiting for pod recreation	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode1"}
+2025-12-22T02:32:20Z	INFO	controllers.controllers.RacDatabase	Waiting for StatefulSet update to be applied	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode1"}
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	StatefulSet update is applied successfully	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode1"}
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	Updating existing configmap (cluster-style ASM update)	{"ConfigMap": "racnode2racdbprov-sample-cmap"}
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	ConfigMap updated successfully with new ASM disk details (new-style cluster mode)
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	Change State to UPDATING
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	StatefulSet spec differs for volume devices, updating StatefulSet (pods may be recreated)	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode2"}
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	StatefulSet update applied, waiting for pod recreation	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode2"}
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	StatefulSet update is applied successfully	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode2"}
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	Disk found in ASM DiskGroup	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "disk": "/dev/disk/by-partlabel/qck-ocne19-asmdisk3", "diskGroup": "DATA", "type": "CRSDG"}
+2025-12-22T02:32:25Z	INFO	controllers.controllers.RacDatabase	Disk found in ASM DiskGroup	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "disk": "/dev/disk/by-partlabel/qck-ocne19-asmdisk4", "diskGroup": "DATA", "type": "CRSDG"}
+2025-12-22T02:32:55Z	ERROR	controllers.controllers.RacDatabase	Failed to check if disk group exists	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "Pod.Name": "racnode2-0", "DiskGroup": "DATA", "error": "Internal error occurred: error executing command in container: container is not created or running"}
+github.com/oracle/oracle-database-operator/controllers/database.(*RacDatabaseReconciler).addDisks
+	/workspace/controllers/database/racdatabase_controller.go:3619
+github.com/oracle/oracle-database-operator/controllers/database.(*RacDatabaseReconciler).createOrReplaceSfsAsmCluster
+	/workspace/controllers/database/racdatabase_controller.go:4312
+github.com/oracle/oracle-database-operator/controllers/database.(*RacDatabaseReconciler).Reconcile
+	/workspace/controllers/database/racdatabase_controller.go:736
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Reconcile
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:216
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:461
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:421
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func1.1
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:296
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:32:55Z	ERROR	Reconciler error	{"controller": "racdatabase", "controllerGroup": "database.oracle.com", "controllerKind": "RacDatabase", "RacDatabase": {"name":"racdbprov-sample","namespace":"rac"}, "namespace": "rac", "name": "racdbprov-sample", "reconcileID": "0124a324-dd82-410f-84cc-740d6b44480c", "error": "Internal error occurred: error executing command in container: container is not created or running"}
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).reconcileHandler
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:474
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).processNextWorkItem
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:421
+sigs.k8s.io/controller-runtime/pkg/internal/controller.(*Controller[...]).Start.func1.1
+	/gomod-cache/sigs.k8s.io/controller-runtime@v0.22.1/pkg/internal/controller/controller.go:296
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:32:55Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:33:55Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:34:55Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	unable to validate RAC pod. The  pod not ready  is: racnode1-0
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	Error during RAC cluster update	{"err1": "unable to validate RAC pod. The  pod not ready  is: racnode1-0"}
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:35:55Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:36:55Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:36:55Z	INFO	controllers.controllers.RacDatabase	RAC object is in restricted state, returning back
+2025-12-22T02:37:08Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:37:08Z	INFO	controllers.controllers.RacDatabase	Completed Update of RAC cluster node status	{"NodeName": "racnode1"}
+2025-12-22T02:37:21Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:37:21Z	INFO	controllers.controllers.RacDatabase	Completed Update of RAC cluster node status	{"NodeName": "racnode2"}
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Updating RAC instance status with validateRacDb	{"Instance": "racdbprov-sample"}
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status with validateRacDb	{"Instance": "racdbprov-sample"}
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Entering reconcile validation
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Completed Validation of Spex
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Detected addition of ASM disks	{"addedAsmDisks": ["/dev/disk/by-partlabel/qck-ocne19-asmdisk3", "/dev/disk/by-partlabel/qck-ocne19-asmdisk4"]}
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Validate New ASM Disks
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	Creating DaemonSet	{"name": "disk-check-daemonset"}
+2025-12-22T02:37:45Z	INFO	controllers.controllers.RacDatabase	DaemonSet created successfully	{"DaemonSet.Name": "disk-check-daemonset"}
+2025-12-22T02:37:55Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-b8ff8be9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:37:55Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-b8ff8be9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:37:55Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-d6a10c56-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:37:55Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-d6a10c56-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:37:55Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-e482f1a9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:37:55Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-e482f1a9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:37:55Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-3d52e356-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:37:55Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-3d52e356-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	Updating existing configmap (cluster-style ASM update)	{"ConfigMap": "racnode1racdbprov-sample-cmap"}
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	ConfigMap updated successfully with new ASM disk details (new-style cluster mode)
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	StatefulSet matches for  ASM devices, SFS wont be updated	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode1"}
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	Updating existing configmap (cluster-style ASM update)	{"ConfigMap": "racnode2racdbprov-sample-cmap"}
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	ConfigMap updated successfully with new ASM disk details (new-style cluster mode)
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	StatefulSet matches for  ASM devices, SFS wont be updated	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "StatefulSet.Namespace": "rac", "StatefulSet.Name": "racnode2"}
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	Disk found in ASM DiskGroup	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "disk": "/dev/disk/by-partlabel/qck-ocne19-asmdisk3", "diskGroup": "DATA", "type": "CRSDG"}
+2025-12-22T02:38:00Z	INFO	controllers.controllers.RacDatabase	Disk found in ASM DiskGroup	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "disk": "/dev/disk/by-partlabel/qck-ocne19-asmdisk4", "diskGroup": "DATA", "type": "CRSDG"}
+2025-12-22T02:38:01Z	INFO	controllers.controllers.RacDatabase	Executing command to add disk	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "Pod.Name": "racnode2-0", "Command": "python3 /opt/scripts/startup/scripts/main.py --updateasmdevices=\"diskname=/dev/disk/by-partlabel/qck-ocne19-asmdisk3;diskgroup=DATA;processtype=addition\""}
+2025-12-22T02:40:02Z	INFO	controllers.controllers.RacDatabase	Executing command to add disk	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "Pod.Name": "racnode2-0", "Command": "python3 /opt/scripts/startup/scripts/main.py --updateasmdevices=\"diskname=/dev/disk/by-partlabel/qck-ocne19-asmdisk4;diskgroup=DATA;processtype=addition\""}
+2025-12-22T02:40:24Z	INFO	controllers.controllers.RacDatabase	New ASM disks added	{"racDatabase.Namespace": "rac", "racDatabase.Name": "racdbprov-sample", "diskgroup": "DATA"}
+2025-12-22T02:40:24Z	INFO	racdatabase-resource	default	{"name": "racdbprov-sample"}
+2025-12-22T02:40:24Z	INFO	controllers.controllers.RacDatabase	RAC Object annotations updated with current spec annotation
+2025-12-22T02:40:24Z	INFO	controllers.controllers.RacDatabase	Reconcile completed. Requeuing....
+2025-12-22T02:40:36Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:40:36Z	INFO	controllers.controllers.RacDatabase	Completed Update of RAC cluster node status	{"NodeName": "racnode1"}
+2025-12-22T02:40:54Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:40:54Z	INFO	controllers.controllers.RacDatabase	Completed Update of RAC cluster node status	{"NodeName": "racnode2"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Updating RAC instance status with validateRacDb	{"Instance": "racdbprov-sample"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status with validateRacDb	{"Instance": "racdbprov-sample"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Returning from updateReconcileStatus
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Reconcile requested
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Entering reconcile validation
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Completed Validation of Spex
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Ensuring ASM DiskGroup status initialization
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-b8ff8be9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-b8ff8be9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-d6a10c56-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-d6a10c56-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-e482f1a9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-e482f1a9-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	PV Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pv-3d52e356-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	PVC Found	{"Instance.Namespace": "rac", "Instance.Name": "racdbprov-sample", "dep.Name": "asm-pvc-3d52e356-racdbprov-sample", "dgType": "CRSDG"}
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Annotations are already up to date. Skipping update.
+2025-12-22T02:41:36Z	INFO	controllers.controllers.RacDatabase	Reconcile completed. Requeuing....
+2025-12-22T02:42:17Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:42:17Z	INFO	controllers.controllers.RacDatabase	Completed Update of RAC cluster node status	{"NodeName": "racnode1"}
+2025-12-22T02:43:35Z	INFO	controllers.controllers.RacDatabase	RAC Object updated with updateRacNodeStatusForCluster
+2025-12-22T02:43:35Z	INFO	controllers.controllers.RacDatabase	Completed Update of RAC cluster node status	{"NodeName": "racnode2"}
+2025-12-22T02:45:03Z	INFO	controllers.controllers.RacDatabase	Updating RAC instance status with validateRacDb	{"Instance": "racdbprov-sample"}
+2025-12-22T02:45:03Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status with validateRacDb	{"Instance": "racdbprov-sample"}
+2025-12-22T02:45:03Z	INFO	controllers.controllers.RacDatabase	Updated RAC instance status successfully	{"Instance": "racdbprov-sample"}

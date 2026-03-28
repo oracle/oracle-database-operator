@@ -38,6 +38,7 @@
 
 package commons
 
+// getOracleRestartDbModeCmd provides documentation for the getOracleRestartDbModeCmd function.
 func getOracleRestartDbModeCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -45,6 +46,7 @@ func getOracleRestartDbModeCmd() []string {
 	return oraRacInstCmd
 }
 
+// getGiHealthCmd provides documentation for the getGiHealthCmd function.
 func getGiHealthCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -52,6 +54,7 @@ func getGiHealthCmd() []string {
 	return oraGiCmd
 }
 
+// getOracleRestartHealthCmd provides documentation for the getOracleRestartHealthCmd function.
 func getOracleRestartHealthCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -59,18 +62,21 @@ func getOracleRestartHealthCmd() []string {
 	return oraRacCmd
 }
 
+// getConnStrCmd provides documentation for the getConnStrCmd function.
 func getConnStrCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
 	var oraRacConnCmd = []string{oraScriptMount1 + "/cmdExec", oraPythonCmd, oraScriptMount1 + "/main.py ", "--checkconnstr=true "}
 	return oraRacConnCmd
 }
+// getGridHomeCmd provides documentation for the getGridHomeCmd function.
 func getGridHomeCmd() []string {
 	// Command to source the envfile and echo GRID_HOME
 	gridHomeCmd := []string{"sh", "-c", "grep '^GRID_HOME=' /etc/rac_env_vars/envfile | cut -d'=' -f2"}
 	return gridHomeCmd
 }
 
+// getPdbConnStrCmd provides documentation for the getPdbConnStrCmd function.
 func getPdbConnStrCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -78,6 +84,7 @@ func getPdbConnStrCmd() []string {
 	return oraRacConnCmd
 }
 
+// getDbRoleCmd provides documentation for the getDbRoleCmd function.
 func getDbRoleCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -85,6 +92,7 @@ func getDbRoleCmd() []string {
 	return oraRacRoleCmd
 }
 
+// getOracleRestartDbVersionCmd provides documentation for the getOracleRestartDbVersionCmd function.
 func getOracleRestartDbVersionCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -92,6 +100,7 @@ func getOracleRestartDbVersionCmd() []string {
 	return oraRacVersionCmd
 }
 
+// getDBServiceStatus provides documentation for the getDBServiceStatus function.
 func getDBServiceStatus(dbhome string, dbname string, svcname string) []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -109,6 +118,7 @@ func getDBServiceStatus(dbhome string, dbname string, svcname string) []string {
 // 	return oraModifySvcCmd
 // }
 
+// getAsmDiskgroupCmd provides documentation for the getAsmDiskgroupCmd function.
 func getAsmDiskgroupCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -116,6 +126,7 @@ func getAsmDiskgroupCmd() []string {
 	return diskgroupscmd
 }
 
+// getAsmDisksCmd provides documentation for the getAsmDisksCmd function.
 func getAsmDisksCmd(diskgroup string) []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -123,6 +134,7 @@ func getAsmDisksCmd(diskgroup string) []string {
 	return disks
 }
 
+// getAsmDgRedundancyCmd provides documentation for the getAsmDgRedundancyCmd function.
 func getAsmDgRedundancyCmd(diskgroup string) []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -130,6 +142,7 @@ func getAsmDgRedundancyCmd(diskgroup string) []string {
 	return redundancy
 }
 
+// getAsmInstNameCmd provides documentation for the getAsmInstNameCmd function.
 func getAsmInstNameCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -137,6 +150,7 @@ func getAsmInstNameCmd() []string {
 	return name
 }
 
+// getAsmInstStatusCmd provides documentation for the getAsmInstStatusCmd function.
 func getAsmInstStatusCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -145,6 +159,7 @@ func getAsmInstStatusCmd() []string {
 }
 
 // This function generates cmmand for modifying asm cardinality for the nodes
+// getUpdateAsmCount provides documentation for the getUpdateAsmCount function.
 func getUpdateAsmCount(gihome string) []string {
 	oraScriptMount1 := getOraScriptMount()
 	oraPythonCmd := getOraPythonCmd()
@@ -153,6 +168,7 @@ func getUpdateAsmCount(gihome string) []string {
 }
 
 // This function generates cmmand for modifying asm cardinality for the nodes
+// getOracleRestartInstStateFileCmd provides documentation for the getOracleRestartInstStateFileCmd function.
 func getOracleRestartInstStateFileCmd() []string {
 	var oraStateCmd = []string{"/bin/bash", "-c", "  cat /tmp/orod/.statefile"}
 	return oraStateCmd

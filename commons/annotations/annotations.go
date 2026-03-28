@@ -40,9 +40,7 @@ package annotations
 
 import (
 	"context"
-	"encoding/json"
 
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -55,30 +53,26 @@ type PatchValue struct {
 
 // PatchAnnotations attaches the given metadata to the target object
 // The obj will be updated with the content returned by the cluster
-func PatchAnnotations(kubeClient client.Client, obj client.Object, anns map[string]string) error {
-	payload := []PatchValue{}
+func PatchAnnotations(c client.Client, obj client.Object, anns map[string]string) error {
+	ctx := context.TODO()
 
-	if obj.GetAnnotations() == nil {
-		payload = append(payload, PatchValue{
-			Op:    "replace",
-			Path:  "/metadata/annotations",
-			Value: map[string]string{},
-		})
-	}
-
-	for key, val := range anns {
-		payload = append(payload, PatchValue{
-			Op:    "replace",
-			Path:  "/metadata/annotations/" + key,
-			Value: val,
-		})
-	}
-
-	payloadBytes, err := json.Marshal(payload)
-	if err != nil {
+	latest := obj.DeepCopyObject().(client.Object)
+	if err := c.Get(ctx, client.ObjectKeyFromObject(obj), latest); err != nil {
 		return err
 	}
 
-	patch := client.RawPatch(types.JSONPatchType, payloadBytes)
-	return kubeClient.Patch(context.TODO(), obj, patch)
+	patched := latest.DeepCopyObject().(client.Object)
+
+	existing := patched.GetAnnotations()
+	if existing == nil {
+		existing = map[string]string{}
+	}
+
+	for k, v := range anns {
+		existing[k] = v
+	}
+
+	patched.SetAnnotations(existing)
+
+	return c.Patch(ctx, patched, client.MergeFrom(latest))
 }

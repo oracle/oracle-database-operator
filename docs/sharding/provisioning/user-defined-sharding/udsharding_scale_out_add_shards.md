@@ -1,23 +1,22 @@
-# Scale Out - Add Shards to an existing Oracle Sharded Database provisioned earlier with User Defined Sharding
+# Scale Out - Add Shards to an existing Oracle Globally Distributed Database provisioned earlier with User-Defined Sharding
 
-**IMPORTANT:** Make sure you have completed the steps for [Prerequsites for Running Oracle Sharding Database Controller](../../README.md#prerequsites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller.
+**IMPORTANT:** Make sure you have completed the steps for [Prerequisites for running Oracle Sharding Database Controller](../../README.md#prerequisites-for-running-oracle-sharding-database-controller) before using Oracle Sharding Controller. 
 
 This use case demonstrates adding a new shard to an existing Oracle Database sharding topology with User Defined Sharding provisioned earlier using Oracle Database Sharding controller.
 
 In this use case, the existing Oracle Database sharding topology is as follows:
 
-* Primary GSM Pods `gsm1` and standby GSM Pod `gsm2`
-* Three sharding Pods: `shard1`, `shard2` and `shard3`
-* One Catalog Pod: `catalog`
-* Namespace: `shns`
-* User Defined Sharding is specified using `shardingType: USER`
+* Primary GSM Pods `gsm1` and standby GSM Pod `gsm2` 
+* Three Shard Database Pods: `shard1`, `shard2` and `shard3` 
+* One Catalog Database Pod: `catalog` 
+* Namespace: `shns` 
+* User Defined Sharding is specified using `shardingType: USER` 
 
 In this example, we are using pre-built Oracle Database and Global Data Services container images available on the [Oracle Container Registry](https://container-registry.oracle.com/)
-  * To pull these images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` using your credentials with type set to `kubernetes.io/dockerconfigjson` in the namespace `shns`.
-  * If you plan to use images built by you, then you must exchange the `dbImage` and `gsmImage` tags for the images that you have built in your enviornment in file `udsharding_shard_prov_extshard.yaml`.
-  * To understand the Database and Global Data Services Docker images prerequisites, see: [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-docker-images)
-  * If you want to use the [Oracle Database 23ai Free image](https://www.oracle.com/database/free/get-started/) for Database and GSM, then you must add the additional parameter `dbEdition: "free"` to the `.yaml` file used with this procedure. 
-  * Ensure the version of `openssl` in the Oracle Database and Oracle GSM images is compatible with the `openssl` version on the machine where you will run the openssl commands to generated the encrypted password file during the deployment.
+  * To pull the above images from Oracle Container Registry, create a Kubernetes secret named `ocr-reg-cred` in the namespace `shns`. Please refer to [this page](./../container_reg_secret.md) for the details. 
+  * If you plan to build and use the images, then you must exchange the `dbImage` and `gsmImage` tags for the images that you have built in your enviornment in file `udsharding_shard_prov_extshard.yaml`.
+  * To understand Database and Global Data Services Docker images prerequsites, see [Oracle Database and Global Data Services Docker Images](../../README.md#3-oracle-database-and-global-data-services-container-images) 
+  * The version of `openssl` in the Oracle Database and Oracle GSM images must be compatible with the `openssl` version on the machine where you will run the openssl commands to generate the encrypted password file during the deployment. 
 
 This use case adds two new shards `shard4`,`shard5` to the Sharding Topology.
 

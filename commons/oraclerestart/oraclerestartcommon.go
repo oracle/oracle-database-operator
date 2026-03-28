@@ -41,13 +41,16 @@ package commons
 import (
 	"bufio"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path/filepath"
-	"slices"
+	"regexp"
 	"strconv"
 
 	oraclerestart "github.com/oracle/oracle-database-operator/apis/database/v4"
+	v4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	utils "github.com/oracle/oracle-database-operator/commons/oraclerestart/utils"
 
 	"strings"
@@ -66,7 +69,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Function to build the env var specification
+// buildEnvVarsSpec normalizes Oracle Restart container environment variables.
 func buildEnvVarsSpec(envVariables []corev1.EnvVar) []corev1.EnvVar {
 	var result []corev1.EnvVar
 
@@ -81,11 +84,12 @@ func buildEnvVarsSpec(envVariables []corev1.EnvVar) []corev1.EnvVar {
 	return result
 }
 
+// checkAbsPath reports whether the supplied filesystem path is absolute.
 func checkAbsPath(location string) bool {
 	return filepath.IsAbs(location)
 }
 
-// FUnction to build the svc definition for RAC
+// buildContainerPortsDef assembles default container ports required by Oracle Restart pods.
 func buildContainerPortsDef(instance *oraclerestart.OracleRestart) []corev1.ContainerPort {
 	var result []corev1.ContainerPort
 
@@ -116,6 +120,7 @@ func buildContainerPortsDef(instance *oraclerestart.OracleRestart) []corev1.Cont
 	return result
 }
 
+// truncateName trims a name to the maximum length supported by Kubernetes resources.
 func truncateName(name string) string {
 	if len(name) > 15 {
 		return name[:15]
@@ -123,7 +128,7 @@ func truncateName(name string) string {
 	return name
 }
 
-// FUnction to build the svc definition for RAC
+// buildOracleRestartSvcPortsDef constructs Kubernetes service ports for Oracle Restart node services.
 func buildOracleRestartSvcPortsDef(npsvc oraclerestart.OracleRestartNodePortSvc) []corev1.ServicePort {
 	var result []corev1.ServicePort
 
@@ -150,7 +155,7 @@ func buildOracleRestartSvcPortsDef(npsvc oraclerestart.OracleRestartNodePortSvc)
 	return result
 }
 
-// Function to generate the Name
+// generateName creates a deterministic-length name with a random suffix.
 func generateName(base string) string {
 	maxNameLength := 50
 	randomLength := 5
@@ -161,12 +166,13 @@ func generateName(base string) string {
 	return fmt.Sprintf("%s%s", base, rand.String(randomLength))
 }
 
-// Function to generate the port mapping
+// generatePortMapping builds a unique identifier string for a port mapping definition.
 func generatePortMapping(portMapping oraclerestart.OracleRestartPortMapping) string {
 	return generateName(fmt.Sprintf("%s-%d-%d-", "tcp",
 		portMapping.Port, portMapping.TargetPort))
 }
 
+// LogMessages emits Oracle Restart controller logs with respect to debug flags.
 func LogMessages(msgtype string, msg string, err error, instance *oraclerestart.OracleRestart, logger logr.Logger) {
 	// setting logrus formatter
 	//logrus.SetFormatter(&logrus.JSONFormatter{})
@@ -183,29 +189,46 @@ func LogMessages(msgtype string, msg string, err error, instance *oraclerestart.
 	}
 }
 
+// GetRacPodName returns the name used for Oracle Restart pods.
 func GetRacPodName(racName string) string {
 	podName := racName
 	return podName
 }
 
-func GetAsmPvcName(name string, diskPath string, instance *oraclerestart.OracleRestart) string {
-
-	// pvcName := "asm-pvc-disk-" + strconv.Itoa(index) + "-" + name + "-" + dgType + "-" + "pvc"
-	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
-	diskName := diskPath[strings.LastIndex(diskPath, "/")+1:]
-	pvcName := "asm-pvc-" + strings.ToLower(dgType) + "-" + diskName + "-" + instance.Name
-
-	return pvcName
+// getlabelsForRac returns the default label set applied to Oracle Restart resources.
+func getlabelsForRac(instance *oraclerestart.OracleRestart) map[string]string {
+	return buildLabelsForOracleRestart(instance, "OracleRestart")
 }
 
-func GetAsmPvName(name string, diskPath string, instance *oraclerestart.OracleRestart) string {
-
-	dgType := CheckDiskInAsmDeviceList(instance, diskPath)
-	diskName := diskPath[strings.LastIndex(diskPath, "/")+1:]
-	pvName := "asm-pv-" + strings.ToLower(dgType) + "-" + diskName + "-" + name + "-" + instance.Spec.InstDetails.Name + "-0"
-	return pvName
+// shortHash returns a deterministic truncated SHA-1 hex string.
+func shortHash(text string, n int) string {
+	h := sha1.New()
+	h.Write([]byte(text))
+	return hex.EncodeToString(h.Sum(nil))[:n]
 }
 
+// GetAsmPvcName generates a unique PVC name for ASM storage.
+func GetAsmPvcName(diskPath, dbName string) string {
+	// Use a hash of the device path for uniqueness, keep it short but collision-resistant
+	hash := shortHash(diskPath, 8)
+	base := fmt.Sprintf("asm-pvc-%s-%s", hash, sanitizeK8sName(dbName))
+	if len(base) > maxNameLen {
+		base = base[:maxNameLen]
+	}
+	return base
+}
+
+// GetAsmPvName generates a unique PV name for ASM storage.
+func GetAsmPvName(diskPath, dbName string) string {
+	hash := shortHash(diskPath, 8)
+	base := fmt.Sprintf("asm-pv-%s-%s", hash, sanitizeK8sName(dbName))
+	if len(base) > maxNameLen {
+		base = base[:maxNameLen]
+	}
+	return base
+}
+
+// CheckSfset looks up an Oracle Restart StatefulSet by name.
 func CheckSfset(sfsetName string, instance *oraclerestart.OracleRestart, kClient client.Client) (*appsv1.StatefulSet, error) {
 	sfSetFound := &appsv1.StatefulSet{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
@@ -213,11 +236,17 @@ func CheckSfset(sfsetName string, instance *oraclerestart.OracleRestart, kClient
 		Namespace: instance.Namespace,
 	}, sfSetFound)
 	if err != nil {
-		return sfSetFound, err
+		if apierrors.IsNotFound(err) {
+			// Not found, return nil and no error
+			return nil, nil
+		}
+		// Other error, return as is
+		return nil, err
 	}
 	return sfSetFound, nil
 }
 
+// GetRacK8sClientConfig initializes shared Kubernetes client configuration for Oracle Restart helpers.
 func GetRacK8sClientConfig(kClient client.Client) (clientcmd.ClientConfig, kubernetes.Interface, error) {
 	var err1 error
 	var kubeConfig clientcmd.ClientConfig
@@ -240,6 +269,7 @@ func GetRacK8sClientConfig(kClient client.Client) (clientcmd.ClientConfig, kuber
 	return kubeConfig, kubeClient, err1
 }
 
+// oraclerestartValidationCmd builds the validation command for Oracle Restart setup.
 func oraclerestartValidationCmd() []string {
 
 	oraScriptMount1 := getOraScriptMount()
@@ -247,52 +277,61 @@ func oraclerestartValidationCmd() []string {
 	return oraShardValidateCmd
 }
 
+// OracleRestartNodeDelCmd builds the command to remove an Oracle Restart node.
 func OracleRestartNodeDelCmd() []string {
 	oraScriptMount1 := getOraScriptMount()
 	var oraOracleRestartNodeDelCmd = []string{oraScriptMount1 + "/cmdExec", "/bin/python3", oraScriptMount1 + "/main.py ", "--delOracleRestartNode=\"del_rachome=true;del_gridnode=true\""}
 	return oraOracleRestartNodeDelCmd
 }
 
+// oraclerestartLsnrSetup returns the command for listener configuration.
 func oraclerestartLsnrSetup() []string {
 	oraScriptMount1 := getOraScriptMount()
 	var oraOracleRestartNodeDelCmd = []string{oraScriptMount1 + "/cmdExec", "/bin/python3", oraScriptMount1 + "/main.py ", "--setupdblsnr=\"del_rachome=true;del_gridnode=true\""}
 	return oraOracleRestartNodeDelCmd
 }
 
+// getAsmCmd constructs the command to read CRS ASM device list.
 func getAsmCmd() []string {
 	asmCmd := []string{"bash", "-c", "cat /etc/rac_env_vars/envfile | grep CRS_ASM_DEVICE_LIST"}
 	return asmCmd
 }
 
+// getDbAsmCmd constructs the command to read database ASM device list.
 func getDbAsmCmd() []string {
 	asmCmd := []string{"bash", "-c", "cat /etc/rac_env_vars/envfile | grep DB_ASM_DEVICE_LIST"}
 	return asmCmd
 }
 
+// getOraScriptMount returns the base path where Oracle scripts are mounted.
 func getOraScriptMount() string {
 
 	return utils.OraScriptMount
 
 }
 
+// getOraDbUser returns the Oracle database operating system user.
 func getOraDbUser() string {
 
 	return utils.OraDBUser
 
 }
 
+// getOraGiUser returns the Oracle Grid Infrastructure operating system user.
 func getOraGiUser() string {
 
 	return utils.OraGridUser
 
 }
 
+// getOraPythonCmd provides the Python interpreter path used by Oracle scripts.
 func getOraPythonCmd() string {
 
 	return "/bin/python3"
 
 }
 
+// UpdateAsmCount executes the command that updates ASM cardinality for a node.
 func UpdateAsmCount(gihome string, podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
@@ -304,6 +343,7 @@ func UpdateAsmCount(gihome string, podName string, instance *oraclerestart.Oracl
 	return nil
 }
 
+// ValidateDbSetup runs the validation command ensuring the database setup is healthy.
 func ValidateDbSetup(podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
@@ -314,6 +354,7 @@ func ValidateDbSetup(podName string, instance *oraclerestart.OracleRestart, kube
 	return nil
 }
 
+// DelOracleRestartNode removes an Oracle Restart node by executing the appropriate command.
 func DelOracleRestartNode(podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger,
 ) error {
 
@@ -324,6 +365,7 @@ func DelOracleRestartNode(podName string, instance *oraclerestart.OracleRestart,
 	return nil
 }
 
+// CheckAsmList returns the CRS ASM device list from the Oracle Restart pod.
 func CheckAsmList(podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) (string, error) {
 	output, _, err := ExecCommand(podName, getAsmCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -341,6 +383,7 @@ func CheckAsmList(podName string, instance *oraclerestart.OracleRestart, kubeCli
 	return deviceList, nil
 }
 
+// CheckDbAsmList returns the database ASM device list from the Oracle Restart pod.
 func CheckDbAsmList(podName string, instance *oraclerestart.OracleRestart, kubeClient kubernetes.Interface, kubeconfig clientcmd.ClientConfig, logger logr.Logger) (string, error) {
 	output, _, err := ExecCommand(podName, getDbAsmCmd(), kubeClient, kubeconfig, instance, logger)
 	if err != nil {
@@ -358,6 +401,7 @@ func CheckDbAsmList(podName string, instance *oraclerestart.OracleRestart, kubeC
 	return deviceList, nil
 }
 
+// checkPvc provides documentation for the checkPvc function.
 func checkPvc(pvcName string, instance *oraclerestart.OracleRestart, kClient client.Client) (*corev1.PersistentVolumeClaim, error) {
 	pvcFound := &corev1.PersistentVolumeClaim{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
@@ -365,11 +409,17 @@ func checkPvc(pvcName string, instance *oraclerestart.OracleRestart, kClient cli
 		Namespace: instance.Namespace,
 	}, pvcFound)
 	if err != nil {
-		return pvcFound, err
+		if apierrors.IsNotFound(err) {
+			// PVC not found, return nil and nil error
+			return nil, nil
+		}
+		// Other error, return as is
+		return nil, err
 	}
 	return pvcFound, nil
 }
 
+// checkPv provides documentation for the checkPv function.
 func checkPv(pvName string, instance *oraclerestart.OracleRestart, kClient client.Client) (*corev1.PersistentVolume, error) {
 	pvFound := &corev1.PersistentVolume{}
 	err := kClient.Get(context.TODO(), types.NamespacedName{
@@ -381,8 +431,10 @@ func checkPv(pvName string, instance *oraclerestart.OracleRestart, kClient clien
 	}
 	return pvFound, nil
 }
-func DelORestartPVC(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, disk *oraclerestart.AsmDiskDetails, kClient client.Client, logger logr.Logger) error {
-	pvcName := GetAsmPvcName(instance.Name, diskName, instance)
+
+// DelORestartPVC provides documentation for the DelORestartPVC function.
+func DelORestartPVC(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, kClient client.Client, logger logr.Logger) error {
+	pvcName := GetAsmPvcName(diskName, instance.Name)
 	LogMessages("DEBUG", "Attempting to delete PVC: "+GetFmtStr(pvcName), nil, instance, logger)
 
 	pvc, err := checkPvc(pvcName, instance, kClient)
@@ -395,40 +447,46 @@ func DelORestartPVC(instance *oraclerestart.OracleRestart, pindex int, cindex in
 	}
 
 	// Remove finalizers if any
-	if len(pvc.GetFinalizers()) > 0 {
+	if pvc != nil && len(pvc.GetFinalizers()) > 0 {
 		LogMessages("DEBUG", "Removing PVC finalizers", nil, instance, logger)
 		pvc.SetFinalizers([]string{})
 		if err := kClient.Update(context.Background(), pvc); err != nil {
 			return fmt.Errorf("failed to remove finalizers from PVC %s: %v", pvcName, err)
 		}
 	}
-
-	if err := kClient.Delete(context.Background(), pvc); err != nil {
-		return fmt.Errorf("failed to delete PVC %s: %v", pvcName, err)
+	if pvc != nil {
+		if err := kClient.Delete(context.Background(), pvc); err != nil {
+			return fmt.Errorf("failed to delete PVC %s: %v", pvcName, err)
+		}
 	}
 	return nil
 }
 
-func DelRestartSwPvc(instance *oraclerestart.OracleRestart, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec, kClient client.Client, logger logr.Logger) error {
+// DelRestartSwPvc provides documentation for the DelRestartSwPvc function.
+func DelRestartSwPvc(instance *oraclerestart.OracleRestart, kClient client.Client, logger logr.Logger) error {
 
 	pvcName := GetSwPvcName(instance.Name, instance)
 	LogMessages("DEBUG", "Inside the delPvc and received param: "+GetFmtStr(pvcName), nil, instance, logger)
 	pvcFound, err := checkPvc(pvcName, instance, kClient)
-	if err != nil {
+	if err != nil && pvcFound != nil {
 		LogMessages("DEBUG", "Error occurred in finding the pvc claim!", nil, instance, logger)
 		return nil
-	}
-	err = kClient.Delete(context.Background(), pvcFound)
-	if err != nil {
-		LogMessages("DEBUG", "Error occurred in deleting the pvc claim!", nil, instance, logger)
-		return err
+	} else {
+		if pvcFound != nil {
+			err = kClient.Delete(context.Background(), pvcFound)
+			if err != nil {
+				LogMessages("DEBUG", "Error occurred in deleting the pvc claim!", nil, instance, logger)
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func DelORestartPv(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, disk *oraclerestart.AsmDiskDetails, kClient client.Client, logger logr.Logger) error {
+// DelORestartPv provides documentation for the DelORestartPv function.
+func DelORestartPv(instance *oraclerestart.OracleRestart, pindex int, cindex int, diskName string, kClient client.Client, logger logr.Logger) error {
 
-	pvName := GetAsmPvName(instance.Name, diskName, instance)
+	pvName := GetAsmPvName(diskName, instance.Name)
 	LogMessages("DEBUG", "Inside the delPv and received param: "+GetFmtStr(pvName), nil, instance, logger)
 	pvFound, err := checkPv(pvName, instance, kClient)
 	if err != nil {
@@ -443,6 +501,7 @@ func DelORestartPv(instance *oraclerestart.OracleRestart, pindex int, cindex int
 	return nil
 }
 
+// CheckORestartSvc provides documentation for the CheckORestartSvc function.
 func CheckORestartSvc(instance *oraclerestart.OracleRestart, svcType string, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec, svcName string, kClient client.Client) (*corev1.Service, error) {
 	svcFound := &corev1.Service{}
 	var name string
@@ -459,6 +518,7 @@ func CheckORestartSvc(instance *oraclerestart.OracleRestart, svcType string, Ora
 	return svcFound, nil
 }
 
+// PodListValidation provides documentation for the PodListValidation function.
 func PodListValidation(podList *corev1.PodList, sfName string, instance *oraclerestart.OracleRestart, kClient client.Client) (bool, *corev1.Pod, *corev1.Pod) {
 	var notReadyPod *corev1.Pod
 
@@ -497,11 +557,10 @@ func PodListValidation(podList *corev1.PodList, sfName string, instance *oracler
 	return false, nil, notReadyPod
 }
 
+// GetPodList provides documentation for the GetPodList function.
 func GetPodList(sfsetName string, instance *oraclerestart.OracleRestart, kClient client.Client, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec,
 ) (*corev1.PodList, error) {
 	podList := &corev1.PodList{}
-	//labelSelector := labels.SelectorFromSet(getlabelsForRAC(instance))
-	//labelSelector := map[string]labels.Selector{}
 	var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForOracleRestart(-1, OraRestartSpex))
 
 	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
@@ -513,6 +572,7 @@ func GetPodList(sfsetName string, instance *oraclerestart.OracleRestart, kClient
 	return podList, nil
 }
 
+// checkPod provides documentation for the checkPod function.
 func checkPod(instance *oraclerestart.OracleRestart, pod *corev1.Pod, kClient client.Client,
 ) error {
 	err := kClient.Get(context.TODO(), types.NamespacedName{
@@ -528,6 +588,7 @@ func checkPod(instance *oraclerestart.OracleRestart, pod *corev1.Pod, kClient cl
 	return nil
 }
 
+// checkPodStatus provides documentation for the checkPodStatus function.
 func checkPodStatus(pod *corev1.Pod, kClient client.Client,
 ) error {
 	var msg string
@@ -546,6 +607,7 @@ func checkPodStatus(pod *corev1.Pod, kClient client.Client,
 	return nil
 }
 
+// checkContainerStatus provides documentation for the checkContainerStatus function.
 func checkContainerStatus(pod *corev1.Pod, kClient client.Client,
 ) error {
 
@@ -584,6 +646,7 @@ func NewNamespace(name string) *corev1.Namespace {
 	}
 }
 
+// getOwnerRef provides documentation for the getOwnerRef function.
 func getOwnerRef(instance *oraclerestart.OracleRestart,
 ) []metav1.OwnerReference {
 
@@ -592,6 +655,7 @@ func getOwnerRef(instance *oraclerestart.OracleRestart,
 	return ownerRef
 }
 
+// getRacInitContainerCmd provides documentation for the getRacInitContainerCmd function.
 func getRacInitContainerCmd(resType string, name string, oraScriptMount string,
 ) string {
 	var initCmd string
@@ -604,11 +668,13 @@ func getRacInitContainerCmd(resType string, name string, oraScriptMount string,
 	return initCmd
 }
 
+// GetFmtStr provides documentation for the GetFmtStr function.
 func GetFmtStr(pstr string,
 ) string {
 	return "[" + pstr + "]"
 }
 
+// getClusterState provides documentation for the getClusterState function.
 func getClusterState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(podName, getGiHealthCmd(), kubeClient, kubeConfig, instance, logger)
@@ -620,6 +686,7 @@ func getClusterState(podName string, instance *oraclerestart.OracleRestart, spec
 	return strings.TrimSpace(stdoutput)
 }
 
+// getDbInstState provides documentation for the getDbInstState function.
 func getDbInstState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(podName, getOracleRestartDbModeCmd(), kubeClient, kubeConfig, instance, logger)
@@ -630,49 +697,112 @@ func getDbInstState(podName string, instance *oraclerestart.OracleRestart, speci
 	}
 	return strings.TrimSpace(stdoutput)
 }
+func NormalizeAsmDiskGroupsMergeSize(
+	raw []v4.AsmDiskGroupStatus,
+	old []v4.AsmDiskGroupStatus,
+) []v4.AsmDiskGroupStatus {
 
-func getAsmInstState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
-) *oraclerestart.AsmInstanceStatus {
-	AsmStorageStatus := &oraclerestart.AsmInstanceStatus{}
-	diskGroup := getAsmDiskgroup(podName, instance, specidx, kubeClient, kubeConfig, logger)
-	if diskGroup == "Pending" {
-		return AsmStorageStatus
-	}
-	dglist := strings.Split(diskGroup, ",")
-	for _, dg := range dglist {
-		asmdg := oraclerestart.AsmDiskgroupStatus{}
-		disks := getAsmDisks(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
-		redundancy := getAsmDgRedundancy(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
+	// build lookup: disk → previous size
+	oldSize := make(map[string]int)
 
-		asmdg.Name = string(dg)
-		asmdg.Disks = disks
-		asmdg.Redundancy = redundancy
-		AsmStorageStatus.Diskgroup = append(AsmStorageStatus.Diskgroup, asmdg)
+	for _, dg := range old {
+		for _, d := range dg.Disks {
+			oldSize[strings.TrimSpace(d.Name)] = d.SizeInGb
+		}
 	}
-	return AsmStorageStatus
+
+	var formatted []v4.AsmDiskGroupStatus
+
+	for _, dg := range raw {
+
+		newDG := v4.AsmDiskGroupStatus{
+			Name:         dg.Name,
+			Redundancy:   dg.Redundancy,
+			Type:         dg.Type,
+			AutoUpdate:   dg.AutoUpdate,
+			StorageClass: dg.StorageClass,
+		}
+
+		seen := map[string]struct{}{}
+
+		for _, d := range dg.Disks {
+
+			parts := strings.Split(d.Name, ",")
+
+			for _, p := range parts {
+
+				name := strings.TrimSpace(p)
+				if name == "" {
+					continue
+				}
+
+				if _, ok := seen[name]; ok {
+					continue
+				}
+				seen[name] = struct{}{}
+
+				// ONLY preserve size if disk already existed
+				size := d.SizeInGb
+				if prev, ok := oldSize[name]; ok {
+					size = prev
+				}
+
+				newDG.Disks = append(newDG.Disks, v4.AsmDiskStatus{
+					Name:     name,
+					Valid:    true,
+					SizeInGb: size,
+				})
+			}
+		}
+
+		formatted = append(formatted, newDG)
+	}
+
+	return formatted
 }
+
+// GetAsmInstState provides documentation for the GetAsmInstState function.
 func GetAsmInstState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
-) *oraclerestart.AsmInstanceStatus {
-	AsmStorageStatus := &oraclerestart.AsmInstanceStatus{}
-	diskGroup := getAsmDiskgroup(podName, instance, specidx, kubeClient, kubeConfig, logger)
-	if diskGroup == "Pending" {
-		return AsmStorageStatus
+) []oraclerestart.AsmDiskGroupStatus {
+	var diskGroups []oraclerestart.AsmDiskGroupStatus
+	diskGroup := GetAsmDiskgroup(podName, instance, specidx, kubeClient, kubeConfig, logger)
+	if diskGroup == "Pending" || diskGroup == "" {
+		return diskGroups // return empty slice if pending or absent
 	}
+
 	dglist := strings.Split(diskGroup, ",")
 	for _, dg := range dglist {
-		asmdg := oraclerestart.AsmDiskgroupStatus{}
-		disks := getAsmDisks(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
-		redundancy := getAsmDgRedundancy(podName, string(dg), instance, specidx, kubeClient, kubeConfig, logger)
-
-		asmdg.Name = string(dg)
-		asmdg.Disks = disks
-		asmdg.Redundancy = redundancy
-		AsmStorageStatus.Diskgroup = append(AsmStorageStatus.Diskgroup, asmdg)
+		asmdg := oraclerestart.AsmDiskGroupStatus{}
+		asmdg.Name = strings.TrimSpace(dg)
+		asmdg.Disks = stringsToAsmDiskStatus(
+			GetAsmDisks(podName, dg, instance, specidx, kubeClient, kubeConfig, logger),
+		)
+		asmdg.Redundancy = getAsmDgRedundancy(podName, dg, instance, specidx, kubeClient, kubeConfig, logger)
+		// Optionally fill other fields (Type, AutoUpdate, StorageClass) if available in spec:
+		for _, specDG := range instance.Spec.AsmStorageDetails {
+			if specDG.Name == asmdg.Name {
+				asmdg.Type = specDG.Type
+				asmdg.AutoUpdate = specDG.AutoUpdate
+				asmdg.StorageClass = instance.Spec.CrsDgStorageClass
+				break
+			}
+		}
+		diskGroups = append(diskGroups, asmdg)
 	}
-	return AsmStorageStatus
+	return diskGroups
 }
 
-func getAsmDiskgroup(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+// stringsToAsmDiskStatus provides documentation for the stringsToAsmDiskStatus function.
+func stringsToAsmDiskStatus(disks []string) []oraclerestart.AsmDiskStatus {
+	var result []oraclerestart.AsmDiskStatus
+	for _, disk := range disks {
+		result = append(result, oraclerestart.AsmDiskStatus{Name: disk})
+	}
+	return result
+}
+
+// GetAsmDiskgroup provides documentation for the GetAsmDiskgroup function.
+func GetAsmDiskgroup(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
 	stdoutput, _, err := ExecCommand(podName, getAsmDiskgroupCmd(), kubeClient, kubeConfig, instance, logger)
@@ -684,7 +814,8 @@ func getAsmDiskgroup(podName string, instance *oraclerestart.OracleRestart, spec
 	return strings.TrimSpace(stdoutput)
 }
 
-func getAsmDisks(podName string, dg string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
+// getAsmDisks provides documentation for the getAsmDisks function.
+func GetAsmDisks(podName string, dg string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) []string {
 
 	stdoutput, _, err := ExecCommand(podName, getAsmDisksCmd(dg), kubeClient, kubeConfig, instance, logger)
@@ -697,6 +828,7 @@ func getAsmDisks(podName string, dg string, instance *oraclerestart.OracleRestar
 	return strings.Split(strings.TrimSpace(cleanOutput), "\n")
 }
 
+// getAsmDgRedundancy provides documentation for the getAsmDgRedundancy function.
 func getAsmDgRedundancy(podName string, dg string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
@@ -709,6 +841,7 @@ func getAsmDgRedundancy(podName string, dg string, instance *oraclerestart.Oracl
 	return strings.TrimSpace(stdoutput)
 }
 
+// getAsmInstName provides documentation for the getAsmInstName function.
 func getAsmInstName(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
@@ -721,6 +854,7 @@ func getAsmInstName(podName string, instance *oraclerestart.OracleRestart, speci
 	return strings.TrimSpace(stdoutput)
 }
 
+// getAsmInstStatus provides documentation for the getAsmInstStatus function.
 func getAsmInstStatus(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
@@ -733,6 +867,7 @@ func getAsmInstStatus(podName string, instance *oraclerestart.OracleRestart, spe
 	return strings.TrimSpace(stdoutput)
 }
 
+// getOracleRestartInstStateFile provides documentation for the getOracleRestartInstStateFile function.
 func getOracleRestartInstStateFile(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
@@ -756,6 +891,7 @@ func getOracleRestartInstStateFile(podName string, instance *oraclerestart.Oracl
 	}
 }
 
+// getDBVersion provides documentation for the getDBVersion function.
 func getDBVersion(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(podName, getOracleRestartDbVersionCmd(), kubeClient, kubeConfig, instance, logger)
@@ -771,6 +907,7 @@ func getDBVersion(podName string, instance *oraclerestart.OracleRestart, specidx
 	}
 }
 
+// getDbState provides documentation for the getDbState function.
 func getDbState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(podName, getOracleRestartHealthCmd(), kubeClient, kubeConfig, instance, logger)
@@ -782,6 +919,7 @@ func getDbState(podName string, instance *oraclerestart.OracleRestart, specidx i
 	return strings.TrimSpace(stdoutput)
 }
 
+// getDbRole provides documentation for the getDbRole function.
 func getDbRole(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(podName, getDbRoleCmd(), kubeClient, kubeConfig, instance, logger)
@@ -793,6 +931,7 @@ func getDbRole(podName string, instance *oraclerestart.OracleRestart, specidx in
 	return strings.TrimSpace(stdoutput)
 }
 
+// getConnStr provides documentation for the getConnStr function.
 func getConnStr(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(podName, getConnStrCmd(), kubeClient, kubeConfig, instance, logger)
@@ -804,6 +943,7 @@ func getConnStr(podName string, instance *oraclerestart.OracleRestart, specidx i
 	return strings.TrimSpace(stdoutput)
 }
 
+// getExternalConnStr provides documentation for the getExternalConnStr function.
 func getExternalConnStr(
 	podName string,
 	instance *oraclerestart.OracleRestart,
@@ -891,6 +1031,7 @@ func getExternalConnStr(
 	return ""
 }
 
+// getClientEtcHost provides documentation for the getClientEtcHost function.
 func getClientEtcHost(podNames []string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node) []string {
 	// Prepare to update ClientEtcHost
 	var clientEtcHost []string
@@ -915,6 +1056,7 @@ func getClientEtcHost(podNames []string, instance *oraclerestart.OracleRestart, 
 	return clientEtcHost
 }
 
+// getNodeIPFromNodeDetails provides documentation for the getNodeIPFromNodeDetails function.
 func getNodeIPFromNodeDetails(node *corev1.Node) string {
 	var internalIP, externalIP string
 
@@ -949,6 +1091,7 @@ func readHostsFile(podName string, kubeClient kubernetes.Interface, kubeConfig c
 }
 
 // Helper function to parse /etc/hosts content
+// parseHostsContent provides documentation for the parseHostsContent function.
 func parseHostsContent(content string) string {
 	var uncommentedLines string
 
@@ -963,6 +1106,7 @@ func parseHostsContent(content string) string {
 	return uncommentedLines
 }
 
+// getSvcState provides documentation for the getSvcState function.
 func getSvcState(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 
@@ -975,6 +1119,7 @@ func getSvcState(podName string, instance *oraclerestart.OracleRestart, specidx 
 	return strings.TrimSpace(stdoutput)
 }
 
+// getPdbConnStr provides documentation for the getPdbConnStr function.
 func getPdbConnStr(podName string, instance *oraclerestart.OracleRestart, specidx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) string {
 	stdoutput, _, err := ExecCommand(podName, getPdbConnStrCmd(), kubeClient, kubeConfig, instance, logger)
@@ -998,21 +1143,22 @@ func getGridHome(podName string, instance *oraclerestart.OracleRestart, kubeClie
 	return strings.TrimSpace(stdoutput), nil
 }
 
+// GetAsmDevices provides documentation for the GetAsmDevices function.
 func GetAsmDevices(instance *oraclerestart.OracleRestart) string {
-	var asmDisk []string
+	var asmDisks []string
 	if instance.Spec.AsmStorageDetails != nil {
-		// Loop through each DiskBySize and add disk names to asmDisk
-		for _, diskBySize := range instance.Spec.AsmStorageDetails.DisksBySize {
-			asmDisk = append(asmDisk, diskBySize.DiskNames...)
+		for _, dg := range instance.Spec.AsmStorageDetails {
+			asmDisks = append(asmDisks, dg.Disks...)
 		}
 	}
-	return strings.Join(asmDisk, ",")
+	return strings.Join(asmDisks, ",")
 }
 
 // func GetScanname(instance *oraclerestart.OracleRestart) string {
 // 	return instance.Spec.ScanSvcName
 // }
 
+// GetSSHkey provides documentation for the GetSSHkey function.
 func GetSSHkey(instance *oraclerestart.OracleRestart, name string, kClient client.Client) (bool, bool) {
 
 	var privKeyFlag, pubKeyFlag bool
@@ -1035,6 +1181,7 @@ func GetSSHkey(instance *oraclerestart.OracleRestart, name string, kClient clien
 
 }
 
+// GetDbSecret provides documentation for the GetDbSecret function.
 func GetDbSecret(instance *oraclerestart.OracleRestart, name string, kClient client.Client) (bool, bool, bool) {
 
 	var commonospassflag, commonpwdfile, pwdkeyflag bool
@@ -1059,6 +1206,7 @@ func GetDbSecret(instance *oraclerestart.OracleRestart, name string, kClient cli
 
 }
 
+// GetTdeWalletSecret provides documentation for the GetTdeWalletSecret function.
 func GetTdeWalletSecret(instance *oraclerestart.OracleRestart, name string, kClient client.Client) (bool, bool, bool) {
 
 	var commonospassflag, commonpwdfile, pwdkeyflag bool
@@ -1081,6 +1229,7 @@ func GetTdeWalletSecret(instance *oraclerestart.OracleRestart, name string, kCli
 	return commonospassflag, pwdkeyflag, commonpwdfile
 }
 
+// CheckSecret provides documentation for the CheckSecret function.
 func CheckSecret(instance *oraclerestart.OracleRestart, secretName string, kClient client.Client) (*corev1.Secret, error) {
 
 	secretFound := &corev1.Secret{}
@@ -1097,6 +1246,7 @@ func CheckSecret(instance *oraclerestart.OracleRestart, secretName string, kClie
 	return secretFound, nil
 }
 
+// GetGiResponseFile provides documentation for the GetGiResponseFile function.
 func GetGiResponseFile(instance *oraclerestart.OracleRestart, kClient client.Client) (bool, map[string]string) {
 
 	var giFileFlag bool
@@ -1115,6 +1265,7 @@ func GetGiResponseFile(instance *oraclerestart.OracleRestart, kClient client.Cli
 	return giFileFlag, configMapFound.Data
 }
 
+// GetDbResponseFile provides documentation for the GetDbResponseFile function.
 func GetDbResponseFile(instance *oraclerestart.OracleRestart, kClient client.Client) (bool, map[string]string) {
 
 	var dbFileFlag bool
@@ -1133,39 +1284,42 @@ func GetDbResponseFile(instance *oraclerestart.OracleRestart, kClient client.Cli
 	return dbFileFlag, configMapFound.Data
 }
 
+// CheckConfigMap provides documentation for the CheckConfigMap function.
 func CheckConfigMap(instance *oraclerestart.OracleRestart, configMapName string, kClient client.Client) (*corev1.ConfigMap, error) {
-
 	configMapFound := &corev1.ConfigMap{}
-
 	err := kClient.Get(context.TODO(), types.NamespacedName{
 		Name:      configMapName,
 		Namespace: instance.Namespace,
 	}, configMapFound)
-
 	if err != nil {
-		return configMapFound, err
+		if apierrors.IsNotFound(err) {
+			// ConfigMap not found, no error
+			return nil, nil
+		}
+		// Other error (such as permissions, network, etc.)
+		return nil, err
 	}
-
 	return configMapFound, nil
-
 }
 
+// GetConfigList provides documentation for the GetConfigList function.
 func GetConfigList(sfsetName string, instance *oraclerestart.OracleRestart, kClient client.Client, OraRestartSpex oraclerestart.OracleRestartInstDetailSpec,
 ) (*corev1.ConfigMapList, error) {
 	cmapList := &corev1.ConfigMapList{}
 	//labelSelector := labels.SelectorFromSet(getlabelsForRAC(instance))
 	//labelSelector := map[string]labels.Selector{}
-	var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForOracleRestart(-1, OraRestartSpex))
+	// var labelSelector labels.Selector = labels.SelectorFromSet(getSvcLabelsForOracleRestart(-1, OraRestartSpex))
 
-	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
+	// listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
 
-	err := kClient.List(context.TODO(), cmapList, listOps)
-	if err != nil {
-		return nil, err
-	}
+	// err := kClient.List(context.TODO(), cmapList, listOps)
+	// if err != nil {
+	// 	return nil, err
+	// }
 	return cmapList, nil
 }
 
+// checkElem provides documentation for the checkElem function.
 func checkElem(list1 []string, element string) bool {
 
 	if element != "" {
@@ -1181,6 +1335,7 @@ func checkElem(list1 []string, element string) bool {
 	return false
 }
 
+// ValidateNetInterface provides documentation for the ValidateNetInterface function.
 func ValidateNetInterface(net string, instance *oraclerestart.OracleRestart, rspNetData string) error {
 
 	var err error
@@ -1194,6 +1349,7 @@ func ValidateNetInterface(net string, instance *oraclerestart.OracleRestart, rsp
 	return err
 }
 
+// CheckRspData provides documentation for the CheckRspData function.
 func CheckRspData(instance *oraclerestart.OracleRestart, kClient client.Client, key string, cName string, fname string) (string, error) {
 
 	var rspData string
@@ -1226,6 +1382,7 @@ func CheckRspData(instance *oraclerestart.OracleRestart, kClient client.Client, 
 	return rspData, nil
 }
 
+// GetServiceParams provides documentation for the GetServiceParams function.
 func GetServiceParams(instance *oraclerestart.OracleRestart) string {
 	var sparams string
 
@@ -1310,6 +1467,7 @@ func GetServiceParams(instance *oraclerestart.OracleRestart) string {
 
 // . This function get the healthy node name from instance.status
 
+// GetHealthyNode provides documentation for the GetHealthyNode function.
 func GetHealthyNode(instance *oraclerestart.OracleRestart) (string, error) {
 	var i int32
 
@@ -1325,6 +1483,7 @@ func GetHealthyNode(instance *oraclerestart.OracleRestart) (string, error) {
 	return "", fmt.Errorf("no healthy node exist")
 }
 
+// GetHealthyNodeCounts provides documentation for the GetHealthyNodeCounts function.
 func GetHealthyNodeCounts(instance *oraclerestart.OracleRestart) (int, error) {
 	var i, totalNodes, healthyNodeCount int
 
@@ -1345,46 +1504,15 @@ func GetHealthyNodeCounts(instance *oraclerestart.OracleRestart) (int, error) {
 	}
 	return 0, fmt.Errorf("healthy cluster node counts are not matching with total cluster nodes")
 }
+
+// GetSwPvcName provides documentation for the GetSwPvcName function.
 func GetSwPvcName(name string, instance *oraclerestart.OracleRestart) string {
 	//// If you are making any change, please refer SwVolumeClaimTemplatesForOracleRestart function as we add instance.Spec.InstDetails.Name + "-0"
 	pvcName := "odb-sw-pvc-" + name + "-" + instance.Spec.InstDetails.Name + "-0"
 	return pvcName
 }
 
-func CheckDiskInAsmDeviceList(instance *oraclerestart.OracleRestart, diskName string) string {
-	dgDisk := []string{"CRS", "DATA", "RECO", "REDO"}
-
-	recoDisk := strings.Split(instance.Spec.ConfigParams.RecoAsmDeviceList, ",")
-	redoDisk := strings.Split(instance.Spec.ConfigParams.RedoAsmDeviceList, ",")
-	dataDisk := strings.Split(instance.Spec.ConfigParams.DbAsmDeviceList, ",")
-	crsDisk := strings.Split(instance.Spec.ConfigParams.CrsAsmDeviceList, ",")
-
-	for _, value := range dgDisk {
-		switch value {
-		case "CRS":
-			if slices.Contains(crsDisk, diskName) {
-				return "CRSDG"
-			}
-		case "DATA":
-			if slices.Contains(dataDisk, diskName) {
-				return "DATADG"
-			}
-		case "RECO":
-			if slices.Contains(recoDisk, diskName) {
-				return "RECODG"
-			}
-		case "REDO":
-			if slices.Contains(redoDisk, diskName) {
-				return "REDODG"
-			}
-		default:
-			return "NODG"
-		}
-
-	}
-	return "NODG"
-}
-
+// CheckStorageClass provides documentation for the CheckStorageClass function.
 func CheckStorageClass(instance *oraclerestart.OracleRestart) string {
 	if len(instance.Spec.CrsDgStorageClass) == 0 && len(instance.Spec.DataDgStorageClass) == 0 && len(instance.Spec.RecoDgStorageClass) == 0 && len(instance.Spec.RedoDgStorageClass) == 0 {
 		return "NOSC"
@@ -1392,6 +1520,7 @@ func CheckStorageClass(instance *oraclerestart.OracleRestart) string {
 	return "SC"
 }
 
+// checkHugePagesConfigured provides documentation for the checkHugePagesConfigured function.
 func checkHugePagesConfigured(instance *oraclerestart.OracleRestart) bool {
 
 	if instance.Spec.Resources != nil {
@@ -1407,4 +1536,17 @@ func checkHugePagesConfigured(instance *oraclerestart.OracleRestart) bool {
 		}
 	}
 	return false
+}
+
+const maxNameLen = 63
+
+// sanitizeK8sName provides documentation for the sanitizeK8sName function.
+func sanitizeK8sName(name string) string {
+	re := regexp.MustCompile(`[^a-z0-9-]+`)
+	sanitized := re.ReplaceAllString(strings.ToLower(name), "-")
+	sanitized = strings.Trim(sanitized, "-")
+	if len(sanitized) > maxNameLen {
+		sanitized = sanitized[:maxNameLen]
+	}
+	return sanitized
 }

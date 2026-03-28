@@ -107,6 +107,7 @@ rules:
   - oraclerestarts
   - oraclerestdataservices
   - ordssrvs
+  - racdatabases
   - shardingdatabases
   - singleinstancedatabases
   verbs:
@@ -130,6 +131,7 @@ rules:
   - oraclerestarts/status
   - oraclerestdataservices/status
   - ordssrvs/status
+  - racdatabases/status
   - shardingdatabases/status
   - singleinstancedatabases/status
   verbs:
@@ -172,6 +174,7 @@ rules:
   - lrpdbs/configmaps
   - lrpdbs/finalizers
   - oraclerestarts/finalizers
+  - racdatabases/finalizers
   - shardingdatabases/finalizers
   verbs:
   - create
@@ -213,6 +216,32 @@ rules:
   - observability.oracle.com
   resources:
   - databaseobservers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - privateai.oracle.com
+  resources:
+  - privateais/status
   verbs:
   - get
   - patch

@@ -3,70 +3,66 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"],"envVars":[{"name":"IGNORE_CRS_PREREQS","value":"tru...
+                {"instDetails":{"name":"dbmc1","swLocStorageSizeInGb":300,"workerNode":["10.0.10.58"]},"configParams":{"cpuCount":4,"sgaSize":"8G","pgaSiz...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-10-09T03:57:56Z
+  Creation Timestamp:  2026-02-13T19:32:07Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  246198029
-  UID:               19d43856-477c-43d2-a01f-8d1492107370
+  Resource Version:  300981056
+  UID:               99fad0a3-4390-43d0-9238-c5bffc13624a
 Spec:
-  Asm Storage Details:
-    Disks By Size:
-      Disk Names:
-        /dev/asm-disk1
-        /dev/asm-disk2
-      Storage Size In Gb:  50
-      Disk Names:
-        /dev/asm-disk3
-        /dev/asm-disk4
-        /dev/asm-disk5
-        /dev/asm-disk6
-      Storage Size In Gb:  100
-      Disk Names:
-        /dev/asm-disk7
-        /dev/asm-disk8
-      Storage Size In Gb:  100
-      Disk Names:
-        /dev/asm-disk9
-        /dev/asm-disk10
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/asm-disk1
+      /dev/asm-disk2
+    Name:        CRSDATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
+    Disks:
+      /dev/asm-disk3
+      /dev/asm-disk4
+      /dev/asm-disk5
+      /dev/asm-disk6
+    Name:        DATA
+    Redundancy:  NORMAL
+    Type:        DBDATAFILESDG
+    Disks:
+      /dev/asm-disk7
+      /dev/asm-disk8
+    Name:        RECO
+    Redundancy:  EXTERNAL
+    Type:        DBRECOVERY
+    Disks:
+      /dev/asm-disk9
+      /dev/asm-disk10
+    Name:                  REDO
+    Redundancy:            EXTERNAL
+    Type:                  DBREDO
+  Asm Storage Size In Gb:  50
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             +CRSDATA
-    Crs Asm Disk Dg Redundancy:  EXTERNAL
-    Db Asm Device List:          /dev/asm-disk3,/dev/asm-disk4,/dev/asm-disk5,/dev/asm-disk6
-    Db Asm Disk Dg Redundancy:   NORMAL
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        +DBDATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +RECO
+    Cpu Count:    4
+    Db Base:      /u01/app/oracle
+    Db Char Set:  AL32UTF8
+    Db Home:      /u01/app/oracle/product/19c/dbhome_1
+    Db Name:      PORCLCDB
     Db Response File:
     Db Sw Zip File:  db_home.zip
     Grid Base:       /u01/app/grid
     Grid Home:       /u01/app/19c/grid
     Grid Response File:
-    Grid Sw Zip File:             grid_home.zip
-    Host Sw Stage Location:       /scratch/software/stage
-    Inventory:                    /u01/app/oraInventory
-    Pdb Name:                     TESTPDB
-    Pga Size:                     1G
-    Processes:                    2000
-    Reco Asm Device List:         /dev/asm-disk7,/dev/asm-disk8
-    Reco Asm Disk Dg Redundancy:  EXTERNAL
-    Redo Asm Device List:         /dev/asm-disk9,/dev/asm-disk10
-    Redo Asm Disk Dg:             +REDO
-    Redo Asm Disk Dg Redundancy:  EXTERNAL
-    Sga Size:                     3G
-    Sw Mount Location:            /u01
-  Crs Dg Storage Class:           oci-bv
-  Data Dg Storage Class:          oci-bv
+    Grid Sw Zip File:        grid_home.zip
+    Host Sw Stage Location:  /scratch/software/stage
+    Inventory:               /u01/app/oraInventory
+    Pdb Name:                TESTPDB
+    Pga Size:                4G
+    Processes:               2000
+    Sga Size:                8G
+    Sw Mount Location:       /u01
+  Crs Dg Storage Class:      oci-bv
+  Data Dg Storage Class:     oci-bv
   Db Secret:
     Key File Mount Location:  /mnt/.dbsecrets
     Key File Name:            key.pem
@@ -74,14 +70,9 @@ Spec:
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
   Enable Ons:                 enable
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
   Image Pull Policy:          IfNotPresent
   Inst Details:
-    Env Vars:
-      Name:                     IGNORE_CRS_PREREQS
-      Value:                    true
-      Name:                     IGNORE_DB_PREREQS
-      Value:                    true
     Name:                       dbmc1
     Sw Loc Storage Size In Gb:  300
     Worker Node:
@@ -103,21 +94,11 @@ Spec:
   Redo Dg Storage Class:  oci-bv
   Resources:
     Limits:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
     Requests:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -145,55 +126,69 @@ Status:
         /dev/asm-disk9
         /dev/asm-disk10
       State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/asm-disk1,/dev/asm-disk10,/dev/asm-disk2,/dev/asm-disk3,/dev/asm-disk4,/dev/asm-disk5,/dev/asm-disk6,/dev/asm-disk7,/dev/asm-disk8,/dev/asm-disk9
-      Name:        CRSDATA
-      Redundancy:  EXTERN
-      Disks:
-        /dev/asm-disk1,/dev/asm-disk10,/dev/asm-disk2,/dev/asm-disk3,/dev/asm-disk4,/dev/asm-disk5,/dev/asm-disk6,/dev/asm-disk7,/dev/asm-disk8,/dev/asm-disk9
-      Name:        REDO
-      Redundancy:  EXTERN
-      Disks:
-        /dev/asm-disk1,/dev/asm-disk10,/dev/asm-disk2,/dev/asm-disk3,/dev/asm-disk4,/dev/asm-disk5,/dev/asm-disk6,/dev/asm-disk7,/dev/asm-disk8,/dev/asm-disk9
-      Name:        RECO
-      Redundancy:  EXTERN
-      Disks:
-        /dev/asm-disk1,/dev/asm-disk10,/dev/asm-disk2,/dev/asm-disk3,/dev/asm-disk4,/dev/asm-disk5,/dev/asm-disk6,/dev/asm-disk7,/dev/asm-disk8,/dev/asm-disk9
-      Name:        DBDATA
-      Redundancy:  NORMAL
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/asm-disk1
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk10
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk2
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk3
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk4
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk5
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk6
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk7
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk8
+      Size In Gb:  50
+      Valid:       true
+      Name:        /dev/asm-disk9
+      Size In Gb:  50
+      Valid:       true
+    Name:          CRSDATA
+    Type:          CRSDG
   Conditions:
-    Last Transition Time:  2025-10-09T04:11:38Z
-    Message:               reconcile has been queued
-    Observed Generation:   1
-    Reason:                LastReconcileCycleQueued
-    Status:                True
-    Type:                  ReconcileQueued
-    Last Transition Time:  2025-10-09T04:20:34Z
+    Last Transition Time:  2026-02-13T19:32:07Z
     Message:               reconcile completed successfully
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
+    Last Transition Time:  2026-02-13T19:46:46Z
+    Message:               reconcile has been queued
+    Observed Generation:   1
+    Reason:                LastReconcileCycleQueued
+    Status:                True
+    Type:                  ReconcileQueued
+    Last Transition Time:  2026-02-13T21:51:50Z
+    Message:               cannot get ASM disks to remove: required disk is part of the disk group CRSDATA and cannot be removed. Review it manually
+    Observed Generation:   1
+    Reason:                LastReconcileCycleFailed
+    Status:                True
+    Type:                  ReconcileError
   Config Params:
-    Crs Asm Device List:         /dev/asm-disk1,/dev/asm-disk2
-    Crs Asm Disk Dg:             +CRSDATA
-    Crs Asm Disk Dg Redundancy:  EXTERNAL
-    Db Asm Device List:          /dev/asm-disk3,/dev/asm-disk4,/dev/asm-disk5,/dev/asm-disk6
-    Db Asm Disk Dg Redundancy:   NORMAL
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        +DBDATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +RECO
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
     Grid Response File:
-    Inventory:             /u01/app/oraInventory
-    Reco Asm Device List:  /dev/asm-disk7,/dev/asm-disk8
-  Connect String:          dbmc1-0:1521/PORCLCDB
+    Inventory:     /u01/app/oraInventory
+  Connect String:  dbmc1-0:1521/PORCLCDB
   Db Secret:
     Key File Mount Location:  /mnt/.dbsecrets
     Key File Name:            key.pem
@@ -204,7 +199,24 @@ Status:
   External Connect String:    129.146.0.149:30007/soepdb
   Pdb Connect String:         dbmc1-0:1521/ORCLPDB
   Release Update:             19.28.0.0.0
-  Role:                       PRIMARY
+  Resources:
+    Limits:
+      Cpu:     4
+      Memory:  16Gi
+    Requests:
+      Cpu:     4
+      Memory:  16Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  9663676416
+      Name:   kernel.shmall
+      Value:  2359296
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running
@@ -216,24 +228,22 @@ Events:         <none>
 
 
 [grid@dbmc1-0 ~]$ ls -rlt /dev/asm-disk*
-brw-rw----. 1 grid asmadmin 65,  80 Oct  9 04:04 /dev/asm-disk2
-brw-rw----. 1 grid asmadmin  8, 224 Oct  9 04:06 /dev/asm-disk8
-brw-rw----. 1 grid asmadmin 65,   0 Oct  9 04:18 /dev/asm-disk6
-brw-rw----. 1 grid asmadmin 65,  64 Oct  9 04:21 /dev/asm-disk1
-brw-rw----. 1 grid asmadmin 65,  32 Oct  9 04:21 /dev/asm-disk9
-brw-rw----. 1 grid asmadmin  8, 208 Oct  9 04:21 /dev/asm-disk7
-brw-rw----. 1 grid asmadmin  8, 240 Oct  9 04:21 /dev/asm-disk5
-brw-rw----. 1 grid asmadmin 65,  96 Oct  9 04:21 /dev/asm-disk4
-brw-rw----. 1 grid asmadmin 65,  48 Oct  9 04:21 /dev/asm-disk3
-brw-rw----. 1 grid asmadmin  8, 192 Oct  9 04:21 /dev/asm-disk10
-[grid@dbmc1-0 ~]$
-[grid@dbmc1-0 ~]$
+brw-rw----. 1 grid asmadmin  8, 192 Feb 13 19:41 /dev/asm-disk2
+brw-rw----. 1 grid asmadmin  8, 208 Feb 13 20:28 /dev/asm-disk8
+brw-rw----. 1 grid asmadmin 65,  48 Feb 13 21:50 /dev/asm-disk6
+brw-rw----. 1 grid asmadmin  8, 240 Feb 13 21:52 /dev/asm-disk10
+brw-rw----. 1 grid asmadmin 65,  64 Feb 13 21:53 /dev/asm-disk1
+brw-rw----. 1 grid asmadmin 65,  16 Feb 13 21:53 /dev/asm-disk9
+brw-rw----. 1 grid asmadmin 65,   0 Feb 13 21:53 /dev/asm-disk7
+brw-rw----. 1 grid asmadmin 65,  80 Feb 13 21:53 /dev/asm-disk5
+brw-rw----. 1 grid asmadmin 65,  32 Feb 13 21:53 /dev/asm-disk4
+brw-rw----. 1 grid asmadmin 65,  96 Feb 13 21:53 /dev/asm-disk3
 [grid@dbmc1-0 ~]$ export ORACLE_SID=+ASM
 [grid@dbmc1-0 ~]$ asmcmd lsdg
 State    Type    Rebal  Sector  Logical_Sector  Block       AU  Total_MB  Free_MB  Req_mir_free_MB  Usable_file_MB  Offline_disks  Voting_files  Name
 MOUNTED  EXTERN  N         512             512   4096  4194304    102400   102284                0          102284              0             N  CRSDATA/
-MOUNTED  NORMAL  N         512             512   4096  1048576    409600   403401           102400          150500              0             N  DBDATA/
-MOUNTED  EXTERN  N         512             512   4096  1048576    204800   204733                0          204733              0             N  RECO/
+MOUNTED  NORMAL  N         512             512   4096  1048576    204800   192613            51200           70706              0             N  DATA/
+MOUNTED  EXTERN  N         512             512   4096  1048576    102400   102314                0          102314              0             N  RECO/
 MOUNTED  EXTERN  N         512             512   4096  1048576    102400    99230                0           99230              0             N  REDO/
 [grid@dbmc1-0 ~]$
 [grid@dbmc1-0 ~]$ asmcmd lsdsk
@@ -252,7 +262,7 @@ Path
 [grid@dbmc1-0 ~]$
 [grid@dbmc1-0 ~]$ sqlplus "/ as sysdba"
 
-SQL*Plus: Release 19.0.0.0.0 - Production on Thu Oct 9 04:22:20 2025
+SQL*Plus: Release 19.0.0.0.0 - Production on Fri Feb 13 21:53:59 2026
 Version 19.28.0.0.0
 
 Copyright (c) 1982, 2025, Oracle.  All rights reserved.
@@ -284,18 +294,18 @@ DISKGROUP_NAME	     PATH						MOUNT_S HEADER_STATU STATE	TOTAL_MB    FREE_MB
 -------------------- -------------------------------------------------- ------- ------------ -------- ---------- ----------
 CRSDATA 	     /dev/asm-disk1					CACHED	MEMBER	     NORMAL	   51200      51144
 CRSDATA 	     /dev/asm-disk2					CACHED	MEMBER	     NORMAL	   51200      51140
-DBDATA		     /dev/asm-disk3					CACHED	MEMBER	     NORMAL	  102400     100846
-DBDATA		     /dev/asm-disk4					CACHED	MEMBER	     NORMAL	  102400     100851
-DBDATA		     /dev/asm-disk5					CACHED	MEMBER	     NORMAL	  102400     100851
-DBDATA		     /dev/asm-disk6					CACHED	MEMBER	     NORMAL	  102400     100853
-RECO		     /dev/asm-disk7					CACHED	MEMBER	     NORMAL	  102400     102366
-RECO		     /dev/asm-disk8					CACHED	MEMBER	     NORMAL	  102400     102367
-REDO		     /dev/asm-disk9					CACHED	MEMBER	     NORMAL	   51200      49613
-REDO		     /dev/asm-disk10					CACHED	MEMBER	     NORMAL	   51200      49617
+DATA		     /dev/asm-disk3					CACHED	MEMBER	     NORMAL	   51200      48158
+DATA		     /dev/asm-disk4					CACHED	MEMBER	     NORMAL	   51200      48155
+DATA		     /dev/asm-disk5					CACHED	MEMBER	     NORMAL	   51200      48146
+DATA		     /dev/asm-disk6					CACHED	MEMBER	     NORMAL	   51200      48154
+RECO		     /dev/asm-disk7					CACHED	MEMBER	     NORMAL	   51200      51157
+RECO		     /dev/asm-disk8					CACHED	MEMBER	     NORMAL	   51200      51157
+REDO		     /dev/asm-disk9					CACHED	MEMBER	     NORMAL	   51200      49617
+REDO		     /dev/asm-disk10					CACHED	MEMBER	     NORMAL	   51200      49613
 
 10 rows selected.
 
-SQL>
+SQL> exit
 
 
 
@@ -304,7 +314,7 @@ SQL>
 [oracle@dbmc1-0 ~]$ export ORACLE_SID=PORCLCDB
 [oracle@dbmc1-0 ~]$ sqlplus "/ as sysdba"
 
-SQL*Plus: Release 19.0.0.0.0 - Production on Thu Oct 9 04:23:14 2025
+SQL*Plus: Release 19.0.0.0.0 - Production on Fri Feb 13 21:55:04 2026
 Version 19.28.0.0.0
 
 Copyright (c) 1982, 2025, Oracle.  All rights reserved.
@@ -314,15 +324,12 @@ Connected to:
 Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production
 Version 19.28.0.0.0
 
-SQL>
 SQL> show pdbs
 
     CON_ID CON_NAME			  OPEN MODE  RESTRICTED
 ---------- ------------------------------ ---------- ----------
 	 2 PDB$SEED			  READ ONLY  NO
 	 3 TESTPDB			  READ WRITE NO
-SQL>
-SQL>
 SQL> show parameter DB_CREATE_ONLINE_LOG_DEST_1
 
 NAME				     TYPE	 VALUE
@@ -334,11 +341,15 @@ SQL> show parameter db_create_file_dest
 
 NAME				     TYPE	 VALUE
 ------------------------------------ ----------- ------------------------------
-db_create_file_dest		     string	 +DBDATA
+db_create_file_dest		     string	 +DATA
+SQL>
+SQL>
 SQL>
 SQL> show parameter db_recovery_file_dest
 
 NAME				     TYPE	 VALUE
 ------------------------------------ ----------- ------------------------------
 db_recovery_file_dest		     string	 +RECO
-db_recovery_file_dest_size	     big integer 20058M
+db_recovery_file_dest_size	     big integer 20148M
+SQL>
+SQL>

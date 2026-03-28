@@ -3,48 +3,44 @@ Name:         oraclerestart-sample
 Namespace:    orestart
 Labels:       <none>
 Annotations:  OracleRestarts.database.oracle.com/old-spec:
-                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"],"nodePortSvc":[{"name":"dbmc1-service-nod...
+                {"instDetails":{"name":"dbmc1","hostSwLocation":"/scratch/orestart/","workerNode":["10.0.10.58"]},"configParams":{"cpuCount":4,"sgaSize":"...
 API Version:  database.oracle.com/v4
 Kind:         OracleRestart
 Metadata:
-  Creation Timestamp:  2025-08-20T05:11:47Z
+  Creation Timestamp:  2026-02-14T19:16:10Z
   Finalizers:
     database.oracle.com/oraclerestartfinalizer
   Generation:        1
-  Resource Version:  225105545
-  UID:               6da86e89-0c6b-4c4d-aa14-c04c72071388
+  Resource Version:  301394983
+  UID:               a7a70cd9-8889-4c61-8228-75aae5ec87b8
 Spec:
-  Asm Storage Details:
-    Disks By Size:
-      Disk Names:
-        /dev/disk/by-partlabel/asm-disk1
-        /dev/disk/by-partlabel/asm-disk2
-      Storage Size In Gb:  50
+  Asm Disk Group Details:
+    Disks:
+      /dev/disk/by-partlabel/asm-disk1
+      /dev/disk/by-partlabel/asm-disk2
+    Name:        DATA
+    Redundancy:  EXTERNAL
+    Type:        CRSDG
   Config Params:
-    Cpu Count:                   4
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Char Set:                 AL32UTF8
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Cpu Count:    4
+    Db Base:      /u01/app/oracle
+    Db Char Set:  AL32UTF8
+    Db Home:      /u01/app/oracle/product/19c/dbhome_1
+    Db Name:      PORCLCDB
     Db Response File:
     Db Sw Zip File:  db_home.zip
     Grid Base:       /u01/app/grid
     Grid Home:       /u01/app/19c/grid
     Grid Response File:
     Grid Sw Zip File:        grid_home.zip
-    Host Sw Stage Location:  /scratch/software/stage
+    Host Sw Stage Location:  /scratch/software/stage/19.3.0
     Inventory:               /u01/app/oraInventory
     O Patch Location:        /scratch/software/opatch
     O Patch Sw Zip File:     p6880880_190000_Linux-x86-64.zip
-    Pga Size:                1G
+    Pga Size:                4G
     Processes:               2000
     Ru Patch Location:       /scratch/software/ru_patch/37957391
-    Sga Size:                3G
+    Sga Size:                8G
     Sw Mount Location:       /u01
   Db Secret:
     Key File Mount Location:  /mnt/.dbsecrets
@@ -52,38 +48,34 @@ Spec:
     Name:                     db-user-pass-pkutl
     Pwd File Mount Location:  /mnt/.dbsecrets
     Pwd File Name:            pwdfile.enc
-  Image:                      localhost/oracle/database-orestart:19.3.0-slim
-  Image Pull Policy:          Always
+  Enable Ons:                 enable
+  Image:                      dbocir/oracle/database-orestart:19.3.0-slim
+  Image Pull Policy:          IfNotPresent
   Inst Details:
     Host Sw Location:  /scratch/orestart/
     Name:              dbmc1
-    Node Port Svc:
-      Name:      dbmc1-service-nodeport
-      Svc Type:  nodeport
+    Worker Node:
+      10.0.10.58
+  Lb Service:
+  Node Port Svc:
+    Name:  dbmc1-service-nodeport
     Port Mappings:
       Node Port:    30007
       Port:         1521
       Protocol:     TCP
       Target Port:  1521
-    Worker Node:
-      10.0.10.58
+      Node Port:    30200
+      Port:         6200
+      Protocol:     TCP
+      Target Port:  6200
+    Svc Type:       nodeport
   Resources:
     Limits:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
     Requests:
-      Cpu:     2
+      Cpu:     4
       Memory:  16Gi
-  Security Context:
-    Sysctls:
-      Name:   kernel.shmall
-      Value:  2097152
-      Name:   kernel.sem
-      Value:  250 32000 100 128
-      Name:   kernel.shmmax
-      Value:  8589934592
-      Name:   kernel.shmmni
-      Value:  4096
   Service Details:
     Name:  soepdb
   Ssh Key Secret:
@@ -97,39 +89,39 @@ Status:
     Node Details:
       Instance State:  OPEN
       Pod State:       AVAILABLE
-      Cluster State:   GI_NOT_INSTALLED_OR_CONFIGURED
+      Cluster State:   HEALTHY
       Mounted Devices:
         /dev/disk/by-partlabel/asm-disk1
         /dev/disk/by-partlabel/asm-disk2
       State:  AVAILABLE
-  Asm Details:
-    Diskgroup:
-      Disks:
-        /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-      Name:        DATA
-      Redundancy:  EXTERN
+  Asm Disk Groups:
+    Disks:
+      Name:        /dev/disk/by-partlabel/asm-disk1
+      Size In Gb:  49
+      Valid:       true
+      Name:        /dev/disk/by-partlabel/asm-disk2
+      Size In Gb:  49
+      Valid:       true
+    Name:          DATA
+    Redundancy:    EXTERNAL
+    Type:          CRSDG
   Conditions:
-    Last Transition Time:  2025-08-20T06:23:57Z
-    Message:               oracle restart database is in a restricted state: PROVISIONING
+    Last Transition Time:  2026-02-14T19:42:46Z
+    Message:               reconcile has been queued
     Observed Generation:   1
     Reason:                LastReconcileCycleQueued
     Status:                True
     Type:                  ReconcileQueued
-    Last Transition Time:  2025-08-20T23:52:35Z
-    Message:               no reconcile errors
+    Last Transition Time:  2026-02-14T20:44:39Z
+    Message:               reconcile completed successfully
     Observed Generation:   1
     Reason:                LastReconcileCycleCompleted
     Status:                True
     Type:                  ReconcileComplete
   Config Params:
-    Crs Asm Device List:         /dev/disk/by-partlabel/asm-disk1,/dev/disk/by-partlabel/asm-disk2
-    Crs Asm Disk Dg:             +DATA
-    Crs Asm Disk Dg Redundancy:  external
-    Db Base:                     /u01/app/oracle
-    Db Data File Dest Dg:        +DATA
-    Db Home:                     /u01/app/oracle/product/19c/dbhome_1
-    Db Name:                     PORCLCDB
-    Db Recovery File Dest:       +DATA
+    Db Base:  /u01/app/oracle
+    Db Home:  /u01/app/oracle/product/19c/dbhome_1
+    Db Name:  PORCLCDB
     Db Response File:
     Grid Base:  /u01/app/grid
     Grid Home:  /u01/app/19c/grid
@@ -144,11 +136,26 @@ Status:
     Pwd File Name:            pwdfile.enc
   Db State:                   OPEN
   External Connect String:    129.146.0.149:30007/soepdb
-  Inst Details:
-    Name:
-  Pdb Connect String:  dbmc1-0:1521/ORCLPDB
-  Release Update:      19.28.0.0.0
-  Role:                PRIMARY
+  Pdb Connect String:         dbmc1-0:1521/ORCLPDB
+  Release Update:             19.28.0.0.0
+  Resources:
+    Limits:
+      Cpu:     4
+      Memory:  16Gi
+    Requests:
+      Cpu:     4
+      Memory:  16Gi
+  Role:        PRIMARY
+  Security Context:
+    Sysctls:
+      Name:   kernel.shmmax
+      Value:  9663676416
+      Name:   kernel.shmall
+      Value:  2359296
+      Name:   kernel.sem
+      Value:  250 32000 100 128
+      Name:   kernel.shmmni
+      Value:  4096
   Service Details:
     Name:       soepdb
     Svc State:  service soepdb is running
@@ -160,10 +167,10 @@ Events:         <none>
 # When the 19.28 RU Patch 37957391 is applied to both the GI HOME and RDBMS HOME, you can check the status of the patches applied once the deployment is completed:
 
 [grid@dbmc1-0 ~]$ $ORACLE_HOME/OPatch/opatch lspatches
+38124772;TOMCAT RELEASE UPDATE 19.0.0.0.0 (38124772)
 37962946;OCW RELEASE UPDATE 19.28.0.0.0 (37962946)
 37962938;ACFS RELEASE UPDATE 19.28.0.0.0 (37962938)
 37960098;Database Release Update : 19.28.0.0.250715 (37960098)
-37954209;TOMCAT RELEASE UPDATE 19.0.0.0.0 (37954209)
 36758186;DBWLM RELEASE UPDATE 19.0.0.0.0 (36758186)
 
 OPatch succeeded.

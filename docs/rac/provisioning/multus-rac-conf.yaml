@@ -1,0 +1,37 @@
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: macvlan-conf1
+  namespace: rac
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "type": "macvlan",
+      "master": "ens5",
+      "mode": "bridge",
+      "ipam": {
+        "type": "host-local",
+        "subnet": "10.0.10.0/24",
+        "rangeStart": "10.0.10.120",
+        "rangeEnd": "10.0.10.130"
+      }
+    }'
+---
+apiVersion: "k8s.cni.cncf.io/v1"
+kind: NetworkAttachmentDefinition
+metadata:
+  name: macvlan-conf2
+  namespace: rac
+spec:
+  config: '{
+      "cniVersion": "0.3.0",
+      "type": "macvlan",
+      "master": "ens6",
+      "mode": "bridge",
+      "ipam": {
+        "type": "host-local",
+        "subnet": "10.0.11.0/24",
+        "rangeStart": "10.0.11.120",
+        "rangeEnd": "10.0.11.130"
+      }
+    }'

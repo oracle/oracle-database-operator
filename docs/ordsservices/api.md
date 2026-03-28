@@ -162,7 +162,17 @@ Deployment or StatefulSet<br>
 <td valign="top"><b>secretName</b>: string&nbsp; <b>passwordKey:
 </b>string Define the private key to decrypt passwords<br>
 </td>
-<td valign="top">true<br>
+<td valign="top">false<br>
+</td>
+</tr>
+<tr>
+<td valign="top"><b>central.config.url</b><b><br>
+</b></td>
+<td valign="top">string<br>
+</td>
+<td valign="top">Central Configuration Server url (e.g. https://central-config.example.com:8585/central/v1/config)
+</td>
+<td valign="top">false<br>
 </td>
 </tr>
 </tbody>

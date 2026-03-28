@@ -16,20 +16,42 @@ This example uses `oraclerestart_prov_multiple_diskgroups_with_redundancy_with_s
   * Name of Custom Storage Class for Diskgroup having Database files is specified by `dataDgStorageClass`.  
   * Name of Custom Storage Class for Diskgroup having Recovery Area files is specified by `recoDgStorageClass`.  
   * Name of Custom Storage Class for Diskgroup having Redo Log files is specified by `redoDgStorageClass`.  
+  * Name of Custom Storage Class for the storage location for software is specified by `swDgStorageClass`.    
 
 ### In this example, 
-  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name `localhost/oracle/database-orestart:19.3.0-slim`. 
+  * Oracle Restart Database Slim Image `dbocir/oracle/database-orestart:19.3.0-slim` is used and it is built using files from [GitHub location](https://github.com/oracle/docker-images/tree/main/OracleDatabase/RAC/OracleRealApplicationClusters#building-oracle-rac-database-container-slim-image). Default image created using files from this project is `localhost/oracle/database-rac:19.3.0-slim`. You need to tag it with name you want. You can also push the image to your container repository.  
   * When you are building the image yourself, update the image value in the `oraclerestart_prov_multiple_diskgroups_with_redundancy_with_separate_storage_class.yaml` file to point to the container image you have built. 
-  * The disks provisioned using custom storage classes are mounted inside the Oracle Restart Pod as `/dev/asm-disk1` to `/dev/asm-disk10`. 
-  * Specify the size of disk devices along with names using the parameter `storageSizeInGb`. Size is by-default in GBs. 
-  * The Diskgroup for CRS files is specified by `crsAsmDiskDg` and the disks on the worker nodes for this diskgroup are specified by `crsAsmDeviceList`. 
-  * The Diskgroup for Database files is specified by `dbDataFileDestDg` and the disks on the worker nodes for this diskgroup are specified by `dbAsmDeviceList`. 
-  * The Diskgroup for Recovery Area files is specified by `dbRecoveryFileDest` and the disks on the worker nodes for this diskgroup are specified by `recoAsmDeviceList`. 
-  * The Diskgroup for Redo Log files is specified by `redoAsmDiskDg` and the disks on the worker nodes for this diskgroup are specified by `redoAsmDeviceList`. 
-  * Redundancy level for the diskgroup with CRS files is mentioned by `crsAsmDiskDgRedundancy`.
-  * Redundancy level for the diskgroup with Database files is mentioned by `dbAsmDiskDgRedundancy`.
-  * Redundancy level for the diskgroup with Recovery files is mentioned by `recoAsmDiskDgRedudancy`. 
-  * Redundancy level for the diskgroup with Redo Log files is mentioned by `redoAsmDiskDgRedundancy`. 
+The ASM diskgroup is configured using `asmDiskGroupDetails` in the YAML file. The disks specified in `asmDiskGroupDetails` are used for Oracle ASM Storage-    
+```text
+For example:
+  asmDiskGroupDetails:
+    - name: CRSDATA                                                                # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level for CRSDATA Diskgroup
+      type: CRSDG                                                                  # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk1
+        - /dev/asm-disk2
+    - name: DATA                                                                   # Name of the ASM Disk Group
+      redundancy: NORMAL                                                           # ASM Diskgroup Redundancy Level for DATA Diskgroup
+      type: DBDATAFILESDG                                                          # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk3
+        - /dev/asm-disk4
+        - /dev/asm-disk5
+        - /dev/asm-disk6        
+    - name: RECO                                                                   # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level for RECO Diskgroup
+      type: DBRECOVERY                                                             # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk7
+        - /dev/asm-disk8
+    - name: REDO                                                                   # Name of the ASM Disk Group
+      redundancy: EXTERNAL                                                         # ASM Diskgroup Redundancy Level for REDO Diskgroup
+      type: DBREDO                                                                 # Type of disk group 
+      disks:                                                                       
+        - /dev/asm-disk9
+        - /dev/asm-disk10
+```
 
 ### Steps: Deploy Oracle Restart Database
 * Use the file: [oraclerestart_prov_multiple_diskgroups_with_redundancy_with_separate_storage_class.yaml](./oraclerestart_prov_multiple_diskgroups_with_redundancy_with_separate_storage_class.yaml) for this use case as below:

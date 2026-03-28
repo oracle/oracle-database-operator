@@ -16,7 +16,7 @@ service/dbmc1     NodePort    10.96.53.210   <none>        1521:30007/TCP   5h46
 service/dbmc1-0   ClusterIP   None           <none>        <none>           171m    statefulset.kubernetes.io/pod-name=dbmc1-0
  
 NAME                     READY   AGE     CONTAINERS   IMAGES
-statefulset.apps/dbmc1   1/1     5h46m   dbmc1        localhost/oracle/database-orestart:19.3.0-slim
+statefulset.apps/dbmc1   1/1     5h46m   dbmc1        dbocir/oracle/database-orestart:19.3.0-slim
 ```
 In this case, the port 1521 from the pod is mapped to port 30007 on the worker node. To make the connection from outside, you must open the port 30007 on the worker node for INGRESS.
  
@@ -63,7 +63,7 @@ service/dbmc1     LoadBalancer   10.96.34.208   XXX.XX.XX.XX   1521:30433/TCP,62
 service/dbmc1-0   ClusterIP      None           <none>         <none>                          14m   statefulset.kubernetes.io/pod-name=dbmc1-0
 
 NAME                     READY   AGE   CONTAINERS   IMAGES
-statefulset.apps/dbmc1   1/1     14m   dbmc1        localhost/oracle/database-orestart:19.3.0-slim
+statefulset.apps/dbmc1   1/1     14m   dbmc1        dbocir/oracle/database-orestart:19.3.0-slim
 ```
 In this case, you can make a remote database connection using the Load Balancer target port 1521.
  

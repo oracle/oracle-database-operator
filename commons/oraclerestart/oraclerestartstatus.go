@@ -52,6 +52,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// UpdateOracleRestartInstStatusData provides documentation for the UpdateOracleRestartInstStatusData function.
 func UpdateOracleRestartInstStatusData(
 	OracleRestart *oraclerestartdb.OracleRestart,
 	ctx context.Context,
@@ -70,9 +71,9 @@ func UpdateOracleRestartInstStatusData(
 	orestartNodeDetails := &oraclerestartdb.OracleRestartNodeDetailedStatus{}
 	strMap := make(map[string]string)
 
-	if OracleRestart.Status.AsmDetails == nil {
-		OracleRestart.Status.AsmDetails = &oraclerestartdb.AsmInstanceStatus{}
-	}
+	// if OracleRestart.Status.AsmDetails == nil {
+	// 	OracleRestart.Status.AsmDetails = &oraclerestartdb.AsmInstanceStatus{}
+	// }
 
 	if OracleRestart.Status.ConfigParams == nil {
 		OracleRestart.Status.ConfigParams = &oraclerestartdb.InitParams{}
@@ -136,11 +137,6 @@ func UpdateOracleRestartInstStatusData(
 		if OracleRestart.Spec.ConfigParams.DbHome != "" {
 			OracleRestart.Status.ConfigParams.DbHome = OracleRestart.Spec.ConfigParams.DbHome
 		}
-		// OracleRestart.Status.ConfigParams.CrsAsmDeviceList = OracleRestart.Spec.ConfigParams.CrsAsmDeviceList
-		OracleRestart.Status.ConfigParams.CrsAsmDeviceList = getcrsAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
-
-		// OracleRestart.Status.ConfigParams.DbAsmDeviceList = OracleRestart.Spec.ConfigParams.DbAsmDeviceList
-		OracleRestart.Status.ConfigParams.DbAsmDeviceList = getdbAsmDeviceList(OracleRestart, oracleRestart, oraRestartSpex, kClient, kubeConfig, logger, kubeClient)
 
 	} else if state == string(oraclerestartdb.OracleRestartStatefulSetNotFound) {
 		neworacleRestart := delOracleRestartNodestatus(OracleRestart, oraRestartSpex.Name+"-0")
@@ -157,6 +153,7 @@ func UpdateOracleRestartInstStatusData(
 	}
 }
 
+// addOracleRestartNodestatus provides documentation for the addOracleRestartNodestatus function.
 func addOracleRestartNodestatus(instance *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, idx int, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) {
 
 	var racState string
@@ -185,6 +182,7 @@ func addOracleRestartNodestatus(instance *oraclerestartdb.OracleRestart, ctx con
 
 }
 
+// UpdateOracleRestartInstState provides documentation for the UpdateOracleRestartInstState function.
 func UpdateOracleRestartInstState(instance *oraclerestartdb.OracleRestart, podName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) {
 
 	// if len(instance.Status.OracleRestartNodes) > 0 {
@@ -195,6 +193,7 @@ func UpdateOracleRestartInstState(instance *oraclerestartdb.OracleRestart, podNa
 
 }
 
+// UpdateoraclerestartdbTopologyState provides documentation for the UpdateoraclerestartdbTopologyState function.
 func UpdateoraclerestartdbTopologyState(instance *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger) {
 	OracleRestart := &oraclerestartdb.OracleRestart{}
 	// fmt.Printf("I m inUpdateoraclerestartdbTopologyState")
@@ -228,23 +227,36 @@ func UpdateoraclerestartdbTopologyState(instance *oraclerestartdb.OracleRestart,
 
 }
 
-func UpdateoraclerestartdbStatusData(OracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podNames []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node,
+// UpdateoraclerestartdbStatusData provides documentation for the UpdateoraclerestartdbStatusData function.
+func UpdateoraclerestartdbStatusData(oracleRestart *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podNames []string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger, nodeDetails map[string]*corev1.Node,
 ) {
 	//mode := GetDbOpenMode(instance.Spec.Shard[0].Name+"-0", instance, kubeClient, kubeConfig, logger)
 	podName := podNames[len(podNames)-1]
-	OracleRestart.Status.DbState = getDbState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.Role = getDbRole(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ReleaseUpdate = getDBVersion(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ConnectString = getConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.PdbConnectString = getPdbConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.ExternalConnectString = getExternalConnStr(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
-	OracleRestart.Status.DbSecret = OracleRestart.Spec.DbSecret
-	OracleRestart.Status.AsmDetails = getAsmInstState(podName, OracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.DbState = getDbState(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.Role = getDbRole(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.ReleaseUpdate = getDBVersion(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.ConnectString = getConnStr(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.PdbConnectString = getPdbConnStr(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.ExternalConnectString = getExternalConnStr(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.DbSecret = oracleRestart.Spec.DbSecret
+	raw := GetAsmInstState(podName, oracleRestart, 0, kubeClient, kubeConfig, logger)
 
-	UpdateoraclerestartdbServiceStatus(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
-	UpdateoraclerestartdbTopologyState(OracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
+	oracleRestart.Status.AsmDiskGroups =
+		NormalizeAsmDiskGroupsMergeSize(
+			raw,
+			oracleRestart.Status.AsmDiskGroups,
+		)
+
+	UpdateoraclerestartdbServiceStatus(oracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
+	UpdateoraclerestartdbTopologyState(oracleRestart, ctx, req, podName, kubeClient, kubeConfig, logger)
+	pod, err := kubeClient.CoreV1().Pods(req.Namespace).Get(ctx, podName, metav1.GetOptions{})
+	if err == nil {
+		oracleRestart.Status.Resources = &pod.Spec.Containers[0].Resources
+		oracleRestart.Status.SecurityContext = pod.Spec.SecurityContext
+	}
 }
 
+// UpdateoraclerestartdbServiceStatus provides documentation for the UpdateoraclerestartdbServiceStatus function.
 func UpdateoraclerestartdbServiceStatus(instance *oraclerestartdb.OracleRestart, ctx context.Context, req ctrl.Request, podName string, kubeClient kubernetes.Interface, kubeConfig clientcmd.ClientConfig, logger logr.Logger,
 ) {
 	//This function update the instance.Status.ServiceDetails states
@@ -254,6 +266,7 @@ func UpdateoraclerestartdbServiceStatus(instance *oraclerestartdb.OracleRestart,
 	}
 }
 
+// contains provides documentation for the contains function.
 func contains(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus) (int, bool) {
 	var index int
 	if len(instance.Status.OracleRestartNodes) > 0 {
@@ -267,35 +280,7 @@ func contains(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerest
 	return index, false
 }
 
-func getcrsAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-	asmList := ""
-	var err error
-	if len(instance.Status.OracleRestartNodes) > 0 {
-		asmList, err = CheckAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-		if err != nil {
-			return ""
-		}
-
-	}
-
-	return asmList
-
-}
-func getdbAsmDeviceList(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) string {
-	dbasmList := ""
-	var err error
-	if len(instance.Status.OracleRestartNodes) > 0 {
-		dbasmList, err = CheckDbAsmList(instance.Status.OracleRestartNodes[0].Name, instance, kubeClient, kubeConfig, logger)
-		if err != nil {
-			return ""
-		}
-
-	}
-
-	return dbasmList
-
-}
-
+// getMountedDevices provides documentation for the getMountedDevices function.
 func getMountedDevices(podName, namespace string, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client, kubeConfig clientcmd.ClientConfig, logger logr.Logger, kubeClient kubernetes.Interface) []string {
 	var asmList []string
 
@@ -317,6 +302,7 @@ func getMountedDevices(podName, namespace string, oracleRestart *oraclerestartdb
 	return asmList
 }
 
+// delOracleRestartNodestatus provides documentation for the delOracleRestartNodestatus function.
 func delOracleRestartNodestatus(instance *oraclerestartdb.OracleRestart, name string) []*oraclerestartdb.OracleRestartNodestatus {
 	neworacleRestart := []*oraclerestartdb.OracleRestartNodestatus{}
 	if len(instance.Status.OracleRestartNodes) > 0 {
@@ -329,6 +315,7 @@ func delOracleRestartNodestatus(instance *oraclerestartdb.OracleRestart, name st
 	return neworacleRestart
 }
 
+// getPvcDetails provides documentation for the getPvcDetails function.
 func getPvcDetails(instance *oraclerestartdb.OracleRestart, oracleRestart *oraclerestartdb.OracleRestartNodestatus, oraRestartSpex oraclerestartdb.OracleRestartInstDetailSpec, rclient client.Client) map[string]string {
 	strMap := make(map[string]string)
 	if len(oraRestartSpex.PvcName) > 0 {

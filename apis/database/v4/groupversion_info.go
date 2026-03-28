@@ -1,5 +1,5 @@
 /*
-** Copyright (c) 2022 Oracle and/or its affiliates.
+** Copyright (c) 2022, 2026 Oracle and/or its affiliates.
 **
 ** The Universal Permissive License (UPL), Version 1.0
 **
@@ -36,9 +36,9 @@
 ** SOFTWARE.
  */
 
-// Package v4 contains API Schema definitions for the database v4 API group
 // +kubebuilder:object:generate=true
 // +groupName=database.oracle.com
+
 package v4
 
 import (

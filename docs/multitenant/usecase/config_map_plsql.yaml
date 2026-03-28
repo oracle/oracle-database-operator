@@ -5,7 +5,7 @@ metadata:
   namespace: pdbnamespace
 data:
   plblock1.sql: |
-        create user k8stestuser identified by tkstestuser
+        create user k8stestuser 
   plblock2.sql: |
         grant dba to k8stestuser
   plblock3.sql: |
