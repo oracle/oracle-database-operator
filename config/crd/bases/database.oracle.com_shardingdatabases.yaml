@@ -1514,6 +1514,12 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        deployAs:
+                          enum:
+                          - PRIMARY
+                          - STANDBY
+                          - ACTIVE_STANDBY
+                          type: string
                         name:
                           type: string
                         protectMode:
@@ -1606,6 +1612,12 @@ spec:
                       format: int32
                       minimum: 1
                       type: integer
+                    deployAs:
+                      enum:
+                      - PRIMARY
+                      - STANDBY
+                      - ACTIVE_STANDBY
+                      type: string
                     name:
                       type: string
                     protectMode:
