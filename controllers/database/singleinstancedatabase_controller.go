@@ -995,9 +995,11 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					})
 				}
-				useStandbyWalletSecret := strings.TrimSpace(GetStandbyWalletSecretRef(m)) != "" && m.Spec.CreateAs == "standby"
+				isStandby := m.Spec.CreateAs == "standby"
+				useStandbyWalletSecret := strings.TrimSpace(GetStandbyWalletSecretRef(m)) != "" && isStandby
 				/* Wallet only for edition barring express and free editions, non-prebuiltDB */
-				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB && !useStandbyWalletSecret {
+				// For standby, avoid init-wallet to prevent cross-container wallet password mismatch.
+				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB && !isStandby && !useStandbyWalletSecret {
 					initContainers = append(initContainers, corev1.Container{
 						Name:  "init-wallet",
 						Image: m.Spec.Image.PullFrom,
