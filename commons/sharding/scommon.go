@@ -341,11 +341,11 @@ func buildEnvVarsSpec(
 					groupIdx++
 				}
 				if groupIdx == 1 {
-					defaultGroup := "group_name=shardgroup1;group_region=primary"
-					if isDGRepl {
-						defaultGroup += ";deploy_as=primary"
-					}
-					result = append(result, corev1.EnvVar{Name: "SHARD1_GROUP_PARAMS", Value: defaultGroup})
+					// 2026-03-29 20:43:18 UTC:
+					// Intentionally disabled auto-default SHARD1_GROUP_PARAMS.
+					// Users must explicitly provide shard group params via spec/env.
+					// Keeping this conditional block (without fallback append) to preserve
+					// prior control flow and make the behavior change obvious in code history.
 				}
 			}
 		}
@@ -1402,6 +1402,27 @@ func getShardAddCmd(sparams string) []string {
 
 }
 
+func getShardGroupAddCmd(sparams string) []string {
+	sparamStr := "--addshardgroup=" + strconv.Quote(sparams)
+	return []string{
+		oraScriptMount + "/cmdExec",
+		"/bin/python",
+		oraScriptMount + "/main.py ",
+		sparamStr,
+		"--optype=gsm",
+	}
+}
+
+func getShardSpaceAddCmd(sparams string) []string {
+	cmd := fmt.Sprintf(
+		"ADD_SSPACE_PARAMS=%s %s/cmdExec /bin/python %s/main.py --optype=gsm",
+		strconv.Quote(sparams),
+		oraScriptMount,
+		oraScriptMount,
+	)
+	return []string{"/bin/bash", "-lc", cmd}
+}
+
 func getShardDelCmd(sparams string) []string {
 	sparamStr := "--deleteshard=" + strconv.Quote(sparams)
 	var delShardCmd = []string{oraScriptMount + "/cmdExec", "/bin/python", oraScriptMount + "/main.py ", sparamStr}
@@ -1711,6 +1732,30 @@ func AddShardInGsm(gsmPodName string, sparams string, instance *databasev4.Shard
 	_, _, err := ExecCommand(gsmPodName, getShardAddCmd(sparams), kubeconfig, instance, logger)
 	if err != nil {
 		msg := "Error occurred while adding a shard " + GetFmtStr(sparams) + " in GSM."
+		LogMessages("INFO", msg, nil, instance, logger)
+		return err
+	}
+	return nil
+}
+
+// Function to ensure shard group exists with supplied parameters.
+func AddShardGroupInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
+) error {
+	_, _, err := ExecCommand(gsmPodName, getShardGroupAddCmd(sparams), kubeconfig, instance, logger)
+	if err != nil {
+		msg := "Error occurred while adding shard group " + GetFmtStr(sparams) + " in GSM."
+		LogMessages("INFO", msg, nil, instance, logger)
+		return err
+	}
+	return nil
+}
+
+// Function to ensure shard space exists with supplied parameters.
+func AddShardSpaceInGsm(gsmPodName string, sparams string, instance *databasev4.ShardingDatabase, kubeconfig *rest.Config, logger logr.Logger,
+) error {
+	_, _, err := ExecCommand(gsmPodName, getShardSpaceAddCmd(sparams), kubeconfig, instance, logger)
+	if err != nil {
+		msg := "Error occurred while adding shard space " + GetFmtStr(sparams) + " in GSM."
 		LogMessages("INFO", msg, nil, instance, logger)
 		return err
 	}

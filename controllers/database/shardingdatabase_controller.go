@@ -2156,6 +2156,13 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 		sparamsCheck := shardingv1.BuildShardParams(instance, shardSfSet, oraShardSpec)
 		if err = shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeConfig, r.Log); err != nil {
 			sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, oraShardSpec)
+			if preErr := r.ensureShardAddPrerequisitesInGsm(instance, gsmPod.Name, oraShardSpec); preErr != nil {
+				r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.AddingShardErrorState))
+				r.logLegacy("Error", instance.Namespace+":Shard pre-add prerequisite setup failure:"+preErr.Error(), nil, instance, r.Log)
+				addFailedCount++
+				deployFlag = "false"
+				continue
+			}
 			r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.AddingShardState))
 			if err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeConfig, r.Log); err != nil {
 				r.updateGsmShardStatus(instance, oraShardSpec.Name, string(databasev4.AddingShardErrorState))
@@ -2306,6 +2313,11 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 
 			if inGsmErr := shardingv1.CheckShardInGsm(gsmPod.Name, sparamsCheck, instance, r.kubeConfig, r.Log); inGsmErr != nil {
 				sparamsAdd := shardingv1.BuildShardParamsForAdd(instance, shardSfSet, OraShardSpex)
+				if preErr := r.ensureShardAddPrerequisitesInGsm(instance, gsmPod.Name, OraShardSpex); preErr != nil {
+					r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardErrorState))
+					addFailedCount++
+					continue
+				}
 
 				r.updateGsmShardStatus(instance, OraShardSpex.Name, string(databasev4.AddingShardState))
 				err = shardingv1.AddShardInGsm(gsmPod.Name, sparamsAdd, instance, r.kubeConfig, r.Log)
@@ -3574,6 +3586,124 @@ func normalizeShardGroupKey(v string) string {
 
 func normalizeShardSpaceKey(v string) string {
 	return strings.ToUpper(strings.TrimSpace(v))
+}
+
+func (r *ShardingDatabaseReconciler) findShardGroupSpecByName(instance *databasev4.ShardingDatabase, groupName string) *databasev4.ShardGroupSpec {
+	key := normalizeShardGroupKey(groupName)
+	if key == "" {
+		return nil
+	}
+	for i := range instance.Spec.ShardGroup {
+		if normalizeShardGroupKey(instance.Spec.ShardGroup[i].Name) == key {
+			return &instance.Spec.ShardGroup[i]
+		}
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) findShardSpaceSpecByName(instance *databasev4.ShardingDatabase, spaceName string) *databasev4.ShardSpaceSpec {
+	key := normalizeShardSpaceKey(spaceName)
+	if key == "" {
+		return nil
+	}
+	for i := range instance.Spec.ShardSpace {
+		if normalizeShardSpaceKey(instance.Spec.ShardSpace[i].Name) == key {
+			return &instance.Spec.ShardSpace[i]
+		}
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) buildAddShardGroupParamsFromSpec(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) (string, bool) {
+	groupName := strings.TrimSpace(shard.ShardGroup)
+	if groupName == "" {
+		return "", false
+	}
+
+	groupSpec := r.findShardGroupSpecByName(instance, groupName)
+	groupRegion := strings.TrimSpace(shard.ShardRegion)
+	deployAs := ""
+	shardSpace := ""
+	repFactor := int32(0)
+	if groupSpec != nil {
+		if groupRegion == "" {
+			groupRegion = strings.TrimSpace(groupSpec.Region)
+		}
+		deployAs = strings.TrimSpace(groupSpec.DeployAs)
+		shardSpace = strings.TrimSpace(groupSpec.ShardSpace)
+		repFactor = groupSpec.RepFactor
+	}
+	if groupRegion == "" {
+		return "", false
+	}
+
+	parts := []string{
+		"group_name=" + groupName,
+		"group_region=" + groupRegion,
+	}
+	if shardSpace != "" {
+		parts = append(parts, "shardspace="+shardSpace)
+	}
+	if deployAs != "" {
+		parts = append(parts, "deploy_as="+strings.ToLower(deployAs))
+	}
+	if repFactor > 0 {
+		parts = append(parts, "repfactor="+fmt.Sprint(repFactor))
+	}
+	return strings.Join(parts, ";"), true
+}
+
+func (r *ShardingDatabaseReconciler) buildAddShardSpaceParamsFromSpec(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) (string, bool) {
+	spaceName := strings.TrimSpace(shard.ShardSpace)
+	if spaceName == "" {
+		if groupSpec := r.findShardGroupSpecByName(instance, shard.ShardGroup); groupSpec != nil {
+			spaceName = strings.TrimSpace(groupSpec.ShardSpace)
+		}
+	}
+	if spaceName == "" {
+		return "", false
+	}
+
+	spaceSpec := r.findShardSpaceSpecByName(instance, spaceName)
+	parts := []string{"sspace_name=" + spaceName}
+	if spaceSpec != nil {
+		if spaceSpec.Chunks > 0 {
+			parts = append(parts, "chunks="+fmt.Sprint(spaceSpec.Chunks))
+		}
+		if spaceSpec.RepFactor > 0 {
+			parts = append(parts, "repfactor="+fmt.Sprint(spaceSpec.RepFactor))
+		}
+		if spaceSpec.RepUnits > 0 {
+			parts = append(parts, "repunits="+fmt.Sprint(spaceSpec.RepUnits))
+		}
+		if v := strings.TrimSpace(spaceSpec.ProtectMode); v != "" {
+			parts = append(parts, "protectedmode="+v)
+		}
+	}
+	return strings.Join(parts, ";"), true
+}
+
+func (r *ShardingDatabaseReconciler) ensureShardAddPrerequisitesInGsm(instance *databasev4.ShardingDatabase, gsmPodName string, shard databasev4.ShardSpec) error {
+	mode := resolveShardMode(instance, shard)
+	if mode == "SYSTEM" || mode == "COMPOSITE" {
+		if groupParams, ok := r.buildAddShardGroupParamsFromSpec(instance, shard); ok {
+			r.logLegacy("INFO", "Ensuring shardgroup exists with CR values before add-shard: "+groupParams, nil, instance, r.Log)
+			if err := shardingv1.AddShardGroupInGsm(gsmPodName, groupParams, instance, r.kubeConfig, r.Log); err != nil {
+				return fmt.Errorf("failed to ensure shardgroup for shard %s: %w", shard.Name, err)
+			}
+		}
+	}
+
+	if mode == "USER" || mode == "COMPOSITE" {
+		if spaceParams, ok := r.buildAddShardSpaceParamsFromSpec(instance, shard); ok {
+			r.logLegacy("INFO", "Ensuring shardspace exists with CR values before add-shard: "+spaceParams, nil, instance, r.Log)
+			if err := shardingv1.AddShardSpaceInGsm(gsmPodName, spaceParams, instance, r.kubeConfig, r.Log); err != nil {
+				return fmt.Errorf("failed to ensure shardspace for shard %s: %w", shard.Name, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (r *ShardingDatabaseReconciler) validateCompositeShardGroupUniqueness(instance *databasev4.ShardingDatabase) error {
