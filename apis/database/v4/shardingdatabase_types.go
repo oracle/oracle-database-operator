@@ -372,6 +372,8 @@ type ShardGroupSpec struct {
 // ShardSpaceSpec is used both for top-level shardSpace[] and inside shardInfo.shardSpaceDetails.
 type ShardSpaceSpec struct {
 	Name string `json:"name"` // Name of the shardspace
+	// +kubebuilder:validation:Enum=PRIMARY;STANDBY;ACTIVE_STANDBY
+	DeployAs string `json:"deployAs,omitempty"` // Deployment role for USER sharding shardInfo
 	// +kubebuilder:validation:Minimum=1
 	Chunks int32 `json:"chunks,omitempty"` // Number of chunks in the shardspace
 	// +kubebuilder:validation:Enum=MAXPROTECTION;MAXAVAILABILITY;MAXPERFORMANCE

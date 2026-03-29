@@ -10,7 +10,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: autonomouscontainerdatabases.database.oracle.com
 spec:
   conversion:
@@ -182,7 +182,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: autonomousdatabasebackups.database.oracle.com
 spec:
   conversion:
@@ -396,7 +396,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: autonomousdatabaserestores.database.oracle.com
 spec:
   conversion:
@@ -600,7 +600,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: autonomousdatabases.database.oracle.com
 spec:
   conversion:
@@ -1306,7 +1306,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: databaseobservers.observability.oracle.com
 spec:
   group: observability.oracle.com
@@ -3556,6 +3556,10 @@ spec:
                                         type: integer
                                       signerName:
                                         type: string
+                                      userAnnotations:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
                                     required:
                                     - keyType
                                     - signerName
@@ -6059,6 +6063,10 @@ spec:
                                         type: integer
                                       signerName:
                                         type: string
+                                      userAnnotations:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
                                     required:
                                     - keyType
                                     - signerName
@@ -8562,6 +8570,10 @@ spec:
                                         type: integer
                                       signerName:
                                         type: string
+                                      userAnnotations:
+                                        additionalProperties:
+                                          type: string
+                                        type: object
                                     required:
                                     - keyType
                                     - signerName
@@ -8835,7 +8847,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: dataguardbrokers.database.oracle.com
 spec:
   group: database.oracle.com
@@ -8985,7 +8997,45 @@ spec:
             type: object
           spec:
             properties:
+              externalAdminPassword:
+                properties:
+                  secretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - secretKey
+                - secretName
+                type: object
+              externalDatabaseConnectStrings:
+                items:
+                  properties:
+                    hostName:
+                      type: string
+                    port:
+                      default: 1521
+                      format: int32
+                      type: integer
+                    secret:
+                      type: string
+                    secretKey:
+                      default: password
+                      type: string
+                    svcName:
+                      type: string
+                    userName:
+                      default: sys
+                      type: string
+                  required:
+                  - hostName
+                  - secret
+                  - svcName
+                  type: object
+                minItems: 2
+                type: array
               fastStartFailover:
+                type: boolean
+              isNonSingleInstanceDatabase:
                 type: boolean
               loadBalancer:
                 type: boolean
@@ -8993,6 +9043,8 @@ spec:
                 additionalProperties:
                   type: string
                 type: object
+              observerImage:
+                type: string
               primaryDatabaseRef:
                 type: string
               protectionMode:
@@ -9025,6 +9077,10 @@ spec:
                 type: object
               externalConnectString:
                 type: string
+              externalDgMapping:
+                additionalProperties:
+                  type: string
+                type: object
               fastStartFailover:
                 type: string
               primaryDatabase:
@@ -9049,7 +9105,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: dbcssystems.database.oracle.com
 spec:
   group: database.oracle.com
@@ -9933,7 +9989,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: lrests.database.oracle.com
 spec:
   group: database.oracle.com
@@ -10244,7 +10300,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: lrpdbs.database.oracle.com
 spec:
   group: database.oracle.com
@@ -10643,7 +10699,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: oraclerestarts.database.oracle.com
 spec:
   group: database.oracle.com
@@ -12064,7 +12120,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: oraclerestdataservices.database.oracle.com
 spec:
   group: database.oracle.com
@@ -12429,7 +12485,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: ordssrvs.database.oracle.com
 spec:
   group: database.oracle.com
@@ -12931,7 +12987,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: privateais.privateai.oracle.com
 spec:
   group: privateai.oracle.com
@@ -13276,7 +13332,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: racdatabases.database.oracle.com
 spec:
   group: database.oracle.com
@@ -14985,7 +15041,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: shardingdatabases.database.oracle.com
 spec:
   group: database.oracle.com
@@ -15314,8 +15370,6 @@ spec:
                 type: string
               isClone:
                 type: boolean
-              isDataGuard:
-                type: boolean
               isDebug:
                 type: boolean
               isDeleteOraPvc:
@@ -15553,6 +15607,35 @@ spec:
       name: shards
       priority: 1
       type: string
+    - jsonPath: .status.dg.state
+      name: DG
+      type: string
+    - jsonPath: .status.primary.sid
+      name: PrimarySID
+      type: string
+    - jsonPath: .status.primary.role
+      name: PrimaryRole
+      type: string
+    - jsonPath: .status.primary.openMode
+      name: PrimaryMode
+      priority: 1
+      type: string
+    - jsonPath: .status.primary.serviceName
+      name: PrimarySvc
+      priority: 1
+      type: string
+    - jsonPath: .status.primary.podIP
+      name: PrimaryIP
+      priority: 1
+      type: string
+    - jsonPath: .status.standby.sid
+      name: StandbySID
+      priority: 1
+      type: string
+    - jsonPath: .status.standby.openMode
+      name: StandbyMode
+      priority: 1
+      type: string
     name: v4
     schema:
       openAPIV3Schema:
@@ -15570,6 +15653,19 @@ spec:
               catalog:
                 items:
                   properties:
+                    agentPassword:
+                      type: string
+                    agentPort:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    autoVncr:
+                      enum:
+                      - "ON"
+                      - "OFF"
+                      - "on"
+                      - "off"
+                      type: string
                     catalogConfigData:
                       properties:
                         mountPath:
@@ -15577,6 +15673,28 @@ spec:
                         name:
                           type: string
                       type: object
+                    catalogDatabaseRef:
+                      properties:
+                        cdbName:
+                          type: string
+                        host:
+                          type: string
+                        pdbName:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
+                      type: object
+                    chunks:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    configname:
+                      type: string
+                    createAs:
+                      type: string
+                    encryption:
+                      type: string
                     envVars:
                       items:
                         properties:
@@ -15589,18 +15707,46 @@ spec:
                         - value
                         type: object
                       type: array
+                    forFederatedDatabase:
+                      type: boolean
+                    force:
+                      type: boolean
+                    gdsPool:
+                      type: string
                     imagePullPolicy:
                       type: string
                     isDelete:
                       type: string
                     label:
                       type: string
+                    multiwriter:
+                      type: boolean
                     name:
                       type: string
                     nodeSelector:
                       additionalProperties:
                         type: string
                       type: object
+                    pdbName:
+                      type: string
+                    primaryDatabaseRef:
+                      properties:
+                        cdbName:
+                          type: string
+                        host:
+                          type: string
+                        pdbName:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
+                      type: object
+                    protectMode:
+                      enum:
+                      - MAXPROTECTION
+                      - MAXAVAILABILITY
+                      - MAXPERFORMANCE
+                      type: string
                     pvAnnotations:
                       additionalProperties:
                         type: string
@@ -15610,6 +15756,25 @@ spec:
                         type: string
                       type: object
                     pvcName:
+                      type: string
+                    region:
+                      items:
+                        type: string
+                      type: array
+                    repFactor:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    repUnits:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    repl:
+                      enum:
+                      - DG
+                      - NATIVE
+                      - dg
+                      - native
                       type: string
                     resources:
                       properties:
@@ -15644,9 +15809,26 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    sdb:
+                      type: string
+                    shape:
+                      type: string
+                    sharding:
+                      enum:
+                      - SYSTEM
+                      - USER
+                      - COMPOSITE
+                      - system
+                      - user
+                      - composite
+                      type: string
                     storageSizeInGb:
                       format: int32
                       type: integer
+                    useExistingCatalog:
+                      type: boolean
+                    validateNetwork:
+                      type: boolean
                   required:
                   - name
                   type: object
@@ -15659,39 +15841,50 @@ spec:
                 type: string
               dbSecret:
                 properties:
-                  encryptionType:
-                    type: string
-                  keyFileMountLocation:
-                    type: string
-                  keyFileName:
-                    type: string
-                  keySecretName:
+                  dbAdmin:
+                    properties:
+                      passwordKey:
+                        type: string
+                      pkeyopt:
+                        type: string
+                      privateKeyKey:
+                        type: string
+                    required:
+                    - passwordKey
+                    type: object
+                  mountPath:
                     type: string
                   name:
                     type: string
-                  nsConfigMap:
-                    type: string
-                  nsSecret:
-                    type: string
-                  pwdFileMountLocation:
-                    type: string
-                  pwdFileName:
-                    type: string
-                  tdeKeyFileName:
-                    type: string
-                  tdePwdFileName:
-                    type: string
+                  tde:
+                    properties:
+                      passwordKey:
+                        type: string
+                      pkeyopt:
+                        type: string
+                      privateKeyKey:
+                        type: string
+                    required:
+                    - passwordKey
+                    type: object
                 required:
+                - dbAdmin
                 - name
-                - pwdFileName
-                - tdePwdFileName
                 type: object
+              enableTCPS:
+                type: boolean
               fssStorageClass:
                 type: string
               gsm:
                 items:
                   properties:
+                    catalog:
+                      type: string
                     directorName:
+                      type: string
+                    encryption:
+                      type: string
+                    endpoint:
                       type: string
                     envVars:
                       items:
@@ -15712,12 +15905,23 @@ spec:
                         name:
                           type: string
                       type: object
+                    gsmNum:
+                      format: int32
+                      type: integer
+                    gsmPrefix:
+                      type: string
                     imagePullPolicy:
                       type: string
                     isDelete:
                       type: string
                     label:
                       type: string
+                    listener:
+                      format: int32
+                      type: integer
+                    localons:
+                      format: int32
+                      type: integer
                     name:
                       type: string
                     nodeSelector:
@@ -15734,8 +15938,19 @@ spec:
                       type: object
                     pvcName:
                       type: string
+                    pwd:
+                      type: string
                     region:
                       type: string
+                    regions:
+                      items:
+                        type: string
+                      type: array
+                    remoteEndpoint:
+                      type: string
+                    remoteOns:
+                      format: int32
+                      type: integer
                     resources:
                       properties:
                         claims:
@@ -15769,9 +15984,15 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    shape:
+                      type: string
                     storageSizeInGb:
                       format: int32
                       type: integer
+                    traceLevel:
+                      type: string
+                    wpwd:
+                      type: string
                   required:
                   - name
                   type: object
@@ -15803,6 +16024,8 @@ spec:
                       type: string
                     failoverPrimary:
                       type: string
+                    failoverReadwrite:
+                      type: string
                     failoverRestore:
                       type: string
                     failoverRetry:
@@ -15825,11 +16048,17 @@ spec:
                       type: string
                     preferred:
                       type: string
-                    prferredAll:
+                    preferredAll:
                       type: string
                     regionFailover:
                       type: string
+                    replayInitTime:
+                      type: string
+                    resetState:
+                      type: string
                     retention:
+                      type: string
+                    rlbGoal:
                       type: string
                     role:
                       type: string
@@ -15843,45 +16072,19 @@ spec:
                       type: string
                     tableFamily:
                       type: string
+                    tafPolicy:
+                      type: string
                     tfaPolicy:
                       type: string
                   required:
                   - name
                   type: object
                 type: array
-              gsmShardGroup:
-                items:
-                  properties:
-                    deployAs:
-                      type: string
-                    name:
-                      type: string
-                    region:
-                      type: string
-                  required:
-                  - name
-                  type: object
-                type: array
-              gsmShardSpace:
-                items:
-                  properties:
-                    chunks:
-                      type: integer
-                    name:
-                      type: string
-                    protectionMode:
-                      type: string
-                    shardGroup:
-                      type: string
-                  required:
-                  - name
-                  type: object
-                type: array
+              imagePullPolicy:
+                type: string
               invitedNodeSubnetFlag:
                 type: string
               isClone:
-                type: boolean
-              isDataGuard:
                 type: boolean
               isDebug:
                 type: boolean
@@ -15914,17 +16117,121 @@ spec:
                 type: array
               readinessCheckPeriod:
                 type: integer
+              region:
+                items:
+                  properties:
+                    buddy:
+                      type: string
+                    name:
+                      type: string
+                  type: object
+                type: array
               replicationType:
                 type: string
               scriptsLocation:
                 type: string
+              service:
+                items:
+                  properties:
+                    available:
+                      type: string
+                    clbGoal:
+                      type: string
+                    commitOutcome:
+                      type: string
+                    drainTimeout:
+                      type: string
+                    dtp:
+                      type: string
+                    edition:
+                      type: string
+                    failoverDelay:
+                      type: string
+                    failoverMethod:
+                      type: string
+                    failoverPrimary:
+                      type: string
+                    failoverReadwrite:
+                      type: string
+                    failoverRestore:
+                      type: string
+                    failoverRetry:
+                      type: string
+                    failoverType:
+                      type: string
+                    gdsPool:
+                      type: string
+                    lag:
+                      type: integer
+                    locality:
+                      type: string
+                    name:
+                      type: string
+                    notification:
+                      type: string
+                    pdbName:
+                      type: string
+                    policy:
+                      type: string
+                    preferred:
+                      type: string
+                    preferredAll:
+                      type: string
+                    regionFailover:
+                      type: string
+                    replayInitTime:
+                      type: string
+                    resetState:
+                      type: string
+                    retention:
+                      type: string
+                    rlbGoal:
+                      type: string
+                    role:
+                      type: string
+                    ruMode:
+                      type: string
+                    sessionState:
+                      type: string
+                    sqlTransactionProfile:
+                      type: string
+                    stopOption:
+                      type: string
+                    tableFamily:
+                      type: string
+                    tafPolicy:
+                      type: string
+                    tfaPolicy:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
               serviceAccountName:
                 type: string
               shard:
                 items:
                   properties:
-                    deployAs:
+                    cdbName:
                       type: string
+                    cloneSchemas:
+                      type: boolean
+                    connect:
+                      type: string
+                    cpuThreshold:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    deployAs:
+                      enum:
+                      - PRIMARY
+                      - STANDBY
+                      - ACTIVE_STANDBY
+                      type: string
+                    diskThreshold:
+                      format: int32
+                      minimum: 1
+                      type: integer
                     envVars:
                       items:
                         properties:
@@ -15937,6 +16244,10 @@ spec:
                         - value
                         type: object
                       type: array
+                    force:
+                      type: boolean
+                    ggService:
+                      type: string
                     imagePullPolicy:
                       type: string
                     isDelete:
@@ -15948,11 +16259,27 @@ spec:
                       type: string
                     label:
                       type: string
+                    livenessCheckPeriod:
+                      type: integer
                     name:
                       type: string
                     nodeSelector:
                       additionalProperties:
                         type: string
+                      type: object
+                    pdbPreFix:
+                      type: string
+                    primaryDatabaseRef:
+                      properties:
+                        cdbName:
+                          type: string
+                        host:
+                          type: string
+                        pdbName:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
                       type: object
                     pvAnnotations:
                       additionalProperties:
@@ -15963,6 +16290,14 @@ spec:
                         type: string
                       type: object
                     pvcName:
+                      type: string
+                    pwd:
+                      type: string
+                    rack:
+                      type: string
+                    readinessCheckPeriod:
+                      type: integer
+                    replace:
                       type: string
                     resources:
                       properties:
@@ -15997,6 +16332,8 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    savename:
+                      type: boolean
                     shardConfigData:
                       properties:
                         mountPath:
@@ -16010,49 +16347,287 @@ spec:
                       type: string
                     shardSpace:
                       type: string
+                    standbyConfig:
+                      properties:
+                        primaryConnectStrings:
+                          items:
+                            type: string
+                          type: array
+                        primaryDatabaseRefs:
+                          items:
+                            properties:
+                              name:
+                                type: string
+                              namespace:
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                        primaryEndpoints:
+                          items:
+                            properties:
+                              cdbName:
+                                type: string
+                              connectString:
+                                type: string
+                              host:
+                                type: string
+                              pdbName:
+                                type: string
+                              port:
+                                format: int32
+                                type: integer
+                            type: object
+                          type: array
+                        protectionMode:
+                          enum:
+                          - MAXPROTECTION
+                          - MAXAVAILABILITY
+                          - MAXPERFORMANCE
+                          type: string
+                        sourceType:
+                          type: string
+                        standbyPerPrimary:
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        standbyTDEWalletRoot:
+                          type: string
+                        transportMode:
+                          enum:
+                          - SYNC
+                          - ASYNC
+                          type: string
+                        walletMountPath:
+                          type: string
+                        walletSecretRef:
+                          type: string
+                        walletZipFileKey:
+                          type: string
+                      type: object
                     storageSizeInGb:
                       format: int32
                       type: integer
+                    validateNetwork:
+                      type: boolean
                   required:
                   - name
                   type: object
                 type: array
-              shardBuddyRegion:
-                type: string
               shardConfigName:
                 type: string
+              shardGroup:
+                items:
+                  properties:
+                    deployAs:
+                      enum:
+                      - PRIMARY
+                      - STANDBY
+                      - ACTIVE_STANDBY
+                      type: string
+                    isDelete:
+                      type: string
+                    name:
+                      type: string
+                    region:
+                      type: string
+                    repFactor:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    ru_mode:
+                      enum:
+                      - READWRITE
+                      - READONLY
+                      type: string
+                    shardSpace:
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
               shardInfo:
                 items:
                   properties:
+                    envVars:
+                      items:
+                        properties:
+                          name:
+                            type: string
+                          value:
+                            type: string
+                        required:
+                        - name
+                        - value
+                        type: object
+                      type: array
+                    primaryDatabaseRef:
+                      properties:
+                        cdbName:
+                          type: string
+                        host:
+                          type: string
+                        pdbName:
+                          type: string
+                        port:
+                          format: int32
+                          type: integer
+                      type: object
                     replicas:
                       format: int32
                       type: integer
+                    resources:
+                      properties:
+                        claims:
+                          items:
+                            properties:
+                              name:
+                                type: string
+                              request:
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                          x-kubernetes-list-map-keys:
+                          - name
+                          x-kubernetes-list-type: map
+                        limits:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          type: object
+                        requests:
+                          additionalProperties:
+                            anyOf:
+                            - type: integer
+                            - type: string
+                            pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                            x-kubernetes-int-or-string: true
+                          type: object
+                      type: object
                     shape:
                       type: string
                     shardGroupDetails:
                       properties:
-                        ShardSpace:
-                          type: string
                         deployAs:
+                          enum:
+                          - PRIMARY
+                          - STANDBY
+                          - ACTIVE_STANDBY
                           type: string
                         isDelete:
+                          type: string
+                        name:
                           type: string
                         region:
                           type: string
                         repFactor:
+                          format: int32
+                          minimum: 1
                           type: integer
-                        shardGroupName:
+                        ru_mode:
+                          enum:
+                          - READWRITE
+                          - READONLY
                           type: string
+                        shardSpace:
+                          type: string
+                      required:
+                      - name
                       type: object
+                    shardNum:
+                      format: int32
+                      minimum: 1
+                      type: integer
                     shardPreFixName:
                       type: string
                     shardSpaceDetails:
                       properties:
-                        Chnuks:
+                        chunks:
+                          format: int32
+                          minimum: 1
                           type: integer
-                        protectMode:
+                        name:
                           type: string
-                        shardSpaceName:
+                        protectMode:
+                          enum:
+                          - MAXPROTECTION
+                          - MAXAVAILABILITY
+                          - MAXPERFORMANCE
+                          type: string
+                        repFactor:
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        repUnits:
+                          format: int32
+                          minimum: 1
+                          type: integer
+                      required:
+                      - name
+                      type: object
+                    standbyConfig:
+                      properties:
+                        primaryConnectStrings:
+                          items:
+                            type: string
+                          type: array
+                        primaryDatabaseRefs:
+                          items:
+                            properties:
+                              name:
+                                type: string
+                              namespace:
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
+                        primaryEndpoints:
+                          items:
+                            properties:
+                              cdbName:
+                                type: string
+                              connectString:
+                                type: string
+                              host:
+                                type: string
+                              pdbName:
+                                type: string
+                              port:
+                                format: int32
+                                type: integer
+                            type: object
+                          type: array
+                        protectionMode:
+                          enum:
+                          - MAXPROTECTION
+                          - MAXAVAILABILITY
+                          - MAXPERFORMANCE
+                          type: string
+                        sourceType:
+                          type: string
+                        standbyPerPrimary:
+                          format: int32
+                          minimum: 1
+                          type: integer
+                        standbyTDEWalletRoot:
+                          type: string
+                        transportMode:
+                          enum:
+                          - SYNC
+                          - ASYNC
+                          type: string
+                        walletMountPath:
+                          type: string
+                        walletSecretRef:
+                          type: string
+                        walletZipFileKey:
                           type: string
                       type: object
                     storageSizeInGb:
@@ -16062,15 +16637,42 @@ spec:
                   - shardPreFixName
                   type: object
                 type: array
-              shardRegion:
+              shardSpace:
                 items:
-                  type: string
+                  properties:
+                    chunks:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    name:
+                      type: string
+                    protectMode:
+                      enum:
+                      - MAXPROTECTION
+                      - MAXAVAILABILITY
+                      - MAXPERFORMANCE
+                      type: string
+                    repFactor:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                    repUnits:
+                      format: int32
+                      minimum: 1
+                      type: integer
+                  required:
+                  - name
+                  type: object
                 type: array
               shardingType:
                 type: string
               stagePvcName:
                 type: string
               storageClass:
+                type: string
+              tcpsCertRenewInterval:
+                type: integer
+              tcpsTlsSecret:
                 type: string
               tdeWalletPvc:
                 type: string
@@ -16129,6 +16731,39 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              dg:
+                properties:
+                  broker:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  details:
+                    additionalProperties:
+                      type: string
+                    type: object
+                  pairs:
+                    items:
+                      properties:
+                        message:
+                          type: string
+                        primaryConnectString:
+                          type: string
+                        primaryKey:
+                          type: string
+                        primarySource:
+                          type: string
+                        standbyShardName:
+                          type: string
+                        standbyShardNum:
+                          format: int32
+                          type: integer
+                        state:
+                          type: string
+                      type: object
+                    type: array
+                  state:
+                    type: string
+                type: object
               gsm:
                 properties:
                   details:
@@ -16164,7 +16799,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.20.1
   name: singleinstancedatabases.database.oracle.com
 spec:
   group: database.oracle.com
@@ -16258,6 +16893,17 @@ spec:
                 type: string
               enableTCPS:
                 type: boolean
+              externalPrimaryDatabaseRef:
+                properties:
+                  host:
+                    type: string
+                  pdbName:
+                    type: string
+                  port:
+                    type: integer
+                  sid:
+                    type: string
+                type: object
               flashBack:
                 type: boolean
               forceLog:
@@ -16596,6 +17242,8 @@ spec:
                 - clone
                 - truecache
                 type: string
+              dbFilesPvc:
+                type: string
               edition:
                 enum:
                 - standard
@@ -16605,6 +17253,17 @@ spec:
                 type: string
               enableTCPS:
                 type: boolean
+              externalPrimaryDatabaseRef:
+                properties:
+                  host:
+                    type: string
+                  pdbName:
+                    type: string
+                  port:
+                    type: integer
+                  sid:
+                    type: string
+                type: object
               flashBack:
                 type: boolean
               forceLog:
@@ -16652,11 +17311,15 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
+                  dbFilesPvc:
+                    type: string
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
+                    type: string
+                  stagePvc:
                     type: string
                   storageClass:
                     type: string
@@ -16696,6 +17359,36 @@ spec:
                 maxLength: 12
                 pattern: ^[a-zA-Z0-9]+$
                 type: string
+              stagePvc:
+                type: string
+              standbyConfig:
+                properties:
+                  primaryConnectString:
+                    type: string
+                  primaryDatabaseRef:
+                    type: string
+                  primaryDetails:
+                    properties:
+                      cdbName:
+                        type: string
+                      host:
+                        type: string
+                      pdbName:
+                        type: string
+                      port:
+                        type: integer
+                      sid:
+                        type: string
+                    type: object
+                  standbyTDEWalletRoot:
+                    type: string
+                  walletMountPath:
+                    type: string
+                  walletSecretRef:
+                    type: string
+                  walletZipFileKey:
+                    type: string
+                type: object
               tcpsCertRenewInterval:
                 type: string
               tcpsListenerPort:
@@ -16823,11 +17516,15 @@ spec:
                     type: string
                   datafilesVolumeName:
                     type: string
+                  dbFilesPvc:
+                    type: string
                   scriptsVolumeName:
                     type: string
                   setWritePermissions:
                     type: boolean
                   size:
+                    type: string
+                  stagePvc:
                     type: string
                   storageClass:
                     type: string
@@ -17378,6 +18075,67 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /mutate-observability-oracle-com-v1-databaseobserver
+  failurePolicy: Fail
+  name: mdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-dataguardbroker
+  failurePolicy: Fail
+  name: mdataguardbroker.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dataguardbrokers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v4-dbcssystem
+  failurePolicy: Fail
+  name: mdbcssystemv1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dbcssystems
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /mutate-database-oracle-com-v4-dbcssystem
   failurePolicy: Fail
   name: mdbcssystemv4.kb.io
@@ -17456,6 +18214,47 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-oraclerestdataservice
+  failurePolicy: Fail
+  name: moraclerestdataservice.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - oraclerestdataservices
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-privateai-oracle-com-v4-privateai
+  failurePolicy: Fail
+  name: mprivateai-v4.kb.io
+  rules:
+  - apiGroups:
+    - privateai.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - privateais
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
@@ -17501,121 +18300,19 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v1alpha1-dataguardbroker
+      path: /mutate-database-oracle-com-v4-singleinstancedatabase
   failurePolicy: Fail
-  name: mdataguardbroker.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - dataguardbrokers
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v4-dbcssystem
-  failurePolicy: Fail
-  name: mdbcssystemv1alpha1.kb.io
+  name: msingleinstancedatabasev4.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
     - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - dbcssystems
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v1alpha1-oraclerestdataservice
-  failurePolicy: Fail
-  name: moraclerestdataservice.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-database-oracle-com-v1alpha1-singleinstancedatabase
-  failurePolicy: Fail
-  name: msingleinstancedatabase.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
     operations:
     - CREATE
     - UPDATE
     resources:
     - singleinstancedatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-observability-oracle-com-v4-databaseobserver
-  failurePolicy: Fail
-  name: mdatabaseobserver.kb.io
-  rules:
-  - apiGroups:
-    - observability.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - databaseobservers
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /mutate-privateai-oracle-com-v4-privateai
-  failurePolicy: Fail
-  name: mprivateai-v4.kb.io
-  rules:
-  - apiGroups:
-    - privateai.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - privateais
   sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -17625,6 +18322,26 @@ metadata:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
   name: oracle-database-operator-validating-webhook-configuration
 webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase
+  failurePolicy: Fail
+  name: vautonomouscontainerdatabasev1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomouscontainerdatabases
+  sideEffects: None
 - admissionReviewVersions:
   - v1
   clientConfig:
@@ -17644,6 +18361,26 @@ webhooks:
     - UPDATE
     resources:
     - autonomouscontainerdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-autonomousdatabasebackup
+  failurePolicy: Fail
+  name: vautonomousdatabasebackupv1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabasebackups
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -17671,6 +18408,26 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-autonomousdatabaserestore
+  failurePolicy: Fail
+  name: vautonomousdatabaserestorev1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabaserestores
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v4-autonomousdatabaserestore
   failurePolicy: Fail
   name: vautonomousdatabaserestorev4.kb.io
@@ -17691,6 +18448,26 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-autonomousdatabase
+  failurePolicy: Fail
+  name: vautonomousdatabasev1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - autonomousdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /validate-database-oracle-com-v4-autonomousdatabase
   failurePolicy: Fail
   name: vautonomousdatabasev4.kb.io
@@ -17704,6 +18481,47 @@ webhooks:
     - UPDATE
     resources:
     - autonomousdatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-observability-oracle-com-v1alpha1-databaseobserver
+  failurePolicy: Fail
+  name: vdatabaseobserver.kb.io
+  rules:
+  - apiGroups:
+    - observability.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - databaseobservers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-dataguardbroker
+  failurePolicy: Fail
+  name: vdataguardbroker.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dataguardbrokers
   sideEffects: None
 - admissionReviewVersions:
   - v1
@@ -17791,6 +18609,47 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-oraclerestdataservice
+  failurePolicy: Fail
+  name: voraclerestdataservice.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - oraclerestdataservices
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-privateai-oracle-com-v4-privateai
+  failurePolicy: Fail
+  name: vprivateai-v4.kb.io
+  rules:
+  - apiGroups:
+    - privateai.oracle.com
+    apiVersions:
+    - v4
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - privateais
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
@@ -17833,187 +18692,25 @@ webhooks:
   sideEffects: None
 - admissionReviewVersions:
   - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-autonomouscontainerdatabase
-  failurePolicy: Fail
-  name: vautonomouscontainerdatabasev1alpha1.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomouscontainerdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-autonomousdatabasebackup
-  failurePolicy: Fail
-  name: vautonomousdatabasebackupv1alpha1.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabasebackups
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-autonomousdatabaserestore
-  failurePolicy: Fail
-  name: vautonomousdatabaserestorev1alpha1.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabaserestores
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-autonomousdatabase
-  failurePolicy: Fail
-  name: vautonomousdatabasev1alpha1.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - autonomousdatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
   - v1beta1
   clientConfig:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-dataguardbroker
+      path: /validate-database-oracle-com-v4-singleinstancedatabase
   failurePolicy: Fail
-  name: vdataguardbroker.kb.io
+  name: vsingleinstancedatabasev4.kb.io
   rules:
   - apiGroups:
     - database.oracle.com
     apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - dataguardbrokers
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-oraclerestdataservice
-  failurePolicy: Fail
-  name: voraclerestdataservice.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - oraclerestdataservices
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-database-oracle-com-v1alpha1-singleinstancedatabase
-  failurePolicy: Fail
-  name: vsingleinstancedatabase.kb.io
-  rules:
-  - apiGroups:
-    - database.oracle.com
-    apiVersions:
-    - v1alpha1
+    - v4
     operations:
     - CREATE
     - UPDATE
     - DELETE
     resources:
     - singleinstancedatabases
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-observability-oracle-com-v4-databaseobserver
-  failurePolicy: Fail
-  name: vdatabaseobserver.kb.io
-  rules:
-  - apiGroups:
-    - observability.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - databaseobservers
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: oracle-database-operator-webhook-service
-      namespace: oracle-database-operator-system
-      path: /validate-privateai-oracle-com-v4-privateai
-  failurePolicy: Fail
-  name: vprivateai-v4.kb.io
-  rules:
-  - apiGroups:
-    - privateai.oracle.com
-    apiVersions:
-    - v4
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - privateais
   sideEffects: None
 ---
 apiVersion: apps/v1
@@ -18041,7 +18738,7 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: ""
-        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:rac-operator-sa-template
+        image: phx.ocir.io/intsanjaysingh/db-repo/oracle/database:sharding-operator-mltp1
         imagePullPolicy: Always
         name: manager
         ports:

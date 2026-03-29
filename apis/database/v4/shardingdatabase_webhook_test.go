@@ -169,8 +169,8 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 				ReplicationType: "DG",
 				Shard: []ShardSpec{
 					{Name: "shard1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
-					{Name: "shard2", ShardSpace: "ss1", DeployAs: "STANDBY"},
-					{Name: "shard3", ShardSpace: "ss1", DeployAs: "ACTIVE_STANDBY"},
+					{Name: "shard2", ShardSpace: "ss1", DeployAs: "STANDBY", ShardRegion: "ashburn"},
+					{Name: "shard3", ShardSpace: "ss1", DeployAs: "ACTIVE_STANDBY", ShardRegion: "chicago"},
 				},
 			},
 		},
@@ -180,8 +180,8 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 				ShardingType:    "USER",
 				ReplicationType: "DG",
 				Shard: []ShardSpec{
-					{Name: "asb1", ShardSpace: "ss1", DeployAs: "STANDBY"},
-					{Name: "asb2", ShardSpace: "ss1", DeployAs: "ACTIVE_STANDBY"},
+					{Name: "asb1", ShardSpace: "ss1", DeployAs: "STANDBY", ShardRegion: "ashburn"},
+					{Name: "asb2", ShardSpace: "ss1", DeployAs: "ACTIVE_STANDBY", ShardRegion: "chicago"},
 				},
 				ShardInfo: []ShardingDetails{{
 					ShardPreFixName: "asb",
@@ -219,6 +219,31 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 			},
 			wantErr: "uses standbyConfig primary source; do not set local deployAs=PRIMARY",
 		},
+		{
+			name: "user DG rejects standby shard without shardRegion",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{
+					{Name: "shard1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+					{Name: "shard2", ShardSpace: "ss1", DeployAs: "STANDBY"},
+				},
+			},
+			wantErr: "requires shardRegion",
+		},
+		{
+			name: "user DG rejects duplicate standby shardRegion in same shardSpace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{
+					{Name: "shard1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+					{Name: "shard2", ShardSpace: "ss1", DeployAs: "STANDBY", ShardRegion: "ashburn"},
+					{Name: "shard3", ShardSpace: "ss1", DeployAs: "ACTIVE_STANDBY", ShardRegion: "ashburn"},
+				},
+			},
+			wantErr: "standby regions must be unique per shardSpace",
+		},
 	}
 
 	for _, tt := range tests {
@@ -254,7 +279,7 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "system DG allows one primary group and multiple standby groups within primary cardinality",
+			name: "system DG allows one primary group and one standby group within primary cardinality",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "SYSTEM",
 				ReplicationType: "DG",
@@ -277,6 +302,66 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							DeployAs: "STANDBY",
 						},
 					},
+				},
+			},
+		},
+		{
+			name: "system DG rejects standbyConfig with standbyPerPrimary greater than one",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "sba",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-ashburn",
+							Region:   "ashburn",
+							DeployAs: "STANDBY",
+						},
+						StandbyConfig: &StandbyConfig{
+							SourceType:            "ConnectString",
+							StandbyPerPrimary:     2,
+							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+						},
+					},
+				},
+			},
+			wantErr: "at most one standby per primary",
+		},
+		{
+			name: "system DG rejects multiple standby shardgroups for one primary shardgroup",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "prm",
+						ShardNum:        3,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-primary",
+							Region:   "phoenix",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "sba",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-ashburn",
+							Region:   "ashburn",
+							DeployAs: "STANDBY",
+						},
+					},
 					{
 						ShardPreFixName: "sbc",
 						ShardNum:        1,
@@ -288,6 +373,7 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 					},
 				},
 			},
+			wantErr: "only one standby shardGroup can be mapped to a primary shardGroup",
 		},
 		{
 			name: "system DG rejects multiple primary shardgroups",
@@ -470,6 +556,115 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 			},
 			wantErr: "Duplicate value",
 		},
+		{
+			name: "user DG allows single primary source in shardInfo standbyConfig per shardspace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "us1",
+						ShardNum:        1,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name: "ss1",
+						},
+						StandbyConfig: &StandbyConfig{
+							SourceType:            "ConnectString",
+							StandbyPerPrimary:     1,
+							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "user DG allows exactly one primary replica in shardInfo shardspace deployAs",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "up1",
+						ShardNum:        1,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name:     "ss1",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "us1",
+						ShardNum:        2,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name:     "ss1",
+							DeployAs: "STANDBY",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "user DG rejects shardInfo with multiple primary replicas in shardspace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "up1",
+						ShardNum:        2,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name:     "ss1",
+							DeployAs: "PRIMARY",
+						},
+					},
+				},
+			},
+			wantErr: "requires exactly one PRIMARY shard per shardSpace",
+		},
+		{
+			name: "user DG rejects shardInfo primary deployAs when standbyConfig external primary exists",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "up1",
+						ShardNum:        1,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name:     "ss1",
+							DeployAs: "PRIMARY",
+						},
+						StandbyConfig: &StandbyConfig{
+							SourceType:            "ConnectString",
+							StandbyPerPrimary:     1,
+							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
+						},
+					},
+				},
+			},
+			wantErr: "uses standbyConfig primary source; do not set shardSpaceDetails.deployAs=PRIMARY",
+		},
+		{
+			name: "user DG rejects multiple primary sources in shardInfo standbyConfig per shardspace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "us1",
+						ShardNum:        1,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name: "ss1",
+						},
+						StandbyConfig: &StandbyConfig{
+							SourceType:            "ConnectString",
+							StandbyPerPrimary:     1,
+							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL", "//ash-primary:1521/ASH_DGMGRL"},
+						},
+					},
+				},
+			},
+			wantErr: "at most one primary source per shardSpace",
+		},
 	}
 
 	for _, tt := range tests {
@@ -495,6 +690,36 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 				t.Fatalf("expected no validation errors, got: %v", errList)
 			}
 		})
+	}
+}
+
+func TestBuildDesiredShardSpecMapsUserShardSpaceDeployAs(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			ShardingType:    "USER",
+			ReplicationType: "DG",
+			ShardInfo: []ShardingDetails{
+				{
+					ShardPreFixName: "u",
+					ShardNum:        1,
+					ShardSpaceDetails: &ShardSpaceSpec{
+						Name:     "ss1",
+						DeployAs: "PRIMARY",
+					},
+				},
+			},
+		},
+	}
+
+	desired := cr.buildDesiredShardSpec()
+	if len(desired) != 1 {
+		t.Fatalf("expected 1 generated shard, got %d", len(desired))
+	}
+	if got := desired[0].ShardSpace; got != "ss1" {
+		t.Fatalf("expected shardSpace ss1, got %q", got)
+	}
+	if got := desired[0].DeployAs; got != "PRIMARY" {
+		t.Fatalf("expected deployAs PRIMARY from shardSpaceDetails, got %q", got)
 	}
 }
 

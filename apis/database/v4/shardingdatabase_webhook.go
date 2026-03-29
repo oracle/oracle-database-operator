@@ -620,6 +620,10 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	sysStandbyReplicaCountByGroup := map[string]int32{}
 	sysRegionByGroup := map[string]string{}
 	sysGroupByRegion := map[string]string{}
+	sysStandbyGroupSeen := map[string]bool{}
+	userPrimarySourceCountBySpace := map[string]int32{}
+	userPrimaryReplicaCountBySpace := map[string]int32{}
+	userSpaceSeenInShardInfo := map[string]bool{}
 	spacePrimaryGroupCount := map[string]int{}
 	compositePrimaryGroupsBySpace := map[string]map[string]bool{}
 	compositePrimaryReplicaCountBySpace := map[string]int32{}
@@ -724,6 +728,13 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 						sysPrimaryReplicaCountByGroup[groupKey] += replicaCount
 					case "STANDBY", "ACTIVE_STANDBY":
 						sysStandbyReplicaCountByGroup[groupKey] += replicaCount
+						sysStandbyGroupSeen[groupKey] = true
+						if cfg := r.Spec.ShardInfo[pindex].StandbyConfig; cfg != nil && cfg.StandbyPerPrimary > 1 {
+							validationErrs = append(validationErrs,
+								field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("standbyConfig").Child("standbyPerPrimary"),
+									cfg.StandbyPerPrimary,
+									"system sharding supports at most one standby per primary"))
+						}
 					}
 				}
 				if errs := validateUniquePrimarySourcesForSystemShardInfo(r, pindex); len(errs) > 0 {
@@ -738,6 +749,39 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardGroupDetails"),
 						sg,
 						"User-defined sharding: shardGroupDetails must be omitted when only shardSpaceDetails is used"))
+			}
+			if modeHint == modeUser {
+				deployAs := strings.ToUpper(strings.TrimSpace(ss.DeployAs))
+				if deployAs != "" && !isValidDeployAs(deployAs) {
+					validationErrs = append(validationErrs,
+						field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardSpaceDetails").Child("deployAs"),
+							ss.DeployAs,
+							"deployAs must be one of PRIMARY, STANDBY, ACTIVE_STANDBY"))
+				}
+				if replType == replNative && deployAs != "" {
+					validationErrs = append(validationErrs,
+						field.Forbidden(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardSpaceDetails").Child("deployAs"),
+							"deployAs is not supported for NATIVE replication"))
+				}
+			}
+			if modeHint == modeUser && replType == replDG {
+				spaceKey := strings.ToUpper(strings.TrimSpace(ss.Name))
+				if spaceKey != "" {
+					userSpaceSeenInShardInfo[spaceKey] = true
+					deployAs := strings.ToUpper(strings.TrimSpace(ss.DeployAs))
+					if deployAs == "" {
+						ss.DeployAs = "STANDBY"
+						deployAs = "STANDBY"
+					}
+					if deployAs == "PRIMARY" {
+						replicaCount := replicas
+						if replicaCount <= 0 {
+							replicaCount = 1
+						}
+						userPrimaryReplicaCountBySpace[spaceKey] += replicaCount
+					}
+					userPrimarySourceCountBySpace[spaceKey] += standbyConfigPrimaryCount(r.Spec.ShardInfo[pindex].StandbyConfig)
+				}
 			}
 
 		case hasGroup && hasSpace:
@@ -823,6 +867,12 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 								fmt.Sprintf("System sharding: standby shardGroup %s has %d standby databases but primary shardGroup %s has only %d primary databases", standbyGroup, standbyCount, primaryGroup, primaryReplicaCount)))
 					}
 				}
+				if len(sysStandbyGroupSeen) > 1 {
+					validationErrs = append(validationErrs,
+						field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardGroupDetails").Child("name"),
+							len(sysStandbyGroupSeen),
+							"System sharding: only one standby shardGroup can be mapped to a primary shardGroup"))
+				}
 			}
 		} else {
 			validationErrs = append(validationErrs,
@@ -859,6 +909,34 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 								fmt.Sprintf("Composite sharding: standby shardGroup %s in shardSpace %s has %d standby databases but primary shardGroup has only %d primary databases", standbyGroup, spaceKey, standbyCount, primaryReplicaCount)))
 					}
 				}
+			}
+		}
+	}
+
+	if replType == replDG && modeHint == modeUser {
+		for spaceKey, count := range userPrimarySourceCountBySpace {
+			if count > 1 {
+				validationErrs = append(validationErrs,
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("standbyConfig"),
+						spaceKey,
+						fmt.Sprintf("User sharding: shardInfo allows at most one primary source per shardSpace; shardSpace %s has %d", spaceKey, count)))
+			}
+		}
+		for spaceKey := range userSpaceSeenInShardInfo {
+			primaryReplicas := userPrimaryReplicaCountBySpace[spaceKey]
+			externalSources := userPrimarySourceCountBySpace[spaceKey]
+			if externalSources > 0 {
+				if primaryReplicas > 0 {
+					validationErrs = append(validationErrs,
+						field.Forbidden(field.NewPath("spec").Child("shardInfo"),
+							fmt.Sprintf("user sharding shardSpace %s uses standbyConfig primary source; do not set shardSpaceDetails.deployAs=PRIMARY", spaceKey)))
+				}
+				continue
+			}
+			if primaryReplicas != 1 {
+				validationErrs = append(validationErrs,
+					field.Required(field.NewPath("spec").Child("shardInfo"),
+						fmt.Sprintf("user sharding shardInfo requires exactly one PRIMARY shard per shardSpace; shardSpace %s has %d", spaceKey, primaryReplicas)))
 			}
 		}
 	}
@@ -1067,6 +1145,7 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 	userPrimaryBySpace := map[string]int{}
 	userSpaceSeen := map[string]bool{}
 	userExternalPrimaryBySpace := map[string]bool{}
+	userStandbyRegionsBySpace := map[string]map[string]bool{}
 
 	for i := range r.Spec.ShardInfo {
 		info := r.Spec.ShardInfo[i]
@@ -1124,6 +1203,25 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 				}
 				if deployAs == "PRIMARY" {
 					userPrimaryBySpace[spaceKey]++
+				} else if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
+					regionKey := strings.ToUpper(strings.TrimSpace(sh.ShardRegion))
+					if regionKey == "" {
+						validationErrs = append(validationErrs,
+							field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardRegion"),
+								fmt.Sprintf("user sharding standby shard in shardSpace %s requires shardRegion", spaceKey)))
+					} else {
+						if _, ok := userStandbyRegionsBySpace[spaceKey]; !ok {
+							userStandbyRegionsBySpace[spaceKey] = map[string]bool{}
+						}
+						if userStandbyRegionsBySpace[spaceKey][regionKey] {
+							validationErrs = append(validationErrs,
+								field.Invalid(field.NewPath("spec").Child("shard").Index(i).Child("shardRegion"),
+									sh.ShardRegion,
+									fmt.Sprintf("user sharding standby regions must be unique per shardSpace; shardSpace %s already uses region %s", spaceKey, regionKey)))
+						} else {
+							userStandbyRegionsBySpace[spaceKey][regionKey] = true
+						}
+					}
 				}
 			}
 
@@ -1348,6 +1446,9 @@ func (r *ShardingDatabase) initShardsSpec() error {
 
 			if r.Spec.ShardInfo[pindex].ShardSpaceDetails != nil {
 				r.Spec.Shard[shardIndex].ShardSpace = r.Spec.ShardInfo[pindex].ShardSpaceDetails.Name
+				if r.Spec.ShardInfo[pindex].ShardGroupDetails == nil {
+					r.Spec.Shard[shardIndex].DeployAs = r.Spec.ShardInfo[pindex].ShardSpaceDetails.DeployAs
+				}
 			}
 
 			// Apply shape defaults

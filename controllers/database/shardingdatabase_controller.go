@@ -3236,8 +3236,14 @@ func (r *ShardingDatabaseReconciler) findPrimaryForStandby(instance *databasev4.
 
 func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance *databasev4.ShardingDatabase) error {
 	shardingType := effectiveShardingTypeForConstraints(instance)
-	if shardingType != "SYSTEM" && (shardingType != "USER" || shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) != "DG") {
+	replType := shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType)
+	if shardingType != "SYSTEM" && shardingType != "COMPOSITE" && (shardingType != "USER" || replType != "DG") {
 		return nil
+	}
+	if shardingType == "COMPOSITE" {
+		if err := r.validateCompositeShardGroupUniqueness(instance); err != nil {
+			return err
+		}
 	}
 
 	if shardingType == "SYSTEM" {
@@ -3304,7 +3310,7 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 
 		return nil
 	}
-	if shardingType == "COMPOSITE" && shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG" {
+	if shardingType == "COMPOSITE" && replType == "DG" {
 		primaryGroupsBySpace := map[string]map[string]bool{}
 		primaryReplicaCountBySpace := map[string]int{}
 		standbyReplicaCountBySpaceGroup := map[string]map[string]int{}
@@ -3562,6 +3568,53 @@ func normalizeShardGroupKey(v string) string {
 
 func normalizeShardSpaceKey(v string) string {
 	return strings.ToUpper(strings.TrimSpace(v))
+}
+
+func (r *ShardingDatabaseReconciler) validateCompositeShardGroupUniqueness(instance *databasev4.ShardingDatabase) error {
+	groupToSpaceFromShard := map[string]string{}
+	for i := range instance.Spec.Shard {
+		s := instance.Spec.Shard[i]
+		if shardingv1.CheckIsDeleteFlag(s.IsDelete, instance, r.Log) {
+			continue
+		}
+		groupKey := normalizeShardGroupKey(s.ShardGroup)
+		spaceKey := normalizeShardSpaceKey(s.ShardSpace)
+		if groupKey == "" || spaceKey == "" {
+			continue
+		}
+		if prev, ok := groupToSpaceFromShard[groupKey]; ok && prev != spaceKey {
+			return fmt.Errorf(
+				"composite sharding: shardGroup %s is used in multiple shardSpaces (%s, %s); shardGroup names must be unique across shardSpaces",
+				groupKey, prev, spaceKey,
+			)
+		}
+		groupToSpaceFromShard[groupKey] = spaceKey
+	}
+
+	groupToSpaceFromShardInfo := map[string]string{}
+	for i := range instance.Spec.ShardInfo {
+		info := instance.Spec.ShardInfo[i]
+		if info.ShardGroupDetails == nil || info.ShardSpaceDetails == nil {
+			continue
+		}
+		if shardingv1.CheckIsDeleteFlag(info.ShardGroupDetails.IsDelete, instance, r.Log) {
+			continue
+		}
+		groupKey := normalizeShardGroupKey(info.ShardGroupDetails.Name)
+		spaceKey := normalizeShardSpaceKey(info.ShardSpaceDetails.Name)
+		if groupKey == "" || spaceKey == "" {
+			continue
+		}
+		if prev, ok := groupToSpaceFromShardInfo[groupKey]; ok && prev != spaceKey {
+			return fmt.Errorf(
+				"composite sharding: shardInfo shardGroup %s is used in multiple shardSpaces (%s, %s); shardGroup names must be unique across shardSpaces",
+				groupKey, prev, spaceKey,
+			)
+		}
+		groupToSpaceFromShardInfo[groupKey] = spaceKey
+	}
+
+	return nil
 }
 
 func systemPrimaryShardsSorted(instance *databasev4.ShardingDatabase, r *ShardingDatabaseReconciler) (string, []*databasev4.ShardSpec, error) {
