@@ -645,6 +645,12 @@ func (r *ShardingDatabaseReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.kubeConfig == nil {
 		r.kubeConfig = rest.CopyConfig(cfg)
 	}
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
+	}
+	if r.Recorder == nil {
+		r.Recorder = mgr.GetEventRecorderFor("ShardingDatabase")
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&databasev4.ShardingDatabase{}).
@@ -4035,7 +4041,12 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 	}
 
 	latest := &databasev4.ShardingDatabase{}
-	if err := r.APIReader.Get(
+	reader := r.APIReader
+	if reader == nil {
+		// Fallback for deployments/tests where APIReader is not injected.
+		reader = r.Client
+	}
+	if err := reader.Get(
 		context.Background(),
 		types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace},
 		latest,
