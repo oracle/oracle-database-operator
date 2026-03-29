@@ -39,6 +39,7 @@
 package v4
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -96,6 +97,7 @@ type SingleInstanceDatabaseSpec struct {
 	ConvertToSnapshotStandby bool   `json:"convertToSnapshotStandby,omitempty"`
 	DbFilesPvc               string `json:"dbFilesPvc,omitempty"`
 	StagePvc                 string `json:"stagePvc,omitempty"`
+	EnvVars                  []corev1.EnvVar `json:"envVars,omitempty"`
 }
 
 type SingleInstanceDatabaseResource struct {
@@ -167,8 +169,10 @@ type SingleInstanceDatabaseImage struct {
 type SingleInstanceDatabaseAdminPassword struct {
 	SecretName string `json:"secretName"`
 	// +kubebuilder:default:="oracle_pwd"
-	SecretKey  string `json:"secretKey,omitempty"`
-	KeepSecret *bool  `json:"keepSecret,omitempty"`
+	SecretKey      string `json:"secretKey,omitempty"`
+	KeepSecret     *bool  `json:"keepSecret,omitempty"`
+	MountPath      string `json:"mountPath,omitempty"`
+	SkipInitWallet bool   `json:"skipInitWallet,omitempty"`
 }
 
 // SingleInstanceDatabaseStatus defines the observed state of SingleInstanceDatabase

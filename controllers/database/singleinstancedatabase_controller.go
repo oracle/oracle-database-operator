@@ -998,7 +998,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				/* Wallet only for edition barring express and free editions, non-prebuiltDB */
 				// Run init-wallet for standby as well, so DBCA can consume seeded DB credentials from wallet.
 				// standbyConfig.walletSecretRef is for TDE wallet and should not disable DB credential wallet seeding.
-				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB {
+				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB && !m.Spec.AdminPassword.SkipInitWallet {
 					initContainers = append(initContainers, corev1.Container{
 						Name:  "init-wallet",
 						Image: m.Spec.Image.PullFrom,
@@ -1118,10 +1118,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name:      "datafiles-vol",
 						})
 					}
-					if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB {
-						// mounts pwd as secrets for express edition or prebuilt db
+					if m.Spec.Edition == "express" || m.Spec.Edition == "free" || m.Spec.Image.PrebuiltDB || m.Spec.AdminPassword.SkipInitWallet {
+						// mounts pwd as secrets for express edition, prebuilt db, or explicit secret-mount mode
 						mounts = append(mounts, corev1.VolumeMount{
-							MountPath: "/run/secrets/oracle_pwd",
+							MountPath: GetAdminPasswordSecretMountPath(m),
 							ReadOnly:  true,
 							Name:      "oracle-pwd-vol",
 							SubPath:   "oracle_pwd",
@@ -1169,249 +1169,249 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 					}
 					return mounts
 				}(),
-				Env: func() []corev1.EnvVar {
-					if m.Spec.CreateAs == "truecache" {
-						return []corev1.EnvVar{
-							{
-								Name:  "SVC_HOST",
-								Value: m.Name,
-							},
-							{
-								Name:  "SVC_PORT",
-								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
-							},
-							{
-								Name:  "ORACLE_CHARACTERSET",
-								Value: m.Spec.Charset,
-							},
-							{
-								Name:  "ORACLE_EDITION",
-								Value: m.Spec.Edition,
-							},
-							{
-								Name:  "TRUE_CACHE",
-								Value: "true",
-							},
-							{
-								Name: "PRIMARY_DB_CONN_STR",
-								Value: func() string {
-									if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
-										return rp.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + rp.Spec.Sid
-									}
-									return m.Spec.PrimaryDatabaseRef
-								}(),
-							},
-							{
-								Name: "PDB_TC_SVCS",
-								Value: func() string {
-									return strings.Join(m.Spec.TrueCacheServices, ";")
-								}(),
-							},
-							{
-								Name:  "ORACLE_HOSTNAME",
-								Value: m.Name,
-							},
+					Env: func() []corev1.EnvVar {
+						if m.Spec.CreateAs == "truecache" {
+							return mergeSIDBEnvVars([]corev1.EnvVar{
+								{
+									Name:  "SVC_HOST",
+									Value: m.Name,
+								},
+								{
+									Name:  "SVC_PORT",
+									Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
+								},
+								{
+									Name:  "ORACLE_CHARACTERSET",
+									Value: m.Spec.Charset,
+								},
+								{
+									Name:  "ORACLE_EDITION",
+									Value: m.Spec.Edition,
+								},
+								{
+									Name:  "TRUE_CACHE",
+									Value: "true",
+								},
+								{
+									Name: "PRIMARY_DB_CONN_STR",
+									Value: func() string {
+										if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+											return rp.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + rp.Spec.Sid
+										}
+										return m.Spec.PrimaryDatabaseRef
+									}(),
+								},
+								{
+									Name: "PDB_TC_SVCS",
+									Value: func() string {
+										return strings.Join(m.Spec.TrueCacheServices, ";")
+									}(),
+								},
+								{
+									Name:  "ORACLE_HOSTNAME",
+									Value: m.Name,
+								},
+							}, m.Spec.EnvVars)
 						}
-					}
-					// adding XE support, useful for dev/test/CI-CD
-					if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
-						return []corev1.EnvVar{
-							{
-								Name:  "SVC_HOST",
-								Value: m.Name,
-							},
-							{
-								Name:  "SVC_PORT",
-								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
-							},
-							{
-								Name:  "ORACLE_CHARACTERSET",
-								Value: m.Spec.Charset,
-							},
-							{
-								Name:  "ORACLE_EDITION",
-								Value: m.Spec.Edition,
-							},
+						// adding XE support, useful for dev/test/CI-CD
+						if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
+							return mergeSIDBEnvVars([]corev1.EnvVar{
+								{
+									Name:  "SVC_HOST",
+									Value: m.Name,
+								},
+								{
+									Name:  "SVC_PORT",
+									Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
+								},
+								{
+									Name:  "ORACLE_CHARACTERSET",
+									Value: m.Spec.Charset,
+								},
+								{
+									Name:  "ORACLE_EDITION",
+									Value: m.Spec.Edition,
+								},
+							}, m.Spec.EnvVars)
 						}
-					}
-					if m.Spec.CreateAs == "clone" {
-						// Clone DB use-case
-						return []corev1.EnvVar{
-							{
-								Name:  "SVC_HOST",
-								Value: m.Name,
-							},
-							{
-								Name:  "SVC_PORT",
-								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
-							},
-							{
-								Name:  "ORACLE_SID",
-								Value: strings.ToUpper(m.Spec.Sid),
-							},
-							{
-								Name:  "WALLET_DIR",
-								Value: walletDir,
-							},
-							{
-								Name: "PRIMARY_DB_CONN_STR",
-								Value: func() string {
-									if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
-										return n.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + n.Spec.Sid
-									}
-									return m.Spec.PrimaryDatabaseRef
-								}(),
-							},
-							CreateOracleHostnameEnvVarObj(m, n),
-							{
-								Name:  "CLONE_DB",
-								Value: "true",
-							},
-							{
-								Name:  "SKIP_DATAPATCH",
-								Value: "true",
-							},
-						}
+						if m.Spec.CreateAs == "clone" {
+							// Clone DB use-case
+							return mergeSIDBEnvVars([]corev1.EnvVar{
+								{
+									Name:  "SVC_HOST",
+									Value: m.Name,
+								},
+								{
+									Name:  "SVC_PORT",
+									Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
+								},
+								{
+									Name:  "ORACLE_SID",
+									Value: strings.ToUpper(m.Spec.Sid),
+								},
+								{
+									Name:  "WALLET_DIR",
+									Value: walletDir,
+								},
+								{
+									Name: "PRIMARY_DB_CONN_STR",
+									Value: func() string {
+										if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+											return n.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + n.Spec.Sid
+										}
+										return m.Spec.PrimaryDatabaseRef
+									}(),
+								},
+								CreateOracleHostnameEnvVarObj(m, n),
+								{
+									Name:  "CLONE_DB",
+									Value: "true",
+								},
+								{
+									Name:  "SKIP_DATAPATCH",
+									Value: "true",
+								},
+							}, m.Spec.EnvVars)
 
-					} else if m.Spec.CreateAs == "standby" {
-						standbyEnv := []corev1.EnvVar{
-							{
-								Name:  "SVC_HOST",
-								Value: m.Name,
-							},
-							{
-								Name:  "SVC_PORT",
-								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
-							},
-							{
-								Name:  "ORACLE_SID",
-								Value: strings.ToUpper(m.Spec.Sid),
-							},
-							{
-								Name:  "WALLET_DIR",
-								Value: walletDir,
-							},
-							{
-								Name:  "PRIMARY_DB_CONN_STR",
-								Value: GetPrimaryDatabaseConnectString(m, rp),
-							},
-							{
-								Name:  "PRIMARY_SID",
-								Value: GetPrimaryDatabaseSid(m, rp),
-							},
-							{
-								Name:  "PRIMARY_IP",
-								Value: GetPrimaryDatabaseHost(m, rp),
-							},
-							{
-								Name:  "PRIMARY_DB_PORT",
-								Value: strconv.Itoa(GetPrimaryDatabasePort(m)),
-							},
-							{
-								Name:  "CREATE_PDB",
-								Value: ShouldCreatePDBFromPrimary(m, rp),
-							},
-							{
-								Name: "ORACLE_HOSTNAME",
-								ValueFrom: &corev1.EnvVarSource{
-									FieldRef: &corev1.ObjectFieldSelector{
-										FieldPath: "status.podIP",
+						} else if m.Spec.CreateAs == "standby" {
+							standbyEnv := []corev1.EnvVar{
+								{
+									Name:  "SVC_HOST",
+									Value: m.Name,
+								},
+								{
+									Name:  "SVC_PORT",
+									Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
+								},
+								{
+									Name:  "ORACLE_SID",
+									Value: strings.ToUpper(m.Spec.Sid),
+								},
+								{
+									Name:  "WALLET_DIR",
+									Value: walletDir,
+								},
+								{
+									Name:  "PRIMARY_DB_CONN_STR",
+									Value: GetPrimaryDatabaseConnectString(m, rp),
+								},
+								{
+									Name:  "PRIMARY_SID",
+									Value: GetPrimaryDatabaseSid(m, rp),
+								},
+								{
+									Name:  "PRIMARY_IP",
+									Value: GetPrimaryDatabaseHost(m, rp),
+								},
+								{
+									Name:  "PRIMARY_DB_PORT",
+									Value: strconv.Itoa(GetPrimaryDatabasePort(m)),
+								},
+								{
+									Name:  "CREATE_PDB",
+									Value: ShouldCreatePDBFromPrimary(m, rp),
+								},
+								{
+									Name: "ORACLE_HOSTNAME",
+									ValueFrom: &corev1.EnvVarSource{
+										FieldRef: &corev1.ObjectFieldSelector{
+											FieldPath: "status.podIP",
+										},
 									},
 								},
+								{
+									Name:  "STANDBY_DB",
+									Value: "true",
+								},
+								{
+									Name:  "SKIP_DATAPATCH",
+									Value: "true",
+								},
+							}
+							if walletSecretName := GetStandbyWalletSecretRef(m); walletSecretName != "" {
+								standbyEnv = append(standbyEnv,
+									corev1.EnvVar{Name: "STANDBY_TDE_WALLET_SECRET", Value: walletSecretName},
+									corev1.EnvVar{Name: "STANDBY_TDE_WALLET_MOUNT_PATH", Value: GetStandbyWalletMountPath(m)},
+									corev1.EnvVar{Name: "STANDBY_TDE_WALLET_ROOT", Value: GetStandbyTDEWalletRoot(m)},
+								)
+								if zipKey := GetStandbyWalletZipFileKey(m); zipKey != "" {
+									standbyEnv = append(standbyEnv, corev1.EnvVar{
+										Name:  "STANDBY_TDE_WALLET_ZIP_PATH",
+										Value: strings.TrimRight(GetStandbyWalletMountPath(m), "/") + "/standby-wallet.zip",
+									})
+								}
+							}
+							return mergeSIDBEnvVars(standbyEnv, m.Spec.EnvVars)
+						}
+
+						return mergeSIDBEnvVars([]corev1.EnvVar{
+							{
+								Name:  "SVC_HOST",
+								Value: m.Name,
 							},
 							{
-								Name:  "STANDBY_DB",
-								Value: "true",
+								Name:  "SVC_PORT",
+								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
+							},
+							{
+								Name: "CREATE_PDB",
+								Value: func() string {
+									if m.Spec.Pdbname != "" {
+										return "true"
+									}
+									return "false"
+								}(),
+							},
+							{
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
+							},
+							{
+								Name: "WALLET_DIR",
+								Value: func() string {
+									if m.Spec.Image.PrebuiltDB {
+										return "" // No wallets for prebuilt DB
+									}
+									return walletDir
+								}(),
+							},
+							{
+								Name:  "ORACLE_PDB",
+								Value: m.Spec.Pdbname,
+							},
+							{
+								Name:  "ORACLE_CHARACTERSET",
+								Value: m.Spec.Charset,
+							},
+							{
+								Name:  "ORACLE_EDITION",
+								Value: m.Spec.Edition,
+							},
+							{
+								Name: "INIT_SGA_SIZE",
+								Value: func() string {
+									if m.Spec.InitParams != nil && m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
+										return strconv.Itoa(m.Spec.InitParams.SgaTarget)
+									}
+									return ""
+								}(),
+							},
+							{
+								Name: "INIT_PGA_SIZE",
+								Value: func() string {
+									if m.Spec.InitParams != nil && m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
+										return strconv.Itoa(m.Spec.InitParams.PgaAggregateTarget)
+									}
+									return ""
+								}(),
 							},
 							{
 								Name:  "SKIP_DATAPATCH",
 								Value: "true",
 							},
-						}
-						if walletSecretName := GetStandbyWalletSecretRef(m); walletSecretName != "" {
-							standbyEnv = append(standbyEnv,
-								corev1.EnvVar{Name: "STANDBY_TDE_WALLET_SECRET", Value: walletSecretName},
-								corev1.EnvVar{Name: "STANDBY_TDE_WALLET_MOUNT_PATH", Value: GetStandbyWalletMountPath(m)},
-								corev1.EnvVar{Name: "STANDBY_TDE_WALLET_ROOT", Value: GetStandbyTDEWalletRoot(m)},
-							)
-							if zipKey := GetStandbyWalletZipFileKey(m); zipKey != "" {
-								standbyEnv = append(standbyEnv, corev1.EnvVar{
-									Name:  "STANDBY_TDE_WALLET_ZIP_PATH",
-									Value: strings.TrimRight(GetStandbyWalletMountPath(m), "/") + "/standby-wallet.zip",
-								})
-							}
-						}
-						return standbyEnv
-					}
+						}, m.Spec.EnvVars)
 
-					return []corev1.EnvVar{
-						{
-							Name:  "SVC_HOST",
-							Value: m.Name,
-						},
-						{
-							Name:  "SVC_PORT",
-							Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
-						},
-						{
-							Name: "CREATE_PDB",
-							Value: func() string {
-								if m.Spec.Pdbname != "" {
-									return "true"
-								}
-								return "false"
-							}(),
-						},
-						{
-							Name:  "ORACLE_SID",
-							Value: strings.ToUpper(m.Spec.Sid),
-						},
-						{
-							Name: "WALLET_DIR",
-							Value: func() string {
-								if m.Spec.Image.PrebuiltDB {
-									return "" // No wallets for prebuilt DB
-								}
-								return walletDir
-							}(),
-						},
-						{
-							Name:  "ORACLE_PDB",
-							Value: m.Spec.Pdbname,
-						},
-						{
-							Name:  "ORACLE_CHARACTERSET",
-							Value: m.Spec.Charset,
-						},
-						{
-							Name:  "ORACLE_EDITION",
-							Value: m.Spec.Edition,
-						},
-						{
-							Name: "INIT_SGA_SIZE",
-							Value: func() string {
-								if m.Spec.InitParams != nil && m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
-									return strconv.Itoa(m.Spec.InitParams.SgaTarget)
-								}
-								return ""
-							}(),
-						},
-						{
-							Name: "INIT_PGA_SIZE",
-							Value: func() string {
-								if m.Spec.InitParams != nil && m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
-									return strconv.Itoa(m.Spec.InitParams.PgaAggregateTarget)
-								}
-								return ""
-							}(),
-						},
-						{
-							Name:  "SKIP_DATAPATCH",
-							Value: "true",
-						},
-					}
-
-				}(),
+					}(),
 
 				Resources: func() corev1.ResourceRequirements {
 					var resourceReqRequests corev1.ResourceList = corev1.ResourceList{}
@@ -1595,14 +1595,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 				return &metav1.LabelSelector{
 					MatchLabels: func() map[string]string {
 						ns := make(map[string]string)
-						if len(m.Spec.NodeSelector) != 0 {
-							for key, value := range m.Spec.NodeSelector {
-								ns[key] = value
+							if len(m.Spec.NodeSelector) != 0 {
+								for key, value := range m.Spec.NodeSelector {
+									ns[key] = value
+								}
 							}
-						}
-						return ns
-					}(),
-				}
+							return ns
+						}(),
+					}
 			}(),
 		},
 	}
@@ -2356,6 +2356,10 @@ func (r *SingleInstanceDatabaseReconciler) createWallet(m *dbapi.SingleInstanceD
 
 	// No Wallet for Pre-built db
 	if m.Spec.Image.PrebuiltDB {
+		return requeueN, nil
+	}
+	// Explicit secret-mount mode bypasses wallet seeding.
+	if m.Spec.AdminPassword.SkipInitWallet {
 		return requeueN, nil
 	}
 
@@ -4517,6 +4521,46 @@ func GetWalletDirFromSid(sid string) string {
 		return "/opt/oracle/oradata/dbconfig/${ORACLE_SID}/.wallet"
 	}
 	return fmt.Sprintf("/opt/oracle/oradata/dbconfig/%s/.wallet", trimmedSid)
+}
+
+func GetAdminPasswordSecretMountRoot(m *dbapi.SingleInstanceDatabase) string {
+	if m == nil {
+		return "/run/secrets"
+	}
+	if mountRoot := strings.TrimSpace(m.Spec.AdminPassword.MountPath); mountRoot != "" {
+		return strings.TrimRight(mountRoot, "/")
+	}
+	return "/run/secrets"
+}
+
+func GetAdminPasswordSecretMountPath(m *dbapi.SingleInstanceDatabase) string {
+	return GetAdminPasswordSecretMountRoot(m) + "/oracle_pwd"
+}
+
+func mergeSIDBEnvVars(base []corev1.EnvVar, extra []corev1.EnvVar) []corev1.EnvVar {
+	if len(extra) == 0 {
+		return base
+	}
+	merged := append([]corev1.EnvVar{}, base...)
+	indexByName := make(map[string]int, len(merged))
+	for i := range merged {
+		if merged[i].Name != "" {
+			indexByName[merged[i].Name] = i
+		}
+	}
+	for _, env := range extra {
+		if env.Name == "" {
+			merged = append(merged, env)
+			continue
+		}
+		if idx, ok := indexByName[env.Name]; ok {
+			merged[idx] = env
+			continue
+		}
+		indexByName[env.Name] = len(merged)
+		merged = append(merged, env)
+	}
+	return merged
 }
 
 func ValidateStandbyWalletSecretRef(r *SingleInstanceDatabaseReconciler, m *dbapi.SingleInstanceDatabase, ctx context.Context) error {
