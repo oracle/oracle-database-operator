@@ -995,11 +995,10 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					})
 				}
-				isStandby := m.Spec.CreateAs == "standby"
-				useStandbyWalletSecret := strings.TrimSpace(GetStandbyWalletSecretRef(m)) != "" && isStandby
 				/* Wallet only for edition barring express and free editions, non-prebuiltDB */
-				// For standby, avoid init-wallet to prevent cross-container wallet password mismatch.
-				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB && !isStandby && !useStandbyWalletSecret {
+				// Run init-wallet for standby as well, so DBCA can consume seeded DB credentials from wallet.
+				// standbyConfig.walletSecretRef is for TDE wallet and should not disable DB credential wallet seeding.
+				if (m.Spec.Edition != "express" && m.Spec.Edition != "free") && !m.Spec.Image.PrebuiltDB {
 					initContainers = append(initContainers, corev1.Container{
 						Name:  "init-wallet",
 						Image: m.Spec.Image.PullFrom,
