@@ -1146,6 +1146,7 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 	userSpaceSeen := map[string]bool{}
 	userExternalPrimaryBySpace := map[string]bool{}
 	userStandbyRegionsBySpace := map[string]map[string]bool{}
+	compositeGroupSpaceByName := map[string]string{}
 
 	for i := range r.Spec.ShardInfo {
 		info := r.Spec.ShardInfo[i]
@@ -1158,6 +1159,23 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 		}
 		if standbyConfigPrimaryCount(info.StandbyConfig) > 0 {
 			userExternalPrimaryBySpace[spaceKey] = true
+		}
+		if modeHint == modeComposite && info.ShardGroupDetails != nil {
+			if strings.EqualFold(strings.TrimSpace(info.ShardGroupDetails.IsDelete), deleteStateEnable) {
+				continue
+			}
+			groupKey := strings.ToUpper(strings.TrimSpace(info.ShardGroupDetails.Name))
+			if groupKey == "" {
+				continue
+			}
+			if prevSpace, ok := compositeGroupSpaceByName[groupKey]; ok && prevSpace != spaceKey {
+				validationErrs = append(validationErrs,
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Index(i).Child("shardGroupDetails").Child("name"),
+						info.ShardGroupDetails.Name,
+						fmt.Sprintf("composite sharding shardGroup names must be unique across shardSpaces; shardGroup %s is used in both %s and %s", groupKey, prevSpace, spaceKey)))
+			} else {
+				compositeGroupSpaceByName[groupKey] = spaceKey
+			}
 		}
 	}
 
@@ -1225,41 +1243,45 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 				}
 			}
 
-		case modeSystem:
-			if !hasGroup {
-				validationErrs = append(validationErrs,
-					field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
-						"system sharding add shard requires shardGroup"))
-			}
-			if hasSpace {
-				validationErrs = append(validationErrs,
-					field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("shardSpace"),
-						"system sharding add shard cannot use shardSpace directly"))
-			}
-			if hasGroup && deployAs != "" {
-				validationErrs = append(validationErrs,
-					field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("deployAs"),
-						"deployAs cannot be combined with shardGroup in system sharding"))
-			}
+			case modeSystem:
+				if !hasGroup {
+					validationErrs = append(validationErrs,
+						field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
+							"system sharding add shard requires shardGroup"))
+				}
+				if hasSpace {
+					validationErrs = append(validationErrs,
+						field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("shardSpace"),
+							"system sharding add shard cannot use shardSpace directly"))
+				}
 
-		case modeComposite:
-			if !hasGroup {
-				validationErrs = append(validationErrs,
+			case modeComposite:
+				if !hasGroup {
+					validationErrs = append(validationErrs,
 					field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
 						"composite sharding add shard requires shardGroup"))
 			}
-			if !hasSpace {
-				validationErrs = append(validationErrs,
-					field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardSpace"),
-						"composite sharding add shard requires shardSpace"))
-			}
-			if hasGroup && deployAs != "" {
-				validationErrs = append(validationErrs,
-					field.Forbidden(field.NewPath("spec").Child("shard").Index(i).Child("deployAs"),
-						"deployAs cannot be combined with shardGroup in composite sharding"))
+				if !hasSpace {
+					validationErrs = append(validationErrs,
+						field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardSpace"),
+							"composite sharding add shard requires shardSpace"))
+				}
+				if hasGroup && hasSpace && !strings.EqualFold(strings.TrimSpace(sh.IsDelete), deleteStateEnable) {
+					groupKey := strings.ToUpper(strings.TrimSpace(sh.ShardGroup))
+					spaceKey := strings.ToUpper(strings.TrimSpace(sh.ShardSpace))
+					if groupKey != "" && spaceKey != "" {
+						if prevSpace, ok := compositeGroupSpaceByName[groupKey]; ok && prevSpace != spaceKey {
+							validationErrs = append(validationErrs,
+								field.Invalid(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
+									sh.ShardGroup,
+									fmt.Sprintf("composite sharding shardGroup names must be unique across shardSpaces; shardGroup %s is used in both %s and %s", groupKey, prevSpace, spaceKey)))
+						} else {
+							compositeGroupSpaceByName[groupKey] = spaceKey
+						}
+					}
+				}
 			}
 		}
-	}
 
 	if replType == replDG && modeHint == modeUser {
 		for spaceKey := range userSpaceSeen {

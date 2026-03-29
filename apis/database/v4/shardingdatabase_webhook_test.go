@@ -73,19 +73,64 @@ func TestValidateShardOperationRules(t *testing.T) {
 			},
 			wantErr: "not supported for NATIVE replication",
 		},
-		{
-			name: "system mode forbids deployAs with shardGroup",
-			spec: ShardingDatabaseSpec{
-				ShardingType:    "SYSTEM",
-				ReplicationType: "DG",
-				Shard: []ShardSpec{{
-					Name:       "shard1",
-					ShardGroup: "sg1",
-					DeployAs:   "PRIMARY",
-				}},
+			{
+				name: "system mode allows deployAs with shardGroup",
+				spec: ShardingDatabaseSpec{
+					ShardingType:    "SYSTEM",
+					ReplicationType: "DG",
+					Shard: []ShardSpec{{
+						Name:       "shard1",
+						ShardGroup: "sg1",
+						DeployAs:   "PRIMARY",
+					}},
+				},
 			},
-			wantErr: "cannot be combined with shardGroup",
-		},
+			{
+				name: "composite mode rejects reusing shardGroup name across shardSpaces in shard",
+				spec: ShardingDatabaseSpec{
+					ShardingType:    "COMPOSITE",
+					ReplicationType: "DG",
+					Shard: []ShardSpec{
+						{Name: "s1", ShardGroup: "sg1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+						{Name: "s2", ShardGroup: "sg1", ShardSpace: "ss2", DeployAs: "PRIMARY"},
+					},
+				},
+				wantErr: "must be unique across shardSpaces",
+			},
+			{
+				name: "composite mode rejects reusing shardGroup name across shardSpaces in shardInfo",
+				spec: ShardingDatabaseSpec{
+					ShardingType:    "COMPOSITE",
+					ReplicationType: "DG",
+					ShardInfo: []ShardingDetails{
+						{
+							ShardPreFixName: "a",
+							ShardNum:        1,
+							ShardGroupDetails: &ShardGroupSpec{
+								Name:     "sg1",
+								Region:   "phx",
+								DeployAs: "PRIMARY",
+							},
+							ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+						},
+						{
+							ShardPreFixName: "b",
+							ShardNum:        1,
+							ShardGroupDetails: &ShardGroupSpec{
+								Name:     "sg1",
+								Region:   "iad",
+								DeployAs: "PRIMARY",
+							},
+							ShardSpaceDetails: &ShardSpaceSpec{Name: "ss2"},
+						},
+					},
+					Shard: []ShardSpec{
+						{Name: "a1", ShardGroup: "sg1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+						{Name: "b1", ShardGroup: "sg1", ShardSpace: "ss2", DeployAs: "PRIMARY"},
+					},
+				},
+				wantErr: "must be unique across shardSpaces",
+			},
 		{
 			name: "user DG without explicit primary is rejected",
 			spec: ShardingDatabaseSpec{
