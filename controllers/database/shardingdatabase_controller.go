@@ -3614,6 +3614,40 @@ func (r *ShardingDatabaseReconciler) findShardSpaceSpecByName(instance *database
 	return nil
 }
 
+func (r *ShardingDatabaseReconciler) findShardGroupDetailsFromShardInfo(instance *databasev4.ShardingDatabase, groupName string) *databasev4.ShardGroupSpec {
+	key := normalizeShardGroupKey(groupName)
+	if key == "" {
+		return nil
+	}
+	for i := range instance.Spec.ShardInfo {
+		d := instance.Spec.ShardInfo[i].ShardGroupDetails
+		if d == nil {
+			continue
+		}
+		if normalizeShardGroupKey(d.Name) == key {
+			return d
+		}
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) findShardSpaceDetailsFromShardInfo(instance *databasev4.ShardingDatabase, spaceName string) *databasev4.ShardSpaceSpec {
+	key := normalizeShardSpaceKey(spaceName)
+	if key == "" {
+		return nil
+	}
+	for i := range instance.Spec.ShardInfo {
+		d := instance.Spec.ShardInfo[i].ShardSpaceDetails
+		if d == nil {
+			continue
+		}
+		if normalizeShardSpaceKey(d.Name) == key {
+			return d
+		}
+	}
+	return nil
+}
+
 func (r *ShardingDatabaseReconciler) buildAddShardGroupParamsFromSpec(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) (string, bool) {
 	groupName := strings.TrimSpace(shard.ShardGroup)
 	if groupName == "" {
@@ -3622,16 +3656,31 @@ func (r *ShardingDatabaseReconciler) buildAddShardGroupParamsFromSpec(instance *
 
 	groupSpec := r.findShardGroupSpecByName(instance, groupName)
 	groupRegion := strings.TrimSpace(shard.ShardRegion)
-	deployAs := ""
-	shardSpace := ""
+	deployAs := strings.TrimSpace(shard.DeployAs)
+	shardSpace := strings.TrimSpace(shard.ShardSpace)
 	repFactor := int32(0)
 	if groupSpec != nil {
 		if groupRegion == "" {
 			groupRegion = strings.TrimSpace(groupSpec.Region)
 		}
-		deployAs = strings.TrimSpace(groupSpec.DeployAs)
-		shardSpace = strings.TrimSpace(groupSpec.ShardSpace)
+		if deployAs == "" {
+			deployAs = strings.TrimSpace(groupSpec.DeployAs)
+		}
+		if shardSpace == "" {
+			shardSpace = strings.TrimSpace(groupSpec.ShardSpace)
+		}
 		repFactor = groupSpec.RepFactor
+	} else if infoGroupSpec := r.findShardGroupDetailsFromShardInfo(instance, groupName); infoGroupSpec != nil {
+		if groupRegion == "" {
+			groupRegion = strings.TrimSpace(infoGroupSpec.Region)
+		}
+		if deployAs == "" {
+			deployAs = strings.TrimSpace(infoGroupSpec.DeployAs)
+		}
+		if shardSpace == "" {
+			shardSpace = strings.TrimSpace(infoGroupSpec.ShardSpace)
+		}
+		repFactor = infoGroupSpec.RepFactor
 	}
 	if groupRegion == "" {
 		return "", false
@@ -3658,6 +3707,8 @@ func (r *ShardingDatabaseReconciler) buildAddShardSpaceParamsFromSpec(instance *
 	if spaceName == "" {
 		if groupSpec := r.findShardGroupSpecByName(instance, shard.ShardGroup); groupSpec != nil {
 			spaceName = strings.TrimSpace(groupSpec.ShardSpace)
+		} else if infoGroupSpec := r.findShardGroupDetailsFromShardInfo(instance, shard.ShardGroup); infoGroupSpec != nil {
+			spaceName = strings.TrimSpace(infoGroupSpec.ShardSpace)
 		}
 	}
 	if spaceName == "" {
@@ -3665,6 +3716,9 @@ func (r *ShardingDatabaseReconciler) buildAddShardSpaceParamsFromSpec(instance *
 	}
 
 	spaceSpec := r.findShardSpaceSpecByName(instance, spaceName)
+	if spaceSpec == nil {
+		spaceSpec = r.findShardSpaceDetailsFromShardInfo(instance, spaceName)
+	}
 	parts := []string{"sspace_name=" + spaceName}
 	if spaceSpec != nil {
 		if spaceSpec.Chunks > 0 {
