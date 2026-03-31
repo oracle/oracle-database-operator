@@ -44,6 +44,13 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 COPY  go.mod go.mod
 COPY  go.sum go.sum
 
+# Resolve module graph before copying source so dependency drift shows up early
+# and source-only edits do not invalidate dependency downloads.
+RUN --mount=type=cache,target=/go-cache \
+    --mount=type=cache,target=/gomod-cache \
+    set -e; \
+    go mod download
+
 # Copy source
 COPY  LICENSE.txt LICENSE.txt
 COPY  THIRD_PARTY_LICENSES_DOCKER.txt THIRD_PARTY_LICENSES_DOCKER.txt

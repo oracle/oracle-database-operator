@@ -42,6 +42,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -214,6 +215,48 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return result, err
 	}
 
+	result, err = r.runSIDBPhase(req, "validate_truecache", func() (ctrl.Result, error) {
+		sidb := phaseCtx.singleInstanceDatabase
+		if sidb.Spec.CreateAs == "truecache" && sidb.Spec.Edition != "enterprise" {
+			err := fmt.Errorf("truecache is only supported in enterprise edition, current edition: %s", sidb.Spec.Edition)
+			r.Recorder.Eventf(
+				sidb,
+				corev1.EventTypeWarning,
+				"ValidationError",
+				"TrueCache is only supported in Enterprise Edition. Current edition: %s",
+				sidb.Spec.Edition,
+			)
+			sidb.Status.Status = dbcommons.StatusError
+			meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+				Type:               dbcommons.ReconcileError,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				Reason:             "InvalidEditionForTrueCache",
+				Message:            err.Error(),
+			})
+			return ctrl.Result{}, err
+		}
+		return requeueN, nil
+	})
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+	if err != nil {
+		return result, err
+	}
+
+	result, err = r.runSIDBPhase(req, "precheck_truecache_blob", func() (ctrl.Result, error) {
+		return r.ensureTrueCacheBlobSourceReady(ctx, req, phaseCtx.singleInstanceDatabase, phaseCtx.referredPrimaryDatabase)
+	})
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
+		return result, nil
+	}
+	if err != nil {
+		return result, err
+	}
+
 	result, err = r.runSIDBPhase(req, "ensure_pods", func() (ctrl.Result, error) {
 		return r.createOrReplacePods(phaseCtx.singleInstanceDatabase, phaseCtx.cloneFromDatabase, phaseCtx.referredPrimaryDatabase, ctx, req)
 	})
@@ -306,6 +349,34 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		return r.phaseModeStatusSync(ctx, req, phaseCtx)
 	})
 	if result.Requeue {
+		return result, nil
+	}
+	if err != nil {
+		return result, err
+	}
+
+	result, err = r.runSIDBPhase(req, "ensure_truecache_blob", func() (ctrl.Result, error) {
+		sidb := phaseCtx.singleInstanceDatabase
+		if sidb.Spec.CreateAs != "primary" || sidb.Spec.TrueCache == nil || !sidb.Spec.TrueCache.GenerateEnabled {
+			return requeueN, nil
+		}
+		if sidb.Spec.Edition != "enterprise" {
+			err := fmt.Errorf("TrueCache (generateEnabled=true) is only supported in Enterprise Edition. Current edition: %s", sidb.Spec.Edition)
+			r.Recorder.Eventf(sidb, corev1.EventTypeWarning, "ValidationError", err.Error())
+			meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+				Type:               "TrueCacheBlobReady",
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             "InvalidEdition",
+				Message:            err.Error(),
+			})
+			sidb.Status.Status = dbcommons.StatusError
+			return ctrl.Result{}, err
+		}
+		return r.ensureTrueCacheBlob(ctx, req, sidb)
+	})
+	if result.Requeue {
+		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
 	if err != nil {
@@ -486,6 +557,257 @@ func (r *SingleInstanceDatabaseReconciler) phaseScheduleFutureRequeue(phaseCtx *
 	return requeueN, nil
 }
 
+func (r *SingleInstanceDatabaseReconciler) ensureTrueCacheBlob(
+	ctx context.Context,
+	req ctrl.Request,
+	sidb *dbapi.SingleInstanceDatabase,
+) (ctrl.Result, error) {
+	if sidb.Spec.CreateAs != "primary" {
+		return ctrl.Result{}, nil
+	}
+	if sidb.Status.Status != dbcommons.StatusReady {
+		meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+			Type:               "TrueCacheBlobReady",
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: sidb.Generation,
+			Reason:             "WaitingForDatabaseReady",
+			Message:            "waiting for primary database to become ready before generating TrueCache blob",
+		})
+		_ = r.Status().Update(ctx, sidb)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if !strings.EqualFold(strings.TrimSpace(sidb.Status.ArchiveLog), "true") {
+		meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+			Type:               "TrueCacheBlobReady",
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: sidb.Generation,
+			Reason:             "WaitingForArchiveLog",
+			Message:            "waiting for archive log mode to be enabled before generating TrueCache blob",
+		})
+		_ = r.Status().Update(ctx, sidb)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if sidb.Spec.TdePassword.SecretName == "" || sidb.Spec.TdePassword.SecretKey == "" {
+		err := errors.New("spec.tdePassword.secretName and spec.tdePassword.secretKey are required when trueCache.generateEnabled=true")
+		meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+			Type:               "TrueCacheBlobReady",
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: sidb.Generation,
+			Reason:             "MissingTDEPassword",
+			Message:            err.Error(),
+		})
+		_ = r.Status().Update(ctx, sidb)
+		return ctrl.Result{}, err
+	}
+
+	logger := r.Log.WithValues("reconciler", "truecache-blob", "sidb", sidb.Name)
+	blobPath := "/tmp/tc_config_blob.tar.gz"
+	if sidb.Spec.TrueCache != nil && strings.TrimSpace(sidb.Spec.TrueCache.GeneratePath) != "" {
+		blobPath = strings.TrimSpace(sidb.Spec.TrueCache.GeneratePath)
+	}
+
+	pods := &corev1.PodList{}
+	if err := r.Client.List(ctx, pods, client.InNamespace(sidb.Namespace), client.MatchingLabels{"app": sidb.Name}); err != nil {
+		logger.Error(err, "Failed to list pods")
+		return ctrl.Result{}, err
+	}
+
+	var primaryPod *corev1.Pod
+	for i := range pods.Items {
+		p := &pods.Items[i]
+		if p.Status.Phase == corev1.PodRunning {
+			primaryPod = p
+			break
+		}
+	}
+	if primaryPod == nil {
+		logger.Info("No running primary pod yet")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	cmName := sidb.Name + "-truecache-blob"
+	blobKey := "tc_config_blob.tar.gz"
+	existingCM := &corev1.ConfigMap{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: cmName, Namespace: sidb.Namespace}, existingCM); err == nil {
+		if _, ok := existingCM.BinaryData[blobKey]; ok {
+			meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+				Type:               "TrueCacheBlobReady",
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				ObservedGeneration: sidb.Generation,
+				Reason:             "BlobConfigMapExists",
+				Message:            "TrueCache config blob ConfigMap already present",
+			})
+			_ = r.Status().Update(ctx, sidb)
+			return ctrl.Result{}, nil
+		}
+	}
+
+	cmd := fmt.Sprintf(
+		"cat /run/secrets/%[1]s | $ORACLE_HOME/bin/dbca -configureDatabase -prepareTrueCacheConfigFile -sourceDB %[2]s -trueCacheBlobLocation %[3]s -tdeWalletPassword \"$(cat /run/secrets/%[1]s)\" -silent",
+		sidb.Spec.TdePassword.SecretKey,
+		sidb.Spec.Sid,
+		blobPath,
+	)
+	if out, err := dbcommons.ExecCommand(r, r.Config, primaryPod.Name, primaryPod.Namespace, sidb.Name, ctx, req, false, "sh", "-c", cmd); err != nil {
+		logger.Error(err, "TrueCache blob DBCA command failed", "pod", primaryPod.Name, "output", strings.TrimSpace(out))
+		meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+			Type:               "TrueCacheBlobReady",
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: sidb.Generation,
+			Reason:             "BlobCreationFailed",
+			Message:            err.Error(),
+		})
+		_ = r.Status().Update(ctx, sidb)
+		return ctrl.Result{RequeueAfter: 60 * time.Second}, nil
+	}
+
+	blobContent, err := dbcommons.ExecCommand(r, r.Config, primaryPod.Name, primaryPod.Namespace, sidb.Name, ctx, req, false, "cat", blobPath)
+	if err != nil {
+		logger.Error(err, "Failed to read generated TrueCache blob", "pod", primaryPod.Name, "path", blobPath)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cmName,
+			Namespace: sidb.Namespace,
+		},
+	}
+	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, cm, func() error {
+		if cm.BinaryData == nil {
+			cm.BinaryData = map[string][]byte{}
+		}
+		cm.BinaryData[blobKey] = []byte(blobContent)
+		return ctrl.SetControllerReference(sidb, cm, r.Scheme)
+	})
+	if err != nil {
+		logger.Error(err, "Failed to create/update ConfigMap")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+	}
+	logger.Info("ConfigMap updated/created", "operation", op, "name", cmName)
+
+	meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+		Type:               "TrueCacheBlobReady",
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: sidb.Generation,
+		Reason:             "BlobStoredInConfigMap",
+		Message:            fmt.Sprintf("TrueCache config blob stored in ConfigMap %s", cmName),
+	})
+	if err := r.Status().Update(ctx, sidb); err != nil {
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *SingleInstanceDatabaseReconciler) ensureTrueCacheBlobSourceReady(
+	ctx context.Context,
+	req ctrl.Request,
+	sidb *dbapi.SingleInstanceDatabase,
+	rp *dbapi.SingleInstanceDatabase,
+) (ctrl.Result, error) {
+	if sidb.Spec.CreateAs != "truecache" {
+		return ctrl.Result{}, nil
+	}
+
+	logger := r.Log.WithValues("reconciler", "truecache-blob-precheck", "sidb", sidb.Name)
+	cmName, blobKey := resolveTrueCacheBlobConfigMap(sidb, rp)
+	if cmName == "" {
+		err := errors.New("spec.trueCache.blobConfigMapRef is required for truecache when using an external primary database")
+		meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+			Type:               "TrueCacheBlobSourceReady",
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: sidb.Generation,
+			Reason:             "MissingBlobConfigMapRef",
+			Message:            err.Error(),
+		})
+		sidb.Status.Status = dbcommons.StatusError
+		_ = r.Status().Update(ctx, sidb)
+		return ctrl.Result{}, err
+	}
+
+	cm := &corev1.ConfigMap{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: cmName, Namespace: sidb.Namespace}, cm); err != nil {
+		if apierrors.IsNotFound(err) {
+			msg := trueCacheBlobConfigMapWaitingMessage(sidb, rp, cmName)
+			logger.Info(msg, "configMap", cmName)
+			meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+				Type:               "TrueCacheBlobSourceReady",
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				ObservedGeneration: sidb.Generation,
+				Reason:             "WaitingForBlobConfigMap",
+				Message:            msg,
+			})
+			sidb.Status.Status = dbcommons.StatusPending
+			_ = r.Status().Update(ctx, sidb)
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		return requeueY, err
+	}
+
+	if !configMapContainsKey(cm, blobKey) {
+		msg := fmt.Sprintf("waiting for key %q in ConfigMap %s for TrueCache blob", blobKey, cmName)
+		logger.Info(msg, "configMap", cmName, "key", blobKey)
+		meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+			Type:               "TrueCacheBlobSourceReady",
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			ObservedGeneration: sidb.Generation,
+			Reason:             "WaitingForBlobConfigMapKey",
+			Message:            msg,
+		})
+		sidb.Status.Status = dbcommons.StatusPending
+		_ = r.Status().Update(ctx, sidb)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	meta.SetStatusCondition(&sidb.Status.Conditions, metav1.Condition{
+		Type:               "TrueCacheBlobSourceReady",
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		ObservedGeneration: sidb.Generation,
+		Reason:             "BlobConfigMapReady",
+		Message:            fmt.Sprintf("TrueCache blob ConfigMap %s with key %q is ready", cmName, blobKey),
+	})
+	_ = r.Status().Update(ctx, sidb)
+	return ctrl.Result{}, nil
+}
+
+func configMapContainsKey(cm *corev1.ConfigMap, key string) bool {
+	if cm == nil {
+		return false
+	}
+	if _, ok := cm.BinaryData[key]; ok {
+		return true
+	}
+	_, ok := cm.Data[key]
+	return ok
+}
+
+func trueCacheBlobConfigMapWaitingMessage(
+	m *dbapi.SingleInstanceDatabase,
+	rp *dbapi.SingleInstanceDatabase,
+	cmName string,
+) string {
+	if m != nil && m.Spec.TrueCache != nil && strings.TrimSpace(m.Spec.TrueCache.BlobConfigMapRef) != "" {
+		return fmt.Sprintf("waiting for user-provided TrueCache blob ConfigMap %s", cmName)
+	}
+	if rp != nil && rp.Name != "" && rp.Spec.TrueCache != nil && rp.Spec.TrueCache.GenerateEnabled {
+		return fmt.Sprintf("waiting for primary %s to generate TrueCache blob ConfigMap %s", rp.Name, cmName)
+	}
+	if rp != nil && rp.Name != "" {
+		return fmt.Sprintf("waiting for TrueCache blob ConfigMap %s; create it manually or enable spec.trueCache.generateEnabled on primary %s", cmName, rp.Name)
+	}
+	return fmt.Sprintf("waiting for TrueCache blob ConfigMap %s", cmName)
+}
+
 // #############################################################################
 //
 //	Update each reconcile condtion/status
@@ -638,14 +960,35 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 	m.Status.Persistence = m.Spec.Persistence
 	m.Status.PrebuiltDB = m.Spec.Image.PrebuiltDB
 	if m.Spec.CreateAs == "truecache" {
-		err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
-				r.Log.Info(err.Error())
+		if m.Spec.PrimaryDatabaseRef == "" && m.Spec.ExternalPrimaryDatabaseRef == nil {
+			err := fmt.Errorf("either primaryDatabaseRef or externalPrimaryDatabaseRef must be specified for truecache")
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "SpecError", err.Error())
+			m.Status.Status = dbcommons.StatusError
+			return requeueN, err
+		}
+		if m.Spec.PrimaryDatabaseRef != "" && m.Spec.ExternalPrimaryDatabaseRef != nil {
+			err := fmt.Errorf("cannot specify both primaryDatabaseRef and externalPrimaryDatabaseRef")
+			r.Recorder.Eventf(m, corev1.EventTypeWarning, "SpecError", err.Error())
+			m.Status.Status = dbcommons.StatusError
+			return requeueN, err
+		}
+		if IsExternalPrimaryDatabase(m) {
+			if err := ValidateExternalPrimaryDatabaseRef(m); err != nil {
+				r.Recorder.Eventf(m, corev1.EventTypeWarning, "Spec Error", err.Error())
+				m.Status.Status = dbcommons.StatusError
 				return requeueN, err
 			}
-			return requeueY, err
+			m.Status.PrimaryDatabase = GetPrimaryDatabaseDisplayName(m, nil)
+		} else {
+			err = r.Get(ctx, types.NamespacedName{Namespace: req.Namespace, Name: m.Spec.PrimaryDatabaseRef}, rp)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, err.Error())
+					r.Log.Info(err.Error())
+					return requeueN, err
+				}
+				return requeueY, err
+			}
 		}
 	}
 	if m.Spec.CreateAs == "clone" {
@@ -954,6 +1297,20 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 						},
 					})
 				}
+				if m.Spec.TdePassword.SecretName != "" && m.Spec.TdePassword.SecretKey != "" {
+					volumes = append(volumes, corev1.Volume{
+						Name: "tde-wallet-pwd-vol",
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName: m.Spec.TdePassword.SecretName,
+								Items: []corev1.KeyToPath{{
+									Key:  m.Spec.TdePassword.SecretKey,
+									Path: m.Spec.TdePassword.SecretKey,
+								}},
+							},
+						},
+					})
+				}
 
 				return volumes
 			}(),
@@ -1167,184 +1524,19 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							Name:      "standby-wallet-secret-vol",
 						})
 					}
+					if m.Spec.TdePassword.SecretName != "" && m.Spec.TdePassword.SecretKey != "" {
+						mounts = append(mounts, corev1.VolumeMount{
+							Name:      "tde-wallet-pwd-vol",
+							MountPath: "/run/secrets/" + m.Spec.TdePassword.SecretKey,
+							SubPath:   m.Spec.TdePassword.SecretKey,
+							ReadOnly:  true,
+						})
+					}
 					return mounts
 				}(),
-					Env: func() []corev1.EnvVar {
-						if m.Spec.CreateAs == "truecache" {
-							return mergeSIDBEnvVars([]corev1.EnvVar{
-								{
-									Name:  "SVC_HOST",
-									Value: m.Name,
-								},
-								{
-									Name:  "SVC_PORT",
-									Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
-								},
-								{
-									Name:  "ORACLE_CHARACTERSET",
-									Value: m.Spec.Charset,
-								},
-								{
-									Name:  "ORACLE_EDITION",
-									Value: m.Spec.Edition,
-								},
-								{
-									Name:  "TRUE_CACHE",
-									Value: "true",
-								},
-								{
-									Name: "PRIMARY_DB_CONN_STR",
-									Value: func() string {
-										if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
-											return rp.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + rp.Spec.Sid
-										}
-										return m.Spec.PrimaryDatabaseRef
-									}(),
-								},
-								{
-									Name: "PDB_TC_SVCS",
-									Value: func() string {
-										return strings.Join(m.Spec.TrueCacheServices, ";")
-									}(),
-								},
-								{
-									Name:  "ORACLE_HOSTNAME",
-									Value: m.Name,
-								},
-							}, m.Spec.EnvVars)
-						}
-						// adding XE support, useful for dev/test/CI-CD
-						if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
-							return mergeSIDBEnvVars([]corev1.EnvVar{
-								{
-									Name:  "SVC_HOST",
-									Value: m.Name,
-								},
-								{
-									Name:  "SVC_PORT",
-									Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
-								},
-								{
-									Name:  "ORACLE_CHARACTERSET",
-									Value: m.Spec.Charset,
-								},
-								{
-									Name:  "ORACLE_EDITION",
-									Value: m.Spec.Edition,
-								},
-							}, m.Spec.EnvVars)
-						}
-						if m.Spec.CreateAs == "clone" {
-							// Clone DB use-case
-							return mergeSIDBEnvVars([]corev1.EnvVar{
-								{
-									Name:  "SVC_HOST",
-									Value: m.Name,
-								},
-								{
-									Name:  "SVC_PORT",
-									Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
-								},
-								{
-									Name:  "ORACLE_SID",
-									Value: strings.ToUpper(m.Spec.Sid),
-								},
-								{
-									Name:  "WALLET_DIR",
-									Value: walletDir,
-								},
-								{
-									Name: "PRIMARY_DB_CONN_STR",
-									Value: func() string {
-										if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
-											return n.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + n.Spec.Sid
-										}
-										return m.Spec.PrimaryDatabaseRef
-									}(),
-								},
-								CreateOracleHostnameEnvVarObj(m, n),
-								{
-									Name:  "CLONE_DB",
-									Value: "true",
-								},
-								{
-									Name:  "SKIP_DATAPATCH",
-									Value: "true",
-								},
-							}, m.Spec.EnvVars)
-
-						} else if m.Spec.CreateAs == "standby" {
-							standbyEnv := []corev1.EnvVar{
-								{
-									Name:  "SVC_HOST",
-									Value: m.Name,
-								},
-								{
-									Name:  "SVC_PORT",
-									Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
-								},
-								{
-									Name:  "ORACLE_SID",
-									Value: strings.ToUpper(m.Spec.Sid),
-								},
-								{
-									Name:  "WALLET_DIR",
-									Value: walletDir,
-								},
-								{
-									Name:  "PRIMARY_DB_CONN_STR",
-									Value: GetPrimaryDatabaseConnectString(m, rp),
-								},
-								{
-									Name:  "PRIMARY_SID",
-									Value: GetPrimaryDatabaseSid(m, rp),
-								},
-								{
-									Name:  "PRIMARY_IP",
-									Value: GetPrimaryDatabaseHost(m, rp),
-								},
-								{
-									Name:  "PRIMARY_DB_PORT",
-									Value: strconv.Itoa(GetPrimaryDatabasePort(m)),
-								},
-								{
-									Name:  "CREATE_PDB",
-									Value: ShouldCreatePDBFromPrimary(m, rp),
-								},
-								{
-									Name: "ORACLE_HOSTNAME",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "status.podIP",
-										},
-									},
-								},
-								{
-									Name:  "STANDBY_DB",
-									Value: "true",
-								},
-								{
-									Name:  "SKIP_DATAPATCH",
-									Value: "true",
-								},
-							}
-							if walletSecretName := GetStandbyWalletSecretRef(m); walletSecretName != "" {
-								standbyEnv = append(standbyEnv,
-									corev1.EnvVar{Name: "STANDBY_TDE_WALLET_SECRET", Value: walletSecretName},
-									corev1.EnvVar{Name: "STANDBY_TDE_WALLET_MOUNT_PATH", Value: GetStandbyWalletMountPath(m)},
-									corev1.EnvVar{Name: "STANDBY_TDE_WALLET_ROOT", Value: GetStandbyTDEWalletRoot(m)},
-								)
-								if zipKey := GetStandbyWalletZipFileKey(m); zipKey != "" {
-									standbyEnv = append(standbyEnv, corev1.EnvVar{
-										Name:  "STANDBY_TDE_WALLET_ZIP_PATH",
-										Value: strings.TrimRight(GetStandbyWalletMountPath(m), "/") + "/standby-wallet.zip",
-									})
-								}
-							}
-							return mergeSIDBEnvVars(standbyEnv, m.Spec.EnvVars)
-						}
-
-						return mergeSIDBEnvVars([]corev1.EnvVar{
+				Env: func() []corev1.EnvVar {
+					if m.Spec.CreateAs == "truecache" {
+						envs := []corev1.EnvVar{
 							{
 								Name:  "SVC_HOST",
 								Value: m.Name,
@@ -1354,30 +1546,8 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
 							},
 							{
-								Name: "CREATE_PDB",
-								Value: func() string {
-									if m.Spec.Pdbname != "" {
-										return "true"
-									}
-									return "false"
-								}(),
-							},
-							{
 								Name:  "ORACLE_SID",
-								Value: strings.ToUpper(m.Spec.Sid),
-							},
-							{
-								Name: "WALLET_DIR",
-								Value: func() string {
-									if m.Spec.Image.PrebuiltDB {
-										return "" // No wallets for prebuilt DB
-									}
-									return walletDir
-								}(),
-							},
-							{
-								Name:  "ORACLE_PDB",
-								Value: m.Spec.Pdbname,
+								Value: GetPrimaryDatabaseSid(m, rp),
 							},
 							{
 								Name:  "ORACLE_CHARACTERSET",
@@ -1388,22 +1558,121 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 								Value: m.Spec.Edition,
 							},
 							{
-								Name: "INIT_SGA_SIZE",
-								Value: func() string {
-									if m.Spec.InitParams != nil && m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
-										return strconv.Itoa(m.Spec.InitParams.SgaTarget)
-									}
-									return ""
-								}(),
+								Name:  "TRUE_CACHE",
+								Value: "true",
 							},
 							{
-								Name: "INIT_PGA_SIZE",
+								Name:  "AUTO_TRUE_CACHE_SETUP",
+								Value: "false",
+							},
+							{
+								Name:  "TRUEDB_UNIQUE_NAME",
+								Value: getTrueCacheUniqueName(m),
+							},
+							{
+								Name:  "TRUE_CACHE_BLOB",
+								Value: getTrueCacheBlobMountPath(m),
+							},
+							{
+								Name:  "PRIMARY_DB_CONN_STR",
+								Value: GetPrimaryDatabaseConnectString(m, rp),
+							},
+							{
+								Name:  "PDB_TC_SVCS",
+								Value: strings.Join(getTrueCacheServices(m), ":"),
+							},
+							{
+								Name:  "ORACLE_HOSTNAME",
+								Value: fmt.Sprintf("%s.%s.svc.cluster.local", m.Name, m.Namespace),
+							},
+						}
+						if rp != nil && rp.Spec.AdminPassword.SecretName != "" && rp.Spec.AdminPassword.SecretKey != "" {
+							envs = append(envs, corev1.EnvVar{
+								Name: "ORACLE_PWD",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: rp.Spec.AdminPassword.SecretName},
+										Key:                  rp.Spec.AdminPassword.SecretKey,
+									},
+								},
+							})
+						} else if m.Spec.AdminPassword.SecretName != "" && m.Spec.AdminPassword.SecretKey != "" {
+							envs = append(envs, corev1.EnvVar{
+								Name: "ORACLE_PWD",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: m.Spec.AdminPassword.SecretName},
+										Key:                  m.Spec.AdminPassword.SecretKey,
+									},
+								},
+							})
+						}
+						if m.Spec.TdePassword.SecretName != "" && m.Spec.TdePassword.SecretKey != "" {
+							envs = append(envs, corev1.EnvVar{
+								Name: "TDE_WALLET_PWD",
+								ValueFrom: &corev1.EnvVarSource{
+									SecretKeyRef: &corev1.SecretKeySelector{
+										LocalObjectReference: corev1.LocalObjectReference{Name: m.Spec.TdePassword.SecretName},
+										Key:                  m.Spec.TdePassword.SecretKey,
+									},
+								},
+							})
+						}
+						return mergeSIDBEnvVars(envs, m.Spec.EnvVars)
+					}
+					// adding XE support, useful for dev/test/CI-CD
+					if m.Spec.Edition == "express" || m.Spec.Edition == "free" {
+						return mergeSIDBEnvVars([]corev1.EnvVar{
+							{
+								Name:  "SVC_HOST",
+								Value: m.Name,
+							},
+							{
+								Name:  "SVC_PORT",
+								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
+							},
+							{
+								Name:  "ORACLE_CHARACTERSET",
+								Value: m.Spec.Charset,
+							},
+							{
+								Name:  "ORACLE_EDITION",
+								Value: m.Spec.Edition,
+							},
+						}, m.Spec.EnvVars)
+					}
+					if m.Spec.CreateAs == "clone" {
+						// Clone DB use-case
+						return mergeSIDBEnvVars([]corev1.EnvVar{
+							{
+								Name:  "SVC_HOST",
+								Value: m.Name,
+							},
+							{
+								Name:  "SVC_PORT",
+								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
+							},
+							{
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
+							},
+							{
+								Name:  "WALLET_DIR",
+								Value: walletDir,
+							},
+							{
+								Name: "PRIMARY_DB_CONN_STR",
 								Value: func() string {
-									if m.Spec.InitParams != nil && m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
-										return strconv.Itoa(m.Spec.InitParams.PgaAggregateTarget)
+									if dbcommons.IsSourceDatabaseOnCluster(m.Spec.PrimaryDatabaseRef) {
+										return n.Name + ":" + strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)) + "/" + n.Spec.Sid
 									}
-									return ""
+									return m.Spec.PrimaryDatabaseRef
 								}(),
+							},
+							CreateOracleHostnameEnvVarObj(m, n),
+							{
+								Name:  "CLONE_DB",
+								Value: "true",
 							},
 							{
 								Name:  "SKIP_DATAPATCH",
@@ -1411,7 +1680,145 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 							},
 						}, m.Spec.EnvVars)
 
-					}(),
+					} else if m.Spec.CreateAs == "standby" {
+						standbyEnv := []corev1.EnvVar{
+							{
+								Name:  "SVC_HOST",
+								Value: m.Name,
+							},
+							{
+								Name:  "SVC_PORT",
+								Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
+							},
+							{
+								Name:  "ORACLE_SID",
+								Value: strings.ToUpper(m.Spec.Sid),
+							},
+							{
+								Name:  "WALLET_DIR",
+								Value: walletDir,
+							},
+							{
+								Name:  "PRIMARY_DB_CONN_STR",
+								Value: GetPrimaryDatabaseConnectString(m, rp),
+							},
+							{
+								Name:  "PRIMARY_SID",
+								Value: GetPrimaryDatabaseSid(m, rp),
+							},
+							{
+								Name:  "PRIMARY_IP",
+								Value: GetPrimaryDatabaseHost(m, rp),
+							},
+							{
+								Name:  "PRIMARY_DB_PORT",
+								Value: strconv.Itoa(GetPrimaryDatabasePort(m)),
+							},
+							{
+								Name:  "CREATE_PDB",
+								Value: ShouldCreatePDBFromPrimary(m, rp),
+							},
+							{
+								Name: "ORACLE_HOSTNAME",
+								ValueFrom: &corev1.EnvVarSource{
+									FieldRef: &corev1.ObjectFieldSelector{
+										FieldPath: "status.podIP",
+									},
+								},
+							},
+							{
+								Name:  "STANDBY_DB",
+								Value: "true",
+							},
+							{
+								Name:  "SKIP_DATAPATCH",
+								Value: "true",
+							},
+						}
+						if walletSecretName := GetStandbyWalletSecretRef(m); walletSecretName != "" {
+							standbyEnv = append(standbyEnv,
+								corev1.EnvVar{Name: "STANDBY_TDE_WALLET_SECRET", Value: walletSecretName},
+								corev1.EnvVar{Name: "STANDBY_TDE_WALLET_MOUNT_PATH", Value: GetStandbyWalletMountPath(m)},
+								corev1.EnvVar{Name: "STANDBY_TDE_WALLET_ROOT", Value: GetStandbyTDEWalletRoot(m)},
+							)
+							if zipKey := GetStandbyWalletZipFileKey(m); zipKey != "" {
+								standbyEnv = append(standbyEnv, corev1.EnvVar{
+									Name:  "STANDBY_TDE_WALLET_ZIP_PATH",
+									Value: strings.TrimRight(GetStandbyWalletMountPath(m), "/") + "/standby-wallet.zip",
+								})
+							}
+						}
+						return mergeSIDBEnvVars(standbyEnv, m.Spec.EnvVars)
+					}
+
+					return mergeSIDBEnvVars([]corev1.EnvVar{
+						{
+							Name:  "SVC_HOST",
+							Value: m.Name,
+						},
+						{
+							Name:  "SVC_PORT",
+							Value: strconv.Itoa(int(dbcommons.CONTAINER_LISTENER_PORT)),
+						},
+						{
+							Name: "CREATE_PDB",
+							Value: func() string {
+								if m.Spec.Pdbname != "" {
+									return "true"
+								}
+								return "false"
+							}(),
+						},
+						{
+							Name:  "ORACLE_SID",
+							Value: strings.ToUpper(m.Spec.Sid),
+						},
+						{
+							Name: "WALLET_DIR",
+							Value: func() string {
+								if m.Spec.Image.PrebuiltDB {
+									return "" // No wallets for prebuilt DB
+								}
+								return walletDir
+							}(),
+						},
+						{
+							Name:  "ORACLE_PDB",
+							Value: m.Spec.Pdbname,
+						},
+						{
+							Name:  "ORACLE_CHARACTERSET",
+							Value: m.Spec.Charset,
+						},
+						{
+							Name:  "ORACLE_EDITION",
+							Value: m.Spec.Edition,
+						},
+						{
+							Name: "INIT_SGA_SIZE",
+							Value: func() string {
+								if m.Spec.InitParams != nil && m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
+									return strconv.Itoa(m.Spec.InitParams.SgaTarget)
+								}
+								return ""
+							}(),
+						},
+						{
+							Name: "INIT_PGA_SIZE",
+							Value: func() string {
+								if m.Spec.InitParams != nil && m.Spec.InitParams.SgaTarget > 0 && m.Spec.InitParams.PgaAggregateTarget > 0 {
+									return strconv.Itoa(m.Spec.InitParams.PgaAggregateTarget)
+								}
+								return ""
+							}(),
+						},
+						{
+							Name:  "SKIP_DATAPATCH",
+							Value: "true",
+						},
+					}, m.Spec.EnvVars)
+
+				}(),
 
 				Resources: func() corev1.ResourceRequirements {
 					var resourceReqRequests corev1.ResourceList = corev1.ResourceList{}
@@ -1500,6 +1907,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 		}
 	}
 
+	r.addTrueCacheBlobVolumeMount(pod, m, rp)
 	// Set SingleInstanceDatabase instance as the owner and controller
 	ctrl.SetControllerReference(m, pod, r.Scheme)
 	return pod
@@ -1595,14 +2003,14 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePVCSpec(m *dbapi.SingleIns
 				return &metav1.LabelSelector{
 					MatchLabels: func() map[string]string {
 						ns := make(map[string]string)
-							if len(m.Spec.NodeSelector) != 0 {
-								for key, value := range m.Spec.NodeSelector {
-									ns[key] = value
-								}
+						if len(m.Spec.NodeSelector) != 0 {
+							for key, value := range m.Spec.NodeSelector {
+								ns[key] = value
 							}
-							return ns
-						}(),
-					}
+						}
+						return ns
+					}(),
+				}
 			}(),
 		},
 	}
@@ -1811,6 +2219,10 @@ func (r *SingleInstanceDatabaseReconciler) createOrReplacePVCforDatafilesVol(ctx
 		} else {
 
 			log.Info("Found Existing PVC", "Name", pvc.Name)
+			if m.Spec.Persistence.DbFilesPvc == "" {
+				m.Status.Persistence.DbFilesPvc = pvc.Name
+				_ = r.Status().Update(ctx, m)
+			}
 			return requeueN, nil
 
 		}
@@ -4535,6 +4947,92 @@ func GetAdminPasswordSecretMountRoot(m *dbapi.SingleInstanceDatabase) string {
 
 func GetAdminPasswordSecretMountPath(m *dbapi.SingleInstanceDatabase) string {
 	return GetAdminPasswordSecretMountRoot(m) + "/oracle_pwd"
+}
+
+func getTrueCacheServices(m *dbapi.SingleInstanceDatabase) []string {
+	if m != nil && m.Spec.TrueCache != nil && len(m.Spec.TrueCache.TrueCacheServices) > 0 {
+		return m.Spec.TrueCache.TrueCacheServices
+	}
+	if m == nil {
+		return nil
+	}
+	return m.Spec.TrueCacheServices
+}
+
+func getTrueCacheBlobMountPath(m *dbapi.SingleInstanceDatabase) string {
+	if m != nil && m.Spec.TrueCache != nil && strings.TrimSpace(m.Spec.TrueCache.BlobMountPath) != "" {
+		return strings.TrimSpace(m.Spec.TrueCache.BlobMountPath)
+	}
+	return "/stage/tc_config_blob.tar.gz"
+}
+
+func getTrueCacheBlobConfigMapKey(m *dbapi.SingleInstanceDatabase) string {
+	if m != nil && m.Spec.TrueCache != nil && strings.TrimSpace(m.Spec.TrueCache.BlobConfigMapKey) != "" {
+		return strings.TrimSpace(m.Spec.TrueCache.BlobConfigMapKey)
+	}
+	return "tc_config_blob.tar.gz"
+}
+
+func resolveTrueCacheBlobConfigMap(
+	m *dbapi.SingleInstanceDatabase,
+	rp *dbapi.SingleInstanceDatabase,
+) (string, string) {
+	blobKey := getTrueCacheBlobConfigMapKey(m)
+	if m == nil || m.Spec.CreateAs != "truecache" {
+		return "", blobKey
+	}
+	if m.Spec.TrueCache != nil && strings.TrimSpace(m.Spec.TrueCache.BlobConfigMapRef) != "" {
+		return strings.TrimSpace(m.Spec.TrueCache.BlobConfigMapRef), blobKey
+	}
+	if !IsExternalPrimaryDatabase(m) && rp != nil && rp.Name != "" {
+		return rp.Name + "-truecache-blob", blobKey
+	}
+	return "", blobKey
+}
+
+func getTrueCacheUniqueName(m *dbapi.SingleInstanceDatabase) string {
+	if m != nil && m.Spec.TrueCache != nil && strings.TrimSpace(m.Spec.TrueCache.TruedbUniqueName) != "" {
+		return strings.TrimSpace(m.Spec.TrueCache.TruedbUniqueName)
+	}
+	if m == nil {
+		return ""
+	}
+	return m.Spec.Sid + "_TC"
+}
+
+func (r *SingleInstanceDatabaseReconciler) addTrueCacheBlobVolumeMount(
+	pod *corev1.Pod,
+	m *dbapi.SingleInstanceDatabase,
+	rp *dbapi.SingleInstanceDatabase,
+) {
+	if m.Spec.CreateAs != "truecache" {
+		return
+	}
+
+	cmName, blobKey := resolveTrueCacheBlobConfigMap(m, rp)
+	if cmName == "" {
+		return
+	}
+
+	mountPath := getTrueCacheBlobMountPath(m)
+	pod.Spec.Volumes = append(pod.Spec.Volumes, corev1.Volume{
+		Name: "truecache-blob-vol",
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: cmName},
+				Items: []corev1.KeyToPath{{
+					Key:  blobKey,
+					Path: filepath.Base(mountPath),
+				}},
+			},
+		},
+	})
+	pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+		Name:      "truecache-blob-vol",
+		MountPath: mountPath,
+		SubPath:   filepath.Base(mountPath),
+		ReadOnly:  true,
+	})
 }
 
 func mergeSIDBEnvVars(base []corev1.EnvVar, extra []corev1.EnvVar) []corev1.EnvVar {

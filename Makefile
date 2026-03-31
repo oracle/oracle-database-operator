@@ -256,9 +256,20 @@ kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): | $(LOCALBIN)
 	curl -s $(KUSTOMIZE_INSTALL_SCRIPT) | bash -s -- $(subst v,,$(KUSTOMIZE_VERSION)) $(LOCALBIN)
 
-controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
-$(CONTROLLER_GEN): | $(LOCALBIN)
-	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+controller-gen: | $(LOCALBIN) ## Download controller-gen locally if necessary.
+	@current_version=""; \
+	if [ -x "$(CONTROLLER_GEN)" ]; then \
+		current_version="$$( $(CONTROLLER_GEN) --version 2>/dev/null | awk '{print $$NF}' )"; \
+	fi; \
+	if [ "$$current_version" != "$(CONTROLLER_TOOLS_VERSION)" ]; then \
+		echo "Installing controller-gen $(CONTROLLER_TOOLS_VERSION) into $(LOCALBIN)"; \
+		if [ -n "$$current_version" ]; then \
+			echo "Replacing controller-gen $$current_version"; \
+		fi; \
+		GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION); \
+	else \
+		echo "Using controller-gen $$current_version"; \
+	fi
 
 envtest: $(ENVTEST) ## Download envtest locally if necessary.
 $(ENVTEST): | $(LOCALBIN)

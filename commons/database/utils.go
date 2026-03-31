@@ -278,10 +278,17 @@ func ExecCommand(r client.Reader, config *rest.Config, podName string, namespace
 		Tty:    false,
 	})
 	if err != nil {
-		return "", err
+		stdout := strings.TrimSpace(execOut.String())
+		stderr := strings.TrimSpace(execErr.String())
+		if stdout != "" || stderr != "" {
+			return stdout, fmt.Errorf("exec failed: %w; stdout: %s; stderr: %s", err, stdout, stderr)
+		}
+		return stdout, err
 	}
 	if execErr.Len() > 0 {
-		return "", fmt.Errorf("stderr: %v", execErr.String())
+		stdout := strings.TrimSpace(execOut.String())
+		stderr := strings.TrimSpace(execErr.String())
+		return stdout, fmt.Errorf("stderr: %s", stderr)
 	}
 	return execOut.String(), nil
 }
