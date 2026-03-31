@@ -55,22 +55,25 @@ type SingleInstanceDatabaseSpec struct {
 	Edition string `json:"edition,omitempty"`
 
 	// SID must be alphanumeric (no special characters, only a-z, A-Z, 0-9), and no longer than 12 characters.
-	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Pattern=`^[a-zA-Z0-9]+$`
 	// +kubebuilder:validation:MaxLength:=12
-	Sid                   string            `json:"sid,omitempty"`
-	Charset               string            `json:"charset,omitempty"`
-	Pdbname               string            `json:"pdbName,omitempty"`
-	LoadBalancer          bool              `json:"loadBalancer,omitempty"`
-	ListenerPort          int               `json:"listenerPort,omitempty"`
-	TcpsListenerPort      int               `json:"tcpsListenerPort,omitempty"`
-	ServiceAnnotations    map[string]string `json:"serviceAnnotations,omitempty"`
-	FlashBack             *bool             `json:"flashBack,omitempty"`
-	ArchiveLog            *bool             `json:"archiveLog,omitempty"`
-	ForceLogging          *bool             `json:"forceLog,omitempty"`
-	EnableTCPS            bool              `json:"enableTCPS,omitempty"`
-	TcpsCertRenewInterval string            `json:"tcpsCertRenewInterval,omitempty"`
-	TcpsTlsSecret         string            `json:"tcpsTlsSecret,omitempty"`
+	Sid string `json:"sid,omitempty"`
+
+	Charset string `json:"charset,omitempty"`
+	Pdbname string `json:"pdbName,omitempty"`
+
+	LoadBalancer       bool              `json:"loadBalancer,omitempty"`
+	ListenerPort       int               `json:"listenerPort,omitempty"`
+	TcpsListenerPort   int               `json:"tcpsListenerPort,omitempty"`
+	ServiceAnnotations map[string]string `json:"serviceAnnotations,omitempty"`
+
+	FlashBack    *bool `json:"flashBack,omitempty"`
+	ArchiveLog   *bool `json:"archiveLog,omitempty"`
+	ForceLogging *bool `json:"forceLog,omitempty"`
+
+	EnableTCPS            bool   `json:"enableTCPS,omitempty"`
+	TcpsCertRenewInterval string `json:"tcpsCertRenewInterval,omitempty"`
+	TcpsTlsSecret         string `json:"tcpsTlsSecret,omitempty"`
 
 	PrimaryDatabaseRef string                               `json:"primaryDatabaseRef,omitempty"`
 	StandbyConfig      *SingleInstanceDatabaseStandbyConfig `json:"standbyConfig,omitempty"`
@@ -79,7 +82,8 @@ type SingleInstanceDatabaseSpec struct {
 	ExternalPrimaryDatabaseRef *SingleInstanceDatabaseExternalPrimaryRef `json:"externalPrimaryDatabaseRef,omitempty"`
 
 	// +kubebuilder:validation:Enum=primary;standby;clone;truecache
-	CreateAs             string   `json:"createAs,omitempty"`
+	CreateAs string `json:"createAs,omitempty"`
+
 	ReadinessCheckPeriod int      `json:"readinessCheckPeriod,omitempty"`
 	ServiceAccountName   string   `json:"serviceAccountName,omitempty"`
 	TrueCacheServices    []string `json:"trueCacheServices,omitempty"`
@@ -87,17 +91,62 @@ type SingleInstanceDatabaseSpec struct {
 	// +k8s:openapi-gen=true
 	Replicas int `json:"replicas,omitempty"`
 
-	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`
-	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
-	Image         SingleInstanceDatabaseImage         `json:"image"`
-	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
-	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
-	Resources     SingleInstanceDatabaseResources     `json:"resources,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
-	ConvertToSnapshotStandby bool   `json:"convertToSnapshotStandby,omitempty"`
-	DbFilesPvc               string `json:"dbFilesPvc,omitempty"`
-	StagePvc                 string `json:"stagePvc,omitempty"`
-	EnvVars                  []corev1.EnvVar `json:"envVars,omitempty"`
+	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
+	TdePassword   SingleInstanceDatabaseAdminPassword `json:"tdePassword,omitempty"`
+
+	Image SingleInstanceDatabaseImage `json:"image"`
+
+	Persistence SingleInstanceDatabasePersistence `json:"persistence,omitempty"`
+
+	InitParams *SingleInstanceDatabaseInitParams `json:"initParams,omitempty"`
+
+	Resources SingleInstanceDatabaseResources `json:"resources,omitempty"`
+
+	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
+
+	DbFilesPvc string `json:"dbFilesPvc,omitempty"`
+	StagePvc   string `json:"stagePvc,omitempty"`
+
+	EnvVars []corev1.EnvVar `json:"envVars,omitempty"`
+
+	// - For primary: enables blob generation and sets generation path
+	// - For truecache: references existing blob ConfigMap and sets mount path
+	TrueCache *SingleInstanceDatabaseTrueCacheSpec `json:"trueCache,omitempty"`
+}
+
+// Unified sub-struct for TrueCache options
+type SingleInstanceDatabaseTrueCacheSpec struct {
+	// --- For primary databases (createAs: primary) ---
+	TruedbUniqueName string `json:"truedbUniqueName,omitempty"`
+
+	// Enable automatic TrueCache blob generation in the primary pod (default: false).
+	// When true, the operator will run dbca to create the blob and store it in a ConfigMap.
+	// When false, the operator will not create the blob and the user must provide the ConfigMap for truecache consumers.
+	// +optional
+	GenerateEnabled bool `json:"generateEnabled,omitempty"`
+
+	// Path inside the primary pod where the blob file is generated when generateEnabled=true
+	// (default: /tmp/tc_config_blob.tar.gz).
+	// +optional
+	GeneratePath string `json:"generatePath,omitempty"`
+
+	// --- For truecache instances (createAs: truecache) ---
+
+	// Name of an existing ConfigMap containing the TrueCache blob file.
+	// If set, the operator skips blob creation and uses this ConfigMap.
+	// +optional
+	BlobConfigMapRef string `json:"blobConfigMapRef,omitempty"`
+
+	// Key within the ConfigMap that holds the blob file content (default: "tc_config_blob.tar.gz").
+	// +optional
+	BlobConfigMapKey string `json:"blobConfigMapKey,omitempty"`
+
+	// Path inside the truecache container where the blob file is mounted (default: /stage/tc_config_blob.tar.gz).
+	// +optional
+	BlobMountPath     string   `json:"blobMountPath,omitempty"`
+	TrueCacheServices []string `json:"trueCacheServices,omitempty"`
 }
 
 type SingleInstanceDatabaseResource struct {

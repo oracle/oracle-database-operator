@@ -686,6 +686,41 @@ spec:
                 type: integer
               tcpsTlsSecret:
                 type: string
+              tdePassword:
+                properties:
+                  keepSecret:
+                    type: boolean
+                  mountPath:
+                    type: string
+                  secretKey:
+                    default: oracle_pwd
+                    type: string
+                  secretName:
+                    type: string
+                  skipInitWallet:
+                    type: boolean
+                required:
+                - secretName
+                type: object
+              trueCache:
+                properties:
+                  blobConfigMapKey:
+                    type: string
+                  blobConfigMapRef:
+                    type: string
+                  blobMountPath:
+                    type: string
+                  generateEnabled:
+                    type: boolean
+                  generatePath:
+                    type: string
+                  trueCacheServices:
+                    items:
+                      type: string
+                    type: array
+                  truedbUniqueName:
+                    type: string
+                type: object
               trueCacheServices:
                 items:
                   type: string

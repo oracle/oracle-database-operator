@@ -35,6 +35,16 @@ spec:
   # - "FREEPDB1:sales1:sales1_tc"
   # - "FREEPDB1:sales2:sales2_tc" 
   # - "FREEPDB1:sales3:sales3_tc"
+
+  ## TrueCache blob handling
+  ## - For a primary database, set generateEnabled=true to let the operator generate the blob ConfigMap.
+  ## - generatePath only controls the in-pod output path used during operator-driven generation.
+  ## - If generation is disabled, create the blob ConfigMap yourself and reference it from the truecache database.
+  trueCache:
+  #   generateEnabled: false
+  #   generatePath: /tmp/tc_config_blob.tar.gz
+  #   blobConfigMapRef: my-truecache-blob
+  #   blobConfigMapKey: tc_config_blob.tar.gz
   
   ## Secret containing SIDB password mapped to secretKey. secretKey defaults to oracle_pwd
   ## Should refer to adminPassword of Source DB if createAs is clone or standby
