@@ -15653,6 +15653,22 @@ spec:
               catalog:
                 items:
                   properties:
+                    additionalPVCs:
+                      items:
+                        properties:
+                          mountPath:
+                            type: string
+                          pvcName:
+                            type: string
+                          storageClass:
+                            type: string
+                          storageSizeInGb:
+                            format: int32
+                            type: integer
+                        required:
+                        - mountPath
+                        type: object
+                      type: array
                     agentPassword:
                       type: string
                     agentPort:
@@ -15666,6 +15682,19 @@ spec:
                       - "on"
                       - "off"
                       type: string
+                    capabilities:
+                      properties:
+                        add:
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        drop:
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      type: object
                     catalogConfigData:
                       properties:
                         mountPath:
@@ -15693,6 +15722,8 @@ spec:
                       type: string
                     createAs:
                       type: string
+                    disableDefaultLogVolumeClaims:
+                      type: boolean
                     encryption:
                       type: string
                     envVars:
@@ -15811,6 +15842,85 @@ spec:
                       type: object
                     sdb:
                       type: string
+                    securityContext:
+                      properties:
+                        appArmorProfile:
+                          properties:
+                            localhostProfile:
+                              type: string
+                            type:
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        fsGroup:
+                          format: int64
+                          type: integer
+                        fsGroupChangePolicy:
+                          type: string
+                        runAsGroup:
+                          format: int64
+                          type: integer
+                        runAsNonRoot:
+                          type: boolean
+                        runAsUser:
+                          format: int64
+                          type: integer
+                        seLinuxChangePolicy:
+                          type: string
+                        seLinuxOptions:
+                          properties:
+                            level:
+                              type: string
+                            role:
+                              type: string
+                            type:
+                              type: string
+                            user:
+                              type: string
+                          type: object
+                        seccompProfile:
+                          properties:
+                            localhostProfile:
+                              type: string
+                            type:
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        supplementalGroups:
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        supplementalGroupsPolicy:
+                          type: string
+                        sysctls:
+                          items:
+                            properties:
+                              name:
+                                type: string
+                              value:
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        windowsOptions:
+                          properties:
+                            gmsaCredentialSpec:
+                              type: string
+                            gmsaCredentialSpecName:
+                              type: string
+                            hostProcess:
+                              type: boolean
+                            runAsUserName:
+                              type: string
+                          type: object
+                      type: object
                     shape:
                       type: string
                     sharding:
@@ -15878,10 +15988,41 @@ spec:
               gsm:
                 items:
                   properties:
+                    additionalPVCs:
+                      items:
+                        properties:
+                          mountPath:
+                            type: string
+                          pvcName:
+                            type: string
+                          storageClass:
+                            type: string
+                          storageSizeInGb:
+                            format: int32
+                            type: integer
+                        required:
+                        - mountPath
+                        type: object
+                      type: array
+                    capabilities:
+                      properties:
+                        add:
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        drop:
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      type: object
                     catalog:
                       type: string
                     directorName:
                       type: string
+                    disableDefaultLogVolumeClaims:
+                      type: boolean
                     encryption:
                       type: string
                     endpoint:
@@ -15984,6 +16125,85 @@ spec:
                             x-kubernetes-int-or-string: true
                           type: object
                       type: object
+                    securityContext:
+                      properties:
+                        appArmorProfile:
+                          properties:
+                            localhostProfile:
+                              type: string
+                            type:
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        fsGroup:
+                          format: int64
+                          type: integer
+                        fsGroupChangePolicy:
+                          type: string
+                        runAsGroup:
+                          format: int64
+                          type: integer
+                        runAsNonRoot:
+                          type: boolean
+                        runAsUser:
+                          format: int64
+                          type: integer
+                        seLinuxChangePolicy:
+                          type: string
+                        seLinuxOptions:
+                          properties:
+                            level:
+                              type: string
+                            role:
+                              type: string
+                            type:
+                              type: string
+                            user:
+                              type: string
+                          type: object
+                        seccompProfile:
+                          properties:
+                            localhostProfile:
+                              type: string
+                            type:
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        supplementalGroups:
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        supplementalGroupsPolicy:
+                          type: string
+                        sysctls:
+                          items:
+                            properties:
+                              name:
+                                type: string
+                              value:
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        windowsOptions:
+                          properties:
+                            gmsaCredentialSpec:
+                              type: string
+                            gmsaCredentialSpecName:
+                              type: string
+                            hostProcess:
+                              type: boolean
+                            runAsUserName:
+                              type: string
+                          type: object
+                      type: object
                     shape:
                       type: string
                     storageSizeInGb:
@@ -16003,6 +16223,39 @@ spec:
                 type: string
               gsmImagePullSecret:
                 type: string
+              gsmResources:
+                properties:
+                  claims:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        request:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                type: object
               gsmService:
                 items:
                   properties:
@@ -16212,6 +16465,35 @@ spec:
               shard:
                 items:
                   properties:
+                    additionalPVCs:
+                      items:
+                        properties:
+                          mountPath:
+                            type: string
+                          pvcName:
+                            type: string
+                          storageClass:
+                            type: string
+                          storageSizeInGb:
+                            format: int32
+                            type: integer
+                        required:
+                        - mountPath
+                        type: object
+                      type: array
+                    capabilities:
+                      properties:
+                        add:
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        drop:
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      type: object
                     cdbName:
                       type: string
                     cloneSchemas:
@@ -16228,6 +16510,8 @@ spec:
                       - STANDBY
                       - ACTIVE_STANDBY
                       type: string
+                    disableDefaultLogVolumeClaims:
+                      type: boolean
                     diskThreshold:
                       format: int32
                       minimum: 1
@@ -16334,6 +16618,85 @@ spec:
                       type: object
                     savename:
                       type: boolean
+                    securityContext:
+                      properties:
+                        appArmorProfile:
+                          properties:
+                            localhostProfile:
+                              type: string
+                            type:
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        fsGroup:
+                          format: int64
+                          type: integer
+                        fsGroupChangePolicy:
+                          type: string
+                        runAsGroup:
+                          format: int64
+                          type: integer
+                        runAsNonRoot:
+                          type: boolean
+                        runAsUser:
+                          format: int64
+                          type: integer
+                        seLinuxChangePolicy:
+                          type: string
+                        seLinuxOptions:
+                          properties:
+                            level:
+                              type: string
+                            role:
+                              type: string
+                            type:
+                              type: string
+                            user:
+                              type: string
+                          type: object
+                        seccompProfile:
+                          properties:
+                            localhostProfile:
+                              type: string
+                            type:
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        supplementalGroups:
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        supplementalGroupsPolicy:
+                          type: string
+                        sysctls:
+                          items:
+                            properties:
+                              name:
+                                type: string
+                              value:
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        windowsOptions:
+                          properties:
+                            gmsaCredentialSpec:
+                              type: string
+                            gmsaCredentialSpecName:
+                              type: string
+                            hostProcess:
+                              type: boolean
+                            runAsUserName:
+                              type: string
+                          type: object
+                      type: object
                     shardConfigData:
                       properties:
                         mountPath:
@@ -16390,11 +16753,6 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
-                        transportMode:
-                          enum:
-                          - SYNC
-                          - ASYNC
-                          type: string
                         tdeWallet:
                           properties:
                             isEnabled:
@@ -16413,6 +16771,11 @@ spec:
                             zipFileKey:
                               type: string
                           type: object
+                        transportMode:
+                          enum:
+                          - SYNC
+                          - ASYNC
+                          type: string
                       type: object
                     storageSizeInGb:
                       format: int32
@@ -16458,6 +16821,37 @@ spec:
               shardInfo:
                 items:
                   properties:
+                    additionalPVCs:
+                      items:
+                        properties:
+                          mountPath:
+                            type: string
+                          pvcName:
+                            type: string
+                          storageClass:
+                            type: string
+                          storageSizeInGb:
+                            format: int32
+                            type: integer
+                        required:
+                        - mountPath
+                        type: object
+                      type: array
+                    capabilities:
+                      properties:
+                        add:
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        drop:
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      type: object
+                    disableDefaultLogVolumeClaims:
+                      type: boolean
                     envVars:
                       items:
                         properties:
@@ -16516,6 +16910,85 @@ spec:
                             - type: string
                             pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                             x-kubernetes-int-or-string: true
+                          type: object
+                      type: object
+                    securityContext:
+                      properties:
+                        appArmorProfile:
+                          properties:
+                            localhostProfile:
+                              type: string
+                            type:
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        fsGroup:
+                          format: int64
+                          type: integer
+                        fsGroupChangePolicy:
+                          type: string
+                        runAsGroup:
+                          format: int64
+                          type: integer
+                        runAsNonRoot:
+                          type: boolean
+                        runAsUser:
+                          format: int64
+                          type: integer
+                        seLinuxChangePolicy:
+                          type: string
+                        seLinuxOptions:
+                          properties:
+                            level:
+                              type: string
+                            role:
+                              type: string
+                            type:
+                              type: string
+                            user:
+                              type: string
+                          type: object
+                        seccompProfile:
+                          properties:
+                            localhostProfile:
+                              type: string
+                            type:
+                              type: string
+                          required:
+                          - type
+                          type: object
+                        supplementalGroups:
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        supplementalGroupsPolicy:
+                          type: string
+                        sysctls:
+                          items:
+                            properties:
+                              name:
+                                type: string
+                              value:
+                                type: string
+                            required:
+                            - name
+                            - value
+                            type: object
+                          type: array
+                          x-kubernetes-list-type: atomic
+                        windowsOptions:
+                          properties:
+                            gmsaCredentialSpec:
+                              type: string
+                            gmsaCredentialSpecName:
+                              type: string
+                            hostProcess:
+                              type: boolean
+                            runAsUserName:
+                              type: string
                           type: object
                       type: object
                     shape:
@@ -16628,11 +17101,6 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
-                        transportMode:
-                          enum:
-                          - SYNC
-                          - ASYNC
-                          type: string
                         tdeWallet:
                           properties:
                             isEnabled:
@@ -16651,6 +17119,11 @@ spec:
                             zipFileKey:
                               type: string
                           type: object
+                        transportMode:
+                          enum:
+                          - SYNC
+                          - ASYNC
+                          type: string
                       type: object
                     storageSizeInGb:
                       format: int32
@@ -16702,6 +17175,24 @@ spec:
                 type: integer
               tcpsTlsSecret:
                 type: string
+              tdeWallet:
+                properties:
+                  isEnabled:
+                    enum:
+                    - enable
+                    - disable
+                    type: string
+                  mountPath:
+                    type: string
+                  pvcName:
+                    type: string
+                  secretRef:
+                    type: string
+                  walletRoot:
+                    type: string
+                  zipFileKey:
+                    type: string
+                type: object
               tdeWalletPvc:
                 type: string
               tdeWalletPvcMountLocation:
@@ -16814,6 +17305,29 @@ spec:
               shards:
                 additionalProperties:
                   type: string
+                type: object
+              tdeKeyRefresh:
+                properties:
+                  completedShards:
+                    items:
+                      type: string
+                    type: array
+                  currentShard:
+                    type: string
+                  exported:
+                    type: boolean
+                  failedShards:
+                    items:
+                      type: string
+                    type: array
+                  lastError:
+                    type: string
+                  phase:
+                    type: string
+                  requestedToken:
+                    type: string
+                  userActionRequired:
+                    type: boolean
                 type: object
             type: object
         type: object
@@ -17245,6 +17759,22 @@ spec:
             type: object
           spec:
             properties:
+              additionalPVCs:
+                items:
+                  properties:
+                    mountPath:
+                      type: string
+                    pvcName:
+                      type: string
+                    storageClass:
+                      type: string
+                    storageSizeInGb:
+                      format: int32
+                      type: integer
+                  required:
+                  - mountPath
+                  type: object
+                type: array
               adminPassword:
                 properties:
                   keepSecret:
@@ -17263,6 +17793,19 @@ spec:
                 type: object
               archiveLog:
                 type: boolean
+              capabilities:
+                properties:
+                  add:
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  drop:
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                type: object
               charset:
                 type: string
               convertToSnapshotStandby:
@@ -17276,6 +17819,8 @@ spec:
                 type: string
               dbFilesPvc:
                 type: string
+              disableDefaultDiagVolumeClaim:
+                type: boolean
               edition:
                 enum:
                 - standard
@@ -17447,6 +17992,39 @@ spec:
                 type: integer
               replicas:
                 type: integer
+              resourceRequirements:
+                properties:
+                  claims:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        request:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - name
+                    x-kubernetes-list-type: map
+                  limits:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                  requests:
+                    additionalProperties:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    type: object
+                type: object
               resources:
                 properties:
                   limits:
@@ -17461,6 +18039,85 @@ spec:
                       cpu:
                         type: string
                       memory:
+                        type: string
+                    type: object
+                type: object
+              securityContext:
+                properties:
+                  appArmorProfile:
+                    properties:
+                      localhostProfile:
+                        type: string
+                      type:
+                        type: string
+                    required:
+                    - type
+                    type: object
+                  fsGroup:
+                    format: int64
+                    type: integer
+                  fsGroupChangePolicy:
+                    type: string
+                  runAsGroup:
+                    format: int64
+                    type: integer
+                  runAsNonRoot:
+                    type: boolean
+                  runAsUser:
+                    format: int64
+                    type: integer
+                  seLinuxChangePolicy:
+                    type: string
+                  seLinuxOptions:
+                    properties:
+                      level:
+                        type: string
+                      role:
+                        type: string
+                      type:
+                        type: string
+                      user:
+                        type: string
+                    type: object
+                  seccompProfile:
+                    properties:
+                      localhostProfile:
+                        type: string
+                      type:
+                        type: string
+                    required:
+                    - type
+                    type: object
+                  supplementalGroups:
+                    items:
+                      format: int64
+                      type: integer
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  supplementalGroupsPolicy:
+                    type: string
+                  sysctls:
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        value:
+                          type: string
+                      required:
+                      - name
+                      - value
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  windowsOptions:
+                    properties:
+                      gmsaCredentialSpec:
+                        type: string
+                      gmsaCredentialSpecName:
+                        type: string
+                      hostProcess:
+                        type: boolean
+                      runAsUserName:
                         type: string
                     type: object
                 type: object
