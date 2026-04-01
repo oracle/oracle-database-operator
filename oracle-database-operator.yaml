@@ -16386,25 +16386,33 @@ spec:
                           - MAXAVAILABILITY
                           - MAXPERFORMANCE
                           type: string
-                        sourceType:
-                          type: string
                         standbyPerPrimary:
                           format: int32
                           minimum: 1
                           type: integer
-                        standbyTDEWalletRoot:
-                          type: string
                         transportMode:
                           enum:
                           - SYNC
                           - ASYNC
                           type: string
-                        walletMountPath:
-                          type: string
-                        walletSecretRef:
-                          type: string
-                        walletZipFileKey:
-                          type: string
+                        tdeWallet:
+                          properties:
+                            isEnabled:
+                              enum:
+                              - enable
+                              - disable
+                              type: string
+                            mountPath:
+                              type: string
+                            pvcName:
+                              type: string
+                            secretRef:
+                              type: string
+                            walletRoot:
+                              type: string
+                            zipFileKey:
+                              type: string
+                          type: object
                       type: object
                     storageSizeInGb:
                       format: int32
@@ -16616,25 +16624,33 @@ spec:
                           - MAXAVAILABILITY
                           - MAXPERFORMANCE
                           type: string
-                        sourceType:
-                          type: string
                         standbyPerPrimary:
                           format: int32
                           minimum: 1
                           type: integer
-                        standbyTDEWalletRoot:
-                          type: string
                         transportMode:
                           enum:
                           - SYNC
                           - ASYNC
                           type: string
-                        walletMountPath:
-                          type: string
-                        walletSecretRef:
-                          type: string
-                        walletZipFileKey:
-                          type: string
+                        tdeWallet:
+                          properties:
+                            isEnabled:
+                              enum:
+                              - enable
+                              - disable
+                              type: string
+                            mountPath:
+                              type: string
+                            pvcName:
+                              type: string
+                            secretRef:
+                              type: string
+                            walletRoot:
+                              type: string
+                            zipFileKey:
+                              type: string
+                          type: object
                       type: object
                     storageSizeInGb:
                       format: int32

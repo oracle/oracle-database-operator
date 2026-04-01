@@ -314,12 +314,12 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 	user := oraRunAsUser
 	group := oraFsGroup
 	spec := &corev1.PodSpec{
-		SecurityContext: &corev1.PodSecurityContext{
+		SecurityContext: mergePodSecurityContextWithDefaults(&corev1.PodSecurityContext{
 			RunAsNonRoot: BoolPointer(true),
 			RunAsUser:    &user,
 			RunAsGroup:   &group,
 			FSGroup:      &group,
-		},
+		}, OraShardSpex.SecurityContext),
 		Containers:         buildContainerSpecForShard(instance, OraShardSpex),
 		Volumes:            buildVolumeSpecForShard(instance, OraShardSpex),
 		ServiceAccountName: instance.Spec.SrvAccountName,
@@ -361,6 +361,7 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 // buildVolumeSpecForShard returns all volumes mounted by shard containers.
 func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.Volume {
 	var result []corev1.Volume
+	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.DisableDefaultLogVolumeClaims, OraShardSpex.AdditionalPVCs)
 	result = []corev1.Volume{
 		{
 			Name: OraShardSpex.Name + "secretmap-vol3",
@@ -382,12 +383,14 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 		result = append(result, corev1.Volume{Name: OraShardSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraShardSpex.ShardConfigData.Name}}}})
 	}
 
-	// Volume name must match the mount entry ("-oradata-vol4").
-	if len(OraShardSpex.PvcName) != 0 {
+	for _, pvcMount := range pvcMounts {
+		if strings.TrimSpace(pvcMount.pvcName) == "" {
+			continue
+		}
 		result = append(result, corev1.Volume{
-			Name: OraShardSpex.Name + "-oradata-vol4",
+			Name: pvcMount.volumeName,
 			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OraShardSpex.PvcName},
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcMount.pvcName},
 			},
 		})
 	}
@@ -400,8 +403,8 @@ func buildVolumeSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex
 	}
 
 	if checkTdeWalletFlag(instance) {
-		if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
-			result = append(result, corev1.Volume{Name: OraShardSpex.Name + "shared-storage-vol8", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: instance.Spec.TdeWalletPvc}}})
+		if walletPVC := getTdeWalletPVCName(instance); len(instance.Spec.FssStorageClass) == 0 && walletPVC != "" {
+			result = append(result, corev1.Volume{Name: OraShardSpex.Name + "shared-storage-vol8", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: walletPVC}}})
 		}
 	}
 	if standbyWalletSecret := getStandbyWalletSecretRefForShard(instance, OraShardSpex); standbyWalletSecret != "" {
@@ -440,10 +443,10 @@ func buildContainerSpecForShard(instance *databasev4.ShardingDatabase, OraShardS
 			RunAsUser:                &user,
 			RunAsGroup:               &group,
 			AllowPrivilegeEscalation: BoolPointer(false),
-			Capabilities: &corev1.Capabilities{
+			Capabilities: mergeCapabilitiesWithDefaults(&corev1.Capabilities{
 				Add:  capsAdd,
 				Drop: capsDrop,
-			},
+			}, OraShardSpex.Capabilities),
 		},
 		Resources: corev1.ResourceRequirements{
 			Requests: make(map[corev1.ResourceName]resource.Quantity),
@@ -607,9 +610,12 @@ func buildInitContainerSpecForShard(instance *databasev4.ShardingDatabase, OraSh
 
 // buildVolumeMountSpecForShard returns volume mounts for shard containers.
 func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.VolumeMount {
-	result := make([]corev1.VolumeMount, 0, 6)
+	result := make([]corev1.VolumeMount, 0, 8)
+	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.DisableDefaultLogVolumeClaims, OraShardSpex.AdditionalPVCs)
 	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "secretmap-vol3", MountPath: getDbSecretMountPath(instance), ReadOnly: true})
-	result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "-oradata-vol4", MountPath: oraDataMount})
+	for _, pvcMount := range pvcMounts {
+		result = append(result, corev1.VolumeMount{Name: pvcMount.volumeName, MountPath: pvcMount.mountPath})
+	}
 	if instance.Spec.IsDownloadScripts {
 		result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "orascript-vol5", MountPath: oraDbScriptMount})
 	}
@@ -624,14 +630,15 @@ func buildVolumeMountSpecForShard(instance *databasev4.ShardingDatabase, OraShar
 	}
 
 	if checkTdeWalletFlag(instance) {
-		if len(instance.Spec.FssStorageClass) > 0 && len(instance.Spec.TdeWalletPvc) == 0 {
+		walletPVC := getTdeWalletPVCName(instance)
+		if len(instance.Spec.FssStorageClass) > 0 && walletPVC == "" {
 			if len(instance.Spec.Catalog) > 0 {
 				result = append(result, corev1.VolumeMount{
 					Name:      instance.Name + "shared-storage" + instance.Spec.Catalog[0].Name + "-0",
 					MountPath: getTdeWalletMountLoc(instance),
 				})
 			}
-		} else if len(instance.Spec.FssStorageClass) == 0 && len(instance.Spec.TdeWalletPvc) > 0 {
+		} else if len(instance.Spec.FssStorageClass) == 0 && walletPVC != "" {
 			result = append(result, corev1.VolumeMount{Name: OraShardSpex.Name + "shared-storage-vol8", MountPath: getTdeWalletMountLoc(instance)})
 		}
 	}
@@ -653,23 +660,16 @@ func getStandbyWalletSecretRefForShard(instance *databasev4.ShardingDatabase, sh
 	}
 
 	if shard.StandbyConfig != nil {
-		if ref := strings.TrimSpace(shard.StandbyConfig.WalletSecretRef); ref != "" {
-			return ref
+		if shard.StandbyConfig.TDEWallet != nil {
+			if ref := strings.TrimSpace(shard.StandbyConfig.TDEWallet.SecretRef); ref != "" {
+				return ref
+			}
 		}
 	}
 
-	shardName := strings.ToLower(strings.TrimSpace(shard.Name))
-	for i := range instance.Spec.ShardInfo {
-		info := instance.Spec.ShardInfo[i]
-		if info.StandbyConfig == nil {
-			continue
-		}
-		ref := strings.TrimSpace(info.StandbyConfig.WalletSecretRef)
-		if ref == "" {
-			continue
-		}
-		prefix := strings.ToLower(strings.TrimSpace(info.ShardPreFixName))
-		if prefix != "" && strings.HasPrefix(shardName, prefix) {
+	info := matchShardInfoByLongestPrefix(instance, shard.Name)
+	if info != nil && info.StandbyConfig != nil && info.StandbyConfig.TDEWallet != nil {
+		if ref := strings.TrimSpace(info.StandbyConfig.TDEWallet.SecretRef); ref != "" {
 			return ref
 		}
 	}
@@ -678,23 +678,16 @@ func getStandbyWalletSecretRefForShard(instance *databasev4.ShardingDatabase, sh
 
 func getStandbyWalletMountPathForShard(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) string {
 	if shard.StandbyConfig != nil {
-		if p := strings.TrimSpace(shard.StandbyConfig.WalletMountPath); p != "" {
-			return p
+		if shard.StandbyConfig.TDEWallet != nil {
+			if p := strings.TrimSpace(shard.StandbyConfig.TDEWallet.MountPath); p != "" {
+				return p
+			}
 		}
 	}
 
-	shardName := strings.ToLower(strings.TrimSpace(shard.Name))
-	for i := range instance.Spec.ShardInfo {
-		info := instance.Spec.ShardInfo[i]
-		if info.StandbyConfig == nil {
-			continue
-		}
-		p := strings.TrimSpace(info.StandbyConfig.WalletMountPath)
-		if p == "" {
-			continue
-		}
-		prefix := strings.ToLower(strings.TrimSpace(info.ShardPreFixName))
-		if prefix != "" && strings.HasPrefix(shardName, prefix) {
+	info := matchShardInfoByLongestPrefix(instance, shard.Name)
+	if info != nil && info.StandbyConfig != nil && info.StandbyConfig.TDEWallet != nil {
+		if p := strings.TrimSpace(info.StandbyConfig.TDEWallet.MountPath); p != "" {
 			return p
 		}
 	}
@@ -703,23 +696,16 @@ func getStandbyWalletMountPathForShard(instance *databasev4.ShardingDatabase, sh
 
 func getStandbyWalletZipFileKeyForShard(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) string {
 	if shard.StandbyConfig != nil {
-		if k := strings.TrimSpace(shard.StandbyConfig.WalletZipFileKey); k != "" {
-			return k
+		if shard.StandbyConfig.TDEWallet != nil {
+			if k := strings.TrimSpace(shard.StandbyConfig.TDEWallet.ZipFileKey); k != "" {
+				return k
+			}
 		}
 	}
 
-	shardName := strings.ToLower(strings.TrimSpace(shard.Name))
-	for i := range instance.Spec.ShardInfo {
-		info := instance.Spec.ShardInfo[i]
-		if info.StandbyConfig == nil {
-			continue
-		}
-		k := strings.TrimSpace(info.StandbyConfig.WalletZipFileKey)
-		if k == "" {
-			continue
-		}
-		prefix := strings.ToLower(strings.TrimSpace(info.ShardPreFixName))
-		if prefix != "" && strings.HasPrefix(shardName, prefix) {
+	info := matchShardInfoByLongestPrefix(instance, shard.Name)
+	if info != nil && info.StandbyConfig != nil && info.StandbyConfig.TDEWallet != nil {
+		if k := strings.TrimSpace(info.StandbyConfig.TDEWallet.ZipFileKey); k != "" {
 			return k
 		}
 	}
@@ -728,67 +714,81 @@ func getStandbyWalletZipFileKeyForShard(instance *databasev4.ShardingDatabase, s
 
 func getStandbyTDEWalletRootForShard(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) string {
 	if shard.StandbyConfig != nil {
-		if p := strings.TrimSpace(shard.StandbyConfig.StandbyTDEWalletRoot); p != "" {
-			return p
+		if shard.StandbyConfig.TDEWallet != nil {
+			if p := strings.TrimSpace(shard.StandbyConfig.TDEWallet.WalletRoot); p != "" {
+				return p
+			}
 		}
 	}
 
-	shardName := strings.ToLower(strings.TrimSpace(shard.Name))
-	for i := range instance.Spec.ShardInfo {
-		info := instance.Spec.ShardInfo[i]
-		if info.StandbyConfig == nil {
-			continue
-		}
-		p := strings.TrimSpace(info.StandbyConfig.StandbyTDEWalletRoot)
-		if p == "" {
-			continue
-		}
-		prefix := strings.ToLower(strings.TrimSpace(info.ShardPreFixName))
-		if prefix != "" && strings.HasPrefix(shardName, prefix) {
+	info := matchShardInfoByLongestPrefix(instance, shard.Name)
+	if info != nil && info.StandbyConfig != nil && info.StandbyConfig.TDEWallet != nil {
+		if p := strings.TrimSpace(info.StandbyConfig.TDEWallet.WalletRoot); p != "" {
 			return p
 		}
 	}
 	return getTdeWalletMountLoc(instance)
 }
 
-// volumeClaimTemplatesForShard returns PVC templates when an existing PVC is not provided.
-func volumeClaimTemplatesForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.PersistentVolumeClaim {
-	if len(OraShardSpex.PvcName) != 0 {
+func matchShardInfoByLongestPrefix(instance *databasev4.ShardingDatabase, shardName string) *databasev4.ShardingDetails {
+	if instance == nil {
 		return nil
 	}
-
-	claim := corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            OraShardSpex.Name + "-oradata-vol4",
-			Namespace:       instance.Namespace,
-			OwnerReferences: buildOwnerRefForShard(instance),
-			Labels:          buildResourceLabelsForShard(instance, "sharding", OraShardSpex.Name),
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
-			},
-			StorageClassName: &instance.Spec.StorageClass,
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraShardSpex.StorageSizeInGb), 10) + "Gi"),
-				},
-			},
-		},
+	name := strings.ToLower(strings.TrimSpace(shardName))
+	if name == "" {
+		return nil
 	}
-
-	if len(OraShardSpex.PvAnnotations) > 0 {
-		claim.ObjectMeta.Annotations = make(map[string]string, len(OraShardSpex.PvAnnotations))
-		for key, value := range OraShardSpex.PvAnnotations {
-			claim.ObjectMeta.Annotations[key] = value
+	best := -1
+	bestLen := -1
+	for i := range instance.Spec.ShardInfo {
+		prefix := strings.ToLower(strings.TrimSpace(instance.Spec.ShardInfo[i].ShardPreFixName))
+		if prefix == "" || !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if len(prefix) > bestLen {
+			best = i
+			bestLen = len(prefix)
 		}
 	}
+	if best < 0 {
+		return nil
+	}
+	return &instance.Spec.ShardInfo[best]
+}
 
-	if len(OraShardSpex.PvMatchLabels) > 0 {
-		claim.Spec.Selector = &metav1.LabelSelector{MatchLabels: OraShardSpex.PvMatchLabels}
+// volumeClaimTemplatesForShard returns PVC templates when an existing PVC is not provided.
+func volumeClaimTemplatesForShard(instance *databasev4.ShardingDatabase, OraShardSpex databasev4.ShardSpec) []corev1.PersistentVolumeClaim {
+	pvcMounts := normalizePVCMountConfigs(OraShardSpex.Name, OraShardSpex.StorageSizeInGb, instance.Spec.StorageClass, OraShardSpex.DisableDefaultLogVolumeClaims, OraShardSpex.AdditionalPVCs)
+	claims := make([]corev1.PersistentVolumeClaim, 0, len(pvcMounts))
+
+	for _, pvcMount := range pvcMounts {
+		if strings.TrimSpace(pvcMount.pvcName) != "" {
+			continue
+		}
+		claim := corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            pvcMount.volumeName,
+				Namespace:       instance.Namespace,
+				OwnerReferences: buildOwnerRefForShard(instance),
+				Labels:          buildResourceLabelsForShard(instance, "sharding", OraShardSpex.Name),
+			},
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{
+					corev1.ReadWriteOnce,
+				},
+				StorageClassName: storageClassNamePtr(pvcMount.storageClass),
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(pvcMount.storageSizeInGb), 10) + "Gi"),
+					},
+				},
+			},
+		}
+
+		claims = append(claims, claim)
 	}
 
-	return []corev1.PersistentVolumeClaim{claim}
+	return claims
 }
 
 // BuildServiceDefForShard builds either the local headless service or per-pod external service.

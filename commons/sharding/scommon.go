@@ -40,6 +40,8 @@ package commons
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -78,6 +80,7 @@ const (
 	oraDbScriptMount          = "/opt/oracle/scripts/sharding"
 	oraDataMount              = "/opt/oracle/oradata"
 	oraGsmDataMount           = "/opt/oracle/gsmdata"
+	oraGsmDiagMount           = "/u01/app/oracle/diag"
 	oraConfigMapMount         = "/mnt/config-map"
 	oraEnvFileMount           = "/mnt/conf.d"
 	oraEnvFile                = "/mnt/conf.d/envfile"
@@ -93,9 +96,115 @@ const (
 	TmpLoc                    = "/var/tmp"
 	connectFailureMaxTries    = 5
 	errorDialingBackendEOF    = "error dialing backend: EOF"
+	diagVolumeSuffix          = "-diag-vol10"
+	gddVolumeSuffix           = "-gdd-vol11"
 )
 
 var nonDigitRegex = regexp.MustCompile("[^0-9]+")
+
+type pvcMountConfig struct {
+	mountPath       string
+	pvcName         string
+	storageSizeInGb int32
+	storageClass    string
+	volumeName      string
+}
+
+func storageClassNamePtr(storageClass string) *string {
+	trimmed := strings.TrimSpace(storageClass)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
+func extraVolumeName(ownerName, mountPath string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(ownerName) + ":" + strings.TrimSpace(mountPath)))
+	hashStr := hex.EncodeToString(sum[:])
+	return strings.TrimSpace(ownerName) + "-extra-vol-" + hashStr[:8]
+}
+
+func normalizePVCMountConfigs(ownerName string, baseStorageSize int32, baseStorageClass string, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcMountConfig {
+	return normalizePVCMountConfigsWithDefaults(ownerName, baseStorageSize, baseStorageClass, disableDefaultLogPVCs, databasev4.DefaultOraDataMountPath, databasev4.DefaultDiagMountPath, additionalPVCs)
+}
+
+func normalizeGsmPVCMountConfigs(ownerName string, baseStorageSize int32, baseStorageClass string, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcMountConfig {
+	return normalizePVCMountConfigsWithDefaults(ownerName, baseStorageSize, baseStorageClass, disableDefaultLogPVCs, databasev4.DefaultGsmDataMountPath, databasev4.DefaultGsmDiagMountPath, additionalPVCs)
+}
+
+func normalizePVCMountConfigsWithDefaults(ownerName string, baseStorageSize int32, baseStorageClass string, disableDefaultLogPVCs bool, baseMountPath, diagMountPath string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcMountConfig {
+	trimmedOwner := strings.TrimSpace(ownerName)
+	configByPath := map[string]pvcMountConfig{
+		baseMountPath: {
+			mountPath:       baseMountPath,
+			storageSizeInGb: baseStorageSize,
+			storageClass:    strings.TrimSpace(baseStorageClass),
+			volumeName:      trimmedOwner + "-oradata-vol4",
+		},
+	}
+	if !disableDefaultLogPVCs {
+		configByPath[diagMountPath] = pvcMountConfig{
+			mountPath:       diagMountPath,
+			storageSizeInGb: databasev4.DefaultDiagSizeInGb,
+			storageClass:    strings.TrimSpace(baseStorageClass),
+			volumeName:      trimmedOwner + diagVolumeSuffix,
+		}
+		configByPath[databasev4.DefaultGddLogMountPath] = pvcMountConfig{
+			mountPath:       databasev4.DefaultGddLogMountPath,
+			storageSizeInGb: databasev4.DefaultGddLogSizeInGb,
+			storageClass:    strings.TrimSpace(baseStorageClass),
+			volumeName:      trimmedOwner + gddVolumeSuffix,
+		}
+	}
+
+	for i := range additionalPVCs {
+		mountPath := strings.TrimSpace(additionalPVCs[i].MountPath)
+		if mountPath == "" {
+			continue
+		}
+		cfg, exists := configByPath[mountPath]
+		if !exists {
+			cfg = pvcMountConfig{
+				mountPath:       mountPath,
+				storageSizeInGb: additionalPVCs[i].StorageSizeInGb,
+				storageClass:    strings.TrimSpace(baseStorageClass),
+				volumeName:      extraVolumeName(trimmedOwner, mountPath),
+			}
+		}
+		if pvcName := strings.TrimSpace(additionalPVCs[i].PvcName); pvcName != "" {
+			cfg.pvcName = pvcName
+		}
+		if additionalPVCs[i].StorageSizeInGb > 0 {
+			cfg.storageSizeInGb = additionalPVCs[i].StorageSizeInGb
+		}
+		if overrideSC := strings.TrimSpace(additionalPVCs[i].StorageClass); overrideSC != "" {
+			cfg.storageClass = overrideSC
+		}
+		configByPath[mountPath] = cfg
+	}
+
+	result := make([]pvcMountConfig, 0, len(configByPath))
+	result = append(result, configByPath[baseMountPath])
+	if cfg, ok := configByPath[diagMountPath]; ok {
+		result = append(result, cfg)
+	}
+	if cfg, ok := configByPath[databasev4.DefaultGddLogMountPath]; ok {
+		result = append(result, cfg)
+	}
+
+	extraPaths := make([]string, 0, len(configByPath))
+	for mountPath := range configByPath {
+		if mountPath == baseMountPath || mountPath == diagMountPath || mountPath == databasev4.DefaultGddLogMountPath {
+			continue
+		}
+		extraPaths = append(extraPaths, mountPath)
+	}
+	slices.Sort(extraPaths)
+	for _, mountPath := range extraPaths {
+		result = append(result, configByPath[mountPath])
+	}
+	return result
+}
 
 func upsertEnv(env []corev1.EnvVar, v corev1.EnvVar) []corev1.EnvVar {
 	for i := range env {
@@ -105,6 +214,88 @@ func upsertEnv(env []corev1.EnvVar, v corev1.EnvVar) []corev1.EnvVar {
 		}
 	}
 	return append(env, v)
+}
+
+func mergeCapabilitiesWithDefaults(defaultCaps *corev1.Capabilities, userCaps *corev1.Capabilities) *corev1.Capabilities {
+	if defaultCaps == nil && userCaps == nil {
+		return nil
+	}
+	result := &corev1.Capabilities{}
+	addSeen := map[corev1.Capability]bool{}
+	dropSeen := map[corev1.Capability]bool{}
+
+	appendUnique := func(dst *[]corev1.Capability, seen map[corev1.Capability]bool, src []corev1.Capability) {
+		for i := range src {
+			c := src[i]
+			if seen[c] {
+				continue
+			}
+			seen[c] = true
+			*dst = append(*dst, c)
+		}
+	}
+
+	if defaultCaps != nil {
+		appendUnique(&result.Add, addSeen, defaultCaps.Add)
+		appendUnique(&result.Drop, dropSeen, defaultCaps.Drop)
+	}
+	if userCaps != nil {
+		appendUnique(&result.Add, addSeen, userCaps.Add)
+		appendUnique(&result.Drop, dropSeen, userCaps.Drop)
+	}
+
+	return result
+}
+
+func mergePodSecurityContextWithDefaults(defaultCtx *corev1.PodSecurityContext, userCtx *corev1.PodSecurityContext) *corev1.PodSecurityContext {
+	if defaultCtx == nil && userCtx == nil {
+		return nil
+	}
+	if userCtx == nil {
+		return defaultCtx.DeepCopy()
+	}
+	if defaultCtx == nil {
+		return userCtx.DeepCopy()
+	}
+
+	merged := defaultCtx.DeepCopy()
+
+	if userCtx.RunAsNonRoot != nil {
+		merged.RunAsNonRoot = BoolPointer(*userCtx.RunAsNonRoot)
+	}
+	if userCtx.RunAsUser != nil {
+		v := *userCtx.RunAsUser
+		merged.RunAsUser = &v
+	}
+	if userCtx.RunAsGroup != nil {
+		v := *userCtx.RunAsGroup
+		merged.RunAsGroup = &v
+	}
+	if userCtx.FSGroup != nil {
+		v := *userCtx.FSGroup
+		merged.FSGroup = &v
+	}
+	if userCtx.FSGroupChangePolicy != nil {
+		v := *userCtx.FSGroupChangePolicy
+		merged.FSGroupChangePolicy = &v
+	}
+	if len(userCtx.SupplementalGroups) > 0 {
+		merged.SupplementalGroups = append([]int64(nil), userCtx.SupplementalGroups...)
+	}
+	if len(userCtx.Sysctls) > 0 {
+		merged.Sysctls = append([]corev1.Sysctl(nil), userCtx.Sysctls...)
+	}
+	if userCtx.SELinuxOptions != nil {
+		merged.SELinuxOptions = userCtx.SELinuxOptions.DeepCopy()
+	}
+	if userCtx.SeccompProfile != nil {
+		merged.SeccompProfile = userCtx.SeccompProfile.DeepCopy()
+	}
+	if userCtx.WindowsOptions != nil {
+		merged.WindowsOptions = userCtx.WindowsOptions.DeepCopy()
+	}
+
+	return merged
 }
 
 func getDbSecretMountPath(instance *databasev4.ShardingDatabase) string {
@@ -1618,10 +1809,13 @@ func collectPasswordResetPods(instance *databasev4.ShardingDatabase) []string {
 func getInitContainerCmd(resType string, name string,
 ) string {
 	var initCmd string
+	permCmd := "mkdir -p " + databasev4.DefaultOraDataMountPath + " " + databasev4.DefaultDiagMountPath + " " + databasev4.DefaultGddLogMountPath +
+		";chown -R 54321:54321 " + databasev4.DefaultOraDataMountPath + " " + databasev4.DefaultDiagMountPath + " " + databasev4.DefaultGddLogMountPath +
+		";chmod 750 " + databasev4.DefaultOraDataMountPath + " " + databasev4.DefaultDiagMountPath + " " + databasev4.DefaultGddLogMountPath
 	if resType == "WEB" {
-		initCmd = "chown -R 54321:54321 " + oraDbScriptMount + ";chmod 755 " + oraDbScriptMount + "/*;chown -R 54321:54321 /opt/oracle/oradata;chmod 750 /opt/oracle/oradata"
+		initCmd = "chown -R 54321:54321 " + oraDbScriptMount + ";chmod 755 " + oraDbScriptMount + "/*;" + permCmd
 	} else {
-		initCmd = resType + ";chown -R 54321:54321 " + oraDbScriptMount + ";chmod 755 " + oraDbScriptMount + "/*;chown -R 54321:54321 /opt/oracle/oradata;chmod 750 /opt/oracle/oradata"
+		initCmd = resType + ";chown -R 54321:54321 " + oraDbScriptMount + ";chmod 755 " + oraDbScriptMount + "/*;" + permCmd
 	}
 	return initCmd
 }
@@ -1629,10 +1823,13 @@ func getInitContainerCmd(resType string, name string,
 func getGsmInitContainerCmd(resType string, name string,
 ) string {
 	var initCmd string
+	permCmd := "mkdir -p " + databasev4.DefaultGsmDataMountPath + " " + databasev4.DefaultGsmDiagMountPath + " " + databasev4.DefaultGddLogMountPath +
+		";chown -R 54321:54321 " + databasev4.DefaultGsmDataMountPath + " " + databasev4.DefaultGsmDiagMountPath + " " + databasev4.DefaultGddLogMountPath +
+		";chmod 750 " + databasev4.DefaultGsmDataMountPath + " " + databasev4.DefaultGsmDiagMountPath + " " + databasev4.DefaultGddLogMountPath
 	if resType == "WEB" {
-		initCmd = "chown -R 54321:54321 " + oraScriptMount + ";chmod 755 " + oraScriptMount + "/*;chown -R 54321:54321 /opt/oracle/gsmdata;chmod 750 /opt/oracle/gsmdata"
+		initCmd = "chown -R 54321:54321 " + oraScriptMount + ";chmod 755 " + oraScriptMount + "/*;" + permCmd
 	} else {
-		initCmd = resType + ";chown -R 54321:54321 " + oraScriptMount + ";chmod 755 " + oraScriptMount + "/*;chown -R 54321:54321 /opt/oracle/gsmdata;chmod 750 /opt/oracle/gsmdata"
+		initCmd = resType + ";chown -R 54321:54321 " + oraScriptMount + ";chmod 755 " + oraScriptMount + "/*;" + permCmd
 	}
 	return initCmd
 }
@@ -1901,15 +2098,16 @@ func InstanceShardPatch(obj client.Object, instance *databasev4.ShardingDatabase
 }
 
 func checkTdeWalletFlag(instance *databasev4.ShardingDatabase) bool {
-	if strings.ToLower(instance.Spec.IsTdeWallet) == "enable" {
+	if strings.EqualFold(strings.TrimSpace(getTDEWalletEnabled(instance)), "enable") {
 		return true
 	}
 	return false
 }
 
 func CheckIsTDEWalletFlag(instance *databasev4.ShardingDatabase, logger logr.Logger) bool {
-	LogMessages("INFO", "CheckIsTDEWalletFlag():isTdeWallet=["+instance.Spec.IsTdeWallet+"].", nil, instance, logger)
-	if strings.ToLower(instance.Spec.IsTdeWallet) == "enable" {
+	effective := getTDEWalletEnabled(instance)
+	LogMessages("INFO", "CheckIsTDEWalletFlag():isTdeWallet=["+effective+"].", nil, instance, logger)
+	if strings.EqualFold(strings.TrimSpace(effective), "enable") {
 		LogMessages("INFO", "CheckIsTDEWalletFlag():Returning true", nil, instance, logger)
 		return true
 	}
@@ -1927,10 +2125,33 @@ func CheckIsDeleteFlag(delStr string, instance *databasev4.ShardingDatabase, log
 }
 
 func getTdeWalletMountLoc(instance *databasev4.ShardingDatabase) string {
+	if instance.Spec.TDEWallet != nil {
+		if mount := strings.TrimSpace(instance.Spec.TDEWallet.MountPath); mount != "" {
+			return mount
+		}
+	}
 	if len(instance.Spec.TdeWalletPvcMountLocation) > 0 {
 		return instance.Spec.TdeWalletPvcMountLocation
 	}
 	return "/tdewallet/" + instance.Name
+}
+
+func getTdeWalletPVCName(instance *databasev4.ShardingDatabase) string {
+	if instance.Spec.TDEWallet != nil {
+		if pvc := strings.TrimSpace(instance.Spec.TDEWallet.PVCName); pvc != "" {
+			return pvc
+		}
+	}
+	return strings.TrimSpace(instance.Spec.TdeWalletPvc)
+}
+
+func getTDEWalletEnabled(instance *databasev4.ShardingDatabase) string {
+	if instance.Spec.TDEWallet != nil {
+		if mode := strings.TrimSpace(instance.Spec.TDEWallet.IsEnabled); mode != "" {
+			return mode
+		}
+	}
+	return strings.TrimSpace(instance.Spec.IsTdeWallet)
 }
 
 func Int64Pointer(d int64) *int64 {

@@ -91,25 +91,24 @@ type SingleInstanceDatabaseSpec struct {
 	// +k8s:openapi-gen=true
 	Replicas int `json:"replicas,omitempty"`
 
-	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
-
+	NodeSelector  map[string]string                   `json:"nodeSelector,omitempty"`
 	AdminPassword SingleInstanceDatabaseAdminPassword `json:"adminPassword,omitempty"`
 	TdePassword   SingleInstanceDatabaseAdminPassword `json:"tdePassword,omitempty"`
+	Image         SingleInstanceDatabaseImage         `json:"image"`
+	Persistence   SingleInstanceDatabasePersistence   `json:"persistence,omitempty"`
+	InitParams    *SingleInstanceDatabaseInitParams   `json:"initParams,omitempty"`
+	// Deprecated: use resourceRequirements for full Kubernetes resource support including hugepages.
+	Resources                     SingleInstanceDatabaseResources `json:"resources,omitempty"`
+	ResourceRequirements          *corev1.ResourceRequirements    `json:"resourceRequirements,omitempty" protobuf:"bytes,1,opt,name=resourceRequirements"`
+	AdditionalPVCs                []AdditionalPVCSpec             `json:"additionalPVCs,omitempty"`
+	DisableDefaultDiagVolumeClaim bool                            `json:"disableDefaultDiagVolumeClaim,omitempty"`
+	SecurityContext               *corev1.PodSecurityContext      `json:"securityContext,omitempty"`
+	Capabilities                  *corev1.Capabilities            `json:"capabilities,omitempty"`
 
-	Image SingleInstanceDatabaseImage `json:"image"`
-
-	Persistence SingleInstanceDatabasePersistence `json:"persistence,omitempty"`
-
-	InitParams *SingleInstanceDatabaseInitParams `json:"initParams,omitempty"`
-
-	Resources SingleInstanceDatabaseResources `json:"resources,omitempty"`
-
-	ConvertToSnapshotStandby bool `json:"convertToSnapshotStandby,omitempty"`
-
-	DbFilesPvc string `json:"dbFilesPvc,omitempty"`
-	StagePvc   string `json:"stagePvc,omitempty"`
-
-	EnvVars []corev1.EnvVar `json:"envVars,omitempty"`
+	ConvertToSnapshotStandby bool            `json:"convertToSnapshotStandby,omitempty"`
+	DbFilesPvc               string          `json:"dbFilesPvc,omitempty"`
+	StagePvc                 string          `json:"stagePvc,omitempty"`
+	EnvVars                  []corev1.EnvVar `json:"envVars,omitempty"`
 
 	// - For primary: enables blob generation and sets generation path
 	// - For truecache: references existing blob ConfigMap and sets mount path

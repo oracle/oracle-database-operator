@@ -4,6 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func hasErrContaining(errs []error, want string) bool {
@@ -71,66 +74,79 @@ func TestValidateShardOperationRules(t *testing.T) {
 					DeployAs:   "PRIMARY",
 				}},
 			},
-			wantErr: "not supported for NATIVE replication",
+			wantErr: "not supported with RAFT/NATIVE replication",
 		},
-			{
-				name: "system mode allows deployAs with shardGroup",
-				spec: ShardingDatabaseSpec{
-					ShardingType:    "SYSTEM",
-					ReplicationType: "DG",
-					Shard: []ShardSpec{{
-						Name:       "shard1",
-						ShardGroup: "sg1",
-						DeployAs:   "PRIMARY",
-					}},
+		{
+			name: "system mode allows deployAs with shardGroup",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{{
+					Name:       "shard1",
+					ShardGroup: "sg1",
+					DeployAs:   "PRIMARY",
+				}},
+			},
+		},
+		{
+			name: "user mode normalizes lowercase deployAs in shard",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{{
+					Name:       "shard1",
+					ShardSpace: "ss1",
+					DeployAs:   "primary",
+				}},
+			},
+			wantDeployAs: "PRIMARY",
+		},
+		{
+			name: "composite mode rejects reusing shardGroup name across shardSpaces in shard",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "COMPOSITE",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{
+					{Name: "s1", ShardGroup: "sg1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+					{Name: "s2", ShardGroup: "sg1", ShardSpace: "ss2", DeployAs: "PRIMARY"},
 				},
 			},
-			{
-				name: "composite mode rejects reusing shardGroup name across shardSpaces in shard",
-				spec: ShardingDatabaseSpec{
-					ShardingType:    "COMPOSITE",
-					ReplicationType: "DG",
-					Shard: []ShardSpec{
-						{Name: "s1", ShardGroup: "sg1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
-						{Name: "s2", ShardGroup: "sg1", ShardSpace: "ss2", DeployAs: "PRIMARY"},
-					},
-				},
-				wantErr: "must be unique across shardSpaces",
-			},
-			{
-				name: "composite mode rejects reusing shardGroup name across shardSpaces in shardInfo",
-				spec: ShardingDatabaseSpec{
-					ShardingType:    "COMPOSITE",
-					ReplicationType: "DG",
-					ShardInfo: []ShardingDetails{
-						{
-							ShardPreFixName: "a",
-							ShardNum:        1,
-							ShardGroupDetails: &ShardGroupSpec{
-								Name:     "sg1",
-								Region:   "phx",
-								DeployAs: "PRIMARY",
-							},
-							ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+			wantErr: "must be unique across shardSpaces",
+		},
+		{
+			name: "composite mode rejects reusing shardGroup name across shardSpaces in shardInfo",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "COMPOSITE",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "a",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg1",
+							Region:   "phx",
+							DeployAs: "PRIMARY",
 						},
-						{
-							ShardPreFixName: "b",
-							ShardNum:        1,
-							ShardGroupDetails: &ShardGroupSpec{
-								Name:     "sg1",
-								Region:   "iad",
-								DeployAs: "PRIMARY",
-							},
-							ShardSpaceDetails: &ShardSpaceSpec{Name: "ss2"},
-						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
 					},
-					Shard: []ShardSpec{
-						{Name: "a1", ShardGroup: "sg1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
-						{Name: "b1", ShardGroup: "sg1", ShardSpace: "ss2", DeployAs: "PRIMARY"},
+					{
+						ShardPreFixName: "b",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg1",
+							Region:   "iad",
+							DeployAs: "PRIMARY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "ss2"},
 					},
 				},
-				wantErr: "must be unique across shardSpaces",
+				Shard: []ShardSpec{
+					{Name: "a1", ShardGroup: "sg1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+					{Name: "b1", ShardGroup: "sg1", ShardSpace: "ss2", DeployAs: "PRIMARY"},
+				},
 			},
+			wantErr: "must be unique across shardSpaces",
+		},
 		{
 			name: "user DG without explicit primary is rejected",
 			spec: ShardingDatabaseSpec{
@@ -208,6 +224,18 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 			wantErr: "requires exactly one PRIMARY shard per shardSpace",
 		},
 		{
+			name: "user DG rejects standby before primary in shardSpace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				Shard: []ShardSpec{
+					{Name: "shard2", ShardSpace: "ss1", DeployAs: "STANDBY", ShardRegion: "ashburn"},
+					{Name: "shard1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+				},
+			},
+			wantErr: "before defining standby shards",
+		},
+		{
 			name: "user DG allows multiple standbys with one primary in shardSpace",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "USER",
@@ -218,6 +246,17 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 					{Name: "shard3", ShardSpace: "ss1", DeployAs: "ACTIVE_STANDBY", ShardRegion: "chicago"},
 				},
 			},
+		},
+		{
+			name: "user sharding rejects RAFT/NATIVE replication",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "NATIVE",
+				Shard: []ShardSpec{
+					{Name: "shard1", ShardSpace: "ss1"},
+				},
+			},
+			wantErr: "not supported with RAFT/NATIVE replication",
 		},
 		{
 			name: "user DG allows standby-only when standbyConfig provides external primary",
@@ -234,7 +273,6 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 						Name: "ss1",
 					},
 					StandbyConfig: &StandbyConfig{
-						SourceType:            "ConnectString",
 						StandbyPerPrimary:     2,
 						PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
 					},
@@ -256,7 +294,6 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 						Name: "ss1",
 					},
 					StandbyConfig: &StandbyConfig{
-						SourceType:            "ConnectString",
 						StandbyPerPrimary:     2,
 						PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
 					},
@@ -374,14 +411,13 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							DeployAs: "STANDBY",
 						},
 						StandbyConfig: &StandbyConfig{
-							SourceType:            "ConnectString",
 							StandbyPerPrimary:     2,
 							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
 						},
 					},
 				},
 			},
-			wantErr: "at most one standby per primary",
+			wantErr: "does not support standbyPerPrimary",
 		},
 		{
 			name: "system DG rejects multiple standby shardgroups for one primary shardgroup",
@@ -556,14 +592,12 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							DeployAs: "STANDBY",
 						},
 						StandbyConfig: &StandbyConfig{
-							SourceType:            "ConnectString",
-							StandbyPerPrimary:     1,
 							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL", " //phx-primary:1521/PHX_DGMGRL "},
 						},
 					},
 				},
 			},
-			wantErr: "Duplicate value",
+			wantErr: "does not support standbyConfig primary source fields",
 		},
 		{
 			name: "system DG rejects duplicate primary database refs in standbyConfig",
@@ -589,8 +623,6 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							DeployAs: "STANDBY",
 						},
 						StandbyConfig: &StandbyConfig{
-							SourceType:        "PrimaryDatabaseRef",
-							StandbyPerPrimary: 1,
 							PrimaryDatabaseRefs: []PrimaryDatabaseCRRef{
 								{Name: "primary-db", Namespace: "shns"},
 								{Name: "primary-db", Namespace: "shns"},
@@ -599,7 +631,64 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "Duplicate value",
+			wantErr: "does not support standbyConfig primary source fields",
+		},
+		{
+			name: "system NATIVE allows shardGroup ru_mode when deployAs is unset",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "NATIVE",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "sn1",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:   "sg-native",
+							Region: "phx",
+							RuMode: "READWRITE",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "system DG rejects shardGroup ru_mode",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "sd1",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:   "sg-dg",
+							Region: "phx",
+							RuMode: "READWRITE",
+						},
+					},
+				},
+			},
+			wantErr: "ru_mode is only supported for NATIVE replication",
+		},
+		{
+			name: "system NATIVE rejects shardGroup deployAs with ru_mode",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "SYSTEM",
+				ReplicationType: "NATIVE",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "sx1",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:     "sg-x",
+							Region:   "phx",
+							DeployAs: "PRIMARY",
+							RuMode:   "READWRITE",
+						},
+					},
+				},
+			},
+			wantErr: "mutually exclusive",
 		},
 		{
 			name: "user DG allows single primary source in shardInfo standbyConfig per shardspace",
@@ -614,7 +703,6 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							Name: "ss1",
 						},
 						StandbyConfig: &StandbyConfig{
-							SourceType:            "ConnectString",
 							StandbyPerPrimary:     1,
 							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
 						},
@@ -638,6 +726,31 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 					},
 					{
 						ShardPreFixName: "us1",
+						ShardNum:        1,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name:     "ss1",
+							DeployAs: "STANDBY",
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "user DG rejects shardInfo standby when shardNum is greater than one",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "up1",
+						ShardNum:        1,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name:     "ss1",
+							DeployAs: "PRIMARY",
+						},
+					},
+					{
+						ShardPreFixName: "us1",
 						ShardNum:        2,
 						ShardSpaceDetails: &ShardSpaceSpec{
 							Name:     "ss1",
@@ -646,6 +759,25 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 					},
 				},
 			},
+			wantErr: "allows shardNum at most 1",
+		},
+		{
+			name: "user DG rejects shardInfo standby without primary in shardspace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "USER",
+				ReplicationType: "DG",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "us1",
+						ShardNum:        1,
+						ShardSpaceDetails: &ShardSpaceSpec{
+							Name:     "ss1",
+							DeployAs: "STANDBY",
+						},
+					},
+				},
+			},
+			wantErr: "requires at least one PRIMARY shard",
 		},
 		{
 			name: "user DG rejects shardInfo with multiple primary replicas in shardspace",
@@ -679,7 +811,6 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							DeployAs: "PRIMARY",
 						},
 						StandbyConfig: &StandbyConfig{
-							SourceType:            "ConnectString",
 							StandbyPerPrimary:     1,
 							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL"},
 						},
@@ -701,7 +832,6 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 							Name: "ss1",
 						},
 						StandbyConfig: &StandbyConfig{
-							SourceType:            "ConnectString",
 							StandbyPerPrimary:     1,
 							PrimaryConnectStrings: []string{"//phx-primary:1521/PHX_DGMGRL", "//ash-primary:1521/ASH_DGMGRL"},
 						},
@@ -765,6 +895,59 @@ func TestBuildDesiredShardSpecMapsUserShardSpaceDeployAs(t *testing.T) {
 	}
 	if got := desired[0].DeployAs; got != "PRIMARY" {
 		t.Fatalf("expected deployAs PRIMARY from shardSpaceDetails, got %q", got)
+	}
+}
+
+func TestValidateShardInfoNormalizesDeployAsCaseForShardSpace(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			ShardingType:    "USER",
+			ReplicationType: "DG",
+			ShardInfo: []ShardingDetails{
+				{
+					ShardPreFixName: "u1",
+					ShardNum:        1,
+					ShardSpaceDetails: &ShardSpaceSpec{
+						Name:     "ss1",
+						DeployAs: "primary",
+					},
+				},
+			},
+		},
+	}
+
+	if errList := cr.validateShardInfo(); len(errList) > 0 {
+		t.Fatalf("expected no validation errors, got: %v", errList)
+	}
+	if got := cr.Spec.ShardInfo[0].ShardSpaceDetails.DeployAs; got != "PRIMARY" {
+		t.Fatalf("expected shardSpaceDetails.deployAs to be normalized to PRIMARY, got %q", got)
+	}
+}
+
+func TestValidateShardInfoNormalizesDeployAsCaseForShardGroup(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			ShardingType:    "SYSTEM",
+			ReplicationType: "DG",
+			ShardInfo: []ShardingDetails{
+				{
+					ShardPreFixName: "s1",
+					ShardNum:        1,
+					ShardGroupDetails: &ShardGroupSpec{
+						Name:     "sg1",
+						Region:   "phx",
+						DeployAs: "primary",
+					},
+				},
+			},
+		},
+	}
+
+	if errList := cr.validateShardInfo(); len(errList) > 0 {
+		t.Fatalf("expected no validation errors, got: %v", errList)
+	}
+	if got := cr.Spec.ShardInfo[0].ShardGroupDetails.DeployAs; got != "PRIMARY" {
+		t.Fatalf("expected shardGroupDetails.deployAs to be normalized to PRIMARY, got %q", got)
 	}
 }
 
@@ -975,5 +1158,182 @@ func TestValidateCatalogAdvancedParamsUserNativeRepFactorRejected(t *testing.T) 
 	}
 	if !hasErrContaining(errs, "repFactor is not applicable for USER sharding catalog") {
 		t.Fatalf("expected USER repFactor error, got: %v", errs)
+	}
+}
+
+func TestDefaultAppliesGsmResourcesTemplate(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			GsmResources: &corev1.ResourceRequirements{
+				Limits: corev1.ResourceList{
+					corev1.ResourceCPU:    resource.MustParse("2"),
+					corev1.ResourceMemory: resource.MustParse("4Gi"),
+				},
+			},
+			Gsm: []GsmSpec{
+				{Name: "gsm1"},
+				{
+					Name: "gsm2",
+					Resources: &corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU: resource.MustParse("1"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := cr.Default(context.Background(), cr); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+	if cr.Spec.Gsm[0].Resources == nil {
+		t.Fatalf("expected gsm[0].resources to be defaulted from spec.gsmResources")
+	}
+	if got := cr.Spec.Gsm[0].Resources.Limits.Cpu().String(); got != "2" {
+		t.Fatalf("expected gsm[0] cpu limit 2, got %s", got)
+	}
+	if got := cr.Spec.Gsm[0].Resources.Limits.Memory().String(); got != "4Gi" {
+		t.Fatalf("expected gsm[0] memory limit 4Gi, got %s", got)
+	}
+	if cr.Spec.Gsm[1].Resources == nil {
+		t.Fatalf("expected gsm[1].resources to remain set")
+	}
+	if got := cr.Spec.Gsm[1].Resources.Limits.Cpu().String(); got != "1" {
+		t.Fatalf("expected gsm[1] cpu limit to remain 1, got %s", got)
+	}
+}
+
+func TestDefaultAppliesInlineGsmResourcesTemplate(t *testing.T) {
+	pullAlways := corev1.PullAlways
+	pullIfNotPresent := corev1.PullIfNotPresent
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			Gsm: []GsmSpec{
+				{
+					StorageSizeInGb: 50,
+					ImagePulllPolicy: &pullAlways,
+					Resources: &corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU:    resource.MustParse("2"),
+							corev1.ResourceMemory: resource.MustParse("4Gi"),
+						},
+					},
+				},
+				{Name: "gsm1"},
+				{
+					Name:            "gsm2",
+					StorageSizeInGb: 60,
+					ImagePulllPolicy: &pullIfNotPresent,
+					Resources: &corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{
+							corev1.ResourceCPU: resource.MustParse("1"),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := cr.Default(context.Background(), cr); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+	if len(cr.Spec.Gsm) != 2 {
+		t.Fatalf("expected inline default entry to be removed from spec.gsm, got len=%d", len(cr.Spec.Gsm))
+	}
+	if cr.Spec.Gsm[0].Name != "gsm1" || cr.Spec.Gsm[0].Resources == nil {
+		t.Fatalf("expected gsm1 to receive inline default resources")
+	}
+	if cr.Spec.Gsm[0].StorageSizeInGb != 50 {
+		t.Fatalf("expected gsm1 storageSizeInGb 50, got %d", cr.Spec.Gsm[0].StorageSizeInGb)
+	}
+	if cr.Spec.Gsm[0].ImagePulllPolicy == nil || *cr.Spec.Gsm[0].ImagePulllPolicy != corev1.PullAlways {
+		t.Fatalf("expected gsm1 imagePullPolicy Always, got %v", cr.Spec.Gsm[0].ImagePulllPolicy)
+	}
+	if got := cr.Spec.Gsm[0].Resources.Limits.Cpu().String(); got != "2" {
+		t.Fatalf("expected gsm1 cpu limit 2, got %s", got)
+	}
+	if got := cr.Spec.Gsm[0].Resources.Limits.Memory().String(); got != "4Gi" {
+		t.Fatalf("expected gsm1 memory limit 4Gi, got %s", got)
+	}
+	if cr.Spec.Gsm[1].Name != "gsm2" || cr.Spec.Gsm[1].Resources == nil {
+		t.Fatalf("expected gsm2 resources to remain set")
+	}
+	if cr.Spec.Gsm[1].StorageSizeInGb != 60 {
+		t.Fatalf("expected gsm2 storageSizeInGb to remain 60, got %d", cr.Spec.Gsm[1].StorageSizeInGb)
+	}
+	if cr.Spec.Gsm[1].ImagePulllPolicy == nil || *cr.Spec.Gsm[1].ImagePulllPolicy != corev1.PullIfNotPresent {
+		t.Fatalf("expected gsm2 imagePullPolicy to remain IfNotPresent, got %v", cr.Spec.Gsm[1].ImagePulllPolicy)
+	}
+	if got := cr.Spec.Gsm[1].Resources.Limits.Cpu().String(); got != "1" {
+		t.Fatalf("expected gsm2 cpu limit to remain 1, got %s", got)
+	}
+}
+
+func TestValidateComputeSizingPathConfigMutuallyExclusive(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			Catalog: []CatalogSpec{
+				{
+					Name:      "catalog1",
+					Shape:     "kodb4",
+					Resources: &corev1.ResourceRequirements{},
+				},
+			},
+			ShardInfo: []ShardingDetails{
+				{
+					ShardPreFixName: "shard",
+					Shape:           "kodb4",
+					Resources:       &corev1.ResourceRequirements{},
+				},
+			},
+		},
+	}
+
+	errList := cr.validateComputeSizingPathConfig()
+	if errList == nil || len(errList) == 0 {
+		t.Fatalf("expected validation error for mutually exclusive shape/resources")
+	}
+	errs := make([]error, 0, len(errList))
+	for _, e := range errList {
+		errs = append(errs, e)
+	}
+	if !hasErrContaining(errs, "mutually exclusive") {
+		t.Fatalf("expected mutually exclusive error, got: %v", errs)
+	}
+}
+
+func TestValidateComputeSizingPathUpdateImmutable(t *testing.T) {
+	oldCR := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			Catalog: []CatalogSpec{
+				{Name: "catalog1", Shape: "kodb4"},
+			},
+			ShardInfo: []ShardingDetails{
+				{ShardPreFixName: "shard", Shape: "kodb4"},
+			},
+		},
+	}
+	newCR := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			Catalog: []CatalogSpec{
+				{Name: "catalog1", Resources: &corev1.ResourceRequirements{}},
+			},
+			ShardInfo: []ShardingDetails{
+				{ShardPreFixName: "shard", Resources: &corev1.ResourceRequirements{}},
+			},
+		},
+	}
+
+	errList := newCR.validateComputeSizingPathUpdate(oldCR)
+	if errList == nil || len(errList) == 0 {
+		t.Fatalf("expected immutable sizing path error")
+	}
+	errs := make([]error, 0, len(errList))
+	for _, e := range errList {
+		errs = append(errs, e)
+	}
+	if !hasErrContaining(errs, "immutable") {
+		t.Fatalf("expected immutable error, got: %v", errs)
 	}
 }

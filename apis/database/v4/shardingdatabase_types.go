@@ -58,36 +58,41 @@ import (
 type ShardingDatabaseSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	Shard                     []ShardSpec       `json:"shard,omitempty"`
-	Catalog                   []CatalogSpec     `json:"catalog"`                      // The catalogSpes accept all the catalog parameters
-	Gsm                       []GsmSpec         `json:"gsm"`                          // The GsmSpec will accept all the Gsm parameter
-	StorageClass              string            `json:"storageClass,omitempty"`       // Optional Accept storage class name
-	DbImage                   string            `json:"dbImage"`                      // Accept DB Image name
-	DbImagePullSecret         string            `json:"dbImagePullSecret,omitempty"`  // Optional The name of an image pull secret in case of a private docker repository.
-	GsmImage                  string            `json:"gsmImage"`                     // Acccept the GSM image name
-	GsmImagePullSecret        string            `json:"gsmImagePullSecret,omitempty"` // Optional  The name of an image pull secret in case of a private docker repository.
-	StagePvcName              string            `json:"stagePvcName,omitempty"`       // the Stagepvc  for the backup of cluster
-	PortMappings              []PortMapping     `json:"portMappings,omitempty"`       // Port mappings for the service that is created. The service is created if there is at least
-	IsDebug                   bool              `json:"isDebug,omitempty"`            // Optional parameter to enable logining
-	IsExternalSvc             bool              `json:"isExternalSvc,omitempty"`
-	IsClone                   bool              `json:"isClone,omitempty"`
-	ScriptsLocation           string            `json:"scriptsLocation,omitempty"`
-	IsDeleteOraPvc            bool              `json:"isDeleteOraPvc,omitempty"`
-	ReadinessCheckPeriod      int               `json:"readinessCheckPeriod,omitempty"`
-	LivenessCheckPeriod       int               `json:"liveinessCheckPeriod,omitempty"`
-	ReplicationType           string            `json:"replicationType,omitempty"`
-	IsDownloadScripts         bool              `json:"isDownloadScripts,omitempty"`
-	InvitedNodeSubnetFlag     string            `json:"invitedNodeSubnetFlag,omitempty"`
-	InvitedNodeSubnet         string            `json:"InvitedNodeSubnet,omitempty"`
-	ShardingType              string            `json:"shardingType,omitempty"`
-	GsmService                []GsmServiceSpec  `json:"gsmService,omitempty"`
-	ShardConfigName           string            `json:"shardConfigName,omitempty"`
-	GsmDevMode                string            `json:"gsmDevMode,omitempty"`
-	DbSecret                  *SecretDetails    `json:"dbSecret,omitempty"` //  Secret Name to be used with Shard
-	IsTdeWallet               string            `json:"isTdeWallet,omitempty"`
-	TdeWalletPvc              string            `json:"tdeWalletPvc,omitempty"`
-	FssStorageClass           string            `json:"fssStorageClass,omitempty"`
+	Shard                 []ShardSpec                  `json:"shard,omitempty"`
+	Catalog               []CatalogSpec                `json:"catalog"`                                                         // The catalogSpes accept all the catalog parameters
+	Gsm                   []GsmSpec                    `json:"gsm"`                                                             // The GsmSpec will accept all the Gsm parameter
+	GsmResources          *corev1.ResourceRequirements `json:"gsmResources,omitempty" protobuf:"bytes,1,opt,name=gsmResources"` // Optional default resources applied to each gsm[] entry when gsm[i].resources is not set
+	StorageClass          string                       `json:"storageClass,omitempty"`                                          // Optional Accept storage class name
+	DbImage               string                       `json:"dbImage"`                                                         // Accept DB Image name
+	DbImagePullSecret     string                       `json:"dbImagePullSecret,omitempty"`                                     // Optional The name of an image pull secret in case of a private docker repository.
+	GsmImage              string                       `json:"gsmImage"`                                                        // Acccept the GSM image name
+	GsmImagePullSecret    string                       `json:"gsmImagePullSecret,omitempty"`                                    // Optional  The name of an image pull secret in case of a private docker repository.
+	StagePvcName          string                       `json:"stagePvcName,omitempty"`                                          // the Stagepvc  for the backup of cluster
+	PortMappings          []PortMapping                `json:"portMappings,omitempty"`                                          // Port mappings for the service that is created. The service is created if there is at least
+	IsDebug               bool                         `json:"isDebug,omitempty"`                                               // Optional parameter to enable logining
+	IsExternalSvc         bool                         `json:"isExternalSvc,omitempty"`
+	IsClone               bool                         `json:"isClone,omitempty"`
+	ScriptsLocation       string                       `json:"scriptsLocation,omitempty"`
+	IsDeleteOraPvc        bool                         `json:"isDeleteOraPvc,omitempty"`
+	ReadinessCheckPeriod  int                          `json:"readinessCheckPeriod,omitempty"`
+	LivenessCheckPeriod   int                          `json:"liveinessCheckPeriod,omitempty"`
+	ReplicationType       string                       `json:"replicationType,omitempty"`
+	IsDownloadScripts     bool                         `json:"isDownloadScripts,omitempty"`
+	InvitedNodeSubnetFlag string                       `json:"invitedNodeSubnetFlag,omitempty"`
+	InvitedNodeSubnet     string                       `json:"InvitedNodeSubnet,omitempty"`
+	ShardingType          string                       `json:"shardingType,omitempty"`
+	GsmService            []GsmServiceSpec             `json:"gsmService,omitempty"`
+	ShardConfigName       string                       `json:"shardConfigName,omitempty"`
+	GsmDevMode            string                       `json:"gsmDevMode,omitempty"`
+	DbSecret              *SecretDetails               `json:"dbSecret,omitempty"` //  Secret Name to be used with Shard
+	// Deprecated: use tdeWallet.isEnabled.
+	IsTdeWallet string `json:"isTdeWallet,omitempty"`
+	// Deprecated: use tdeWallet.pvcName.
+	TdeWalletPvc    string `json:"tdeWalletPvc,omitempty"`
+	FssStorageClass string `json:"fssStorageClass,omitempty"`
+	// Deprecated: use tdeWallet.mountPath.
 	TdeWalletPvcMountLocation string            `json:"tdeWalletPvcMountLocation,omitempty"`
+	TDEWallet                 *TDEWalletConfig  `json:"tdeWallet,omitempty"`
 	DbEdition                 string            `json:"dbEdition,omitempty"`
 	TopicId                   string            `json:"topicId,omitempty"`
 	SrvAccountName            string            `json:"serviceAccountName,omitempty"`
@@ -114,12 +119,26 @@ type ShardingDatabaseStatus struct {
 
 	Gsm GsmStatus `json:"gsm,omitempty"`
 	Dg  DgStatus  `json:"dg,omitempty"`
+	// TDEKeyRefresh tracks manual token-triggered key refresh progress.
+	TDEKeyRefresh *TDEKeyRefreshStatus `json:"tdeKeyRefresh,omitempty"`
 
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +listType=map
 	// +listMapKey=type
 	CrdStatus []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+}
+
+// TDEKeyRefreshStatus tracks controller progress for manual TDE key refresh requests.
+type TDEKeyRefreshStatus struct {
+	RequestedToken     string   `json:"requestedToken,omitempty"`
+	Phase              string   `json:"phase,omitempty"` // Pending | Running | Failed | Succeeded
+	Exported           bool     `json:"exported,omitempty"`
+	CurrentShard       string   `json:"currentShard,omitempty"`
+	CompletedShards    []string `json:"completedShards,omitempty"`
+	FailedShards       []string `json:"failedShards,omitempty"`
+	LastError          string   `json:"lastError,omitempty"`
+	UserActionRequired bool     `json:"userActionRequired,omitempty"`
 }
 
 // DG status for sharding (tracks broker enable/config per standby shard)
@@ -219,12 +238,15 @@ type ShardSpec struct {
 	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional shard storage size (GB)
 	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         // Optional env variables for shard
 	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirements
-	PvcName         string                       `json:"pvcName,omitempty"`                                         // Optional PVC name
-	Label           string                       `json:"label,omitempty"`                                           // Optional label
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvcName string `json:"pvcName,omitempty"` // Optional PVC name
+	Label   string `json:"label,omitempty"`   // Optional label
 	// +kubebuilder:validation:Enum=enable;disable;failed;force
-	IsDelete         string             `json:"isDelete,omitempty"`      // Deletion flag
-	NodeSelector     map[string]string  `json:"nodeSelector,omitempty"`  // Node selector for scheduling
-	PvAnnotations    map[string]string  `json:"pvAnnotations,omitempty"` // Annotations for PV
+	IsDelete     string            `json:"isDelete,omitempty"`     // Deletion flag
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"` // Node selector for scheduling
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"` // Annotations for PV
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
 	PvMatchLabels    map[string]string  `json:"pvMatchLabels,omitempty"` // Match labels for PV selector
 	ImagePulllPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 	ShardSpace       string             `json:"shardSpace,omitempty"`  // Shardspace name
@@ -240,15 +262,19 @@ type ShardSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	CpuThreshold int32 `json:"cpuThreshold,omitempty"` // CPU utilization threshold
 	// +kubebuilder:validation:Minimum=1
-	DiskThreshold   int32  `json:"diskThreshold,omitempty"`   // Disk latency threshold (ms)
-	Force           bool   `json:"force,omitempty"`           // Force replace existing GDS config
-	Rack            string `json:"rack,omitempty"`            // Rack / availability group
-	ValidateNetwork bool   `json:"validateNetwork,omitempty"` // Enable network validation
-	GgService       string `json:"ggService,omitempty"`       // GoldenGate Admin Server URI
-	Replace         string `json:"replace,omitempty"`         // Replaced database name
-	Pwd             string `json:"pwd,omitempty"`             // GSM user password
-	SaveName        bool   `json:"savename,omitempty"`        // Store net service name instead of descriptor
-	Connect         string `json:"connect,omitempty"`         // Connect identifier / net service name
+	DiskThreshold                 int32                      `json:"diskThreshold,omitempty"`   // Disk latency threshold (ms)
+	Force                         bool                       `json:"force,omitempty"`           // Force replace existing GDS config
+	Rack                          string                     `json:"rack,omitempty"`            // Rack / availability group
+	ValidateNetwork               bool                       `json:"validateNetwork,omitempty"` // Enable network validation
+	GgService                     string                     `json:"ggService,omitempty"`       // GoldenGate Admin Server URI
+	Replace                       string                     `json:"replace,omitempty"`         // Replaced database name
+	Pwd                           string                     `json:"pwd,omitempty"`             // GSM user password
+	SaveName                      bool                       `json:"savename,omitempty"`        // Store net service name instead of descriptor
+	Connect                       string                     `json:"connect,omitempty"`         // Connect identifier / net service name
+	AdditionalPVCs                []AdditionalPVCSpec        `json:"additionalPVCs,omitempty"`
+	DisableDefaultLogVolumeClaims bool                       `json:"disableDefaultLogVolumeClaims,omitempty"`
+	SecurityContext               *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+	Capabilities                  *corev1.Capabilities       `json:"capabilities,omitempty"`
 	// Extra shard fields for GDD-style sharding
 	PdbPreFix            string         `json:"pdbPreFix,omitempty"`
 	ReadinessCheckPeriod int            `json:"readinessCheckPeriod,omitempty"`
@@ -260,20 +286,23 @@ type ShardSpec struct {
 // CatalogSpec defines the desired state of CatalogSpec
 type CatalogSpec struct {
 	// Core K8s / deployment fields
-	Name              string                       `json:"name"`                                                      // Catalog name used for StatefulSet
-	PdbName           string                       `json:"pdbName,omitempty"`                                         // PDB name for catalog
-	StorageSizeInGb   int32                        `json:"storageSizeInGb,omitempty"`                                 // Catalog storage size (GB)
-	Shape             string                       `json:"shape,omitempty"`                                           // DB shape / flavor
-	EnvVars           []EnvironmentVariable        `json:"envVars,omitempty"`                                         // Optional env variables
-	Resources         *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirements
-	PvcName           string                       `json:"pvcName,omitempty"`                                         // Optional PVC name
-	Label             string                       `json:"label,omitempty"`                                           // Optional label
-	IsDelete          string                       `json:"isDelete,omitempty"`                                        // Deletion flag
-	NodeSelector      map[string]string            `json:"nodeSelector,omitempty"`                                    // Node selector for scheduling
-	PvAnnotations     map[string]string            `json:"pvAnnotations,omitempty"`                                   // Annotations for PV
-	PvMatchLabels     map[string]string            `json:"pvMatchLabels,omitempty"`                                   // Match labels for PV selector
-	ImagePulllPolicy  *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
-	CatalogConfigData *ConfigMapData               `json:"catalogConfigData,omitempty"` // Extra catalog configuration
+	Name            string                       `json:"name"`                                                      // Catalog name used for StatefulSet
+	PdbName         string                       `json:"pdbName,omitempty"`                                         // PDB name for catalog
+	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Catalog storage size (GB)
+	Shape           string                       `json:"shape,omitempty"`                                           // DB shape / flavor
+	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         // Optional env variables
+	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirements
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvcName      string            `json:"pvcName,omitempty"`      // Optional PVC name
+	Label        string            `json:"label,omitempty"`        // Optional label
+	IsDelete     string            `json:"isDelete,omitempty"`     // Deletion flag
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"` // Node selector for scheduling
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"` // Annotations for PV
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvMatchLabels     map[string]string  `json:"pvMatchLabels,omitempty"` // Match labels for PV selector
+	ImagePulllPolicy  *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	CatalogConfigData *ConfigMapData     `json:"catalogConfigData,omitempty"` // Extra catalog configuration
 
 	// GDSCTL CREATE SHARDCATALOG-related fields
 	Region     []string `json:"region,omitempty"`     // List of region names
@@ -311,8 +340,12 @@ type CatalogSpec struct {
 	CatalogDatabaseRef *DatabaseRef `json:"catalogDatabaseRef,omitempty"` // Existing catalog DB (reuse)
 
 	// Control flags
-	UseExistingCatalog bool   `json:"useExistingCatalog,omitempty"` // true to reuse existing catalog
-	CreateAs           string `json:"createAs,omitempty"`           // CreateAs mode (if you define semantics)
+	UseExistingCatalog            bool                       `json:"useExistingCatalog,omitempty"` // true to reuse existing catalog
+	CreateAs                      string                     `json:"createAs,omitempty"`           // CreateAs mode (if you define semantics)
+	AdditionalPVCs                []AdditionalPVCSpec        `json:"additionalPVCs,omitempty"`
+	DisableDefaultLogVolumeClaims bool                       `json:"disableDefaultLogVolumeClaims,omitempty"`
+	SecurityContext               *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+	Capabilities                  *corev1.Capabilities       `json:"capabilities,omitempty"`
 }
 
 // GsmSpec defines the desired state of GSM (ADD GSM + deployment info).
@@ -320,19 +353,22 @@ type GsmSpec struct {
 	Name string `json:"name"` // GSM name used for StatefulSet and GDSCTL
 
 	// Core K8s / deployment fields
-	EnvVars          []EnvironmentVariable        `json:"envVars,omitempty"`                                         // Optional env variables
-	StorageSizeInGb  int32                        `json:"storageSizeInGb,omitempty"`                                 // GSM storage size (GB) if PVC is used
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirements
-	PvcName          string                       `json:"pvcName,omitempty"`                                         // Optional PVC name
-	Label            string                       `json:"label,omitempty"`                                           // Optional label
-	IsDelete         string                       `json:"isDelete,omitempty"`                                        // Deletion flag
-	NodeSelector     map[string]string            `json:"nodeSelector,omitempty"`                                    // Node selector for scheduling
-	PvAnnotations    map[string]string            `json:"pvAnnotations,omitempty"`                                   // Annotations for PV
-	PvMatchLabels    map[string]string            `json:"pvMatchLabels,omitempty"`                                   // Match labels for PV selector
-	ImagePulllPolicy *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
-	Region           string                       `json:"region,omitempty"`       // Single region (ADD GSM -region)
-	DirectorName     string                       `json:"directorName,omitempty"` // Optional director name
-	GsmConfigData    *ConfigMapData               `json:"gsmConfigData,omitempty"`
+	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         // Optional env variables
+	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // GSM storage size (GB) if PVC is used
+	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirements
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvcName      string            `json:"pvcName,omitempty"`      // Optional PVC name
+	Label        string            `json:"label,omitempty"`        // Optional label
+	IsDelete     string            `json:"isDelete,omitempty"`     // Deletion flag
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"` // Node selector for scheduling
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"` // Annotations for PV
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvMatchLabels    map[string]string  `json:"pvMatchLabels,omitempty"` // Match labels for PV selector
+	ImagePulllPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	Region           string             `json:"region,omitempty"`       // Single region (ADD GSM -region)
+	DirectorName     string             `json:"directorName,omitempty"` // Optional director name
+	GsmConfigData    *ConfigMapData     `json:"gsmConfigData,omitempty"`
 
 	// Logical GSM fields (from  YAML)
 
@@ -350,9 +386,13 @@ type GsmSpec struct {
 
 	// Catalog / credentials bindings (Add GSM)
 
-	Catalog        string `json:"catalog,omitempty"` // GDS catalog connect string (TNS alias)
-	Pwd            string `json:"pwd,omitempty"`     // GSMCATUSER password
-	WalletPassword string `json:"wpwd,omitempty"`    // Wallet password
+	Catalog                       string                     `json:"catalog,omitempty"` // GDS catalog connect string (TNS alias)
+	Pwd                           string                     `json:"pwd,omitempty"`     // GSMCATUSER password
+	WalletPassword                string                     `json:"wpwd,omitempty"`    // Wallet password
+	AdditionalPVCs                []AdditionalPVCSpec        `json:"additionalPVCs,omitempty"`
+	DisableDefaultLogVolumeClaims bool                       `json:"disableDefaultLogVolumeClaims,omitempty"`
+	SecurityContext               *corev1.PodSecurityContext `json:"securityContext,omitempty"`
+	Capabilities                  *corev1.Capabilities       `json:"capabilities,omitempty"`
 }
 
 // ShardGroupSpec is used both for top-level shardGroup[] and inside shardInfo.shardGroupDetails.
@@ -451,9 +491,23 @@ type PasswordSecretConfig struct {
 	Pkeyopt       string `json:"pkeyopt,omitempty"`       // OpenSSL pkeyutl options, semicolon-separated
 }
 
+type AdditionalPVCSpec struct {
+	MountPath       string `json:"mountPath"`
+	PvcName         string `json:"pvcName,omitempty"`
+	StorageSizeInGb int32  `json:"storageSizeInGb,omitempty"`
+	StorageClass    string `json:"storageClass,omitempty"`
+}
+
 const (
-	DefaultPkeyopt         = "rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256"
-	DefaultSecretMountPath = "/mnt/secrets"
+	DefaultPkeyopt          = "rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256"
+	DefaultSecretMountPath  = "/mnt/secrets"
+	DefaultOraDataMountPath = "/opt/oracle/oradata"
+	DefaultGsmDataMountPath = "/opt/oracle/gsmdata"
+	DefaultDiagMountPath    = "/opt/oracle/diag"
+	DefaultGsmDiagMountPath = "/u01/app/oracle/diag"
+	DefaultGddLogMountPath  = "/var/log/gdd"
+	DefaultDiagSizeInGb     = int32(50)
+	DefaultGddLogSizeInGb   = int32(10)
 )
 
 // DatabaseRef is used in catalog/shard primaryDatabaseRef, catalogDatabaseRef
@@ -479,9 +533,20 @@ type PrimaryEndpointRef struct {
 	PdbName       string `json:"pdbName,omitempty"`
 }
 
+// TDEWalletConfig provides common wallet configuration for both global and standby-specific flows.
+type TDEWalletConfig struct {
+	// +kubebuilder:validation:Enum=enable;disable
+	IsEnabled string `json:"isEnabled,omitempty"`
+	PVCName   string `json:"pvcName,omitempty"`
+	MountPath string `json:"mountPath,omitempty"`
+
+	SecretRef  string `json:"secretRef,omitempty"`
+	ZipFileKey string `json:"zipFileKey,omitempty"`
+	WalletRoot string `json:"walletRoot,omitempty"`
+}
+
 // StandbyConfig defines how standby shards should be mapped from primary inputs.
 type StandbyConfig struct {
-	SourceType string `json:"sourceType,omitempty"` // PrimaryDatabaseRef|ConnectString|Endpoint
 	// +kubebuilder:validation:Minimum=1
 	StandbyPerPrimary int32 `json:"standbyPerPrimary,omitempty"`
 	// +kubebuilder:validation:Enum=MAXPROTECTION;MAXAVAILABILITY;MAXPERFORMANCE
@@ -492,10 +557,7 @@ type StandbyConfig struct {
 	PrimaryDatabaseRefs   []PrimaryDatabaseCRRef `json:"primaryDatabaseRefs,omitempty"`
 	PrimaryConnectStrings []string               `json:"primaryConnectStrings,omitempty"`
 	PrimaryEndpoints      []PrimaryEndpointRef   `json:"primaryEndpoints,omitempty"`
-	WalletSecretRef       string                 `json:"walletSecretRef,omitempty"`
-	WalletMountPath       string                 `json:"walletMountPath,omitempty"`
-	WalletZipFileKey      string                 `json:"walletZipFileKey,omitempty"`
-	StandbyTDEWalletRoot  string                 `json:"standbyTDEWalletRoot,omitempty"`
+	TDEWallet             *TDEWalletConfig       `json:"tdeWallet,omitempty"`
 }
 
 // EnvironmentVariable represents a named variable accessible for containers.
@@ -533,13 +595,17 @@ type ShardingDetails struct {
 	// Deprecated: use shardNum. Kept for backward compatibility.
 	Replicas int32 `json:"replicas,omitempty"`
 
-	StorageSizeInGb    int32                        `json:"storageSizeInGb,omitempty"`
-	ShardGroupDetails  *ShardGroupSpec              `json:"shardGroupDetails,omitempty"`
-	ShardSpaceDetails  *ShardSpaceSpec              `json:"shardSpaceDetails,omitempty"`
-	PrimaryDatabaseRef *DatabaseRef                 `json:"primaryDatabaseRef,omitempty"`
-	StandbyConfig      *StandbyConfig               `json:"standbyConfig,omitempty"`
-	EnvVars            []EnvironmentVariable        `json:"envVars,omitempty"`
-	Resources          *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	StorageSizeInGb               int32                        `json:"storageSizeInGb,omitempty"`
+	ShardGroupDetails             *ShardGroupSpec              `json:"shardGroupDetails,omitempty"`
+	ShardSpaceDetails             *ShardSpaceSpec              `json:"shardSpaceDetails,omitempty"`
+	PrimaryDatabaseRef            *DatabaseRef                 `json:"primaryDatabaseRef,omitempty"`
+	StandbyConfig                 *StandbyConfig               `json:"standbyConfig,omitempty"`
+	EnvVars                       []EnvironmentVariable        `json:"envVars,omitempty"`
+	Resources                     *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"`
+	AdditionalPVCs                []AdditionalPVCSpec          `json:"additionalPVCs,omitempty"`
+	DisableDefaultLogVolumeClaims bool                         `json:"disableDefaultLogVolumeClaims,omitempty"`
+	SecurityContext               *corev1.PodSecurityContext   `json:"securityContext,omitempty"`
+	Capabilities                  *corev1.Capabilities         `json:"capabilities,omitempty"`
 }
 
 type ShardStatusMapKeys string

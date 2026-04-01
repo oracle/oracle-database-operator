@@ -42,6 +42,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 
@@ -163,12 +164,12 @@ func buildPodSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databa
 	user := oraRunAsUser
 	group := oraFsGroup
 	spec := &corev1.PodSpec{
-		SecurityContext: &corev1.PodSecurityContext{
+		SecurityContext: mergePodSecurityContextWithDefaults(&corev1.PodSecurityContext{
 			RunAsNonRoot: BoolPointer(true),
 			RunAsUser:    &user,
 			RunAsGroup:   &group,
 			FSGroup:      &group,
-		},
+		}, OraGsmSpex.SecurityContext),
 		Containers:         buildContainerSpecForGsm(instance, OraGsmSpex),
 		Volumes:            buildVolumeSpecForGsm(instance, OraGsmSpex),
 		ServiceAccountName: instance.Spec.SrvAccountName,
@@ -197,6 +198,7 @@ func buildPodSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databa
 // Function to build Volume Spec
 func buildVolumeSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.Volume {
 	var result []corev1.Volume
+	pvcMounts := normalizeGsmPVCMountConfigs(OraGsmSpex.Name, OraGsmSpex.StorageSizeInGb, instance.Spec.StorageClass, OraGsmSpex.DisableDefaultLogVolumeClaims, OraGsmSpex.AdditionalPVCs)
 	result = []corev1.Volume{
 		{
 			Name: OraGsmSpex.Name + "secretmap-vol3",
@@ -218,8 +220,14 @@ func buildVolumeSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex dat
 		result = append(result, corev1.Volume{Name: OraGsmSpex.Name + "-oradata-configdata", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: OraGsmSpex.GsmConfigData.Name}}}})
 	}
 
-	if len(OraGsmSpex.PvcName) != 0 {
-		result = append(result, corev1.Volume{Name: OraGsmSpex.Name + "oradata-vol4", VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: OraGsmSpex.PvcName}}})
+	for _, pvcMount := range pvcMounts {
+		if strings.TrimSpace(pvcMount.pvcName) == "" {
+			continue
+		}
+		result = append(result, corev1.Volume{
+			Name:         pvcMount.volumeName,
+			VolumeSource: corev1.VolumeSource{PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: pvcMount.pvcName}},
+		})
 	}
 
 	if len(instance.Spec.StagePvcName) != 0 {
@@ -258,10 +266,10 @@ func buildContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex 
 			RunAsUser:                &user,
 			RunAsGroup:               &group,
 			AllowPrivilegeEscalation: BoolPointer(false),
-			Capabilities: &corev1.Capabilities{
+			Capabilities: mergeCapabilitiesWithDefaults(&corev1.Capabilities{
 				Add:  []corev1.Capability{"NET_RAW"},
 				Drop: []corev1.Capability{"ALL"},
-			},
+			}, OraGsmSpex.Capabilities),
 		},
 		Resources: corev1.ResourceRequirements{
 			Requests: make(map[corev1.ResourceName]resource.Quantity),
@@ -347,9 +355,12 @@ func buildInitContainerSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmS
 }
 
 func buildVolumeMountSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.VolumeMount {
-	result := make([]corev1.VolumeMount, 0, 5)
+	result := make([]corev1.VolumeMount, 0, 8)
+	pvcMounts := normalizeGsmPVCMountConfigs(OraGsmSpex.Name, OraGsmSpex.StorageSizeInGb, instance.Spec.StorageClass, OraGsmSpex.DisableDefaultLogVolumeClaims, OraGsmSpex.AdditionalPVCs)
 	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "secretmap-vol3", MountPath: getDbSecretMountPath(instance), ReadOnly: true})
-	result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "-oradata-vol4", MountPath: oraGsmDataMount})
+	for _, pvcMount := range pvcMounts {
+		result = append(result, corev1.VolumeMount{Name: pvcMount.volumeName, MountPath: pvcMount.mountPath})
+	}
 	if instance.Spec.IsDownloadScripts {
 		result = append(result, corev1.VolumeMount{Name: OraGsmSpex.Name + "orascript-vol5", MountPath: oraScriptMount})
 	}
@@ -367,42 +378,35 @@ func buildVolumeMountSpecForGsm(instance *databasev4.ShardingDatabase, OraGsmSpe
 }
 
 func volumeClaimTemplatesForGsm(instance *databasev4.ShardingDatabase, OraGsmSpex databasev4.GsmSpec) []corev1.PersistentVolumeClaim {
-	if len(OraGsmSpex.PvcName) != 0 {
-		return nil
-	}
-
-	claim := corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            OraGsmSpex.Name + "-oradata-vol4",
-			Namespace:       instance.Namespace,
-			Labels:          buildResourceLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
-			OwnerReferences: buildOwnerRefForGsm(instance),
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
+	pvcMounts := normalizeGsmPVCMountConfigs(OraGsmSpex.Name, OraGsmSpex.StorageSizeInGb, instance.Spec.StorageClass, OraGsmSpex.DisableDefaultLogVolumeClaims, OraGsmSpex.AdditionalPVCs)
+	claims := make([]corev1.PersistentVolumeClaim, 0, len(pvcMounts))
+	for _, pvcMount := range pvcMounts {
+		if strings.TrimSpace(pvcMount.pvcName) != "" {
+			continue
+		}
+		claim := corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            pvcMount.volumeName,
+				Namespace:       instance.Namespace,
+				Labels:          buildResourceLabelsForGsm(instance, "sharding", OraGsmSpex.Name),
+				OwnerReferences: buildOwnerRefForGsm(instance),
 			},
-			StorageClassName: &instance.Spec.StorageClass,
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(OraGsmSpex.StorageSizeInGb), 10) + "Gi"),
+			Spec: corev1.PersistentVolumeClaimSpec{
+				AccessModes: []corev1.PersistentVolumeAccessMode{
+					corev1.ReadWriteOnce,
+				},
+				StorageClassName: storageClassNamePtr(pvcMount.storageClass),
+				Resources: corev1.VolumeResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceStorage: resource.MustParse(strconv.FormatInt(int64(pvcMount.storageSizeInGb), 10) + "Gi"),
+					},
 				},
 			},
-		},
-	}
-
-	if len(OraGsmSpex.PvAnnotations) > 0 {
-		claim.ObjectMeta.Annotations = make(map[string]string, len(OraGsmSpex.PvAnnotations))
-		for key, value := range OraGsmSpex.PvAnnotations {
-			claim.ObjectMeta.Annotations[key] = value
 		}
+		claims = append(claims, claim)
 	}
 
-	if len(OraGsmSpex.PvMatchLabels) > 0 {
-		claim.Spec.Selector = &metav1.LabelSelector{MatchLabels: OraGsmSpex.PvMatchLabels}
-	}
-
-	return []corev1.PersistentVolumeClaim{claim}
+	return claims
 }
 
 func BuildServiceDefForGsm(instance *databasev4.ShardingDatabase, replicaCount int32, OraGsmSpex databasev4.GsmSpec, svctype string) *corev1.Service {
