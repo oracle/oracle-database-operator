@@ -5,8 +5,8 @@ build-operator:
     OP_YAML: oracle-database-operator.yaml
     BUILD_INTERNAL: "true"
   script:
-    - export GOLANG_VERSION=1.25.5
-    - export GOROOT=$(go${GOLANG_VERSION} env GOROOT)
+    - export GOLANG_VERSION=$(go env GOVERSION | sed 's/^go//')
+    - export GOROOT=$(go env GOROOT)
     - export PATH="${GOROOT}/bin:${PATH}"
 
     # --------------------------------
