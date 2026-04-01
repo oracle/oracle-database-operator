@@ -40,13 +40,17 @@ package v4
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
+	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -122,6 +126,7 @@ func (r *SingleInstanceDatabase) Default(ctx context.Context, obj *SingleInstanc
 	if sidb.Spec.TrueCacheServices == nil {
 		sidb.Spec.TrueCacheServices = make([]string, 0)
 	}
+	defaultSIDBAdditionalPVCs(&sidb.Spec.AdditionalPVCs)
 
 	return nil
 }
@@ -148,6 +153,18 @@ func (r *SingleInstanceDatabase) ValidateUpdate(ctx context.Context, oldObj, new
 	singleinstancedatabaselog.Info("validate update", "name", newSidb.Name)
 
 	allErrs := validateSingleInstanceDatabaseSpec(newSidb)
+	specChanged := !reflect.DeepEqual(oldSidb.Spec, newSidb.Spec)
+	if specChanged {
+		if locked, lockGen, lockMsg := lockpolicy.IsControllerUpdateLocked(oldSidb.Status.Conditions, lockpolicy.DefaultReconcilingConditionType, lockpolicy.DefaultUpdateLockReason); locked {
+			if overrideEnabled, _ := lockpolicy.IsUpdateLockOverrideEnabled(newSidb.GetAnnotations(), lockpolicy.DefaultOverrideAnnotation); !overrideEnabled {
+				allErrs = append(allErrs, field.Forbidden(
+					field.NewPath("spec"),
+					fmt.Sprintf("spec updates are blocked while controller operation is in progress (reason=%s, observedGeneration=%d). %s",
+						lockpolicy.DefaultUpdateLockReason, lockGen, lockMsg),
+				))
+			}
+		}
+	}
 
 	if oldSidb.Status.CreatedAs == "clone" {
 		if newSidb.Spec.Edition != "" && oldSidb.Status.Edition != "" && !strings.EqualFold(oldSidb.Status.Edition, newSidb.Spec.Edition) {
@@ -324,6 +341,97 @@ func validateSingleInstanceDatabaseSpec(sidb *SingleInstanceDatabase) field.Erro
 	if sidb.Spec.InitParams != nil {
 		if (sidb.Spec.InitParams.PgaAggregateTarget != 0 && sidb.Spec.InitParams.SgaTarget == 0) || (sidb.Spec.InitParams.PgaAggregateTarget == 0 && sidb.Spec.InitParams.SgaTarget != 0) {
 			allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("initParams"), sidb.Spec.InitParams, "provide both pgaAggregateTarget and sgaTarget"))
+		}
+	}
+
+	allErrs = append(allErrs, validateSingleInstanceDatabaseResourceFields(sidb)...)
+	allErrs = append(allErrs, validateSingleInstanceDatabaseAdditionalPVCs(sidb)...)
+
+	return allErrs
+}
+
+func validateSingleInstanceDatabaseResourceFields(sidb *SingleInstanceDatabase) field.ErrorList {
+	var allErrs field.ErrorList
+	specPath := field.NewPath("spec")
+
+	validateLegacyQuantity := func(value string, fld *field.Path) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return
+		}
+		q, err := resource.ParseQuantity(trimmed)
+		if err != nil {
+			allErrs = append(allErrs, field.Invalid(fld, value, "invalid quantity"))
+			return
+		}
+		if q.Sign() < 0 {
+			allErrs = append(allErrs, field.Invalid(fld, value, "must be non-negative"))
+		}
+	}
+
+	if sidb.Spec.Resources.Requests != nil {
+		validateLegacyQuantity(sidb.Spec.Resources.Requests.Cpu, specPath.Child("resources").Child("requests").Child("cpu"))
+		validateLegacyQuantity(sidb.Spec.Resources.Requests.Memory, specPath.Child("resources").Child("requests").Child("memory"))
+	}
+	if sidb.Spec.Resources.Limits != nil {
+		validateLegacyQuantity(sidb.Spec.Resources.Limits.Cpu, specPath.Child("resources").Child("limits").Child("cpu"))
+		validateLegacyQuantity(sidb.Spec.Resources.Limits.Memory, specPath.Child("resources").Child("limits").Child("memory"))
+	}
+
+	if sidb.Spec.ResourceRequirements != nil {
+		for name, q := range sidb.Spec.ResourceRequirements.Requests {
+			if q.Sign() < 0 {
+				allErrs = append(allErrs, field.Invalid(specPath.Child("resourceRequirements").Child("requests").Child(string(name)), q.String(), "must be non-negative"))
+			}
+		}
+		for name, q := range sidb.Spec.ResourceRequirements.Limits {
+			if q.Sign() < 0 {
+				allErrs = append(allErrs, field.Invalid(specPath.Child("resourceRequirements").Child("limits").Child(string(name)), q.String(), "must be non-negative"))
+			}
+		}
+	}
+
+	return allErrs
+}
+
+func defaultSIDBAdditionalPVCs(pvcs *[]AdditionalPVCSpec) {
+	if pvcs == nil {
+		return
+	}
+	for i := range *pvcs {
+		(*pvcs)[i].MountPath = strings.TrimSpace((*pvcs)[i].MountPath)
+		(*pvcs)[i].PvcName = strings.TrimSpace((*pvcs)[i].PvcName)
+		(*pvcs)[i].StorageClass = strings.TrimSpace((*pvcs)[i].StorageClass)
+		if (*pvcs)[i].MountPath == DefaultDiagMountPath && (*pvcs)[i].PvcName == "" && (*pvcs)[i].StorageSizeInGb <= 0 {
+			(*pvcs)[i].StorageSizeInGb = DefaultDiagSizeInGb
+		}
+	}
+}
+
+func validateSingleInstanceDatabaseAdditionalPVCs(sidb *SingleInstanceDatabase) field.ErrorList {
+	var allErrs field.ErrorList
+	basePath := field.NewPath("spec").Child("additionalPVCs")
+	seenMountPaths := map[string]struct{}{}
+
+	for i := range sidb.Spec.AdditionalPVCs {
+		itemPath := basePath.Index(i)
+		mountPath := strings.TrimSpace(sidb.Spec.AdditionalPVCs[i].MountPath)
+		pvcName := strings.TrimSpace(sidb.Spec.AdditionalPVCs[i].PvcName)
+		if mountPath == "" {
+			allErrs = append(allErrs, field.Required(itemPath.Child("mountPath"), "mountPath must be set"))
+			continue
+		}
+		if !strings.HasPrefix(mountPath, "/") {
+			allErrs = append(allErrs, field.Invalid(itemPath.Child("mountPath"), sidb.Spec.AdditionalPVCs[i].MountPath, "mountPath must be an absolute path"))
+		}
+		if _, exists := seenMountPaths[mountPath]; exists {
+			allErrs = append(allErrs, field.Duplicate(itemPath.Child("mountPath"), mountPath))
+		} else {
+			seenMountPaths[mountPath] = struct{}{}
+		}
+
+		if pvcName == "" && sidb.Spec.AdditionalPVCs[i].StorageSizeInGb <= 0 && mountPath != DefaultDiagMountPath {
+			allErrs = append(allErrs, field.Required(itemPath.Child("storageSizeInGb"), "storageSizeInGb must be greater than 0 when pvcName is not provided"))
 		}
 	}
 

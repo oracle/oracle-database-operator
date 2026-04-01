@@ -51,6 +51,7 @@ import (
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
 	dataguardcommon "github.com/oracle/oracle-database-operator/commons/dataguard"
 	dgsidb "github.com/oracle/oracle-database-operator/commons/dataguard/sidb"
+	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
@@ -143,6 +144,30 @@ func (r *SingleInstanceDatabaseReconciler) Reconcile(ctx context.Context, req ct
 		}
 		r.Log.Error(err, err.Error())
 		return requeueY, err
+	}
+
+	if phaseCtx.singleInstanceDatabase.DeletionTimestamp == nil {
+		if locked, lockGen, lockMsg := lockpolicy.IsControllerUpdateLocked(
+			phaseCtx.singleInstanceDatabase.Status.Conditions,
+			lockpolicy.DefaultReconcilingConditionType,
+			lockpolicy.DefaultUpdateLockReason,
+		); locked {
+			if overrideEnabled, _ := lockpolicy.IsUpdateLockOverrideEnabled(
+				phaseCtx.singleInstanceDatabase.GetAnnotations(),
+				lockpolicy.DefaultOverrideAnnotation,
+			); !overrideEnabled {
+				blocked = true
+				result = ctrl.Result{Requeue: true, RequeueAfter: 30 * time.Second}
+				r.Log.Info(
+					"SIDB reconcile blocked by controller update lock",
+					"reason", lockpolicy.DefaultUpdateLockReason,
+					"observedGeneration", lockGen,
+					"message", lockMsg,
+				)
+				return result, nil
+			}
+			r.Log.Info("SIDB update lock override accepted", "annotation", lockpolicy.DefaultOverrideAnnotation)
+		}
 	}
 
 	result, err = r.runSIDBPhase(req, "initialize_status", func() (ctrl.Result, error) {

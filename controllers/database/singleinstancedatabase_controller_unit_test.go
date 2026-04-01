@@ -7,9 +7,11 @@ import (
 
 	dbapi "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dbcommons "github.com/oracle/oracle-database-operator/commons/database"
+	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -191,5 +193,44 @@ func TestSIDBUnit_PhaseConnectStringGate(t *testing.T) {
 	}
 	if res != requeueN {
 		t.Fatalf("expected no requeue for available connect string, got %#v", res)
+	}
+}
+
+func TestSIDBUnit_ReconcileBlockedByUpdateLockRequeues(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := dbapi.AddToScheme(scheme); err != nil {
+		t.Fatalf("failed to add dbapi scheme: %v", err)
+	}
+
+	sidb := &dbapi.SingleInstanceDatabase{
+		ObjectMeta: metav1.ObjectMeta{Name: "sidb1", Namespace: "ns1", Generation: 5},
+		Status: dbapi.SingleInstanceDatabaseStatus{
+			Conditions: []metav1.Condition{{
+				Type:               lockpolicy.DefaultReconcilingConditionType,
+				Status:             metav1.ConditionTrue,
+				Reason:             lockpolicy.DefaultUpdateLockReason,
+				ObservedGeneration: 4,
+				Message:            "controller lock active",
+			}},
+		},
+	}
+
+	reconciler := &SingleInstanceDatabaseReconciler{
+		Client: fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(&dbapi.SingleInstanceDatabase{}).
+			WithObjects(sidb).
+			Build(),
+		Log: logr.Discard(),
+	}
+
+	res, err := reconciler.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Namespace: "ns1", Name: "sidb1"},
+	})
+	if err != nil {
+		t.Fatalf("expected no error while lock-gated, got: %v", err)
+	}
+	if !res.Requeue || res.RequeueAfter != 30*time.Second {
+		t.Fatalf("expected lock-gated requeue after 30s, got: %#v", res)
 	}
 }

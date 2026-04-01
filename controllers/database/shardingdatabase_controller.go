@@ -48,7 +48,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 
@@ -57,6 +56,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -74,6 +74,7 @@ import (
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dataguardcommon "github.com/oracle/oracle-database-operator/commons/dataguard"
 	dgsharding "github.com/oracle/oracle-database-operator/commons/dataguard/sharding"
+	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 	"github.com/oracle/oracle-database-operator/commons/shapes"
 	shardingv1 "github.com/oracle/oracle-database-operator/commons/sharding"
 )
@@ -86,15 +87,6 @@ type ShardingDatabaseReconciler struct {
 	kubeConfig *rest.Config
 	Recorder   record.EventRecorder
 	APIReader  client.Reader
-}
-
-var tdeKeySyncState = struct {
-	sync.Mutex
-	exported map[types.NamespacedName]bool
-	imported map[types.NamespacedName]map[string]bool
-}{
-	exported: make(map[types.NamespacedName]bool),
-	imported: make(map[types.NamespacedName]map[string]bool),
 }
 
 type phaseResult struct {
@@ -113,15 +105,12 @@ type conditionSet struct {
 }
 
 const (
-	reconcilingType   = "Reconciling"
-	updateLockReason  = "UpdateInProgress"
-	updateLockRequeue = 15 * time.Second
+	reconcilingType      = lockpolicy.DefaultReconcilingConditionType
+	updateLockReason     = lockpolicy.DefaultUpdateLockReason
+	updateLockRequeue    = 15 * time.Second
+	statusRefreshRequeue = 60 * time.Second
 
-	lockOverrideAnnotation       = "database.oracle.com/lock-override"
-	lockOverrideReasonAnnotation = "database.oracle.com/lock-override-reason"
-	lockOverrideByAnnotation     = "database.oracle.com/lock-override-by"
-	lockOverrideUntilAnnotation  = "database.oracle.com/lock-override-until"
-	lockOverrideMaxTTL           = 30 * time.Minute
+	lockOverrideAnnotation = lockpolicy.DefaultOverrideAnnotation
 
 	credentialSyncConditionType         = "CredentialSync"
 	credentialSyncHashAnnotation        = "database.oracle.com/credential-sync-hash"
@@ -130,6 +119,15 @@ const (
 	credentialSyncLastErrorAnnotation   = "database.oracle.com/credential-sync-last-error"
 	credentialRetryInitialBackoff       = 30 * time.Second
 	credentialRetryMaxBackoff           = 10 * time.Minute
+
+	tdeKeyExportedAnnotation       = "database.oracle.com/tde-key-exported"
+	tdeKeyImportedShardsAnnotation = "database.oracle.com/tde-key-imported-shards"
+	tdeKeyRefreshAnnotation        = "database.oracle.com/tde-key-refresh"
+)
+
+var (
+	exportTDEKeyFn = shardingv1.ExportTDEKey
+	importTDEKeyFn = shardingv1.ImportTDEKey
 )
 
 // +kubebuilder:rbac:groups=database.oracle.com,resources=shardingdatabases,verbs=get;list;watch;create;update;patch;delete
@@ -171,7 +169,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 
 			if enforceLock {
-				overrideEnabled, overrideMsg := isUpdateLockOverrideEnabled(inst, time.Now().UTC())
+				overrideEnabled, overrideMsg := isUpdateLockOverrideEnabled(inst)
 				if overrideEnabled {
 					r.logLegacy("WARNING", "Bypassing update lock due to break-glass override. "+overrideMsg, nil, inst, r.Log)
 				} else {
@@ -248,7 +246,7 @@ func (r *ShardingDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if credentialRetryAfter > 0 {
 		return ctrl.Result{RequeueAfter: credentialRetryAfter}, nil
 	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: statusRefreshRequeue}, nil
 }
 
 // Phase 2 :Condition + Status Writer (single-writer pattern)
@@ -425,6 +423,9 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 			if _, err := r.deployStatefulSet(inst, shardingv1.BuildStatefulSetForCatalog(inst, oraCatalogSpec), "CATALOG"); err != nil {
 				return phaseResult{err: err, reason: "CatalogStatefulSetFailed", message: err.Error()}
 			}
+			if err := r.reconcilePVCExpansion(inst, oraCatalogSpec.Name, normalizedPVCResizeSpecs(oraCatalogSpec.Name, oraCatalogSpec.StorageSizeInGb, oraCatalogSpec.DisableDefaultLogVolumeClaims, oraCatalogSpec.AdditionalPVCs)); err != nil {
+				return phaseResult{err: err, reason: "CatalogPVCExpandFailed", message: err.Error()}
+			}
 		}
 	}
 
@@ -446,6 +447,9 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		oraGsmSpec := inst.Spec.Gsm[i]
 		if _, err := r.deployStatefulSet(inst, shardingv1.BuildStatefulSetForGsm(inst, oraGsmSpec), "GSM"); err != nil {
 			return phaseResult{err: err, reason: "GsmStatefulSetFailed", message: err.Error()}
+		}
+		if err := r.reconcilePVCExpansion(inst, oraGsmSpec.Name, normalizedGsmPVCResizeSpecs(oraGsmSpec.Name, oraGsmSpec.StorageSizeInGb, oraGsmSpec.DisableDefaultLogVolumeClaims, oraGsmSpec.AdditionalPVCs)); err != nil {
+			return phaseResult{err: err, reason: "GsmPVCExpandFailed", message: err.Error()}
 		}
 	}
 
@@ -481,6 +485,9 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		if _, err := r.deployStatefulSet(inst, shardingv1.BuildStatefulSetForShard(inst, oraShardSpec), "SHARD"); err != nil {
 			return phaseResult{err: err, reason: "ShardStatefulSetFailed", message: err.Error()}
 		}
+		if err := r.reconcilePVCExpansion(inst, oraShardSpec.Name, normalizedPVCResizeSpecs(oraShardSpec.Name, oraShardSpec.StorageSizeInGb, oraShardSpec.DisableDefaultLogVolumeClaims, oraShardSpec.AdditionalPVCs)); err != nil {
+			return phaseResult{err: err, reason: "ShardPVCExpandFailed", message: err.Error()}
+		}
 	}
 
 	// Ordered shape reconcile (existing behavior: requeue on blocked/error)
@@ -494,7 +501,140 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		return phaseResult{wait: true, requeueAfter: 30 * time.Second, reason: "OrderedShapeReconcileBlocked", message: "Ordered shape reconcile in progress"}
 	}
 
+	// Ordered non-shape shard template reconcile (resources/security context/capabilities).
+	// This is shard-only and one-by-one; shape-targeted shards are excluded to avoid double restarts.
+	shardTemplateBlocked, shardTemplateErr := r.reconcileOrderedShardTemplateChanges(inst)
+	if shardTemplateErr != nil {
+		r.logLegacy("INFO", "Ordered shard template reconcile failed: "+shardTemplateErr.Error(), nil, inst, r.Log)
+		return phaseResult{wait: true, requeueAfter: 30 * time.Second, reason: "OrderedShardTemplateReconcileRetry", message: shardTemplateErr.Error()}
+	}
+	if shardTemplateBlocked {
+		r.logLegacy("INFO", "Ordered shard template reconcile in progress. Requeue.", nil, inst, r.Log)
+		return phaseResult{wait: true, requeueAfter: 30 * time.Second, reason: "OrderedShardTemplateReconcileBlocked", message: "Ordered shard template reconcile in progress"}
+	}
+
 	return phaseResult{}
+}
+
+type pvcResizeSpec struct {
+	volumeName      string
+	pvcName         string
+	storageSizeInGb int32
+}
+
+func normalizedPVCResizeSpecs(ownerName string, baseStorageSize int32, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
+	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, disableDefaultLogPVCs, databasev4.DefaultOraDataMountPath, databasev4.DefaultDiagMountPath, additionalPVCs)
+}
+
+func normalizedGsmPVCResizeSpecs(ownerName string, baseStorageSize int32, disableDefaultLogPVCs bool, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
+	return normalizedPVCResizeSpecsWithDefaults(ownerName, baseStorageSize, disableDefaultLogPVCs, databasev4.DefaultGsmDataMountPath, databasev4.DefaultGsmDiagMountPath, additionalPVCs)
+}
+
+func normalizedPVCResizeSpecsWithDefaults(ownerName string, baseStorageSize int32, disableDefaultLogPVCs bool, baseMountPath, diagMountPath string, additionalPVCs []databasev4.AdditionalPVCSpec) []pvcResizeSpec {
+	trimmedOwner := strings.TrimSpace(ownerName)
+	specByPath := map[string]pvcResizeSpec{
+		baseMountPath: {
+			volumeName:      trimmedOwner + "-oradata-vol4",
+			storageSizeInGb: baseStorageSize,
+		},
+	}
+	if !disableDefaultLogPVCs {
+		specByPath[diagMountPath] = pvcResizeSpec{
+			volumeName:      trimmedOwner + "-diag-vol10",
+			storageSizeInGb: databasev4.DefaultDiagSizeInGb,
+		}
+		specByPath[databasev4.DefaultGddLogMountPath] = pvcResizeSpec{
+			volumeName:      trimmedOwner + "-gdd-vol11",
+			storageSizeInGb: databasev4.DefaultGddLogSizeInGb,
+		}
+	}
+
+	for i := range additionalPVCs {
+		mountPath := strings.TrimSpace(additionalPVCs[i].MountPath)
+		if mountPath == "" {
+			continue
+		}
+		spec, exists := specByPath[mountPath]
+		if !exists {
+			hash := sha256.Sum256([]byte(trimmedOwner + ":" + mountPath))
+			spec = pvcResizeSpec{
+				volumeName:      trimmedOwner + "-extra-vol-" + hex.EncodeToString(hash[:])[:8],
+				storageSizeInGb: additionalPVCs[i].StorageSizeInGb,
+			}
+		}
+		if pvcName := strings.TrimSpace(additionalPVCs[i].PvcName); pvcName != "" {
+			spec.pvcName = pvcName
+		}
+		if additionalPVCs[i].StorageSizeInGb > 0 {
+			spec.storageSizeInGb = additionalPVCs[i].StorageSizeInGb
+		}
+		specByPath[mountPath] = spec
+	}
+
+	result := make([]pvcResizeSpec, 0, len(specByPath))
+	result = append(result, specByPath[baseMountPath])
+	delete(specByPath, baseMountPath)
+	if cfg, ok := specByPath[diagMountPath]; ok {
+		result = append(result, cfg)
+		delete(specByPath, diagMountPath)
+	}
+	if cfg, ok := specByPath[databasev4.DefaultGddLogMountPath]; ok {
+		result = append(result, cfg)
+		delete(specByPath, databasev4.DefaultGddLogMountPath)
+	}
+	extraPaths := make([]string, 0, len(specByPath))
+	for mountPath := range specByPath {
+		extraPaths = append(extraPaths, mountPath)
+	}
+	sort.Strings(extraPaths)
+	for _, mountPath := range extraPaths {
+		result = append(result, specByPath[mountPath])
+	}
+
+	return result
+}
+
+func (r *ShardingDatabaseReconciler) reconcilePVCExpansion(instance *databasev4.ShardingDatabase, statefulSetName string, specs []pvcResizeSpec) error {
+	for _, spec := range specs {
+		if strings.TrimSpace(spec.pvcName) != "" || spec.storageSizeInGb <= 0 {
+			continue
+		}
+		desired := resource.MustParse(strconv.FormatInt(int64(spec.storageSizeInGb), 10) + "Gi")
+		pvcName := spec.volumeName + "-" + statefulSetName + "-0"
+
+		pvc := &corev1.PersistentVolumeClaim{}
+		if err := r.Get(context.Background(), types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, pvc); err != nil {
+			if errors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
+
+		current := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+		if current.Cmp(desired) >= 0 {
+			continue
+		}
+
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			latest := &corev1.PersistentVolumeClaim{}
+			if gerr := r.Get(context.Background(), types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, latest); gerr != nil {
+				return gerr
+			}
+			if latest.Spec.Resources.Requests == nil {
+				latest.Spec.Resources.Requests = corev1.ResourceList{}
+			}
+			cur := latest.Spec.Resources.Requests[corev1.ResourceStorage]
+			if cur.Cmp(desired) >= 0 {
+				return nil
+			}
+			latest.Spec.Resources.Requests[corev1.ResourceStorage] = desired
+			return r.Update(context.Background(), latest)
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Phase # 6: Validate Core Ready
@@ -543,7 +683,7 @@ func (r *ShardingDatabaseReconciler) phasePrimaryShardOps(
 	}
 
 	// Existing behavior: primary shard add/registration is long-running and retried via requeue.
-	if err := r.addPrimaryShards(inst); err != nil {
+	if err := r.addPrimaryShards(ctx, inst); err != nil {
 		plog.Info("primary shard flow not complete yet; requeue", "reason", "PrimaryShardProgress", "error", err.Error(), "requeueAfter", 30*time.Second)
 		return phaseResult{
 			wait:         true,
@@ -567,7 +707,7 @@ func (r *ShardingDatabaseReconciler) phaseStandbyShardOps(
 	plog := r.phaseLogger(inst, "standby_shard_ops")
 
 	// Existing behavior: standby shard + DG broker enablement is retried until complete.
-	if err := r.addStandbyShards(inst); err != nil {
+	if err := r.addStandbyShards(ctx, inst); err != nil {
 		plog.Info("standby shard flow not complete yet; requeue", "reason", "StandbyShardProgress", "error", err.Error(), "requeueAfter", 30*time.Second)
 		return phaseResult{
 			wait:         true,
@@ -575,6 +715,10 @@ func (r *ShardingDatabaseReconciler) phaseStandbyShardOps(
 			reason:       "StandbyShardProgress",
 			message:      err.Error(),
 		}
+	}
+
+	if pr, handled := r.phaseManualTDERefresh(ctx, inst, st); handled {
+		return pr
 	}
 
 	return phaseResult{}
@@ -589,6 +733,16 @@ func (r *ShardingDatabaseReconciler) phaseScaleOps(
 	_ = st
 	_ = c
 	plog := r.phaseLogger(inst, "scale_ops")
+
+	if err := r.pruneImportedTDEShardsAnnotation(ctx, inst); err != nil {
+		plog.Info("failed to prune tde import annotation; requeue", "reason", "TDEImportAnnotationPruneRetry", "error", err.Error(), "requeueAfter", 10*time.Second)
+		return phaseResult{
+			wait:         true,
+			requeueAfter: 10 * time.Second,
+			reason:       "TDEImportAnnotationPruneRetry",
+			message:      err.Error(),
+		}
+	}
 
 	// Existing behavior: shard delete/scale-in is asynchronous; keep requeueing while in progress.
 	if err := r.delGsmShard(inst); err != nil {
@@ -829,95 +983,394 @@ func (r *ShardingDatabaseReconciler) eventFilterPredicate() predicate.Predicate 
 	}
 }
 
-// tdeStateKey builds a stable per-resource key for in-memory TDE sync state.
-func tdeStateKey(instance *databasev4.ShardingDatabase) types.NamespacedName {
-	return types.NamespacedName{
-		Namespace: instance.Namespace,
-		Name:      instance.Name,
-	}
-}
-
-// ensureTDEKeySyncState initializes and garbage-collects in-memory TDE import/export markers.
-func (r *ShardingDatabaseReconciler) ensureTDEKeySyncState(instance *databasev4.ShardingDatabase) {
-	key := tdeStateKey(instance)
-
-	tdeKeySyncState.Lock()
-	defer tdeKeySyncState.Unlock()
-
-	perShard, ok := tdeKeySyncState.imported[key]
-	if !ok {
-		perShard = make(map[string]bool)
-		tdeKeySyncState.imported[key] = perShard
-	}
-
-	liveShardNames := make(map[string]struct{}, len(instance.Spec.Shard))
-	for _, shard := range instance.Spec.Shard {
-		liveShardNames[shard.Name] = struct{}{}
-		if _, ok := perShard[shard.Name]; !ok {
-			perShard[shard.Name] = false
-		}
-	}
-
-	for name := range perShard {
-		if _, ok := liveShardNames[name]; !ok {
-			delete(perShard, name)
-		}
-	}
-}
-
-// hasExportedTDEKeys reports whether TDE keys were exported for this resource.
-func (r *ShardingDatabaseReconciler) hasExportedTDEKeys(instance *databasev4.ShardingDatabase) bool {
-	key := tdeStateKey(instance)
-
-	tdeKeySyncState.Lock()
-	defer tdeKeySyncState.Unlock()
-	return tdeKeySyncState.exported[key]
-}
-
-// setExportedTDEKeys stores the exported-TDE-keys marker for this resource.
-func (r *ShardingDatabaseReconciler) setExportedTDEKeys(instance *databasev4.ShardingDatabase, val bool) {
-	key := tdeStateKey(instance)
-
-	tdeKeySyncState.Lock()
-	defer tdeKeySyncState.Unlock()
-	tdeKeySyncState.exported[key] = val
-}
-
-// hasImportedTDEKeys reports whether TDE keys were imported for a shard.
-func (r *ShardingDatabaseReconciler) hasImportedTDEKeys(instance *databasev4.ShardingDatabase, shardName string) bool {
-	key := tdeStateKey(instance)
-
-	tdeKeySyncState.Lock()
-	defer tdeKeySyncState.Unlock()
-	perShard := tdeKeySyncState.imported[key]
-	if perShard == nil {
+func (r *ShardingDatabaseReconciler) isTDEKeyExported(instance *databasev4.ShardingDatabase) bool {
+	if instance == nil {
 		return false
 	}
-	return perShard[shardName]
+	return strings.EqualFold(strings.TrimSpace(instance.GetAnnotations()[tdeKeyExportedAnnotation]), "true")
 }
 
-// setImportedTDEKeys stores the imported-TDE-keys marker for a shard.
-func (r *ShardingDatabaseReconciler) setImportedTDEKeys(instance *databasev4.ShardingDatabase, shardName string, val bool) {
-	key := tdeStateKey(instance)
-
-	tdeKeySyncState.Lock()
-	defer tdeKeySyncState.Unlock()
-	perShard, ok := tdeKeySyncState.imported[key]
-	if !ok {
-		perShard = make(map[string]bool)
-		tdeKeySyncState.imported[key] = perShard
+func parseImportedTDEShards(raw string) map[string]bool {
+	out := map[string]bool{}
+	for _, item := range strings.Split(raw, ",") {
+		v := strings.ToLower(strings.TrimSpace(item))
+		if v == "" {
+			continue
+		}
+		out[v] = true
 	}
-	perShard[shardName] = val
+	return out
 }
 
-// clearTDEKeySyncState removes all in-memory TDE markers for a deleted resource.
-func (r *ShardingDatabaseReconciler) clearTDEKeySyncState(instance *databasev4.ShardingDatabase) {
-	key := tdeStateKey(instance)
+func serializeImportedTDEShards(shards map[string]bool) string {
+	if len(shards) == 0 {
+		return ""
+	}
+	items := make([]string, 0, len(shards))
+	for name, ok := range shards {
+		if !ok || strings.TrimSpace(name) == "" {
+			continue
+		}
+		items = append(items, strings.ToLower(strings.TrimSpace(name)))
+	}
+	sort.Strings(items)
+	return strings.Join(items, ",")
+}
 
-	tdeKeySyncState.Lock()
-	defer tdeKeySyncState.Unlock()
-	delete(tdeKeySyncState.exported, key)
-	delete(tdeKeySyncState.imported, key)
+func (r *ShardingDatabaseReconciler) isTDEKeyImportedForShard(instance *databasev4.ShardingDatabase, shardName string) bool {
+	if instance == nil {
+		return false
+	}
+	target := strings.ToLower(strings.TrimSpace(shardName))
+	if target == "" {
+		return false
+	}
+	imported := parseImportedTDEShards(instance.GetAnnotations()[tdeKeyImportedShardsAnnotation])
+	return imported[target]
+}
+
+func (r *ShardingDatabaseReconciler) markTDEKeyExported(ctx context.Context, key types.NamespacedName) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		curr := &databasev4.ShardingDatabase{}
+		if err := r.Get(ctx, key, curr); err != nil {
+			return err
+		}
+		anns := curr.GetAnnotations()
+		if anns == nil {
+			anns = map[string]string{}
+		}
+		anns[tdeKeyExportedAnnotation] = "true"
+		curr.SetAnnotations(anns)
+		return r.Update(ctx, curr)
+	})
+}
+
+func (r *ShardingDatabaseReconciler) markTDEKeyImportedForShard(ctx context.Context, key types.NamespacedName, shardName string) error {
+	target := strings.ToLower(strings.TrimSpace(shardName))
+	if target == "" {
+		return nil
+	}
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		curr := &databasev4.ShardingDatabase{}
+		if err := r.Get(ctx, key, curr); err != nil {
+			return err
+		}
+		anns := curr.GetAnnotations()
+		if anns == nil {
+			anns = map[string]string{}
+		}
+		imported := parseImportedTDEShards(anns[tdeKeyImportedShardsAnnotation])
+		imported[target] = true
+		anns[tdeKeyImportedShardsAnnotation] = serializeImportedTDEShards(imported)
+		curr.SetAnnotations(anns)
+		return r.Update(ctx, curr)
+	})
+}
+
+func (r *ShardingDatabaseReconciler) ensureTDEKeysExported(ctx context.Context, instance *databasev4.ShardingDatabase) error {
+	if instance == nil || !shardingv1.CheckIsTDEWalletFlag(instance, r.Log) {
+		return nil
+	}
+	if r.isTDEKeyExported(instance) {
+		return nil
+	}
+	if len(instance.Spec.Catalog) == 0 || strings.TrimSpace(instance.Spec.Catalog[0].Name) == "" {
+		return fmt.Errorf("tde export requires at least one catalog with a valid name")
+	}
+
+	exportTDEFile := "expTDEFile"
+	podName := strings.TrimSpace(instance.Spec.Catalog[0].Name) + "-0"
+	if err := exportTDEKeyFn(podName, exportTDEFile, instance, r.kubeConfig, r.Log); err != nil {
+		return fmt.Errorf("tde export failed for catalog pod %s: %w", podName, err)
+	}
+
+	key := types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}
+	if err := r.markTDEKeyExported(ctx, key); err != nil {
+		return fmt.Errorf("tde export marker update failed: %w", err)
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) ensureTDEKeysImportedForShard(ctx context.Context, instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) error {
+	if instance == nil || !shardingv1.CheckIsTDEWalletFlag(instance, r.Log) {
+		return nil
+	}
+	if shardingv1.CheckIsDeleteFlag(shard.IsDelete, instance, r.Log) {
+		return nil
+	}
+	deployAs := strings.ToUpper(strings.TrimSpace(shard.DeployAs))
+	if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
+		return nil
+	}
+	shardName := strings.TrimSpace(shard.Name)
+	if shardName == "" {
+		return nil
+	}
+	if !r.isTDEKeyExported(instance) {
+		if err := r.ensureTDEKeysExported(ctx, instance); err != nil {
+			return err
+		}
+	}
+	if r.isTDEKeyImportedForShard(instance, shardName) {
+		return nil
+	}
+
+	importTDEFile := "impTDEFile"
+	if err := importTDEKeyFn(shardName+"-0", importTDEFile, instance, r.kubeConfig, r.Log); err != nil {
+		return fmt.Errorf("tde import failed for shard pod %s-0: %w", shardName, err)
+	}
+
+	key := types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}
+	if err := r.markTDEKeyImportedForShard(ctx, key, shardName); err != nil {
+		return fmt.Errorf("tde import marker update failed for shard %s: %w", shardName, err)
+	}
+	return nil
+}
+
+func (r *ShardingDatabaseReconciler) pruneImportedTDEShardsAnnotation(ctx context.Context, instance *databasev4.ShardingDatabase) error {
+	if instance == nil {
+		return nil
+	}
+	key := types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		curr := &databasev4.ShardingDatabase{}
+		if err := r.Get(ctx, key, curr); err != nil {
+			return err
+		}
+		anns := curr.GetAnnotations()
+		if len(anns) == 0 {
+			return nil
+		}
+		raw := anns[tdeKeyImportedShardsAnnotation]
+		if strings.TrimSpace(raw) == "" {
+			return nil
+		}
+
+		imported := parseImportedTDEShards(raw)
+		if len(imported) == 0 {
+			return nil
+		}
+		active := map[string]bool{}
+		for i := range curr.Spec.Shard {
+			sh := curr.Spec.Shard[i]
+			name := strings.ToLower(strings.TrimSpace(sh.Name))
+			if name == "" || shardingv1.CheckIsDeleteFlag(sh.IsDelete, curr, r.Log) {
+				continue
+			}
+			active[name] = true
+		}
+
+		changed := false
+		for name := range imported {
+			if !active[name] {
+				delete(imported, name)
+				changed = true
+			}
+		}
+		if !changed {
+			return nil
+		}
+
+		serialized := serializeImportedTDEShards(imported)
+		if serialized == "" {
+			delete(anns, tdeKeyImportedShardsAnnotation)
+		} else {
+			anns[tdeKeyImportedShardsAnnotation] = serialized
+		}
+		curr.SetAnnotations(anns)
+		return r.Update(ctx, curr)
+	})
+}
+
+func containsStringFold(list []string, target string) bool {
+	t := strings.ToLower(strings.TrimSpace(target))
+	if t == "" {
+		return false
+	}
+	for i := range list {
+		if strings.ToLower(strings.TrimSpace(list[i])) == t {
+			return true
+		}
+	}
+	return false
+}
+
+func appendUniqueStringFold(list []string, value string) []string {
+	if containsStringFold(list, value) {
+		return list
+	}
+	return append(list, strings.TrimSpace(value))
+}
+
+func isStandbyDeployAs(deployAs string) bool {
+	v := strings.ToUpper(strings.TrimSpace(deployAs))
+	return v == "STANDBY" || v == "ACTIVE_STANDBY"
+}
+
+func orderedManualTDERefreshTargets(instance *databasev4.ShardingDatabase) []string {
+	primaries := make([]string, 0)
+	standbys := make([]string, 0)
+	for i := range instance.Spec.Shard {
+		sh := instance.Spec.Shard[i]
+		if shardingv1.CheckIsDeleteFlag(sh.IsDelete, instance, logr.Discard()) {
+			continue
+		}
+		name := strings.TrimSpace(sh.Name)
+		if name == "" {
+			continue
+		}
+		if isStandbyDeployAs(sh.DeployAs) {
+			standbys = append(standbys, name)
+		} else {
+			primaries = append(primaries, name)
+		}
+	}
+	sort.Strings(primaries)
+	sort.Strings(standbys)
+	return append(primaries, standbys...)
+}
+
+func (r *ShardingDatabaseReconciler) clearManualTDERefreshAnnotation(ctx context.Context, key types.NamespacedName) error {
+	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		curr := &databasev4.ShardingDatabase{}
+		if err := r.Get(ctx, key, curr); err != nil {
+			return err
+		}
+		anns := curr.GetAnnotations()
+		if len(anns) == 0 {
+			return nil
+		}
+		if _, ok := anns[tdeKeyRefreshAnnotation]; !ok {
+			return nil
+		}
+		delete(anns, tdeKeyRefreshAnnotation)
+		curr.SetAnnotations(anns)
+		return r.Update(ctx, curr)
+	})
+}
+
+func (r *ShardingDatabaseReconciler) phaseManualTDERefresh(
+	ctx context.Context,
+	inst *databasev4.ShardingDatabase,
+	st *databasev4.ShardingDatabaseStatus,
+) (phaseResult, bool) {
+	token := strings.TrimSpace(inst.GetAnnotations()[tdeKeyRefreshAnnotation])
+	if token == "" {
+		return phaseResult{}, false
+	}
+	if st == nil {
+		return phaseResult{wait: true, requeueAfter: 15 * time.Second, reason: "TDEKeyRefreshStatusUnavailable", message: "status draft is nil"}, true
+	}
+	if st.TDEKeyRefresh == nil || strings.TrimSpace(st.TDEKeyRefresh.RequestedToken) != token {
+		st.TDEKeyRefresh = &databasev4.TDEKeyRefreshStatus{
+			RequestedToken:     token,
+			Phase:              "Pending",
+			CompletedShards:    []string{},
+			FailedShards:       []string{},
+			UserActionRequired: false,
+		}
+	}
+
+	rs := st.TDEKeyRefresh
+	if strings.EqualFold(rs.Phase, "Failed") && rs.UserActionRequired && strings.TrimSpace(rs.RequestedToken) == token {
+		return phaseResult{
+			wait:         true,
+			requeueAfter: 60 * time.Second,
+			reason:       "TDEKeyRefreshUserActionRequired",
+			message:      "TDE key refresh is blocked for token " + token + "; fix issue and set a new token to retry",
+		}, true
+	}
+	rs.Phase = "Running"
+	rs.RequestedToken = token
+
+	if !rs.Exported {
+		if err := r.ensureTDEKeysExported(ctx, inst); err != nil {
+			rs.Phase = "Failed"
+			rs.UserActionRequired = true
+			rs.LastError = err.Error()
+			return phaseResult{
+				wait:         true,
+				requeueAfter: 60 * time.Second,
+				reason:       "TDEKeyRefreshUserActionRequired",
+				message:      "TDE key refresh export failed; user action required: " + err.Error(),
+			}, true
+		}
+		rs.Exported = true
+	}
+
+	targets := orderedManualTDERefreshTargets(inst)
+	if len(targets) == 0 {
+		rs.Phase = "Succeeded"
+		rs.UserActionRequired = false
+		rs.CurrentShard = ""
+		rs.LastError = ""
+		if err := r.clearManualTDERefreshAnnotation(ctx, types.NamespacedName{Name: inst.Name, Namespace: inst.Namespace}); err != nil {
+			return phaseResult{
+				wait:         true,
+				requeueAfter: 10 * time.Second,
+				reason:       "TDEKeyRefreshAnnotationClearRetry",
+				message:      err.Error(),
+			}, true
+		}
+		return phaseResult{
+			wait:         true,
+			requeueAfter: 2 * time.Second,
+			reason:       "TDEKeyRefreshCompleted",
+			message:      "TDE key refresh completed; annotation cleared",
+		}, true
+	}
+
+	nextShard := ""
+	for i := range targets {
+		if !containsStringFold(rs.CompletedShards, targets[i]) {
+			nextShard = targets[i]
+			break
+		}
+	}
+	if nextShard == "" {
+		rs.Phase = "Succeeded"
+		rs.UserActionRequired = false
+		rs.CurrentShard = ""
+		rs.LastError = ""
+		rs.FailedShards = nil
+		if err := r.clearManualTDERefreshAnnotation(ctx, types.NamespacedName{Name: inst.Name, Namespace: inst.Namespace}); err != nil {
+			return phaseResult{
+				wait:         true,
+				requeueAfter: 10 * time.Second,
+				reason:       "TDEKeyRefreshAnnotationClearRetry",
+				message:      err.Error(),
+			}, true
+		}
+		return phaseResult{
+			wait:         true,
+			requeueAfter: 2 * time.Second,
+			reason:       "TDEKeyRefreshCompleted",
+			message:      "TDE key refresh completed; annotation cleared",
+		}, true
+	}
+
+	rs.CurrentShard = nextShard
+	if err := importTDEKeyFn(nextShard+"-0", "impTDEFile", inst, r.kubeConfig, r.Log); err != nil {
+		rs.Phase = "Failed"
+		rs.UserActionRequired = true
+		rs.LastError = err.Error()
+		rs.FailedShards = appendUniqueStringFold(rs.FailedShards, nextShard)
+		return phaseResult{
+			wait:         true,
+			requeueAfter: 60 * time.Second,
+			reason:       "TDEKeyRefreshUserActionRequired",
+			message:      "TDE key refresh failed for shard " + nextShard + "; user action required: " + err.Error(),
+		}, true
+	}
+	rs.CompletedShards = appendUniqueStringFold(rs.CompletedShards, nextShard)
+	rs.LastError = ""
+	rs.UserActionRequired = false
+	return phaseResult{
+		wait:         true,
+		requeueAfter: 2 * time.Second,
+		reason:       "TDEKeyRefreshProgress",
+		message:      "TDE key refresh progressed on shard " + nextShard,
+	}, true
 }
 
 // ================ Function to check secret update=============
@@ -1050,9 +1503,6 @@ func (r *ShardingDatabaseReconciler) finalizeShardingDatabase(instance *database
 
 	for i := int32(0); i < int32(len(instance.Spec.Gsm)); i++ {
 		spec := instance.Spec.Gsm[i]
-		if instance.Spec.IsExternalSvc && len(spec.PvcName) == 0 {
-			deleteIfFoundSvc(spec.Name + strconv.FormatInt(int64(i), 10) + "-svc")
-		}
 		deleteIfFoundSvc(spec.Name)
 		if instance.Spec.IsExternalSvc {
 			deleteIfFoundSvc(spec.Name + strconv.FormatInt(0, 10) + "-svc")
@@ -1276,6 +1726,9 @@ func (r *ShardingDatabaseReconciler) comapreGsmEnvVariables(instance *databasev4
 }
 
 func (r *ShardingDatabaseReconciler) ensureStandbyShardNumFromConfig(instance *databasev4.ShardingDatabase) bool {
+	if effectiveShardingTypeForConstraints(instance) != "USER" {
+		return false
+	}
 	changed := false
 	for i := range instance.Spec.ShardInfo {
 		info := &instance.Spec.ShardInfo[i]
@@ -1308,6 +1761,9 @@ type primaryIdentity struct {
 }
 
 func (r *ShardingDatabaseReconciler) buildDgPairsFromStandbyConfig(instance *databasev4.ShardingDatabase) []databasev4.DgPairStatus {
+	if effectiveShardingTypeForConstraints(instance) != "USER" {
+		return nil
+	}
 	pairs := []databasev4.DgPairStatus{}
 
 	for i := range instance.Spec.ShardInfo {
@@ -1360,8 +1816,6 @@ func buildPrimaryIdentities(instance *databasev4.ShardingDatabase, cfg *database
 		return nil
 	}
 
-	source := strings.TrimSpace(cfg.SourceType)
-	sourceKey := strings.ToLower(source)
 	ids := []primaryIdentity{}
 	seen := map[string]bool{}
 	appendID := func(pid primaryIdentity) {
@@ -1425,18 +1879,9 @@ func buildPrimaryIdentities(instance *databasev4.ShardingDatabase, cfg *database
 		}
 	}
 
-	switch sourceKey {
-	case "primarydatabaseref":
-		appendRefs()
-	case "connectstring":
-		appendConnects()
-	case "endpoint":
-		appendEndpoints()
-	default:
-		appendRefs()
-		appendConnects()
-		appendEndpoints()
-	}
+	appendRefs()
+	appendConnects()
+	appendEndpoints()
 
 	sort.Slice(ids, func(i, j int) bool { return ids[i].Key < ids[j].Key })
 	return ids
@@ -2095,7 +2540,7 @@ func (r *ShardingDatabaseReconciler) ensurePrimaryRefForStandby(
 
 // This function add the Primary Shards in GSM
 // addPrimaryShards adds missing primary shards in GSM and deploys them once added.
-func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.ShardingDatabase) error {
+func (r *ShardingDatabaseReconciler) addPrimaryShards(ctx context.Context, instance *databasev4.ShardingDatabase) error {
 	var err error
 	shardSfSet := &appsv1.StatefulSet{}
 	gsmPod := &corev1.Pod{}
@@ -2129,6 +2574,10 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 		return nil
 	}
 
+	if err := r.ensureTDEKeysExported(ctx, instance); err != nil {
+		return err
+	}
+
 	// Validate GSM once per reconcile pass for all primary shards.
 	_, gsmPod, err = r.validateGsm(instance)
 	if err != nil {
@@ -2150,6 +2599,10 @@ func (r *ShardingDatabaseReconciler) addPrimaryShards(instance *databasev4.Shard
 		if err != nil {
 			notReadyCount++
 			continue
+		}
+		if err := r.ensureTDEKeysImportedForShard(ctx, instance, oraShardSpec); err != nil {
+			r.logLegacy("INFO", "ImportTDEKey pending for primary shard; requeue: "+err.Error(), nil, instance, r.Log)
+			return err
 		}
 
 		// 2) Ensure shard exists in GSM. Add only when missing.
@@ -2245,7 +2698,7 @@ func (r *ShardingDatabaseReconciler) verifyShards(instance *databasev4.ShardingD
 }
 
 // addStandbyShards adds standby shards and performs DG broker provisioning when configured.
-func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.ShardingDatabase) error {
+func (r *ShardingDatabaseReconciler) addStandbyShards(ctx context.Context, instance *databasev4.ShardingDatabase) error {
 	var err error
 	isDGReplication := shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType) == "DG"
 
@@ -2306,6 +2759,7 @@ func (r *ShardingDatabaseReconciler) addStandbyShards(instance *databasev4.Shard
 			notReadyCount++
 			continue
 		}
+		r.logLegacy("INFO", "Skipping ImportTDEKey for standby shard "+OraShardSpex.Name+"; standby wallet copy is authoritative", nil, instance, r.Log)
 
 		// 3) Non-DG flow: standby shard add in GSM
 		if !isDGReplication {
@@ -3255,6 +3709,9 @@ func (r *ShardingDatabaseReconciler) findPrimaryForStandby(instance *databasev4.
 func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance *databasev4.ShardingDatabase) error {
 	shardingType := effectiveShardingTypeForConstraints(instance)
 	replType := shardingv1.EffectiveReplicationType(instance.Spec.ReplicationType)
+	if shardingType == "USER" && replType == "NATIVE" {
+		return fmt.Errorf("user-defined sharding is not supported with RAFT/NATIVE replication")
+	}
 	if shardingType != "SYSTEM" && shardingType != "COMPOSITE" && (shardingType != "USER" || replType != "DG") {
 		return nil
 	}
@@ -3402,8 +3859,14 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 		if ss == "" {
 			continue
 		}
+		deployAs := strings.ToUpper(strings.TrimSpace(s.DeployAs))
+		if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
+			if !spaceExternalPrimary[ss] && spacePrimaryCount[ss] == 0 {
+				return fmt.Errorf("user sharding requires a PRIMARY shard in shardSpace %s before defining standby shards", ss)
+			}
+		}
 		spaceSeen[ss] = true
-		if strings.EqualFold(strings.TrimSpace(s.DeployAs), "PRIMARY") {
+		if deployAs == "PRIMARY" {
 			spacePrimaryCount[ss]++
 		}
 	}
@@ -4110,7 +4573,7 @@ func (r *ShardingDatabaseReconciler) getScaleInCandidates(
 		if prefix == "" {
 			continue
 		}
-		desiredByPrefix[prefix] = shardInfoDesiredCount(info)
+		desiredByPrefix[prefix] = shardInfoDesiredCount(instance, info)
 	}
 
 	currentByPrefix := map[string][]shardRef{}
@@ -4301,9 +4764,11 @@ func (r *ShardingDatabaseReconciler) cleanupOrphanShardResources(instance *datab
 	return nil
 }
 
-func shardInfoDesiredCount(info databasev4.ShardingDetails) int32 {
-	if c := standbyConfigDerivedShardCountController(info.StandbyConfig); c > 0 {
-		return c
+func shardInfoDesiredCount(instance *databasev4.ShardingDatabase, info databasev4.ShardingDetails) int32 {
+	if effectiveShardingTypeForConstraints(instance) == "USER" {
+		if c := standbyConfigDerivedShardCountController(info.StandbyConfig); c > 0 {
+			return c
+		}
 	}
 	if info.ShardNum > 0 {
 		return info.ShardNum
@@ -4337,23 +4802,33 @@ func standbyConfigPrimaryCountController(cfg *databasev4.StandbyConfig) int32 {
 		return 0
 	}
 
-	switch strings.ToLower(strings.TrimSpace(cfg.SourceType)) {
-	case "primarydatabaseref":
-		return int32(len(cfg.PrimaryDatabaseRefs))
-	case "connectstring":
-		return countUniqueStringsController(cfg.PrimaryConnectStrings)
-	case "endpoint":
-		return countUniquePrimaryEndpointsController(cfg.PrimaryEndpoints)
-	}
-
-	// Backward-compatible fallback when sourceType is omitted.
-	if c := int32(len(cfg.PrimaryDatabaseRefs)); c > 0 {
+	if c := countUniquePrimaryDatabaseRefsController(cfg.PrimaryDatabaseRefs); c > 0 {
 		return c
 	}
 	if c := countUniqueStringsController(cfg.PrimaryConnectStrings); c > 0 {
 		return c
 	}
 	return countUniquePrimaryEndpointsController(cfg.PrimaryEndpoints)
+}
+
+func countUniquePrimaryDatabaseRefsController(in []databasev4.PrimaryDatabaseCRRef) int32 {
+	seen := map[string]bool{}
+	var count int32
+	for i := range in {
+		ref := in[i]
+		name := strings.ToLower(strings.TrimSpace(ref.Name))
+		if name == "" {
+			continue
+		}
+		ns := strings.ToLower(strings.TrimSpace(ref.Namespace))
+		key := ns + "/" + name
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		count++
+	}
+	return count
 }
 
 func countUniqueStringsController(in []string) int32 {
@@ -4396,23 +4871,16 @@ func countUniquePrimaryEndpointsController(in []databasev4.PrimaryEndpointRef) i
 
 func (r *ShardingDatabaseReconciler) resolveStandbyWalletSecretRef(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) string {
 	if shard.StandbyConfig != nil {
-		if ref := strings.TrimSpace(shard.StandbyConfig.WalletSecretRef); ref != "" {
-			return ref
+		if shard.StandbyConfig.TDEWallet != nil {
+			if ref := strings.TrimSpace(shard.StandbyConfig.TDEWallet.SecretRef); ref != "" {
+				return ref
+			}
 		}
 	}
 
-	shardName := strings.ToLower(strings.TrimSpace(shard.Name))
-	for i := range instance.Spec.ShardInfo {
-		info := instance.Spec.ShardInfo[i]
-		if info.StandbyConfig == nil {
-			continue
-		}
-		ref := strings.TrimSpace(info.StandbyConfig.WalletSecretRef)
-		if ref == "" {
-			continue
-		}
-		prefix := strings.ToLower(strings.TrimSpace(info.ShardPreFixName))
-		if prefix != "" && strings.HasPrefix(shardName, prefix) {
+	info := matchShardInfoByLongestPrefix(instance, shard.Name)
+	if info != nil && info.StandbyConfig != nil && info.StandbyConfig.TDEWallet != nil {
+		if ref := strings.TrimSpace(info.StandbyConfig.TDEWallet.SecretRef); ref != "" {
 			return ref
 		}
 	}
@@ -4421,27 +4889,46 @@ func (r *ShardingDatabaseReconciler) resolveStandbyWalletSecretRef(instance *dat
 
 func (r *ShardingDatabaseReconciler) resolveStandbyWalletZipFileKey(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) string {
 	if shard.StandbyConfig != nil {
-		if ref := strings.TrimSpace(shard.StandbyConfig.WalletZipFileKey); ref != "" {
-			return ref
+		if shard.StandbyConfig.TDEWallet != nil {
+			if ref := strings.TrimSpace(shard.StandbyConfig.TDEWallet.ZipFileKey); ref != "" {
+				return ref
+			}
 		}
 	}
 
-	shardName := strings.ToLower(strings.TrimSpace(shard.Name))
-	for i := range instance.Spec.ShardInfo {
-		info := instance.Spec.ShardInfo[i]
-		if info.StandbyConfig == nil {
-			continue
-		}
-		ref := strings.TrimSpace(info.StandbyConfig.WalletZipFileKey)
-		if ref == "" {
-			continue
-		}
-		prefix := strings.ToLower(strings.TrimSpace(info.ShardPreFixName))
-		if prefix != "" && strings.HasPrefix(shardName, prefix) {
+	info := matchShardInfoByLongestPrefix(instance, shard.Name)
+	if info != nil && info.StandbyConfig != nil && info.StandbyConfig.TDEWallet != nil {
+		if ref := strings.TrimSpace(info.StandbyConfig.TDEWallet.ZipFileKey); ref != "" {
 			return ref
 		}
 	}
 	return ""
+}
+
+func matchShardInfoByLongestPrefix(instance *databasev4.ShardingDatabase, shardName string) *databasev4.ShardingDetails {
+	if instance == nil {
+		return nil
+	}
+	name := strings.ToLower(strings.TrimSpace(shardName))
+	if name == "" {
+		return nil
+	}
+	best := -1
+	bestLen := -1
+	for i := range instance.Spec.ShardInfo {
+		prefix := strings.ToLower(strings.TrimSpace(instance.Spec.ShardInfo[i].ShardPreFixName))
+		if prefix == "" || !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if len(prefix) > bestLen {
+			best = i
+			bestLen = len(prefix)
+		}
+	}
+	if best < 0 {
+		return nil
+	}
+	return &instance.Spec.ShardInfo[best]
 }
 
 func (r *ShardingDatabaseReconciler) validateStandbyWalletSecretRef(instance *databasev4.ShardingDatabase, shard databasev4.ShardSpec) error {
@@ -4451,14 +4938,14 @@ func (r *ShardingDatabaseReconciler) validateStandbyWalletSecretRef(instance *da
 	}
 	secret := &corev1.Secret{}
 	if err := r.Get(context.Background(), types.NamespacedName{Namespace: instance.Namespace, Name: ref}, secret); err != nil {
-		return fmt.Errorf("standbyConfig.walletSecretRef %q not found for shard %s: %w", ref, shard.Name, err)
+		return fmt.Errorf("standbyConfig.tdeWallet.secretRef %q not found for shard %s: %w", ref, shard.Name, err)
 	}
 	if len(secret.Data) == 0 {
-		return fmt.Errorf("standbyConfig.walletSecretRef %q for shard %s has no data", ref, shard.Name)
+		return fmt.Errorf("standbyConfig.tdeWallet.secretRef %q for shard %s has no data", ref, shard.Name)
 	}
 	if zipKey := r.resolveStandbyWalletZipFileKey(instance, shard); zipKey != "" {
 		if _, ok := secret.Data[zipKey]; !ok {
-			return fmt.Errorf("standbyConfig.walletZipFileKey %q not found in secret %q for shard %s", zipKey, ref, shard.Name)
+			return fmt.Errorf("standbyConfig.tdeWallet.zipFileKey %q not found in secret %q for shard %s", zipKey, ref, shard.Name)
 		}
 	}
 	return nil
@@ -4474,7 +4961,7 @@ func desiredShardNamesFromShardInfo(instance *databasev4.ShardingDatabase) map[s
 			continue
 		}
 
-		replicas := shardInfoDesiredCount(instance.Spec.ShardInfo[i])
+		replicas := shardInfoDesiredCount(instance, instance.Spec.ShardInfo[i])
 		if replicas == 0 {
 			replicas = 2
 		}
@@ -4608,6 +5095,124 @@ func statefulSetNeedsShapeRecreate(current, desired *appsv1.StatefulSet) bool {
 	return false
 }
 
+func containerCapabilities(c corev1.Container) *corev1.Capabilities {
+	if c.SecurityContext == nil {
+		return nil
+	}
+	return c.SecurityContext.Capabilities
+}
+
+// statefulSetNeedsNonShapeShardTemplateRecreate detects shard pod template drift
+// for non-shape fields that require a shard pod restart.
+func statefulSetNeedsNonShapeShardTemplateRecreate(current, desired *appsv1.StatefulSet) bool {
+	if current == nil || desired == nil {
+		return false
+	}
+
+	if !reflect.DeepEqual(current.Spec.Template.Spec.SecurityContext, desired.Spec.Template.Spec.SecurityContext) {
+		return true
+	}
+
+	desiredByName := map[string]corev1.Container{}
+	for _, c := range desired.Spec.Template.Spec.Containers {
+		desiredByName[c.Name] = c
+	}
+
+	for _, curr := range current.Spec.Template.Spec.Containers {
+		want, ok := desiredByName[curr.Name]
+		if !ok {
+			continue
+		}
+
+		if !reflect.DeepEqual(curr.Resources, want.Resources) {
+			return true
+		}
+
+		if !reflect.DeepEqual(containerCapabilities(curr), containerCapabilities(want)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func shapeTargetKeySet(targets []shapeRollTarget) map[string]bool {
+	out := map[string]bool{}
+	for _, t := range targets {
+		kind := strings.ToUpper(strings.TrimSpace(t.kind))
+		name := strings.TrimSpace(t.name)
+		if name == "" {
+			continue
+		}
+		out[kind+"|"+name] = true
+	}
+	return out
+}
+
+func orderedNonShapeTemplateRollTargets(instance *databasev4.ShardingDatabase, skipKeys map[string]bool) []shapeRollTarget {
+	targets := make([]shapeRollTarget, 0, len(instance.Spec.Catalog)+len(instance.Spec.Gsm)+len(instance.Spec.Shard))
+
+	// Catalog first, in spec order.
+	for i := range instance.Spec.Catalog {
+		name := strings.TrimSpace(instance.Spec.Catalog[i].Name)
+		if name == "" {
+			continue
+		}
+		if skipKeys["CATALOG|"+name] {
+			continue
+		}
+		targets = append(targets, shapeRollTarget{
+			kind:    "CATALOG",
+			name:    name,
+			specIdx: i,
+		})
+	}
+
+	// GSM next, in spec order.
+	for i := range instance.Spec.Gsm {
+		name := strings.TrimSpace(instance.Spec.Gsm[i].Name)
+		if name == "" {
+			continue
+		}
+		if skipKeys["GSM|"+name] {
+			continue
+		}
+		targets = append(targets, shapeRollTarget{
+			kind:    "GSM",
+			name:    name,
+			specIdx: i,
+		})
+	}
+
+	// Shards last, ordered by shard ordinal.
+	shardTargets := make([]shapeRollTarget, 0, len(instance.Spec.Shard))
+	for i := range instance.Spec.Shard {
+		sh := instance.Spec.Shard[i]
+		name := strings.TrimSpace(sh.Name)
+		if name == "" {
+			continue
+		}
+		if shardingv1.CheckIsDeleteFlag(sh.IsDelete, instance, logr.Discard()) {
+			continue
+		}
+		if skipKeys["SHARD|"+name] {
+			continue
+		}
+		shardTargets = append(shardTargets, shapeRollTarget{
+			kind:    "SHARD",
+			name:    name,
+			specIdx: i,
+		})
+	}
+
+	sort.Slice(shardTargets, func(i, j int) bool {
+		return shardOrdinal(shardTargets[i].name) < shardOrdinal(shardTargets[j].name)
+	})
+
+	targets = append(targets, shardTargets...)
+	return targets
+}
+
 // desiredShapeForTarget handles desired shape for target for the sharding database controller.
 func desiredShapeForTarget(instance *databasev4.ShardingDatabase, t shapeRollTarget) string {
 	switch t.kind {
@@ -4693,6 +5298,9 @@ func (r *ShardingDatabaseReconciler) validateShapeTargetReady(
 	case "CATALOG":
 		_, _, err := r.validateInvidualCatalog(instance, instance.Spec.Catalog[t.specIdx], t.specIdx)
 		return err
+	case "GSM":
+		_, _, err := r.validateInvidualGsm(instance, instance.Spec.Gsm[t.specIdx], t.specIdx)
+		return err
 	case "SHARD":
 		_, _, err := r.validateShard(instance, instance.Spec.Shard[t.specIdx], t.specIdx)
 		return err
@@ -4709,6 +5317,8 @@ func (r *ShardingDatabaseReconciler) desiredStatefulSetForShapeTarget(
 	switch t.kind {
 	case "CATALOG":
 		return shardingv1.BuildStatefulSetForCatalog(instance, instance.Spec.Catalog[t.specIdx])
+	case "GSM":
+		return shardingv1.BuildStatefulSetForGsm(instance, instance.Spec.Gsm[t.specIdx])
 	case "SHARD":
 		return shardingv1.BuildStatefulSetForShard(instance, instance.Spec.Shard[t.specIdx])
 	default:
@@ -5076,6 +5686,46 @@ func (r *ShardingDatabaseReconciler) reconcileOrderedShapeChanges(instance *data
 	return false, nil
 }
 
+// reconcileOrderedShardTemplateChanges applies non-shape pod-template changes
+// one target at a time (catalog, gsm, then shards in ordinal order).
+func (r *ShardingDatabaseReconciler) reconcileOrderedShardTemplateChanges(instance *databasev4.ShardingDatabase) (bool, error) {
+	shapeTargets, err := r.orderedShapeChangeTargets(instance)
+	if err != nil {
+		return false, err
+	}
+	shapeTargetKeys := shapeTargetKeySet(shapeTargets)
+	targets := orderedNonShapeTemplateRollTargets(instance, shapeTargetKeys)
+	if len(targets) == 0 {
+		return false, nil
+	}
+
+	for _, t := range targets {
+		currSts, err := shardingv1.CheckSfset(t.name, instance, r.Client)
+		if err != nil {
+			r.logLegacy("INFO", "Ordered shard template rollout waiting for StatefulSet "+t.name+" to be recreated", nil, instance, r.Log)
+			return true, nil
+		}
+
+		desiredSts := r.desiredStatefulSetForShapeTarget(instance, t)
+		if desiredSts == nil {
+			return true, fmt.Errorf("unable to build desired StatefulSet for %s %s", t.kind, t.name)
+		}
+
+		if !statefulSetNeedsNonShapeShardTemplateRecreate(currSts, desiredSts) {
+			continue
+		}
+
+		if err := r.validateShapeTargetReady(instance, t); err != nil {
+			r.logLegacy("INFO", "Ordered shard template rollout waiting for "+t.kind+" "+t.name+" to become ready", nil, instance, r.Log)
+			return true, nil
+		}
+
+		return r.restartShapeTargetStatefulSet(instance, t, currSts, "non-shape shard template change")
+	}
+
+	return false, nil
+}
+
 // applyReplicaScaleOutUnmarks handles apply replica scale out unmarks for the sharding database controller.
 func (r *ShardingDatabaseReconciler) applyReplicaScaleOutUnmarks(instance *databasev4.ShardingDatabase) bool {
 	desired := desiredShardNamesFromShardInfo(instance)
@@ -5257,7 +5907,13 @@ func validateCredentialSecretMaterial(instance *databasev4.ShardingDatabase, sec
 	if err := validateOne("dbAdmin", instance.Spec.DbSecret.DbAdmin); err != nil {
 		return err
 	}
-	if strings.EqualFold(strings.TrimSpace(instance.Spec.IsTdeWallet), "enable") {
+	tdeEnabled := strings.TrimSpace(instance.Spec.IsTdeWallet)
+	if instance.Spec.TDEWallet != nil {
+		if mode := strings.TrimSpace(instance.Spec.TDEWallet.IsEnabled); mode != "" {
+			tdeEnabled = mode
+		}
+	}
+	if strings.EqualFold(tdeEnabled, "enable") {
 		if instance.Spec.DbSecret.TDE == nil {
 			return fmt.Errorf("tde credential config is required when isTdeWallet=enable")
 		}
@@ -5418,15 +6074,6 @@ func isMutatingProgressReason(reason string) bool {
 	}
 }
 
-func getCondition(conds []metav1.Condition, condType string) *metav1.Condition {
-	for i := range conds {
-		if conds[i].Type == condType {
-			return &conds[i]
-		}
-	}
-	return nil
-}
-
 func shouldEnforceUpdateLock(oldSpec, newSpec *databasev4.ShardingDatabaseSpec) bool {
 	if oldSpec == nil || newSpec == nil {
 		return true
@@ -5451,63 +6098,12 @@ func isUpdateLockActive(inst *databasev4.ShardingDatabase) (bool, int64, string)
 	if inst == nil {
 		return false, 0, ""
 	}
-
-	cond := getCondition(inst.Status.CrdStatus, reconcilingType)
-	if cond == nil {
-		return false, 0, ""
-	}
-	if cond.Status != metav1.ConditionTrue {
-		return false, 0, ""
-	}
-	if strings.TrimSpace(cond.Reason) != updateLockReason {
-		return false, 0, ""
-	}
-
-	return true, cond.ObservedGeneration, cond.Message
+	return lockpolicy.IsControllerUpdateLocked(inst.Status.CrdStatus, reconcilingType, updateLockReason)
 }
 
-func isUpdateLockOverrideEnabled(inst *databasev4.ShardingDatabase, now time.Time) (bool, string) {
+func isUpdateLockOverrideEnabled(inst *databasev4.ShardingDatabase) (bool, string) {
 	if inst == nil {
 		return false, "resource is nil"
 	}
-
-	annotations := inst.GetAnnotations()
-	if len(annotations) == 0 {
-		return false, ""
-	}
-
-	if !strings.EqualFold(strings.TrimSpace(annotations[lockOverrideAnnotation]), "true") {
-		return false, ""
-	}
-
-	reason := strings.TrimSpace(annotations[lockOverrideReasonAnnotation])
-	if reason == "" {
-		return false, "missing override reason annotation"
-	}
-
-	by := strings.TrimSpace(annotations[lockOverrideByAnnotation])
-	if by == "" {
-		return false, "missing override by annotation"
-	}
-
-	untilRaw := strings.TrimSpace(annotations[lockOverrideUntilAnnotation])
-	if untilRaw == "" {
-		return false, "missing override until annotation"
-	}
-
-	until, err := time.Parse(time.RFC3339, untilRaw)
-	if err != nil {
-		return false, "invalid override until timestamp (must be RFC3339)"
-	}
-
-	now = now.UTC()
-	if !until.After(now) {
-		return false, "override has expired"
-	}
-	if until.After(now.Add(lockOverrideMaxTTL)) {
-		return false, fmt.Sprintf("override exceeds max ttl of %s", lockOverrideMaxTTL)
-	}
-
-	msg := fmt.Sprintf("override accepted by=%s until=%s reason=%s", by, until.Format(time.RFC3339), reason)
-	return true, msg
+	return lockpolicy.IsUpdateLockOverrideEnabled(inst.GetAnnotations(), lockOverrideAnnotation)
 }

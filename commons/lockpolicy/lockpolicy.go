@@ -1,0 +1,46 @@
+package lockpolicy
+
+import (
+	"strings"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const (
+	DefaultReconcilingConditionType = "Reconciling"
+	DefaultUpdateLockReason         = "UpdateInProgress"
+	DefaultOverrideAnnotation       = "database.oracle.com/lock-override"
+)
+
+func FindStatusCondition(conds []metav1.Condition, condType string) *metav1.Condition {
+	for i := range conds {
+		if conds[i].Type == condType {
+			return &conds[i]
+		}
+	}
+	return nil
+}
+
+func IsControllerUpdateLocked(conds []metav1.Condition, reconcilingType, updateLockReason string) (bool, int64, string) {
+	cond := FindStatusCondition(conds, reconcilingType)
+	if cond == nil {
+		return false, 0, ""
+	}
+	if cond.Status != metav1.ConditionTrue {
+		return false, 0, ""
+	}
+	if strings.TrimSpace(cond.Reason) != strings.TrimSpace(updateLockReason) {
+		return false, 0, ""
+	}
+	return true, cond.ObservedGeneration, cond.Message
+}
+
+func IsUpdateLockOverrideEnabled(annotations map[string]string, overrideAnnotation string) (bool, string) {
+	if len(annotations) == 0 {
+		return false, ""
+	}
+	if !strings.EqualFold(strings.TrimSpace(annotations[overrideAnnotation]), "true") {
+		return false, ""
+	}
+	return true, "override accepted via manual lock-override annotation"
+}
