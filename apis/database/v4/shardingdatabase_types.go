@@ -212,7 +212,7 @@ type OperationStatus struct {
 //+kubebuilder:printcolumn:name="StandbyMode",type=string,JSONPath=".status.standby.openMode",priority=1
 
 // ShardingDatabase is the Schema for the shardingdatabases API
-// +kubebuilder:resource:path=shardingdatabases,scope=Namespaced
+// +kubebuilder:resource:path=shardingdatabases,scope=Namespaced,shortName=gdd
 // +kubebuilder:storageversion
 type ShardingDatabase struct {
 	metav1.TypeMeta   `json:",inline"`
@@ -234,7 +234,8 @@ type ShardingDatabaseList struct {
 // ShardSpec is a specification of Shards for an application deployment.
 type ShardSpec struct {
 	// Existing fields
-	Name            string                       `json:"name"`                                                      // Shard name used for StatefulSet
+	Name string `json:"name"` // Shard name used for StatefulSet
+	// +kubebuilder:default:=50
 	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional shard storage size (GB)
 	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         // Optional env variables for shard
 	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirements
@@ -286,8 +287,9 @@ type ShardSpec struct {
 // CatalogSpec defines the desired state of CatalogSpec
 type CatalogSpec struct {
 	// Core K8s / deployment fields
-	Name            string                       `json:"name"`                                                      // Catalog name used for StatefulSet
-	PdbName         string                       `json:"pdbName,omitempty"`                                         // PDB name for catalog
+	Name    string `json:"name"`              // Catalog name used for StatefulSet
+	PdbName string `json:"pdbName,omitempty"` // PDB name for catalog
+	// +kubebuilder:default:=50
 	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Catalog storage size (GB)
 	Shape           string                       `json:"shape,omitempty"`                                           // DB shape / flavor
 	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         // Optional env variables
@@ -353,7 +355,8 @@ type GsmSpec struct {
 	Name string `json:"name"` // GSM name used for StatefulSet and GDSCTL
 
 	// Core K8s / deployment fields
-	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         // Optional env variables
+	EnvVars []EnvironmentVariable `json:"envVars,omitempty"` // Optional env variables
+	// +kubebuilder:default:=50
 	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // GSM storage size (GB) if PVC is used
 	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirements
 	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
@@ -599,6 +602,7 @@ type ShardingDetails struct {
 	// Deprecated: use shardNum. Kept for backward compatibility.
 	Replicas int32 `json:"replicas,omitempty"`
 
+	// +kubebuilder:default:=50
 	StorageSizeInGb               int32                        `json:"storageSizeInGb,omitempty"`
 	ShardGroupDetails             *ShardGroupSpec              `json:"shardGroupDetails,omitempty"`
 	ShardSpaceDetails             *ShardSpaceSpec              `json:"shardSpaceDetails,omitempty"`

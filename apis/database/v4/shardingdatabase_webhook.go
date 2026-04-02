@@ -126,6 +126,9 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj *ShardingDatabase) e
 	applyGlobalShardingReplicationDefaults(&cr.Spec)
 
 	for i := range cr.Spec.Shard {
+		if cr.Spec.Shard[i].StorageSizeInGb <= 0 {
+			cr.Spec.Shard[i].StorageSizeInGb = DefaultDiagSizeInGb
+		}
 		if strings.TrimSpace(strings.ToLower(cr.Spec.Shard[i].IsDelete)) == "" {
 			cr.Spec.Shard[i].IsDelete = "disable"
 		}
@@ -134,6 +137,9 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj *ShardingDatabase) e
 	}
 
 	for i := range cr.Spec.ShardInfo {
+		if cr.Spec.ShardInfo[i].StorageSizeInGb <= 0 {
+			cr.Spec.ShardInfo[i].StorageSizeInGb = DefaultDiagSizeInGb
+		}
 		if cr.Spec.ShardInfo[i].ShardGroupDetails != nil &&
 			strings.TrimSpace(strings.ToLower(cr.Spec.ShardInfo[i].ShardGroupDetails.IsDelete)) == "" {
 			cr.Spec.ShardInfo[i].ShardGroupDetails.IsDelete = "disable"
@@ -172,6 +178,9 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj *ShardingDatabase) e
 
 	// apply shape on catalog
 	for i := range cr.Spec.Catalog {
+		if cr.Spec.Catalog[i].StorageSizeInGb <= 0 {
+			cr.Spec.Catalog[i].StorageSizeInGb = DefaultDiagSizeInGb
+		}
 		defaultAdditionalPVCs(&cr.Spec.Catalog[i].AdditionalPVCs)
 		if cfg, ok := shapes.LookupShapeConfig(cr.Spec.Catalog[i].Shape); ok {
 			cr.Spec.Catalog[i].EnvVars = upsertEnvVars(
@@ -191,6 +200,9 @@ func (r *ShardingDatabase) Default(ctx context.Context, obj *ShardingDatabase) e
 		defaultAdditionalPVCs(&cr.Spec.Gsm[i].AdditionalPVCs)
 		if cr.Spec.Gsm[i].StorageSizeInGb <= 0 && gsmInlineDefaults.storageSizeInGb > 0 {
 			cr.Spec.Gsm[i].StorageSizeInGb = gsmInlineDefaults.storageSizeInGb
+		}
+		if cr.Spec.Gsm[i].StorageSizeInGb <= 0 {
+			cr.Spec.Gsm[i].StorageSizeInGb = DefaultDiagSizeInGb
 		}
 		if cr.Spec.Gsm[i].ImagePulllPolicy == nil && gsmInlineDefaults.imagePullPolicy != nil {
 			p := *gsmInlineDefaults.imagePullPolicy

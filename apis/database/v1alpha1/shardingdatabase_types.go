@@ -146,7 +146,7 @@ type GsmStatusDetails struct {
 //+kubebuilder:printcolumn:JSONPath=".status.gsm.shards",name="shards",type=string,priority=1
 
 // ShardingDatabase is the Schema for the shardingdatabases API
-// +kubebuilder:resource:path=shardingdatabases,scope=Namespaced
+// +kubebuilder:resource:path=shardingdatabases,scope=Namespaced,shortName=gdd
 type ShardingDatabase struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -167,7 +167,8 @@ type ShardingDatabaseList struct {
 // ShardSpec is a specification of Shards for an application deployment.
 // +k8s:openapi-gen=true
 type ShardSpec struct {
-	Name            string                       `json:"name"`                                                      // Shard name that will be used deploy StatefulSet
+	Name string `json:"name"` // Shard name that will be used deploy StatefulSet
+	// +kubebuilder:default:=50
 	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Shard Storage Size
 	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Shards
 	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requirement for the container.
@@ -188,7 +189,8 @@ type ShardSpec struct {
 // CatalogSpec defines the desired state of CatalogSpec
 // +k8s:openapi-gen=true
 type CatalogSpec struct {
-	Name             string                       `json:"name"`                                                      // Catalog name that will be used deploy StatefulSet
+	Name string `json:"name"` // Catalog name that will be used deploy StatefulSet
+	// +kubebuilder:default:=50
 	StorageSizeInGb  int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Catalog Storage Size and This parameter will not be used if you use PvcName
 	EnvVars          []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Catalog
 	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
@@ -207,7 +209,8 @@ type GsmSpec struct {
 	Name string `json:"name"` // Gsm name that will be used deploy StatefulSet
 
 	//Replicas         int32                        `json:"replicas,omitempty"`                                        // Gsm Replicas. If you set OraGsmPvcName then it is set default to 1.
-	EnvVars          []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for GSM
+	EnvVars []EnvironmentVariable `json:"envVars,omitempty"` //Optional Env variables for GSM
+	// +kubebuilder:default:=50
 	StorageSizeInGb  int32                        `json:"storageSizeInGb,omitempty"`                                 // This parameter will not be used if you use OraGsmPvcName
 	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
 	PvcName          string                       `json:"pvcName,omitempty"`
