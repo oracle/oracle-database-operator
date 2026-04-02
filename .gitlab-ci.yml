@@ -6,8 +6,7 @@ build-operator:
     BUILD_INTERNAL: "true"
   script:
     - export GOLANG_VERSION=1.26.1
-    - export GOLANG_VERSION=$(go env GOVERSION | sed 's/^go//')
-    - export GOROOT=$(go env GOROOT)
+    - export GOROOT=$(go${GOLANG_VERSION} env GOROOT)
     - export PATH="${GOROOT}/bin:${PATH}"
 
     # --------------------------------
