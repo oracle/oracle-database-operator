@@ -47,6 +47,7 @@ import (
 	"strings"
 
 	utils "github.com/oracle/oracle-database-operator/commons/crs/restart/utils"
+	sharedresources "github.com/oracle/oracle-database-operator/commons/resources"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -198,54 +199,26 @@ func (r *OracleRestart) ValidateCreate(ctx context.Context, obj *OracleRestart) 
 			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
 	}
 
-	// ----- EXTRACT POD MEMORY LIMIT -----
-	var memLimit int64
-	if cr.Spec.Resources != nil {
-		if memQ, ok := cr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
-			memLimit = memQ.Value()
-		}
-	}
-
-	// ----- EXTRACT HUGE PAGES (SEPARATE RESOURCE POOL) -----
-	var hugeMem int64
-	if cr.Spec.Resources != nil {
-		if hpQ, ok := cr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
-			hugeMem = hpQ.Value()
-		}
-		if hugeMem == 0 {
-			if hpQ, ok := cr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
-				hugeMem = hpQ.Value()
-			}
-		}
-	}
+	memLimit, hugeMem := sharedresources.ExtractMemoryAndHugePagesBytes(cr.Spec.Resources)
 
 	// ----- SGA + PGA SAFETY CHECK (FIXED) -----
-	totalMem := sga + pga
-	effectiveMem := memLimit + hugeMem
-
-	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+	if err := sharedresources.ValidateSgaPgaSafety(sga, pga, memLimit, hugeMem, safetyPct); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath,
-				totalMem,
-				fmt.Sprintf(
-					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
-					sga, pga, int(safetyPct*100), memLimit, hugeMem,
-				),
+				sga+pga,
+				err.Error(),
 			),
 		)
 	}
 
 	// ----- VALIDATE HUGEPAGES (FIXED) -----
-	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+	if err := sharedresources.ValidateHugePagesAtLeastSga(hugeMem, sga); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath.Child("hugePages"),
 				hugeMem,
-				fmt.Sprintf(
-					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
-					hugeMem, sga,
-				),
+				err.Error(),
 			),
 		)
 	}
@@ -440,54 +413,26 @@ func (r *OracleRestart) ValidateUpdate(ctx context.Context, oldObj, newObj *Orac
 			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
 	}
 
-	// ----- EXTRACT POD MEMORY LIMIT -----
-	var memLimit int64
-	if newCr.Spec.Resources != nil {
-		if memQ, ok := newCr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
-			memLimit = memQ.Value()
-		}
-	}
-
-	// ----- EXTRACT HUGE PAGES -----
-	var hugeMem int64
-	if newCr.Spec.Resources != nil {
-		if hpQ, ok := newCr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
-			hugeMem = hpQ.Value()
-		}
-		if hugeMem == 0 {
-			if hpQ, ok := newCr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
-				hugeMem = hpQ.Value()
-			}
-		}
-	}
+	memLimit, hugeMem := sharedresources.ExtractMemoryAndHugePagesBytes(newCr.Spec.Resources)
 
 	// ----- SGA + PGA SAFETY CHECK -----
-	totalMem := sga + pga
-	effectiveMem := memLimit + hugeMem
-
-	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+	if err := sharedresources.ValidateSgaPgaSafety(sga, pga, memLimit, hugeMem, safetyPct); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath,
-				totalMem,
-				fmt.Sprintf(
-					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
-					sga, pga, int(safetyPct*100), memLimit, hugeMem,
-				),
+				sga+pga,
+				err.Error(),
 			),
 		)
 	}
 
 	// ----- HUGE PAGES >= SGA -----
-	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+	if err := sharedresources.ValidateHugePagesAtLeastSga(hugeMem, sga); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath.Child("hugePages"),
 				hugeMem,
-				fmt.Sprintf(
-					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
-					hugeMem, sga,
-				),
+				err.Error(),
 			),
 		)
 	}
@@ -1012,47 +957,14 @@ func (r *OracleRestart) validateAsmRedundancyAndDisks(
 
 // validateMemorySize ensures memory strings use supported units and format.
 func validateMemorySize(sizeStr string) error {
-	matched, _ := regexp.MatchString(`^\d+(Gi|Mi|G|M)$`, sizeStr)
-	if !matched {
-		return fmt.Errorf("memory size must be of form <number>[M|G|Mi|Gi], e.g., 3G, 1024M, 16Gi")
-	}
-	return nil
+	return sharedresources.ValidateMemorySize(sizeStr)
 }
 
 const safetyPct = 0.80 // Only 80% of pod memory can be used for SGA+PGA
 
 // parseMem converts memory strings into byte counts for validation.
 func parseMem(memStr string) (int64, error) {
-	if memStr == "" {
-		return 0, nil
-	}
-
-	// Identify unit (supports M, G, Mi, Gi)
-	var numStr string
-	var multiplier int64
-
-	if strings.HasSuffix(memStr, "Gi") || strings.HasSuffix(memStr, "gi") {
-		numStr = memStr[:len(memStr)-2]
-		multiplier = 1024 * 1024 * 1024
-	} else if strings.HasSuffix(memStr, "Mi") || strings.HasSuffix(memStr, "mi") {
-		numStr = memStr[:len(memStr)-2]
-		multiplier = 1024 * 1024
-	} else if strings.HasSuffix(memStr, "G") || strings.HasSuffix(memStr, "g") {
-		numStr = memStr[:len(memStr)-1]
-		multiplier = 1024 * 1024 * 1024
-	} else if strings.HasSuffix(memStr, "M") || strings.HasSuffix(memStr, "m") {
-		numStr = memStr[:len(memStr)-1]
-		multiplier = 1024 * 1024
-	} else {
-		return 0, fmt.Errorf("invalid memory unit in %s", memStr)
-	}
-
-	num, err := strconv.Atoi(numStr)
-	if err != nil {
-		return 0, fmt.Errorf("invalid numeric value in %s", memStr)
-	}
-
-	return int64(num) * multiplier, nil
+	return sharedresources.ParseMemoryBytes(memStr)
 }
 
 // validateOracleSysctls enforces format and size constraints on Oracle-specific

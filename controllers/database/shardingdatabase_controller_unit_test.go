@@ -471,3 +471,118 @@ func TestShardingUnit_PhaseManualTDERefresh_AllShardsAndClearAnnotation(t *testi
 		t.Fatalf("expected refresh annotation to be cleared")
 	}
 }
+
+func TestShardingUnit_ValidatePrimaryTopologyConstraint_UserDGOrderIndependent(t *testing.T) {
+	r := &ShardingDatabaseReconciler{}
+	inst := &databasev4.ShardingDatabase{
+		Spec: databasev4.ShardingDatabaseSpec{
+			ShardingType:    "USER",
+			ReplicationType: "DG",
+			Shard: []databasev4.ShardSpec{
+				{Name: "s1", ShardSpace: "ss1", DeployAs: "STANDBY", ShardRegion: "ashburn"},
+				{Name: "p1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
+			},
+		},
+	}
+
+	if err := r.validatePrimaryTopologyConstraint(inst); err != nil {
+		t.Fatalf("expected standby-before-primary ordering to pass, got %v", err)
+	}
+}
+
+func TestShardingUnit_ValidatePrimaryTopologyConstraint_CompositeNativeRules(t *testing.T) {
+	tests := []struct {
+		name    string
+		inst    *databasev4.ShardingDatabase
+		wantErr string
+	}{
+		{
+			name: "allows composite native with unique region per shardgroup and one readwrite database",
+			inst: &databasev4.ShardingDatabase{
+				Spec: databasev4.ShardingDatabaseSpec{
+					ShardingType:    "COMPOSITE",
+					ReplicationType: "NATIVE",
+					ShardGroup: []databasev4.ShardGroupSpec{
+						{Name: "sg-rw", ShardSpace: "ss1", RuMode: "READWRITE"},
+						{Name: "sg-ro", ShardSpace: "ss1", RuMode: "READONLY"},
+					},
+					Shard: []databasev4.ShardSpec{
+						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "ro1", ShardGroup: "sg-ro", ShardSpace: "ss1", ShardRegion: "iad"},
+						{Name: "ro2", ShardGroup: "sg-ro", ShardSpace: "ss1", ShardRegion: "iad"},
+					},
+				},
+			},
+		},
+		{
+			name: "rejects duplicate region across shardgroups in same shardspace",
+			inst: &databasev4.ShardingDatabase{
+				Spec: databasev4.ShardingDatabaseSpec{
+					ShardingType:    "COMPOSITE",
+					ReplicationType: "NATIVE",
+					ShardGroup: []databasev4.ShardGroupSpec{
+						{Name: "sg-rw", ShardSpace: "ss1", RuMode: "READWRITE"},
+						{Name: "sg-ro", ShardSpace: "ss1", RuMode: "READONLY"},
+					},
+					Shard: []databasev4.ShardSpec{
+						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "ro1", ShardGroup: "sg-ro", ShardSpace: "ss1", ShardRegion: "phx"},
+					},
+				},
+			},
+			wantErr: "already used by shardGroup",
+		},
+		{
+			name: "rejects missing ru_mode for composite native shardgroup",
+			inst: &databasev4.ShardingDatabase{
+				Spec: databasev4.ShardingDatabaseSpec{
+					ShardingType:    "COMPOSITE",
+					ReplicationType: "NATIVE",
+					ShardGroup: []databasev4.ShardGroupSpec{
+						{Name: "sg-rw", ShardSpace: "ss1"},
+					},
+					Shard: []databasev4.ShardSpec{
+						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+					},
+				},
+			},
+			wantErr: "requires ru_mode",
+		},
+		{
+			name: "rejects more than one readwrite database in same shardgroup",
+			inst: &databasev4.ShardingDatabase{
+				Spec: databasev4.ShardingDatabaseSpec{
+					ShardingType:    "COMPOSITE",
+					ReplicationType: "NATIVE",
+					ShardGroup: []databasev4.ShardGroupSpec{
+						{Name: "sg-rw", ShardSpace: "ss1", RuMode: "READWRITE"},
+					},
+					Shard: []databasev4.ShardSpec{
+						{Name: "rw1", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+						{Name: "rw2", ShardGroup: "sg-rw", ShardSpace: "ss1", ShardRegion: "phx"},
+					},
+				},
+			},
+			wantErr: "allows at most one READWRITE database",
+		},
+	}
+
+	r := &ShardingDatabaseReconciler{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := r.validatePrimaryTopologyConstraint(tt.inst)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("expected no error, got %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+		})
+	}
+}

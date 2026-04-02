@@ -51,6 +51,7 @@ import (
 	utils "github.com/oracle/oracle-database-operator/commons/crs/restart/utils"
 	shareddiskcheck "github.com/oracle/oracle-database-operator/commons/crs/shared/diskcheck"
 	sharedk8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
+	sharedresources "github.com/oracle/oracle-database-operator/commons/resources"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
@@ -61,15 +62,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-)
-
-// Constants
-const (
-	minContainerMemory = 16 * 1024 * 1024 * 1024 // 16 GB
-	pageSize           = 4096                    // 4 KiB
-	oneGB              = int64(1024 * 1024 * 1024)
-	defaultSem         = "250 32000 100 128"
-	defaultShmmni      = "4096"
 )
 
 // Constants for rac-stateful StatefulSet & Volumes
@@ -323,133 +315,25 @@ func buildPodSpecForOracleRestart(
 
 // parseSGASizeBytes parses memory config value ("16G", "16Gi", "1024M", "512Mi") and returns int64 bytes
 func parseSGASizeBytes(sga string) int64 {
-	s := strings.ToUpper(strings.TrimSpace(sga))
-
-	var multiplier int64
-	switch {
-	case strings.HasSuffix(s, "GI"):
-		s = strings.TrimSuffix(s, "GI")
-		multiplier = 1024 * 1024 * 1024
-	case strings.HasSuffix(s, "MI"):
-		s = strings.TrimSuffix(s, "MI")
-		multiplier = 1024 * 1024
-	case strings.HasSuffix(s, "GB"):
-		s = strings.TrimSuffix(s, "GB")
-		multiplier = 1024 * 1024 * 1024
-	case strings.HasSuffix(s, "G"):
-		s = strings.TrimSuffix(s, "G")
-		multiplier = 1024 * 1024 * 1024
-	case strings.HasSuffix(s, "M"):
-		s = strings.TrimSuffix(s, "M")
-		multiplier = 1024 * 1024
-	default:
-		// Unknown unit
-		return 0
-	}
-
-	val, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	val, err := sharedresources.ParseBytesOrMemory(sga)
 	if err != nil {
 		return 0
 	}
-
-	return val * multiplier
+	return val
 }
 
 // calculateSysctls provides documentation for the calculateSysctls function.
 func calculateSysctls(
 	sgaBytes, pgaBytes, containerMemBytes, hugePagesBytes, userShmmax, userShmall int64,
 ) ([]corev1.Sysctl, error) {
-
-	//  Minimum container memory check (only if memory is given)
-	if containerMemBytes > 0 && containerMemBytes < minContainerMemory {
-		return nil, fmt.Errorf("container memory (%d) is less than minimum required (%d)", containerMemBytes, minContainerMemory)
-	}
-
-	// 2Case 1: No container memory and no SGA/PGA
-	if containerMemBytes == 0 && sgaBytes == 0 && pgaBytes == 0 {
-		return []corev1.Sysctl{}, nil
-	}
-
-	// Case 2: No container memory, but SGA/PGA provided
-	if containerMemBytes == 0 {
-		shmmax := sgaBytes + oneGB
-
-		if userShmmax > 0 {
-			// validate user-provided shmmax
-			if userShmmax < sgaBytes {
-				return nil, fmt.Errorf("user-provided shmmax (%d) cannot be less than SGA_TARGET (%d)", userShmmax, sgaBytes)
-			}
-			shmmax = userShmmax
-		}
-
-		shmall := (shmmax + pageSize - 1) / pageSize
-		if userShmall > 0 {
-			if userShmall < shmall {
-				return nil, fmt.Errorf("user-provided shmall (%d) is too small; min required=%d pages", userShmall, shmall)
-			}
-			shmall = userShmall
-		}
-
-		return []corev1.Sysctl{
-			{Name: "kernel.shmmax", Value: fmt.Sprintf("%d", shmmax)},
-			{Name: "kernel.shmall", Value: fmt.Sprintf("%d", shmall)},
-			{Name: "kernel.sem", Value: defaultSem},
-			{Name: "kernel.shmmni", Value: defaultShmmni},
-		}, nil
-	}
-
-	// Case 3: Container memory provided
-	if pgaBytes > containerMemBytes {
-		return nil, fmt.Errorf("PGA_TARGET (%d) cannot be greater than container memory (%d)", pgaBytes, containerMemBytes)
-	}
-	if sgaBytes > containerMemBytes {
-		return nil, fmt.Errorf("SGA_TARGET (%d) cannot be greater than container memory (%d)", sgaBytes, containerMemBytes)
-	}
-
-	var shmmax int64
-	if userShmmax > 0 {
-		// Validate user-provided shmmax
-		if userShmmax < sgaBytes {
-			return nil, fmt.Errorf("user-provided shmmax (%d) cannot be less than SGA_TARGET (%d)", userShmmax, sgaBytes)
-		}
-		if hugePagesBytes > 0 && userShmmax < hugePagesBytes {
-			return nil, fmt.Errorf("user-provided shmmax (%d) cannot be less than hugePages memory (%d)", userShmmax, hugePagesBytes)
-		}
-		if userShmmax > containerMemBytes-oneGB {
-			return nil, fmt.Errorf("user-provided shmmax (%d) must be < container memory - 1GB (%d)", userShmmax, containerMemBytes-oneGB)
-		}
-		shmmax = userShmmax
-	} else if hugePagesBytes > 0 {
-		if hugePagesBytes < sgaBytes {
-			return nil, fmt.Errorf("huge pages (%d) must be >= SGA_TARGET (%d)", hugePagesBytes, sgaBytes)
-		}
-		shmmax = hugePagesBytes
-	} else if sgaBytes < (containerMemBytes / 2) {
-		shmmax = containerMemBytes / 2
-	} else {
-		shmmax = sgaBytes + oneGB
-	}
-
-	// Ensure shmmax < container memory
-	if shmmax >= containerMemBytes {
-		shmmax = containerMemBytes - oneGB
-	}
-
-	// Compute shmall
-	shmall := (shmmax + pageSize - 1) / pageSize
-	if userShmall > 0 {
-		if userShmall < shmall {
-			return nil, fmt.Errorf("user-provided shmall (%d) is too small; min required=%d pages", userShmall, shmall)
-		}
-		shmall = userShmall
-	}
-
-	return []corev1.Sysctl{
-		{Name: "kernel.shmmax", Value: fmt.Sprintf("%d", shmmax)},
-		{Name: "kernel.shmall", Value: fmt.Sprintf("%d", shmall)},
-		{Name: "kernel.sem", Value: defaultSem},
-		{Name: "kernel.shmmni", Value: defaultShmmni},
-	}, nil
+	return sharedresources.CalculateOracleSysctls(
+		sgaBytes,
+		pgaBytes,
+		containerMemBytes,
+		hugePagesBytes,
+		userShmmax,
+		userShmall,
+	)
 }
 
 // Function get the Node Affinity

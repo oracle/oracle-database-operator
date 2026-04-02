@@ -313,13 +313,15 @@ func buildPodSpecForShard(instance *databasev4.ShardingDatabase, OraShardSpex da
 
 	user := oraRunAsUser
 	group := oraFsGroup
+	podSecurityContext := mergePodSecurityContextWithDefaults(&corev1.PodSecurityContext{
+		RunAsNonRoot: BoolPointer(true),
+		RunAsUser:    &user,
+		RunAsGroup:   &group,
+		FSGroup:      &group,
+	}, OraShardSpex.SecurityContext)
+	podSecurityContext = applyOracleMemorySysctls(podSecurityContext, OraShardSpex.Resources, OraShardSpex.EnvVars)
 	spec := &corev1.PodSpec{
-		SecurityContext: mergePodSecurityContextWithDefaults(&corev1.PodSecurityContext{
-			RunAsNonRoot: BoolPointer(true),
-			RunAsUser:    &user,
-			RunAsGroup:   &group,
-			FSGroup:      &group,
-		}, OraShardSpex.SecurityContext),
+		SecurityContext:    podSecurityContext,
 		Containers:         buildContainerSpecForShard(instance, OraShardSpex),
 		Volumes:            buildVolumeSpecForShard(instance, OraShardSpex),
 		ServiceAccountName: instance.Spec.SrvAccountName,

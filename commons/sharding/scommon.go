@@ -59,7 +59,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -308,6 +307,38 @@ func getDbSecretMountPath(instance *databasev4.ShardingDatabase) string {
 	return databasev4.DefaultSecretMountPath
 }
 
+func getUseGsmWallet(instance *databasev4.ShardingDatabase) bool {
+	if instance == nil || instance.Spec.DbSecret == nil {
+		return true
+	}
+	v := strings.ToLower(strings.TrimSpace(instance.Spec.DbSecret.UseGsmWallet))
+	if v == "" {
+		return true
+	}
+	return v == "true"
+}
+
+func getGsmWalletRoot(instance *databasev4.ShardingDatabase) string {
+	if instance == nil || instance.Spec.DbSecret == nil {
+		return databasev4.DefaultGsmWalletRoot
+	}
+	if v := strings.TrimSpace(instance.Spec.DbSecret.GsmWalletRoot); v != "" {
+		return v
+	}
+	return databasev4.DefaultGsmWalletRoot
+}
+
+func removeEnvByName(env []corev1.EnvVar, name string) []corev1.EnvVar {
+	out := make([]corev1.EnvVar, 0, len(env))
+	for i := range env {
+		if env[i].Name == name {
+			continue
+		}
+		out = append(out, env[i])
+	}
+	return out
+}
+
 func normalizeReplicationType(replicationType string) string {
 	repl := strings.ToUpper(strings.TrimSpace(replicationType))
 	switch repl {
@@ -486,6 +517,14 @@ func buildEnvVarsSpec(
 	}
 
 	if isGSM {
+		useGsmWallet := getUseGsmWallet(instance)
+		result = upsertEnv(result, corev1.EnvVar{Name: "USE_GSM_WALLET", Value: strconv.FormatBool(useGsmWallet)})
+		if useGsmWallet {
+			result = upsertEnv(result, corev1.EnvVar{Name: "WALLET_ROOT", Value: getGsmWalletRoot(instance)})
+		} else {
+			result = removeEnvByName(result, "WALLET_ROOT")
+		}
+
 		if !sDirectParam {
 			result = append(result, corev1.EnvVar{Name: "SHARD_DIRECTOR_PARAMS", Value: directorParams})
 		}
@@ -701,12 +740,12 @@ func buildEnvVarsSpec(
 func buildSvcPortsDef(instance *databasev4.ShardingDatabase, resType string) []corev1.ServicePort {
 	if len(instance.Spec.PortMappings) > 0 {
 		result := make([]corev1.ServicePort, 0, len(instance.Spec.PortMappings))
-		for _, portMapping := range instance.Spec.PortMappings {
+		for idx, portMapping := range instance.Spec.PortMappings {
 			servicePort :=
 				corev1.ServicePort{
 					Protocol: portMapping.Protocol,
 					Port:     portMapping.Port,
-					Name:     generatePortMapping(portMapping),
+					Name:     generatePortMapping(portMapping, idx),
 					TargetPort: intstr.IntOrString{
 						Type:   intstr.Int,
 						IntVal: portMapping.TargetPort,
@@ -725,45 +764,59 @@ func buildSvcPortsDef(instance *databasev4.ShardingDatabase, resType string) []c
 	result = append(result, corev1.ServicePort{
 		Protocol:   corev1.ProtocolTCP,
 		Port:       defaultDataPort,
-		Name:       generateName(fmt.Sprintf("%s-%d-%d-", "tcp", defaultDataPort, defaultDataPort)),
+		Name:       stableServicePortName("tcp", defaultDataPort, defaultDataPort, -1),
 		TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: defaultDataPort},
 	})
 	result = append(result, corev1.ServicePort{
 		Protocol:   corev1.ProtocolTCP,
 		Port:       oraRemoteOnsPort,
-		Name:       generateName(fmt.Sprintf("%s-%d-%d-", "tcp", oraRemoteOnsPort, oraRemoteOnsPort)),
+		Name:       stableServicePortName("tcp", oraRemoteOnsPort, oraRemoteOnsPort, -1),
 		TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: oraRemoteOnsPort},
 	})
 	result = append(result, corev1.ServicePort{
 		Protocol:   corev1.ProtocolTCP,
 		Port:       oraLocalOnsPort,
-		Name:       generateName(fmt.Sprintf("%s-%d-%d-", "tcp", oraLocalOnsPort, oraLocalOnsPort)),
+		Name:       stableServicePortName("tcp", oraLocalOnsPort, oraLocalOnsPort, -1),
 		TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: oraLocalOnsPort},
 	})
 	result = append(result, corev1.ServicePort{
 		Protocol:   corev1.ProtocolTCP,
 		Port:       oraAgentPort,
-		Name:       generateName(fmt.Sprintf("%s-%d-%d-", "tcp", oraAgentPort, oraAgentPort)),
+		Name:       stableServicePortName("tcp", oraAgentPort, oraAgentPort, -1),
 		TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: oraAgentPort},
 	})
 	return result
 }
 
-// Function to generate the Name
-func generateName(base string) string {
-	maxNameLength := 50
-	randomLength := 5
-	maxGeneratedLength := maxNameLength - randomLength
-	if len(base) > maxGeneratedLength {
-		base = base[:maxGeneratedLength]
+func stableServicePortName(protocol string, port, targetPort int32, index int) string {
+	proto := strings.ToLower(strings.TrimSpace(protocol))
+	if proto == "" {
+		proto = "tcp"
 	}
-	return fmt.Sprintf("%s%s", base, rand.String(randomLength))
+	base := fmt.Sprintf("%s-%d-%d", proto, port, targetPort)
+	if index >= 0 {
+		base = fmt.Sprintf("%s-%d", base, index)
+	}
+	// ServicePort.Name must be DNS-label style.
+	re := regexp.MustCompile(`[^a-z0-9-]`)
+	base = re.ReplaceAllString(base, "-")
+	base = strings.Trim(base, "-")
+	if base == "" {
+		base = "tcp"
+	}
+	if len(base) > 63 {
+		base = strings.Trim(base[:63], "-")
+	}
+	if base == "" {
+		base = "tcp"
+	}
+	return base
 }
 
 // Function to generate the port mapping
-func generatePortMapping(portMapping databasev4.PortMapping) string {
-	return generateName(fmt.Sprintf("%s-%d-%d-", "tcp",
-		portMapping.Port, portMapping.TargetPort))
+func generatePortMapping(portMapping databasev4.PortMapping, index int) string {
+	protocol := string(portMapping.Protocol)
+	return stableServicePortName(protocol, portMapping.Port, portMapping.TargetPort, index)
 }
 
 func LogMessages(msgtype string, msg string, err error, instance *databasev4.ShardingDatabase, logger logr.Logger) {

@@ -59,6 +59,7 @@ import (
 	"strings"
 
 	utils "github.com/oracle/oracle-database-operator/commons/crs/rac/utils"
+	sharedresources "github.com/oracle/oracle-database-operator/commons/resources"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -210,66 +211,45 @@ func (r *RacDatabase) ValidateCreate(ctx context.Context, obj *RacDatabase) (adm
 		}
 	}
 
+	sgaInput := ""
+	pgaInput := ""
+	if cp != nil {
+		sgaInput = cp.SgaSize
+		pgaInput = cp.PgaSize
+	}
+
 	// ----- PARSE SGA / PGA -----
-	sga, errSga := parseMem(cp.SgaSize)
-	pga, errPga := parseMem(cp.PgaSize)
+	sga, errSga := parseMem(sgaInput)
+	pga, errPga := parseMem(pgaInput)
 	if errSga != nil {
 		validationErrs = append(validationErrs,
-			field.Invalid(fldPath.Child("sgaSize"), cp.SgaSize, "invalid format"))
+			field.Invalid(fldPath.Child("sgaSize"), sgaInput, "invalid format"))
 	}
 	if errPga != nil {
 		validationErrs = append(validationErrs,
-			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
+			field.Invalid(fldPath.Child("pgaSize"), pgaInput, "invalid format"))
 	}
 
-	// ----- EXTRACT POD MEMORY LIMIT -----
-	var memLimit int64
-	if cr.Spec.Resources != nil {
-		if memQ, ok := cr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
-			memLimit = memQ.Value()
-		}
-	}
-
-	// ----- EXTRACT HUGE PAGES (SEPARATE RESOURCE POOL) -----
-	var hugeMem int64
-	if cr.Spec.Resources != nil {
-		if hpQ, ok := cr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
-			hugeMem = hpQ.Value()
-		}
-		if hugeMem == 0 {
-			if hpQ, ok := cr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
-				hugeMem = hpQ.Value()
-			}
-		}
-	}
+	memLimit, hugeMem := sharedresources.ExtractMemoryAndHugePagesBytes(cr.Spec.Resources)
 
 	// ----- SGA + PGA SAFETY CHECK (FIXED) -----
-	totalMem := sga + pga
-	effectiveMem := memLimit + hugeMem
-
-	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+	if err := sharedresources.ValidateSgaPgaSafety(sga, pga, memLimit, hugeMem, safetyPct); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath,
-				totalMem,
-				fmt.Sprintf(
-					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
-					sga, pga, int(safetyPct*100), memLimit, hugeMem,
-				),
+				sga+pga,
+				err.Error(),
 			),
 		)
 	}
 
 	// ----- VALIDATE HUGEPAGES (FIXED) -----
-	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+	if err := sharedresources.ValidateHugePagesAtLeastSga(hugeMem, sga); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath.Child("hugePages"),
 				hugeMem,
-				fmt.Sprintf(
-					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
-					hugeMem, sga,
-				),
+				err.Error(),
 			),
 		)
 	}
@@ -598,67 +578,46 @@ func (r *RacDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *RacDat
 	fldPath := field.NewPath("spec").Child("configParams")
 	const safetyPct = 0.8
 
+	sgaInput := ""
+	pgaInput := ""
+	if cp != nil {
+		sgaInput = cp.SgaSize
+		pgaInput = cp.PgaSize
+	}
+
 	// ----- PARSE SGA / PGA -----
-	sga, errSga := parseMem(cp.SgaSize)
-	pga, errPga := parseMem(cp.PgaSize)
+	sga, errSga := parseMem(sgaInput)
+	pga, errPga := parseMem(pgaInput)
 
 	if errSga != nil {
 		validationErrs = append(validationErrs,
-			field.Invalid(fldPath.Child("sgaSize"), cp.SgaSize, "invalid format"))
+			field.Invalid(fldPath.Child("sgaSize"), sgaInput, "invalid format"))
 	}
 	if errPga != nil {
 		validationErrs = append(validationErrs,
-			field.Invalid(fldPath.Child("pgaSize"), cp.PgaSize, "invalid format"))
+			field.Invalid(fldPath.Child("pgaSize"), pgaInput, "invalid format"))
 	}
 
-	// ----- EXTRACT POD MEMORY LIMIT -----
-	var memLimit int64
-	if newCr.Spec.Resources != nil {
-		if memQ, ok := newCr.Spec.Resources.Limits[corev1.ResourceMemory]; ok {
-			memLimit = memQ.Value()
-		}
-	}
-
-	// ----- EXTRACT HUGE PAGES -----
-	var hugeMem int64
-	if newCr.Spec.Resources != nil {
-		if hpQ, ok := newCr.Spec.Resources.Limits["hugepages-2Mi"]; ok {
-			hugeMem = hpQ.Value()
-		}
-		if hugeMem == 0 {
-			if hpQ, ok := newCr.Spec.Resources.Requests["hugepages-2Mi"]; ok {
-				hugeMem = hpQ.Value()
-			}
-		}
-	}
+	memLimit, hugeMem := sharedresources.ExtractMemoryAndHugePagesBytes(newCr.Spec.Resources)
 
 	// ----- SGA + PGA SAFETY CHECK -----
-	totalMem := sga + pga
-	effectiveMem := memLimit + hugeMem
-
-	if effectiveMem > 0 && totalMem > int64(float64(effectiveMem)*safetyPct) {
+	if err := sharedresources.ValidateSgaPgaSafety(sga, pga, memLimit, hugeMem, safetyPct); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath,
-				totalMem,
-				fmt.Sprintf(
-					"SGA (%dB) + PGA (%dB) must not exceed %d%% of total allocatable memory (memory %dB + hugepages %dB)",
-					sga, pga, int(safetyPct*100), memLimit, hugeMem,
-				),
+				sga+pga,
+				err.Error(),
 			),
 		)
 	}
 
 	// ----- HUGE PAGES >= SGA -----
-	if hugeMem > 0 && sga > 0 && hugeMem < sga {
+	if err := sharedresources.ValidateHugePagesAtLeastSga(hugeMem, sga); err != nil {
 		validationErrs = append(validationErrs,
 			field.Invalid(
 				fldPath.Child("hugePages"),
 				hugeMem,
-				fmt.Sprintf(
-					"HugePages (%d bytes) must be >= SGA size (%d bytes)",
-					hugeMem, sga,
-				),
+				err.Error(),
 			),
 		)
 	}

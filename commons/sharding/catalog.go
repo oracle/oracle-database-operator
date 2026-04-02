@@ -159,13 +159,15 @@ func buildPodSpecForCatalog(instance *databasev4.ShardingDatabase, OraCatalogSpe
 
 	user := oraRunAsUser
 	group := oraFsGroup
+	podSecurityContext := mergePodSecurityContextWithDefaults(&corev1.PodSecurityContext{
+		RunAsNonRoot: BoolPointer(true),
+		RunAsUser:    &user,
+		RunAsGroup:   &group,
+		FSGroup:      &group,
+	}, OraCatalogSpex.SecurityContext)
+	podSecurityContext = applyOracleMemorySysctls(podSecurityContext, OraCatalogSpex.Resources, OraCatalogSpex.EnvVars)
 	spec := &corev1.PodSpec{
-		SecurityContext: mergePodSecurityContextWithDefaults(&corev1.PodSecurityContext{
-			RunAsNonRoot: BoolPointer(true),
-			RunAsUser:    &user,
-			RunAsGroup:   &group,
-			FSGroup:      &group,
-		}, OraCatalogSpex.SecurityContext),
+		SecurityContext:    podSecurityContext,
 		Containers:         buildContainerSpecForCatalog(instance, OraCatalogSpex),
 		Volumes:            buildVolumeSpecForCatalog(instance, OraCatalogSpex),
 		ServiceAccountName: instance.Spec.SrvAccountName,

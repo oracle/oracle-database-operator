@@ -479,10 +479,13 @@ type GsmServiceSpec struct {
 
 // Secret Details
 type SecretDetails struct {
-	Name      string                `json:"name"`                // Name of the secret mounted into sharding pods.
-	MountPath string                `json:"mountPath,omitempty"` // Optional mount path for the secret volume.
-	DbAdmin   PasswordSecretConfig  `json:"dbAdmin"`
-	TDE       *PasswordSecretConfig `json:"tde,omitempty"`
+	Name      string `json:"name"`                // Name of the secret mounted into sharding pods.
+	MountPath string `json:"mountPath,omitempty"` // Optional mount path for the secret volume.
+	// +kubebuilder:default:="true"
+	UseGsmWallet  string                `json:"useGsmWallet,omitempty"`  // String flag ("true"/"false") controlling GSM wallet usage.
+	GsmWalletRoot string                `json:"gsmWalletRoot,omitempty"` // Wallet root used for GSM when useGsmWallet is true.
+	DbAdmin       PasswordSecretConfig  `json:"dbAdmin"`
+	TDE           *PasswordSecretConfig `json:"tde,omitempty"`
 }
 
 type PasswordSecretConfig struct {
@@ -501,6 +504,7 @@ type AdditionalPVCSpec struct {
 const (
 	DefaultPkeyopt          = "rsa_padding_mode:oaep;rsa_oaep_md:sha256;rsa_mgf1_md:sha256"
 	DefaultSecretMountPath  = "/mnt/secrets"
+	DefaultGsmWalletRoot    = "$ORACLE_HOME/network/admin"
 	DefaultOraDataMountPath = "/opt/oracle/oradata"
 	DefaultGsmDataMountPath = "/opt/oracle/gsmdata"
 	DefaultDiagMountPath    = "/opt/oracle/diag"

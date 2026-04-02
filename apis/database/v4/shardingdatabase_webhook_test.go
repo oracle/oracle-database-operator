@@ -224,7 +224,7 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 			wantErr: "requires exactly one PRIMARY shard per shardSpace",
 		},
 		{
-			name: "user DG rejects standby before primary in shardSpace",
+			name: "user DG allows standby before primary in shardSpace",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "USER",
 				ReplicationType: "DG",
@@ -233,7 +233,6 @@ func TestValidateShardOperationRulesUserPrimaryConstraints(t *testing.T) {
 					{Name: "shard1", ShardSpace: "ss1", DeployAs: "PRIMARY"},
 				},
 			},
-			wantErr: "before defining standby shards",
 		},
 		{
 			name: "user DG allows multiple standbys with one primary in shardSpace",
@@ -736,7 +735,7 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 			},
 		},
 		{
-			name: "user DG rejects shardInfo standby when shardNum is greater than one",
+			name: "user DG allows shardInfo standby when shardNum is greater than one",
 			spec: ShardingDatabaseSpec{
 				ShardingType:    "USER",
 				ReplicationType: "DG",
@@ -759,7 +758,6 @@ func TestValidateShardInfoSystemPrimaryStandbyConstraints(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "allows shardNum at most 1",
 		},
 		{
 			name: "user DG rejects shardInfo standby without primary in shardspace",
@@ -1080,6 +1078,138 @@ func TestValidateShardInfoCompositeMappingConstraints(t *testing.T) {
 	}
 }
 
+func TestValidateShardInfoCompositeNativeRules(t *testing.T) {
+	tests := []struct {
+		name    string
+		spec    ShardingDatabaseSpec
+		wantErr string
+	}{
+		{
+			name: "composite native allows multiple shardgroups in one shardspace across regions",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "COMPOSITE",
+				ReplicationType: "NATIVE",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "rw",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:   "sg-rw",
+							Region: "phx",
+							RuMode: "READWRITE",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+					},
+					{
+						ShardPreFixName: "ro",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:   "sg-ro",
+							Region: "iad",
+							RuMode: "READONLY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+					},
+				},
+			},
+		},
+		{
+			name: "composite native rejects duplicate region across shardgroups in shardspace",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "COMPOSITE",
+				ReplicationType: "NATIVE",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "rw",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:   "sg-rw",
+							Region: "phx",
+							RuMode: "READWRITE",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+					},
+					{
+						ShardPreFixName: "ro",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:   "sg-ro",
+							Region: "phx",
+							RuMode: "READONLY",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+					},
+				},
+			},
+			wantErr: "already used by shardGroup",
+		},
+		{
+			name: "composite native rejects missing ru_mode",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "COMPOSITE",
+				ReplicationType: "NATIVE",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "rw",
+						ShardNum:        1,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:   "sg-rw",
+							Region: "phx",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+					},
+				},
+			},
+			wantErr: "requires shardGroupDetails.ru_mode",
+		},
+		{
+			name: "composite native rejects more than one readwrite database per shardgroup",
+			spec: ShardingDatabaseSpec{
+				ShardingType:    "COMPOSITE",
+				ReplicationType: "NATIVE",
+				ShardInfo: []ShardingDetails{
+					{
+						ShardPreFixName: "rw",
+						ShardNum:        2,
+						ShardGroupDetails: &ShardGroupSpec{
+							Name:   "sg-rw",
+							Region: "phx",
+							RuMode: "READWRITE",
+						},
+						ShardSpaceDetails: &ShardSpaceSpec{Name: "ss1"},
+					},
+				},
+			},
+			wantErr: "allows at most one READWRITE database",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cr := &ShardingDatabase{Spec: tt.spec}
+			errList := cr.validateShardInfo()
+
+			if tt.wantErr != "" {
+				if errList == nil || len(errList) == 0 {
+					t.Fatalf("expected validation error containing %q, got none", tt.wantErr)
+				}
+				errs := make([]error, 0, len(errList))
+				for _, e := range errList {
+					errs = append(errs, e)
+				}
+				if !hasErrContaining(errs, tt.wantErr) {
+					t.Fatalf("expected error containing %q, got: %v", tt.wantErr, errs)
+				}
+				return
+			}
+
+			if errList != nil && len(errList) > 0 {
+				t.Fatalf("expected no validation errors, got: %v", errList)
+			}
+		})
+	}
+}
+
 func TestNormalizeReplicationType(t *testing.T) {
 	cr := &ShardingDatabase{Spec: ShardingDatabaseSpec{ReplicationType: "raftreplicatin"}}
 	if got := normalizeReplicationType(&cr.Spec); got != replNative {
@@ -1267,6 +1397,55 @@ func TestDefaultAppliesInlineGsmResourcesTemplate(t *testing.T) {
 	}
 	if got := cr.Spec.Gsm[1].Resources.Limits.Cpu().String(); got != "1" {
 		t.Fatalf("expected gsm2 cpu limit to remain 1, got %s", got)
+	}
+}
+
+func TestDefaultDbSecretGsmWalletDefaults(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			DbSecret: &SecretDetails{
+				Name: "db-secret",
+				DbAdmin: PasswordSecretConfig{
+					PasswordKey: "oracle_pwd",
+				},
+			},
+		},
+	}
+
+	if err := cr.Default(context.Background(), cr); err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+	if got := strings.ToLower(strings.TrimSpace(cr.Spec.DbSecret.UseGsmWallet)); got != "true" {
+		t.Fatalf("expected dbSecret.useGsmWallet default true, got %q", cr.Spec.DbSecret.UseGsmWallet)
+	}
+	if got := strings.TrimSpace(cr.Spec.DbSecret.GsmWalletRoot); got != DefaultGsmWalletRoot {
+		t.Fatalf("expected dbSecret.gsmWalletRoot default %q, got %q", DefaultGsmWalletRoot, cr.Spec.DbSecret.GsmWalletRoot)
+	}
+}
+
+func TestValidateDbSecretConfigUseGsmWalletValidation(t *testing.T) {
+	cr := &ShardingDatabase{
+		Spec: ShardingDatabaseSpec{
+			DbSecret: &SecretDetails{
+				Name:         "db-secret",
+				UseGsmWallet: "maybe",
+				DbAdmin: PasswordSecretConfig{
+					PasswordKey: "oracle_pwd",
+				},
+			},
+		},
+	}
+
+	errList := cr.validateDbSecretConfig()
+	if errList == nil || len(errList) == 0 {
+		t.Fatalf("expected validation error for invalid useGsmWallet")
+	}
+	errs := make([]error, 0, len(errList))
+	for _, e := range errList {
+		errs = append(errs, e)
+	}
+	if !hasErrContaining(errs, "usegsmwallet must be") {
+		t.Fatalf("expected useGsmWallet validation error, got: %v", errs)
 	}
 }
 

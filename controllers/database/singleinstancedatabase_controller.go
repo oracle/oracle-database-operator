@@ -52,6 +52,7 @@ import (
 	dataguardcommon "github.com/oracle/oracle-database-operator/commons/dataguard"
 	dgsidb "github.com/oracle/oracle-database-operator/commons/dataguard/sidb"
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
+	sharedresources "github.com/oracle/oracle-database-operator/commons/resources"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
@@ -100,6 +101,113 @@ var ErrNotPhysicalStandby error = errors.New("database not in PHYSICAL_STANDBY r
 var ErrDBNotConfiguredWithDG error = errors.New("database is not configured with a dataguard configuration")
 var ErrFSFOEnabledForDGConfig error = errors.New("database is configured with dataguard and FSFO enabled")
 var ErrAdminPasswordSecretNotFound error = errors.New("Admin password secret for the database not found")
+
+const sidbInitParamUnitBytes = int64(1024 * 1024)
+
+func buildSIDBContainerResources(m *dbapi.SingleInstanceDatabase) corev1.ResourceRequirements {
+	if m.Spec.ResourceRequirements != nil {
+		return *m.Spec.ResourceRequirements.DeepCopy()
+	}
+	return corev1.ResourceRequirements{}
+}
+
+func sidbInitParamBytes(m *dbapi.SingleInstanceDatabase) (int64, int64) {
+	if m.Spec.InitParams == nil {
+		return 0, 0
+	}
+	if m.Spec.InitParams.SgaTarget <= 0 || m.Spec.InitParams.PgaAggregateTarget <= 0 {
+		return 0, 0
+	}
+	sgaBytes := int64(m.Spec.InitParams.SgaTarget) * sidbInitParamUnitBytes
+	pgaBytes := int64(m.Spec.InitParams.PgaAggregateTarget) * sidbInitParamUnitBytes
+	return sgaBytes, pgaBytes
+}
+
+func parseSIDBUserOracleSysctlOverrides(sysctls []corev1.Sysctl) (int64, int64) {
+	var shmmax int64
+	var shmall int64
+	for i := range sysctls {
+		switch strings.TrimSpace(sysctls[i].Name) {
+		case "kernel.shmmax":
+			if v, err := sharedresources.ParseBytesOrMemory(sysctls[i].Value); err == nil {
+				shmmax = v
+			}
+		case "kernel.shmall":
+			if v, err := strconv.ParseInt(strings.TrimSpace(sysctls[i].Value), 10, 64); err == nil {
+				shmall = v
+			}
+		}
+	}
+	return shmmax, shmall
+}
+
+func mergeSIDBOracleSysctls(existing, calculated []corev1.Sysctl) []corev1.Sysctl {
+	out := make([]corev1.Sysctl, 0, len(existing)+len(calculated))
+	indexByName := make(map[string]int, len(existing)+len(calculated))
+
+	for i := range existing {
+		name := strings.TrimSpace(existing[i].Name)
+		indexByName[name] = len(out)
+		out = append(out, existing[i])
+	}
+
+	for i := range calculated {
+		name := strings.TrimSpace(calculated[i].Name)
+		if idx, ok := indexByName[name]; ok {
+			if name == "kernel.sem" || name == "kernel.shmmni" {
+				continue
+			}
+			out[idx].Value = calculated[i].Value
+			continue
+		}
+		indexByName[name] = len(out)
+		out = append(out, calculated[i])
+	}
+
+	return out
+}
+
+func buildSIDBPodSecurityContext(
+	m *dbapi.SingleInstanceDatabase,
+	containerResources corev1.ResourceRequirements,
+) *corev1.PodSecurityContext {
+	defaultRunAsUser := int64(dbcommons.ORACLE_UID)
+	defaultRunAsGroup := int64(dbcommons.ORACLE_GUID)
+	defaultFSGroup := int64(dbcommons.ORACLE_GUID)
+
+	var podSecurityContext *corev1.PodSecurityContext
+	if m.Spec.SecurityContext != nil {
+		podSecurityContext = m.Spec.SecurityContext.DeepCopy()
+	} else {
+		podSecurityContext = &corev1.PodSecurityContext{}
+	}
+	if podSecurityContext.RunAsUser == nil {
+		podSecurityContext.RunAsUser = &defaultRunAsUser
+	}
+	if podSecurityContext.RunAsGroup == nil {
+		podSecurityContext.RunAsGroup = &defaultRunAsGroup
+	}
+	if podSecurityContext.FSGroup == nil {
+		podSecurityContext.FSGroup = &defaultFSGroup
+	}
+
+	sgaBytes, pgaBytes := sidbInitParamBytes(m)
+	memLimit, hugePages := sharedresources.ExtractMemoryAndHugePagesBytes(&containerResources)
+	userShmmax, userShmall := parseSIDBUserOracleSysctlOverrides(podSecurityContext.Sysctls)
+	sysctls, err := sharedresources.CalculateOracleSysctls(
+		sgaBytes,
+		pgaBytes,
+		memLimit,
+		hugePages,
+		userShmmax,
+		userShmall,
+	)
+	if err == nil && len(sysctls) > 0 {
+		podSecurityContext.Sysctls = mergeSIDBOracleSysctls(podSecurityContext.Sysctls, sysctls)
+	}
+
+	return podSecurityContext
+}
 
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=database.oracle.com,resources=singleinstancedatabases/status,verbs=get;update;patch
@@ -1167,6 +1275,8 @@ func (r *SingleInstanceDatabaseReconciler) validate(
 func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleInstanceDatabase, n *dbapi.SingleInstanceDatabase, rp *dbapi.SingleInstanceDatabase,
 	requiredAffinity bool) *corev1.Pod {
 	walletDir := GetWalletDirFromSid(m.Spec.Sid)
+	containerResources := buildSIDBContainerResources(m)
+	podSecurityContext := buildSIDBPodSecurityContext(m, containerResources)
 
 	// POD spec
 	pod := &corev1.Pod{
@@ -1845,29 +1955,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 
 				}(),
 
-				Resources: func() corev1.ResourceRequirements {
-					var resourceReqRequests corev1.ResourceList = corev1.ResourceList{}
-					var resourceReqLimits corev1.ResourceList = corev1.ResourceList{}
-
-					if m.Spec.Resources.Requests != nil && m.Spec.Resources.Requests.Cpu != "" {
-						resourceReqRequests["cpu"] = resource.MustParse(m.Spec.Resources.Requests.Cpu)
-					}
-					if m.Spec.Resources.Requests != nil && m.Spec.Resources.Requests.Memory != "" {
-						resourceReqRequests["memory"] = resource.MustParse(m.Spec.Resources.Requests.Memory)
-					}
-
-					if m.Spec.Resources.Limits != nil && m.Spec.Resources.Limits.Cpu != "" {
-						resourceReqLimits["cpu"] = resource.MustParse(m.Spec.Resources.Limits.Cpu)
-					}
-					if m.Spec.Resources.Limits != nil && m.Spec.Resources.Limits.Memory != "" {
-						resourceReqLimits["memory"] = resource.MustParse(m.Spec.Resources.Limits.Memory)
-					}
-
-					return corev1.ResourceRequirements{
-						Requests: resourceReqRequests,
-						Limits:   resourceReqLimits,
-					}
-				}(),
+				Resources: containerResources,
 			}},
 
 			TerminationGracePeriodSeconds: func() *int64 { i := int64(30); return &i }(),
@@ -1882,20 +1970,7 @@ func (r *SingleInstanceDatabaseReconciler) instantiatePodSpec(m *dbapi.SingleIns
 				return ns
 			}(),
 
-			SecurityContext: &corev1.PodSecurityContext{
-				RunAsUser: func() *int64 {
-					i := int64(dbcommons.ORACLE_UID)
-					return &i
-				}(),
-				RunAsGroup: func() *int64 {
-					i := int64(dbcommons.ORACLE_GUID)
-					return &i
-				}(),
-				FSGroup: func() *int64 {
-					i := int64(dbcommons.ORACLE_GUID)
-					return &i
-				}(),
-			},
+			SecurityContext: podSecurityContext,
 			ImagePullSecrets: []corev1.LocalObjectReference{
 				{
 					Name: m.Spec.Image.PullSecrets,

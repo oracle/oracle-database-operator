@@ -74,6 +74,8 @@ import (
 	databasev4 "github.com/oracle/oracle-database-operator/apis/database/v4"
 	dataguardcommon "github.com/oracle/oracle-database-operator/commons/dataguard"
 	dgsharding "github.com/oracle/oracle-database-operator/commons/dataguard/sharding"
+	sharedk8sobjects "github.com/oracle/oracle-database-operator/commons/k8sobject"
+	sharedk8sutil "github.com/oracle/oracle-database-operator/commons/k8sutil"
 	lockpolicy "github.com/oracle/oracle-database-operator/commons/lockpolicy"
 	"github.com/oracle/oracle-database-operator/commons/shapes"
 	shardingv1 "github.com/oracle/oracle-database-operator/commons/sharding"
@@ -291,8 +293,7 @@ func (r *ShardingDatabaseReconciler) phaseDelete(
 ) phaseResult {
 	if inst.DeletionTimestamp == nil {
 		if !controllerutil.ContainsFinalizer(inst, shardingv1.ShardingDatabaseFinalizer) {
-			controllerutil.AddFinalizer(inst, shardingv1.ShardingDatabaseFinalizer)
-			if err := r.Update(ctx, inst); err != nil {
+			if err := sharedk8sutil.AddFinalizerAndPatch(r.Client, inst, shardingv1.ShardingDatabaseFinalizer); err != nil {
 				return phaseResult{err: err, reason: "FinalizerAddFailed", message: err.Error()}
 			}
 		}
@@ -301,8 +302,7 @@ func (r *ShardingDatabaseReconciler) phaseDelete(
 	if err := r.finalizeShardingDatabase(inst); err != nil {
 		return phaseResult{wait: true, requeueAfter: 15 * time.Second, reason: "FinalizeRetry", message: err.Error()}
 	}
-	controllerutil.RemoveFinalizer(inst, shardingv1.ShardingDatabaseFinalizer)
-	if err := r.Update(ctx, inst); err != nil {
+	if err := sharedk8sutil.RemoveFinalizerAndPatch(r.Client, inst, shardingv1.ShardingDatabaseFinalizer); err != nil {
 		return phaseResult{err: err, reason: "FinalizerRemoveFailed", message: err.Error()}
 	}
 	return phaseResult{wait: true, requeueAfter: 2 * time.Second, reason: "Deleting", message: "Waiting object removal"}
@@ -420,7 +420,13 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 					message: "Catalog Name cannot be greater than 9 characters.",
 				}
 			}
-			if _, err := r.deployStatefulSet(inst, shardingv1.BuildStatefulSetForCatalog(inst, oraCatalogSpec), "CATALOG"); err != nil {
+			if _, err := r.deployStatefulSet(
+				inst,
+				shardingv1.BuildStatefulSetForCatalog(inst, oraCatalogSpec),
+				"CATALOG",
+				oraCatalogSpec.Name,
+				oraCatalogSpec.Resources,
+			); err != nil {
 				return phaseResult{err: err, reason: "CatalogStatefulSetFailed", message: err.Error()}
 			}
 			if err := r.reconcilePVCExpansion(inst, oraCatalogSpec.Name, normalizedPVCResizeSpecs(oraCatalogSpec.Name, oraCatalogSpec.StorageSizeInGb, oraCatalogSpec.DisableDefaultLogVolumeClaims, oraCatalogSpec.AdditionalPVCs)); err != nil {
@@ -445,7 +451,13 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 	// GSM StatefulSet setup
 	for i = 0; i < int32(len(inst.Spec.Gsm)); i++ {
 		oraGsmSpec := inst.Spec.Gsm[i]
-		if _, err := r.deployStatefulSet(inst, shardingv1.BuildStatefulSetForGsm(inst, oraGsmSpec), "GSM"); err != nil {
+		if _, err := r.deployStatefulSet(
+			inst,
+			shardingv1.BuildStatefulSetForGsm(inst, oraGsmSpec),
+			"GSM",
+			oraGsmSpec.Name,
+			oraGsmSpec.Resources,
+		); err != nil {
 			return phaseResult{err: err, reason: "GsmStatefulSetFailed", message: err.Error()}
 		}
 		if err := r.reconcilePVCExpansion(inst, oraGsmSpec.Name, normalizedGsmPVCResizeSpecs(oraGsmSpec.Name, oraGsmSpec.StorageSizeInGb, oraGsmSpec.DisableDefaultLogVolumeClaims, oraGsmSpec.AdditionalPVCs)); err != nil {
@@ -482,7 +494,13 @@ func (r *ShardingDatabaseReconciler) phaseEnsureCoreResources(
 		if shardingv1.CheckIsDeleteFlag(oraShardSpec.IsDelete, inst, r.Log) {
 			continue
 		}
-		if _, err := r.deployStatefulSet(inst, shardingv1.BuildStatefulSetForShard(inst, oraShardSpec), "SHARD"); err != nil {
+		if _, err := r.deployStatefulSet(
+			inst,
+			shardingv1.BuildStatefulSetForShard(inst, oraShardSpec),
+			"SHARD",
+			oraShardSpec.Name,
+			oraShardSpec.Resources,
+		); err != nil {
 			return phaseResult{err: err, reason: "ShardStatefulSetFailed", message: err.Error()}
 		}
 		if err := r.reconcilePVCExpansion(inst, oraShardSpec.Name, normalizedPVCResizeSpecs(oraShardSpec.Name, oraShardSpec.StorageSizeInGb, oraShardSpec.DisableDefaultLogVolumeClaims, oraShardSpec.AdditionalPVCs)); err != nil {
@@ -1403,21 +1421,6 @@ func (r *ShardingDatabaseReconciler) publishEvents(instance *databasev4.Sharding
 
 	}
 
-}
-
-// ========================== FInalizer Section ===================
-// addFinalizer attaches the sharding finalizer to the CR.
-func (r *ShardingDatabaseReconciler) addFinalizer(instance *databasev4.ShardingDatabase) error {
-	reqLogger := r.Log.WithValues("instance.Namespace", instance.Namespace, "instance.Name", instance.Name)
-	controllerutil.AddFinalizer(instance, shardingv1.ShardingDatabaseFinalizer)
-
-	// Update CR
-	err := r.Client.Update(context.TODO(), instance)
-	if err != nil {
-		reqLogger.Error(err, "Failed to update Sharding Database  with finalizer")
-		return err
-	}
-	return nil
 }
 
 // finalizeShardingDatabase performs best-effort idempotent cleanup of owned resources before finalizer removal.
@@ -3262,23 +3265,24 @@ func (r *ShardingDatabaseReconciler) createService(instance *databasev4.Sharding
 		return ctrl.Result{}, err
 	}
 
-	found := &corev1.Service{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: dep.Name, Namespace: dep.Namespace}, found)
+	changed, err := sharedk8sobjects.EnsureService(context.TODO(), r.Client, dep.Namespace, dep, sharedk8sobjects.ServiceSyncOptions{
+		NodePortMerge:             sharedk8sobjects.NodePortMergeByNamePortAndProtocol,
+		SyncOwnerReferences:       true,
+		SyncSessionAffinityCfg:    true,
+		SyncPublishNotReady:       true,
+		SyncInternalTrafficPolicy: true,
+		SyncLoadBalancerFields:    true,
+		SyncHealthCheckNodePort:   true,
+	})
 	if err != nil {
-		if !errors.IsNotFound(err) {
-			reqLogger.Error(err, "Failed to get Service")
-			return ctrl.Result{}, err
-		}
-
-		reqLogger.Info("Creating Service")
-		if err := r.Client.Create(context.TODO(), dep); err != nil {
-			reqLogger.Error(err, "Failed to create Service")
-			return ctrl.Result{}, err
-		}
+		reqLogger.Error(err, "Failed to reconcile Service")
+		return ctrl.Result{}, err
+	}
+	if changed {
+		reqLogger.Info("Service reconciled to desired state")
 		return ctrl.Result{Requeue: true}, nil
 	}
-
-	r.logLegacy("DEBUG", "Service "+shardingv1.GetFmtStr(dep.Name)+" already exists", nil, instance, r.Log)
+	r.logLegacy("DEBUG", "Service "+shardingv1.GetFmtStr(dep.Name)+" already in desired state", nil, instance, r.Log)
 	return ctrl.Result{}, nil
 }
 
@@ -3289,6 +3293,8 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(
 	instance *databasev4.ShardingDatabase,
 	dep *appsv1.StatefulSet,
 	resType string,
+	containerName string,
+	desiredResources *corev1.ResourceRequirements,
 ) (ctrl.Result, error) {
 	if dep == nil {
 		return ctrl.Result{}, fmt.Errorf("deployStatefulSet received nil StatefulSet for %s", strings.ToUpper(strings.TrimSpace(resType)))
@@ -3312,26 +3318,63 @@ func (r *ShardingDatabaseReconciler) deployStatefulSet(
 		return ctrl.Result{}, err
 	}
 
-	found := &appsv1.StatefulSet{}
-	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: dep.Name, Namespace: dep.Namespace}, found)
+	result, err := sharedk8sobjects.ReconcileStatefulSet(
+		context.TODO(),
+		r.Client,
+		dep.Namespace,
+		dep,
+		func(found *appsv1.StatefulSet, desired *appsv1.StatefulSet) bool {
+			return syncShardingStatefulSetScopedFields(found, desired, containerName, desiredResources)
+		},
+	)
 	if err != nil {
-		if !errors.IsNotFound(err) {
-			reqLogger.Error(err, "Failed to get StatefulSet")
-			return ctrl.Result{}, err
-		}
-
+		reqLogger.Error(err, "Failed to reconcile StatefulSet")
+		return ctrl.Result{}, err
+	}
+	if result.Created {
 		reqLogger.Info("Creating StatefulSet")
-		if err := r.Client.Create(context.TODO(), dep); err != nil {
-			reqLogger.Error(err, "Failed to create StatefulSet")
-			return ctrl.Result{}, err
-		}
-
 		r.logLegacy("INFO", "Created StatefulSet "+shardingv1.GetFmtStr(dep.Name), nil, instance, r.Log)
 		return ctrl.Result{Requeue: true}, nil
 	}
-
-	r.logLegacy("DEBUG", "StatefulSet "+shardingv1.GetFmtStr(dep.Name)+" already exists", nil, instance, r.Log)
+	if result.Updated {
+		reqLogger.Info("StatefulSet reconciled to desired scoped fields")
+		r.logLegacy("INFO", "Updated StatefulSet "+shardingv1.GetFmtStr(dep.Name), nil, instance, r.Log)
+		return ctrl.Result{Requeue: true}, nil
+	}
+	r.logLegacy("DEBUG", "StatefulSet "+shardingv1.GetFmtStr(dep.Name)+" already in desired scoped state", nil, instance, r.Log)
 	return ctrl.Result{}, nil
+}
+
+func syncShardingStatefulSetScopedFields(
+	found *appsv1.StatefulSet,
+	desired *appsv1.StatefulSet,
+	containerName string,
+	desiredResources *corev1.ResourceRequirements,
+) bool {
+	updated := false
+
+	if desired.Spec.Replicas != nil {
+		if found.Spec.Replicas == nil || *found.Spec.Replicas != *desired.Spec.Replicas {
+			replica := *desired.Spec.Replicas
+			found.Spec.Replicas = &replica
+			updated = true
+		}
+	}
+
+	if desiredResources != nil {
+		for i := range found.Spec.Template.Spec.Containers {
+			if found.Spec.Template.Spec.Containers[i].Name != containerName {
+				continue
+			}
+			if !reflect.DeepEqual(found.Spec.Template.Spec.Containers[i].Resources, *desiredResources) {
+				found.Spec.Template.Spec.Containers[i].Resources = *desiredResources
+				updated = true
+			}
+			break
+		}
+	}
+
+	return updated
 }
 
 // checkShardState evaluates shard lifecycle state machine transitions and gate conditions.
@@ -3833,6 +3876,56 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 		}
 		return nil
 	}
+	if shardingType == "COMPOSITE" && replType == "NATIVE" {
+		groupRegionBySpace := map[string]map[string]string{}
+		groupByRegionBySpace := map[string]map[string]string{}
+		readWriteShardCountByGroup := map[string]int{}
+
+		for i := range instance.Spec.Shard {
+			s := instance.Spec.Shard[i]
+			if shardingv1.CheckIsDeleteFlag(s.IsDelete, instance, r.Log) {
+				continue
+			}
+			spaceKey := normalizeShardSpaceKey(s.ShardSpace)
+			groupKey := normalizeShardGroupKey(s.ShardGroup)
+			if spaceKey == "" || groupKey == "" {
+				continue
+			}
+			regionKey := strings.ToUpper(strings.TrimSpace(s.ShardRegion))
+			if regionKey == "" {
+				return fmt.Errorf("composite sharding with NATIVE replication requires shardRegion for shard %s", strings.TrimSpace(s.Name))
+			}
+
+			if _, ok := groupRegionBySpace[spaceKey]; !ok {
+				groupRegionBySpace[spaceKey] = map[string]string{}
+			}
+			if _, ok := groupByRegionBySpace[spaceKey]; !ok {
+				groupByRegionBySpace[spaceKey] = map[string]string{}
+			}
+			if prevRegion, ok := groupRegionBySpace[spaceKey][groupKey]; ok && prevRegion != regionKey {
+				return fmt.Errorf("composite sharding with NATIVE replication: shardGroup %s in shardSpace %s cannot span multiple regions (%s, %s)", groupKey, spaceKey, prevRegion, regionKey)
+			}
+			groupRegionBySpace[spaceKey][groupKey] = regionKey
+			if prevGroup, ok := groupByRegionBySpace[spaceKey][regionKey]; ok && prevGroup != groupKey {
+				return fmt.Errorf("composite sharding with NATIVE replication: region %s in shardSpace %s is already used by shardGroup %s", regionKey, spaceKey, prevGroup)
+			}
+			groupByRegionBySpace[spaceKey][regionKey] = groupKey
+
+			ruMode := r.resolveCompositeNativeShardGroupRuMode(instance, groupKey, spaceKey)
+			if ruMode == "" {
+				return fmt.Errorf("composite sharding with NATIVE replication requires ru_mode for shardGroup %s in shardSpace %s", groupKey, spaceKey)
+			}
+			if ruMode == "READWRITE" {
+				readWriteShardCountByGroup[groupKey]++
+			}
+		}
+		for groupKey, rwCount := range readWriteShardCountByGroup {
+			if rwCount > 1 {
+				return fmt.Errorf("composite sharding with NATIVE replication: shardGroup %s allows at most one READWRITE database; found %d", groupKey, rwCount)
+			}
+		}
+		return nil
+	}
 
 	spacePrimaryCount := map[string]int{}
 	spaceSeen := map[string]bool{}
@@ -3860,11 +3953,6 @@ func (r *ShardingDatabaseReconciler) validatePrimaryTopologyConstraint(instance 
 			continue
 		}
 		deployAs := strings.ToUpper(strings.TrimSpace(s.DeployAs))
-		if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
-			if !spaceExternalPrimary[ss] && spacePrimaryCount[ss] == 0 {
-				return fmt.Errorf("user sharding requires a PRIMARY shard in shardSpace %s before defining standby shards", ss)
-			}
-		}
 		spaceSeen[ss] = true
 		if deployAs == "PRIMARY" {
 			spacePrimaryCount[ss]++
@@ -4049,6 +4137,52 @@ func normalizeShardGroupKey(v string) string {
 
 func normalizeShardSpaceKey(v string) string {
 	return strings.ToUpper(strings.TrimSpace(v))
+}
+
+func normalizeShardGroupRuModeKey(v string) string {
+	switch strings.ToUpper(strings.TrimSpace(v)) {
+	case "READWRITE":
+		return "READWRITE"
+	case "READONLY":
+		return "READONLY"
+	default:
+		return ""
+	}
+}
+
+func (r *ShardingDatabaseReconciler) resolveCompositeNativeShardGroupRuMode(instance *databasev4.ShardingDatabase, groupKey, spaceKey string) string {
+	for i := range instance.Spec.ShardInfo {
+		info := instance.Spec.ShardInfo[i]
+		if info.ShardGroupDetails == nil || info.ShardSpaceDetails == nil {
+			continue
+		}
+		if shardingv1.CheckIsDeleteFlag(info.ShardGroupDetails.IsDelete, instance, r.Log) {
+			continue
+		}
+		if normalizeShardGroupKey(info.ShardGroupDetails.Name) != groupKey {
+			continue
+		}
+		if normalizeShardSpaceKey(info.ShardSpaceDetails.Name) != spaceKey {
+			continue
+		}
+		if ru := normalizeShardGroupRuModeKey(info.ShardGroupDetails.RuMode); ru != "" {
+			return ru
+		}
+	}
+	for i := range instance.Spec.ShardGroup {
+		sg := instance.Spec.ShardGroup[i]
+		if normalizeShardGroupKey(sg.Name) != groupKey {
+			continue
+		}
+		sgSpace := normalizeShardSpaceKey(sg.ShardSpace)
+		if sgSpace != "" && sgSpace != spaceKey {
+			continue
+		}
+		if ru := normalizeShardGroupRuModeKey(sg.RuMode); ru != "" {
+			return ru
+		}
+	}
+	return ""
 }
 
 func (r *ShardingDatabaseReconciler) findShardGroupSpecByName(instance *databasev4.ShardingDatabase, groupName string) *databasev4.ShardGroupSpec {

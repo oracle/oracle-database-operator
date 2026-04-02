@@ -271,6 +271,12 @@ func defaultPasswordSecretConfig(secret *SecretDetails) {
 	if strings.TrimSpace(secret.MountPath) == "" {
 		secret.MountPath = DefaultSecretMountPath
 	}
+	if strings.TrimSpace(secret.UseGsmWallet) == "" {
+		secret.UseGsmWallet = "true"
+	}
+	if strings.TrimSpace(secret.GsmWalletRoot) == "" {
+		secret.GsmWalletRoot = DefaultGsmWalletRoot
+	}
 	defaultPasswordEntry(&secret.DbAdmin)
 	if secret.TDE != nil {
 		defaultPasswordEntry(secret.TDE)
@@ -544,6 +550,12 @@ func (r *ShardingDatabase) validateDbSecretConfig() field.ErrorList {
 
 	if mountPath := strings.TrimSpace(r.Spec.DbSecret.MountPath); mountPath != "" && !strings.HasPrefix(mountPath, "/") {
 		errs = append(errs, field.Invalid(dbSecretPath.Child("mountPath"), r.Spec.DbSecret.MountPath, "mountPath must be an absolute path"))
+	}
+	if useGsmWallet := strings.TrimSpace(r.Spec.DbSecret.UseGsmWallet); useGsmWallet != "" {
+		v := strings.ToLower(useGsmWallet)
+		if v != "true" && v != "false" {
+			errs = append(errs, field.Invalid(dbSecretPath.Child("useGsmWallet"), r.Spec.DbSecret.UseGsmWallet, "useGsmWallet must be \"true\" or \"false\""))
+		}
 	}
 
 	errs = append(errs, validatePasswordSecretConfig(r.Spec.DbSecret.DbAdmin, dbSecretPath.Child("dbAdmin"))...)
@@ -1045,6 +1057,9 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 	compositePrimaryGroupsBySpace := map[string]map[string]bool{}
 	compositePrimaryReplicaCountBySpace := map[string]int32{}
 	compositeStandbyReplicaCountBySpaceGroup := map[string]map[string]int32{}
+	compositeNativeGroupRegionBySpace := map[string]map[string]string{}
+	compositeNativeGroupByRegionBySpace := map[string]map[string]string{}
+	compositeNativeReadWriteReplicaCountByGroup := map[string]int32{}
 
 	for pindex := range r.Spec.ShardInfo {
 		if errs := validateStandbyConfigPrimarySourceExclusive(r, pindex); len(errs) > 0 {
@@ -1215,17 +1230,6 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 				spaceKey := strings.ToUpper(strings.TrimSpace(ss.Name))
 				if spaceKey != "" {
 					userSpaceSeenInShardInfo[spaceKey] = true
-					if derived := standbyConfigDerivedShardCount(r.Spec.ShardInfo[pindex].StandbyConfig); derived > 1 {
-						validationErrs = append(validationErrs,
-							field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("standbyConfig"),
-								derived,
-								"user sharding shardInfo allows only one derived shard; standbyConfig must resolve to exactly one shard"))
-					} else if replicas > 1 {
-						validationErrs = append(validationErrs,
-							field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardNum"),
-								r.Spec.ShardInfo[pindex].ShardNum,
-								"user sharding shardInfo allows shardNum at most 1"))
-					}
 					deployAs := strings.ToUpper(strings.TrimSpace(ss.DeployAs))
 					if deployAs == "" {
 						ss.DeployAs = "STANDBY"
@@ -1290,6 +1294,50 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 			if modeHint == modeComposite {
 				spaceKey := strings.ToUpper(strings.TrimSpace(ss.Name))
 				groupKey := strings.ToUpper(strings.TrimSpace(sg.Name))
+				if replType == replNative {
+					regionKey := strings.ToUpper(strings.TrimSpace(sg.Region))
+					if regionKey == "" {
+						validationErrs = append(validationErrs,
+							field.Required(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("region"),
+								"composite sharding with NATIVE replication requires shardGroupDetails.region"))
+					}
+					if ruMode == "" {
+						validationErrs = append(validationErrs,
+							field.Required(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("ru_mode"),
+								"composite sharding with NATIVE replication requires shardGroupDetails.ru_mode"))
+					}
+					replicaCount := replicas
+					if replicaCount <= 0 {
+						replicaCount = 1
+					}
+					if _, ok := compositeNativeGroupRegionBySpace[spaceKey]; !ok {
+						compositeNativeGroupRegionBySpace[spaceKey] = map[string]string{}
+					}
+					if _, ok := compositeNativeGroupByRegionBySpace[spaceKey]; !ok {
+						compositeNativeGroupByRegionBySpace[spaceKey] = map[string]string{}
+					}
+					if regionKey != "" {
+						if prevRegion, ok := compositeNativeGroupRegionBySpace[spaceKey][groupKey]; ok && prevRegion != regionKey {
+							validationErrs = append(validationErrs,
+								field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("region"),
+									sg.Region,
+									fmt.Sprintf("composite sharding with NATIVE replication: shardGroup %s in shardSpace %s cannot span multiple regions (%s, %s)", groupKey, spaceKey, prevRegion, regionKey)))
+						} else {
+							compositeNativeGroupRegionBySpace[spaceKey][groupKey] = regionKey
+						}
+						if prevGroup, ok := compositeNativeGroupByRegionBySpace[spaceKey][regionKey]; ok && prevGroup != groupKey {
+							validationErrs = append(validationErrs,
+								field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("shardGroupDetails").Child("region"),
+									sg.Region,
+									fmt.Sprintf("composite sharding with NATIVE replication: region %s in shardSpace %s is already used by shardGroup %s", regionKey, spaceKey, prevGroup)))
+						} else {
+							compositeNativeGroupByRegionBySpace[spaceKey][regionKey] = groupKey
+						}
+					}
+					if ruMode == "READWRITE" {
+						compositeNativeReadWriteReplicaCountByGroup[groupKey] += replicaCount
+					}
+				}
 				if cfg := r.Spec.ShardInfo[pindex].StandbyConfig; cfg != nil && cfg.StandbyPerPrimary > 0 {
 					validationErrs = append(validationErrs,
 						field.Invalid(field.NewPath("spec").Child("shardInfo").Index(pindex).Child("standbyConfig").Child("standbyPerPrimary"),
@@ -1437,6 +1485,16 @@ func (r *ShardingDatabase) validateShardInfo() field.ErrorList {
 				validationErrs = append(validationErrs,
 					field.Required(field.NewPath("spec").Child("shardInfo"),
 						fmt.Sprintf("user sharding shardInfo requires exactly one PRIMARY shard per shardSpace; shardSpace %s has %d", spaceKey, primaryReplicas)))
+			}
+		}
+	}
+	if replType == replNative && modeHint == modeComposite {
+		for groupKey, rwCount := range compositeNativeReadWriteReplicaCountByGroup {
+			if rwCount > 1 {
+				validationErrs = append(validationErrs,
+					field.Invalid(field.NewPath("spec").Child("shardInfo").Child("shardGroupDetails").Child("ru_mode"),
+						groupKey,
+						fmt.Sprintf("composite sharding with NATIVE replication: shardGroup %s allows at most one READWRITE database; found %d", groupKey, rwCount)))
 			}
 		}
 	}
@@ -1744,6 +1802,9 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 	userExternalPrimaryBySpace := map[string]bool{}
 	userStandbyRegionsBySpace := map[string]map[string]bool{}
 	compositeGroupSpaceByName := map[string]string{}
+	compositeNativeGroupRegionBySpace := map[string]map[string]string{}
+	compositeNativeGroupByRegionBySpace := map[string]map[string]string{}
+	compositeNativeReadWriteShardCountByGroup := map[string]int{}
 
 	for i := range r.Spec.ShardInfo {
 		info := r.Spec.ShardInfo[i]
@@ -1820,11 +1881,6 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 				if deployAs == "PRIMARY" {
 					userPrimaryBySpace[spaceKey]++
 				} else if deployAs == "STANDBY" || deployAs == "ACTIVE_STANDBY" {
-					if !userExternalPrimaryBySpace[spaceKey] && userPrimaryBySpace[spaceKey] == 0 {
-						validationErrs = append(validationErrs,
-							field.Required(field.NewPath("spec").Child("shard").Index(i),
-								fmt.Sprintf("user sharding requires a PRIMARY shard in shardSpace %s before defining standby shards", spaceKey)))
-					}
 					regionKey := strings.ToUpper(strings.TrimSpace(sh.ShardRegion))
 					if regionKey == "" {
 						validationErrs = append(validationErrs,
@@ -1881,6 +1937,46 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 					} else {
 						compositeGroupSpaceByName[groupKey] = spaceKey
 					}
+					if replType == replNative {
+						regionKey := strings.ToUpper(strings.TrimSpace(sh.ShardRegion))
+						if regionKey == "" {
+							validationErrs = append(validationErrs,
+								field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardRegion"),
+									"composite sharding with NATIVE replication requires shardRegion"))
+						}
+						if _, ok := compositeNativeGroupRegionBySpace[spaceKey]; !ok {
+							compositeNativeGroupRegionBySpace[spaceKey] = map[string]string{}
+						}
+						if _, ok := compositeNativeGroupByRegionBySpace[spaceKey]; !ok {
+							compositeNativeGroupByRegionBySpace[spaceKey] = map[string]string{}
+						}
+						if regionKey != "" {
+							if prevRegion, ok := compositeNativeGroupRegionBySpace[spaceKey][groupKey]; ok && prevRegion != regionKey {
+								validationErrs = append(validationErrs,
+									field.Invalid(field.NewPath("spec").Child("shard").Index(i).Child("shardRegion"),
+										sh.ShardRegion,
+										fmt.Sprintf("composite sharding with NATIVE replication: shardGroup %s in shardSpace %s cannot span multiple regions (%s, %s)", groupKey, spaceKey, prevRegion, regionKey)))
+							} else {
+								compositeNativeGroupRegionBySpace[spaceKey][groupKey] = regionKey
+							}
+							if prevGroup, ok := compositeNativeGroupByRegionBySpace[spaceKey][regionKey]; ok && prevGroup != groupKey {
+								validationErrs = append(validationErrs,
+									field.Invalid(field.NewPath("spec").Child("shard").Index(i).Child("shardRegion"),
+										sh.ShardRegion,
+										fmt.Sprintf("composite sharding with NATIVE replication: region %s in shardSpace %s is already used by shardGroup %s", regionKey, spaceKey, prevGroup)))
+							} else {
+								compositeNativeGroupByRegionBySpace[spaceKey][regionKey] = groupKey
+							}
+						}
+						ruMode := resolveCompositeNativeShardGroupRuMode(&r.Spec, groupKey, spaceKey)
+						if ruMode == "" {
+							validationErrs = append(validationErrs,
+								field.Required(field.NewPath("spec").Child("shard").Index(i).Child("shardGroup"),
+									fmt.Sprintf("composite sharding with NATIVE replication requires ru_mode for shardGroup %s in shardSpace %s", groupKey, spaceKey)))
+						} else if ruMode == "READWRITE" {
+							compositeNativeReadWriteShardCountByGroup[groupKey]++
+						}
+					}
 				}
 			}
 		}
@@ -1908,6 +2004,16 @@ func (r *ShardingDatabase) validateShardOperationRules() field.ErrorList {
 				validationErrs = append(validationErrs,
 					field.Required(field.NewPath("spec").Child("shard"),
 						fmt.Sprintf("user sharding requires exactly one PRIMARY shard per shardSpace; shardSpace %s has none", spaceKey)))
+			}
+		}
+	}
+	if replType == replNative && modeHint == modeComposite {
+		for groupKey, rwCount := range compositeNativeReadWriteShardCountByGroup {
+			if rwCount > 1 {
+				validationErrs = append(validationErrs,
+					field.Invalid(field.NewPath("spec").Child("shard").Child("shardGroup"),
+						groupKey,
+						fmt.Sprintf("composite sharding with NATIVE replication: shardGroup %s allows at most one READWRITE database; found %d", groupKey, rwCount)))
 			}
 		}
 	}
@@ -2283,6 +2389,44 @@ func envVarsFromPairs(pairs [][2]string) []EnvironmentVariable {
 		})
 	}
 	return out
+}
+
+func resolveCompositeNativeShardGroupRuMode(spec *ShardingDatabaseSpec, groupKey, spaceKey string) string {
+	if spec == nil {
+		return ""
+	}
+	for i := range spec.ShardInfo {
+		info := spec.ShardInfo[i]
+		if info.ShardGroupDetails == nil || info.ShardSpaceDetails == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(info.ShardGroupDetails.IsDelete), deleteStateEnable) {
+			continue
+		}
+		if strings.ToUpper(strings.TrimSpace(info.ShardGroupDetails.Name)) != groupKey {
+			continue
+		}
+		if strings.ToUpper(strings.TrimSpace(info.ShardSpaceDetails.Name)) != spaceKey {
+			continue
+		}
+		if ru := normalizeShardGroupRuModeCanonical(info.ShardGroupDetails.RuMode); ru != "" {
+			return ru
+		}
+	}
+	for i := range spec.ShardGroup {
+		sg := spec.ShardGroup[i]
+		if strings.ToUpper(strings.TrimSpace(sg.Name)) != groupKey {
+			continue
+		}
+		sgSpaceKey := strings.ToUpper(strings.TrimSpace(sg.ShardSpace))
+		if sgSpaceKey != "" && sgSpaceKey != spaceKey {
+			continue
+		}
+		if ru := normalizeShardGroupRuModeCanonical(sg.RuMode); ru != "" {
+			return ru
+		}
+	}
+	return ""
 }
 
 func countTotalReplicas(shardInfo []ShardingDetails) int32 {
