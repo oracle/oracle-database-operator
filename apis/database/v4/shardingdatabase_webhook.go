@@ -606,6 +606,7 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj *ShardingData
 	var validationErr field.ErrorList
 	var validationErrs1 field.ErrorList
 	cr := obj
+	warnings := deprecatedLegacyPVCFieldWarnings(&cr.Spec)
 	logger = logger.WithValues("name", cr.Name, "namespace", cr.Namespace)
 	logger.Info("running create validation")
 
@@ -711,11 +712,11 @@ func (r *ShardingDatabase) ValidateCreate(ctx context.Context, obj *ShardingData
 	// TODO(user): fill in your validation logic upon object creation.
 	if len(validationErr) == 0 {
 		logger.Info("create validation passed", "mode", detectShardingMode(&cr.Spec), "shards", len(cr.Spec.Shard), "shardInfo", len(cr.Spec.ShardInfo))
-		return nil, nil
+		return warnings, nil
 	}
 	logger.Info("create validation failed", "errorCount", len(validationErr))
 
-	return nil, apierrors.NewInvalid(
+	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
 		cr.Name, validationErr)
 }
@@ -729,6 +730,7 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *S
 
 	oldCR := oldObj
 	newCR := newObj
+	warnings := deprecatedLegacyPVCFieldWarnings(&newCR.Spec)
 
 	oldMode := detectShardingMode(&oldCR.Spec)
 	newMode := detectShardingMode(&newCR.Spec)
@@ -822,13 +824,18 @@ func (r *ShardingDatabase) ValidateUpdate(ctx context.Context, oldObj, newObj *S
 		validationErr = append(validationErr, validationErrs1...)
 	}
 
+	validationErrs1 = newCR.validateStorageSizeNoShrink(oldCR)
+	if validationErrs1 != nil {
+		validationErr = append(validationErr, validationErrs1...)
+	}
+
 	if len(validationErr) == 0 {
 		logger.Info("update validation passed", "oldMode", oldMode, "newMode", newMode)
-		return nil, nil
+		return warnings, nil
 	}
 	logger.Info("update validation failed", "oldMode", oldMode, "newMode", newMode, "errorCount", len(validationErr))
 
-	return nil, apierrors.NewInvalid(
+	return warnings, apierrors.NewInvalid(
 		schema.GroupKind{Group: "database.oracle.com", Kind: "ShardingDatabase"},
 		r.Name, validationErr)
 }
@@ -861,6 +868,111 @@ func (r *ShardingDatabase) validateShardIsDelete() field.ErrorList {
 		return validationErrs
 	}
 	return nil
+}
+
+func (r *ShardingDatabase) validateStorageSizeNoShrink(oldCR *ShardingDatabase) field.ErrorList {
+	if oldCR == nil {
+		return nil
+	}
+	var errs field.ErrorList
+
+	oldShards := map[string]ShardSpec{}
+	for i := range oldCR.Spec.Shard {
+		name := strings.TrimSpace(oldCR.Spec.Shard[i].Name)
+		if name == "" {
+			continue
+		}
+		oldShards[name] = oldCR.Spec.Shard[i]
+	}
+	for i := range r.Spec.Shard {
+		name := strings.TrimSpace(r.Spec.Shard[i].Name)
+		oldSpec, ok := oldShards[name]
+		if !ok {
+			continue
+		}
+		if oldSpec.StorageSizeInGb > 0 && r.Spec.Shard[i].StorageSizeInGb > 0 && r.Spec.Shard[i].StorageSizeInGb < oldSpec.StorageSizeInGb {
+			errs = append(errs, field.Forbidden(
+				field.NewPath("spec").Child("shard").Index(i).Child("storageSizeInGb"),
+				fmt.Sprintf("cannot shrink shard storage from %dGi to %dGi", oldSpec.StorageSizeInGb, r.Spec.Shard[i].StorageSizeInGb),
+			))
+		}
+	}
+
+	oldCatalogs := map[string]CatalogSpec{}
+	for i := range oldCR.Spec.Catalog {
+		name := strings.TrimSpace(oldCR.Spec.Catalog[i].Name)
+		if name == "" {
+			continue
+		}
+		oldCatalogs[name] = oldCR.Spec.Catalog[i]
+	}
+	for i := range r.Spec.Catalog {
+		name := strings.TrimSpace(r.Spec.Catalog[i].Name)
+		oldSpec, ok := oldCatalogs[name]
+		if !ok {
+			continue
+		}
+		if oldSpec.StorageSizeInGb > 0 && r.Spec.Catalog[i].StorageSizeInGb > 0 && r.Spec.Catalog[i].StorageSizeInGb < oldSpec.StorageSizeInGb {
+			errs = append(errs, field.Forbidden(
+				field.NewPath("spec").Child("catalog").Index(i).Child("storageSizeInGb"),
+				fmt.Sprintf("cannot shrink catalog storage from %dGi to %dGi", oldSpec.StorageSizeInGb, r.Spec.Catalog[i].StorageSizeInGb),
+			))
+		}
+	}
+
+	oldGsms := map[string]GsmSpec{}
+	for i := range oldCR.Spec.Gsm {
+		name := strings.TrimSpace(oldCR.Spec.Gsm[i].Name)
+		if name == "" {
+			continue
+		}
+		oldGsms[name] = oldCR.Spec.Gsm[i]
+	}
+	for i := range r.Spec.Gsm {
+		name := strings.TrimSpace(r.Spec.Gsm[i].Name)
+		oldSpec, ok := oldGsms[name]
+		if !ok {
+			continue
+		}
+		if oldSpec.StorageSizeInGb > 0 && r.Spec.Gsm[i].StorageSizeInGb > 0 && r.Spec.Gsm[i].StorageSizeInGb < oldSpec.StorageSizeInGb {
+			errs = append(errs, field.Forbidden(
+				field.NewPath("spec").Child("gsm").Index(i).Child("storageSizeInGb"),
+				fmt.Sprintf("cannot shrink gsm storage from %dGi to %dGi", oldSpec.StorageSizeInGb, r.Spec.Gsm[i].StorageSizeInGb),
+			))
+		}
+	}
+
+	if len(errs) > 0 {
+		return errs
+	}
+	return nil
+}
+
+func deprecatedLegacyPVCFieldWarnings(spec *ShardingDatabaseSpec) admission.Warnings {
+	if spec == nil {
+		return nil
+	}
+	warnings := admission.Warnings{}
+	appendWarn := func(path string) {
+		warnings = append(warnings, path+" uses deprecated pvcName/pvAnnotations/pvMatchLabels fields; these fields are ignored by the operator. Use additionalPVCs instead.")
+	}
+
+	for i := range spec.Shard {
+		if strings.TrimSpace(spec.Shard[i].PvcName) != "" || len(spec.Shard[i].PvAnnotations) > 0 || len(spec.Shard[i].PvMatchLabels) > 0 {
+			appendWarn(fmt.Sprintf("spec.shard[%d]", i))
+		}
+	}
+	for i := range spec.Catalog {
+		if strings.TrimSpace(spec.Catalog[i].PvcName) != "" || len(spec.Catalog[i].PvAnnotations) > 0 || len(spec.Catalog[i].PvMatchLabels) > 0 {
+			appendWarn(fmt.Sprintf("spec.catalog[%d]", i))
+		}
+	}
+	for i := range spec.Gsm {
+		if strings.TrimSpace(spec.Gsm[i].PvcName) != "" || len(spec.Gsm[i].PvAnnotations) > 0 || len(spec.Gsm[i].PvMatchLabels) > 0 {
+			appendWarn(fmt.Sprintf("spec.gsm[%d]", i))
+		}
+	}
+	return warnings
 }
 
 func (r *ShardingDatabase) validateFreeEdition() field.ErrorList {

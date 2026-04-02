@@ -172,12 +172,15 @@ type ShardSpec struct {
 	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Shard Storage Size
 	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Shards
 	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` //Optional resource requirement for the container.
-	PvcName         string                       `json:"pvcName,omitempty"`
-	Label           string                       `json:"label,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvcName string `json:"pvcName,omitempty"`
+	Label   string `json:"label,omitempty"`
 	// +kubebuilder:validation:Enum=enable;disable;failed;force
-	IsDelete         string             `json:"isDelete,omitempty"`
-	NodeSelector     map[string]string  `json:"nodeSelector,omitempty"`
-	PvAnnotations    map[string]string  `json:"pvAnnotations,omitempty"`
+	IsDelete     string            `json:"isDelete,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
 	PvMatchLabels    map[string]string  `json:"pvMatchLabels,omitempty"`
 	ImagePulllPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 	ShardSpace       string             `json:"shardSpace,omitempty"`
@@ -191,16 +194,19 @@ type ShardSpec struct {
 type CatalogSpec struct {
 	Name string `json:"name"` // Catalog name that will be used deploy StatefulSet
 	// +kubebuilder:default:=50
-	StorageSizeInGb  int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Catalog Storage Size and This parameter will not be used if you use PvcName
-	EnvVars          []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Catalog
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
-	PvcName          string                       `json:"pvcName,omitempty"`
-	Label            string                       `json:"label,omitempty"`
-	IsDelete         string                       `json:"isDelete,omitempty"`
-	NodeSelector     map[string]string            `json:"nodeSelector,omitempty"`
-	PvAnnotations    map[string]string            `json:"pvAnnotations,omitempty"`
-	PvMatchLabels    map[string]string            `json:"pvMatchLabels,omitempty"`
-	ImagePulllPolicy *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
+	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // Optional Catalog Storage Size and This parameter will not be used if you use PvcName
+	EnvVars         []EnvironmentVariable        `json:"envVars,omitempty"`                                         //Optional Env variables for Catalog
+	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvcName      string            `json:"pvcName,omitempty"`
+	Label        string            `json:"label,omitempty"`
+	IsDelete     string            `json:"isDelete,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvMatchLabels    map[string]string  `json:"pvMatchLabels,omitempty"`
+	ImagePulllPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
 }
 
 // GsmSpec defines the desired state of GsmSpec
@@ -211,17 +217,20 @@ type GsmSpec struct {
 	//Replicas         int32                        `json:"replicas,omitempty"`                                        // Gsm Replicas. If you set OraGsmPvcName then it is set default to 1.
 	EnvVars []EnvironmentVariable `json:"envVars,omitempty"` //Optional Env variables for GSM
 	// +kubebuilder:default:=50
-	StorageSizeInGb  int32                        `json:"storageSizeInGb,omitempty"`                                 // This parameter will not be used if you use OraGsmPvcName
-	Resources        *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
-	PvcName          string                       `json:"pvcName,omitempty"`
-	Label            string                       `json:"label,omitempty"` // Optional GSM Label
-	IsDelete         string                       `json:"isDelete,omitempty"`
-	NodeSelector     map[string]string            `json:"nodeSelector,omitempty"`
-	PvAnnotations    map[string]string            `json:"pvAnnotations,omitempty"`
-	PvMatchLabels    map[string]string            `json:"pvMatchLabels,omitempty"`
-	ImagePulllPolicy *corev1.PullPolicy           `json:"imagePullPolicy,omitempty"`
-	Region           string                       `json:"region,omitempty"`
-	DirectorName     string                       `json:"directorName,omitempty"`
+	StorageSizeInGb int32                        `json:"storageSizeInGb,omitempty"`                                 // This parameter will not be used if you use OraGsmPvcName
+	Resources       *corev1.ResourceRequirements `json:"resources,omitempty" protobuf:"bytes,1,opt,name=resources"` // Optional resource requirement for the container.
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvcName      string            `json:"pvcName,omitempty"`
+	Label        string            `json:"label,omitempty"` // Optional GSM Label
+	IsDelete     string            `json:"isDelete,omitempty"`
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvAnnotations map[string]string `json:"pvAnnotations,omitempty"`
+	// Deprecated: no longer used by the operator. Use additionalPVCs instead.
+	PvMatchLabels    map[string]string  `json:"pvMatchLabels,omitempty"`
+	ImagePulllPolicy *corev1.PullPolicy `json:"imagePullPolicy,omitempty"`
+	Region           string             `json:"region,omitempty"`
+	DirectorName     string             `json:"directorName,omitempty"`
 }
 
 // ShardGroupSpec Specification

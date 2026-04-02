@@ -54,6 +54,7 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -613,43 +614,86 @@ func normalizedPVCResizeSpecsWithDefaults(ownerName string, baseStorageSize int3
 }
 
 func (r *ShardingDatabaseReconciler) reconcilePVCExpansion(instance *databasev4.ShardingDatabase, statefulSetName string, specs []pvcResizeSpec) error {
+	ctx := context.Background()
+	replicas := int32(1)
+	sts := &appsv1.StatefulSet{}
+	if err := r.Get(ctx, types.NamespacedName{Name: statefulSetName, Namespace: instance.Namespace}, sts); err == nil {
+		if sts.Spec.Replicas != nil && *sts.Spec.Replicas > 0 {
+			replicas = *sts.Spec.Replicas
+		}
+	} else if !errors.IsNotFound(err) {
+		return err
+	}
+
+	scExpansionAllowed := map[string]bool{}
 	for _, spec := range specs {
 		if strings.TrimSpace(spec.pvcName) != "" || spec.storageSizeInGb <= 0 {
 			continue
 		}
 		desired := resource.MustParse(strconv.FormatInt(int64(spec.storageSizeInGb), 10) + "Gi")
-		pvcName := spec.volumeName + "-" + statefulSetName + "-0"
+		for ordinal := int32(0); ordinal < replicas; ordinal++ {
+			pvcName := spec.volumeName + "-" + statefulSetName + "-" + strconv.FormatInt(int64(ordinal), 10)
 
-		pvc := &corev1.PersistentVolumeClaim{}
-		if err := r.Get(context.Background(), types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, pvc); err != nil {
-			if errors.IsNotFound(err) {
+			pvc := &corev1.PersistentVolumeClaim{}
+			if err := r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, pvc); err != nil {
+				if errors.IsNotFound(err) {
+					continue
+				}
+				return err
+			}
+
+			current, ok := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+			if !ok {
+				return fmt.Errorf("pvc %s has no storage request to compare for expansion", pvcName)
+			}
+			if current.Cmp(desired) > 0 {
+				return fmt.Errorf("shrink is not supported for pvc %s: current=%s desired=%s", pvcName, current.String(), desired.String())
+			}
+			if current.Cmp(desired) == 0 {
 				continue
 			}
-			return err
-		}
 
-		current := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
-		if current.Cmp(desired) >= 0 {
-			continue
-		}
+			storageClassName := ""
+			if pvc.Spec.StorageClassName != nil {
+				storageClassName = strings.TrimSpace(*pvc.Spec.StorageClassName)
+			}
+			if storageClassName == "" {
+				return fmt.Errorf("cannot expand pvc %s because storageClassName is empty", pvcName)
+			}
+			allowed, cached := scExpansionAllowed[storageClassName]
+			if !cached {
+				sc := &storagev1.StorageClass{}
+				if err := r.Get(ctx, types.NamespacedName{Name: storageClassName}, sc); err != nil {
+					return fmt.Errorf("failed to read StorageClass %s for pvc %s: %w", storageClassName, pvcName, err)
+				}
+				allowed = sc.AllowVolumeExpansion != nil && *sc.AllowVolumeExpansion
+				scExpansionAllowed[storageClassName] = allowed
+			}
+			if !allowed {
+				return fmt.Errorf("cannot expand pvc %s because StorageClass %s does not allow volume expansion", pvcName, storageClassName)
+			}
 
-		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			latest := &corev1.PersistentVolumeClaim{}
-			if gerr := r.Get(context.Background(), types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, latest); gerr != nil {
-				return gerr
+			err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				latest := &corev1.PersistentVolumeClaim{}
+				if gerr := r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, latest); gerr != nil {
+					return gerr
+				}
+				if latest.Spec.Resources.Requests == nil {
+					latest.Spec.Resources.Requests = corev1.ResourceList{}
+				}
+				cur := latest.Spec.Resources.Requests[corev1.ResourceStorage]
+				if cur.Cmp(desired) > 0 {
+					return fmt.Errorf("shrink is not supported for pvc %s: current=%s desired=%s", pvcName, cur.String(), desired.String())
+				}
+				if cur.Cmp(desired) == 0 {
+					return nil
+				}
+				latest.Spec.Resources.Requests[corev1.ResourceStorage] = desired
+				return r.Update(ctx, latest)
+			})
+			if err != nil {
+				return err
 			}
-			if latest.Spec.Resources.Requests == nil {
-				latest.Spec.Resources.Requests = corev1.ResourceList{}
-			}
-			cur := latest.Spec.Resources.Requests[corev1.ResourceStorage]
-			if cur.Cmp(desired) >= 0 {
-				return nil
-			}
-			latest.Spec.Resources.Requests[corev1.ResourceStorage] = desired
-			return r.Update(context.Background(), latest)
-		})
-		if err != nil {
-			return err
 		}
 	}
 	return nil
